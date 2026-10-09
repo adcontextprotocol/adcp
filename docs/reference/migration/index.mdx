@@ -1,28 +1,72 @@
 ---
-title: Migrating from v2 to v3
-sidebarTitle: Migration guide
-description: "A complete guide to migrating AdCP integrations from v2.x to v3.0, with breaking changes, effort estimates, and deep-dive pages for each area."
-"og:title": "AdCP — Migrating from v2 to v3"
+title: Migration guides
+sidebarTitle: Migration guides
+description: "Upgrade paths between AdCP versions: 3.2 to 3.3, 3.1 to 3.2, 3.0 to 3.1, and v2 to v3, with breaking changes, effort estimates, and deep-dive pages for each area."
+"og:title": "AdCP — Migration guides"
 ---
 
-# Migrating from v2 to v3
+# Migration guides
 
-This page covers every breaking change when upgrading from AdCP 2.x to 3.0, with effort estimates and links to detailed migration pages. For new features see [What's new in v3](/docs/reference/whats-new-in-v3); for release-candidate deltas see [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades); for SDK versions that support 3.0 see [Schemas and SDKs](/docs/building/schemas-and-sdks#adcp-3-0-support).
+Pick the guide for the version you run today.
+
+| From → To | Current status | Guide | What it covers |
+|---|---|---|---|
+| **3.2 → 3.3** | 3.3 is in its beta cycle; 3.2 stays the current stable release. | [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3) | Two behavior tightenings (discovery never provisions accounts, one agent-resolution rule for signatures), optional catalog ingestion, DOOH location, and `ext.adcp` declarations, and no deprecations |
+| **3.1 → 3.2** | 3.2 is the current stable release (`3.2.1`, wire pin `"3.2"`). 3.1 stays supported. | [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2) | Compatibility exceptions, mixed-version request signing, SDK version map, day-one checklists by role, and the full wire-change table |
+| **3.0 → 3.1** | 3.1 is the previous supported release. | [3.0 to 3.1 badge checklist](/docs/reference/migration/3-0-to-3-1) | Additive prep for buyers, sellers, agents, SDKs, and compliance workflows |
+| **v2 → v3** | v2 reached end of life on August 1, 2026 (UTC). | [Migrating from v2 to v3](#migrating-from-v2-to-v3) (below) | Every breaking change from 2.x to 3.0, with effort estimates |
+
+For the status of every published version, see [Versions & Compatibility](/docs/reference/versions). For the rules that govern what a release may change, see [Versioning & Governance](/docs/reference/versioning).
+
+## 3.3 migration guide
 
 <Info>
-**Upgrading from 3.0 to 3.1?** Use the [3.0 to 3.1 migration guide](/docs/reference/migration/3-0-to-3-1). This page is for the breaking v2.x to 3.0 upgrade.
+**Preparing for 3.3?** Start with the [3.2 to 3.3 migration guide](/docs/reference/migration/3-2-to-3-3). During beta, also read the [3.3 beta program](/docs/reference/3-3-beta).
 </Info>
+
+## 3.2 migration guides
 
 <Info>
-**Preparing for 3.2?** Start with the [3.1 to 3.2 migration guide](/docs/reference/migration/3-1-to-3-2). For the signed RC.1 artifact, exact wire pins, matched SDKs, and feedback guidance, read the [3.2 prerelease program](/docs/reference/3-2-beta).
+**Moving to 3.2?** Start with the [3.1 to 3.2 migration guide](/docs/reference/migration/3-1-to-3-2). If you pinned a 3.2 beta or release candidate, see the [3.2 prerelease history](/docs/reference/3-2-beta).
 </Info>
 
-<Warning>
-**Implementing Reliable Reporting?** Read the active
-[consumer-status breaking-change notice](/docs/reference/migration/reliable-reporting-status-loop)
-before adopting the opt-in extension or planning for the next eligible minor.
-Published RC.1 remains unchanged.
-</Warning>
+<CardGroup cols={2}>
+  <Card title="3.1 to 3.2" icon="rocket" href="/docs/reference/migration/3-1-to-3-2">
+    Compatibility exceptions, mixed-version signing, SDK versions, day-one checklists, and wire changes
+  </Card>
+  <Card title="Targeting-aware discovery" icon="bullseye" href="/docs/reference/migration/targeting-aware-discovery">
+    Move legacy filters and brief constraints into targeting overlays and support declarations
+  </Card>
+  <Card title="Media buy status" icon="circle-check" href="/docs/reference/migration/media-buy-status">
+    Remove the deprecated body-level status and use `media_buy_status` on create/update success
+  </Card>
+  <Card title="Secured asset access" icon="key" href="/docs/reference/migration/asset-access">
+    Replace inline provider credentials with signed URLs or pre-authorized workload identity
+  </Card>
+  <Card title="Cross-role governance" icon="shield" href="/docs/reference/migration/cross-role-governance-enforcement">
+    Adopt the experimental task-scoped authorization and outcome contract as one migration
+  </Card>
+  <Card title="Reliable Reporting consumer status" icon="chart-line" href="/docs/reference/migration/reliable-reporting-status-loop">
+    Adopt the opt-in `sync_reporting_status` loop ahead of its active breaking-change notice
+  </Card>
+</CardGroup>
+
+## 3.1 badge prep guides
+
+You can stay on 3.0 without breaking compatibility. To claim the 3.1 badge, complete this short prep checklist.
+
+<CardGroup cols={2}>
+  <Card title="3.1 badge checklist" icon="rocket" href="/docs/reference/migration/3-0-to-3-1">
+    Additive prep for buyers, sellers, agents, SDKs, and compliance workflows
+  </Card>
+  <Card title="Creative transformers" icon="wand-magic-sparkles" href="/docs/reference/migration/creative-transformers">
+    Move build capability discovery and pricing from formats to transformers
+  </Card>
+</CardGroup>
+
+## Migrating from v2 to v3
+
+This section covers every breaking change when upgrading from AdCP 2.x to 3.0, with effort estimates and links to detailed migration pages. For new features see [What's new in v3](/docs/reference/whats-new-in-v3); for release-candidate deltas see [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades); for SDKs see [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
 
 <Warning>
 **v2 has been unsupported since 3.0 GA and reached end of life on August 1, 2026 (UTC).** See the [v2 sunset page](/docs/reference/v2-sunset) for the full timeline, AgenticAdvertising.org registry policy, and why v2 is not safe for interoperable production.
@@ -36,7 +80,7 @@ Published RC.1 remains unchanged.
 **Upgrading from rc.3?** The [rc.3 → 3.0 prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) cover additional breaking changes: capabilities model simplification, `account` required on `update_media_buy`, `preview_creative` schema flattening, `signal_id` required on signals, governance lifecycle changes, and the `pending_activation` status split.
 </Warning>
 
-## Migration checklist
+### Migration checklist
 
 Each row is a breaking change. **Effort** indicates the typical work involved:
 
@@ -80,7 +124,7 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 `buying_mode` on `get_products` is checked by storyboard testing. `brief` is the baseline mode; sellers that declare `wholesale` or `refine` in capabilities must handle those mode semantics. See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.
 </Warning>
 
-## New in v3 — required vs optional
+### New in v3 — required vs optional
 
 These capabilities are new in v3. None existed in v2, so there's nothing to migrate — but you should know which ones affect your integration.
 
@@ -93,7 +137,7 @@ These capabilities are new in v3. None existed in v2, so there's nothing to migr
 | Registry API | Optional | Buyers who want programmatic agent/brand discovery |
 | Campaign Governance | Optional | Organizations with compliance or approval workflows |
 
-## Running v2 and v3 side by side
+### Running v2 and v3 side by side
 
 Dual-support is a temporary migration tool, not a supported production posture. Since August 1, 2026, v3-only has been the required configuration — see the [v2 sunset page](/docs/reference/v2-sunset).
 
@@ -103,7 +147,7 @@ During migration, sellers can accept both v2 and v3 traffic and buyers can route
 2. **Branch by seller** — Route v3-capable sellers through your v3 integration and v2-only sellers through your existing v2 code.
 3. **Migrate incrementally** — Start with the rename changes (pricing fields, channel updates), then tackle structural changes (creative assignments, optimization goals), then adopt new capabilities (accounts, governance) as needed.
 
-## Breaking migrations (v2 → v3.0)
+### Breaking migrations (v2 → v3.0)
 
 <CardGroup cols={2}>
   <Card title="Channels" icon="tv" href="/docs/reference/migration/channels">
@@ -135,38 +179,5 @@ During migration, sellers can accept both v2 and v3 traffic and buyers can route
   </Card>
   <Card title="Attribution" icon="link" href="/docs/reference/migration/attribution">
     Integer days to structured `Duration` objects
-  </Card>
-</CardGroup>
-
-## 3.2 migration guides
-
-<CardGroup cols={2}>
-  <Card title="3.1 to 3.2" icon="rocket" href="/docs/reference/migration/3-1-to-3-2">
-    Role-based beta checklist, required behavior changes, capability adoption, and rollback
-  </Card>
-  <Card title="Targeting-aware discovery" icon="bullseye" href="/docs/reference/migration/targeting-aware-discovery">
-    Move legacy filters and brief constraints into targeting overlays and support declarations
-  </Card>
-  <Card title="Media buy status" icon="circle-check" href="/docs/reference/migration/media-buy-status">
-    Remove the deprecated body-level status and use `media_buy_status` on create/update success
-  </Card>
-  <Card title="Secured asset access" icon="key" href="/docs/reference/migration/asset-access">
-    Replace inline provider credentials with signed URLs or pre-authorized workload identity
-  </Card>
-  <Card title="Cross-role governance" icon="shield" href="/docs/reference/migration/cross-role-governance-enforcement">
-    Adopt the experimental task-scoped authorization and outcome contract as one migration
-  </Card>
-</CardGroup>
-
-## 3.1 badge prep guides
-
-You can stay on 3.0 without breaking compatibility. To claim the 3.1 badge, complete this short prep checklist.
-
-<CardGroup cols={2}>
-  <Card title="3.1 badge checklist" icon="rocket" href="/docs/reference/migration/3-0-to-3-1">
-    Additive prep for buyers, sellers, agents, SDKs, and compliance workflows
-  </Card>
-  <Card title="Creative transformers" icon="wand-magic-sparkles" href="/docs/reference/migration/creative-transformers">
-    Move build capability discovery and pricing from formats to transformers
   </Card>
 </CardGroup>

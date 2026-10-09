@@ -4,6 +4,9 @@ title: "Wholesale product feed cache-scope isolation"
 category: marketplace_catalog
 summary: "Validates that get_products conditional-fetch is keyed by cache_scope: a wholesale_feed_version minted under one cache_scope must not short-circuit (unchanged: true) a request the seller resolves to a different cache_scope."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.2"
 
 requires_capability:
@@ -45,7 +48,40 @@ prerequisites:
     identity (`account-overlay.example`) to elicit a `cache_scope: account`
     response and an ordinary account for the public layer.
   test_kit: "test-kits/acme-outdoor.yaml"
-  controller_seeding: false
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_e9f936de80b1"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-wholesale_feed_products_scope_isolat-bf091781"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_abd46b455d83"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-wholesale_feed_products_scope_isolat-bf091781"
+        billing: "operator"
+        status: "active"
+        sandbox: false
+    # The cross-scope probe sends the reserved account-overlay identity. A
+    # natural key resolves on discovery only once provisioned (accounts
+    # overview: Account references before provisioning), so seed it.
+    - account_id: "acct_account_overlay_example_live_5a5fe5cbf7bb"
+      fixture:
+        brand:
+          domain: "account-overlay.example"
+        operator: "pinnacle-agency.example"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: scope_isolation
@@ -70,6 +106,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-wholesale_feed_products_scope_isolat-bf091781"
           context:
             correlation_id: "wholesale_feed_products_scope--bootstrap_public"
         validations:

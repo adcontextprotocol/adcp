@@ -31,11 +31,49 @@ export interface VerificationProfileShadowAssessment {
   incomplete_bundle_count: number;
   sandbox_unresolved_bundle_count: number;
   unattributed_failure_count: number;
+  flat_failure_count: number;
   unattributed_flat_failure_count: number;
   unexplained_phase_failure_count: number;
   sandbox_unresolved_executed_bundle_count: number;
   sandbox_unresolved_missing_tools_bundle_count: number;
   sandbox_unresolved_unknown_bundle_count: number;
+}
+
+/**
+ * Explain every fail-closed Sandbox gate using the same assessment fields as
+ * the evaluator below. Keeping this next to the evaluator makes UI copy drift
+ * visible in unit tests when a new gate is added.
+ */
+export function sandboxProfileAssessmentReasons(
+  assessment: VerificationProfileShadowAssessment,
+): string[] {
+  const reasons: string[] = [];
+  const addCount = (count: number, singular: string, plural = `${singular}s`) => {
+    if (count > 0) reasons.push(`${count} ${count === 1 ? singular : plural}`);
+  };
+
+  addCount(assessment.sandbox_observable_failure_count, 'production-observable failure');
+  addCount(assessment.flat_failure_count, 'run-level failure record');
+  addCount(assessment.unattributed_flat_failure_count, 'unattributed run-level failure');
+  addCount(assessment.failing_bundle_count, 'failing evidence bundle');
+  if (!assessment.run_complete) reasons.push('the source run is incomplete');
+  if (!assessment.bundle_evidence_present) reasons.push('bundle evidence is missing');
+  if (assessment.applicable_phase_count === 0) reasons.push('no applicable phases were observed');
+  addCount(assessment.sandbox_unresolved_bundle_count, 'unresolved evidence bundle');
+  addCount(assessment.non_controller_gap_step_count, 'non-controller evidence gap');
+  addCount(
+    assessment.other_missing_storyboard_count,
+    'storyboard missing for reasons other than the controller',
+    'storyboards missing for reasons other than the controller',
+  );
+  addCount(assessment.mixed_controller_failure_phase_count, 'mixed controller/failure phase');
+
+  const controllerExplainsPublicGap = assessment.controller_gap_phase_count > 0
+    || assessment.controller_missing_storyboard_count > 0;
+  if (assessment.current_public_status !== 'passing' && !controllerExplainsPublicGap) {
+    reasons.push(`the public outcome is ${assessment.current_public_status} without a controller-only explanation`);
+  }
+  return reasons;
 }
 
 type ShadowStep = TestStepResult & {
@@ -366,6 +404,7 @@ export function deriveVerificationProfileShadowAssessment(
     incomplete_bundle_count: incompleteBundles.length,
     sandbox_unresolved_bundle_count: sandboxEligible ? sandboxIncompleteBundleCount : 0,
     unattributed_failure_count: unattributedFailureCount,
+    flat_failure_count: flatFailures.length,
     unattributed_flat_failure_count: unattributedFlatFailureCount,
     unexplained_phase_failure_count: unexplainedPhaseFailureCount,
     sandbox_unresolved_executed_bundle_count: sandboxEligible

@@ -5,6 +5,9 @@ protocol: signals
 category: signal_owned
 summary: "Signal agent serving first-party or proprietary audience data for discovery without external catalog verification."
 track: signals
+requires:
+  - controller
+
 required_tools:
   - get_signals
 
@@ -45,11 +48,35 @@ caller:
   example: "Scope3 (DSP)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The buyer has a campaign brief with targeting objectives. The test kit provides
     sample owned signal definitions with various value types (binary, categorical,
     numeric) and pricing models.
   test_kit: "test-kits/nova-motors.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_novamotors_example_sandbox_8d34b61fe263"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-signal_owned-9e5fc43a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_novamotors_example_live_ee0c6730d618"
+      fixture:
+        brand:
+          domain: "novamotors.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-signal_owned-9e5fc43a"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: capability_discovery
@@ -137,6 +164,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-signal_owned-9e5fc43a"
           signal_spec: "High-value customers likely to purchase electronics, with loyalty program data"
 
           context:
@@ -182,6 +211,8 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-signal_owned-9e5fc43a"
           signal_spec: "Purchase behavior signals"
           filters:
             max_cpm: 5.00

@@ -4,6 +4,9 @@ title: "Legacy package correlation fallback without product_id"
 category: media_buy_seller
 summary: "Models the mixed-seller compatibility path where a legacy package response omits product_id and buyers correlate by package context.buyer_ref."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_media_buys
 
@@ -40,8 +43,22 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    # required so get_media_buys can resolve the account before attribution is checked
+    - account_id: "acct_legacy_package_correlation"
+      brand:
+        domain: "acmeoutdoor.example"
+      operator: "pinnacle-agency.example"
+      billing: "operator"
+      status: "active"
+      sandbox: true
   media_buys:
     - media_buy_id: "legacy_package_correlation_buy"
+      account:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        sandbox: true
       status: "active"
       currency: "USD"
       total_budget: 5000
@@ -84,6 +101,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "legacy_package_correlation_buy"
           context:

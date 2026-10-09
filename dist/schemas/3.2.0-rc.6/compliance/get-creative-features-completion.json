@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/compliance/get-creative-features-completion.json",
+  "title": "Get Creative Features Compliance Completion",
+  "description": "Bounded get_creative_features terminal success fixture accepted by force_task_completion. It carries the result identity and optional economics exercised by conformance; production terminal artifacts validate against the full task response schema.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "const": "completed"
+    },
+    "evaluation_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative_evaluation"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/creative/creative-feature-result.json"
+      }
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "x-entity": "vendor_pricing_option"
+    },
+    "vendor_cost": {
+      "type": "number",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "consumption": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/creative-consumption.json"
+    }
+  },
+  "required": [
+    "evaluation_id",
+    "results"
+  ],
+  "additionalProperties": true
+}

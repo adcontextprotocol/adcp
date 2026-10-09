@@ -5,6 +5,9 @@ protocol: media-buy
 category: sales_dooh
 summary: "DOOH seller for non-guaranteed venue and screen inventory with canonical screen formats and substantive play reporting."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - sync_creatives
   - list_products
@@ -64,6 +67,17 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_d9e7d30445e4"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-sales_dooh-ef2eba07"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "dooh_transit_concourse_loop"
       name: "Transit concourse portrait screens"
@@ -222,6 +236,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_dooh-ef2eba07"
             sandbox: true
           context:
             correlation_id: "sales_dooh--get_dooh_products"
@@ -354,6 +370,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_dooh-ef2eba07"
             sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
@@ -406,6 +424,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_dooh-ef2eba07"
             sandbox: true
           manifest:
             format_kind: "image"
@@ -460,6 +480,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_dooh-ef2eba07"
             sandbox: true
           creatives:
             - creative_id: "dooh_acme_portrait_1080x1920"
@@ -518,6 +540,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_dooh-ef2eba07"
             sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
@@ -573,6 +597,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_dooh-ef2eba07"
             sandbox: true
           scenario: "simulate_delivery"
           params:
@@ -629,6 +655,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-sales_dooh-ef2eba07"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"

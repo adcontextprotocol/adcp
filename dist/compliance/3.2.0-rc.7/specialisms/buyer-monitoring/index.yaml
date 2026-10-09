@@ -1,0 +1,183 @@
+id: buyer_monitoring
+version: "0.1.0"
+title: "Buyer agent delivery monitoring and pacing response"
+protocol: media-buy
+category: buyer_monitoring
+summary: "Buyer agent that monitors delivery via webhooks and polling, detects variance, and responds to pacing drift."
+track: media_buy_buyer
+status: preview
+required_tools:
+  - get_media_buys
+  - get_media_buy_delivery
+
+narrative: |
+  You are a buyer agent monitoring an active media buy. After activation,
+  you track delivery progress via polling (get_media_buy_delivery) and
+  webhook notifications. This storyboard tests delivery monitoring:
+  reading delivery metrics, detecting pacing variance, and taking
+  corrective action.
+
+  The fixture publisher simulates:
+  1. Normal delivery — metrics arrive on schedule, pacing within tolerance
+  2. Under-delivery — pacing falls below threshold, buyer should flag
+  3. Webhook notification — delivery update pushed to buyer endpoint
+
+  Key behaviors under test:
+  - Delivery polling: buyer calls get_media_buy_delivery with correct
+    media_buy_id and reads impressions, spend, pacing metrics
+  - Variance detection: buyer compares delivered vs planned and identifies
+    significant deviation
+  - Status reading: buyer reads media_buy_status and delivery_status
+    from polling responses
+  - Webhook handling: buyer processes inbound delivery webhook and
+    reconciles with polling data
+
+agent:
+  interaction_model: media_buy_buyer
+  capabilities:
+    - buys_media
+    - monitors_delivery
+  examples:
+    - "DSP buyer agent with delivery monitoring"
+    - "Agency dashboard agent"
+
+caller:
+  role: fixture_publisher
+  example: "AdCP fixture publisher (reference sell-side)"
+
+prerequisites:
+  description: |
+    The buyer agent has an active media buy (media_buy_status: active).
+    The fixture publisher is running and the buy has started delivering.
+
+fixtures:
+  fixture_publisher:
+    capabilities:
+      supported_protocols: ["media_buy"]
+      media_buy:
+        lifecycle_tools: ["list_products", "buy_products", "control_media_buy"]
+        reporting_delivery_methods: ["webhook", "polling"]
+      adcp:
+        supported_versions: ["3.1"]
+    active_buy:
+      media_buy_id: "mb_monitoring_001"
+      media_buy_status: "active"
+      packages:
+        - package_id: "pkg_0"
+          product_id: "display_auction"
+          budget: 25000
+          pricing_option_id: "cpm_auction"
+    scenarios:
+      normal_delivery:
+        impressions: 500000
+        spend: 12500.00
+        pacing_percentage: 52.0
+        flight_elapsed_percentage: 50.0
+      under_delivery:
+        impressions: 200000
+        spend: 5000.00
+        pacing_percentage: 21.0
+        flight_elapsed_percentage: 50.0
+      webhook_delivery_update:
+        event_type: "delivery_update"
+        impressions_delta: 50000
+        spend_delta: 1250.00
+
+phases:
+  - id: poll_delivery
+    title: "Poll delivery status"
+    narrative: |
+      The buyer polls get_media_buy_delivery to read current delivery
+      metrics for the active buy.
+
+    steps:
+      - id: check_delivery
+        title: "Poll delivery metrics"
+        narrative: |
+          The buyer calls get_media_buy_delivery with the media_buy_id.
+          The fixture publisher returns impressions, spend, and pacing data.
+        task: get_media_buy_delivery
+        expected: |
+          The buyer agent:
+          1. Calls get_media_buy_delivery with correct media_buy_id
+          2. Reads impressions, spend, and pacing metrics
+          3. Compares pacing_percentage to flight_elapsed_percentage
+          4. Determines delivery is on track (within tolerance)
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          context:
+            correlation_id: "buyer_monitoring--check_delivery"
+        validations:
+          - check: request_field_present
+            path: "media_buy_id"
+            description: "Buyer includes media_buy_id in delivery poll"
+
+  - id: detect_variance
+    title: "Detect delivery variance"
+    narrative: |
+      The fixture publisher returns under-delivery metrics. The buyer
+      must detect the pacing gap and flag it.
+
+    steps:
+      - id: detect_under_delivery
+        title: "Detect under-delivery pacing"
+        narrative: |
+          The buyer polls delivery and sees pacing at 21% when flight
+          is 50% elapsed. The buyer should identify this as significant
+          under-delivery.
+        task: get_media_buy_delivery
+        expected: |
+          The buyer agent:
+          1. Reads pacing_percentage (21%) and flight_elapsed_percentage (50%)
+          2. Calculates variance: 29 percentage points under-pacing
+          3. Flags under-delivery for operator review or corrective action
+          4. Does not automatically modify the buy without operator approval
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          context:
+            correlation_id: "buyer_monitoring--detect_under_delivery"
+        validations:
+          - check: request_field_present
+            path: "media_buy_id"
+            description: "Buyer includes media_buy_id"
+          - check: output_contains
+            field: "variance_detected"
+            description: "Buyer produces variance analysis"
+
+  - id: read_buy_status
+    title: "Read buy status via get_media_buys"
+    narrative: |
+      The buyer reads the current buy status and delivery summary
+      via get_media_buys.
+
+    steps:
+      - id: get_buy_status
+        title: "Read media buy status"
+        narrative: |
+          The buyer calls get_media_buys to read current status and
+          delivery summary for the active buy.
+        task: get_media_buys
+        expected: |
+          The buyer agent:
+          1. Calls get_media_buys (possibly with filter for media_buy_id)
+          2. Reads media_buy_status from the response
+          3. Cross-references with delivery data from polling
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "buyer_monitoring--get_buy_status"
+        validations:
+          - check: request_field_present
+            path: "account"
+            description: "Buyer includes account in status poll"

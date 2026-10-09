@@ -2,7 +2,6 @@ import rateLimit from 'express-rate-limit';
 import type { IncrementResponse, Options, Store } from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
-import { isBreakGlassAdminEmail } from '../auth/admin-access.js';
 import { CachedPostgresStore, PostgresStore, type WeightedIncrementStore } from './pg-rate-limit-store.js';
 
 const logger = createLogger('rate-limit');
@@ -78,6 +77,20 @@ export const nativeAuthTokenRateLimiter = rateLimit({
   },
 });
 
+/** Bound anonymous whole-file schema validation before reading multipart input. */
+export const jsonUploadValidationRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('json-upload-validation:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (_req: Request, res: Response) => {
+    res.status(429).json({ error: 'Too many file validations. Try again in a minute.' });
+  },
+});
+
 /** Bound anonymous endpoints that fan out into outbound agent probes. */
 export const agentCardValidationRateLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -101,20 +114,17 @@ export const agentCardValidationRateLimiter = rateLimit({
  * env var for emergency access, matching requireAdmin semantics.
  */
 async function skipForAdmins(req: Request): Promise<boolean> {
-  const user = (req as any).user as { id?: string; email?: string; isAdmin?: boolean } | undefined;
+  const user = (req as any).user as { id?: string; authWorkosUserId?: string; email?: string; isAdmin?: boolean } | undefined;
   if (!user) return false;
 
-  if (user.isAdmin === true) return true;
-
-  if (isBreakGlassAdminEmail(user.email)) {
-    return true;
-  }
+  if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) return true;
+  if (process.env.NODE_ENV !== 'production' && user.id?.startsWith('user_dev_') && user.isAdmin === true) return true;
 
   if (!user.id) return false;
 
   try {
-    const { isWebUserAAOAdmin } = await import('../addie/mcp/admin-tools.js');
-    return await isWebUserAAOAdmin(user.id);
+    const { isAuthenticatedUserAAOAdmin } = await import('../addie/admin-status-lookup.js');
+    return await isAuthenticatedUserAAOAdmin({ ...user, id: user.id });
   } catch (err) {
     logger.warn({ err, userId: user.id }, 'admin check failed in rate limiter; applying limit');
     return false;
@@ -868,4 +878,41 @@ export const logoUploadRateLimiter = rateLimit({
       retryAfter: Math.ceil(60 * 60),
     });
   },
+});
+
+function brandImportLimitHandler(windowLabel: string, retryAfterSeconds: number) {
+  return (req: Request, res: Response) => {
+    logger.warn({ userId: (req as any).user?.id, ip: req.ip, window: windowLabel }, 'Rate limit exceeded for brand-book import');
+    res.status(429).json({
+      error: 'Too many requests',
+      message: `Brand-book import limit reached (${windowLabel}). Please try again later.`,
+      retryAfter: retryAfterSeconds,
+    });
+  };
+}
+
+/**
+ * Brand-book import runs a model call per request and is open to anonymous
+ * visitors on brandjson.org. Limits: 5 per hour and 20 per day per user/IP.
+ */
+export const brandImportHourlyRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('brand-import-hour:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: brandImportLimitHandler('5 per hour', 60 * 60),
+});
+
+export const brandImportDailyRateLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('brand-import-day:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: brandImportLimitHandler('20 per day', 24 * 60 * 60),
 });

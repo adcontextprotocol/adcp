@@ -1,9 +1,12 @@
 id: media_buy_seller/canonical_formats
-version: "1.1.0"
+version: "1.1.1"
 title: "Canonical formats and deprecated named-format compatibility"
 category: media_buy_seller
 summary: "Validates canonical product formats and the optional, explicitly deprecated named-format compatibility projection."
 track: products
+requires:
+  - controller
+
 introduced_in: "3.1"
 required_tools:
   - get_products
@@ -57,7 +60,20 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+# Fixtures and discovery filters use non_guaranteed so sales-non-guaranteed-only
+# sellers can run this scenario (#7754). Fixed-price so the creates need no bid.
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_5cf62d0533d9"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_canonical_formats-a323283f"
+        billing: "operator"
+        status: "active"
+        sandbox: true
   products:
     - product_id: "canonical_formats_mrec_display"
       name: "Canonical Formats MREC Display"
@@ -66,7 +82,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_300x250_image"
@@ -113,7 +129,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_728x90_image"
@@ -140,7 +156,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_options:
         - format_kind: "image"
           format_option_id: "canonical_formats_image_leaderboard"
@@ -181,7 +197,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_options:
         - format_kind: "custom"
           format_option_id: "canonical_formats_custom_takeover"
@@ -228,7 +244,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_300x250_image"
@@ -276,7 +292,7 @@ fixtures:
         - publisher_domain: "outdoormagazine.example"
           selection_type: "all"
       channels: ["display"]
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       format_ids:
         - agent_url: "https://creative.adcontextprotocol.org/"
           id: "display_300x250_image"
@@ -354,7 +370,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -363,6 +379,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_canonical_product"
@@ -455,7 +473,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -464,6 +482,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_v1_only_product"
@@ -504,7 +524,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -513,6 +533,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_v2_only_product"
@@ -562,7 +584,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -571,6 +593,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_custom_v2_only_product"
@@ -628,7 +652,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -637,6 +661,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_experimental_product"
@@ -671,6 +697,44 @@ phases:
             match_keys: [agent_url, id]
             on_out_of_scope: fail
 
+      - id: provision_test_kit_account
+        title: "Provision the account for the test-kit credential"
+        narrative: |
+          The next step authenticates with the test kit's API key, a different
+          buyer principal from the one controller seeding ran under. A natural
+          key resolves on discovery only after that caller provisions it
+          (accounts overview: Account references before provisioning), so the
+          test-kit caller syncs the same account first.
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: true
+        expected: |
+          Provision the natural key for the test-kit caller.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "compliance-media_buy_seller_canonical_formats-a323283f"
+              billing: "operator"
+              payment_terms: "net_30"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_canonical_formats_provision_test_kit_account"
+          context:
+            correlation_id: "canonical_formats--provision_test_kit_account"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "The seller provisions the account for the test-kit caller"
+
       - id: get_seeded_divergent_product
         title: "Flag divergent dual-emission"
         narrative: |
@@ -696,7 +760,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -705,6 +769,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_seeded_divergent_product"
@@ -757,7 +823,7 @@ phases:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
-            delivery_type: "guaranteed"
+            delivery_type: "non_guaranteed"
             required_vendor_metrics:
               - vendor:
                   domain: "prism.example"
@@ -766,6 +832,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           context:
             correlation_id: "canonical_formats--get_canonical_product_for_create_satisfaction"
@@ -803,6 +871,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -846,6 +916,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -857,6 +929,7 @@ phases:
               params:
                 width: 300
                 height: 250
+                max_file_size_kb: 200
               context:
                 buyer_ref: "canonical_formats_direct_selector_positive"
           context:
@@ -871,7 +944,7 @@ phases:
             description: "Accepted direct-canonical create allocates a media_buy_id"
           - check: canonical_format_satisfaction
             value: true
-            description: "Complete direct image dimensions satisfy the fixed canonical declaration"
+            description: "Complete direct image selector satisfies the fixed canonical declaration"
 
       - id: create_media_buy_with_legacy_mrec_format
         title: "Accept legacy fixed MREC selector after canonical normalization"
@@ -891,6 +964,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -935,6 +1010,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -982,6 +1059,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -1033,6 +1112,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -1081,6 +1162,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -1130,6 +1213,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -1177,6 +1262,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
@@ -1218,6 +1305,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_canonical_formats-a323283f"
             sandbox: true
           start_time: "2099-06-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"

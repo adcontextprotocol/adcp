@@ -11,11 +11,12 @@
  * `agent_contexts.oauth_registered_redirect_uri`. That column drives the
  * stale-client check in the /start handler.
  *
- * The PKCE verifier is encrypted at rest with the calling org's salt;
+ * The PKCE verifier and confidential client secret are encrypted with the org's salt;
  * `carry.organization_id` is the trust boundary. `consume` rejects rows
  * that arrive without a matching salt because we cannot decrypt them.
  */
 
+import { OAuthError } from '@adcp/sdk/auth';
 import type {
   AgentConfig,
   OAuthConfigStorage,
@@ -25,6 +26,10 @@ import type {
 import { query, isDatabaseInitialized } from '../../db/client.js';
 import { encrypt, decrypt } from '../../db/encryption.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
+import {
+  captureAgentOAuthState, assertAgentOAuthState, completeOwnerOAuthIfUnchanged,
+  parseAgentOAuthState, OAuthStateChangedError, type AgentOAuthState,
+} from '../../db/agent-oauth-state-db.js';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('web-oauth-stores');
@@ -39,6 +44,11 @@ interface StoredFlow {
   resource?: string;
   scope?: string;
   authorizationServerUrl: string;
+  authorizationServerIssuer?: string;
+  resourceOverrideSnapshot?: string | null;
+  clientSecretEncrypted?: string;
+  clientSecretIv?: string;
+  ownerState?: AgentOAuthState;
   clientInformation: PendingWebFlow['clientInformation'];
   createdAt: string;
   expiresAt: string;
@@ -54,9 +64,17 @@ function carrySalt(carry: Record<string, unknown> | undefined): string {
 }
 
 class AgentOAuthPendingFlowStore implements PendingWebFlowStore {
+  constructor(private readonly owner?: {
+    capture: (flow: PendingWebFlow) => Promise<AgentOAuthState>;
+    restore: (flow: PendingWebFlow, state: AgentOAuthState) => void;
+  }) {}
+
   async put(flow: PendingWebFlow): Promise<void> {
     const salt = carrySalt(flow.carry);
+    if (!flow.authorizationServerIssuer) throw new OAuthStateChangedError();
     const enc = encrypt(flow.codeVerifier, salt);
+    const { client_secret: secret, ...publicClient } = flow.clientInformation;
+    const protectedSecret = secret === undefined ? undefined : encrypt(secret, salt);
     const stored: StoredFlow = {
       state: flow.state,
       agentId: flow.agentId,
@@ -67,7 +85,13 @@ class AgentOAuthPendingFlowStore implements PendingWebFlowStore {
       ...(flow.resource !== undefined && { resource: flow.resource }),
       ...(flow.scope !== undefined && { scope: flow.scope }),
       authorizationServerUrl: flow.authorizationServerUrl,
-      clientInformation: flow.clientInformation,
+      authorizationServerIssuer: flow.authorizationServerIssuer,
+      ...(Object.prototype.hasOwnProperty.call(flow, 'resourceOverrideSnapshot') && {
+        resourceOverrideSnapshot: flow.resourceOverrideSnapshot,
+      }),
+      clientInformation: publicClient,
+      ...(protectedSecret && { clientSecretEncrypted: protectedSecret.encrypted, clientSecretIv: protectedSecret.iv }),
+      ...(this.owner && { ownerState: await this.owner.capture(flow) }),
       createdAt: flow.createdAt.toISOString(),
       expiresAt: flow.expiresAt.toISOString(),
       ...(flow.carry !== undefined && { carry: flow.carry }),
@@ -89,10 +113,15 @@ class AgentOAuthPendingFlowStore implements PendingWebFlowStore {
     const stored = result.rows[0]?.data;
     if (!stored) return null;
 
+    // Historical plaintext/missing-binding rows require restart; never infer trust.
+    if (!stored.authorizationServerIssuer || stored.clientInformation.client_secret !== undefined) {
+      throw new OAuthStateChangedError();
+    }
+    if (Boolean(stored.clientSecretEncrypted) !== Boolean(stored.clientSecretIv)) throw new OAuthStateChangedError();
     const salt = carrySalt(stored.carry);
     const codeVerifier = decrypt(stored.codeVerifierEncrypted, stored.codeVerifierIv, salt);
 
-    return {
+    const flow: PendingWebFlow = {
       state: stored.state,
       agentId: stored.agentId,
       agentUrl: stored.agentUrl,
@@ -101,11 +130,22 @@ class AgentOAuthPendingFlowStore implements PendingWebFlowStore {
       ...(stored.resource !== undefined && { resource: stored.resource }),
       ...(stored.scope !== undefined && { scope: stored.scope }),
       authorizationServerUrl: stored.authorizationServerUrl,
-      clientInformation: stored.clientInformation,
+      authorizationServerIssuer: stored.authorizationServerIssuer,
+      ...(Object.prototype.hasOwnProperty.call(stored, 'resourceOverrideSnapshot') && {
+        resourceOverrideSnapshot: stored.resourceOverrideSnapshot,
+      }),
+      clientInformation: {
+        ...stored.clientInformation,
+        ...(stored.clientSecretEncrypted && stored.clientSecretIv && {
+          client_secret: decrypt(stored.clientSecretEncrypted, stored.clientSecretIv, salt),
+        }),
+      },
       createdAt: new Date(stored.createdAt),
       expiresAt: new Date(stored.expiresAt),
       ...(stored.carry !== undefined && { carry: stored.carry }),
     };
+    if (this.owner) this.owner.restore(flow, parseAgentOAuthState(stored.ownerState));
+    return flow;
   }
 
   async cleanupExpired(): Promise<number> {
@@ -131,75 +171,144 @@ class AgentOAuthPendingFlowStore implements PendingWebFlowStore {
   }
 }
 
+/** Owner flow storage. Prior grants are read only in ordinary bound reuse;
+ * explicit fresh recovery omits them. Registration is never early-persisted. */
 class AgentContextOAuthStorage implements OAuthConfigStorage {
-  constructor(
-    private readonly agentContextDb: AgentContextDatabase,
-    private readonly redirectUri: string,
-  ) {}
+  private state?: AgentOAuthState;
+  private stagedClient?: AgentConfig['oauth_client'];
+  private completed = false;
+  private initialViewLoaded = false;
+  private initialTokens?: AgentConfig['oauth_tokens'];
+
+  constructor(private readonly options: {
+    agentContextDb: Pick<AgentContextDatabase, 'getById' | 'getOAuthClient' | 'getOAuthTokens'>;
+    redirectUri: string;
+    userId: string;
+    ownerStart?: { id: string; organizationId: string; agentUrl: string; fresh: boolean };
+    authorize: (organizationId: string) => Promise<boolean>;
+  }) {}
+
+  async capture(flow: PendingWebFlow): Promise<AgentOAuthState> {
+    if (!this.state || flow.agentId !== this.state.id || flow.agentUrl !== this.state.agent_url ||
+        flow.redirectUri !== this.options.redirectUri ||
+        flow.carry?.organization_id !== this.state.organization_id || flow.carry?.user_id !== this.options.userId) {
+      throw new OAuthStateChangedError();
+    }
+    await this.loadAgent(flow.agentId); // Recheck after discovery, before redirect/pending storage.
+    return { ...this.state };
+  }
+
+  restore(flow: PendingWebFlow, state: AgentOAuthState): void {
+    if (this.state || !flow.authorizationServerIssuer || flow.agentId !== state.id || flow.agentUrl !== state.agent_url ||
+        flow.redirectUri !== this.options.redirectUri || flow.carry?.organization_id !== state.organization_id ||
+        flow.carry?.user_id !== this.options.userId) throw new OAuthStateChangedError();
+    this.state = { ...state };
+    this.stagedClient = { ...flow.clientInformation };
+  }
 
   async loadAgent(agentId: string): Promise<AgentConfig | undefined> {
-    const ctx = await this.agentContextDb.getById(agentId);
-    if (!ctx) return undefined;
-
-    const agent: AgentConfig = {
-      id: ctx.id,
-      name: ctx.agent_name ?? 'Agent',
-      agent_uri: ctx.agent_url,
-      protocol: (ctx.protocol === 'a2a' ? 'a2a' : 'mcp'),
+    if (!this.state) {
+      const owner = this.options.ownerStart;
+      if (!owner || owner.id !== agentId) throw new OAuthStateChangedError();
+      this.state = await captureAgentOAuthState(owner.id, owner.organizationId, owner.agentUrl);
+    }
+    if (this.completed || agentId !== this.state.id ||
+        !(await this.options.authorize(this.state.organization_id))) throw new OAuthStateChangedError();
+    await assertAgentOAuthState(this.state);
+    const ctx = await this.options.agentContextDb.getById(agentId);
+    if (!ctx || ctx.organization_id !== this.state.organization_id || ctx.agent_url !== this.state.agent_url) {
+      throw new OAuthStateChangedError();
+    }
+    if (!this.initialViewLoaded && this.options.ownerStart) {
+      const fresh = this.options.ownerStart.fresh;
+      const saved = this.state;
+      const hasTokens = Boolean(saved.oauth_access_token_encrypted || saved.oauth_access_token_iv ||
+        saved.oauth_refresh_token_encrypted || saved.oauth_refresh_token_iv);
+      const hasClient = Boolean(saved.oauth_client_id || saved.oauth_client_secret_encrypted || saved.oauth_client_secret_iv);
+      const canReuseClient = Boolean(saved.oauth_client_id && saved.oauth_client_issuer &&
+        saved.oauth_registered_redirect_uri === this.options.redirectUri);
+      const requireOwner = () => new OAuthError(
+        'Saved OAuth credentials need owner authorization. Start a new sign-in; a server without dynamic registration requires an independently trusted client configuration.',
+        'owner_reauthorization_required',
+      );
+      if (!fresh && ((hasClient && !canReuseClient) || (hasTokens && (!saved.oauth_token_issuer || !canReuseClient)))) {
+        throw requireOwner();
+      }
+      if (canReuseClient) {
+        if (Boolean(saved.oauth_client_secret_encrypted) !== Boolean(saved.oauth_client_secret_iv)) throw requireOwner();
+        const client = await this.options.agentContextDb.getOAuthClient(agentId);
+        if (!client?.issuer || client.registered_redirect_uri !== this.options.redirectUri) throw requireOwner();
+        this.stagedClient = { client_id: client.client_id, issuer: client.issuer,
+          ...(client.client_secret !== undefined && { client_secret: client.client_secret }) };
+      }
+      if (!fresh && hasTokens) {
+        if (!saved.oauth_access_token_encrypted || !saved.oauth_access_token_iv ||
+            Boolean(saved.oauth_refresh_token_encrypted) !== Boolean(saved.oauth_refresh_token_iv)) throw requireOwner();
+        const tokens = await this.options.agentContextDb.getOAuthTokens(agentId);
+        if (!tokens?.issuer) throw requireOwner();
+        this.initialTokens = { access_token: tokens.access_token, issuer: tokens.issuer,
+          ...(tokens.refresh_token !== undefined && { refresh_token: tokens.refresh_token }),
+          ...(tokens.expires_at !== undefined && { expires_at: tokens.expires_at.toISOString() }) };
+      }
+      // A replacement between snapshot validation and the separate secret read
+      // must refuse before the SDK receives the credential-bearing view.
+      await assertAgentOAuthState(saved);
+      this.initialViewLoaded = true;
+    }
+    return {
+      id: ctx.id, name: ctx.agent_name ?? 'Agent', agent_uri: ctx.agent_url,
+      protocol: ctx.protocol === 'a2a' ? 'a2a' : 'mcp',
+      // Explicit fresh mode omits prior tokens. Reused client metadata is only
+      // exposed with its existing issuer/redirect; SDK discovery validates it.
+      ...(this.initialTokens && { oauth_tokens: { ...this.initialTokens } }),
+      ...(this.stagedClient && { oauth_client: { ...this.stagedClient } }),
     };
-
-    // Only surface oauth_client when its registered redirect_uri matches
-    // the current request — otherwise the SDK would skip DCR and reuse a
-    // client registered against a stale callback URL. The /start handler
-    // also clears stale rows up front; this is defense in depth.
-    const client = await this.agentContextDb.getOAuthClient(agentId);
-    if (client && client.registered_redirect_uri === this.redirectUri) {
-      agent.oauth_client = {
-        client_id: client.client_id,
-        ...(client.client_secret && { client_secret: client.client_secret }),
-      };
-    }
-
-    const tokens = await this.agentContextDb.getOAuthTokens(agentId);
-    if (tokens?.access_token) {
-      agent.oauth_tokens = {
-        access_token: tokens.access_token,
-        ...(tokens.refresh_token && { refresh_token: tokens.refresh_token }),
-        ...(tokens.expires_at && { expires_at: tokens.expires_at.toISOString() }),
-      };
-    }
-
-    return agent;
   }
 
   async saveAgent(agent: AgentConfig): Promise<void> {
-    if (agent.oauth_client) {
-      await this.agentContextDb.saveOAuthClient(agent.id, {
-        client_id: agent.oauth_client.client_id,
-        ...(agent.oauth_client.client_secret && { client_secret: agent.oauth_client.client_secret }),
-        registered_redirect_uri: this.redirectUri,
-      });
+    if (!this.state || this.completed || agent.id !== this.state.id || agent.agent_uri !== this.state.agent_url) {
+      throw new OAuthStateChangedError();
     }
-    if (agent.oauth_tokens) {
-      await this.agentContextDb.saveOAuthTokens(agent.id, {
-        access_token: agent.oauth_tokens.access_token,
-        ...(agent.oauth_tokens.refresh_token && { refresh_token: agent.oauth_tokens.refresh_token }),
-        ...(agent.oauth_tokens.expires_at && { expires_at: new Date(agent.oauth_tokens.expires_at) }),
-      });
+    await this.loadAgent(agent.id); // Includes current access and exact durable snapshot.
+    const client = agent.oauth_client;
+    if (!client?.client_id || !client.issuer) throw new OAuthStateChangedError();
+    if (!agent.oauth_tokens) {
+      if (this.stagedClient) throw new OAuthStateChangedError();
+      this.stagedClient = { ...client }; // Private DCR staging; zero owner SQL writes.
+      return;
     }
+    const staged = this.stagedClient;
+    if (!staged || client.client_id !== staged.client_id || client.client_secret !== staged.client_secret ||
+        client.client_secret_expires_at !== staged.client_secret_expires_at || client.issuer !== staged.issuer) {
+      throw new OAuthStateChangedError();
+    }
+    const tokens = agent.oauth_tokens;
+    await completeOwnerOAuthIfUnchanged(this.state, client, {
+      access_token: tokens.access_token,
+      ...(tokens.refresh_token !== undefined && { refresh_token: tokens.refresh_token }),
+      ...(tokens.issuer !== undefined && { issuer: tokens.issuer }),
+      ...(tokens.expires_at !== undefined && { expires_at: new Date(tokens.expires_at) }),
+    }, this.options.redirectUri);
+    this.completed = true;
   }
 }
 
 export function createWebOAuthAdapters(opts: {
-  agentContextDb: AgentContextDatabase;
+  agentContextDb: Pick<AgentContextDatabase, 'getById' | 'getOAuthClient' | 'getOAuthTokens'>;
   redirectUri: string;
+  userId: string;
+  ownerStart?: { id: string; organizationId: string; agentUrl: string; fresh: boolean };
+  authorize: (organizationId: string) => Promise<boolean>;
 }): {
   pendingFlowStore: PendingWebFlowStore;
   agentStorage: OAuthConfigStorage;
 } {
+  const storage = new AgentContextOAuthStorage(opts);
   return {
-    pendingFlowStore: new AgentOAuthPendingFlowStore(),
-    agentStorage: new AgentContextOAuthStorage(opts.agentContextDb, opts.redirectUri),
+    pendingFlowStore: new AgentOAuthPendingFlowStore({
+      capture: flow => storage.capture(flow), restore: (flow, state) => storage.restore(flow, state),
+    }),
+    agentStorage: storage,
   };
 }
 

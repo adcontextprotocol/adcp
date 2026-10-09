@@ -53,6 +53,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   get_media_buys: ['sales'],
   get_media_buy_delivery: ['sales'],
   get_reporting_status: ['sales'],
+  sync_reporting_status: ['sales'],
   sync_reporting_receipts: ['sales'],
   provide_performance_feedback: ['sales'],
   sync_audiences: ['sales'],
@@ -64,6 +65,8 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // it. Catalog mirrors that advertisement so the drift test stays green.
   list_creative_formats: ['sales', 'creative', 'creative-builder'],
   sync_agent_notification_configs: ['sales'],
+  sync_principal: ['sales'],
+  get_principal: ['sales'],
 
   // creative — exposed on multiple tenants
   // list_creatives / get_creative_delivery are sales-side / ad-server-side
@@ -148,7 +151,7 @@ export function toolsForTenant(
         && !supportsAccountChangeFeed(negotiatedVersion ?? '3.2-beta.5')
       ) return false;
       if (
-        (tool === 'get_reporting_status' || tool === 'sync_reporting_receipts')
+        (tool === 'get_reporting_status' || tool === 'sync_reporting_receipts' || tool === 'sync_reporting_status')
         && !atLeastAdcpVersion(negotiatedVersion ?? REPORTING_STATUS_ADCP_VERSION, REPORTING_STATUS_ADCP_VERSION)
       ) return false;
       const is30 = negotiatedVersion?.startsWith('3.0');
@@ -172,7 +175,7 @@ export function toolsForTenant(
       if (tool === 'validate_input' || tool === 'list_transformers') return false;
       if (
         tenantId === 'sales'
-        && ['sync_agent_notification_configs', 'build_creative', 'preview_creative'].includes(tool)
+        && ['sync_agent_notification_configs', 'sync_principal', 'get_principal', 'build_creative', 'preview_creative'].includes(tool)
       ) return false;
       if (tool === 'sync_governance' && tenantId !== 'signals') return false;
       return true;

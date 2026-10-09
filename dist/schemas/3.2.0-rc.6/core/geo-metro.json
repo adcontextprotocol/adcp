@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/geo-metro.json",
+  "title": "Geo Metro",
+  "description": "A targeted metro area.",
+  "type": "object",
+  "properties": {
+    "system": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/enums/metro-system.json",
+      "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
+    },
+    "values": {
+      "type": "array",
+      "description": "Metro codes within the system (e.g., ['501', '602'] for Nielsen DMAs)",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "system",
+    "values"
+  ],
+  "additionalProperties": false
+}

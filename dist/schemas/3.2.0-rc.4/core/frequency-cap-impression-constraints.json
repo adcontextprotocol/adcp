@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/frequency-cap-impression-constraints.json",
+  "title": "Frequency Cap Impression Constraints",
+  "description": "Exact supported values for max_impressions, declared as either an exhaustive preset list or an inclusive integer range. The two forms are mutually exclusive.",
+  "type": "object",
+  "properties": {
+    "minimum": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "maximum": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "allowed_values": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "allowed_values"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "minimum"
+            ]
+          },
+          {
+            "required": [
+              "maximum"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "required": [
+        "minimum",
+        "maximum"
+      ],
+      "not": {
+        "required": [
+          "allowed_values"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "ordered_bounds": "minimum MUST be less than or equal to maximum."
+  }
+}

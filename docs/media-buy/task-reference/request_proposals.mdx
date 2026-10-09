@@ -11,7 +11,7 @@ testable: true
 
 {/* Using latest because this schema is not yet released in any version.
     Update to the correct version alias after the next release. */}
-**Request schema:** [`/schemas/3.2.0-rc.2/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/media-buy/request-proposals-request.json)
+**Request schema:** [`/schemas/3.2.1/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/request-proposals-request.json)
 
 ```json
 {
@@ -70,11 +70,174 @@ Sellers declaring `media_buy.outcome_target` in [`get_adcp_capabilities`](/docs/
 }
 ```
 
-The `goal` is a compact planning-time object with two variants: a delivery metric (`kind: "metric"`, using the same `forecastable-metric` vocabulary forecast points report) or a conversion event (`kind: "event"`, using the same `event-type` vocabulary). That construction means every permitted goal has a defined answer: the seller responds with `total_budget_guidance` (`min`/`recommended`/`max`) on each proposal and forecasts whose points carry the goal's metric or event key in `metrics`, with `forecast_range_unit` `clicks` or `conversions` structuring the curve where those units apply. Execution machinery — targets, priorities, event sources, vendor bindings — belongs to the package-level `optimization-goal`, which shares this vocabulary, so buyers carry the same metric or event name from plan to buy.
+The `goal` is a compact planning-time object with three variants: a delivery metric (`kind: "metric"`, using the same `forecastable-metric` vocabulary forecast points report), a conversion event (`kind: "event"`, using the same `event-type` vocabulary), or a vendor-measured metric (`kind: "vendor_metric"`, see [Vendor-metric goals](#vendor-metric-goals)). That construction means every permitted goal has a defined answer: the seller responds with `total_budget_guidance` (`min`/`recommended`/`max`) on each proposal and forecasts whose points carry the goal's metric or event key in `metrics`, or its `(vendor, metric_id)` pair in `vendor_metric_values[]` for a vendor-metric goal, with `forecast_range_unit` `clicks` or `conversions` structuring the curve where those units apply. Priorities, event sources, and vendor bindings live on the proposal's optimization goals (purchase `optimization_goals`, or `budget_allocation.optimization_goals` under seller-optimized allocation), which share this vocabulary, so buyers carry the same metric, event name, or vendor key from plan to buy.
 
-An `outcome_target` is a planning input, not a delivery guarantee: pricing and delivery obligations arise only at proposal finalization, and any performance commitment lives in the committed terms, not in the forecast. Sellers that do not declare the capability MUST NOT silently ignore a structured `outcome_target` — they reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); buyers fall back to expressing the goal in `brief` prose. Declaring sellers MAY reject a goal they cannot plan against (for example `spend`, which restates budget) with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.goal`.
+An `outcome_target` is a planning input, not a delivery guarantee: pricing and delivery obligations arise only at proposal finalization, and any performance commitment lives in the committed terms, not in the forecast. Sellers that do not declare the capability MUST NOT silently ignore a structured `outcome_target` on `request_proposals` or a proposal refinement — they reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); buyers fall back to expressing the goal in `brief` prose. Declaring sellers MAY reject a goal they cannot plan against (for example `spend`, which restates budget) with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.goal`.
 
-Explicit hard requirements in the brief remain binding. When the seller's structured interpretation materially affects product eligibility, pricing, or forecasting, the response includes `targeting_resolution.brief_targeting`. Exact structured overlays are not echoed; any product-specific alternative appears as sparse `Product.targeting_resolution.modifications` for buyer approval.
+### Vendor-metric goals
+
+A buyer whose objective is measured by a third party, such as store visits from a foot-traffic vendor, states it as a `vendor_metric` goal. The goal has the same shape as the `vendor_metric` [optimization goal](/docs/media-buy/conversion-tracking/#optimization-goals), so plan, buy and delivery reconcile on one `(vendor, metric_id)` key:
+
+```json
+{
+  "criteria": {
+    "outcome_target": {
+      "goal": {
+        "kind": "vendor_metric",
+        "vendor": { "domain": "footfallvendor.example" },
+        "metric_id": "store_visits_14d_exposed"
+      },
+      "volume": 5000
+    }
+  }
+}
+```
+
+**Eligibility.** The seller plans only `(vendor, metric_id)` pairs a product lists in `vendor_metric_optimization.supported_metrics[]` and also declares in `reporting_capabilities.vendor_metrics`, since the proposal commits to reporting it, matched on the vendor's `domain` and `brand_id` (`countries`, if sent, is ignored). Under fixed allocation every purchase's primary goal must match the goal, so every purchase must sit on a product that declares the pair: the seller leaves products that do not declare it out of the plan, and rejects when none remain. It rejects with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.goal`, which includes every vendor goal sent to a seller that declares no `vendor_metric_optimization`. There is no separate capability flag: `media_buy.outcome_target` still gates the field, and the product declaration is the per-pair test at planning time, as for package optimization goals. The discovery check (SHOULD) in [Conversion tracking](/docs/media-buy/conversion-tracking/#optimization-goals) still applies when the buyer accepts. The seller MUST NOT substitute another vendor or metric. A 3.2 validator rejects a `vendor_metric` goal as a schema error, so a buyer sends one only on a negotiated `adcp_version` of 3.3 or later, to a seller whose product declares the pair.
+
+**What a volume means.** `volume` is a total of the metric's declared unit across the flight, so only a cumulative metric can be planned that way. The seller either plans against that total or rejects the goal with `INVALID_REQUEST` naming `criteria.outcome_target.goal`. It MUST NOT reinterpret a mean, score, or rate (an average attention score, a per-impression rate) as a total, and MUST NOT plan a cost target on one. A cumulative count such as store visits is plannable; an average attention score is not. The seller takes the unit, and whether the metric is a total, from the vendor's `measurement.metrics[]` catalog entry, so sellers agree on whether a visit is a person or an event only through the `metric_id`'s published definition. A `metric_id` identifies one methodology: a vendor publishes a distinct id for each attribution window, exposed-versus-control design, or unique-versus-total count it supports (here, `store_visits_14d_exposed`), so a buyer compares sellers on `(vendor, metric_id)` and never on a display name. A seller MAY be its own vendor when it declares `vendor_relationship: "first_party"` on the product's `reporting_capabilities.vendor_metrics`, as a retail-media network measuring store visits in its own stores does.
+
+**Answer.** Each forecast point carries one `vendor_metric_values[]` entry with `vendor` and `metric_id` equal to the goal's, `value` as the flight total at that point's `budget` (a range), and `unit` (REQUIRED here) equal to the unit the vendor declares for the metric. A buyer compares the `mid` value to `volume`. `metrics` carries no key for the metric, because `metrics` keys are `forecastable-metric` and `event-type` values; every point carries `metrics.spend`, so `metrics` is never empty. `forecast_range_unit` is `spend`, and `total_budget_guidance` answers as it does for any volume.
+
+**Binding.** An answering proposal MUST carry the goal as the primary optimization goal of every purchase (or of `budget_allocation.optimization_goals` under seller-optimized allocation), with the same `vendor` and `metric_id`, and MUST list `{ "scope": "vendor", "vendor", "metric_id" }` in the `commercial_terms.reporting_commitments` entry of every purchase (by `purchase_index`), including under seller-optimized allocation. Optimizing toward a vendor metric without committing to report it is unverifiable, so a proposal without the commitment would fail the same precondition at acceptance. Delivery then reports actuals in `vendor_metric_values[]` under the same key. Vendor results often land weeks after a flight ends, so a cost target on a vendor goal is reconciled after the fact rather than enforced in-flight: once the vendor's final report arrives, the buyer divides the media buy's delivered `spend` (in the buy's currency) by the reported `vendor_metric_values[].value` and compares the quotient to the answered `bidding.cost_per.amount`.
+
+**No implied vendor relationship.** A planning-time vendor goal asserts nothing about whether the buyer holds a contract or data license with the vendor, and the seller does not test for one: the seller's declared pair is the only eligibility test, as RFPs commonly name the vendor first. Anything the seller needs from the buyer to provision that vendor's measurement is an obligation, and obligations arise at proposal finalization through `measurement_terms` and the commitments above, like every `outcome_target` answer. A buyer that cannot meet them declines the proposal; the seller never silently downgrades to a different vendor.
+
+**Cost target on a vendor goal.** `cost_per` works as for any goal (see below) and binds to the vendor goal by `vendor` and `metric_id`, which is the result unit `BiddingPolicy.cost_per` defines for vendor-metric goals. The seller additionally requires `cost_per` in the matching `supported_metrics[]` entry's `supported_targets` and answers only inside its advertised `features.bidding_policy` profile, as for every cost target; without either it rejects with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per`. The seller validates the goal before the cost target, so a request with both defects reports the goal.
+
+### Cost targets
+
+A buyer who knows what it will pay per result, rather than how many results it needs, sends `cost_per` instead of, or alongside, `volume`. At least one of the two is required. `cost_per` is the 3.2 [`BiddingPolicy`](/docs/media-buy/task-reference/create_media_buy#biddingpolicy-object) `cost_per` plus a currency:
+
+- `amount`: the average cost per goal result.
+- `strength`: `cap` optimizes for an average at or below the amount and accepts underdelivery when necessary. `target` optimizes around the amount while balancing volume and spend. Neither is a per-result or per-auction guarantee.
+- `currency`: the ISO 4217 currency of `amount`. `BiddingPolicy.cost_per` has no currency because it inherits the media-buy currency, and no media buy exists at request time, so the request states it.
+
+A cost target requires a goal expressible as a canonical optimization goal. A goal without one (for example `impressions`, `grps`, `downloads`, `plays`, `frequency`, `coverage_rate`, `audience_size`, or `measured_impressions`) can still be planned by volume, so the seller rejects the cost target, not the goal: [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.cost_per`.
+
+The four request shapes are:
+
+| Request | Seller plans |
+|---------|--------------|
+| `volume` only | The budget that delivers the volume, answered with `total_budget_guidance`. Unchanged from the volume-only form above. |
+| `cost_per` with a buyer budget (`offer_filters.budget_range` or the brief) | The volume it can deliver within that budget at or below (`cap`) or around (`target`) the amount. With `budget_range.max` it plans within `max`; with only `min`, at or above `min`. `total_budget` never exceeds `max` or falls below `min`. |
+| `cost_per` plus `volume` | Toward the volume at the cost. Under a `cap`, the seller SHOULD keep the buyer's amount and forecast the lower volume it can deliver, unless no volume can be planned at that amount. Under a `target`, the ask is plannable when the seller can forecast the volume around it. |
+| `cost_per` with neither volume nor budget | The volume it can deliver at the cost. The seller MUST state the spend for that volume in `total_budget_guidance`. |
+
+**Answer.** Each proposal states the cost the seller can plan to in `commercial_terms.bidding.cost_per`, which the buyer adopts on acceptance. The `amount` MUST be greater than or equal to the ask: the requested amount when it is plannable, otherwise the lowest plannable amount. An amount is plannable when the seller can forecast goal volume at or below (`cap`) or around (`target`) it within the buyer's budget, and, when `budget_range.min` is present, only if the plan spends at least `min`. When the planned spend at the answered amount is below `commercial_terms.total_budget`, each forecast point MUST carry `metrics.spend`. A seller MAY return additional proposals at higher amounts under the same strength, to show what volume a higher cost buys. The seller keeps the buyer's `strength` and states only its own `amount`. A `cap` of 3 that the seller can only meet at 4.50 comes back as `{ "amount": 4.50, "strength": "cap" }`, never as `"target"`, because changing the strength would silently change the execution semantics the buyer asked for. A seller that will not plan under the buyer's strength at any amount rejects the request instead. The forecast's points carry the goal volume planned under that policy.
+
+`bidding.cost_per.amount` is the execution control, not an expected price. Compare sellers on forecast volume and spend at the proposal's budget, not on the cap amount; billing stays on the selected pricing option.
+
+**Reading the answer.** A buyer classifies each proposal from the fields above, so no separate status field exists. Read the amount against the ask first, then the volume:
+
+| Response | Meaning |
+|----------|---------|
+| `amount` equal to the ask, forecast volume at or above the requested `volume` (or no `volume` was sent) | The seller can plan to the ask. It is an execution control, not a promised result. |
+| `amount` equal to the ask, forecast volume below the requested `volume` | The cost holds and the volume falls short, as the `cap` plus `volume` rule above allows. |
+| `amount` above the ask, same `strength` | A counter-offer: the lowest amount the seller can plan to. A `cap` answered above the ask is a cap the buyer chooses to adopt or decline, not a commitment to deliver at that cost. Several proposals at higher amounts are alternatives, each read on its own. |
+| `INVALID_REQUEST` naming `criteria.outcome_target.cost_per` | Declined: the seller cannot represent or bind the target (strength, currency, goal, or capability) at any amount. Correct the target, or plan the goal by `volume`. |
+| `outcome: "rejected"` with a `reason` | Declined: the target is valid but the seller has no viable inventory. Try another seller or a different budget. |
+
+An `amount` below the ask, a different `strength`, or a different currency is invalid, and a buyer MAY treat the proposal as non-conformant.
+
+`bidding.cost_per` is never a commitment, so a seller that commits to a cost does so as a pricing option whose model prices the result itself (for example `cpa` or `cpc`). A buyer that needs a committed cost selects such a pricing option rather than reading a guarantee into the cap.
+
+**Goal binding.** The answering proposal MUST NOT carry purchase-level `bidding`, so the media-buy policy binds under the `BiddingPolicy` rules:
+
+- Under fixed or omitted `budget_allocation`, every purchase's primary optimization goal matches `goal`, and all of them resolve to the same result unit as `BiddingPolicy.cost_per` defines it: identical result-defining qualifiers and, for event goals, an identical resolved `attribution_window`.
+- Under `seller_optimized`, the primary goal of `budget_allocation.optimization_goals` matches `goal`.
+
+"Matches" means the same `kind` and `metric` for a metric goal. For an event goal, every `event_sources[]` entry carries the goal's `event_type` (and `custom_event_name`). The seller MAY add result-defining qualifiers such as `view_duration_seconds` or `reach_unit`; they are visible in the proposal.
+
+For an event goal, the seller fills `event_sources[]` from the event sources available on the buyer's account for that event, whether buyer-synced or seller-managed (`managed_by: "seller"`), as listed by [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) discovery. It fills exactly one source unless it advertises `conversion_tracking.multi_source_event_dedup`. It also states `attribution_window`, which SHOULD be one it advertises in `conversion_tracking.attribution_windows` for that event type. The buyer sees both before accepting. With no source available for the event, the seller rejects with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per`. A seller declares that it binds event-goal cost targets by listing `cost_per` in `conversion_tracking.supported_targets` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities); buyers do not rely on an event-goal cost target from a seller that omits it, and a seller that cannot bind one rejects it with the same error.
+
+**Bidding capability.** A seller MUST NOT answer with a bidding policy outside its advertised `features.bidding_policy` profile for the proposal's scope and allocation mode. A seller that declares `media_buy.outcome_target` but advertises no such profile rejects cost targets with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per`. The `media_buy.outcome_target` flag alone cannot distinguish a seller that predates cost targets from one that plans them, so buyers rely on the negotiated `adcp_version` together with `features.bidding_policy`.
+
+**Currency.** `cost_per.currency` is the currency of the answer. Every answering proposal's `purchases[].pricing.currency`, which the bidding amounts are denominated in, and its `forecast.currency` MUST equal it, as MUST `commercial_terms.total_budget.currency` and `total_budget_guidance.currency` when present. When `offer_filters.budget_range` is present, `cost_per.currency` MUST equal `budget_range.currency`. Sellers MUST NOT convert currency. A conflict with `budget_range`, `pricing_currencies`, the account currency, or the currencies the requested products are priced in is rejected with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per`. This deliberately differs from [`get_products`](/docs/media-buy/task-reference/get_products), where a currency filter that matches nothing returns zero products: a cost target states the currency of the answer, so a conflict is a malformed request, not an empty result.
+
+**Rejection.** `INVALID_REQUEST` naming `criteria.outcome_target.cost_per` covers a cost target that cannot be represented or bound: its strength, currency, goal, or the seller's bidding capability. A valid cost target for which the seller has no viable inventory returns `outcome: "rejected"` with a reason, like any other unplannable request. A seller that does not declare `media_buy.outcome_target` rejects the whole field with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), as for volume.
+
+The cost target is still a planning input. The execution policy is the accepted proposal's `bidding.cost_per`.
+
+[`list_products`](/docs/media-buy/task-reference/list_products) shares these criteria but returns products and never proposals, so `outcome_target` has no answer there, with or without `cost_per`. The field is inert on `list_products` for every seller, whether or not it declares `media_buy.outcome_target`: it does not filter or rank products, produces no guidance or bidding answer, and MUST NOT cause a rejection beyond schema validation. A buyer can therefore reuse one `criteria` object across `list_products` and `request_proposals`. A seller that does not declare the capability still rejects the field on proposal requests, and the capability flag, not a `list_products` error, tells the buyer whether a proposal request will be planned. Send outcome targets through `request_proposals`.
+
+In this worked example, a buyer asks for clicks at €3 or less on a €5,000 budget. The seller advertises fixed media-buy `cost_per` caps in `features.bidding_policy`:
+
+```json
+{
+  "$schema": "/schemas/latest/media-buy/request-proposals-request.json",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441002",
+  "brief": "Drive traffic to the spring running collection page.",
+  "account": {
+    "brand": { "domain": "nova-athletics.example" },
+    "operator": "pinnacle-media.example"
+  },
+  "criteria": {
+    "product_ids": ["product_premium_video"],
+    "offer_filters": {
+      "budget_range": { "max": 5000, "currency": "EUR" }
+    },
+    "outcome_target": {
+      "goal": { "kind": "metric", "metric": "clicks" },
+      "cost_per": { "amount": 3, "currency": "EUR", "strength": "cap" }
+    }
+  }
+}
+```
+
+The seller can't plan clicks at €3 on this inventory. The best it can plan is €4.50, so it answers with a €4.50 cap and the roughly 1,111 clicks that €5,000 buys at that cost:
+
+```json
+{
+  "$schema": "/schemas/latest/core/canonical-proposal.json",
+  "proposal_id": "proposal_spring_clicks_01",
+  "proposal_kind": "new_media_buy",
+  "proposal_status": "draft",
+  "expires_at": "2027-01-16T17:00:00Z",
+  "name": "Spring collection traffic at a click cost cap",
+  "brief_alignment": "€3 per click is below what this inventory can plan to. The plan caps the average at €4.50 and plans about 1,111 clicks within €5,000.",
+  "commercial_terms": {
+    "brand": { "domain": "nova-athletics.example" },
+    "purchases": [
+      {
+        "product_id": "product_premium_video",
+        "pricing_option_id": "cpm_eur_fixed",
+        "pricing": {
+          "pricing_option_id": "cpm_eur_fixed",
+          "pricing_model": "cpm",
+          "currency": "EUR",
+          "fixed_price": 9
+        },
+        "budget": 5000,
+        "optimization_goals": [{ "kind": "metric", "metric": "clicks", "priority": 1 }],
+        "start_time": "2027-03-01T00:00:00Z",
+        "end_time": "2027-03-31T23:59:59Z"
+      }
+    ],
+    "start_time": "2027-03-01T00:00:00Z",
+    "end_time": "2027-03-31T23:59:59Z",
+    "total_budget": { "amount": 5000, "currency": "EUR" },
+    "bidding": {
+      "cost_per": { "amount": 4.5, "strength": "cap" }
+    }
+  },
+  "terms_digest": "sha256:IO3B2jLn52O7-u_xeztyhTFDUJWbV4mQrCcTfCWpAQg",
+  "total_budget_guidance": { "min": 4000, "recommended": 5000, "max": 5000, "currency": "EUR" },
+  "forecast": {
+    "method": "modeled",
+    "currency": "EUR",
+    "forecast_range_unit": "clicks",
+    "points": [
+      { "budget": 2500, "metrics": { "clicks": { "mid": 555 }, "spend": { "mid": 2497.5 } } },
+      { "budget": 5000, "metrics": { "clicks": { "mid": 1111 }, "spend": { "mid": 4999.5 } } }
+    ]
+  }
+}
+```
+
+The purchase's only optimization goal is `clicks`, so the media-buy `cost_per` binds to clicks. €5,000 does not divide into whole clicks at €4.50, so each point carries the planned `spend`. If the buyer had sent `"currency": "USD"` against this EUR-only product, the seller would reject with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per` rather than convert.
+
+Explicit hard requirements in the brief remain binding. When the seller's structured interpretation materially affects product eligibility, pricing, or forecasting, the response includes `targeting_resolution.brief_targeting`. Exact structured overlays are not echoed; any product-specific alternative appears as sparse `Product.targeting_resolution.modifications` for buyer approval. A product carrying `targeting_resolution` also carries `expires_at`, which is how compact products mark request-specific configured offers; they have no `is_custom` flag.
 
 When the effective criteria include property or collection lists, every product returned alongside the proposals carries its own `list_applications` receipts. Proposal objects do not duplicate them. The receipts show how each list snapshot intersected that product at evaluation time, and the proposal uses the resulting price and forecast.
 
@@ -83,6 +246,10 @@ Every returned purchase references the exact `product_id` and `pricing_option_id
 `opportunity` is optional shared planning-cycle context and must be open when supplied here. Its buyer-assigned `opportunity_id` can span request, decline, and purchase calls without becoming part of proposal identity. Sellers associate it with every proposal created by the request, and revised proposals inherit the same association.
 
 The native response uses `outcome: "proposed"` for a successful draft set and `outcome: "rejected"` with a reason when the seller cannot construct a viable plan. A compatibility coordinator may also return the projection-only `products_available` outcome defined below.
+
+## Definition pins
+
+For callers negotiating AdCP 3.3 or later, every draft that references a publisher-catalog format option, publisher-catalog placement, `adagents.json` collection, or data-provider signal carries seller-authored `commercial_terms.definition_pins[]`, so `terms_digest` covers a pin over each of those published definitions. Buyers verify `terms_digest` as before and keep the pins for the later [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) finalize and [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) checks, which fail with `definition_changed` (finalize) or [`REFERENCE_DEFINITION_CHANGED`](/docs/building/verification/compliance-catalog#error-code-reference-definition-changed) if a covered definition changed after the pin was issued. Cancellation proposals carry no pins. The covered set and preimage rules are in [Definition pins](/docs/media-buy/specification#definition-pins).
 
 ## Products-only legacy compatibility
 

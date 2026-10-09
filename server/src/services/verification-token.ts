@@ -25,6 +25,14 @@ export function isValidAdcpVersion(value: unknown): value is string {
   return typeof value === 'string' && ADCP_VERSION_RE.test(value);
 }
 
+function isCanonicalIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+    return false;
+  }
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+}
+
 // ── Token Payload ────────────────────────────────────────────────
 
 export interface VerificationTokenPayload {
@@ -38,6 +46,10 @@ export interface VerificationTokenPayload {
    * (see adcp-taxonomy.ts) — unknown values are filtered before signing.
    */
   verification_modes: VerificationMode[];
+  /** Grading policy that produced the public badge. Independent of modes. */
+  grading_profile: 'legacy' | 'spec';
+  /** Canonical Strict Spec failure-episode start, if one is active. */
+  first_failing_spec_at?: string;
   /**
    * AdCP release the badge was issued against, MAJOR.MINOR (e.g. '3.0',
    * '3.1'). Load-bearing for badge identity — pairs with the (agent_url,
@@ -117,7 +129,8 @@ export async function signVerificationToken(
   // so a corrupted DB row or programming error can't put an arbitrary
   // string into a signed AAO claim.
   const safeModes = payload.verification_modes.filter(isVerificationMode);
-  if (safeModes.length === 0) {
+  const safeGradingProfile = payload.grading_profile ?? 'legacy';
+  if (safeModes.length === 0 || !['legacy', 'spec'].includes(safeGradingProfile)) {
     return null;
   }
 
@@ -138,13 +151,21 @@ export async function signVerificationToken(
     );
     return null;
   }
+  if (
+    payload.first_failing_spec_at !== undefined
+    && !isCanonicalIsoTimestamp(payload.first_failing_spec_at)
+  ) {
+    return null;
+  }
 
   const token = await new jose.SignJWT({
     agent_url: payload.agent_url,
     role: payload.role,
     verified_specialisms: payload.verified_specialisms,
     verification_modes: safeModes,
+    grading_profile: safeGradingProfile,
     ...(payload.adcp_version && { adcp_version: payload.adcp_version }),
+    ...(payload.first_failing_spec_at && { first_failing_spec_at: payload.first_failing_spec_at }),
     ...(payload.protocol_version && { protocol_version: payload.protocol_version }),
   })
     .setProtectedHeader({ alg: ALG, kid: 'aao-verification-1' })
@@ -201,7 +222,22 @@ export async function verifyVerificationToken(
       return null;
     }
 
-    return payload as unknown as VerificationTokenClaims;
+    if (p.grading_profile !== undefined && p.grading_profile !== 'legacy' && p.grading_profile !== 'spec') {
+      return null;
+    }
+    if (
+      p.first_failing_spec_at !== undefined
+      && !isCanonicalIsoTimestamp(p.first_failing_spec_at)
+    ) {
+      return null;
+    }
+
+    // Tokens issued before owner-selectable grading have no claim. They are
+    // historical Legacy evidence only; never infer Strict Spec from modes.
+    return {
+      ...payload,
+      grading_profile: p.grading_profile === 'spec' ? 'spec' : 'legacy',
+    } as unknown as VerificationTokenClaims;
   } catch {
     return null;
   }

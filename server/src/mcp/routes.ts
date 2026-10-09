@@ -71,24 +71,27 @@ const MCP_SERVER_URL = resolveMCPServerURL();
 
 /**
  * Rate limiter for MCP endpoint
- * 10 requests per minute per authenticated user
+ * 60 transport requests per minute per authenticated user. Connection setup,
+ * notifications, and tool discovery all consume transport requests too.
  */
 const mcpRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 10,
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
   store: new CachedPostgresStore('mcp:'),
   keyGenerator: (req: MCPAuthenticatedRequest) => {
     return `user:${req.mcpAuth?.sub || 'anonymous'}`;
   },
-  handler: (_req, res) => {
+  handler: (req, res) => {
+    const retryAfter = Number(res.getHeader('Retry-After')) || 60;
     res.status(429).json({
       jsonrpc: '2.0',
-      id: null,
+      id: req.body?.id ?? null,
       error: {
         code: -32000,
-        message: 'Rate limit exceeded. Try again later.',
+        message: `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
+        data: { retry_after: retryAfter },
       },
     });
   },
@@ -276,5 +279,5 @@ function setCORSHeaders(res: Response): void {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
-  res.setHeader('Access-Control-Expose-Headers', 'WWW-Authenticate, Content-Type');
+  res.setHeader('Access-Control-Expose-Headers', 'WWW-Authenticate, Content-Type, Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset');
 }

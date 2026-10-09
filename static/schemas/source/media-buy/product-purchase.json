@@ -48,7 +48,7 @@
     "budget": {
       "type": "number",
       "minimum": 0,
-      "description": "Hard spend cap for this selection in the media-buy currency."
+      "description": "Hard spend cap for this selection in the media-buy currency. In seller-optimized allocation it is an optional ceiling, not a reserved allocation, and requires advertised media_buy.features.seller_optimized_package_budgets; otherwise rejected with UNSUPPORTED_FEATURE before any over-subscription validation."
     },
     "daily_budget_cap": {
       "type": "number",
@@ -58,7 +58,7 @@
     "min_spend_target": {
       "type": "number",
       "minimum": 0,
-      "description": "Soft lifetime spend target for seller-optimized allocation."
+      "description": "Soft lifetime spend target for seller-optimized allocation. Requires advertised media_buy.features.seller_optimized_min_spend_targets; otherwise rejected with UNSUPPORTED_FEATURE before any over-subscription validation."
     },
     "impressions": {
       "title": "Product Purchase Impressions",
@@ -77,7 +77,8 @@
       "description": "Resolved package flight end. On direct-purchase input, omission inherits the MediaBuy end; accepted proposal snapshots carry the resolved timestamp."
     },
     "pacing": {
-      "$ref": "/schemas/enums/pacing.json"
+      "$ref": "/schemas/enums/pacing.json",
+      "description": "Purchase pacing, subordinate to media-buy pacing. In seller-optimized allocation, pacing that differs from the media-buy pacing requires advertised media_buy.features.seller_optimized_package_pacing; otherwise rejected with UNSUPPORTED_FEATURE."
     },
     "bidding": {
       "$ref": "/schemas/core/bidding-policy.json"

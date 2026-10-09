@@ -20,13 +20,24 @@ const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const REVALIDATE_CACHE_CONTROL = "public, no-cache, must-revalidate";
 const VERSION_CACHE_TTL_MS = 60 * 1000;
 const versionCache = new Map();
+// Keep aligned with scripts/build-schemas.cjs and server/src/schemas-middleware.ts
+// (tests/schema-release-status.test.ts enforces this). Exact artifacts remain
+// available, but these versions never win latest/major/minor aliases. 3.2.0 is
+// the permanently withdrawn June 2026 accidental cut; 3.2 GA ships as 3.2.1
+// (.changeset/withdrawn-release.json).
+// Only functions are exported: the Workers runtime inspects module exports.
 const RELEASE_STATUS_OVERRIDES = new Map([
   ["3.1.3", "withdrawn"],
+  ["3.2.0-rc.5", "unpublished"],
   ["3.2.0", "unpublished"],
 ]);
 
-function isSelectableRelease(version) {
+export function isSelectableRelease(version) {
   return !RELEASE_STATUS_OVERRIDES.has(version);
+}
+
+export function releaseStatusOverrides() {
+  return [...RELEASE_STATUS_OVERRIDES];
 }
 
 export default {
@@ -429,8 +440,7 @@ function versionEntry(version, mountPath, knownVersions = []) {
   const parsed = parseSemver(version);
   const prerelease = !!parsed && parsed.prerelease.length > 0;
   const label = prerelease ? String(parsed.prerelease[0]).toLowerCase() : "";
-  const stableVersion = prerelease ? version.split("-")[0] : undefined;
-  const supersededBy = stableVersion && knownVersions.includes(stableVersion) ? stableVersion : undefined;
+  const supersededBy = prerelease ? supersedingStableVersion(version, knownVersions) : undefined;
   return {
     version,
     stability: statusMetadata.stability
@@ -443,6 +453,25 @@ function versionEntry(version, mountPath, knownVersions = []) {
     ...(supersededBy ? { superseded_by: supersededBy } : {}),
     path: `${mountPath}/${version}/`,
   };
+}
+
+// A prerelease is superseded by the first selectable stable release on its
+// minor line that is newer than it. Withdrawn/unpublished stable numbers
+// (e.g. 3.2.0) never supersede anything, so 3.2.0-rc.N resolves to 3.2.1.
+export function supersedingStableVersion(version, knownVersions = []) {
+  const parsed = parseSemver(version);
+  if (!parsed || parsed.prerelease.length === 0) return undefined;
+  return knownVersions
+    .filter((candidate) => {
+      if (!isSelectableRelease(candidate)) return false;
+      const stable = parseSemver(candidate);
+      return stable
+        && stable.prerelease.length === 0
+        && stable.major === parsed.major
+        && stable.minor === parsed.minor
+        && compareVersions(candidate, version) > 0;
+    })
+    .sort(compareVersions)[0];
 }
 
 function latestStableVersion(versions) {
@@ -535,6 +564,7 @@ function legacyTmpFallbackKey(key) {
 }
 
 function contentTypeForKey(key) {
+  if (key.endsWith(".jsonl")) return "application/x-ndjson; charset=utf-8";
   if (key.endsWith(".json")) return "application/json; charset=utf-8";
   if (key.endsWith(".yaml") || key.endsWith(".yml")) return "application/yaml; charset=utf-8";
   if (key.endsWith(".md") || key.endsWith(".mdx")) return "text/markdown; charset=utf-8";

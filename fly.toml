@@ -31,10 +31,22 @@ primary_region = 'iad'
   BASE_URL = "https://agenticadvertising.org"
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
-  # First stage: new staff web conversations only. Set MODE=eligible for the
-  # 10% user A/B after reviewing staff outcomes; MODE=off rolls back all turns.
-  ADDIE_GEMINI_DIRECT_MODE = "staff"
-  ADDIE_GEMINI_DIRECT_PERCENT = "10"
+  # Enable only after the private GCS canary gates in the reporting runbook pass.
+  TRAINING_REPORTING_GCS_ENABLED = "false"
+  TRAINING_REPORTING_GCS_CREDENTIALS_FILE = "/run/training-reporting-gcp.json"
+  # The dedicated external_account configuration obtains short-lived Fly OIDC.
+  GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES = "1"
+  # Enable after WorkOS Connect setup and real buyer sign-in qualification.
+  TRAINING_BUYER_OAUTH_ENABLED = "false"
+  # Global response policy, including existing threads and every delivery channel.
+  # Roll back with ADDIE_RESPONSE_PROVIDER=sonnet; fallback is a separate opt-in.
+  ADDIE_RESPONSE_PROVIDER = "gemini"
+  ADDIE_RESPONSE_AUTOMATIC_FALLBACK = "true"
+  # Historical experiment enrollment settings do not override the global policy.
+  ADDIE_GEMINI_DIRECT_MODE = "eligible"
+  ADDIE_GEMINI_DIRECT_PERCENT = "100"
+  ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_ENABLED = "true"
+  ADDIE_GEMINI_DIRECT_ANONYMOUS_WEB_PERCENT = "100"
   PUBLISHER_CRAWL_QUEUE_ENABLED = "true"
   # Bounded, evaluation-only Luna router shadow. The runtime additionally
   # fails closed unless the channel is public and non-shared and the HMAC and
@@ -122,3 +134,9 @@ primary_region = 'iad'
   memory = "8gb"
   cpu_kind = "performance"
   cpus = 2
+
+# Provisioned external_account configuration; no service-account private key.
+# Stage this secret before deploying the credential-file materialization.
+[[files]]
+  guest_path = "/run/training-reporting-gcp.json"
+  secret_name = "TRAINING_REPORTING_GCS_CREDENTIALS_BASE64"

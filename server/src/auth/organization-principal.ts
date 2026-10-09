@@ -2,7 +2,7 @@ import type { WorkOSUser } from "../types.js";
 
 export type OrgAuthorizationPrincipal = Pick<
   WorkOSUser,
-  "id" | "authWorkosUserId"
+  "id" | "authWorkosUserId" | "authorizationSnapshot"
 >;
 
 /**

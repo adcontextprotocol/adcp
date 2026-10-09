@@ -111,7 +111,7 @@ export function buildGovernanceTenantConfig(host: string, options: { storyboardC
             },
           ),
         },
-        complyTest: buildGovernanceComplyConfig(),
+        complyTest: buildGovernanceComplyConfig(options.storyboardCompat),
       },
     },
   };

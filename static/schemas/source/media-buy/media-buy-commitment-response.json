@@ -27,6 +27,13 @@
           "minLength": 1,
           "x-entity": "media_buy"
         },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "\\S",
+          "description": "Persisted human-readable MediaBuy name for trafficking UI display and operational communication. The seller MUST echo a buyer-supplied request name unchanged; when the seller seeded a new MediaBuy name from an already-valid proposal.name, it MUST return that value unchanged here. Existing named MediaBuys return the stored value on amendment or cancellation commitments. This operational metadata is outside accepted_proposal and is not covered by terms_digest. This display label is not an identifier or financial reference."
+        },
         "revision": {
           "type": "integer",
           "minimum": 1
@@ -140,6 +147,12 @@
         "status": { "type": "string", "const": "submitted" },
         "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
         "message": { "type": "string", "maxLength": 2000 },
+        "expected_confirmation_at": {
+          "type": "string",
+          "format": "date-time",
+          "x-added-in": "3.3.0",
+          "description": "Optional estimate of when the seller expects to confirm this request, used when confirmation depends on a scheduled event such as a booking round or a manual review window. A seller SHOULD set it when it knows that event; omit it when it does not. Buyers SHOULD schedule a status check (get_task_status, or reconciling against the webhook) for this time rather than polling tightly before it. This is an estimate, not a commitment: the seller MAY confirm earlier or later, the task status remains authoritative, and buyers MUST NOT treat a passed timestamp as a failure or auto-cancel on it. Sellers SHOULD NOT send a timestamp in the past. Not an expiry or SLA."
+        },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
         "context": { "$ref": "/schemas/core/context.json" },
         "ext": { "$ref": "/schemas/core/ext.json" },

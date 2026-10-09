@@ -17,19 +17,19 @@
     },
     "min_spend_target_percentage": {
       "type": "number",
-      "description": "Soft minimum-spend target as a percentage of the executed total budget. Only valid in seller-optimized proposals. The seller SHOULD attempt to reach it, but it is not a delivery guarantee. Minimum targets across allocations MUST sum to no more than 100.",
+      "description": "Soft minimum-spend target as a percentage of the executed total budget. Only valid in seller-optimized proposals, and sellers MUST NOT emit it unless they advertise media_buy.features.seller_optimized_min_spend_targets. The seller SHOULD attempt to reach it, but it is not a delivery guarantee. Minimum targets across allocations MUST sum to no more than 100.",
       "minimum": 0,
       "maximum": 100
     },
     "max_spend_percentage": {
       "type": "number",
-      "description": "Hard maximum share of the executed total budget that this product may spend. Only valid in seller-optimized proposals. Maximums across allocations MUST collectively permit 100 percent of the budget to be spent.",
+      "description": "Hard maximum share of the executed total budget that this product may spend. Only valid in seller-optimized proposals, and sellers MUST NOT emit it unless they advertise media_buy.features.seller_optimized_package_budgets. Maximums across allocations MUST collectively permit 100 percent of the budget to be spent.",
       "minimum": 0,
       "maximum": 100
     },
     "pacing": {
       "$ref": "/schemas/enums/pacing.json",
-      "description": "Recommended subordinate package pacing. On proposal execution this becomes pacing on the derived package and MUST NOT cause delivery to exceed aggregate proposal/media-buy pacing. On a committed proposal it is a firm delivery term."
+      "description": "Recommended subordinate package pacing. On proposal execution this becomes pacing on the derived package and MUST NOT cause delivery to exceed aggregate proposal/media-buy pacing. On a committed proposal it is a firm delivery term. On a seller-optimized proposal, sellers MUST NOT emit it unless they advertise media_buy.features.seller_optimized_package_pacing."
     },
     "pricing_option_id": {
       "type": "string",

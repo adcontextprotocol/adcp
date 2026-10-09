@@ -4,6 +4,8 @@ title: "Creative sync unblocks pending_creatives → pending_start"
 category: media_buy_seller
 summary: "Verifies that a media buy created without creatives sits in pending_creatives until sync_creatives completes, then transitions to pending_start."
 track: media_buy
+requires:
+  - controller
 
 # This scenario requires both a creative library and an explicit auto-approval
 # declaration. Sellers that lack either capability grade not_applicable rather
@@ -46,10 +48,34 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     Seller supports create_media_buy without creative_assignments and honors the
     pending_creatives → pending_start transition when creatives are synced.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_66d1a73fa0c5"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_pending_creatives_t-edc4bd7b"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_a18b4aec9e98"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_pending_creatives_t-edc4bd7b"
+        billing: "operator"
+        status: "active"
+        sandbox: false
 
 phases:
   - id: setup
@@ -75,6 +101,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_pending_creatives_t-edc4bd7b"
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -122,6 +150,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_pending_creatives_t-edc4bd7b"
           idempotency_key: "$generate:uuid_v4#pending_creatives_to_start_create_buy_no_creatives"
           start_time: "asap"
           end_time: "2099-08-31T23:59:59Z"
@@ -192,6 +222,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_pending_creatives_t-edc4bd7b"
           creatives:
             - creative_id: "acme-outdoor-display-q3"
               name: "Acme Outdoor Q3 display"
@@ -228,6 +260,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_pending_creatives_t-edc4bd7b"
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "$context.package_id"
@@ -285,6 +319,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_pending_creatives_t-edc4bd7b"
           media_buy_ids:
             - "$context.media_buy_id"
 

@@ -17,7 +17,7 @@ import { brandDb } from '../db/brand-db.js';
 import { registryRequestsDb } from '../db/registry-requests-db.js';
 import { query } from '../db/client.js';
 import { getPool } from '../db/client.js';
-import { disableAdaptiveThinking, ModelConfig } from '../config/models.js';
+import { disableAdaptiveThinking, ModelConfig, forcedToolChoice } from '../config/models.js';
 import { enrichOrganization } from './enrichment.js';
 import { isLushaConfigured } from './lusha.js';
 import type { UpsertDiscoveredBrandInput } from '../db/brand-db.js';
@@ -570,10 +570,10 @@ export async function expandHouse(houseDomain: string, options: {
         },
       },
     ],
-    tool_choice: { type: 'tool', name: 'discover_sub_brands' },
+    ...forcedToolChoice(ModelConfig.primary, 'discover_sub_brands'),
     messages: [{
       role: 'user',
-      content: `${DISCOVER_PROMPT}\n\nCompany: ${houseName}\nCorporate domain: ${houseDomain}\nIndustries: ${((house.brand_manifest?.company as Record<string, unknown>)?.industries as string[] | undefined)?.join(', ') || 'unknown'}`,
+      content: `${DISCOVER_PROMPT}\n\nCompany: ${houseName}\nCorporate domain: ${houseDomain}\nIndustries: ${((house.brand_manifest?.company as Record<string, unknown>)?.industries as string[] | undefined)?.join(', ') || 'unknown'}\n\nRecord your answer by calling the discover_sub_brands tool.`,
     }],
   });
 

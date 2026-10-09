@@ -25,10 +25,11 @@ describe('member profile membership authorization', () => {
     expect(selectedOrganizationMembership(memberships, 'org_active_member')).toEqual(memberships[1]);
   });
 
-  it('uses the active selector across every WorkOS-backed profile route', async () => {
+  it('uses the active selector across the remaining WorkOS-backed profile routes', async () => {
     const source = await readFile(new URL('../../src/routes/member-profiles.ts', import.meta.url), 'utf8');
+    // The seventh selector belonged to spec bootstrap, which is now suspended.
     expect(source.match(/selectedOrganizationMembership\(memberships\.data, requestedOrgId\)/g)?.length)
-      .toBeGreaterThanOrEqual(7);
+      .toBeGreaterThanOrEqual(6);
     expect(source).toContain('Only organization admins or owners can update brand identity');
   });
 });

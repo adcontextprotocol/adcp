@@ -182,6 +182,10 @@
     "reporting_capabilities": {
       "$ref": "/schemas/core/reporting-capabilities.json"
     },
+    "dooh_inventory_summary": {
+      "$ref": "/schemas/core/dooh-inventory-summary.json",
+      "description": "Aggregate DOOH/OOH geographic footprint for network/regional products where per-placement dooh_placement_attributes.location is not practical. See dooh-inventory-summary.json for the full description."
+    },
     "creative_policy": {
       "$ref": "/schemas/core/creative-policy.json"
     },
@@ -244,6 +248,16 @@
       "x-status": "experimental",
       "x-added-in": "3.2.0"
     },
+    "execution_requirements": {
+      "type": "array",
+      "description": "Experimental (`media_buy.execution_requirements`). Account resources a package on this product needs before `create_media_buy` succeeds. Every entry is required. Account-independent: it does not change `cache_scope` and carries no account resource IDs or names. When present, it plus the `required_connections` of the package's selected format declarations is complete for the kinds in `product-execution-requirement.json`: a seller MUST NOT reject a package that satisfies all of them for lacking an undeclared kind. Absence means undeclared. A declaring seller MUST reject an unmet `event_source` or `catalog` entry on a buyer-supplied `create_media_buy` `packages[]` or `update_media_buy` `new_packages[]` entry, or an update that removes a satisfying binding, with `VALIDATION_ERROR`, `error.field` at the binding, and `error.details` per `error-details/execution-requirement-unmet.json`.",
+      "items": {
+        "$ref": "/schemas/core/product-execution-requirement.json"
+      },
+      "minItems": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.2.0"
+    },
     "targeting_resolution": {
       "$ref": "/schemas/core/product-targeting-resolution.json",
       "description": "Discovery-time targeting resolution bound to this configured product. modifications sparsely disclose product-specific differences from get_products.targeting_overlay. Request-level brief interpretation is returned once on GetProductsResponse.targeting_resolution. Exact structured overlay values are not repeated. Selecting product_id accepts the disclosed modifications; product forecast and pricing MUST reflect them."
@@ -287,6 +301,7 @@
               "views",
               "completed_views",
               "viewed_seconds",
+              "viewable_rate",
               "attention_seconds",
               "attention_score",
               "engagements",
@@ -313,6 +328,15 @@
             "type": "number",
             "exclusiveMinimum": 0
           }
+        },
+        "supported_viewability_standards": {
+          "type": "array",
+          "description": "Viewability standards this product can optimize viewable_rate goals against. Only relevant when supported_metrics includes 'viewable_rate'. When absent, buyers cannot assume a specific standard is supported and sellers reject unsupported values. Buyers must set the goal's standard to a value in this list when it is present.",
+          "items": {
+            "$ref": "/schemas/enums/viewability-standard.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
         },
         "supported_targets": {
           "type": "array",
@@ -696,6 +720,40 @@
           }
         },
         "required": ["signal_targeting_allowed"]
+      }
+    },
+    {
+      "description": "A product that requires a conversion event source must declare conversion tracking, because event optimization goals are only accepted on products with conversion_tracking.",
+      "if": {
+        "properties": {
+          "execution_requirements": {
+            "contains": {
+              "properties": { "kind": { "const": "event_source" } },
+              "required": ["kind"]
+            }
+          }
+        },
+        "required": ["execution_requirements"]
+      },
+      "then": {
+        "required": ["conversion_tracking"]
+      }
+    },
+    {
+      "description": "A product that requires a catalog must declare the catalog types it accepts.",
+      "if": {
+        "properties": {
+          "execution_requirements": {
+            "contains": {
+              "properties": { "kind": { "const": "catalog" } },
+              "required": ["kind"]
+            }
+          }
+        },
+        "required": ["execution_requirements"]
+      },
+      "then": {
+        "required": ["catalog_types"]
       }
     },
     {

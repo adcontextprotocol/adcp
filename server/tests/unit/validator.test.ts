@@ -586,6 +586,75 @@ describe("AgentValidator", () => {
     }
   });
 
+  describe("agent URL matching", () => {
+    beforeEach(() => {
+      vi.spyOn(dns, "lookup").mockResolvedValue([
+        { address: "203.0.113.5", family: 4 },
+      ] as unknown as Awaited<ReturnType<typeof dns.lookup>>);
+    });
+
+    function manifestFor(url: string) {
+      fetchMock.mockImplementation(async () =>
+        jsonResponse({
+          authorized_agents: [{ url, authorized_for: "Direct" }],
+        })
+      );
+    }
+
+    it.each([
+      ["https://agent.example.com/mcp", "HTTPS://Agent.Example.COM/mcp"],
+      ["https://agent.example.com/mcp", "https://agent.example.com:443/mcp"],
+      ["https://agent.example.com/mcp", "https://agent.example.com/x/../mcp"],
+      ["https://agent.example.com/~mcp", "https://agent.example.com/%7Emcp"],
+      ["https://agent.example.com/mcp", "https://agent.example.com/mcp#frag"],
+      ["https://agent.example.com", "https://agent.example.com/"],
+    ])("authorizes %s for canonically equal %s", async (listed, requested) => {
+      manifestFor(listed);
+
+      const result = await validator.validate("example.com", requested);
+
+      expect(result.authorized).toBe(true);
+    });
+
+    it.each([
+      ["https://agent.example.com", "https://agent.example.com/mcp"],
+      ["https://agent.example.com/mcp", "https://agent.example.com/mcp/"],
+      ["https://agent.example.com/mcp/", "https://agent.example.com/mcp"],
+      ["https://agent.example.com/mcp", "https://agent.example.com/MCP"],
+      ["https://agent.example.com/mcp", "http://agent.example.com/mcp"],
+      ["https://platform.example/tenants/acme/mcp", "https://platform.example/tenants/zenith/mcp"],
+    ])("does not authorize %s for %s", async (listed, requested) => {
+      manifestFor(listed);
+
+      const result = await validator.validate("example.com", requested);
+
+      expect(result.authorized).toBe(false);
+    });
+
+    it("fails closed on an agent URL that cannot be canonicalized", async () => {
+      const result = await validator.validate("example.com", "not a url");
+
+      expect(result.authorized).toBe(false);
+      expect(result.error).toBe("Invalid agent URL");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("skips manifest entries whose url is not a string", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          authorized_agents: [
+            { url: 42, authorized_for: "Malformed" },
+            { url: "https://agent.example.com/mcp", authorized_for: "Direct" },
+          ],
+        })
+      );
+
+      const result = await validator.validate("example.com", "https://agent.example.com/mcp");
+
+      expect(result.authorized).toBe(true);
+    });
+  });
+
   describe("force_refresh", () => {
     function authorizedResponse() {
       return jsonResponse({

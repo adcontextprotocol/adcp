@@ -42,10 +42,15 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // Structured package frequency-cap constraints and requirements add a small
   // shared closure (constraint, interval, and enum schemas). Aggregate
   // MediaBuy frequency capping adds a root value, product support, and
-  // requirements closure to the representative media-buy graph.
-  assert.equal(report.definition_instances, 671);
-  assert.equal(report.unique_definitions, 182);
-  assert.equal(report.repeated_definitions, 130);
+  // requirements closure to the representative media-buy graph. The
+  // viewable_rate goal references the shared viewability standard enum.
+  // outcome_target.cost_per adds its object and strength enum schemas, each
+  // reached from list_products, request_proposals, and refine_proposals.
+  // Daypart time granularity adds one shared enum reached through the
+  // daypart requirement in the targeting-bearing tools.
+  assert.equal(report.definition_instances, 681);
+  assert.equal(report.unique_definitions, 185);
+  assert.equal(report.repeated_definitions, 133);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -169,7 +174,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 182);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 185);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

@@ -22,7 +22,7 @@
     },
     "allocations": {
       "type": "array",
-      "description": "Products and budget constraints in this plan. Fixed proposals require allocation_percentage on every entry and percentages MUST sum to 100. Seller-optimized proposals forbid exact allocation_percentage and may instead supply min_spend_target_percentage and max_spend_percentage. Publishers are responsible for validating cross-entry sums; buyers SHOULD validate them before execution.",
+      "description": "Products and budget constraints in this plan. Fixed proposals require allocation_percentage on every entry and percentages MUST sum to 100. Seller-optimized proposals forbid exact allocation_percentage and may instead supply min_spend_target_percentage and max_spend_percentage, each only when the seller advertises the matching package-control capability (seller_optimized_min_spend_targets, seller_optimized_package_budgets). Publishers are responsible for validating cross-entry sums; buyers SHOULD validate them before execution.",
       "items": {
         "$ref": "/schemas/core/product-allocation.json"
       },

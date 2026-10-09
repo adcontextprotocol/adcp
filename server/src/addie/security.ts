@@ -13,7 +13,11 @@ const logger = createLogger('addie-security');
 import type { SanitizationResult, CreateAddieInteractionLog } from './types.js';
 import { PERSONA_COLLAPSE_PATTERNS } from './response-postprocess.js';
 
-export const MAX_OUTPUT_LENGTH = 10_000;
+// Application-level last resort, not a provider or Slack platform ceiling.
+// 32k preserves the established 8,192-token model allowance for ordinary
+// prose while leaving headroom under Slack's 40k top-level text boundary;
+// Slack's streaming and Block Kit adapters shape their own smaller chunks.
+export const MAX_OUTPUT_LENGTH = 32_000;
 export const OUTPUT_TRUNCATION_SUFFIX = '… Reply “continue” for the rest.';
 export const MAX_INPUT_LENGTH = 32_000;
 export const INPUT_TRUNCATION_SUFFIX = '... [truncated]';
@@ -269,7 +273,7 @@ function truncateAtGraphemeBoundary(text: string, maxLength: number): string {
 /**
  * Format a partial response at a sentence boundary and add the canonical
  * continuation cue. The content budget reserves room for the separator and
- * cue, so the complete delivered value never exceeds the 10k cap.
+ * cue, so the complete delivered value never exceeds the application cap.
  */
 export function formatTruncatedOutput(
   text: string,
@@ -426,8 +430,8 @@ export function validateOutput(text: string): SanitizationResult {
     }
   }
 
-  // Truncate very long outputs at a sentence boundary. This validator is used
-  // by Slack, web chat, email, and handler surfaces, so the cap stays uniform.
+  // Truncate only at the high application backstop. Channel adapters own their
+  // smaller delivery shapes, so this is not treated as a safety failure.
   let sanitized = text;
   if (text.length > MAX_OUTPUT_LENGTH) {
     sanitized = formatTruncatedOutput(text);
@@ -435,10 +439,7 @@ export function validateOutput(text: string): SanitizationResult {
       { originalLength: text.length, deliveredLength: sanitized.length, maxLength: MAX_OUTPUT_LENGTH },
       'Addie: Output truncated at sentence boundary',
     );
-    if (!flagged) {
-      flagged = true;
-      reason = 'Output truncated due to length';
-    }
+    if (!flagged) reason = 'Output truncated due to length';
   }
 
   // Note: Link format conversion removed - Claude now outputs correct format
@@ -449,6 +450,7 @@ export function validateOutput(text: string): SanitizationResult {
     sanitized,
     flagged,
     reason,
+    truncated: text.length > MAX_OUTPUT_LENGTH,
   };
 }
 

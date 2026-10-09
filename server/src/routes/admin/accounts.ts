@@ -1296,12 +1296,23 @@ export function setupAccountRoutes(
             FROM organizations o
             ${communityPointsJoin}
             ${hierarchyJoin}
-            LEFT JOIN org_activities na ON na.organization_id = o.workos_organization_id
-              AND na.is_next_step = TRUE
-              AND na.next_step_completed_at IS NULL
-              AND (na.next_step_due_date IS NULL OR na.next_step_due_date <= NOW() + INTERVAL '7 days')
-            LEFT JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
-              AND oi.status IN ('draft', 'open')
+            LEFT JOIN LATERAL (
+              SELECT id, next_step_due_date, description
+              FROM org_activities
+              WHERE organization_id = o.workos_organization_id
+                AND is_next_step = TRUE
+                AND next_step_completed_at IS NULL
+                AND (next_step_due_date IS NULL OR next_step_due_date <= NOW() + INTERVAL '7 days')
+              ORDER BY next_step_due_date ASC NULLS LAST, id ASC
+              LIMIT 1
+            ) na ON true
+            LEFT JOIN LATERAL (
+              SELECT stripe_invoice_id
+              FROM org_invoices
+              WHERE workos_organization_id = o.workos_organization_id
+                AND status IN ('draft', 'open')
+              LIMIT 1
+            ) oi ON true
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (
                 -- Non-members: show if they have action items
@@ -1353,10 +1364,16 @@ export function setupAccountRoutes(
             FROM organizations o
             ${communityPointsJoin}
             ${hierarchyJoin}
-            INNER JOIN org_activities na ON na.organization_id = o.workos_organization_id
-              AND na.is_next_step = TRUE
-              AND na.next_step_completed_at IS NULL
-              AND (na.next_step_due_date IS NULL OR na.next_step_due_date <= NOW() + INTERVAL '7 days')
+            INNER JOIN LATERAL (
+              SELECT next_step_due_date, description
+              FROM org_activities
+              WHERE organization_id = o.workos_organization_id
+                AND is_next_step = TRUE
+                AND next_step_completed_at IS NULL
+                AND (next_step_due_date IS NULL OR next_step_due_date <= NOW() + INTERVAL '7 days')
+              ORDER BY next_step_due_date ASC NULLS FIRST, id ASC
+              LIMIT 1
+            ) na ON true
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `;
           orderBy = ` ORDER BY na.next_step_due_date ASC NULLS FIRST`;
@@ -1372,8 +1389,14 @@ export function setupAccountRoutes(
             FROM organizations o
             ${communityPointsJoin}
             ${hierarchyJoin}
-            INNER JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
-              AND oi.status IN ('draft', 'open')
+            INNER JOIN LATERAL (
+              SELECT amount_due, status, due_date
+              FROM org_invoices
+              WHERE workos_organization_id = o.workos_organization_id
+                AND status IN ('draft', 'open')
+              ORDER BY due_date ASC NULLS LAST, id ASC
+              LIMIT 1
+            ) oi ON true
             WHERE COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `;
           orderBy = ` ORDER BY oi.due_date ASC NULLS LAST`;
@@ -2742,6 +2765,7 @@ export function setupAccountRoutes(
           resource_type: "membership",
           resource_id: membershipId,
           details: {
+            ...req.staticAdminAuditDetails,
             target_user_id: userId,
             target_email: membership.email,
             old_role: previousRole,

@@ -213,13 +213,17 @@ produce response-root `targeting_resolution.brief_targeting` on
 `request_proposals` or `get_products`, or per-result confirmation on
 `refine_proposals`, even when no overlay was sent.
 An exact request-specific configured product issued through targeting-aware
-discovery still returns `is_custom: true` and `expires_at`; absence of a
-resolution echo does not make its price, forecast, or inventory assumptions
-permanent. The generic Product schema continues accepting legacy custom
+discovery still returns `expires_at` (and, on `get_products`, `is_custom: true`);
+absence of a resolution echo does not make its price, forecast, or inventory
+assumptions permanent. The generic Product schema continues accepting legacy custom
 products without `expires_at`; the requirement belongs to this new discovery
 flow and to every product that carries `targeting_resolution`.
 
-A seller offering an alternative returns only the changed paths:
+Canonical products returned by `list_products` and the proposal lifecycle carry
+no `is_custom`; `expires_at` identifies request-specific configured offers.
+
+A seller offering an alternative returns only the changed paths. On
+`get_products`, the legacy Product also carries `is_custom: true`:
 
 ```json
 {
@@ -337,7 +341,7 @@ remains authoritative for the dimensions that can be selected later.
 Before sending `targeting_overlay` or `required_overlay_support`, a buyer:
 
 1. Reads `get_adcp_capabilities.adcp.supported_versions`.
-2. Selects a compatible 3.2 release or prerelease and sends that exact
+2. Selects a compatible 3.2 release (normally `"3.2"`) and sends that exact
    release-precision value in `adcp_version` (plus `adcp_major_version: 3`
    through 3.x).
 3. Validates the response against the echoed `adcp_version`.

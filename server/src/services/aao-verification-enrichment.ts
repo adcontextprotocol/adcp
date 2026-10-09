@@ -18,6 +18,8 @@ export interface AaoVerificationBadgeEntry {
   adcp_version: string | null;
   verification_modes: string[];
   verified_at: string;
+  grading_profile: 'legacy' | 'spec';
+  grading_profile_revision: number;
 }
 
 export interface AaoVerificationBlock {
@@ -73,6 +75,8 @@ export function buildAaoVerificationBlock(
       role: b.role,
       adcp_version: isValidAdcpVersionShape(b.adcp_version) ? b.adcp_version : null,
       verification_modes: b.verification_modes,
+      grading_profile: b.grading_profile ?? 'legacy',
+      grading_profile_revision: Number(b.grading_profile_revision ?? 0),
       verified_at: b.verified_at.toISOString(),
     })),
     roles: dedupedBadges.map(b => b.role),

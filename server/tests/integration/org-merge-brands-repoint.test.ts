@@ -1,17 +1,22 @@
 /**
- * Integration test for the brands.workos_organization_id repoint added in
- * mergeOrganizations.
+ * brands.workos_organization_id under the contained organization merge (#6827).
  *
- * Without the repoint, the FK ON DELETE SET NULL on brands (migration 474)
- * fires when the secondary org row is deleted at the end of the merge,
- * leaving the secondary's brand rows owner-less. With the repoint inside
- * the merge transaction, the brand rows land at the primary org first and
- * the FK never fires for them.
+ * These fixtures previously proved the repoint mergeOrganizations performed:
+ * secondary-owned brand rows landed at the primary org inside the merge
+ * transaction, so the FK ON DELETE SET NULL (migration 474) never fired for
+ * them. Merge execution is now contained, so the same fixtures prove the
+ * stronger property instead — the contained service refuses and no brand row,
+ * owner pointer or organization row moves at all. Restore the repoint
+ * assertions together with a reviewed merge lifecycle.
+ *
+ * The direct-delete case below never used merge and is unchanged: it still
+ * covers the FK SET NULL plus orphan trigger on its own.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { mergeOrganizations } from '../../src/db/org-merge-db.js';
+import { OrganizationMergeUnavailableError } from '../../src/db/org-merge-containment.js';
 import type { Pool } from 'pg';
 import type { WorkOS } from '@workos-inc/node';
 
@@ -25,13 +30,28 @@ const THIRD_DOMAIN = 'merge-brands-third.test';
 const ORPHAN_DOMAIN = 'merge-brands-orphan.test';
 const MERGED_BY = 'user_merge_brands_admin';
 
+// Records rather than no-ops: the contained service must never reach it.
+const deleteCalls: string[] = [];
 const workosStub = {
   organizations: {
-    deleteOrganization: async (_id: string) => {},
+    deleteOrganization: async (id: string) => { deleteCalls.push(id); },
   },
 } as unknown as WorkOS;
 
-describe('mergeOrganizations — brands.workos_organization_id repoint', () => {
+async function expectMergeRefused(pool: Pool) {
+  deleteCalls.length = 0;
+  await expect(mergeOrganizations(PRIMARY_ORG, SECONDARY_ORG, MERGED_BY, workosStub))
+    .rejects.toThrow(OrganizationMergeUnavailableError);
+  expect(deleteCalls).toEqual([]);
+  // The secondary organization is never deleted, so the FK never fires.
+  const secondary = await pool.query<{ count: string }>(
+    'SELECT COUNT(*)::text AS count FROM organizations WHERE workos_organization_id = $1',
+    [SECONDARY_ORG],
+  );
+  expect(secondary.rows[0]?.count).toBe('1');
+}
+
+describe('contained mergeOrganizations — brands keep their owner', () => {
   let pool: Pool;
 
   beforeAll(async () => {
@@ -76,50 +96,49 @@ describe('mergeOrganizations — brands.workos_organization_id repoint', () => {
     );
   }
 
-  it('repoints brands owned by the secondary org to the primary org', async () => {
+  it('refuses and leaves every brand ownership exactly as it was', async () => {
+    // One case rather than four: after an unconditional refusal there is no
+    // code path that could treat a secondary-owned, primary-owned, third-owned
+    // or NULL-owned brand differently, so seeding all four together and
+    // asserting the whole set is both stronger and honest about what is tested.
     await seedBrand(SECONDARY_DOMAIN_A, SECONDARY_ORG);
     await seedBrand(SECONDARY_DOMAIN_B, SECONDARY_ORG);
-
-    const summary = await mergeOrganizations(PRIMARY_ORG, SECONDARY_ORG, MERGED_BY, workosStub);
-
-    const after = await pool.query<{ workos_organization_id: string | null }>(
-      'SELECT workos_organization_id FROM brands WHERE domain = ANY($1) ORDER BY domain',
-      [[SECONDARY_DOMAIN_A, SECONDARY_DOMAIN_B]],
-    );
-    expect(after.rows).toHaveLength(2);
-    expect(after.rows[0]?.workos_organization_id).toBe(PRIMARY_ORG);
-    expect(after.rows[1]?.workos_organization_id).toBe(PRIMARY_ORG);
-
-    // Summary reports the repoint so admins running merges can audit it.
-    const brandsEntry = summary.tables_merged.find((t) => t.table_name === 'brands');
-    expect(brandsEntry).toBeDefined();
-    expect(brandsEntry!.rows_moved).toBe(2);
-  });
-
-  it('does not touch brands owned by the primary or a third org', async () => {
     await seedBrand(PRIMARY_DOMAIN, PRIMARY_ORG);
     await seedBrand(THIRD_DOMAIN, THIRD_ORG);
-
-    await mergeOrganizations(PRIMARY_ORG, SECONDARY_ORG, MERGED_BY, workosStub);
-
-    const after = await pool.query<{ domain: string; workos_organization_id: string | null }>(
-      'SELECT domain, workos_organization_id FROM brands WHERE domain = ANY($1) ORDER BY domain',
-      [[PRIMARY_DOMAIN, THIRD_DOMAIN]],
-    );
-    expect(after.rows.find((r) => r.domain === PRIMARY_DOMAIN)?.workos_organization_id).toBe(PRIMARY_ORG);
-    expect(after.rows.find((r) => r.domain === THIRD_DOMAIN)?.workos_organization_id).toBe(THIRD_ORG);
-  });
-
-  it('does not touch brands with null workos_organization_id', async () => {
     await seedBrand(ORPHAN_DOMAIN, null);
 
-    await mergeOrganizations(PRIMARY_ORG, SECONDARY_ORG, MERGED_BY, workosStub);
+    await expectMergeRefused(pool);
 
-    const after = await pool.query<{ workos_organization_id: string | null }>(
-      'SELECT workos_organization_id FROM brands WHERE domain = $1',
-      [ORPHAN_DOMAIN],
+    const after = await pool.query<{
+      domain: string;
+      workos_organization_id: string | null;
+      prior_owner_org_id: string | null;
+      manifest_orphaned: boolean;
+    }>(
+      `SELECT domain, workos_organization_id, prior_owner_org_id, manifest_orphaned
+       FROM brands WHERE domain = ANY($1) ORDER BY domain`,
+      [[PRIMARY_DOMAIN, SECONDARY_DOMAIN_A, SECONDARY_DOMAIN_B, THIRD_DOMAIN, ORPHAN_DOMAIN]],
     );
-    expect(after.rows[0]?.workos_organization_id).toBeNull();
+    // Compared as a set so the assertion does not encode a collation order.
+    const asSet = (pairs: [string, string | null][]) =>
+      pairs.map(([domain, org]) => `${domain}|${org ?? 'NULL'}`).sort();
+    expect(
+      asSet(after.rows.map(row => [row.domain, row.workos_organization_id])),
+    ).toEqual(asSet([
+      [ORPHAN_DOMAIN, null],
+      [PRIMARY_DOMAIN, PRIMARY_ORG],
+      [SECONDARY_DOMAIN_A, SECONDARY_ORG],
+      [SECONDARY_DOMAIN_B, SECONDARY_ORG],
+      [THIRD_DOMAIN, THIRD_ORG],
+    ]));
+
+    // The secondary org row survives, so neither the FK ON DELETE SET NULL nor
+    // the orphan trigger fires — the hazard the repoint existed to avoid cannot
+    // arise while merge is contained.
+    for (const row of after.rows) {
+      expect(row.prior_owner_org_id).toBeNull();
+      expect(row.manifest_orphaned).toBe(false);
+    }
   });
 
   it('direct org delete (no merge) triggers FK SET NULL + orphan trigger', async () => {
@@ -159,32 +178,5 @@ describe('mergeOrganizations — brands.workos_organization_id repoint', () => {
     expect(after.rows[0]?.manifest_orphaned).toBe(true);
     expect(after.rows[0]?.is_public).toBe(false);
     expect(after.rows[0]?.domain_verified).toBe(false);
-  });
-
-  it('repoint runs before the secondary org is deleted, so the FK SET NULL never fires for these rows', async () => {
-    // Without the repoint, the FK ON DELETE SET NULL would fire when the
-    // secondary org row is deleted at the end of the merge, leaving these
-    // brands owner-less. The repoint inside the merge transaction takes
-    // precedence — assert the column lands at primary, not NULL.
-    await seedBrand(SECONDARY_DOMAIN_A, SECONDARY_ORG);
-
-    await mergeOrganizations(PRIMARY_ORG, SECONDARY_ORG, MERGED_BY, workosStub);
-
-    const after = await pool.query<{ workos_organization_id: string | null }>(
-      'SELECT workos_organization_id FROM brands WHERE domain = $1',
-      [SECONDARY_DOMAIN_A],
-    );
-    // Specifically NOT null — the FK fired for any column that DIDN'T get
-    // repointed, but we explicitly UPDATE'd this one before the DELETE.
-    expect(after.rows[0]?.workos_organization_id).not.toBeNull();
-    expect(after.rows[0]?.workos_organization_id).toBe(PRIMARY_ORG);
-
-    // Confirm secondary org row was actually deleted (proves the FK
-    // would have fired had the repoint not run first).
-    const secondaryCheck = await pool.query<{ count: string }>(
-      'SELECT COUNT(*)::text AS count FROM organizations WHERE workos_organization_id = $1',
-      [SECONDARY_ORG],
-    );
-    expect(secondaryCheck.rows[0]?.count).toBe('0');
   });
 });

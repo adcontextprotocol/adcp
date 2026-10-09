@@ -49,7 +49,7 @@ describe('WorkOS API key membership hydration', () => {
     mocks.createValidation.mockResolvedValue({
       apiKey: {
         id: 'key_123',
-        owner: { id: 'org_member' },
+        owner: { type: 'organization', id: 'org_member' },
         name: 'Member API key',
         permissions: [],
       },
@@ -85,7 +85,7 @@ describe('WorkOS API key membership hydration', () => {
     mocks.createValidation.mockResolvedValue({
       apiKey: {
         id: 'key_456',
-        owner: { id: 'org_free_tier' },
+        owner: { type: 'organization', id: 'org_free_tier' },
         name: 'Free tier API key',
         permissions: [],
       },

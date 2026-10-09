@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 export const FIXED_TRACE_COMPONENT_SMOKE_PRIVATE_AUTHORITY = Object.freeze({
   admissionVersion: 'addie-fixed-trace-component-smoke-admission-v2',
   asOf: '2026-09-06T00:00:00.000Z',
-  aggregateAdmissionFingerprint: '817ab57d30cc89dab4a81016f5c826857b8dc2a83e2f73aa0b7eb9c82f0b5d71',
+  aggregateAdmissionFingerprint: 'fa331c387fd038a7db836d46fe4061afbbeec4ae2fc49b84c679046369058308',
   pricingCohortDigest: 'sha256:e8c5736fb62ef4b5c7219401e2f765be7e5a8527472babf54b29ec27539f94e7',
   reservationMicrodollars: 2_819_484,
   providerCeilingMicrodollars: 5_000_000,

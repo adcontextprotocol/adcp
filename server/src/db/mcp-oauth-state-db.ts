@@ -9,8 +9,10 @@
 import { query, isDatabaseInitialized } from './client.js';
 import { encrypt, decrypt } from './encryption.js';
 import { createLogger } from '../logger.js';
+import type { Pool, PoolClient } from 'pg';
 
 const logger = createLogger('mcp-oauth-state-db');
+type Queryable = Pick<Pool | PoolClient, 'query'>;
 
 
 // ---------------------------------------------------------------------------
@@ -120,11 +122,12 @@ const AUTH_CODE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export async function setAuthCode(
   code: string,
   data: AuthCodeData,
+  db?: Queryable,
 ): Promise<void> {
   const expiresAt = new Date(Date.now() + AUTH_CODE_TTL_MS);
   const stored = encryptAuthCodeData(data);
   try {
-    await query(
+    await (db?.query.bind(db) ?? query)(
       `INSERT INTO mcp_oauth_auth_codes (code, data, expires_at)
        VALUES ($1, $2, $3)`,
       [code, JSON.stringify(stored), expiresAt],

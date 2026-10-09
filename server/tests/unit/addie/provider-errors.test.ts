@@ -3,8 +3,16 @@ import {
   classifyProviderFailure,
   getProviderRetryAfterSeconds,
 } from '../../../src/addie/model-providers/provider-errors.js';
+import { createModelProviderAdapterError } from '../../../src/addie/model-providers/model-provider.js';
 
 describe('provider error classification', () => {
+  it.each([[429, 'rate_limited'], [503, 'unavailable'], [401, 'authentication']] as const)(
+    'uses the private adapter status receipt for Google HTTP %s', (status, category) => {
+      const error = createModelProviderAdapterError('provider_transport', status);
+      expect(classifyProviderFailure('google', error)).toEqual({ status, category });
+      expect(JSON.stringify(error)).not.toContain(String(status));
+    },
+  );
   it('classifies Anthropic credit exhaustion without treating it as a retryable request error', () => {
     const error = Object.assign(new Error(
       'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing.',

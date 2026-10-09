@@ -505,3 +505,53 @@ export function formatComplianceDiagnostics(result: ComplianceResult): string {
     formatObservations(result),
   ].join('');
 }
+
+export interface ComplianceEvaluationReceiptOptions {
+  authoritative: boolean;
+  scope: string;
+  timeoutMs: number;
+}
+
+/** Render the receipt authority and coverage boundary before any findings. */
+export function formatComplianceEvaluationReceipt(
+  result: ComplianceResult,
+  options: ComplianceEvaluationReceiptOptions,
+): string {
+  const completeness = result.completeness ?? 'complete';
+  const authoritative = options.authoritative && completeness === 'complete';
+  const executed = Array.isArray(result.storyboards_executed)
+    ? result.storyboards_executed.length
+    : null;
+  const selected = result.bundle_results?.length
+    ? new Set(result.bundle_results.flatMap(bundle => bundle.storyboard_ids)).size
+    : null;
+  const summary = result.summary ?? ({} as ComplianceResult['summary']);
+  const stepCountsAvailable = [
+    summary.steps_passed,
+    summary.steps_failed,
+    summary.steps_skipped,
+    summary.steps_not_selected,
+  ].some(value => typeof value === 'number');
+
+  let output = '### Evaluation Receipt\n\n';
+  output += `**Evidence status:** ${authoritative ? 'AUTHORITATIVE' : completeness === 'complete' ? 'NON-AUTHORITATIVE' : 'INCOMPLETE / NON-AUTHORITATIVE'}\n`;
+  output += `**Completeness:** ${completeness}\n`;
+  output += `**Scope:** ${cleanText(options.scope, 240) || '[unknown scope]'}\n`;
+  output += `**Timeout budget:** ${(options.timeoutMs / 1000).toFixed(0)}s\n`;
+  if (executed !== null || selected !== null) {
+    output += `**Storyboard coverage:** ${executed ?? 'unknown'} executed`;
+    if (selected !== null) output += ` of ${selected} selected`;
+    output += '\n';
+  }
+  if (stepCountsAvailable) {
+    output += `**Step coverage:** ${summary.steps_passed ?? 0} passed, ` +
+      `${summary.steps_failed ?? 0} failed, ${summary.steps_skipped ?? 0} skipped, ` +
+      `${summary.steps_not_selected ?? 0} not selected\n`;
+  }
+  if (!authoritative) {
+    output += completeness === 'complete'
+      ? '**Required caveat:** This receipt is non-authoritative. Its selected scope completed, but it does not establish a definitive overall verdict or root cause. Preserve the observed findings and distinguish failures from hypotheses.\n'
+      : '**Required caveat:** This receipt is incomplete evidence. Preserve the findings below as observed partial results, but do not state a definitive overall verdict or root cause. Distinguish observed failures from hypotheses.\n';
+  }
+  return `${output}\n`;
+}

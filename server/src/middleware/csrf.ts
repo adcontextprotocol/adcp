@@ -38,9 +38,9 @@ const logger = createLogger("csrf");
  * Tenant segment is `[a-z][a-z0-9-]+` to match the live TENANT_IDS
  * (`signals`, `sales`, `governance`, `creative`, `creative-builder`, `brand`)
  * without requiring this file to import or stay in sync with that list.
- * Suffix variants enumerate the four production route shapes.
+ * Suffix variants enumerate the five production route shapes.
  */
-const PER_TENANT_MCP_PATH = /^\/[a-z][a-z0-9-]+\/mcp(-strict(-required|-forbidden)?)?$/;
+const PER_TENANT_MCP_PATH = /^\/[a-z][a-z0-9-]+\/mcp(-strict(-required(-legacy)?|-forbidden)?)?$/;
 
 const CSRF_COOKIE = "csrf-token";
 const CSRF_HEADER = "x-csrf-token";
@@ -59,14 +59,23 @@ const EXEMPT_PREFIXES = [
   "/api/addie/v1/",      // LLM-compatible chat completions
 ];
 
-/** Exact paths exempt from CSRF (not prefix-matched to avoid over-matching). */
-const EXEMPT_EXACT = [
+/** MCP paths exempt from CSRF (Bearer/RFC 9421 auth). */
+const EXEMPT_MCP_EXACT = [
   "/mcp",                // MCP Streamable HTTP (Bearer-token auth)
   // Training agent strict-mode MCP endpoints. Server-to-server, authenticated
   // by RFC 9421 signature or bearer token; CSRF doesn't apply.
   "/mcp-strict",
   "/mcp-strict-required",
   "/mcp-strict-forbidden",
+  // Training-agent root: the sandbox governance agent's registered URL
+  // (https://test-agent.adcontextprotocol.org) serves MCP so sellers can call
+  // check_governance there. Bearer-authenticated; no cookie route handles
+  // POST / on any host.
+  "/",
+];
+
+/** Other exact paths exempt from CSRF (not prefix-matched to avoid over-matching). */
+const EXEMPT_EXACT = [
   "/stripe-webhook",     // Stripe webhook (raw body route)
   "/auth/bridge-callback", // Cross-domain session bridge (origin-validated)
   "/auth/native/start",    // Native public client; protected by state + PKCE
@@ -77,9 +86,18 @@ const EXEMPT_EXACT = [
 ];
 
 function isExemptPath(path: string): boolean {
-  return EXEMPT_EXACT.includes(path) ||
+  // Express routes accept a single trailing slash by default. Normalize that
+  // equivalent spelling before applying only MCP-route exemptions;
+  // otherwise `/mcp/` is intercepted here before its bearer authenticator can
+  // return the required challenge. Remove only one slash so near-misses such
+  // as `/mcp//` and appended paths remain protected.
+  const mcpRoutePath = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+  return EXEMPT_MCP_EXACT.includes(mcpRoutePath) ||
+    EXEMPT_EXACT.includes(path) ||
+    // Prefix exemptions deliberately use the raw path: they already include
+    // a slash boundary and do not need Express route-equivalence handling.
     EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix)) ||
-    PER_TENANT_MCP_PATH.test(path);
+    PER_TENANT_MCP_PATH.test(mcpRoutePath);
 }
 
 /**

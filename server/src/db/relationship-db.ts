@@ -1,8 +1,12 @@
-import { query, getClient } from './client.js';
+import { query, getClient, getClientWithDeadline } from './client.js';
 import { createLogger } from '../logger.js';
 import * as personEvents from './person-events-db.js';
 
 const logger = createLogger('relationship-db');
+const RELATIONSHIP_POOL_TIMEOUT_MS = 2_000;
+const RELATIONSHIP_LOCK_TIMEOUT_MS = 1_500;
+const RELATIONSHIP_STATEMENT_TIMEOUT_MS = 4_000;
+const RELATIONSHIP_IDLE_TRANSACTION_TIMEOUT_MS = 5_000;
 
 export type RelationshipStage = 'prospect' | 'welcomed' | 'exploring' | 'participating' | 'contributing' | 'leading';
 export type SentimentTrend = 'positive' | 'neutral' | 'negative' | 'disengaging';
@@ -78,9 +82,20 @@ export async function resolvePersonId(identifiers: {
   prospect_org_id?: string;
   display_name?: string;
 }): Promise<string> {
-  const client = await getClient();
+  const client = await getClientWithDeadline(RELATIONSHIP_POOL_TIMEOUT_MS);
   try {
     await client.query('BEGIN');
+    await client.query(
+      `SELECT
+         set_config('lock_timeout', $1, true),
+         set_config('statement_timeout', $2, true),
+         set_config('idle_in_transaction_session_timeout', $3, true)`,
+      [
+        `${RELATIONSHIP_LOCK_TIMEOUT_MS}ms`,
+        `${RELATIONSHIP_STATEMENT_TIMEOUT_MS}ms`,
+        `${RELATIONSHIP_IDLE_TRANSACTION_TIMEOUT_MS}ms`,
+      ],
+    );
 
     const conditions: string[] = [];
     const params: unknown[] = [];

@@ -85,7 +85,7 @@ describe("organization authorization runtime admin setting", () => {
     getShadowSettingMock.mockResolvedValue({ enabled: false, expires_at: null });
     setShadowSettingMock.mockResolvedValue({
       enabled: true,
-      expires_at: '2026-09-02T10:00:00.000Z',
+      expires_at: null,
     });
   });
 
@@ -108,7 +108,7 @@ describe("organization authorization runtime admin setting", () => {
     );
     expect(putResponse.body.verification_profile_shadow_rollout).toEqual({
       enabled: true,
-      expires_at: '2026-09-02T10:00:00.000Z',
+      expires_at: null,
     });
   });
 

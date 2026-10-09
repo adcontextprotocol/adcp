@@ -10,7 +10,7 @@ const helper = readFileSync(join(process.cwd(), 'server/public/chat-model-select
 let dom: JSDOM | undefined;
 afterEach(() => { dom?.window.close(); });
 
-function openChat(authenticated = true, geminiAvailable = true, storage: Record<string, string> = {}) {
+function openChat(authenticated = true, geminiAvailable = true, storage: Record<string, string> = {}, selectionEnabled = authenticated) {
   const requests: Array<Record<string, any>> = [];
   const infos: Array<Record<string, unknown>> = [];
   const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
@@ -25,7 +25,7 @@ function openChat(authenticated = true, geminiAvailable = true, storage: Record<
       Object.entries(storage).forEach(([key, value]) => window.localStorage.setItem(key, value));
       window.fetch = (async (input: string, options?: RequestInit) => {
         if (input === '/api/me') return json({ user: { id: 'member' } }, authenticated ? 200 : 401);
-        if (input === '/api/addie/chat/status') return json({ ready: true, model_selection: { enabled: authenticated, gemini_available: geminiAvailable } });
+        if (input === '/api/addie/chat/status') return json({ ready: true, model_selection: { enabled: selectionEnabled, gemini_available: geminiAvailable } });
         if (input.startsWith('/api/me/addie-home')) return json({ html: '', css: '' });
         if (input === '/api/addie/chat/threads') return json({ conversations: [] });
         if (input === '/api/si/sessions/user') return json({ sessions: [] });
@@ -51,6 +51,20 @@ function openChat(authenticated = true, geminiAvailable = true, storage: Record<
 }
 
 describe('Web chat model selector', () => {
+  it('hides the global-policy selector and ignores a stored Sonnet preference when sending', async () => {
+    const { window, requests } = openChat(true, true, {
+      addie_current_tab: 'test-thread',
+      addie_active_tabs: JSON.stringify([{ id: 'test-thread', title: 'Test chat', channel: 'web', modelPreference: 'sonnet' }]),
+    }, false);
+    const doc = window.document;
+    await vi.waitFor(() => expect(doc.querySelector('.message-model')?.textContent).toContain('Sonnet'));
+    expect(doc.getElementById('modelSelector')?.hidden).toBe(true);
+    const input = doc.getElementById('chatInput') as HTMLTextAreaElement;
+    input.value = 'Continue'; input.dispatchEvent(new window.Event('input'));
+    doc.getElementById('sendButton')!.click();
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0].model_preference).toBe('default');
+  });
   it('switches models for the next message in one chat and resets new chats to Default', async () => {
     const { window, requests } = openChat();
     const doc = window.document;

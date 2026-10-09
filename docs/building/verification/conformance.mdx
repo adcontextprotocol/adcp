@@ -187,6 +187,26 @@ Agents that declare `request_signing.supported: true` MUST implement the full RF
 
 Agents that declare `oauth.supported: true` MUST serve a consistent public OAuth discovery graph. The baseline grade is passive: it does not register a client, issue credentials, or perform an authorization flow.
 
+### Proposed AdCP 4.0 async webhook baseline
+
+**Status: proposal (`async-webhooks/v1`), not part of any released 3.x suite or current AgenticAdvertising.org Verified badge.** This is a versioned conformance target, not a third grading profile alongside Legacy and Strict Spec. This proposal adds no failure for 3.x agents that poll where their version permits it. The requirement becomes operative only after its event catalog, registration surfaces, executable storyboards, migration notice, and a hosted HTTPS test receiver ship in a new versioned compliance bundle.
+
+The proposed baseline applies to every declared protocol and specialism through the same rules:
+
+| Situation | Proposed requirement | Repair read |
+|---|---|---|
+| An operation can return `submitted`, `working`, or `input-required` | Accept a buyer-supplied `push_notification_config`; deliver at least one signed terminal `completed`, `failed`, or `canceled` event with the originating `task_id`, caller's `operation_id`, and stable delivery `idempotency_key`. Intermediate progress events may remain optional. | [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) or the operation's documented task-status read |
+| An account, buy, report, creative, right, governance resource, or signal can change after the initial response | Accept a durable subscriber on the registration surface defined for that event family; deliver signed change or invalidation events for the versioned required event matrix. An event is an invalidation signal unless its schema explicitly defines a complete replacement. | The documented authoritative read for that resource |
+| An operation returns its terminal result inline and no later state change is subscribed | No task-completion webhook is required or expected. | The inline result |
+
+Buyers may omit the callback registration and use polling. Agents seeking the proposed profile must accept a valid callback registration when offered for an applicable operation; a successful `submitted` response cannot silently discard it. A 3.x polling-only seller remains eligible under its existing version's rules. A seller that emits webhooks today still follows the current `webhook_emission` signing and delivery rules.
+
+The required delivery profile is RFC 9421 `adcp/webhook-signing/v1`, advertised with `webhook_signing.supported: true` and backed by a published JWKS key. The deprecated HMAC fallback is not an alternative pass path for this profile. Delivery must preserve the caller's `context`, reuse the event's `idempotency_key` on retries, and support buyer deduplication and pull reconciliation. The exact retry horizon and each protocol's required event names belong in the versioned event matrix before activation.
+
+The runner must register a real, run-scoped HTTPS receiver and verify receipt, correlation, signature, and terminal result against polling. It must grade missing receiver infrastructure as **platform-incomplete**, not as a seller failure or a webhook pass. A storyboard that exercises only polling, including the current `sales-guaranteed` approval path, cannot establish conformance to this proposed baseline.
+
+Before activation, publish a versioned event matrix with one row per required event family. Each row must name the emitting protocol and operation, registration field or task, event schema, triggering state change, terminal or retry expectation, and authoritative repair read. At minimum, resolve the existing account status, media-buy lifecycle, reporting revision, creative approval, rights revocation, governance-list change, and product/signal catalog event families. Add an executable negative case for a seller that accepts a callback but never delivers; the suite must fail that seller under `async-webhooks/v1` without changing any 3.x result.
+
 ## Protocol conformance
 
 A `supported_protocols` claim obligates the protocol's baseline storyboard.

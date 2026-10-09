@@ -1,15 +1,4 @@
-/**
- * Admin "create + bind sign-in email" integration test (Phase 2b).
- *
- * Exercises POST /api/admin/users/:userId/linked-emails:
- *   - Creates a fresh WorkOS user for the new email (mocked).
- *   - Inserts into local users (trigger fires, creating a singleton identity).
- *   - mergeUsers re-points the new user's binding to the existing user's
- *     identity as is_primary = FALSE; drops the orphan singleton.
- *
- * After this, the existing user has two bound WorkOS users; the auth
- * middleware will id-swap a non-primary login to the canonical id.
- */
+/** Creation-and-bind is contained before any WorkOS mutation or local insert. */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
@@ -22,7 +11,7 @@ vi.hoisted(() => {
   process.env.WORKOS_COOKIE_PASSWORD ??= 'test-cookie-password-at-least-32-chars-long';
 });
 import request from 'supertest';
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
@@ -80,12 +69,13 @@ vi.mock('../../src/auth/workos-client.js', () => {
   };
 });
 
-import { HTTPServer } from '../../src/http.js';
+import express from 'express';
+import { createAdminUsersRouter } from '../../src/routes/admin/users.js';
+import { stopAuthTimers } from '../../src/middleware/auth.js';
 
 const EXISTING_USER_ID = 'user_test_bind_existing';
 
 describe('POST /api/admin/users/:userId/linked-emails (admin bind)', () => {
-  let server: HTTPServer;
   let app: any;
   let pool: Pool;
 
@@ -94,14 +84,14 @@ describe('POST /api/admin/users/:userId/linked-emails (admin bind)', () => {
       connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
     });
     await runMigrations();
-    server = new HTTPServer();
-    await server.start(0);
-    app = server.app;
+    app = express();
+    app.use(express.json());
+    app.use('/api/admin/users', createAdminUsersRouter());
   }, 60000);
 
   afterAll(async () => {
     await cleanup();
-    await server?.stop();
+    stopAuthTimers();
     await closeDatabase();
   });
 
@@ -134,114 +124,59 @@ describe('POST /api/admin/users/:userId/linked-emails (admin bind)', () => {
     ]);
   }
 
-  it('binds a new sign-in email to the existing user\'s identity', async () => {
-    const response = await request(app)
-      .post(`/api/admin/users/${EXISTING_USER_ID}/linked-emails`)
-      .send({ email: 'newalias@test.example' })
-      .expect(201);
-
-    expect(response.body).toMatchObject({
-      bound: true,
-      existing_user_id: EXISTING_USER_ID,
-      new_email: 'newalias@test.example',
-      new_workos_user_id: MOCK_NEW_WORKOS_USER_ID,
-    });
-
-    // Both WorkOS users now bound to one identity. Existing is primary.
-    const bindings = await pool.query<{ workos_user_id: string; identity_id: string; is_primary: boolean }>(
-      `SELECT workos_user_id, identity_id, is_primary
-         FROM identity_workos_users
-        WHERE workos_user_id IN ($1, $2)
-        ORDER BY is_primary DESC`,
-      [EXISTING_USER_ID, MOCK_NEW_WORKOS_USER_ID]
+  it.each([
+    { email: 'newalias@test.example' },
+    { email: 'newalias@test.example', consolidate: true },
+    { email: 'existing@test.example' },
+    { email: 'not-an-email' },
+    {},
+  ])('refuses create-and-bind before provider or local writes: %j', async (body) => {
+    const before = await pool.query(
+      `SELECT to_jsonb(u) AS state FROM users u WHERE workos_user_id = $1`,
+      [EXISTING_USER_ID],
+    );
+    const bindingsBefore = await pool.query(
+      `SELECT * FROM identity_workos_users WHERE workos_user_id = $1`,
+      [EXISTING_USER_ID],
     );
 
-    expect(bindings.rows).toHaveLength(2);
-    expect(bindings.rows[0].workos_user_id).toBe(EXISTING_USER_ID);
-    expect(bindings.rows[0].is_primary).toBe(true);
-    expect(bindings.rows[1].workos_user_id).toBe(MOCK_NEW_WORKOS_USER_ID);
-    expect(bindings.rows[1].is_primary).toBe(false);
-    expect(bindings.rows[0].identity_id).toBe(bindings.rows[1].identity_id);
-  });
-
-  it('400s on invalid email', async () => {
     const response = await request(app)
       .post(`/api/admin/users/${EXISTING_USER_ID}/linked-emails`)
-      .send({ email: 'not-an-email' })
-      .expect(400);
-    expect(response.body.error).toMatch(/invalid email/i);
-  });
-
-  it('409s when the new email matches the user\'s current primary email', async () => {
-    const response = await request(app)
-      .post(`/api/admin/users/${EXISTING_USER_ID}/linked-emails`)
-      .send({ email: 'existing@test.example' })
-      .expect(409);
-    expect(response.body.error).toMatch(/already.*primary/i);
-  });
-
-  it('409s when the new email already has an existing AAO account', async () => {
-    await pool.query(
-      `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
-                          workos_created_at, workos_updated_at, created_at, updated_at)
-       VALUES ('user_test_bind_other', 'taken@test.example', 'Other', 'User', true, NOW(), NOW(), NOW(), NOW())`
-    );
-    try {
-      const response = await request(app)
-        .post(`/api/admin/users/${EXISTING_USER_ID}/linked-emails`)
-        .send({ email: 'taken@test.example' })
-        .expect(409);
-      expect(response.body.error).toMatch(/already.*account/i);
-    } finally {
-      await pool.query(`DELETE FROM users WHERE workos_user_id = 'user_test_bind_other'`);
-    }
-  });
-
-  it('404s when the existing user does not exist', async () => {
-    const response = await request(app)
-      .post(`/api/admin/users/user_does_not_exist/linked-emails`)
-      .send({ email: 'fresh@test.example' })
-      .expect(404);
-    expect(response.body.error).toMatch(/not found/i);
-  });
-
-  it('translates WorkOS 422 (email already in use upstream) to a 409', async () => {
-    mockCreateUser.mockImplementationOnce(async () => {
-      const err: any = new Error('Email already in use');
-      err.status = 422;
-      throw err;
-    });
-
-    const response = await request(app)
-      .post(`/api/admin/users/${EXISTING_USER_ID}/linked-emails`)
-      .send({ email: 'taken-upstream@test.example' })
+      .send(body)
       .expect(409);
 
-    // The error wording surfaces the WorkOS status + message and points
-    // admins at the "Link existing WorkOS user" tool.
-    expect(response.body.message).toMatch(/already in use upstream|Link existing WorkOS user/i);
-    // No local users row should have been created.
-    const localCheck = await pool.query(
-      `SELECT 1 FROM users WHERE LOWER(email) = 'taken-upstream@test.example'`
-    );
-    expect(localCheck.rows).toEqual([]);
+    expect(response.body).toEqual({
+      error: 'identity_mutation_disabled',
+      message: 'Identity consolidation is disabled until authority and provenance can be preserved.',
+    });
+    expect(mockCreateUser).not.toHaveBeenCalled();
+    expect(mockDeleteUser).not.toHaveBeenCalled();
+    expect((await pool.query(
+      `SELECT to_jsonb(u) AS state FROM users u WHERE workos_user_id = $1`,
+      [EXISTING_USER_ID],
+    )).rows).toEqual(before.rows);
+    expect((await pool.query(
+      `SELECT * FROM identity_workos_users WHERE workos_user_id = $1`,
+      [EXISTING_USER_ID],
+    )).rows).toEqual(bindingsBefore.rows);
+    expect((await pool.query(
+      `SELECT 1 FROM users WHERE workos_user_id = $1`,
+      [MOCK_NEW_WORKOS_USER_ID],
+    )).rows).toEqual([]);
   });
 
-  it('rolls back the WorkOS user when local bind fails after createUser succeeded', async () => {
-    // Pre-create the new WorkOS user id locally so the post-createUser INSERT
-    // would succeed, but force mergeUsers to fail by deleting the trigger-
-    // created identity binding for the existing user (Phase 1 trigger
-    // guarantees normally — we break the invariant to simulate a partial
-    // failure path).
+  it('refuses when the existing identity has no primary binding', async () => {
     await pool.query(`DELETE FROM identity_workos_users WHERE workos_user_id = $1`, [EXISTING_USER_ID]);
-
-    const response = await request(app)
+    await request(app)
       .post(`/api/admin/users/${EXISTING_USER_ID}/linked-emails`)
-      .send({ email: 'rollback@test.example' })
-      .expect(500);
-
-    expect(response.body.error).toMatch(/failed to bind/i);
-    expect(response.body.message).toMatch(/rolled back|retry/i);
-    expect(mockDeleteUser).toHaveBeenCalledWith(MOCK_NEW_WORKOS_USER_ID);
+      .send({ email: 'missing-primary@test.example', consolidate: true })
+      .expect(409)
+      .expect(({ body }) => expect(body.error).toBe('identity_mutation_disabled'));
+    expect(mockCreateUser).not.toHaveBeenCalled();
+    expect(mockDeleteUser).not.toHaveBeenCalled();
+    expect((await pool.query(
+      `SELECT 1 FROM identity_workos_users WHERE workos_user_id = $1`,
+      [EXISTING_USER_ID],
+    )).rows).toEqual([]);
   });
 });

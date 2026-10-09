@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/requote-required.json",
+  "title": "Requote Required Details",
+  "description": "Recommended details shape for REQUOTE_REQUIRED errors. Identifies the accepted-envelope field and change term involved and, when safe to disclose, the coarse seller-policy dimension that declined the requested shape. Producer-authored extension values remain buyer-visible and MUST NOT contain vendor identifiers, internal object names, internal IDs, stack traces, or other producer-private implementation details.",
+  "type": "object",
+  "properties": {
+    "envelope_field": {
+      "description": "Buyer-visible request field path or paths that breached the accepted commercial envelope. Values MUST NOT name seller-internal objects or identifiers. New emitters SHOULD use the array form even for one path; the scalar form remains valid for compatibility with existing 3.x sellers.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      ]
+    },
+    "change_term_id": {
+      "$ref": "/schemas/core/media-buy-change-term-id.json",
+      "description": "Accepted proposal change term whose typed constraint the request exceeded."
+    },
+    "decline_reason": {
+      "$ref": "/schemas/enums/seller-policy-decline-reason.json",
+      "description": "Coarse seller-policy dimension that declined the requested shape. Sellers SHOULD populate this when they have a structured reason and disclosure does not expose private thresholds or enforcement controls. When present, it MUST be consistent with the enclosing error.recovery classification."
+    }
+  },
+  "additionalProperties": true
+}

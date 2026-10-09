@@ -1,17 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { LIBRARY_VERSION } from '@adcp/sdk';
 
 const mocks = vi.hoisted(() => ({
   getAgentsDueForCheck: vi.fn(),
   getLastKnownSupportedVersions: vi.fn(),
+  getLatestComplianceAttempt: vi.fn(),
   countComplianceRuns: vi.fn(),
   deferComplianceCheckAfterInconclusiveTarget: vi.fn(),
+  deferComplianceCheckAfterContention: vi.fn(),
   resolveOwnerAuth: vi.fn(),
   recordComplianceRun: vi.fn(),
   getBadgesForAgent: vi.fn(),
   revokeBadge: vi.fn(),
   getRegistryMetadata: vi.fn(),
   query: vi.fn(),
-  withDatabaseDeadline: vi.fn(),
   comply: vi.fn(),
   complianceResultToDbInput: vi.fn(),
   classifyCapabilityResolutionError: vi.fn(),
@@ -23,11 +25,10 @@ const mocks = vi.hoisted(() => ({
   adaptAuthForSdk: vi.fn(),
   revokeUnsupportedPublicBadges: vi.fn(),
   runBadgeFanOut: vi.fn(),
-  getVerificationProfileShadowRollout: vi.fn(),
   recordVerificationProfileShadowAssessment: vi.fn(),
   pruneVerificationProfileShadowAssessments: vi.fn(),
   deriveVerificationProfileShadowAssessment: vi.fn(),
-  acquireAgentExecutionFence: vi.fn(),
+  acquireHeartbeatExecutionFence: vi.fn(),
   releaseExecutionFence: vi.fn(),
   loggerDebug: vi.fn(),
   loggerInfo: vi.fn(),
@@ -50,8 +51,10 @@ vi.mock('../../src/db/compliance-db.js', () => ({
   ComplianceDatabase: class {
     getAgentsDueForCheck = mocks.getAgentsDueForCheck;
     getLastKnownSupportedVersions = mocks.getLastKnownSupportedVersions;
+    getLatestComplianceAttempt = mocks.getLatestComplianceAttempt;
     countComplianceRuns = mocks.countComplianceRuns;
     deferComplianceCheckAfterInconclusiveTarget = mocks.deferComplianceCheckAfterInconclusiveTarget;
+    deferComplianceCheckAfterContention = mocks.deferComplianceCheckAfterContention;
     resolveOwnerAuth = mocks.resolveOwnerAuth;
     recordComplianceRun = mocks.recordComplianceRun;
     getBadgesForAgent = mocks.getBadgesForAgent;
@@ -62,12 +65,12 @@ vi.mock('../../src/db/compliance-db.js', () => ({
 
 vi.mock('../../src/db/client.js', () => ({
   query: mocks.query,
-  withDatabaseDeadline: mocks.withDatabaseDeadline,
 }));
 
 vi.mock('../../src/db/compliance-refresh-requests-db.js', () => ({
+  COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT: 2,
   ComplianceRefreshRequestsDatabase: class {
-    acquireAgentExecutionFence = mocks.acquireAgentExecutionFence;
+    acquireHeartbeatExecutionFence = mocks.acquireHeartbeatExecutionFence;
   },
 }));
 
@@ -90,6 +93,8 @@ vi.mock('../../src/addie/services/compliance-testing.js', () => ({
 vi.mock('../../src/services/hosted-compliance-version.js', () => ({
   hostedComplianceTarget: mocks.hostedComplianceTarget,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS: 600_000,
+  HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS: 1_800_000,
+  HOSTED_COMPLIANCE_OVERRUN_MS: 300_000,
 }));
 
 vi.mock('../../src/db/outbound-log-db.js', () => ({
@@ -103,10 +108,6 @@ vi.mock('../../src/services/sdk-auth-adapter.js', () => ({
 vi.mock('../../src/services/badge-issuance.js', () => ({
   revokeUnsupportedPublicBadges: mocks.revokeUnsupportedPublicBadges,
   runBadgeFanOut: mocks.runBadgeFanOut,
-}));
-
-vi.mock('../../src/db/system-settings-db.js', () => ({
-  getVerificationProfileShadowRollout: mocks.getVerificationProfileShadowRollout,
 }));
 
 vi.mock('../../src/db/verification-profile-shadow-db.js', () => ({
@@ -137,10 +138,14 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.getAgentsDueForCheck.mockResolvedValue([
       { agent_url: 'https://agent.example.com/mcp', lifecycle_stage: 'testing', last_checked_at: null },
     ]);
-    mocks.query.mockResolvedValue({ rows: [], rowCount: 0 });
-    mocks.withDatabaseDeadline.mockImplementation(async (_deadline, operation) => operation());
+    mocks.query.mockImplementation(async (sql: string, params?: unknown[]) => ({
+      rows: sql.includes('INSERT INTO agent_registry_metadata')
+        ? ((params?.[0] as string[]) ?? []).map(agent_url => ({ agent_url })) : [],
+      rowCount: 0,
+    }));
     mocks.resolveOwnerAuth.mockResolvedValue(undefined);
     mocks.getLastKnownSupportedVersions.mockResolvedValue(['3.1']);
+    mocks.getLatestComplianceAttempt.mockResolvedValue(null);
     mocks.countComplianceRuns.mockResolvedValue(4);
     mocks.adaptAuthForSdk.mockResolvedValue(undefined);
     mocks.selectComplianceTargetForAgentSelection.mockResolvedValue({ target, confirmed: false, source: 'stored' });
@@ -158,7 +163,6 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.recordComplianceRun.mockResolvedValue({});
     mocks.getBadgesForAgent.mockResolvedValue([]);
     mocks.getRegistryMetadata.mockResolvedValue(null);
-    mocks.getVerificationProfileShadowRollout.mockResolvedValue({ enabled: false });
     mocks.recordVerificationProfileShadowAssessment.mockResolvedValue(true);
     mocks.pruneVerificationProfileShadowAssessments.mockResolvedValue(0);
     mocks.revokeUnsupportedPublicBadges.mockResolvedValue({ issued: [], revoked: [], degraded: [], unchanged: [] });
@@ -170,10 +174,22 @@ describe('runComplianceHeartbeatJob', () => {
       controller_gap_phase_count: 0,
     });
     mocks.releaseExecutionFence.mockResolvedValue(undefined);
-    mocks.acquireAgentExecutionFence.mockResolvedValue({
+    mocks.acquireHeartbeatExecutionFence.mockResolvedValue({
       isValid: () => true,
       release: mocks.releaseExecutionFence,
     });
+  });
+
+  it('stops before selecting agents when the scheduler has aborted the batch', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('heartbeat execution timed out'));
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    await expect(runComplianceHeartbeatJob({ limit: 1 }, controller.signal))
+      .rejects.toThrow('heartbeat execution timed out');
+
+    expect(mocks.getAgentsDueForCheck).not.toHaveBeenCalled();
+    expect(mocks.acquireHeartbeatExecutionFence).not.toHaveBeenCalled();
   });
 
   it('runs retention cleanup even when no agents are due', async () => {
@@ -195,9 +211,115 @@ describe('runComplianceHeartbeatJob', () => {
         queue: { eligibleBacklog: 0, selectedCount: 0, batchLimit: 1 },
         inputs: expect.objectContaining({ policyVersion: 'verification-profiles-v3' }),
         outcomes: { checked: 0, passed: 0, failed: 0, skipped: 0 },
-        shadow: expect.objectContaining({ candidates: 0, errors: 0, setting_errors: 0 }),
+        shadow: expect.objectContaining({ candidates: 0, attempted: 0, errors: 0 }),
       }),
       'Compliance heartbeat shadow flush completed after public processing',
+    );
+  });
+
+  it('returns bounded operational evidence for the scheduled worker', async () => {
+    mocks.getAgentsDueForCheck.mockResolvedValueOnce([{
+      agent_url: 'https://agent.example.com/mcp',
+      lifecycle_stage: 'testing',
+      last_checked_at: null,
+      eligible_backlog: 35,
+    }]);
+    mocks.complianceResultToDbInput.mockReturnValueOnce({
+      agent_url: 'https://agent.example.com/mcp',
+      lifecycle_stage: 'testing',
+      overall_status: 'failing',
+      headline: 'Incomplete run',
+      tracks_json: [],
+      storyboard_statuses: [],
+      dry_run: false,
+      completeness: 'timed_out',
+      is_authoritative: false,
+    });
+    mocks.comply.mockResolvedValueOnce({
+      completeness: 'timed_out',
+      agent_profile: { adcp_supported_versions: ['3.1'] },
+      summary: { headline: 'Incomplete run' },
+    });
+    mocks.recordComplianceRun.mockResolvedValueOnce({
+      run: { id: 'audit-run' },
+      statusTransition: null,
+      storyboardStatuses: [],
+    });
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1, includeOperationalDiagnostics: true });
+
+    expect(result).toMatchObject({
+      checked: 0,
+      skipped: 1,
+      diagnostics: {
+        eligibleBacklog: 35,
+        selectedAgents: ['https://agent.example.com/mcp'],
+        runsRecorded: 1,
+        requestedComplianceTarget: '3.1',
+        complianceBundleVersion: '3.1.0',
+        skipReasons: expect.objectContaining({ audit_only: 1 }),
+      },
+    });
+  });
+
+  it('fills the global suite slots and starts the next agent as soon as one finishes', async () => {
+    mocks.getAgentsDueForCheck.mockResolvedValueOnce([
+      { agent_url: 'https://one.example/mcp', lifecycle_stage: 'testing', last_checked_at: null },
+      { agent_url: 'https://two.example/mcp', lifecycle_stage: 'testing', last_checked_at: null },
+      { agent_url: 'https://three.example/mcp', lifecycle_stage: 'testing', last_checked_at: null },
+      { agent_url: 'https://four.example/mcp', lifecycle_stage: 'testing', last_checked_at: null },
+    ]);
+    const started = new Set<string>();
+    const releases = new Map<string, () => void>();
+    mocks.comply.mockImplementation(async (agentUrl: string) => {
+      started.add(agentUrl);
+      await new Promise<void>(resolve => { releases.set(agentUrl, resolve); });
+      return { completeness: 'timed_out', agent_profile: { adcp_supported_versions: ['3.1'] }, summary: { headline: 'Incomplete run' } };
+    });
+    mocks.complianceResultToDbInput.mockImplementation((_result, agentUrl: string) => ({
+      agent_url: agentUrl, lifecycle_stage: 'testing', overall_status: 'failing', tracks_json: [],
+      storyboard_statuses: [], dry_run: false, completeness: 'timed_out', is_authoritative: false,
+    }));
+    mocks.recordComplianceRun.mockResolvedValue({ run: { id: 'audit-run' }, statusTransition: null, storyboardStatuses: [] });
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const running = runComplianceHeartbeatJob({ limit: 4 });
+    try {
+      await vi.waitFor(() => expect(started.size).toBe(2));
+      expect(started.has('https://three.example/mcp')).toBe(false);
+      expect(started.has('https://four.example/mcp')).toBe(false);
+      releases.get('https://one.example/mcp')?.();
+      await vi.waitFor(() => expect(started.size).toBe(3));
+      expect(started.has('https://four.example/mcp')).toBe(false);
+      releases.get('https://two.example/mcp')?.();
+      await vi.waitFor(() => expect(started.size).toBe(4));
+    } finally {
+      for (const release of releases.values()) release();
+    }
+    await expect(running).resolves.toEqual({ checked: 0, passed: 0, failed: 0, skipped: 4 });
+    expect(mocks.acquireHeartbeatExecutionFence).toHaveBeenCalledTimes(4);
+  });
+
+  it('attributes recorded heartbeat evidence to the saved credential organization', async () => {
+    mocks.resolveOwnerAuth.mockImplementationOnce(async (_url, _checkpoint, onResolvedOrg) => {
+      onResolvedOrg('org_credential_owner');
+      return { type: 'bearer', token: 'fixture-token' };
+    });
+    mocks.complianceResultToDbInput.mockReturnValueOnce({
+      agent_url: 'https://agent.example.com/mcp', lifecycle_stage: 'testing', overall_status: 'failing',
+      tracks_json: [], storyboard_statuses: [], dry_run: false, completeness: 'timed_out', is_authoritative: false,
+    });
+    mocks.comply.mockResolvedValueOnce({
+      completeness: 'timed_out', agent_profile: { adcp_supported_versions: ['3.1'] }, summary: { headline: 'Incomplete run' },
+    });
+    mocks.recordComplianceRun.mockResolvedValueOnce({ run: { id: 'audit-run' }, statusTransition: null, storyboardStatuses: [] });
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(mocks.recordComplianceRun).toHaveBeenCalledWith(
+      expect.objectContaining({ triggered_org_id: 'org_credential_owner' }),
     );
   });
 
@@ -234,7 +356,8 @@ describe('runComplianceHeartbeatJob', () => {
     expect(mocks.revokeUnsupportedPublicBadges).not.toHaveBeenCalled();
     expect(notifyComplianceChange).not.toHaveBeenCalled();
     expect(notifyVerificationChange).not.toHaveBeenCalled();
-    expect(mocks.deferComplianceCheckAfterInconclusiveTarget).toHaveBeenCalled();
+    expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
     expect(mocks.query.mock.calls.every(([sql]) => !String(sql).includes('last_checked_at'))).toBe(true);
     expect(mocks.query.mock.calls[0][0]).toContain('next_compliance_check_at');
   });
@@ -324,8 +447,8 @@ describe('runComplianceHeartbeatJob', () => {
       ['3.1'],
     );
     expect(mocks.query).toHaveBeenCalledWith(
-      expect.stringContaining('make_interval'),
-      [['https://agent.example.com/mcp'], 960],
+      expect.stringContaining('RETURNING agent_url'),
+      [['https://agent.example.com/mcp'], expect.any(Date)],
     );
     expect(mocks.comply).toHaveBeenCalledWith(
       'https://agent.example.com/mcp',
@@ -344,21 +467,49 @@ describe('runComplianceHeartbeatJob', () => {
     expect(mocks.releaseExecutionFence).toHaveBeenCalledOnce();
   });
 
-  it('defers without executing when an owner refresh holds the agent fence', async () => {
-    mocks.acquireAgentExecutionFence.mockResolvedValueOnce(null);
+  it('uses the extended budget after a timed-out attempt and retains it for slow complete suites', async () => {
+    const runOnce = async () => {
+      mocks.comply.mockResolvedValueOnce({
+        overall_status: 'passing',
+        summary: { headline: 'All good' },
+        agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
+      });
+      mocks.recordComplianceRun.mockResolvedValueOnce({
+        run: { id: 'extended-run' }, statusTransition: null, storyboardStatuses: [],
+      });
+      const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+      await runComplianceHeartbeatJob({ limit: 1 });
+      expect(mocks.comply).toHaveBeenCalledWith(
+        'https://agent.example.com/mcp',
+        expect.objectContaining({ timeout_ms: 1_800_000 }),
+        target,
+      );
+      mocks.comply.mockClear();
+    };
+
+    mocks.getLatestComplianceAttempt.mockResolvedValueOnce({ completeness: 'timed_out' });
+    await runOnce();
+    mocks.getLatestComplianceAttempt.mockResolvedValueOnce({
+      completeness: 'complete', total_duration_ms: 1_200_000,
+    });
+    await runOnce();
+  });
+
+  it('retries soon without executing when a suite slot or agent fence is busy', async () => {
+    mocks.acquireHeartbeatExecutionFence.mockResolvedValueOnce(null);
 
     const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
     const result = await runComplianceHeartbeatJob({ limit: 1 });
 
     expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
-    expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+    expect(mocks.deferComplianceCheckAfterContention)
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', expect.any(Date));
     expect(mocks.comply).not.toHaveBeenCalled();
   });
 
   it('does not persist when the shared execution fence is lost during comply', async () => {
     let fenceValid = true;
-    mocks.acquireAgentExecutionFence.mockResolvedValueOnce({
+    mocks.acquireHeartbeatExecutionFence.mockResolvedValueOnce({
       isValid: () => fenceValid,
       release: mocks.releaseExecutionFence,
     });
@@ -384,7 +535,7 @@ describe('runComplianceHeartbeatJob', () => {
 
   it('does not write compliance or badge records when comply() rejects after fence becomes invalid', async () => {
     let fenceValid = true;
-    mocks.acquireAgentExecutionFence.mockResolvedValueOnce({
+    mocks.acquireHeartbeatExecutionFence.mockResolvedValueOnce({
       isValid: () => fenceValid,
       release: mocks.releaseExecutionFence,
     });
@@ -409,13 +560,12 @@ describe('runComplianceHeartbeatJob', () => {
     expect(mocks.releaseExecutionFence).toHaveBeenCalledOnce();
   });
 
-  it('records shadow evidence only when the audited collection switch is enabled', async () => {
+  it('records comparison evidence from every authoritative heartbeat', async () => {
     const complianceResult = {
       overall_status: 'passing',
       summary: { headline: 'All good' },
       agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
     };
-    mocks.getVerificationProfileShadowRollout.mockResolvedValueOnce({ enabled: true });
     mocks.comply.mockResolvedValueOnce(complianceResult);
     mocks.recordComplianceRun.mockResolvedValueOnce({
       run: { id: 'run-shadow' },
@@ -438,15 +588,9 @@ describe('runComplianceHeartbeatJob', () => {
         lifecycleStage: 'testing',
       }),
     );
-    expect(mocks.withDatabaseDeadline).toHaveBeenCalledWith(
-      expect.any(Number),
-      expect.any(Function),
-      { readOnly: false },
-    );
   });
 
   it('keeps public compliance successful when shadow persistence fails', async () => {
-    mocks.getVerificationProfileShadowRollout.mockResolvedValueOnce({ enabled: true });
     mocks.comply.mockResolvedValueOnce({
       overall_status: 'passing',
       summary: { headline: 'All good' },
@@ -468,7 +612,7 @@ describe('runComplianceHeartbeatJob', () => {
     });
   });
 
-  it('flushes shadow writes after public processing and rechecks disable before every write', async () => {
+  it('flushes every comparison write after public processing', async () => {
     const complianceResult = {
       overall_status: 'passing',
       summary: { headline: 'All good' },
@@ -482,9 +626,6 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.recordComplianceRun
       .mockResolvedValueOnce({ run: { id: 'run-one' }, statusTransition: null, storyboardStatuses: [] })
       .mockResolvedValueOnce({ run: { id: 'run-two' }, statusTransition: null, storyboardStatuses: [] });
-    mocks.getVerificationProfileShadowRollout
-      .mockResolvedValueOnce({ enabled: true })
-      .mockResolvedValueOnce({ enabled: false });
     mocks.recordVerificationProfileShadowAssessment.mockImplementationOnce(async () => {
       expect(mocks.recordComplianceRun).toHaveBeenCalledTimes(2);
       return true;
@@ -498,37 +639,10 @@ describe('runComplianceHeartbeatJob', () => {
       skipped: 0,
     });
 
-    expect(mocks.getVerificationProfileShadowRollout).toHaveBeenCalledTimes(2);
-    expect(mocks.recordVerificationProfileShadowAssessment).toHaveBeenCalledTimes(1);
+    expect(mocks.recordVerificationProfileShadowAssessment).toHaveBeenCalledTimes(2);
     expect(mocks.recordVerificationProfileShadowAssessment).toHaveBeenCalledWith(
       expect.objectContaining({ sourceRunId: 'run-one' }),
     );
-  });
-
-  it('fails shadow collection closed when its setting cannot be read', async () => {
-    mocks.getVerificationProfileShadowRollout.mockRejectedValueOnce(new Error('settings unavailable'));
-    mocks.comply.mockResolvedValueOnce({
-      overall_status: 'passing',
-      summary: { headline: 'All good' },
-      agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
-    });
-    mocks.recordComplianceRun.mockResolvedValueOnce({
-      run: { id: 'run-setting-failure' },
-      statusTransition: null,
-      storyboardStatuses: [],
-    });
-
-    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
-    await expect(runComplianceHeartbeatJob({ limit: 1 })).resolves.toEqual({
-      checked: 1,
-      passed: 1,
-      failed: 0,
-      skipped: 0,
-    });
-    // Pure derivation may be queued after public processing, but a failed
-    // bounded setting read must prevent any shadow persistence.
-    expect(mocks.deriveVerificationProfileShadowAssessment).toHaveBeenCalledOnce();
-    expect(mocks.recordVerificationProfileShadowAssessment).not.toHaveBeenCalled();
   });
 
   it('keeps public compliance successful when retention cleanup fails', async () => {
@@ -551,6 +665,26 @@ describe('runComplianceHeartbeatJob', () => {
       failed: 0,
       skipped: 0,
     });
+  });
+
+  it('records the invoking runner version when comply throws without a result', async () => {
+    mocks.comply.mockRejectedValueOnce(new Error('Timed out'));
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+    expect(mocks.complianceResultToDbInput).not.toHaveBeenCalled();
+    expect(mocks.recordComplianceRun).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        agent_url: 'https://agent.example.com/mcp',
+        adcp_version: target.version,
+        runner_capability_version: LIBRARY_VERSION,
+        overall_status: 'failing',
+        triggered_by: 'heartbeat',
+        dry_run: false,
+      }),
+    );
   });
 
   it('records malformed saved Basic auth as audit-only setup evidence', async () => {
@@ -581,9 +715,11 @@ describe('runComplianceHeartbeatJob', () => {
         }],
       }),
     );
+    expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
   });
 
-  it('defers on the normal cadence and skips when no trustworthy target exists', async () => {
+  it('backs off target selection when no trustworthy target exists', async () => {
     mocks.getAgentsDueForCheck.mockResolvedValueOnce([
       { agent_url: 'https://agent.example.com/mcp', lifecycle_stage: 'testing', last_checked_at: null },
     ]);
@@ -599,7 +735,7 @@ describe('runComplianceHeartbeatJob', () => {
 
     expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
     expect(mocks.comply).not.toHaveBeenCalled();
     expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
   });
@@ -630,7 +766,58 @@ describe('runComplianceHeartbeatJob', () => {
 
     expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
-      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+      .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
     expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
+  });
+});
+
+describe('assertComplianceHeartbeatOperationalProgress', () => {
+  const diagnostics = {
+    eligibleBacklog: 56,
+    selectedAgents: Array.from({ length: 10 }, (_, index) => `https://agent-${index}.example/mcp`),
+    runsRecorded: 0,
+    requestedComplianceTarget: '3.0',
+    complianceBundleVersion: '3.0.18',
+    sdkVersion: LIBRARY_VERSION,
+    skipReasons: {
+      execution_fence_busy: 0,
+      execution_fence_lost: 0,
+      target_unconfirmed: 9,
+      target_superseded: 1,
+      audit_only: 0,
+      pre_target_error: 0,
+      agent_error: 0,
+    },
+  };
+
+  it.each([
+    ['mixed target skips', { target_unconfirmed: 9, target_superseded: 1 }, 0],
+    ['all unconfirmed targets', { target_unconfirmed: 10, target_superseded: 0 }, 0],
+    ['one setup error among agent target skips', { target_unconfirmed: 9, target_superseded: 0, pre_target_error: 1 }, 0],
+    ['audit-only runs', { target_unconfirmed: 0, target_superseded: 0, audit_only: 10 }, 10],
+  ])('treats %s as completed batch work', async (_label, reasons, runsRecorded) => {
+    const { assertComplianceHeartbeatOperationalProgress } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    expect(() => assertComplianceHeartbeatOperationalProgress({
+      checked: 0, passed: 0, failed: 0, skipped: 10,
+      diagnostics: {
+        ...diagnostics,
+        runsRecorded,
+        skipReasons: { ...diagnostics.skipReasons, ...reasons },
+      },
+    })).not.toThrow();
+  });
+
+  it.each([
+    ['setup failures', { pre_target_error: 10, agent_error: 0 }],
+    ['failed audit persistence', { pre_target_error: 0, agent_error: 10 }],
+  ])('reports a batch blocked entirely by %s', async (_label, workerReasons) => {
+    const { assertComplianceHeartbeatOperationalProgress } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    expect(() => assertComplianceHeartbeatOperationalProgress({
+      checked: 0, passed: 0, failed: 0, skipped: 10,
+      diagnostics: {
+        ...diagnostics,
+        skipReasons: { ...diagnostics.skipReasons, target_unconfirmed: 0, target_superseded: 0, ...workerReasons },
+      },
+    })).toThrow('Compliance heartbeat could not process any of 10 selected agents');
   });
 });

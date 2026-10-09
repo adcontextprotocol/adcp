@@ -43,6 +43,32 @@ describe('resolveUserAgentAuth', () => {
   const call = () =>
     resolveUserAgentAuth(db as unknown as AgentContextDatabase, ORG, URL, logger);
 
+  it.each(['authorization_revoked', 'authorization_unavailable'])('stops before OAuth secrets after an awaited context lookup: %s', async (code) => {
+    let release!: () => void;
+    let entered!: () => void;
+    const enteredContext = new Promise<void>(resolve => { entered = resolve; });
+    const contextBarrier = new Promise<void>(resolve => { release = resolve; });
+    db.getAuthInfoByOrgAndUrl.mockResolvedValue(null);
+    db.getByOrgAndUrl.mockImplementation(async () => {
+      entered();
+      await contextBarrier;
+      return { id: 'ctx_guarded', has_oauth_token: true };
+    });
+    let revoked = false;
+    const failure = Object.assign(new Error('authorization changed'), { code });
+    const work = resolveUserAgentAuth(db as unknown as AgentContextDatabase, ORG, URL, logger, async () => {
+      if (revoked) throw failure;
+    });
+    const result = expect(work).rejects.toBe(failure);
+    await enteredContext;
+    revoked = true;
+    release();
+    await result;
+    expect(db.getOAuthTokensByOrgAndUrl).not.toHaveBeenCalled();
+    expect(db.getOAuthClient).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it('canonicalizes LoopMe-style path and trailing-slash variants before every lookup', async () => {
     const variant = 'HTTPS://PLATFORM.LOOPME.AI/MCP/SELLER/';
     const canonical = 'https://platform.loopme.ai/mcp/seller';
@@ -146,6 +172,30 @@ describe('resolveUserAgentAuth', () => {
     // Type-assignability guard: the returned value is a valid ResolvedOwnerAuth.
     const _typed: ResolvedOwnerAuth = auth!;
     void _typed;
+  });
+
+  it('retains independent token and client issuers without inferring a missing binding', async () => {
+    db.getAuthInfoByOrgAndUrl.mockResolvedValue(null);
+    db.getByOrgAndUrl.mockResolvedValue({ id: 'ctx_1', has_oauth_token: true });
+    db.getOAuthTokensByOrgAndUrl.mockResolvedValue({
+      access_token: 'access', refresh_token: 'refresh', issuer: 'https://tokens.example.test/tenant',
+    });
+    db.getOAuthClient.mockResolvedValue({
+      client_id: 'client', issuer: 'https://registration.example.test/tenant',
+    });
+
+    expect(await call()).toEqual({
+      type: 'oauth',
+      tokens: { access_token: 'access', refresh_token: 'refresh', issuer: 'https://tokens.example.test/tenant' },
+      client: { client_id: 'client', issuer: 'https://registration.example.test/tenant' },
+    });
+
+    db.getOAuthClient.mockResolvedValue({ client_id: 'legacy-client' });
+    expect(await call()).toEqual({
+      type: 'oauth',
+      tokens: { access_token: 'access', refresh_token: 'refresh', issuer: 'https://tokens.example.test/tenant' },
+      client: { client_id: 'legacy-client' },
+    });
   });
 
   it('omits client_secret when the OAuth client is public', async () => {

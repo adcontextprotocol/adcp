@@ -13,6 +13,7 @@
  * not add to a private store.
  */
 
+import { createHash } from 'node:crypto';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('addie-knowledge-search');
@@ -29,6 +30,9 @@ import {
   getSupportedDocsVersions,
   resolveDocsVersion,
   formatDocsVersion,
+  MAX_SEARCH_QUERY_CHARS,
+  type DocsVersion,
+  type IndexedDoc,
 } from './docs-indexer.js';
 import {
   initializeExternalRepos,
@@ -47,6 +51,51 @@ import { queueWebSearchResult } from '../services/content-curator.js';
 import { findChannelWithAccess, getAccessiblePrivateChannelIds } from '../../slack/client.js';
 
 const addieDb = new AddieDatabase();
+
+const GET_DOC_PAGE_MAX_CHARS = 4000;
+const GET_DOC_CURSOR_PREFIX = 'get-doc-cursor:';
+
+interface GetDocCursor {
+  version: 1;
+  doc_id: string;
+  offset: number;
+  fingerprint: string;
+}
+
+function getDocFingerprint(docId: string, content: string): string {
+  return createHash('sha256')
+    .update(docId)
+    .update('\0')
+    .update(content)
+    .digest('base64url');
+}
+
+function encodeGetDocCursor(cursor: GetDocCursor): string {
+  return `${GET_DOC_CURSOR_PREFIX}${Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url')}`;
+}
+
+function decodeGetDocCursor(value: string): GetDocCursor | null {
+  if (!value.startsWith(GET_DOC_CURSOR_PREFIX)) return null;
+  try {
+    const encoded = value.slice(GET_DOC_CURSOR_PREFIX.length);
+    if (encoded.length === 0 || encoded.length > 2048 || !/^[A-Za-z0-9_-]+$/.test(encoded)) return null;
+    const decoded = Buffer.from(encoded, 'base64url');
+    if (decoded.toString('base64url') !== encoded) return null;
+    const parsed = JSON.parse(decoded.toString('utf8')) as Partial<GetDocCursor>;
+    if (
+      parsed.version !== 1
+      || typeof parsed.doc_id !== 'string'
+      || !Number.isSafeInteger(parsed.offset)
+      || (parsed.offset ?? -1) < 0
+      || typeof parsed.fingerprint !== 'string'
+    ) {
+      return null;
+    }
+    return parsed as GetDocCursor;
+  } catch {
+    return null;
+  }
+}
 
 let initialized = false;
 let initializationPromise: Promise<void> | null = null;
@@ -178,6 +227,63 @@ export function searchDocsContent(
   });
 }
 
+const MAX_CROSS_VERSION_PROBE_QUERY_CHARS = 120;
+const MAX_ECHOED_INPUT_CHARS = 200;
+
+/** Collapse caller text to one bounded line before echoing it in a tool result. */
+export function echoSingleLine(value: string): string {
+  const singleLine = value.replace(/[\r\n\u2028\u2029]+/g, ' ');
+  return singleLine.length > MAX_ECHOED_INPUT_CHARS
+    ? `${singleLine.slice(0, MAX_ECHOED_INPUT_CHARS)}…`
+    : singleLine;
+}
+
+/**
+ * When a search is empty in the selected release, probe the representative
+ * entry of every other release line (the first docs.json entry for that line,
+ * so a stable line wins over its prereleases) for the same query. This lets a
+ * name that exists only in a newer or older release be found with one
+ * directed retry instead of reading as "does not exist".
+ *
+ * Only pages containing the whole query count; pages that name it in their
+ * title or path (the name's own page or schema) are listed before pages that
+ * merely mention it, so the first listed version is the strongest match.
+ */
+function findMatchesInOtherDocsVersions(
+  query: string,
+  category: string | undefined,
+  selectedVersion: DocsVersion,
+): Array<{ version: DocsVersion; doc: IndexedDoc }> {
+  const releaseLineOf = (version: string): string => version.match(/^\d+\.\d+/)?.[0] ?? version;
+  const phrase = query.trim().toLowerCase();
+  if (!phrase) return [];
+  const phraseForms = [...new Set([phrase, phrase.replace(/_/g, '-'), phrase.replace(/-/g, '_')])];
+  const probedLines = new Set<string>([releaseLineOf(selectedVersion.version)]);
+  const strong: Array<{ version: DocsVersion; doc: IndexedDoc }> = [];
+  const weak: Array<{ version: DocsVersion; doc: IndexedDoc }> = [];
+  for (const version of getSupportedDocsVersions()) {
+    const releaseLine = releaseLineOf(version.version);
+    if (probedLines.has(releaseLine)) continue;
+    probedLines.add(releaseLine);
+
+    // Version-independent pages match every release equally, so only a
+    // protocol page from this release proves the name lives there.
+    const candidates = searchDocs(query, { category, version: version.version, limit: 10 })
+      .filter((result) => result.version === version.version);
+    const named = candidates.find((doc) => {
+      const identity = `${doc.title} ${doc.path}`.toLowerCase();
+      return phraseForms.some((form) => identity.includes(form));
+    });
+    if (named) {
+      strong.push({ version, doc: named });
+      continue;
+    }
+    const mentioned = candidates.find((doc) => doc.content.toLowerCase().includes(phrase));
+    if (mentioned) weak.push({ version, doc: mentioned });
+  }
+  return [...strong, ...weak];
+}
+
 /**
  * Tool definitions for Claude
  *
@@ -210,7 +316,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Protocol docs version. Omission means stable 3.1; use 3.2 for the current preview. Explicit channel and exact frozen snapshot selectors are also accepted.',
+          description: 'Protocol docs version. Omission means stable 3.2; pass 3.1 or 3.0 for an earlier stable release. Explicit channel and exact frozen snapshot selectors are also accepted.',
         },
         limit: {
           type: 'integer',
@@ -237,7 +343,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Optional protocol version for legacy unversioned IDs. Omission means stable 3.1; use 3.2 for the current preview.',
+          description: 'Optional protocol version for legacy unversioned IDs. Omission means stable 3.2.',
         },
       },
       required: ['doc_id'],
@@ -577,7 +683,11 @@ export function createKnowledgeToolHandlers(
 
   handlers.set('search_docs', async (input) => {
     const startTime = Date.now();
-    const query = input.query as string;
+    // Bound per-call scoring and excerpt work; useful queries are short.
+    const query = String(input.query ?? '').slice(0, MAX_SEARCH_QUERY_CHARS);
+    if (!query.trim()) {
+      return 'search_docs needs a non-empty query.';
+    }
     const category = input.category as string | undefined;
     const requestedVersion = input.version as string | undefined;
     const requestedLimit = input.limit;
@@ -623,7 +733,21 @@ export function createKnowledgeToolHandlers(
           'Addie search_docs: zero results'
         );
       }
-      return `No documentation found in AdCP ${formatDocsVersion(selectedVersion)} for: "${query}"${category ? ` in category: ${category}` : ''}\n\nTry another supported protocol version, web_search for external sources, or search_slack for community discussions.`;
+      // Echo caller text on one bounded line so it cannot forge the
+      // line-start "Matches exist" marker the Knowledge rules key on.
+      const notFound = `No documentation found in AdCP ${formatDocsVersion(selectedVersion)} for: "${echoSingleLine(query)}"${category ? ` in category: ${echoSingleLine(category)}` : ''}`;
+      // Exact task/field/error names are short; skip the cross-release probe
+      // for long natural-language queries to bound the extra scoring work.
+      const otherVersionMatches = query.length <= MAX_CROSS_VERSION_PROBE_QUERY_CHARS
+        ? findMatchesInOtherDocsVersions(query, category, selectedVersion)
+        : [];
+      if (otherVersionMatches.length > 0) {
+        const lines = otherVersionMatches.map(({ version, doc }) => (
+          `- version "${version.version}" — ${formatDocsVersion(version)}: ${doc.title} (ID: ${doc.id})`
+        ));
+        return `${notFound}\n\nMatches exist in other protocol versions:\n${lines.join('\n')}`;
+      }
+      return `${notFound}\n\nNo other supported protocol version matches either. Try a different query, web_search for external sources, or search_slack for community discussions.`;
     }
 
     // Return smart excerpts that focus on content matching the query
@@ -651,8 +775,13 @@ ${excerpt}
   });
 
   handlers.set('get_doc', async (input) => {
-    const docId = input.doc_id as string;
+    const requestedDocId = input.doc_id as string;
     const requestedVersion = input.version as string | undefined;
+    const cursor = decodeGetDocCursor(requestedDocId);
+    if (requestedDocId.startsWith(GET_DOC_CURSOR_PREFIX) && !cursor) {
+      return 'Invalid or stale documentation continuation. Restart get_doc with the document ID from search_docs.';
+    }
+    const docId = cursor?.doc_id ?? requestedDocId;
 
     if (!isDocsIndexReady()) {
       return 'Documentation index not ready.';
@@ -668,12 +797,39 @@ ${excerpt}
       return `Document not found: "${docId}". Use search_docs to find available documents.`;
     }
 
-    // Return full content (but cap at 4000 chars to prevent massive responses)
-    const maxLength = 4000;
-    let content = doc.content;
-    if (content.length > maxLength) {
-      content = content.substring(0, maxLength) + '\n\n... [content truncated at 4000 chars]';
+    const fingerprint = getDocFingerprint(doc.id, doc.content);
+    const offset = cursor?.offset ?? 0;
+    if (cursor) {
+      if (
+        cursor.doc_id !== doc.id
+        || cursor.fingerprint !== fingerprint
+        || cursor.offset >= doc.content.length
+      ) {
+        return `Invalid or stale documentation continuation for document: "${docId}". Restart get_doc with the document ID from search_docs.`;
+      }
     }
+
+    let endOffset = Math.min(offset + GET_DOC_PAGE_MAX_CHARS, doc.content.length);
+    // JavaScript offsets are UTF-16 code units. Never split a surrogate pair
+    // between pages, because doing so would corrupt non-BMP characters when a
+    // caller concatenates the returned content.
+    if (
+      endOffset < doc.content.length
+      && endOffset > offset
+      && /[\uD800-\uDBFF]/.test(doc.content[endOffset - 1])
+      && /[\uDC00-\uDFFF]/.test(doc.content[endOffset])
+    ) {
+      endOffset -= 1;
+    }
+    const content = doc.content.slice(offset, endOffset);
+    const nextCursor = endOffset < doc.content.length
+      ? encodeGetDocCursor({
+          version: 1,
+          doc_id: doc.id,
+          offset: endOffset,
+          fingerprint,
+        })
+      : null;
 
     const versionLabel = doc.version && doc.artifactVersion
       ? `${doc.version} (snapshot ${doc.artifactVersion})`
@@ -684,8 +840,13 @@ ${excerpt}
 **Source:** ${doc.sourceUrl}
 **Category:** ${doc.category}
 **Version:** ${versionLabel}
+**Content range:** ${offset}-${endOffset} of ${doc.content.length} characters
 
-${content}`;
+${content}${nextCursor ? `
+
+---
+**next_doc_id:** \`${nextCursor}\`
+Call \`get_doc\` again with this value as \`doc_id\` to continue.` : ''}`;
   });
 
   handlers.set('search_repos', async (input) => {

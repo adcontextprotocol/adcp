@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,12 +23,22 @@ import {
   buildCreativeComplyConfig,
   buildGovernanceComplyConfig,
   buildSalesComplyConfig,
+  CONTROLLER_TASK_SETTLEMENT_TIMEOUT_MS,
 } from '../../src/training-agent/tenants/comply.js';
+import type { TaskRegistry } from '@adcp/sdk/server';
+import {
+  clearForcedTaskCompletions,
+  waitForForcedTaskCompletion,
+} from '../../src/training-agent/comply-test-controller.js';
+import { taskRegistryNamespaceForTenant } from '../../src/training-agent/task-registry-scope.js';
+import { reportingDayStart } from '../../src/training-agent/reporting-reliability.js';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'comply-test.example.com' }, operator: 'comply-tester', sandbox: true };
+const OTHER_ACCOUNT = { brand: { domain: 'other-comply-test.example.com' }, operator: 'other-tester', sandbox: true };
 const CONTROLLER_ACCOUNT = { ...ACCOUNT, operator: ACCOUNT.brand.domain };
 const BRAND = { domain: 'comply-test.example.com', name: 'Comply Test Brand' };
+const OTHER_BRAND = { domain: 'other-comply-test.example.com', name: 'Other Comply Test Brand' };
 const RELEASED_31_SCHEMA_ROOT = join(process.cwd(), 'dist/schemas/3.1.19');
 
 async function validateReleased31Schema(data: unknown, relativePath: string): Promise<string[]> {
@@ -228,6 +238,7 @@ describe('comply_test_controller', () => {
         'seed_media_buy',
         // Local scenarios — see LOCAL_SCENARIOS in
         // server/src/training-agent/comply-test-controller.ts.
+        'reset_state',
         'force_create_media_buy_arm',
         'force_get_products_arm',
         'force_get_signals_arm',
@@ -246,7 +257,7 @@ describe('comply_test_controller', () => {
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(28);
+      expect(scenarios.length).toBe(29);
       // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
@@ -265,15 +276,133 @@ describe('comply_test_controller', () => {
     });
   });
 
+  describe('reset_state', () => {
+    it('clears only the caller session and its seed fixture cache', async () => {
+      const first = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'reset_state_product',
+          fixture: { delivery_type: 'non_guaranteed', channels: ['display'] },
+        },
+      });
+      expect(first.result.success).toBe(true);
+
+      const other = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: OTHER_ACCOUNT,
+        brand: OTHER_BRAND,
+        params: {
+          product_id: 'reset_state_product',
+          fixture: { delivery_type: 'guaranteed', channels: ['video'] },
+        },
+      });
+      expect(other.result.success).toBe(true);
+
+      const conflict = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'reset_state_product',
+          fixture: { delivery_type: 'guaranteed', channels: ['video'] },
+        },
+      });
+      expect(conflict.result).toMatchObject({ success: false, error: 'INVALID_PARAMS' });
+
+      const reset = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'reset_state',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(reset.result).toMatchObject({ success: true });
+
+      const reseeded = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          product_id: 'reset_state_product',
+          fixture: { delivery_type: 'guaranteed', channels: ['video'] },
+        },
+      });
+      expect(reseeded.result.success).toBe(true);
+
+      const otherConflict = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        account: OTHER_ACCOUNT,
+        brand: OTHER_BRAND,
+        params: {
+          product_id: 'reset_state_product',
+          fixture: { delivery_type: 'non_guaranteed', channels: ['display'] },
+        },
+      });
+      expect(otherConflict.result).toMatchObject({ success: false, error: 'INVALID_PARAMS' });
+    });
+
+    it('clears account and catalog fixtures under their public-handler keys', async () => {
+      server = createTrainingAgentServer({ mode: 'open', principal: 'reset-key-test' });
+
+      const originalAccountFixture = {
+        brand: { domain: 'reset-account.example' },
+        operator: 'reset-operator.example',
+        billing: 'operator',
+        sandbox: true,
+        status: 'active',
+      };
+      const seededAccount = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_account',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          account_id: 'reset_account_fixture',
+          fixture: originalAccountFixture,
+        },
+      });
+      expect(seededAccount.result.success).toBe(true);
+
+      const syncedCatalog = await simulateCallTool(server, 'sync_catalogs', {
+        account: ACCOUNT,
+        catalogs: [{ catalog_id: 'reset_catalog_fixture', name: 'Before reset', items: [] }],
+      });
+      expect(syncedCatalog.result.catalogs).toEqual([
+        expect.objectContaining({ catalog_id: 'reset_catalog_fixture', action: 'created' }),
+      ]);
+
+      const reset = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'reset_state',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(reset.result).toMatchObject({ success: true });
+
+      const reseededAccount = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_account',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          account_id: 'reset_account_fixture',
+          fixture: { ...originalAccountFixture, status: 'paused' },
+        },
+      });
+      expect(reseededAccount.result.success).toBe(true);
+
+      const catalogsAfterReset = await simulateCallTool(server, 'sync_catalogs', { account: ACCOUNT });
+      expect(catalogsAfterReset.result.catalogs).toEqual([]);
+    });
+  });
+
   describe('verify_governance_token', () => {
     async function mintValidToken(): Promise<string> {
       const { getGovernanceSigningKey } = await import('../../src/training-agent/governance-signing.js');
       const { CANONICAL_SELLER_AUD } = await import('../../src/training-agent/governance-verify.js');
+      const { getTrainingGovernanceIssuer } = await import('../../src/training-agent/canonical-base.js');
       const { FlattenedSign } = await import('jose');
       const { kid, privateKey } = getGovernanceSigningKey();
       const now = Math.floor(Date.now() / 1000);
       const payload = new TextEncoder().encode(JSON.stringify({
-        iss: 'https://agenticadvertising.org/governance', sub: 'plan-1',
+        iss: getTrainingGovernanceIssuer(), sub: 'plan-1',
         aud: CANONICAL_SELLER_AUD, iat: now, exp: now + 900, jti: 'jti-1', phase: 'intent',
       }));
       const jws = await new FlattenedSign(payload).setProtectedHeader({ alg: 'EdDSA', typ: 'adcp-gov+jws', kid }).sign(privateKey);
@@ -444,6 +573,50 @@ describe('comply_test_controller', () => {
         },
       });
       expect(conflict).toMatchObject({ success: false, error: 'INVALID_STATE' });
+    });
+
+    it('lets an operator_unit-scoped buyer update a grant the runner seeded without the unit', async () => {
+      // The SDK runner builds seed_rights_grant from the test-kit account and
+      // drops the authored operator_unit; update_rights then names the full
+      // isolated account (brand_rights/update_rights_lifecycle).
+      const fixture = {
+        brand_id: 'daan_janssen',
+        buyer_domain: 'comply-tester',
+        pricing_option_id: 'monthly_exclusive',
+        start_date: '2099-04-01',
+        end_date: '2099-06-30',
+        impression_cap: 100000,
+      };
+      const { result: seeded } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_rights_grant',
+        account: CONTROLLER_ACCOUNT,
+        params: { rights_id: 'janssen_likeness_voice', fixture },
+      });
+      expect(seeded.success).toBe(true);
+
+      const unitAccount = { ...ACCOUNT, operator_unit: { id: 'compliance-update-rights-unit' } };
+      const { result: updated, isError } = await simulateCallTool(server, 'update_rights', {
+        account: unitAccount,
+        rights_id: 'janssen_likeness_voice',
+        paused: true,
+      });
+      expect(isError).not.toBe(true);
+      expect(updated).toMatchObject({ rights_id: 'janssen_likeness_voice', paused: true });
+
+      // The bridge covers only the dropped operator_unit. Another operator,
+      // or a live account, still cannot reach the sandbox fixture.
+      for (const account of [
+        { ...unitAccount, operator: 'other-tester' },
+        { ...unitAccount, sandbox: false },
+      ]) {
+        const { result, isError: rejected } = await simulateCallTool(server, 'update_rights', {
+          account,
+          rights_id: 'janssen_likeness_voice',
+          paused: true,
+        });
+        expect(rejected).toBe(true);
+        expect(result.code).toBe('REFERENCE_NOT_FOUND');
+      }
     });
 
     it('rejects an unknown grant without mutating seeded state', async () => {
@@ -1819,6 +1992,8 @@ describe('comply_test_controller', () => {
       });
 
       const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+        // Seller-optimized budgets are declared on the 3.2 line, not the 3.0 default.
+        adcp_version: '3.2',
         account: ACCOUNT,
         brand: BRAND,
         media_buy_id: 'seller_optimized_cap_buy',
@@ -1835,6 +2010,7 @@ describe('comply_test_controller', () => {
       const packageId = ((created as any).packages as Array<{ package_id: string }>)[0].package_id;
 
       const { result: updated } = await simulateCallTool(server, 'update_media_buy', {
+        adcp_version: '3.2',
         account: ACCOUNT,
         brand: BRAND,
         media_buy_id: 'seller_optimized_cap_buy',
@@ -2107,6 +2283,55 @@ describe('comply_test_controller', () => {
           brand: BRAND,
         },
       })).resolves.toBeUndefined();
+    });
+
+    it('bounds the framework task-settlement wait after forced completion', async () => {
+      vi.useFakeTimers();
+      const taskId = 'v6_bounded_task_settlement';
+      const accountId = 'v6_bounded_task_settlement_account';
+      const ownerScope = 'client:v6-bounded-task-settlement-owner';
+      const completionScope = {
+        registryNamespace: taskRegistryNamespaceForTenant('sales'),
+        accountId,
+        ownerScope,
+      };
+      const forcedCompletion = waitForForcedTaskCompletion(taskId, completionScope);
+      const neverSettles = new Promise<void>(() => undefined);
+      const taskRegistry = {
+        getTask: vi.fn().mockResolvedValue({ task_id: taskId, status: 'submitted' }),
+        awaitTask: vi.fn().mockReturnValue(neverSettles),
+      } as unknown as TaskRegistry;
+
+      try {
+        const config = buildSalesComplyConfig(undefined, taskRegistry);
+        const completion = (config.force!.task_completion as any)({
+          task_id: taskId,
+          result: { media_buy_id: 'mb_v6_bounded_task_settlement' },
+        }, {
+          input: {
+            scenario: 'force_task_completion',
+            account: { account_id: accountId, sandbox: true },
+            __training_task_owner_scope: ownerScope,
+          },
+        });
+        const boundedRejection = expect(completion).rejects.toThrow(
+          `Task ${taskId} did not settle within ${CONTROLLER_TASK_SETTLEMENT_TIMEOUT_MS}ms`,
+        );
+
+        await vi.advanceTimersByTimeAsync(CONTROLLER_TASK_SETTLEMENT_TIMEOUT_MS);
+
+        await boundedRejection;
+        await expect(forcedCompletion).resolves.toEqual({
+          media_buy_id: 'mb_v6_bounded_task_settlement',
+        });
+        expect(taskRegistry.awaitTask).toHaveBeenCalledWith(taskId, {
+          accountId,
+          ownerScope,
+        });
+      } finally {
+        clearForcedTaskCompletions();
+        vi.useRealTimers();
+      }
     });
   });
 
@@ -2648,6 +2873,227 @@ describe('comply_test_controller', () => {
       expect(session.complyExtensions.deliverySimulations.has(mediaBuyId)).toBe(false);
     });
 
+    describe('property-grain injection', () => {
+      const PROPERTY_ROWS = [
+        { publisher_domain: 'acme-news.example', identifier: { type: 'domain', value: 'acme-news.example' }, impressions: 5000, spend: 25 },
+        { publisher_domain: 'streamhaus.example', identifier: { type: 'android_package', value: 'example.streamhaus.app' }, impressions: 3000, spend: 90 },
+        { publisher_domain: 'nova-sports.example', identifier: { type: 'domain', value: 'nova-sports.example' }, impressions: 2000, spend: 10 },
+      ];
+      const collectionRef = { publisher_domain: 'studio-network.example', collection_id: 'nightly_news' };
+      const INSTALLMENT_ROWS = [
+        { installment_ref: { collection_ref: collectionRef, installment_id: 'ep_101' }, publisher_domain: 'streamhaus.example', identifier: { type: 'domain', value: 'streamhaus.example' }, impressions: 4000, spend: 40 },
+        { installment_ref: { collection_ref: collectionRef, installment_id: 'ep_101' }, publisher_domain: 'othercast.example', identifier: { type: 'domain', value: 'othercast.example' }, impressions: 1500, spend: 60 },
+        { installment_ref: { collection_ref: collectionRef, installment_id: 'ep_102' }, publisher_domain: 'streamhaus.example', identifier: { type: 'domain', value: 'streamhaus.example' }, impressions: 800, spend: 8 },
+      ];
+
+      async function seedBreakdownBuy(
+        reporting: Record<string, unknown>,
+        packageCount = 1,
+      ): Promise<string> {
+        const productId = `property_breakdown_${crypto.randomUUID().slice(0, 8)}`;
+        const seeded = await simulateCallTool(server, 'comply_test_controller', {
+          scenario: 'seed_product',
+          account: ACCOUNT,
+          brand: BRAND,
+          params: {
+            product_id: productId,
+            fixture: {
+              delivery_type: 'non_guaranteed',
+              channels: ['display'],
+              reporting_capabilities: {
+                available_reporting_frequencies: ['daily'],
+                expected_delay_minutes: 0,
+                timezone: 'UTC',
+                supports_webhooks: false,
+                available_metrics: ['impressions', 'spend'],
+                date_range_support: 'date_range',
+                ...reporting,
+              },
+              pricing_options: [{ pricing_option_id: 'breakdown_cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 10 }],
+            },
+          },
+        });
+        expect(seeded.result.success).toBe(true);
+        const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+          idempotency_key: crypto.randomUUID(),
+          account: ACCOUNT,
+          brand: BRAND,
+          start_time: 'asap',
+          end_time: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+          packages: Array.from({ length: packageCount }, () => ({
+            product_id: productId,
+            pricing_option_id: 'breakdown_cpm',
+            budget: 1000,
+          })),
+        });
+        if (isError || (result as any).errors) throw new Error(`create_media_buy failed: ${JSON.stringify(result)}`);
+        return (result as any).media_buy_id as string;
+      }
+
+      async function simulate(mediaBuyId: string, params: Record<string, unknown>) {
+        return (await simulateCallTool(server, 'comply_test_controller', {
+          scenario: 'simulate_delivery',
+          params: { media_buy_id: mediaBuyId, ...params },
+          account: ACCOUNT,
+          brand: BRAND,
+        })).result;
+      }
+
+      async function packageDelivery(mediaBuyId: string, reportingDimensions: Record<string, unknown>) {
+        const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+          media_buy_ids: [mediaBuyId],
+          reporting_dimensions: reportingDimensions,
+          account: ACCOUNT,
+          brand: BRAND,
+        });
+        return (result as any).media_buy_deliveries[0].by_package[0];
+      }
+
+      it('echoes only injected property rows, applying limit, sort, and truncation', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        const sim = await simulate(mediaBuyId, { impressions: 10000, property_delivery: PROPERTY_ROWS });
+        expect(sim.success).toBe(true);
+        expect((sim as any).cumulative.property_delivery).toHaveLength(3);
+
+        const truncated = await packageDelivery(mediaBuyId, {
+          property: { limit: 2, sort_by: 'impressions', sort_direction: 'desc' },
+        });
+        expect(truncated.by_property.map((row: any) => row.identifier.value)).toEqual([
+          'acme-news.example',
+          'example.streamhaus.app',
+        ]);
+        expect(truncated.by_property_truncated).toBe(true);
+        expect(truncated.by_property_suppressed).toBe(false);
+        expect(truncated.by_property_sorted_by).toBe('impressions');
+        expect(truncated.by_property_sort_direction).toBe('desc');
+
+        const ascending = await packageDelivery(mediaBuyId, {
+          property: { limit: 3, sort_by: 'spend', sort_direction: 'asc' },
+        });
+        expect(ascending.by_property.map((row: any) => row.spend)).toEqual([10, 25, 90]);
+        expect(ascending.by_property_truncated).toBe(false);
+        expect(ascending.by_property_sort_direction).toBe('asc');
+      });
+
+      it('returns an empty breakdown rather than synthesizing rows when none were injected', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        await simulate(mediaBuyId, { impressions: 10000 });
+        const noRows = await packageDelivery(mediaBuyId, { property: { limit: 5 } });
+        expect(noRows.by_property).toEqual([]);
+        expect(noRows.by_property_truncated).toBe(false);
+        expect(noRows.by_property_suppressed).toBe(false);
+        expect(noRows.by_property_sorted_by).toBe('spend');
+        expect(noRows.by_property_sort_direction).toBe('desc');
+
+        await simulate(mediaBuyId, { property_delivery: PROPERTY_ROWS });
+        const notRequested = await packageDelivery(mediaBuyId, { format: { limit: 1 } });
+        expect(notRequested.by_property).toBeUndefined();
+      });
+
+      it('falls back to spend when no row carries the requested sort metric and defaults the limit to 25', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        await simulate(mediaBuyId, { property_delivery: PROPERTY_ROWS });
+        const delivery = await packageDelivery(mediaBuyId, {
+          property: { sort_by: 'viewable_rate', sort_direction: 'asc' },
+        });
+        expect(delivery.by_property_sorted_by).toBe('spend');
+        expect(delivery.by_property_sort_direction).toBe('desc');
+        expect(delivery.by_property.map((row: any) => row.spend)).toEqual([90, 25, 10]);
+        expect(delivery.by_property_truncated).toBe(false);
+      });
+
+      it('returns injected rows for date-bounded requests and keeps them through requested_metrics narrowing', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        await simulate(mediaBuyId, { delivery_date: '2026-02-05', impressions: 100, clicks: 5 });
+        await simulate(mediaBuyId, { property_delivery: [{ ...PROPERTY_ROWS[0], clicks: 7 }] });
+        const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+          media_buy_ids: [mediaBuyId],
+          start_date: '2026-02-01',
+          end_date: '2026-02-28',
+          requested_metrics: ['impressions'],
+          reporting_dimensions: { property: { limit: 5 } },
+          account: ACCOUNT,
+          brand: BRAND,
+        });
+        const row = (result as any).media_buy_deliveries[0].by_package[0].by_property[0];
+        expect(row.identifier.value).toBe('acme-news.example');
+        expect(row.publisher_domain).toBe('acme-news.example');
+        expect(row.spend).toBe(25);
+        expect(row.clicks).toBeUndefined();
+      });
+
+      it('returns an empty breakdown for multi-package buys', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true }, 2);
+        const delivery = await packageDelivery(mediaBuyId, { property: { limit: 5 } });
+        expect(delivery.by_property).toEqual([]);
+        expect(delivery.by_property_truncated).toBe(false);
+      });
+
+      it('omits the breakdown when the product does not declare the per-product flag', async () => {
+        const mediaBuyId = await seedBreakdownBuy({});
+        await simulate(mediaBuyId, { property_delivery: PROPERTY_ROWS });
+        const delivery = await packageDelivery(mediaBuyId, { property: { limit: 5 } });
+        expect(delivery.by_property).toBeUndefined();
+      });
+
+      it('echoes injected installment x property rows with distinct collection-owner and host domains', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_installment_property_breakdown: true });
+        const sim = await simulate(mediaBuyId, { impressions: 6300, installment_property_delivery: INSTALLMENT_ROWS });
+        expect(sim.success).toBe(true);
+
+        const delivery = await packageDelivery(mediaBuyId, {
+          installment_property: { limit: 2, sort_by: 'impressions', sort_direction: 'desc' },
+        });
+        const rows = delivery.by_installment_property;
+        expect(rows).toHaveLength(2);
+        expect(rows[0].installment_ref.collection_ref.publisher_domain).toBe('studio-network.example');
+        expect(rows[0].publisher_domain).toBe('streamhaus.example');
+        expect(rows[1].publisher_domain).toBe('othercast.example');
+        expect(delivery.by_installment_property_truncated).toBe(true);
+        expect(delivery.by_installment_property_suppressed).toBe(false);
+        expect(delivery.by_installment_property_sorted_by).toBe('impressions');
+        expect(delivery.by_installment_property_sort_direction).toBe('desc');
+        expect(delivery.by_property).toBeUndefined();
+      });
+
+      it('replaces earlier injected rows instead of accumulating them', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        await simulate(mediaBuyId, { property_delivery: PROPERTY_ROWS });
+        await simulate(mediaBuyId, { property_delivery: [PROPERTY_ROWS[2]] });
+        const delivery = await packageDelivery(mediaBuyId, { property: { limit: 5 } });
+        expect(delivery.by_property).toHaveLength(1);
+      });
+
+      it('rejects malformed rows, delivery_date combinations, and multi-package buys without mutating state', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        const missingDomain = await simulate(mediaBuyId, {
+          property_delivery: [{ identifier: { type: 'domain', value: 'acme-news.example' }, impressions: 1, spend: 1 }],
+        });
+        expect(missingDomain.success).toBe(false);
+        expect(missingDomain.error).toBe('INVALID_PARAMS');
+
+        const missingInstallmentRef = await simulate(mediaBuyId, {
+          installment_property_delivery: [PROPERTY_ROWS[0]],
+        });
+        expect(missingInstallmentRef.success).toBe(false);
+        expect(missingInstallmentRef.error).toBe('INVALID_PARAMS');
+
+        const dated = await simulate(mediaBuyId, { delivery_date: '2026-02-05', property_delivery: PROPERTY_ROWS });
+        expect(dated.success).toBe(false);
+        expect(dated.error).toBe('INVALID_PARAMS');
+
+        const multiMediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true }, 2);
+        const multi = await simulate(multiMediaBuyId, { property_delivery: PROPERTY_ROWS });
+        expect(multi.success).toBe(false);
+        expect(multi.error).toBe('INVALID_PARAMS');
+
+        const sessionKey = sessionKeyFromArgs({ account: ACCOUNT }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+        const session = await getSession(sessionKey);
+        expect(session.complyExtensions.deliverySimulations.get(mediaBuyId)?.propertyDelivery).toBeUndefined();
+        expect(session.complyExtensions.deliverySimulations.has(multiMediaBuyId)).toBe(false);
+      });
+    });
+
     it('filters dated delivery batches with start-inclusive, end-exclusive boundaries', async () => {
       const mediaBuyId = await createMediaBuy(server);
       const utcDate = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
@@ -2686,6 +3132,7 @@ describe('comply_test_controller', () => {
       expect(delivery.reporting_period).toEqual({
         start: `${includedAtStart}T00:00:00.000Z`,
         end: `${excludedAtEnd}T00:00:00.000Z`,
+        timezone: 'UTC',
       });
       const totals = (delivery as any).media_buy_deliveries[0].totals;
       expect(totals.impressions).toBe(200);
@@ -2709,6 +3156,183 @@ describe('comply_test_controller', () => {
         code: 'VALIDATION_ERROR',
         field: 'start_date',
       }));
+    });
+
+    it('cuts dated delivery on the product reporting timezone and rejects mixed reporting timezones', async () => {
+      const seed = async (scenario: string, params: Record<string, unknown>) => {
+        const { result } = await simulateCallTool(server, 'comply_test_controller', {
+          scenario, params, account: ACCOUNT, brand: BRAND,
+        });
+        expect(result.success).toBe(true);
+      };
+      const product = (productId: string, timezone: string) => ({
+        product_id: productId,
+        fixture: {
+          delivery_type: 'non_guaranteed',
+          channels: ['display'],
+          reporting_capabilities: {
+            available_reporting_frequencies: ['daily'],
+            expected_delay_minutes: 60,
+            timezone,
+            supports_webhooks: false,
+            available_metrics: ['impressions', 'clicks', 'spend'],
+            date_range_support: 'date_range',
+          },
+        },
+      });
+      await seed('seed_product', product('tz_new_york_product', 'America/New_York'));
+      await seed('seed_product', product('tz_london_product', 'Europe/London'));
+      await seed('seed_product', product('tz_utc_alias_product', 'Etc/UTC'));
+      await seed('seed_product', product('tz_invalid_product', 'Not/A_Zone'));
+      await seed('seed_pricing_option', {
+        product_id: 'tz_new_york_product',
+        pricing_option_id: 'tz_new_york_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      });
+      await seed('seed_pricing_option', {
+        product_id: 'tz_london_product',
+        pricing_option_id: 'tz_london_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      });
+      for (const productId of ['tz_utc_alias_product', 'tz_invalid_product']) {
+        await seed('seed_pricing_option', {
+          product_id: productId,
+          pricing_option_id: `${productId}_cpm`,
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+        });
+      }
+      const buy = (mediaBuyId: string, packages: Array<[string, string, string]>) => ({
+        media_buy_id: mediaBuyId,
+        fixture: {
+          status: 'active',
+          currency: 'USD',
+          start_time: '2026-01-01T00:00:00Z',
+          end_time: '2099-12-31T00:00:00Z',
+          packages: packages.map(([packageId, productId, pricingOptionId]) => ({
+            package_id: packageId, product_id: productId, pricing_option_id: pricingOptionId, budget: 1000,
+          })),
+        },
+      });
+      await seed('seed_media_buy', buy('tz_new_york_buy', [['tz_ny_pkg', 'tz_new_york_product', 'tz_new_york_cpm']]));
+      await seed('seed_media_buy', buy('tz_mixed_buy', [
+        ['tz_mixed_ny_pkg', 'tz_new_york_product', 'tz_new_york_cpm'],
+        ['tz_mixed_london_pkg', 'tz_london_product', 'tz_london_cpm'],
+      ]));
+      await seed('seed_media_buy', buy('tz_utc_alias_buy', [['tz_alias_pkg', 'tz_utc_alias_product', 'tz_utc_alias_product_cpm']]));
+      await seed('seed_media_buy', buy('tz_invalid_buy', [['tz_invalid_pkg', 'tz_invalid_product', 'tz_invalid_product_cpm']]));
+
+      for (const [deliveryDate, impressions] of [['2026-04-14', 100], ['2026-04-15', 200], ['2026-04-16', 400]] as const) {
+        await seed('simulate_delivery', {
+          media_buy_id: 'tz_new_york_buy',
+          delivery_date: deliveryDate,
+          impressions,
+          reported_spend: { amount: impressions / 10, currency: 'USD' },
+        });
+      }
+
+      const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_new_york_buy'],
+        start_date: '2026-04-15',
+        end_date: '2026-04-16',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      // New York is UTC-4 in April: the reporting day starts at 04:00Z.
+      expect((delivery as any).reporting_period).toEqual({
+        start: '2026-04-15T04:00:00.000Z',
+        end: '2026-04-16T04:00:00.000Z',
+        timezone: 'America/New_York',
+      });
+      expect((delivery as any).media_buy_deliveries[0].totals.impressions).toBe(200);
+
+      const { result: mixed } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_mixed_buy'],
+        start_date: '2026-04-15',
+        end_date: '2026-04-16',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(mixed).toEqual(expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'start_date' }));
+
+      const { result: lifetime } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_mixed_buy'],
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect((lifetime as any).media_buy_deliveries[0].media_buy_id).toBe('tz_mixed_buy');
+      expect((lifetime as any).reporting_period.timezone).toBeUndefined();
+
+      // A lifetime read of a mixed-zone buy cannot slice on calendar
+      // boundaries: daily/weekly/monthly/quarterly have no single anchor.
+      for (const granularity of ['daily', 'weekly', 'monthly', 'quarterly']) {
+        const { result: calendarGrain } = await simulateCallTool(server, 'get_media_buy_delivery', {
+          media_buy_ids: ['tz_mixed_buy'],
+          time_granularity: granularity,
+          account: ACCOUNT,
+          brand: BRAND,
+        });
+        expect(calendarGrain, granularity).toEqual(expect.objectContaining({
+          code: 'VALIDATION_ERROR',
+          field: 'time_granularity',
+        }));
+      }
+
+      // hourly and post_campaign have no calendar boundaries, so a mixed-zone
+      // lifetime read with either still returns delivery.
+      for (const granularity of ['hourly', 'post_campaign']) {
+        const { result: agnostic } = await simulateCallTool(server, 'get_media_buy_delivery', {
+          media_buy_ids: ['tz_mixed_buy'],
+          time_granularity: granularity,
+          account: ACCOUNT,
+          brand: BRAND,
+        });
+        expect((agnostic as any).code, granularity).toBeUndefined();
+        expect((agnostic as any).media_buy_deliveries[0].media_buy_id, granularity).toBe('tz_mixed_buy');
+      }
+
+      // A single-zone buy accepts calendar-grain granularity on a lifetime read.
+      const { result: singleZoneDaily } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_new_york_buy'],
+        time_granularity: 'daily',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect((singleZoneDaily as any).code).toBeUndefined();
+      expect((singleZoneDaily as any).media_buy_deliveries[0].media_buy_id).toBe('tz_new_york_buy');
+      expect((singleZoneDaily as any).reporting_period.timezone).toBe('America/New_York');
+
+      // Aliases canonicalize: Etc/UTC is reported as UTC.
+      const { result: alias } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_utc_alias_buy'],
+        start_date: '2026-04-15',
+        end_date: '2026-04-16',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect((alias as any).reporting_period).toEqual({
+        start: '2026-04-15T00:00:00.000Z',
+        end: '2026-04-16T00:00:00.000Z',
+        timezone: 'UTC',
+      });
+
+      // An unresolvable seeded timezone is a validation error, and the raw
+      // fixture value is not echoed.
+      const { result: invalid } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_ids: ['tz_invalid_buy'],
+        start_date: '2026-04-15',
+        end_date: '2026-04-16',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(invalid).toEqual(expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'start_date' }));
+      expect(JSON.stringify(invalid)).not.toContain('Not/A_Zone');
+    });
+
+    it('starts a reporting day at the DST transition when local midnight does not exist', () => {
+      expect(reportingDayStart('2026-09-06', 'America/Santiago').toISOString()).toBe('2026-09-06T04:00:00.000Z');
+      expect(reportingDayStart('2026-03-08', 'America/Havana').toISOString()).toBe('2026-03-08T05:00:00.000Z');
+      expect(reportingDayStart('2026-11-01', 'America/New_York').toISOString()).toBe('2026-11-01T04:00:00.000Z');
+      expect(Number.isNaN(reportingDayStart('2026-02-30', 'UTC').getTime())).toBe(true);
     });
 
     it('rejects an invalid delivery_date without creating delivery state', async () => {

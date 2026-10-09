@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.4/core/verification-token-claims.json",
+  "title": "AgenticAdvertising.org Verification Token Claims",
+  "description": "Claims carried by an AgenticAdvertising.org EdDSA verification token. The registry API remains authoritative for real-time badge status. Tokens issued before grading-profile selection may omit grading_profile and are interpreted as Legacy.",
+  "type": "object",
+  "definitions": {
+    "VerificationTokenMode": {
+      "type": "string",
+      "enum": [
+        "spec",
+        "live"
+      ]
+    },
+    "VerificationTokenGradingProfile": {
+      "type": "string",
+      "enum": [
+        "legacy",
+        "spec"
+      ]
+    }
+  },
+  "required": [
+    "iss",
+    "sub",
+    "aud",
+    "jti",
+    "iat",
+    "exp",
+    "agent_url",
+    "role",
+    "verified_specialisms",
+    "verification_modes"
+  ],
+  "properties": {
+    "iss": {
+      "type": "string",
+      "const": "https://aao.org"
+    },
+    "sub": {
+      "type": "string",
+      "format": "uri"
+    },
+    "aud": {
+      "type": "string",
+      "const": "aao-verification"
+    },
+    "jti": {
+      "type": "string",
+      "minLength": 1
+    },
+    "iat": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "exp": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "agent_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "media-buy",
+        "creative",
+        "signals",
+        "governance",
+        "brand",
+        "sponsored-intelligence"
+      ]
+    },
+    "verified_specialisms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "verification_modes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/VerificationTokenMode"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "grading_profile": {
+      "$ref": "#/definitions/VerificationTokenGradingProfile",
+      "description": "Grading policy that produced the badge. Absence on a historical token means Legacy; verification_modes remains an independent evidence axis."
+    },
+    "first_failing_spec_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start of the current Strict Spec failure episode. Omitted when no Strict Spec failure clock is active. The registry remains authoritative for real-time status."
+    },
+    "adcp_version": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*\\.[0-9]+$"
+    },
+    "protocol_version": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

@@ -5,6 +5,9 @@ protocol: creative
 category: creative_ad_server
 summary: "Stateful ad server with pre-loaded creatives. Generates serving tags per media buy. Optionally bills through AdCP."
 track: creative
+requires:
+  - controller
+
 required_tools:
   - build_creative
 
@@ -74,6 +77,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_39f4601a8b7d"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_ad_server-f52e861a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_de138cf20af4"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-creative_ad_server-f52e861a"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   creatives:
     - creative_id: "campaign_hero_video"
       status: "approved"
@@ -172,7 +196,7 @@ phases:
 
         sample_request:
           account:
-            account_id: "acct_acme_creative"
+            account_id: "acct_acmeoutdoor_example_live_de138cf20af4"
           include_pricing: true
           filters:
             statuses:
@@ -235,7 +259,7 @@ phases:
         sample_request:
           creative_id: "campaign_hero_video"
           account:
-            account_id: "acct_acme_creative"
+            account_id: "acct_acmeoutdoor_example_live_de138cf20af4"
           target_capability_id: "vast_30s"
           media_buy_id: "mb_summer_campaign_001"
           package_id: "pkg_ctv_premium"
@@ -300,6 +324,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_ad_server-f52e861a"
           media_buy_ids:
             - "mb_summer_campaign_001"
 
@@ -369,13 +395,15 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-creative_ad_server-f52e861a"
           idempotency_key: "$generate:uuid_v4#creative-ad-server-report-usage"
           reporting_period:
             start: "2099-03-01T00:00:00Z"
             end: "2099-03-31T23:59:59Z"
           usage:
             - account:
-                account_id: "acct_acme_creative"
+                account_id: "acct_acmeoutdoor_example_live_de138cf20af4"
               creative_id: "campaign_hero_video"
               pricing_option_id: "po_vast_30s_cpm"
               impressions: 2400000

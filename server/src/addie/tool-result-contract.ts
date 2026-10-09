@@ -18,6 +18,30 @@ export const TOOL_RESULT_STATUSES = [
 
 export type ToolResultStatus = typeof TOOL_RESULT_STATUSES[number];
 
+export const TOOL_ERROR_CATEGORIES = [
+  'validation',
+  'authentication',
+  'authorization',
+  'transport',
+  'protocol',
+  'application',
+  'configuration',
+  'unknown',
+] as const;
+
+export type ToolErrorCategory = typeof TOOL_ERROR_CATEGORIES[number];
+
+/** Content-free, allowlisted operational metadata retained with tool receipts. */
+export interface ToolResultTelemetry {
+  operation?: string;
+  error_code?: string;
+  error_category?: ToolErrorCategory;
+  retryable?: boolean;
+  retry_after_ms?: number;
+  attempts?: number;
+  recovered_by_later_success?: boolean;
+}
+
 export interface ToolResultExposure {
   /** Short, audience-appropriate explanation. */
   summary: string;
@@ -36,6 +60,7 @@ export interface StructuredToolResult {
    * explicitly named data fields survive normalization.
    */
   display?: unknown;
+  telemetry?: ToolResultTelemetry;
 }
 
 export type ToolHandlerResult = string | StructuredToolResult;
@@ -51,6 +76,7 @@ export interface ToolResultPresentation {
   display?: ToolDisplayPayload;
   /** Classified and structured results are safe to use as surface fallbacks. */
   source: 'legacy' | 'classified' | 'structured';
+  telemetry?: ToolResultTelemetry;
 }
 
 export interface NormalizedToolResult {
@@ -74,6 +100,8 @@ const MAX_DISPLAY_COLLECTION_SIZE = 40;
 const UNSAFE_FIELD_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 
 const STATUS_SET = new Set<string>(TOOL_RESULT_STATUSES);
+const ERROR_CATEGORY_SET = new Set<string>(TOOL_ERROR_CATEGORIES);
+const SAFE_TELEMETRY_TOKEN = /^[A-Za-z0-9_.:-]{1,100}$/;
 const CLASSIFIED_SEARCH_TOOLS = new Set([
   'search_docs',
   'get_doc',
@@ -310,6 +338,27 @@ function classifyMutationResult(toolName: string, text: string): ToolResultStatu
   return 'error';
 }
 
+/** Directory adapters serialize negative lookups as JSON, not error prefixes. */
+function classifyDirectoryResult(toolName: string, text: string): {
+  status: ToolResultStatus;
+  summary: string;
+} | null {
+  if (!['get_agent', 'get_member', 'lookup_domain', 'validate_agent'].includes(toolName)) return null;
+  let result: unknown;
+  try { result = JSON.parse(text); } catch { return null; }
+  if (!isRecord(result) || typeof result.error !== 'string' || !result.error.trim()) return null;
+  if (result.error.endsWith('not found or not visible to the caller')) {
+    return {
+      status: 'empty',
+      summary: 'No matching record is visible to you. This does not establish whether a private registration exists.',
+    };
+  }
+  return {
+    status: result.error.endsWith('is required') || result.error.endsWith('are required') ? 'invalid_input' : 'error',
+    summary: 'The directory lookup could not complete. Check the request and your access.',
+  };
+}
+
 /** Classify adapter-owned receipt headers, never failure prose inside results. */
 function classifyWorkflowFailure(toolName: string, text: string): ToolResultStatus | null {
   const firstLine = text.trim().split(/\r?\n/, 1)[0] || '';
@@ -344,7 +393,7 @@ function normalizeLegacy(toolName: string, raw: string): NormalizedToolResult {
     };
   }
 
-  const classified = classifySearchResult(toolName, raw);
+  const classified = classifyDirectoryResult(toolName, raw) ?? classifySearchResult(toolName, raw);
   const mutationStatus = classifyMutationResult(toolName, raw);
   const workflowFailure = classifyWorkflowFailure(toolName, raw);
   const status = mutationStatus ?? workflowFailure ?? classified?.status ?? (legacyResultIndicatesFailure(raw) ? 'error' : 'ok');
@@ -405,6 +454,29 @@ function normalizeStructured(raw: StructuredToolResult): NormalizedToolResult {
     displayDegradation = 'display_data_unreadable';
   }
 
+  const telemetry: ToolResultTelemetry = {};
+  if (raw.telemetry) {
+    if (typeof raw.telemetry.operation === 'string' && SAFE_TELEMETRY_TOKEN.test(raw.telemetry.operation)) {
+      telemetry.operation = raw.telemetry.operation;
+    }
+    if (typeof raw.telemetry.error_code === 'string' && SAFE_TELEMETRY_TOKEN.test(raw.telemetry.error_code)) {
+      telemetry.error_code = raw.telemetry.error_code;
+    }
+    if (typeof raw.telemetry.error_category === 'string' && ERROR_CATEGORY_SET.has(raw.telemetry.error_category)) {
+      telemetry.error_category = raw.telemetry.error_category;
+    }
+    if (typeof raw.telemetry.retryable === 'boolean') telemetry.retryable = raw.telemetry.retryable;
+    if (Number.isInteger(raw.telemetry.retry_after_ms) && raw.telemetry.retry_after_ms! >= 0) {
+      telemetry.retry_after_ms = Math.min(raw.telemetry.retry_after_ms!, 86_400_000);
+    }
+    if (Number.isInteger(raw.telemetry.attempts) && raw.telemetry.attempts! > 0) {
+      telemetry.attempts = Math.min(raw.telemetry.attempts!, 10);
+    }
+    if (typeof raw.telemetry.recovered_by_later_success === 'boolean') {
+      telemetry.recovered_by_later_success = raw.telemetry.recovered_by_later_success;
+    }
+  }
+
   return {
     status,
     model_context: model.text || fallback,
@@ -413,6 +485,7 @@ function normalizeStructured(raw: StructuredToolResult): NormalizedToolResult {
       user_summary: user.text || fallback,
       ...(display && { display }),
       source: 'structured',
+      ...(Object.keys(telemetry).length > 0 && { telemetry }),
     },
     ...(displayDegradation && { display_degradation: displayDegradation }),
     model_context_truncated: model.truncated,

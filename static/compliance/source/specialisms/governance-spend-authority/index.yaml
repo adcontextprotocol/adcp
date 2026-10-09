@@ -5,6 +5,9 @@ protocol: governance
 category: governance_spend_authority
 summary: "Governance agent approves a media buy with conditions. Buyer re-checks after meeting the conditions."
 track: campaign_governance
+requires:
+  - controller
+
 required_tools:
   - sync_plans
   - check_governance
@@ -53,6 +56,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_40a9aed37a76"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-governance_spend_authority-6163432e"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_ca4e5b90cb00"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-governance_spend_authority-6163432e"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   products:
     - product_id: "sports_ctv_q2"
       delivery_type: "guaranteed"
@@ -201,6 +225,11 @@ phases:
         context_outputs:
           - name: plan_id
             path: 'plans[0].plan_id'
+          # $generate aliases are phase-scoped; the conditions checks and the
+          # create_media_buy phase read the exact request's key through
+          # context so the authorized payload matches the executed one.
+          - name: spend_authority_create_media_buy_key
+            generate: uuid_v4
         validations:
           - check: response_schema
             description: "Response matches sync-plans-response.json schema"
@@ -260,6 +289,8 @@ phases:
               brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "compliance-governance_spend_authority-6163432e"
             brand:
               domain: "acmeoutdoor.example"
             total_budget:
@@ -274,7 +305,7 @@ phases:
               - product_id: "lifestyle_display_q2"
                 budget: 15000
                 pricing_option_id: "cpm_standard"
-            idempotency_key: "$generate:uuid_v4#governance_spend_authority_conditions_create_media_buy"
+            idempotency_key: "$context.spend_authority_create_media_buy_key"
 
           context:
             correlation_id: "governance_spend_authority--check_governance_conditions"
@@ -341,6 +372,8 @@ phases:
               brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "compliance-governance_spend_authority-6163432e"
             brand:
               domain: "acmeoutdoor.example"
             total_budget:
@@ -355,7 +388,7 @@ phases:
               - product_id: "lifestyle_display_q2"
                 budget: 15000
                 pricing_option_id: "cpm_standard"
-            idempotency_key: "$generate:uuid_v4#governance_spend_authority_conditions_create_media_buy"
+            idempotency_key: "$context.spend_authority_create_media_buy_key"
             ext:
               governance_policy_acknowledgements:
                 - "ctv_weekly_reporting"
@@ -413,6 +446,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-governance_spend_authority-6163432e"
           brand:
             domain: "acmeoutdoor.example"
           governance_context: "$context.governance_context"
@@ -428,7 +463,7 @@ phases:
             - product_id: "lifestyle_display_q2"
               budget: 15000
               pricing_option_id: "cpm_standard"
-          idempotency_key: "$generate:uuid_v4#governance_spend_authority_conditions_create_media_buy"
+          idempotency_key: "$context.spend_authority_create_media_buy_key"
           ext:
             governance_policy_acknowledgements:
               - "ctv_weekly_reporting"

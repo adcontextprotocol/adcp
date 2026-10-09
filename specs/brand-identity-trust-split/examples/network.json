@@ -1,0 +1,17 @@
+{
+  "$schema": "https://trustjson.org/schemas/v1/trust.json",
+  "last_updated": "2026-09-30T00:00:00Z",
+  "agents": [
+    {
+      "url": "https://northwind.example/mcp/streamhaus",
+      "roles": ["adcp:sales"],
+      "jwks_uri": "https://keys.northwind.example/jwks/streamhaus.json"
+    },
+    {
+      "url": "https://northwind.example/mcp/pinnacle-news",
+      "roles": ["adcp:sales"],
+      "jwks_uri": "https://keys.northwind.example/jwks/pinnacle-news.json"
+    }
+  ],
+  "acknowledgements_url": "https://northwind.example/.well-known/trust-acknowledgements.json"
+}

@@ -52,6 +52,21 @@ vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
   invalidateWebAdminStatusCache: vi.fn(),
   isWebUserAAOAdmin: vi.fn().mockResolvedValue(false),
 }));
+
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>();
+  const checkMembership = vi.fn().mockResolvedValue(false);
+  const resolve = async (principal: any, email?: string | null) => {
+    const id = typeof principal === 'string' ? principal : principal.authWorkosUserId ?? principal.id;
+    return actual.decideAAOAdminAccess(await checkMembership(id), typeof principal === 'string' ? email : principal.email);
+  };
+  return {
+    ...actual,
+    isWebUserAAOAdmin: checkMembership,
+    resolveWebUserAAOAdminAccess: resolve,
+    isAuthenticatedUserAAOAdmin: async (principal: any) => (await resolve(principal)).isAdmin,
+  };
+});
 vi.mock('../../src/slack/sync.js', () => ({
   syncWorkingGroupMembersFromSlack: vi.fn(),
   syncAllWorkingGroupMembersFromSlack: vi.fn(),

@@ -38,6 +38,20 @@ describe('WorkOS client request budgets', () => {
     });
   });
 
+  it('bounds exact-credential provider reads without automatic retries', async () => {
+    const { getAuthorizationEnforcementWorkos } = await import('../../src/auth/workos-client.js');
+
+    getAuthorizationEnforcementWorkos();
+    getAuthorizationEnforcementWorkos();
+
+    expect(mocks.constructWorkOS).toHaveBeenCalledOnce();
+    expect(mocks.constructWorkOS).toHaveBeenCalledWith('sk_test_timeout', {
+      clientId: 'client_test_timeout',
+      timeout: 5_000,
+      maxRetries: 0,
+    });
+  });
+
   it('does not change retry or timeout policy for the general shared client', async () => {
     const { getWorkos } = await import('../../src/auth/workos-client.js');
 
@@ -45,6 +59,17 @@ describe('WorkOS client request budgets', () => {
 
     expect(mocks.constructWorkOS).toHaveBeenCalledWith('sk_test_timeout', {
       clientId: 'client_test_timeout',
+    });
+  });
+
+  it('bounds exact credential enforcement to five seconds without SDK retries', async () => {
+    const { getAuthorizationEnforcementWorkos } = await import('../../src/auth/workos-client.js');
+    expect(getAuthorizationEnforcementWorkos()).toBe(getAuthorizationEnforcementWorkos());
+    expect(mocks.constructWorkOS).toHaveBeenCalledTimes(1);
+    expect(mocks.constructWorkOS).toHaveBeenCalledWith('sk_test_timeout', {
+      clientId: 'client_test_timeout',
+      timeout: 5_000,
+      maxRetries: 0,
     });
   });
 

@@ -25,6 +25,10 @@ You ship these three surfaces. The runner owns storyboard selection, fixture ord
 
 The example below is for a full-service guaranteed seller (proposal lifecycle enabled). A direct-buy guaranteed seller would set `media_buy.supports_proposals: false` (or omit it). A broadcast-TV seller would claim `sales-broadcast-tv`; a creative-only agent would claim the `creative` protocol with `creative-ad-server` or `creative-generative` specialisms; a signals provider would claim `signals`. The pattern is the same: declare only what you actually implement.
 
+<Note>
+The current 3.x `media_buy_seller` baseline uses non-guaranteed fixtures in its core flow and several inherited scenarios. Some workflows require an immediately issued `media_buy_id`; others assert immediate preflight rejection or are capability-gated. A guaranteed-only seller can pass the `sales-guaranteed` approval storyboard yet still lack a complete media-buy grade. A versioned, delivery-mode-aware baseline must preserve synchronous checks for non-guaranteed buys and add task completion and readback for guaranteed buys.
+</Note>
+
 ```json
 {
   "supported_protocols": ["media_buy", "creative"],
@@ -70,7 +74,7 @@ In practice, sellers usually run both:
 
 | Run | Endpoint | Expected result |
 |-----|----------|-----------------|
-| Observational sandbox run | Production endpoint with sandbox accounts, no controller exposed | `steps_failed = 0`; live-only probes appear as not selected, and selected controller-dependent scenarios may make the summary `partial` with `missing_test_controller` skips |
+| Observational sandbox run | Production endpoint with sandbox accounts, no controller exposed | `steps_failed = 0`; live-only probes appear as not selected, and selected controller-dependent scenarios may make the summary `partial` with `requirement_unmet` (`controller`) or `missing_test_controller` skips |
 | Deterministic run | Dev/staging or sandbox-only endpoint with [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) | `steps_failed = 0` and no controller-dependent coverage skips |
 
 The first run answers "does the production buyer-visible path tolerate sandbox traffic?" The second answers "can the runner prove every lifecycle path for the declared specialisms?" Do not collapse those into one signal. A zero-failure partial run is useful, but buyers need the skip list to know exactly which lifecycle assertions were not graded.

@@ -22,6 +22,7 @@
 
 const ADMIN_BASE_URL = process.env.ADMIN_BASE_URL?.replace(/\/+$/, '');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+const ADMIN_OPERATOR = process.env.ADMIN_OPERATOR?.trim() || 'script:2026-04-triton-promote-hayem';
 
 if (!ADMIN_BASE_URL || !ADMIN_API_KEY) {
   console.error('ADMIN_BASE_URL and ADMIN_API_KEY env vars are required.');
@@ -42,6 +43,7 @@ async function adminFetch<T = unknown>(
     ...init,
     headers: {
       Authorization: `Bearer ${ADMIN_API_KEY}`,
+      'X-Admin-Operator': ADMIN_OPERATOR,
       Accept: 'application/json',
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...(init?.headers as Record<string, string> | undefined),

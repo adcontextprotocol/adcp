@@ -100,6 +100,7 @@ export async function findOwnerOrgForUser(
 export async function findSoleOwnerOrgForUser(
   userId: string,
   agentUrl: string,
+  options: { throwOnError?: boolean } = {},
 ): Promise<string | null> {
   try {
     const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
@@ -116,7 +117,8 @@ export async function findSoleOwnerOrgForUser(
     return result.rows.length === 1
       ? result.rows[0].workos_organization_id
       : null;
-  } catch {
+  } catch (error) {
+    if (options.throwOnError) throw error;
     return null;
   }
 }
@@ -135,6 +137,7 @@ export async function isOrgOwnerOfAgent(
   orgId: string,
   userId: string,
   agentUrl: string,
+  options: { throwOnError?: boolean } = {},
 ): Promise<boolean> {
   try {
     const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
@@ -149,7 +152,38 @@ export async function isOrgOwnerOfAgent(
       [orgId, JSON.stringify([{ url: lookupAgentUrl }]), userId],
     );
     return result.rows.length > 0;
-  } catch {
+  } catch (error) {
+    if (options.throwOnError) throw error;
+    return false;
+  }
+}
+
+/**
+ * Mutation-grade ownership check. Unlike read-oriented ownership helpers,
+ * this requires an explicit tenant and an owner/admin organization role.
+ */
+export async function canManageAgentForOrg(
+  orgId: string,
+  userId: string,
+  agentUrl: string,
+  options: { throwOnError?: boolean } = {},
+): Promise<boolean> {
+  try {
+    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
+    const result = await query(
+      `SELECT 1 FROM member_profiles mp
+       JOIN organization_memberships om
+         ON om.workos_organization_id = mp.workos_organization_id
+       WHERE mp.workos_organization_id = $1
+         AND mp.agents @> $2::jsonb
+         AND om.workos_user_id = $3
+         AND om.role IN ('owner', 'admin')
+       LIMIT 1`,
+      [orgId, JSON.stringify([{ url: lookupAgentUrl }]), userId],
+    );
+    return result.rows.length === 1;
+  } catch (error) {
+    if (options.throwOnError) throw error;
     return false;
   }
 }
@@ -168,12 +202,13 @@ export async function resolveOwnerOrgForUser(
   userId: string,
   agentUrl: string,
   requestedOrgId?: string,
+  options: { throwOnError?: boolean } = {},
 ): Promise<string | null> {
   if (requestedOrgId === undefined) {
-    return findSoleOwnerOrgForUser(userId, agentUrl);
+    return findSoleOwnerOrgForUser(userId, agentUrl, options);
   }
 
-  return (await isOrgOwnerOfAgent(requestedOrgId, userId, agentUrl))
+  return (await isOrgOwnerOfAgent(requestedOrgId, userId, agentUrl, options))
     ? requestedOrgId
     : null;
 }

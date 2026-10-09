@@ -244,7 +244,11 @@ vi.mock(
   }),
 );
 
-import { ADDIE_MATCHED_V4_SCREENING_CELLS } from "../../../src/addie/eval/matched-v4-evaluation.js";
+import {
+  ADDIE_MATCHED_V4_BASELINE_CELL_IDS,
+  ADDIE_MATCHED_V4_SCREENING_CELLS,
+  createAddieMatchedV4Plan,
+} from "../../../src/addie/eval/matched-v4-evaluation.js";
 import * as privateAuthorityModule from "../../../src/addie/eval/matched-v4-private-authority.js";
 import {
   createAddieMatchedV4PaidAuthority,
@@ -1190,14 +1194,28 @@ describe("matched-v4 sealed private authority", () => {
       r = await a.execute("screening");
     expect(r).toEqual(expect.objectContaining({ status: "completed" }));
     expect(testRuntime.pool.connections).toBeGreaterThan(0);
-    // Every native setting is screened on broad; seven preregistered cells
+    // Every production-native setting is screened on broad; seven preregistered cells
     // add a paired clean-surface comparison without exceeding the ledger cap.
-    expect(ADDIE_MATCHED_V4_SCREENING_CELLS).toHaveLength(43);
+    expect(ADDIE_MATCHED_V4_SCREENING_CELLS).toHaveLength(37);
+    const plan = createAddieMatchedV4Plan();
+    expect(plan.baselineCellIdsByToolSurface).toEqual(
+      ADDIE_MATCHED_V4_BASELINE_CELL_IDS,
+    );
+    expect(
+      Object.entries(ADDIE_MATCHED_V4_BASELINE_CELL_IDS).every(
+        ([surface, id]) =>
+          ADDIE_MATCHED_V4_SCREENING_CELLS.some(
+            (cell) => cell.id === id && cell.toolSurface === surface,
+          ),
+      ),
+    ).toBe(true);
+    expect(plan.full.maxPromotedCells).toBe(15);
+    expect(plan.full.maxProviderDispatches).toBeLessThanOrEqual(1584);
     expect(
       testRuntime.terminalRecords.filter(
         (x) => x.status === "response_usage_recorded",
       ),
-    ).toHaveLength(403);
+    ).toHaveLength(349);
     // The actual routed Sonnet request retains the generic sealed response
     // contract alongside (rather than underneath) the trusted Haiku decision.
     // The complete choice set has no trace-specific expected label, marked
@@ -1237,8 +1255,8 @@ describe("matched-v4 sealed private authority", () => {
     if (r.status === "completed") {
       // Each #567 continuation remains a distinct durable dispatch; it must
       // not be collapsed into the initial tool-call usage record.
-      expect(r.artifact.attemptedProviderDispatches).toBe(403);
-      expect(r.artifact.completedProviderDispatches).toBe(403);
+      expect(r.artifact.attemptedProviderDispatches).toBe(349);
+      expect(r.artifact.completedProviderDispatches).toBe(349);
     }
     expect(a.promotionReceipt()).not.toBeNull();
   });
@@ -1449,15 +1467,20 @@ describe("matched-v4 sealed private authority", () => {
     ).toHaveLength(0);
     expect(testRuntime.reconciliations).toBeGreaterThan(0);
   });
-  it("freezes the requested effort and cannot overstate completed dispatches", async () => {
+  it("uses only frozen production-native effort controls and cannot overstate completed dispatches", async () => {
     const a = await authority();
     const result = await a.execute("screening");
     expect(result).toMatchObject({ status: "completed" });
     if (result.status !== "completed") return;
+    expect(
+      testRuntime.openaiRequests.some(
+        (request) =>
+          request.reasoning?.effort === "xhigh" ||
+          request.reasoning?.effort === "max",
+      ),
+    ).toBe(false);
     const requestedEffortRequest = testRuntime.openaiRequests.find(
-      (request) =>
-        request.reasoning?.effort === "xhigh" ||
-        request.reasoning?.effort === "max",
+      (request) => request.reasoning?.effort === "high",
     );
     expect(requestedEffortRequest).toBeDefined();
     expect(Object.isFrozen(requestedEffortRequest)).toBe(true);
@@ -1767,12 +1790,12 @@ describe("matched-v4 sealed private authority", () => {
     const currentTurnIntents = testRuntime.intents.filter((intent) =>
       intent.assignmentId.endsWith(":mv4-screen-567-current"),
     );
-    // 43 direct cells issue an initial+continuation pair; the routed
-    // baseline has router+generation initial+generation continuation.
-    expect(currentTurnIntents).toHaveLength(88);
+    // 35 direct cells issue an initial+continuation pair; the two routed
+    // surface baselines have router+generation initial+generation continuation.
+    expect(currentTurnIntents).toHaveLength(76);
     expect(
       new Set(currentTurnIntents.map((intent) => intent.requestSha256)).size,
-    ).toBe(88);
+    ).toBe(76);
     const reused = await authority("prior_reuse_claim");
     await expect(reused.execute("screening")).resolves.toMatchObject({
       status: "refused",

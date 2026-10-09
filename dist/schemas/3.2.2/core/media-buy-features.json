@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.2/core/media-buy-features.json",
+  "title": "Media Buy Features",
+  "description": "Optional media-buy protocol features. Used in capability declarations (seller declares support) and product filters (buyer requires support). If a seller declares a feature as true, they MUST honor requests using that feature.",
+  "type": "object",
+  "properties": {
+    "inline_creative_management": {
+      "type": "boolean",
+      "deprecated": true,
+      "description": "Deprecated 3.x compatibility capability for creatives provided inline in create_media_buy and update_media_buy package payloads. buy_products, accept_proposal, and control_media_buy never accept inline creatives. New integrations use the dedicated creative lifecycle. Removed in 4.0."
+    },
+    "property_list_filtering": {
+      "type": "boolean",
+      "description": "Honors property_list parameter in get_products to filter results to buyer-approved properties"
+    },
+    "catalog_management": {
+      "type": "boolean",
+      "description": "Supports sync_catalogs task for catalog feed management with platform review and approval"
+    },
+    "catalog_item_availability_updates": {
+      "type": "boolean",
+      "description": "Supports buyer-pushed item_availability_updates and item_availability_queries on sync_catalogs for immediate suppression/restoration and current-state readback in buyer-managed catalogs. Seller declarations may be true only with catalog_management: true; buyer required_features filters may request this feature alone. Requests containing availability operations are synchronous and accept at most 1,000 combined update and query entries. A successful suppress covers selection, dynamic rendering, and cached or pre-generated creatives materialized from the item. Internal lineage MUST retain resolved_account_id, catalog_id, catalog_generation, and item_id. Static creatives supplied or promoted by the buyer without catalog lineage remain outside this automatic guarantee. Suppression persists across feed refreshes and ordinary upserts until restore, expires_at, or catalog deletion. A seller that does not declare true MUST reject availability operations with UNSUPPORTED_FEATURE before lookup or mutation and MUST NOT interpret them as discovery. This does not control seller-owned wholesale inventory or let restore bypass seller controls."
+    },
+    "committed_metrics_supported": {
+      "type": "boolean",
+      "description": "Seller has per-package snapshot infrastructure for the reporting contract. When true, the seller MUST populate `package.committed_metrics` on committed `create_media_buy` responses where `confirmed_at` is non-null, MUST omit `package.committed_metrics` while `confirmed_at` is null for a provisional buy, and MUST honor append-only mid-flight metric additions via `update_media_buy`. The unified `committed_metrics` array (per the metric-accountability design) covers both standard and vendor-defined metric entries, so a single flag is load-bearing. Buyers filtering on this flag are detecting 'this seller can stamp the reporting contract,' which closes the audit gap from PR #3510 where absence of `committed_metrics` was indistinguishable between 'didn't snapshot' and 'snapshot infrastructure not implemented.'"
+    },
+    "seller_optimized_budget": {
+      "type": "boolean",
+      "description": "Supports the core seller-optimized shared-budget contract for budget_allocation.mode `seller_optimized`: one hard shared total_budget, seller allocation of that total across the buy's packages against budget_allocation.optimization_goals, media-buy-level pacing, and echo of the allocation configuration on buy read surfaces. Sellers declaring true MUST accept eligible explicit-package and proposal executions that use only these core controls and MUST enforce the aggregate budget. Core media-buy pacing: sellers declaring true MUST accept omitted media-buy pacing (which defaults to even when total_budget is present) and pacing `even` on seller-optimized buys; they MAY reject `asap` or `front_loaded` with `UNSUPPORTED_FEATURE` (error.field `pacing`) before any provider mutation, and MUST NOT silently coerce them to `even`. Package-level controls inside a seller-optimized buy are separate capabilities: package budget caps (seller_optimized_package_budgets), package minimum-spend targets (seller_optimized_min_spend_targets), and package pacing (seller_optimized_package_pacing). A seller declaring this feature but not one of those sub-capabilities MUST reject any request that would leave that package control on a seller-optimized buy with `UNSUPPORTED_FEATURE` before any over-subscription validation or provider mutation, and MUST NOT silently drop, soften, or coerce it. Over-subscription validation (`INVALID_REQUEST`) applies only to package controls the seller has declared; see seller_optimized_min_spend_targets. Product combinations may still be rejected when their currencies, optimization capabilities, pricing terms, or delivery constraints are incompatible. Sellers that do not declare this feature MUST reject any request carrying `budget_allocation.mode: 'seller_optimized'` with `UNSUPPORTED_FEATURE` before any provider mutation, and MUST NOT coerce the request to fixed allocation."
+    },
+    "seller_optimized_package_budgets": {
+      "type": "boolean",
+      "description": "Honors package `budget` as an optional hard lifetime package spend cap inside a seller-optimized buy: packages[].budget and new_packages[].budget on create_media_buy and update_media_buy, purchases[].budget on buy_products, package budget controls on control_media_buy, and max_spend_percentage on seller-optimized proposal allocations. The cap is a ceiling, not a reserved or current allocation, and package caps may sum above total_budget. Meaningful only with seller_optimized_budget: true; seller declarations may be true only with seller_optimized_budget: true, while buyer required_features filters may request this feature alone. A seller that declares seller_optimized_budget without this feature MUST reject a request that would leave a package budget on a seller-optimized buy, including an allocation-mode switch that retains fixed-mode package budgets (the buyer clears them with null in the same atomic update), with `UNSUPPORTED_FEATURE` before any over-subscription validation or provider mutation, and MUST NOT issue seller-optimized proposals carrying max_spend_percentage. Does not govern fixed allocation, where package budgets remain required."
+    },
+    "seller_optimized_min_spend_targets": {
+      "type": "boolean",
+      "description": "Honors package `min_spend_target` as a soft lifetime minimum-spend target inside a seller-optimized buy: packages[].min_spend_target and new_packages[].min_spend_target on create_media_buy and update_media_buy, purchases[].min_spend_target on buy_products, package min_spend_target controls on control_media_buy, and min_spend_target_percentage on seller-optimized proposal allocations. The seller SHOULD attempt to deliver at least the target before allocating incremental spend elsewhere; it is not a billing or delivery guarantee. Meaningful only with seller_optimized_budget: true; seller declarations may be true only with seller_optimized_budget: true, while buyer required_features filters may request this feature alone. Sellers declaring this feature MUST reject package minimum-spend targets summing above total_budget with `INVALID_REQUEST` before mutation, and, when they also declare seller_optimized_package_budgets, MUST likewise reject a min_spend_target above its own package budget. A seller that declares seller_optimized_budget without this feature MUST reject a request carrying a numeric min_spend_target with `UNSUPPORTED_FEATURE` before any over-subscription validation or provider mutation, so an over-subscribed target sent to such a seller yields `UNSUPPORTED_FEATURE`, and MUST NOT issue seller-optimized proposals carrying min_spend_target_percentage."
+    },
+    "seller_optimized_package_pacing": {
+      "type": "boolean",
+      "description": "Honors package `pacing` as subordinate per-package pacing inside a seller-optimized buy, in addition to the media-buy-level pacing covered by seller_optimized_budget: packages[].pacing and new_packages[].pacing on create_media_buy and update_media_buy, purchases[].pacing on buy_products, package pacing controls on control_media_buy, and allocation pacing on seller-optimized proposals. Package pacing MUST NOT cause delivery to exceed aggregate media-buy pacing. Meaningful only with seller_optimized_budget: true; seller declarations may be true only with seller_optimized_budget: true, while buyer required_features filters may request this feature alone. Package pacing equal to the effective media-buy pacing adds no subordinate constraint and does not require this feature; buyers SHOULD omit package pacing on seller-optimized buys unless this feature is advertised. A seller that declares seller_optimized_budget without this feature MUST reject a request that would leave package pacing differing from media-buy pacing on a seller-optimized buy, including an allocation-mode switch that retains such fixed-mode package pacing (the buyer can align it in the same update), with `UNSUPPORTED_FEATURE` before any provider mutation, and MUST NOT issue seller-optimized proposals carrying allocation pacing. Does not govern package pacing in fixed allocation."
+    },
+    "bidding_policy": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.2/core/bidding-policy-capability.json"
+        }
+      ],
+      "description": "Structured support for canonical bidding by authored scope, allocation context, mode, strength, and strength-qualified multi-field combination. Presence does not imply support for both scopes, both allocation modes, or every policy shape. Sellers MUST preserve every advertised semantic exactly and reject unadvertised policies rather than translating them."
+    }
+  },
+  "additionalProperties": {
+    "type": "boolean"
+  }
+}

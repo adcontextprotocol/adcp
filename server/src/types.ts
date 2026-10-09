@@ -393,6 +393,8 @@ export interface Impersonator {
 }
 
 export interface WorkOSUser {
+  /** Immutable primary-DB snapshot for this request only; never serialize or cache. */
+  readonly authorizationSnapshot?: import('./db/user-authorization-snapshot-db.js').AuthorizationSnapshot;
   /**
    * The canonical workos_user_id for app-state queries. For singleton
    * identities this equals the authenticated WorkOS user. For non-primary
@@ -491,7 +493,9 @@ export function isValidAgentVisibility(value: unknown): value is AgentVisibility
 export interface AgentConfig {
   url: string;
   visibility: AgentVisibility;
-  // Cached info from discovery (optional, refreshed periodically)
+  // Label set when the agent is registered (not refreshed from discovery).
+  // Defaults to the company name; renames cascade into labels that still
+  // match the old name (services/identity-rename.ts).
   name?: string;
   type?: AgentType;
   /**
@@ -586,6 +590,8 @@ export interface HostedBrand {
   created_by_email?: string;
   brand_domain: string;
   brand_json: Record<string, unknown>;
+  /** Registry provenance of the underlying brands row; 'brand_json' once the domain points at this hosted document. */
+  source_type?: DiscoveredBrand['source_type'];
   domain_verified: boolean;
   verification_token?: string;
   is_public: boolean;

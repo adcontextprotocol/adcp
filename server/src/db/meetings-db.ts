@@ -1,4 +1,5 @@
 import { query } from './client.js';
+import { withActiveCredentialEventMutation } from './identity-db.js';
 import type {
   Meeting,
   MeetingSeries,
@@ -652,15 +653,21 @@ export class MeetingsDatabase {
    * Update topic subscription (create if not exists)
    */
   async updateTopicSubscription(input: UpdateTopicSubscriptionInput): Promise<WorkingGroupTopicSubscription> {
-    const result = await query<WorkingGroupTopicSubscription>(
-      `INSERT INTO working_group_topic_subscriptions (working_group_id, workos_user_id, topic_slugs)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (working_group_id, workos_user_id)
-       DO UPDATE SET topic_slugs = $3, updated_at = NOW()
-       RETURNING *`,
-      [input.working_group_id, input.workos_user_id, input.topic_slugs]
-    );
-    return result.rows[0];
+    const guarded = await withActiveCredentialEventMutation(input.workos_user_id, async (client) => {
+      const result = await client.query<WorkingGroupTopicSubscription>(
+        `INSERT INTO working_group_topic_subscriptions (working_group_id, workos_user_id, topic_slugs)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (working_group_id, workos_user_id)
+         DO UPDATE SET topic_slugs = $3, updated_at = NOW()
+         RETURNING *`,
+        [input.working_group_id, input.workos_user_id, input.topic_slugs],
+      );
+      return result.rows[0];
+    });
+    if (!guarded.applied || !guarded.value) {
+      throw new Error('Cannot update topic subscriptions for an inactive credential');
+    }
+    return guarded.value;
   }
 
   /**

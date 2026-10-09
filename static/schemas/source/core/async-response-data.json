@@ -165,6 +165,16 @@
       "$ref": "/schemas/media-buy/build-creative-async-response-submitted.json"
     },
     {
+      "title": "GetCreativeFeaturesResponse",
+      "description": "Terminal response for completed or failed get_creative_features",
+      "$ref": "/schemas/creative/get-creative-features-response.json"
+    },
+    {
+      "title": "GetCreativeFeaturesAsyncSubmitted",
+      "description": "Acknowledgment for an accepted provider creative-feature evaluation",
+      "$ref": "/schemas/creative/get-creative-features-async-response-submitted.json"
+    },
+    {
       "title": "SyncCreativesResponse",
       "description": "Response for completed or failed sync_creatives",
       "$ref": "/schemas/creative/sync-creatives-response.json"

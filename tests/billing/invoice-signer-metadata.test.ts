@@ -19,11 +19,9 @@ describe('invoice signer metadata invariants', () => {
     );
   });
 
-  test('membership invite acceptance passes the signer into Stripe invoice creation', () => {
+  test('suspended membership invite acceptance cannot issue an invoice', () => {
     const source = readRepoFile('server/src/routes/invites.ts');
-
-    expect(source).toMatch(
-      /createAndSendInvoice\(\{[\s\S]*workosOrganizationId: org\.workos_organization_id,\s*workosUserId: user\.id,[\s\S]*\}\);/
-    );
+    expect(source).toContain("error: 'organization_onboarding_disabled'");
+    expect(source).not.toContain('createAndSendInvoice');
   });
 });

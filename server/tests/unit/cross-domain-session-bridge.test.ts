@@ -223,4 +223,44 @@ describe('cross-domain session bridge', () => {
     expect(bridged).toBe(false);
     expect(redirect).not.toHaveBeenCalled();
   });
+
+  describe('after the page clears a session WorkOS rejected', () => {
+    type RebridgeInvoker = {
+      rebridgeIfSessionCleared(req: express.Request, res: express.Response, session: { user: null; cleared: boolean }): boolean;
+    };
+
+    function invokeRebridge({ cleared = true, hostname = 'adcontextprotocol.org', query = {} }: {
+      cleared?: boolean; hostname?: string; query?: express.Request['query'];
+    } = {}) {
+      const server = Object.create(HTTPServer.prototype) as RebridgeInvoker;
+      const redirect = vi.fn();
+      const req = { hostname, originalUrl: '/registry', query } as unknown as express.Request;
+      const bridged = server.rebridgeIfSessionCleared(req, { redirect } as unknown as express.Response, { user: null, cleared });
+      return { bridged, redirect };
+    }
+
+    it('bridges once more to pick up the current AAO session', () => {
+      const { bridged, redirect } = invokeRebridge();
+
+      expect(bridged).toBe(true);
+      expect(redirect).toHaveBeenCalledWith(
+        `https://agenticadvertising.org/auth/bridge?return_to=${encodeURIComponent('https://adcontextprotocol.org/registry')}`,
+      );
+    });
+
+    it('does not loop when the bridged AAO session is rejected too', () => {
+      const { bridged, redirect } = invokeRebridge({ query: { _bridge_checked: '1' } });
+      expect(bridged).toBe(false);
+      expect(redirect).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a session that was not cleared', { cleared: false }],
+      ['the AAO hostname', { hostname: 'agenticadvertising.org' }],
+    ])('does not bridge for %s', (_label, options) => {
+      const { bridged, redirect } = invokeRebridge(options);
+      expect(bridged).toBe(false);
+      expect(redirect).not.toHaveBeenCalled();
+    });
+  });
 });

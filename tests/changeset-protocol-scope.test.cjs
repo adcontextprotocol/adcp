@@ -13,6 +13,7 @@ const {
   isChangesetEditOnlyMaintenance,
   isChangesetStatusExemptMaintenance,
   isProtocolScopedPath,
+  isStoryboardBranchRegistrationOnly,
   parseNameStatus,
 } = require('../scripts/check-changeset-protocol-scope.cjs');
 
@@ -75,6 +76,77 @@ assert.strictEqual(isProtocolScopedPath('docs/registry/index.mdx'), false);
 assert.strictEqual(isProtocolScopedPath('scripts/run-storyboards-isolated.mjs'), true);
 assert.strictEqual(isProtocolScopedPath('server/src/billing/subscription-sync.ts'), false);
 assert.strictEqual(isProtocolScopedPath('.changeset/billing-fix.md'), false);
+assert.strictEqual(isProtocolScopedPath('.github/workflows/release.yml'), false);
+assert.strictEqual(isProtocolScopedPath('.github/workflows/training-agent-storyboards.yml'), true);
+assert.strictEqual(isProtocolScopedPath('scripts/build-protocol-tarball.cjs'), true);
+const storyboardWorkflowPath = '.github/workflows/training-agent-storyboards.yml';
+const storyboardWorkflowBase = `pull_request:\n  branches: [main, '3.1.x', '3.0.x']\npush:\n  branches: [main, '3.1.x', '3.0.x']\njob: run\n`;
+const storyboardWorkflowRegistered = storyboardWorkflowBase.replaceAll(
+  "branches: [main, '3.1.x', '3.0.x']",
+  "branches: [main, '3.2.x', '3.1.x', '3.0.x']"
+);
+const storyboardChange = [{ status: 'M', paths: [storyboardWorkflowPath] }];
+assert.strictEqual(
+  isStoryboardBranchRegistrationOnly(storyboardWorkflowRegistered, storyboardWorkflowBase),
+  true
+);
+assert.strictEqual(
+  hasProtocolScopedChanges(
+    storyboardChange,
+    readFiles({ [storyboardWorkflowPath]: storyboardWorkflowRegistered }),
+    readFiles({ [storyboardWorkflowPath]: storyboardWorkflowBase })
+  ),
+  false,
+  'Registering the exact two 3.2.x CI triggers does not release the protocol'
+);
+assert.strictEqual(
+  hasProtocolScopedChanges(
+    storyboardChange,
+    readFiles({ [storyboardWorkflowPath]: `${storyboardWorkflowRegistered}another job\n` }),
+    readFiles({ [storyboardWorkflowPath]: storyboardWorkflowBase })
+  ),
+  true,
+  'Changes to storyboard jobs remain protocol scoped'
+);
+assert.strictEqual(
+  hasProtocolScopedChanges(
+    storyboardChange,
+    readFiles({ [storyboardWorkflowPath]: storyboardWorkflowRegistered.replace('push:\n  branches: [main, \'3.2.x\',', 'push:\n  branches: [main,') }),
+    readFiles({ [storyboardWorkflowPath]: storyboardWorkflowBase })
+  ),
+  true,
+  'Both pull request and push trigger lists must be registered together'
+);
+assert.strictEqual(
+  findChangesetProtocolScopeViolations(
+    [...storyboardChange, { status: 'A', paths: ['.changeset/empty-workflow.md'] }],
+    readFiles({
+      [storyboardWorkflowPath]: storyboardWorkflowRegistered,
+      '.changeset/empty-workflow.md': emptyChangeset,
+    }),
+    readFiles({ [storyboardWorkflowPath]: storyboardWorkflowBase })
+  ).length,
+  1,
+  'Branch registration cannot justify an artificial protocol changeset'
+);
+assert.strictEqual(
+  hasProtocolScopedChanges([
+    { status: 'M', paths: ['.github/workflows/release.yml'] },
+    { status: 'M', paths: ['scripts/backfill-cdn-artifacts.sh'] },
+    { status: 'A', paths: ['scripts/check-release-state.cjs'] },
+  ]),
+  false,
+  'Release publication controls do not schedule a protocol release'
+);
+assert.strictEqual(
+  hasProtocolScopedChanges([
+    { status: 'M', paths: ['.github/workflows/release.yml'] },
+    { status: 'M', paths: ['static/schemas/source/core/product.json'] },
+  ]),
+  true,
+  'A publication workflow change must not exempt accompanying protocol content'
+);
+
 assert.strictEqual(
   hasProtocolScopedChanges([{ status: 'M', paths: ['server/src/billing/subscription-sync.ts'] }]),
   false,
@@ -259,6 +331,17 @@ assert.strictEqual(
 
 assert.strictEqual(
   isChangesetStatusExemptMaintenance([
+    { status: 'M', paths: ['.github/workflows/release.yml'] },
+    { status: 'M', paths: ['tests/release-workflow-immutability.test.cjs'] },
+    { status: 'M', paths: ['scripts/check-changeset-protocol-scope.cjs'] },
+    { status: 'M', paths: ['tests/changeset-protocol-scope.test.cjs'] },
+  ]),
+  true,
+  'Release workflow maintenance can bypass changesets status without creating a package release'
+);
+
+assert.strictEqual(
+  isChangesetStatusExemptMaintenance([
     { status: 'M', paths: ['.agents/playbook.md'] },
     { status: 'M', paths: ['server/src/billing/subscription-sync.ts'] },
   ]),
@@ -344,7 +427,10 @@ console.log('Changeset protocol scope tests passed.');
       base.replaceAll('run: npm ci', 'run: node .github/scripts/npm-ci.mjs')), false);
     if (file.endsWith('.yml')) assert.strictEqual(classify(head.replaceAll('run: npm ci', 'run: node .github/scripts/npm-ci.mjs')), true);
   }
-  assert.strictEqual(hasProtocolScopedChanges([{ status: 'M', paths: ['.github/workflows/release.yml'] }], () => '', () => ''), true);
+  // Current main treats release.yml as operational, so use the still-scoped
+  // storyboard workflow to prove empty readers never exempt an edit.
+  assert.strictEqual(hasProtocolScopedChanges([{ status: 'M', paths: ['.github/workflows/training-agent-storyboards.yml'] }], () => '', () => ''), true);
+  assert.strictEqual(hasProtocolScopedChanges([{ status: 'M', paths: ['.github/workflows/release.yml'] }], () => '', () => ''), false);
 }
 
 // Verify the actual CLI reads the diff's merge base, including when main has

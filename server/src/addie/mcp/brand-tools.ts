@@ -9,6 +9,7 @@
 import type { AddieTool } from '../types.js';
 import { BrandManager } from '../../brand-manager.js';
 import { BrandDatabase } from '../../db/brand-db.js';
+import { isDomainControlVerified } from '../../services/brand-trust-fields.js';
 import { registryRequestsDb } from '../../db/registry-requests-db.js';
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from '../../services/brandfetch.js';
 import { downloadAndCacheLogos, getBrandAssetUrl, isBrandfetchUrl } from '../../services/logo-cdn.js';
@@ -406,6 +407,12 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       if (existing.source_type === 'brand_json') {
         return JSON.stringify({
           error: 'Cannot edit authoritative brand (managed via brand.json)',
+          domain,
+        });
+      }
+      if (isDomainControlVerified(existing)) {
+        return JSON.stringify({
+          error: 'This brand is managed by a verified member organization',
           domain,
         });
       }

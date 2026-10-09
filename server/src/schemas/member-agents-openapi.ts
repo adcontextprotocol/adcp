@@ -12,7 +12,7 @@ import { registry, ErrorSchema } from './registry.js';
 const OrgQuerySchema = z.object({
   org: z.string().optional().openapi({
     description:
-      "WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.",
+      'WorkOS organization id to act on. Human sessions and user JWTs must select it explicitly. WorkOS API keys may omit it because their validated credential already carries an exact organization scope; when supplied with an API key it must match that scope.',
     example: 'org_01HXZAB123',
   }),
 });
@@ -112,10 +112,6 @@ const MemberAgentResponseSchema = z
   .object({
     agent: MemberAgentSchema,
     warnings: z.array(MemberAgentVisibilityWarningSchema).optional(),
-    org_auto_created: z.boolean().optional().openapi({
-      description:
-        "Set to `true` when this `POST` was the caller's first interaction with the registry and the server auto-created the organization (display name derived from the user's email domain for corporate emails, or `<First Last>'s Workspace` for free-email providers). Combined with `profile_auto_created`, this is the one-call storefront experience: a third-party app holding only an OAuth token gets the org, profile, and registered agent in a single request.",
-    }),
     profile_auto_created: z.boolean().optional().openapi({
       description:
         'Set to `true` when this `POST` was the first agent registration on the caller\'s organization and the server auto-created a private member profile (display name = organization name, `is_public: false`). Absent on subsequent calls and on update-in-place. Surfaced so storefront-style integrations can show a "we set up your profile" hint without needing to detect the prior 404 → bootstrap → retry shape.',
@@ -145,7 +141,7 @@ registry.registerPath({
       content: { 'application/json': { schema: MemberAgentListResponseSchema } },
     },
     400: {
-      description: 'No organization associated with this account',
+      description: 'A human credential did not select an organization explicitly.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     401: {
@@ -162,6 +158,11 @@ registry.registerPath({
         'No member profile exists yet — create one via `POST /api/me/member-profile`.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
+    409: {
+      description:
+        'The API key has a WorkOS organization scope, but the existing organization has not been provisioned locally. Reconcile it; do not create a duplicate.',
+      content: { 'application/json': { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -173,10 +174,7 @@ registry.registerPath({
   description: [
     "Register an agent on the caller's organization member profile.",
     'Idempotent on `url`: re-posting the same `url` updates the entry in place rather than creating a duplicate. New entries return `201`; updates return `200`.',
-    "**True one-call storefront experience.** A third-party app holding only a user's OAuth token can `POST /api/me/agents` once and have the entire bootstrap chain materialize:",
-    "- If the caller has zero org memberships, the server auto-creates an organization (corporate or personal workspace based on the user's email domain) and the response includes `org_auto_created: true`.",
-    "- If the caller's org has no member profile, the server auto-creates a private profile (display name = organization name, `is_public: false`) and the response includes `profile_auto_created: true`.",
-    "Both auto-bootstraps are best-effort fallbacks. To customize org name / company_type / revenue_tier, or to control profile slug / brand identity / tagline, call `POST /api/organizations` and `POST /api/me/member-profile` explicitly before registering the agent. Tier transitions never happen via this path — go through the billing flow.",
+    'The organization must already exist. Human credentials select it explicitly with `?org=`; an API key uses the exact organization scope returned by WorkOS. The endpoint never creates an organization. If the existing organization has no member profile, the server creates a private profile and includes `profile_auto_created: true`.',
     "`type` is required and declared by the caller — the server does not infer it. Server-side smuggle protection still cross-checks the declared type against the agent's capability snapshot when one exists; if the snapshot contradicts the declaration without classifying it, the stored value is `unknown` and the dashboard surfaces the conflict for the owner to resolve.",
     '`visibility: "public"` requires a paid AAO tier (Professional, Builder, Member, or Leader) and a verified primary domain on the organization (set via the Linked Domains UI). Non-API-tier callers (Explorer or no tier) who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.',
   ].join('\n\n'),
@@ -198,7 +196,7 @@ registry.registerPath({
     },
     400: {
       description:
-        'Missing or invalid `url`, missing/invalid `type`, or the caller has memberships in other orgs but no primary org set — pass `?org=<id>` to target one explicitly. (Fresh users with no memberships at all hit the org auto-bootstrap path and do not see this error.)',
+        'Missing or invalid `url`, or missing/invalid `type`.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     401: {
@@ -207,12 +205,17 @@ registry.registerPath({
     },
     403: {
       description:
-        '`?org=` was supplied but the caller is not a member of that organization.',
+        'A human credential omitted `?org=`, the caller is not a member of the selected organization, or the selector conflicts with the API key scope.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     404: {
       description:
         'Auto-bootstrap could not run (e.g. the organization has no name yet). Call `POST /api/me/member-profile` to create a profile explicitly, then retry.',
+      content: { 'application/json': { schema: ErrorSchema } },
+    },
+    409: {
+      description:
+        'The API key has a WorkOS organization scope, but the existing organization has not been provisioned locally. Reconcile it; do not create a duplicate.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     429: {

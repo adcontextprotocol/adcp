@@ -306,3 +306,21 @@ describe('selectModuleMethodology', () => {
     expect(result).not.toContain(SAGE_OPENING_HANDOFF);
   });
 });
+
+
+it('labels failed demos and abbreviated JSON as illustrations', () => {
+  const prompt = selectModuleMethodology('A1');
+  expect(prompt).toContain('Never describe a protocol error as a successful demo');
+  expect(prompt).toContain('Label JSON with ellipses as an abbreviated illustration, not valid executable JSON');
+});
+
+
+it('keeps certification channel copy aligned with the canonical channel enum', () => {
+  const schema = JSON.parse(readFileSync(new URL('../../../static/schemas/source/enums/channels.json', import.meta.url), 'utf8'));
+  const count = schema.enum.length;
+  expect(selectModuleMethodology('A1')).toContain(`across ${count} channels`);
+  const migration = readFileSync(new URL('../../src/db/migrations/611_certification_channel_taxonomy.sql', import.meta.url), 'utf8');
+  expect(migration).toContain(`'${count} channels'`);
+  expect(schema.enum).toContain('olv');
+  expect(migration).toContain('online video (OLV)');
+});

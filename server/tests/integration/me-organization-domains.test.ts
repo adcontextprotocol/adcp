@@ -166,7 +166,12 @@ function makeFakeWorkos(initial: FakeDomain[] = []) {
         const found = state.domains.find(d => d.id === id);
         if (!found) throw Object.assign(new Error('not found'), { status: 404 });
         found.state = 'verified';
-        return found;
+        return { ...found, organizationId: TEST_ORG };
+      },
+      async getOrganizationDomain(id: string) {
+        const found = state.domains.find(d => d.id === id);
+        if (!found) throw Object.assign(new Error('not found'), { status: 404 });
+        return { ...found, organizationId: TEST_ORG };
       },
       async deleteOrganizationDomain(id: string) {
         const idx = state.domains.findIndex(d => d.id === id);
@@ -876,5 +881,48 @@ describe('POST /api/me/organization/domains (issue + verify challenge)', () => {
     expect(second.status).toBe(429);
     expect(second.body.error).toBe('still_pending');
     expect(typeof second.body.retry_after_seconds).toBe('number');
+  });
+
+  it('does not carry a pending cooldown onto a replacement WorkOS challenge', async () => {
+    await seedOrgWithDomains(pool, [
+      { domain: 'me-domains-new.test', verified: false, is_primary: false, source: 'workos' },
+    ]);
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos([
+      {
+        id: 'org_domain_old',
+        domain: 'me-domains-new.test',
+        state: 'pending',
+        verificationToken: 'old-token',
+        verificationPrefix: '_workos',
+        verificationStrategy: 'dns',
+      },
+    ]);
+    fakeWorkos.setVerifyError(Object.assign(new Error('not yet propagated'), { status: 422 }));
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const first = await request(app)
+      .post('/api/me/organization/domains/me-domains-new.test/verify?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER);
+    expect(first.status).toBe(400);
+
+    fakeWorkos.state.domains.splice(0, 1, {
+      id: 'org_domain_replacement',
+      domain: 'me-domains-new.test',
+      state: 'pending',
+      verificationToken: 'replacement-token',
+      verificationPrefix: '_workos',
+      verificationStrategy: 'dns',
+    });
+    fakeWorkos.setVerifyError(null);
+
+    const replacement = await request(app)
+      .post('/api/me/organization/domains/me-domains-new.test/verify?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER);
+
+    expect(replacement.status).toBe(200);
+    expect(replacement.body).toMatchObject({ success: true, state: 'verified' });
   });
 });

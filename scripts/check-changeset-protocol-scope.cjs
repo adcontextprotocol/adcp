@@ -27,7 +27,8 @@ const PROTOCOL_SCOPED_PATHS = [
   /^dist\/protocol\/[^/]+[.]tgz(?:[.](?:sha256|sig|crt))?$/,
   /^scripts\/(?:build-schemas|build-compliance|build-protocol-tarball|sign-protocol-tarball|update-schema-versions|verify-version-sync|patch-3-0-compat-bundle)[.](?:cjs|mjs|sh)$/,
   /^scripts\/run-storyboards-(?:[^/]+[.]sh|isolated[.]mjs)$/,
-  /^[.]github\/workflows\/(?:release|training-agent-storyboards)[.]yml$/,
+  // Publication orchestration is operational; protocol generators above remain scoped.
+  /^[.]github\/workflows\/training-agent-storyboards[.]yml$/,
 ];
 
 const CHANGESET_POLICY_CODE_PATHS = new Set([
@@ -38,6 +39,7 @@ const CHANGESET_POLICY_CODE_PATHS = new Set([
 
 const CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS = new Set([
   ...CHANGESET_POLICY_CODE_PATHS,
+  '.github/workflows/release.yml',
   '.agents/playbook.md',
   '.agents/routines/context-refresh-prompt.md',
   '.agents/routines/triage-prompt.md',
@@ -48,6 +50,7 @@ const CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS = new Set([
   '.agents/shortcuts/prep-for-pr.md',
   'docs/reference/changelog.mdx',
   'docs/spec-guidelines.md',
+  'tests/release-workflow-immutability.test.cjs',
 ]);
 
 function normalizePath(filePath) {
@@ -91,6 +94,13 @@ function isProtocolScopedPath(filePath) {
   if (isChangesetFile(normalized)) return false;
   if (REGISTRY_RELEASE_SCOPED_PATHS.some(pattern => pattern.test(normalized))) return false;
   return PROTOCOL_SCOPED_PATHS.some(pattern => pattern.test(normalized));
+}
+
+function isStoryboardBranchRegistrationOnly(headContent, baseContent) {
+  const oldBranches = "branches: [main, '3.1.x', '3.0.x']";
+  const newBranches = "branches: [main, '3.2.x', '3.1.x', '3.0.x']";
+  return baseContent.split(oldBranches).length === 3
+    && headContent === baseContent.replaceAll(oldBranches, newBranches);
 }
 
 // Only these complete operational substitutions are exempt. Any accompanying
@@ -137,9 +147,27 @@ function isCreativeIsolationOnlyChange(change, readFileAtHead, readFileAtBase) {
   }
 }
 
-function hasProtocolScopedChanges(changes, readFileAtHead, readFileAtBase) {
-  return changes.some(change => !isCreativeIsolationOnlyChange(change, readFileAtHead, readFileAtBase)
-    && (change.paths || []).some(isProtocolScopedPath));
+function isStoryboardBranchRegistrationChange(change, filePath, readFileAtHead, readFileAtBase) {
+  if (normalizePath(filePath) !== '.github/workflows/training-agent-storyboards.yml'
+    || change.status !== 'M') return false;
+  try {
+    return isStoryboardBranchRegistrationOnly(readFileAtHead(filePath), readFileAtBase(filePath));
+  } catch {
+    return false;
+  }
+}
+
+function isProtocolScopedChange(change, readFileAtHead, readFileAtBase) {
+  if (isCreativeIsolationOnlyChange(change, readFileAtHead, readFileAtBase)) return false;
+  return (change.paths || []).some(filePath => {
+    if (!isProtocolScopedPath(filePath)) return false;
+    if (isStoryboardBranchRegistrationChange(change, filePath, readFileAtHead, readFileAtBase)) return false;
+    return true;
+  });
+}
+
+function hasProtocolScopedChanges(changes, readFileAtHead = () => '', readFileAtBase = () => '') {
+  return changes.some(change => isProtocolScopedChange(change, readFileAtHead, readFileAtBase));
 }
 
 function isChangesetMaintenancePath(filePath) {
@@ -263,10 +291,8 @@ function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileA
   const protocolScopedFiles = [];
 
   for (const change of changes) {
-    for (const filePath of change.paths || []) {
-      if (isProtocolScopedPath(filePath) && !isCreativeIsolationOnlyChange(change, readFileAtHead, readFileAtBase)) {
-        protocolScopedFiles.push(filePath);
-      }
+    if (isProtocolScopedChange(change, readFileAtHead, readFileAtBase)) {
+      protocolScopedFiles.push(...change.paths.filter(isProtocolScopedPath));
     }
 
     const headPath = changedPathForHead(change);
@@ -357,7 +383,11 @@ function run(argv = process.argv.slice(2)) {
   }
 
   if (argv.includes('--has-protocol-scoped-changes')) {
-    const hasProtocol = hasProtocolScopedChanges(changes, readFileAtHead, readFileAtBase);
+    const hasProtocol = hasProtocolScopedChanges(
+      changes,
+      readFileAtHead,
+      readFileAtBase
+    );
     if (hasProtocol) {
       console.log('Protocol-scoped changes detected.');
       return 0;
@@ -391,6 +421,7 @@ module.exports = {
   findChangesetProtocolScopeViolations,
   formatViolationMessage,
   hasProtocolScopedChanges,
+  isStoryboardBranchRegistrationOnly,
   isChangesetBumpDowngradeOrRemoval,
   isChangesetBumpEscalation,
   isChangesetClassificationMaintenance,

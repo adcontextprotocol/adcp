@@ -12,6 +12,10 @@ concurrency:
   group: recover-protocol-cdn-${{ inputs.version }}
   cancel-in-progress: false
 
+env:
+  TESTED_SHA: ${{ github.sha }}
+  PUBLICATION_BRANCH: main
+
 permissions:
   contents: read
 
@@ -24,6 +28,11 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+
+      - name: Preserve current workflow publication fence
+        run: |
+          node scripts/check-release-state.cjs current
+          cp scripts/check-release-state.cjs "$RUNNER_TEMP/check-release-state.cjs"
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
@@ -71,6 +80,7 @@ jobs:
       - name: Upload only missing immutable R2 objects
         env:
           VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
           BUCKET: ${{ vars.ADCP_ARTIFACT_R2_BUCKET || 'adcp-artifacts' }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
@@ -83,6 +93,7 @@ jobs:
             exit 1
           fi
 
+          node "$RUNNER_TEMP/check-release-state.cjs" published "$VERSION"
           endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
           upload_immutable() {
@@ -118,14 +129,11 @@ jobs:
               exit 1
             fi
 
-            aws s3 cp "${source}" "s3://${BUCKET}/${key}" \
-              --endpoint-url "${endpoint}" \
-              --region auto \
-              --no-progress \
-              --only-show-errors \
-              --no-guess-mime-type \
-              --cache-control 'public, max-age=31536000, immutable' \
-              --content-type "${content_type}"
+            node "$RUNNER_TEMP/check-release-state.cjs" current
+            aws s3api put-object --bucket "$BUCKET" --key "$key" --body "$source" \
+              --if-none-match '*' --endpoint-url "$endpoint" --region auto --no-cli-pager \
+              --cache-control 'public, max-age=31536000, immutable' --content-type "$content_type"
+            node "$RUNNER_TEMP/check-release-state.cjs" current
             echo "Uploaded missing immutable object ${key}"
           }
 

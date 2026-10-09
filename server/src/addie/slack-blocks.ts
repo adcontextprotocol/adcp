@@ -20,6 +20,7 @@ export const SLACK_MAX_SECTION_BLOCKS = 40;
 export interface SlackSectionBlock {
   type: 'section';
   text: { type: 'mrkdwn'; text: string };
+  expand: true;
 }
 
 /**
@@ -53,12 +54,12 @@ export function splitMrkdwnIntoSections(text: string): SlackSectionBlock[] {
   let remaining = text;
   while (remaining.length > 0 && sections.length < SLACK_MAX_SECTION_BLOCKS) {
     if (remaining.length <= SLACK_SECTION_MRKDWN_LIMIT) {
-      sections.push({ type: 'section', text: { type: 'mrkdwn', text: remaining } });
+      sections.push({ type: 'section', text: { type: 'mrkdwn', text: remaining }, expand: true });
       remaining = '';
       break;
     }
     const cut = findSafeCut(remaining, SLACK_SECTION_MRKDWN_LIMIT);
-    sections.push({ type: 'section', text: { type: 'mrkdwn', text: remaining.slice(0, cut) } });
+    sections.push({ type: 'section', text: { type: 'mrkdwn', text: remaining.slice(0, cut) }, expand: true });
     // Strip leading whitespace at the chunk boundary. The leading `\n` we cut
     // on is decorative — list markers (`- item`, `1. item`) at start-of-section
     // still render. Indented continuations would be mangled, but that's the

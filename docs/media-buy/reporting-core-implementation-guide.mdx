@@ -9,10 +9,11 @@ Reliable Reporting is experimental in 3.2. `reporting.core` is its required
 tier; `managed_delivery` and `reconciled_billing` are separately advertised
 optional tiers.
 
-The consumer-status loop is additive and opt-in in current source. Sellers
-advertise `consumer_status_task` only when implemented. The active notice makes
-it required Core in the next eligible minor after October 24, 2026; RC.1 and the
-current public training seller remain unchanged.
+The consumer-status loop is additive and opt-in in 3.2, and it stays opt-in
+until the notice window closes on October 24, 2026. Sellers advertise
+`consumer_status_task` only when implemented. The active notice makes it
+required Core no earlier than the first minor after that date. Check the public
+training seller's advertised capabilities before testing this extension.
 </Warning>
 
 Every buyer eventually asks one question: **"do I have definitive reporting
@@ -73,6 +74,16 @@ start a separate reporting SLA. Before a period closes, both sides can derive
 its boundary and `next_expected_at`, but the seller cannot freeze an
 `all_media_buys` denominator yet. At the period boundary, the obligation
 becomes part of the authoritative ledger whether or not source data exists.
+
+A closed, complete summary can still have an active configuration schedule.
+The seller MUST populate `next_expected_at` with the nearest future period
+start across its active in-scope `delivery_config_generations` when such a
+period exists outside the evaluated scope, and omit it when none exists.
+This summary projection preserves both complete-health scope guards and MUST
+NOT create, expose, lease, count, or alter an open-period obligation or change
+the scope's coverage. See
+[future expectations on complete summaries](/docs/media-buy/task-reference/get_reporting_status#future-expectation-on-a-complete-summary)
+for the selection rule and its distinction from obligation and webhook deadlines.
 
 ```mermaid
 %%{init: {"sequence": {"showSequenceNumbers": true}}}%%
@@ -231,9 +242,12 @@ digest is intentionally retained).
    one `issue_id` and one `opened_at` across the transition. If you advertise
    `consumer_mismatch_escalation_seconds`, also advertise `operations_contact`
    and switch `recommended_action` to a `contact_*` value once the window
-   elapses; that boundary wins when it overlaps the grace window. Never retire a
-   mismatch out of a degraded projection while the statement that caused it is
-   still the buyer's current leaf.
+   elapses; that boundary wins when it overlaps the grace window. Resolve a
+   mismatch only when the underlying conflict ends. Waive one only after an
+   explicit bilateral agreement covering that exact caller/account issue and
+   causing status. A valid waiver retires the issue, restores the underlying
+   seller health while retaining the immutable consumer statement, and triggers
+   an offered `reporting.status_changed` recovery fire when health changes.
 8. **Count silence; do not act on it.** A buyer that misses its
    `expected_at + automated_recovery_window_seconds` status deadline is counted
    in `obligation_counts.consumer_status_pending` and nothing else. Missing
@@ -298,13 +312,10 @@ digest is intentionally retained).
   `get_reporting_status` and reconcile obligations against what they
   received.
 
-Reliable Reporting 1.0 is published in the RC wire bundles; the consumer-status
-loop lands in `3.2.0-rc.2`. The public training sales agent serves whichever
-prerelease contract its deployment advertises, which may trail the newest
-published bundle. Read the advertised version from
-`get_adcp_capabilities` and put that exact negotiated value on every
-`sync_accounts`, controller, and `get_reporting_status` request rather than
-assuming the latest tag.
+Reliable Reporting 1.0 and the opt-in consumer-status loop are part of the
+AdCP 3.2 wire bundle. The public training sales agent serves `"3.2"`. Read the
+advertised version from `get_adcp_capabilities` and put that exact negotiated
+value on every `sync_accounts`, controller, and `get_reporting_status` request.
 
 First read the version the public sales sandbox advertises, then call
 `comply_test_controller` with

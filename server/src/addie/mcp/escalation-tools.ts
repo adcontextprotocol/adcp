@@ -266,6 +266,12 @@ export function createEscalationToolHandlers(
   // ESCALATE TO ADMIN
   // ============================================
   handlers.set('escalate_to_admin', async (input) => {
+    // Contact details supplied by a caller are not an authenticated identity.
+    // The web catalog excludes this tool for guests; also fail closed here.
+    if (!memberContext?.workos_user?.workos_user_id && !slackUserId) {
+      throw new ToolError('Please email support@agenticadvertising.org for help. Creating a support request here requires signing in.');
+    }
+
     // Validate required inputs
     if (typeof input.summary !== 'string' || !input.summary.trim()) {
       throw new ToolError('summary is required and must be a non-empty string');
@@ -315,12 +321,11 @@ export function createEscalationToolHandlers(
         : undefined);
     const orgName = memberContext?.organization?.name;
 
+    // Resolve email: explicit input > WorkOS user email > undefined
+    const resolvedEmail = userEmail || memberContext?.workos_user?.email;
+    let escalation;
     try {
-      // Resolve email: explicit input > WorkOS user email > undefined
-      const resolvedEmail = userEmail || memberContext?.workos_user?.email;
-
-      // 1. Create escalation record
-      const escalation = await createEscalation({
+      escalation = await createEscalation({
         thread_id: threadId,
         slack_user_id: slackUserId,
         workos_user_id: memberContext?.workos_user?.workos_user_id,
@@ -336,20 +341,30 @@ export function createEscalationToolHandlers(
         perspective_slug: perspectiveSlug,
       });
 
-      logger.info(
-        { escalationId: escalation.id, category, priority, threadId },
-        'Created escalation'
-      );
+    } catch (error) {
+      logger.error({ error, category, threadId }, 'Failed to create escalation');
+      throw new ToolError('I could not confirm that your support request was created. Please email support@agenticadvertising.org for help.');
+    }
 
-      // 2. Flag the thread
-      if (threadId) {
+    logger.info(
+      { escalationId: escalation.id, category, priority, threadId },
+      'Created escalation'
+    );
+
+    // The persisted request is authoritative. Ancillary failures must not erase
+    // its receipt or invite a retry that would create a duplicate request.
+    if (threadId) {
+      try {
         const threadService = getThreadService();
         await threadService.flagThread(threadId, `Escalation: ${category}`);
+      } catch (error) {
+        logger.warn({ error, escalationId: escalation.id, threadId }, 'Support request persisted but thread flag failed');
       }
+    }
 
-      // 3. Send notification to escalation channel
+    let notificationSent = false;
+    try {
       const escalationChannelId = await getEscalationChannelId();
-      let notificationSent = false;
       if (escalationChannelId) {
         const result = await sendEscalationNotification(
           escalation.id,
@@ -370,9 +385,9 @@ export function createEscalationToolHandlers(
         );
 
         if (result.ok && result.ts) {
+          notificationSent = true;
           try {
             await markNotificationSent(escalation.id, escalationChannelId, result.ts);
-            notificationSent = true;
             logger.info({ escalationId: escalation.id, channelId: escalationChannelId }, 'Sent escalation notification');
           } catch (notifyError) {
             logger.error(
@@ -384,14 +399,18 @@ export function createEscalationToolHandlers(
       } else {
         logger.warn({ escalationId: escalation.id }, 'No escalation channel configured - notification not sent');
       }
-
-      return notificationSent
-        ? `Support request created (ID: ${escalation.id}). I've notified the AgenticAdvertising.org team and they'll follow up with you soon.`
-        : `Support request created (ID: ${escalation.id}). The request is in your dashboard, but the team notification channel is not configured. You can add details or close it from your dashboard.`;
     } catch (error) {
-      logger.error({ error, category, threadId }, 'Failed to create escalation');
-      return 'I tried to escalate this but encountered an error. Please reach out directly to the AgenticAdvertising.org team for help.';
+      logger.warn({ error, escalationId: escalation.id }, 'Support request persisted but team notification failed');
     }
+
+    return JSON.stringify({
+      success: true,
+      escalation_id: escalation.id,
+      notification_sent: notificationSent,
+      message: notificationSent
+        ? `Support request created (ID: ${escalation.id}). The AgenticAdvertising.org team has been notified.`
+        : `Support request created (ID: ${escalation.id}). I could not confirm a team notification. You can also email support@agenticadvertising.org and mention this request ID.`,
+    });
   });
 
   // ============================================

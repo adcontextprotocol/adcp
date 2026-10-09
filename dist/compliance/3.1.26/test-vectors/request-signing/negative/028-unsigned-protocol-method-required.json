@@ -1,0 +1,26 @@
+{
+  "name": "Unsigned tasks/cancel JSON-RPC POST; method is in protocol_methods_required_for",
+  "spec_reference": "#signed-requests-transport-layer (protocol_methods_* namespace; pre-check 0)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/mcp",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"method\":\"tasks/cancel\",\"params\":{\"taskId\":\"task_conformance_001\"},\"id\":1}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [],
+    "protocol_methods_required_for": ["tasks/cancel"]
+  },
+  "jwks_ref": ["test-ed25519-2026"],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_required",
+    "failed_step": 0
+  },
+  "$comment": "Exercises the protocol_methods_required_for namespace introduced in adcp#4326. The verifier resolves the JSON-RPC envelope's `method` field (`tasks/cancel`), matches it against `protocol_methods_required_for`, and rejects the unsigned request with `request_signature_required`. A verifier that only consults `required_for` (the AdCP-tool namespace) would silently accept the unsigned request — which is the regression this vector locks out."
+}

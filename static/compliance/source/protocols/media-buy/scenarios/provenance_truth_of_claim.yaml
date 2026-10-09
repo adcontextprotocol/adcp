@@ -4,6 +4,9 @@ title: "Seller refutes a buyer's provenance claim via on-list verifier"
 category: media_buy_seller
 summary: "Buyer attaches a digital_source_type claim. Seller invokes get_creative_features against an on-list verifier (creative_policy.accepted_verifiers); when the verifier contradicts the claim, seller rejects with PROVENANCE_CLAIM_CONTRADICTED carrying audit-safe error.details."
 track: creative
+requires:
+  - controller
+
 required_tools:
   - get_products
   - sync_creatives
@@ -59,6 +62,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_99ae785a28ae"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_provenance_truth_of-ab5b0007"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_a3880a705ef1"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_provenance_truth_of-ab5b0007"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   products:
     - product_id: "test-product-truth-of-claim"
       name: "Provenance Truth-of-Claim Test Product"
@@ -111,6 +135,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_provenance_truth_of-ab5b0007"
           context:
             correlation_id: "provenance_truth_of_claim--get_products"
         validations:
@@ -146,6 +172,7 @@ phases:
       - id: sync_creatives_contradicted
         title: "Submit creative whose claim contradicts the verifier's verdict"
         task: sync_creatives
+        requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
@@ -160,6 +187,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_provenance_truth_of-ab5b0007"
           creatives:
             - creative_id: "acme_truth_of_claim_probe_001"
               name: "Acme truth-of-claim probe — contradicted"
@@ -234,6 +263,7 @@ phases:
       - id: sync_creatives_consistent
         title: "Submit creative whose claim matches the verifier's verdict"
         task: sync_creatives
+        requires_tool: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
@@ -247,6 +277,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_provenance_truth_of-ab5b0007"
           creatives:
             - creative_id: "acme_truth_of_claim_probe_002"
               name: "Acme truth-of-claim probe — consistent"

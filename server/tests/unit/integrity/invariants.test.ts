@@ -1222,7 +1222,14 @@ describe('unique-org-per-email-domain', () => {
       .toBe('org_dec_real');
     expect(v.message).toContain('DoubleVerify');
     expect(v.message).toContain('7 members');
-    expect(v.remediation_hint).toContain('DELETE FROM organizations');
+    // #6827: the hint used to hand the operator a raw organization delete with
+    // the ID pre-filled. Organization deletion and merge are contained, so it
+    // now routes to read-only inspection and escalation instead. This assertion
+    // is the inverse of the old one on purpose — see
+    // server/tests/unit/organization-delete-statement-guard.test.ts.
+    expect(v.remediation_hint).not.toMatch(/DELETE\s+FROM\s+organizations/i);
+    expect(v.remediation_hint).toContain('preview-merge');
+    expect(v.remediation_hint).toContain('#6827');
   });
 
   it('emits one violation per duplicate when three rows share a domain', async () => {

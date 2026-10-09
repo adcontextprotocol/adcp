@@ -4,6 +4,9 @@ title: "Buyer-managed catalog items support immediate availability updates"
 category: media_buy_seller
 summary: "Verifies capability-gated, atomic, synchronous suppression and restoration of buyer-managed catalog items."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.2"
 
 requires_capability:
@@ -34,6 +37,7 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
+  controller_seeding: true
   description: |
     The seller advertises both catalog_management and
     catalog_item_availability_updates. The scenario creates its own buyer-managed
@@ -43,6 +47,19 @@ prerequisites:
     rendering eligibility, advances availability time deterministically, and
     deletes/recreates the probe catalog while preserving its item content.
   test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_7ffee1d4adb5"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
+        billing: "operator"
+        status: "active"
+        sandbox: true
 
 phases:
   - id: availability_lifecycle
@@ -61,6 +78,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           catalogs:
             - catalog_id: "availability_probe_v1"
@@ -100,6 +119,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           item_availability_queries:
             - catalog_id: "availability_probe_v1"
@@ -137,6 +158,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           scenario: "catalog_item_availability_probe"
           params:
@@ -170,6 +193,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           validation_mode: "lenient"
           item_availability_queries:
@@ -226,6 +251,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           item_availability_updates:
             - catalog_id: "availability_probe_v1"
@@ -260,6 +287,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           validation_mode: "strict"
           item_availability_updates:
@@ -311,6 +340,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           scenario: "catalog_item_availability_probe"
           params:
@@ -351,6 +382,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           validation_mode: "strict"
           item_availability_updates:
@@ -385,6 +418,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           catalogs:
             - catalog_id: "availability_probe_v1"
@@ -413,6 +448,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           item_availability_queries:
             - catalog_id: "availability_probe_v1"
@@ -443,6 +480,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           validation_mode: "lenient"
           item_availability_updates:
@@ -521,6 +560,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           item_availability_updates:
             - catalog_id: "availability_probe_v1"
@@ -558,6 +599,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           scenario: "catalog_item_availability_probe"
           params:
@@ -587,6 +630,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           item_availability_queries:
             - catalog_id: "availability_probe_v1"
@@ -623,6 +668,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           validation_mode: "strict"
           item_availability_updates:
@@ -652,6 +699,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           item_availability_updates:
             - catalog_id: "availability_probe_v1"
@@ -681,6 +730,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           validation_mode: "strict"
           catalogs:
@@ -718,6 +769,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           catalogs:
             - catalog_id: "availability_probe_v1"
@@ -750,6 +803,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           item_availability_queries:
             - catalog_id: "availability_probe_v1"
@@ -778,6 +833,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           scenario: "catalog_item_availability_probe"
           params:
@@ -821,6 +878,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           validation_mode: "strict"
           item_availability_updates:
@@ -859,6 +918,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_catalog_item_availa-b6a398d5"
             sandbox: true
           item_availability_queries:
             - catalog_id: "availability_probe_v1"

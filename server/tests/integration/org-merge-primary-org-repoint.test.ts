@@ -1,21 +1,20 @@
 /**
- * Integration test for the users.primary_organization_id repoint added in
- * mergeOrganizations.
+ * users.primary_organization_id under the contained organization merge (#6827).
  *
- * Without the repoint, every user whose primary pointed at the secondary
- * org gets a dangling pointer after the merge — the secondary org row gets
- * deleted, the FK ON DELETE SET NULL nulls the column, and the resolver
- * has to re-derive on next read. Worse, if the user wasn't in any other
- * paying org, the resolver might pick a non-paying alternative even
- * though the merge intent was "treat them as part of primary."
- *
- * The repoint runs inside the merge transaction BEFORE the secondary org
- * row is deleted, so users land at the primary org directly.
+ * These fixtures previously proved the repoint mergeOrganizations performed:
+ * users whose primary pointed at the secondary org landed at the primary org
+ * inside the merge transaction, before the secondary row was deleted and the
+ * FK ON DELETE SET NULL could null the column. Merge execution is now
+ * contained, so the same fixtures prove the stronger property instead — the
+ * contained service refuses and no user pointer, membership or organization
+ * row moves at all. Restore the repoint assertions together with a reviewed
+ * merge lifecycle.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { mergeOrganizations } from '../../src/db/org-merge-db.js';
+import { OrganizationMergeUnavailableError } from '../../src/db/org-merge-containment.js';
 import type { Pool } from 'pg';
 import type { WorkOS } from '@workos-inc/node';
 
@@ -27,13 +26,28 @@ const USER_PRIMARY_ELSEWHERE = 'user_merge_repoint_elsewhere';
 const USER_NULL_PRIMARY = 'user_merge_repoint_null';
 const MERGED_BY = 'user_merge_repoint_admin';
 
+// Records rather than no-ops: the contained service must never reach it.
+const deleteCalls: string[] = [];
 const workosStub = {
   organizations: {
-    deleteOrganization: async (_id: string) => {},
+    deleteOrganization: async (id: string) => { deleteCalls.push(id); },
   },
 } as unknown as WorkOS;
 
-describe('mergeOrganizations — users.primary_organization_id repoint', () => {
+async function expectMergeRefused(pool: Pool) {
+  deleteCalls.length = 0;
+  await expect(mergeOrganizations(PRIMARY_ORG, SECONDARY_ORG, MERGED_BY, workosStub))
+    .rejects.toThrow(OrganizationMergeUnavailableError);
+  expect(deleteCalls).toEqual([]);
+  // The secondary organization is never deleted, so the FK never fires.
+  const secondary = await pool.query<{ count: string }>(
+    'SELECT COUNT(*)::text AS count FROM organizations WHERE workos_organization_id = $1',
+    [SECONDARY_ORG],
+  );
+  expect(secondary.rows[0]?.count).toBe('1');
+}
+
+describe('contained mergeOrganizations — users keep their primary organization', () => {
   let pool: Pool;
 
   beforeAll(async () => {
@@ -60,18 +74,27 @@ describe('mergeOrganizations — users.primary_organization_id repoint', () => {
   });
 
   async function cleanup() {
+    const actors = [USER_PRIMARY_AT_SECONDARY, USER_PRIMARY_ELSEWHERE, USER_NULL_PRIMARY, MERGED_BY];
+    // The users insert trigger creates one identities row per seeded user, and
+    // identities do not cascade from users, so capture the ids before the user
+    // rows (and their cascading link rows) go away. Scoped to these exact ids so
+    // the cleanup cannot reach another suite's rows.
+    const identities = (await pool.query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = ANY($1)`,
+      [actors],
+    )).rows.map((row) => row.identity_id);
     await pool.query(
       `DELETE FROM organization_memberships WHERE workos_organization_id IN ($1, $2, $3)`,
       [PRIMARY_ORG, SECONDARY_ORG, THIRD_ORG],
     );
-    await pool.query(
-      `DELETE FROM users WHERE workos_user_id IN ($1, $2, $3, $4)`,
-      [USER_PRIMARY_AT_SECONDARY, USER_PRIMARY_ELSEWHERE, USER_NULL_PRIMARY, MERGED_BY],
-    );
+    await pool.query(`DELETE FROM users WHERE workos_user_id = ANY($1)`, [actors]);
     await pool.query(
       `DELETE FROM organizations WHERE workos_organization_id IN ($1, $2, $3)`,
       [PRIMARY_ORG, SECONDARY_ORG, THIRD_ORG],
     );
+    if (identities.length) {
+      await pool.query(`DELETE FROM identities WHERE id = ANY($1)`, [identities]);
+    }
   }
 
   async function seedUser(userId: string, primaryOrgId: string | null) {
@@ -92,79 +115,51 @@ describe('mergeOrganizations — users.primary_organization_id repoint', () => {
     );
   }
 
-  it('repoints users whose primary was the secondary org to the primary org', async () => {
+  it('refuses and leaves every primary_organization_id and membership as it was', async () => {
+    // One case rather than four: after an unconditional refusal there is no
+    // code path that could treat a secondary-pointing, third-pointing or NULL
+    // primary differently, so seed all three and assert the whole set.
     await seedUser(USER_PRIMARY_AT_SECONDARY, SECONDARY_ORG);
     await seedMembership(USER_PRIMARY_AT_SECONDARY, SECONDARY_ORG);
-
-    const summary = await mergeOrganizations(PRIMARY_ORG, SECONDARY_ORG, MERGED_BY, workosStub);
-
-    const after = await pool.query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [USER_PRIMARY_AT_SECONDARY],
-    );
-    expect(after.rows[0]?.primary_organization_id).toBe(PRIMARY_ORG);
-
-    // Summary reports the repoint so admins running merges can audit it.
-    const repointEntry = summary.tables_merged.find(
-      (t) => t.table_name === 'users.primary_organization_id',
-    );
-    expect(repointEntry).toBeDefined();
-    expect(repointEntry!.rows_moved).toBe(1);
-  });
-
-  it('does not touch users whose primary points at a different org', async () => {
     await seedUser(USER_PRIMARY_ELSEWHERE, THIRD_ORG);
     await seedMembership(USER_PRIMARY_ELSEWHERE, THIRD_ORG);
     await seedMembership(USER_PRIMARY_ELSEWHERE, SECONDARY_ORG);
-
-    await mergeOrganizations(PRIMARY_ORG, SECONDARY_ORG, MERGED_BY, workosStub);
-
-    const after = await pool.query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [USER_PRIMARY_ELSEWHERE],
-    );
-    expect(after.rows[0]?.primary_organization_id).toBe(THIRD_ORG);
-  });
-
-  it('does not touch users with null primary_organization_id', async () => {
     await seedUser(USER_NULL_PRIMARY, null);
     await seedMembership(USER_NULL_PRIMARY, SECONDARY_ORG);
 
-    await mergeOrganizations(PRIMARY_ORG, SECONDARY_ORG, MERGED_BY, workosStub);
+    await expectMergeRefused(pool);
 
-    const after = await pool.query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [USER_NULL_PRIMARY],
+    const users = await pool.query<{ workos_user_id: string; primary_organization_id: string | null }>(
+      `SELECT workos_user_id, primary_organization_id FROM users
+       WHERE workos_user_id = ANY($1) ORDER BY workos_user_id`,
+      [[USER_PRIMARY_AT_SECONDARY, USER_PRIMARY_ELSEWHERE, USER_NULL_PRIMARY]],
     );
-    expect(after.rows[0]?.primary_organization_id).toBeNull();
-  });
+    expect(
+      Object.fromEntries(users.rows.map(row => [row.workos_user_id, row.primary_organization_id])),
+    ).toEqual({
+      [USER_PRIMARY_AT_SECONDARY]: SECONDARY_ORG,
+      [USER_PRIMARY_ELSEWHERE]: THIRD_ORG,
+      [USER_NULL_PRIMARY]: null,
+    });
 
-  it('repoint runs before the secondary org is deleted, so the FK SET NULL never fires for these rows', async () => {
-    // Without the repoint, the FK ON DELETE SET NULL would fire when the
-    // secondary org row is deleted at the end of the merge, dropping the
-    // user's primary to NULL even though we just moved their membership
-    // to the primary above. The repoint inside the merge transaction
-    // takes precedence — assert the column lands at primary, not NULL.
-    await seedUser(USER_PRIMARY_AT_SECONDARY, SECONDARY_ORG);
-    await seedMembership(USER_PRIMARY_AT_SECONDARY, SECONDARY_ORG);
-
-    await mergeOrganizations(PRIMARY_ORG, SECONDARY_ORG, MERGED_BY, workosStub);
-
-    const after = await pool.query<{ primary_organization_id: string | null }>(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-      [USER_PRIMARY_AT_SECONDARY],
+    // No membership was moved to the primary organization either. Compared as a
+    // set so the assertion does not encode a database collation order.
+    const memberships = await pool.query<{ workos_user_id: string; workos_organization_id: string }>(
+      `SELECT workos_user_id, workos_organization_id FROM organization_memberships
+       WHERE workos_organization_id = ANY($1)`,
+      [[PRIMARY_ORG, SECONDARY_ORG, THIRD_ORG]],
     );
-    // Specifically NOT null — the FK fired for any column that DIDN'T get
-    // repointed, but we explicitly UPDATE'd this one before the DELETE.
-    expect(after.rows[0]?.primary_organization_id).not.toBeNull();
-    expect(after.rows[0]?.primary_organization_id).toBe(PRIMARY_ORG);
-
-    // Confirm secondary org row was actually deleted (proves the FK
-    // would have fired had the repoint not run first).
-    const secondaryCheck = await pool.query<{ count: string }>(
-      'SELECT COUNT(*)::text AS count FROM organizations WHERE workos_organization_id = $1',
-      [SECONDARY_ORG],
-    );
-    expect(secondaryCheck.rows[0]?.count).toBe('0');
+    const asSet = (pairs: [string, string][]) =>
+      pairs.map(pair => pair.join('|')).sort();
+    expect(
+      asSet(memberships.rows.map(row => [row.workos_user_id, row.workos_organization_id])),
+    ).toEqual(asSet([
+      [USER_NULL_PRIMARY, SECONDARY_ORG],
+      [USER_PRIMARY_AT_SECONDARY, SECONDARY_ORG],
+      [USER_PRIMARY_ELSEWHERE, SECONDARY_ORG],
+      [USER_PRIMARY_ELSEWHERE, THIRD_ORG],
+    ]));
+    // Nothing at all landed on the primary organization.
+    expect(memberships.rows.filter(row => row.workos_organization_id === PRIMARY_ORG)).toEqual([]);
   });
 });

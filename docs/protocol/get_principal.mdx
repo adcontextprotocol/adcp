@@ -1,6 +1,6 @@
 ---
 title: get_principal
-description: "Read the authenticated caller's seller-resolved identity, principal configuration, version, and destination setup states."
+description: "get_principal reads the authenticated caller's seller-resolved identity, principal configuration, version, and destination setup states."
 "og:title": "AdCP — get_principal"
 ---
 
@@ -8,11 +8,13 @@ description: "Read the authenticated caller's seller-resolved identity, principa
 
 The read is side-effect free. It never creates a principal record, issues identifiers, sends endpoint proof challenges, mutates state, or advances `configuration_version`.
 
-{/* Using latest because this experimental schema is not yet released. Update after release. */}
-**Request schema:** [`/schemas/3.2.0-rc.2/protocol/get-principal-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/protocol/get-principal-request.json)
+For the full lifecycle from credentials through destination proof and readback, see [Set up your buyer agent with a seller](/docs/accounts/principal-registration-walkthrough).
 
 {/* Using latest because this experimental schema is not yet released. Update after release. */}
-**Response schema:** [`/schemas/3.2.0-rc.2/protocol/get-principal-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.2/protocol/get-principal-response.json)
+**Request schema:** [`/schemas/3.2.1/protocol/get-principal-request.json`](https://adcontextprotocol.org/schemas/3.2.1/protocol/get-principal-request.json)
+
+{/* Using latest because this experimental schema is not yet released. Update after release. */}
+**Response schema:** [`/schemas/3.2.1/protocol/get-principal-response.json`](https://adcontextprotocol.org/schemas/3.2.1/protocol/get-principal-response.json)
 
 ## When to call
 

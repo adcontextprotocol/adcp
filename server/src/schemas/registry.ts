@@ -807,7 +807,7 @@ export const AgentComplianceSchema = z
     verified_roles: z.array(BadgeRoleSchema).optional()
       .openapi({ description: "Canonical badge roles the agent is AgenticAdvertising.org Verified for (e.g. media-buy, creative)." }),
     verified_role_versions: z.record(z.string(), z.array(z.string())).optional()
-      .openapi({ description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.1', '3.0'] }). Use this when choosing a version-pinned badge URL." }),
+      .openapi({ description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.2', '3.1'] }). Use this when choosing a version-pinned badge URL." }),
   })
   .openapi("AgentCompliance");
 
@@ -816,17 +816,150 @@ export const VerificationBadgeSchema = z
     role: BadgeRoleSchema
       .openapi({ description: "Canonical role this verification badge covers." }),
     adcp_version: z.string()
-      .openapi({ description: "AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK." }),
+      .openapi({ description: "AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.1', '3.2'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK." }),
     verified_at: z.string(),
     verified_specialisms: z.array(z.enum(ADCP_SPECIALISMS as [string, ...string[]]))
       .openapi({ description: "Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges." }),
     verification_modes: z.array(z.enum(VERIFICATION_MODES as readonly [string, ...string[]])).min(1)
-      .openapi({ description: "Verification axes earned. 'spec' = AdCP storyboards pass for the declared specialisms. 'live' = AAO has observed real production traffic via canonical campaigns. Always non-empty when a badge is present; an absent badge is conveyed by the parent record being omitted, not by an empty array." }),
+      .openapi({ description: "Evidence modes earned. 'spec' = AdCP storyboards were exercised; 'live' = production traffic was observed. Independent of grading_profile and always non-empty when a badge is present." }),
+    grading_profile: z.enum(['legacy', 'spec']).openapi({
+      description: "Grading profile that produced the public badge. 'spec' means Strict Spec grading; this is independent of the 'spec' evidence mode.",
+    }),
+    grading_profile_revision: z.number().int().nonnegative().optional(),
+    first_failing_spec_at: z.string().datetime().nullable().optional().openapi({
+      description: 'Start of the current Strict Spec failure episode. Null when no Strict Spec failure clock is active.',
+    }),
     verified_protocol_version: z.string().nullable(),
     badge_url: z.string().optional()
       .openapi({ description: "Legacy URL — auto-upgrades to the highest active version. For version-pinned embedding, derive `/api/registry/agents/{encoded_url}/badge/{role}/{adcp_version}.svg` where `{encoded_url}` is `encodeURIComponent(agent_url)`." }),
   })
   .openapi("VerificationBadge");
+
+const GradingProfileOutcomeSchema = z.object({
+  available: z.boolean(),
+  status: z.enum(['passing', 'partial', 'failing']).nullable(),
+  observed_status: z.enum(['passing', 'partial', 'failing']).nullable(),
+  explanation: z.string(),
+  assessment_id: z.string().uuid().optional(),
+  selectable: z.boolean().optional(),
+  public_effect: z.enum(['unchanged', 'issue', 'restore', 'regrade', 'degrade', 'revoke']).optional(),
+  grace_deadline: z.string().datetime().nullable().optional(),
+});
+
+const GradingProfileComparisonBaseSchema = z.object({
+  role: BadgeRoleSchema.optional(),
+  adcp_version: z.string().optional(),
+  availability: z.enum(['current', 'stale', 'pending', 'temporarily_unavailable']),
+  unavailable_reason: z.string().nullable(),
+  selected_profile: z.enum(['legacy', 'spec']),
+  selection_enabled: z.boolean(),
+  selection_revision: z.number().int().nonnegative().optional(),
+  first_failing_spec_at: z.string().datetime().nullable().optional(),
+  legacy_selection_allowed_until: z.string().datetime().nullable().optional(),
+  source_run_id: z.string().uuid().optional(),
+  evaluator_policy_version: z.string().optional(),
+  requested_compliance_target: z.string().nullable().optional(),
+  compliance_bundle_version: z.string().nullable(),
+  assessed_at: z.string().datetime().nullable().optional(),
+  source_tested_at: z.string().datetime().nullable().optional(),
+  stale: z.boolean().optional(),
+  incomplete: z.boolean().optional(),
+  public_impact: z.string().optional(),
+  profiles: z.object({
+    legacy: GradingProfileOutcomeSchema,
+    spec: GradingProfileOutcomeSchema,
+    sandbox: GradingProfileOutcomeSchema,
+  }).nullable(),
+});
+
+const AgentGradingEvidenceSchema = z.object({
+    run_complete: z.boolean(),
+    bundle_evidence_present: z.boolean(),
+    selected_storyboard_count: z.number().int().nonnegative(),
+    controller_gap_phase_count: z.number().int().nonnegative(),
+    observed_failure_count: z.number().int().nonnegative(),
+    flat_failure_count: z.number().int().nonnegative(),
+    unattributed_failure_count: z.number().int().nonnegative(),
+    sandbox_unresolved_bundle_count: z.number().int().nonnegative(),
+});
+
+const BadgeGradingEvidenceSchema = z.object({
+  specialisms: z.array(z.string()),
+  relevant_bundle_count: z.number().int().nonnegative(),
+  relevant_bundle_ids: z.array(z.string()),
+  failing_bundle_count: z.number().int().nonnegative(),
+  incomplete_bundle_count: z.number().int().nonnegative(),
+  relevant_failure_count: z.number().int().nonnegative(),
+  missing_universal_bundle: z.boolean(),
+  missing_protocol_bundle: z.boolean(),
+  missing_specialism_bundles: z.array(z.string()),
+  evaluator: z.string(),
+});
+
+export const GradingProfileComparisonSchema = z.discriminatedUnion('scope', [
+  GradingProfileComparisonBaseSchema.extend({
+    scope: z.literal('agent'),
+    evidence: AgentGradingEvidenceSchema.optional(),
+  }),
+  GradingProfileComparisonBaseSchema.extend({
+    scope: z.literal('badge'),
+    role: BadgeRoleSchema,
+    adcp_version: z.string(),
+    source_run_id: z.string().uuid(),
+    evaluator_policy_version: z.string(),
+    compliance_bundle_version: z.string(),
+    evidence: BadgeGradingEvidenceSchema,
+  }),
+]).openapi('GradingProfileComparison');
+
+const RoleEligibilityBlockerSchema = z.object({
+  code: z.enum([
+    'storyboards_failing',
+    'storyboards_partial',
+    'storyboards_untested',
+  ]),
+}).openapi('RoleEligibilityBlocker');
+
+const RoleEligibilitySchema = z.object({
+  eligible: z.boolean(),
+  blockers: z.array(RoleEligibilityBlockerSchema),
+}).openapi('RoleEligibility');
+
+const ComplianceEligibilitySchema = z.object({
+  criteria_version: z.string().openapi({
+    description: 'Version of the badge eligibility criteria and blocker vocabulary.',
+    example: '2026-08',
+  }),
+  blockers: z.array(z.object({ code: z.literal('no_declared_specialisms') })).openapi({
+    description: 'Agent-level blockers. no_declared_specialisms appears when no supported, stable badge role can be derived from the declaration.',
+  }),
+  roles: z.partialRecord(BadgeRoleSchema, RoleEligibilitySchema),
+}).openapi('ComplianceEligibility');
+
+const OwnerComplianceEligibilitySchema = z.object({
+  criteria_version: z.string(),
+  eligible: z.boolean().nullable().openapi({
+    description: 'Whether the owner membership tier grants badge eligibility. Null for non-owners.',
+  }),
+  blockers: z.array(z.object({
+    code: z.literal('membership_tier_ineligible'),
+  })).openapi({
+    description: 'Owner-only membership blockers. Empty for non-owners.',
+  }),
+}).openapi('OwnerComplianceEligibility');
+
+export const StoryboardSkippedStepSchema = z
+  .object({
+    step_id: z.string().nullable().openapi({ description: "Skipped step id (derived from the title when the runner omits it)." }),
+    title: z.string().nullable(),
+    task: z.string().nullable(),
+    reason: z.string().nullable().openapi({ description: "Runner skip reason, e.g. prerequisite_failed or controller_seeding_failed." }),
+    detail: z.string().nullable().openapi({ description: "Redacted runner skip detail. May echo agent-supplied text." }),
+    blocked_by_step_id: z.string().nullable().openapi({ description: "Nearest earlier step in the same storyboard that did not pass, when one exists." }),
+    blocked_by_step_title: z.string().nullable(),
+    blocked_by_reason: z.string().nullable().openapi({ description: "'failed', or the skip reason of the earlier step." }),
+  })
+  .openapi("StoryboardSkippedStep");
 
 export const AgentComplianceDetailSchema = z
   .object({
@@ -835,10 +968,26 @@ export const AgentComplianceDetailSchema = z
     requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Null for legacy rows before target recording." }),
     adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12. Null for legacy rows before version recording." }),
     status: z.enum(["passing", "degraded", "failing", "unknown", "opted_out"]),
+    selected_grading_statuses: z.array(z.object({
+      role: BadgeRoleSchema,
+      adcp_version: z.string(),
+      grading_profile: z.enum(['legacy', 'spec']),
+      grading_status: z.enum(['passing', 'partial', 'failing']).nullable(),
+      availability: z.enum(['current', 'unavailable']),
+      badge_status: z.enum(['active', 'degraded', 'revoked']).nullable(),
+      revision: z.string(),
+    })).optional().openapi({
+      description: 'Public exact role/version status for every explicit grading selection. This is authoritative for the selected badge identity; the top-level status remains the agent-wide compliance summary.',
+    }),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
     compliance_opt_out: z.boolean().optional(),
     badge_requalification_required: z.boolean().optional().openapi({
       description: "True when monitoring is enabled but badges remain suppressed until a fresh passing full-suite run completes.",
+    }),
+    refresh_availability: z.object({
+      available: z.boolean(),
+    }).optional().openapi({
+      description: "Whether authenticated owners and administrators can queue an agent refresh.",
     }),
     tracks: z.record(z.string(), z.string()).optional(),
     track_details: z.array(z.object({
@@ -857,9 +1006,25 @@ export const AgentComplianceDetailSchema = z
     status_changed_at: z.string().nullable().optional(),
     storyboards_passing: z.number().int().optional(),
     storyboards_total: z.number().int().optional(),
+    latest_attempt: z.object({
+      id: z.string().uuid(),
+      tested_at: z.string(),
+      triggered_by: z.enum(['heartbeat', 'owner_test', 'manual', 'webhook']),
+      completeness: z.enum(['complete', 'timed_out', 'not_completed']),
+      is_authoritative: z.boolean(),
+      requested_compliance_target: z.string().nullable(),
+      storyboards_completed: z.number().int().nullable(),
+      storyboards_total: z.number().int().nullable(),
+      first_blocker: z.string().nullable(),
+    }).nullable().optional().openapi({
+      description: 'Owner/operator-only newest persisted full assessment, including audit-only timeouts. Null for other viewers. This does not change the public verdict.',
+    }),
     check_interval_hours: z.number().int().optional().openapi({ description: "How often the heartbeat re-tests this agent, in hours" }),
     declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared in get_adcp_capabilities, from the latest run" }),
     specialism_status: z.record(z.string(), z.enum(['passing', 'failing', 'untested', 'unknown'])).optional().openapi({ description: "Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status" }),
+    eligibility: ComplianceEligibilitySchema.optional().openapi({
+      description: 'Public machine-readable badge eligibility by role. Contains only declared-specialism and storyboard blockers; membership tier is owner-scoped separately.',
+    }),
     storyboard_statuses: z.array(z.object({
       storyboard_id: z.string(),
       requested_compliance_target: z.string().nullable().optional(),
@@ -877,6 +1042,7 @@ export const AgentComplianceDetailSchema = z
       first_failed_step_task: z.string().nullable(),
       first_failure_message: z.string().nullable(),
       first_failure_validations: z.array(z.any()).openapi({ description: "Validation evidence for the first failure. Populated only for owners and empty for other callers." }),
+      skipped_steps: z.array(StoryboardSkippedStepSchema).openapi({ description: "Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step. Populated only for owners and empty for other callers." }),
       last_tested_at: z.string().nullable(),
       last_passed_at: z.string().nullable(),
     })).optional().openapi({ description: "Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers." }),
@@ -890,10 +1056,16 @@ export const AgentComplianceDetailSchema = z
     membership_tier_label: z.string().nullable().optional().openapi({ description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners." }),
     subscription_status: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners." }),
     is_api_access_tier: z.boolean().optional().openapi({ description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive." }),
+    eligibility_owner: OwnerComplianceEligibilitySchema.optional().openapi({
+      description: 'Owner-scoped membership leg of badge eligibility. Non-owners receive eligible: null and an empty blocker list.',
+    }),
     verdict_source: z.enum(["heartbeat", "owner_test", "manual", "webhook"]).nullable().optional()
       .openapi({ description: "Owner-scoped: triggered_by value of the most recent non-dry-run compliance check. Null for non-owners and when no run has been recorded. Operators use this as a UX cue ('did this verdict come from my recent test or the system heartbeat?')." }),
     verified: z.boolean().optional(),
     verified_badges: z.array(VerificationBadgeSchema).optional(),
+    grading_profile_comparisons: z.array(GradingProfileComparisonSchema).optional().openapi({
+      description: "Owner/admin-only comparisons from one source run. Exact badge-scope rows allow Legacy or Strict Spec selection; Sandbox remains preview-only. Empty for other viewers. Reading never contacts the agent.",
+    }),
   })
   .openapi("AgentComplianceDetail");
 
@@ -923,6 +1095,7 @@ export const StoryboardStatusSchema = z
     first_failed_step_title: z.string().nullable().openapi({ description: "First root failing or actionable skipped step title, when captured." }),
     first_failed_step_task: z.string().nullable().openapi({ description: "Task/tool name for the first root failing or actionable skipped step, when captured." }),
     first_failure_message: z.string().nullable().openapi({ description: "Runner error/detail text for the first root failing or actionable skipped step, when captured." }),
+    skipped_steps: z.array(StoryboardSkippedStepSchema).openapi({ description: "Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step, when captured. Owner-scoped; empty for other callers." }),
     last_tested_at: z.string().nullable(),
     last_passed_at: z.string().nullable(),
   })
@@ -1345,6 +1518,9 @@ export const ComplianceRunSchema = z
     is_authoritative: z.boolean().optional(),
     requested_compliance_target: z.string().nullable().optional(),
     adcp_version: z.string().nullable().optional(),
+    runner_capability_version: z.string().nullable().optional().openapi({
+      description: "Runner capability version recorded at execution time, separate from the AdCP version under test. Null when not recorded, including historical runs.",
+    }),
     overall_status: z.string(),
     headline: z.string().nullable(),
     tracks_passed: z.number().int(),

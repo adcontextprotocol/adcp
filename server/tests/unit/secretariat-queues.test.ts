@@ -67,7 +67,7 @@ function resetState() {
     waitingOnWg: searchResult([]),
     burnDownPrs: searchResult([]),
     milestones: [
-      { number: 7, title: '3.2.0', open_issues: 118, closed_issues: 17 },
+      { number: 10, title: '3.3.0', open_issues: 118, closed_issues: 17 },
       { number: 8, title: 'P0 Bugs', open_issues: 2, closed_issues: 23 },
       { number: 9, title: 'Spec Backlog', open_issues: 77, closed_issues: 38 },
       { number: 5, title: '4.0', open_issues: 36, closed_issues: 4 },
@@ -198,14 +198,14 @@ describe('secretariat queues snapshot', () => {
     expect(waitingOnWg.items).toHaveLength(3);
   });
 
-  it('reports the 3.2 burn-down from milestone open/closed counts plus a context row of nearby milestones', async () => {
+  it('reports the 3.3 burn-down from milestone open/closed counts plus a context row of nearby milestones', async () => {
     state.burnDownPrs = searchResult([], 1);
 
     const { buildQueuesSnapshot } = await import('../../src/addie/jobs/secretariat-queues.js');
     const snapshot = await buildQueuesSnapshot(REPO);
 
     expect(snapshot!.burnDown).toEqual({
-      milestoneTitle: '3.2.0',
+      milestoneTitle: '3.3.0',
       closedIssues: 17,
       openIssues: 118,
       openPrs: 1,
@@ -214,7 +214,7 @@ describe('secretariat queues snapshot', () => {
         { title: 'Spec Backlog', openIssues: 77 },
         { title: '4.0', openIssues: 36 },
       ],
-      viewAllUrl: `https://github.com/${REPO}/milestone/7`,
+      viewAllUrl: `https://github.com/${REPO}/milestone/10`,
     });
   });
 

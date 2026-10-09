@@ -412,6 +412,15 @@ export class AdAgentsManager {
 
       // Check if this is a URL reference
       let wasUrlReference = false;
+      if (typeof adagentsData === 'object' && adagentsData !== null && 'authoritative_location' in adagentsData &&
+        (typeof adagentsData.authoritative_location !== 'string' || 'authorized_agents' in adagentsData || 'superseded_by' in adagentsData)) {
+        result.errors.push({
+          field: 'authoritative_location',
+          message: 'Authoritative location must be a URL-only reference, without inline agents or another pointer',
+          severity: 'error',
+        });
+        return result;
+      }
       if (this.isUrlReference(adagentsData)) {
         wasUrlReference = true;
         // Follow the reference to get the authoritative file
@@ -595,6 +604,10 @@ export class AdAgentsManager {
           });
           return null;
         }
+        if (parsedUrl.href.includes('#')) {
+          result.errors.push({ field: 'authoritative_location', message: 'Authoritative location must not contain a URL fragment', severity: 'error' });
+          return null;
+        }
       } catch {
         result.errors.push({
           field: 'authoritative_location',
@@ -656,7 +669,8 @@ export class AdAgentsManager {
       }
 
       // Ensure the authoritative file is not also a reference (prevent infinite loops)
-      if (this.isUrlReference(authData)) {
+      if (typeof authData === 'object' && authData !== null &&
+        ('authoritative_location' in authData || 'superseded_by' in authData)) {
         result.errors.push({
           field: 'authoritative_location',
           message: 'Authoritative file cannot be another URL reference (nested references not allowed)',

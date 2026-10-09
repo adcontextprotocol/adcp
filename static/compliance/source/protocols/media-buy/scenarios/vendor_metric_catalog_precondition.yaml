@@ -4,6 +4,9 @@ title: "Vendor-metric external catalog precondition"
 category: media_buy_seller
 summary: "Exercises the 3.1 SHOULD-window behavior for vendor_metric goals whose metric_id is absent from a seeded measurement.metrics[] catalog."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.1"
 
 # Gate: scenario runs only when the seller declares vendor-metric

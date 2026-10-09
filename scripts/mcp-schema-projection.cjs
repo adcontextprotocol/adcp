@@ -220,15 +220,17 @@ function collectLegacyDefinitionPointers(schema) {
 }
 
 function rewriteLocalDefinitionRef(ref, legacyDefinitionPointers) {
-  if (!ref.startsWith('#/')) return ref;
+  const hashIndex = ref.indexOf('#/');
+  if (hashIndex === -1) return ref;
 
-  const segments = ref.slice(2).split('/');
+  const prefix = ref.slice(0, hashIndex);
+  const segments = ref.slice(hashIndex + 2).split('/');
   let sourcePointer = '';
   for (let index = 0; index < segments.length; index++) {
     sourcePointer += `/${segments[index]}`;
     if (legacyDefinitionPointers.has(sourcePointer)) segments[index] = '$defs';
   }
-  return `#/${segments.join('/')}`;
+  return `${prefix}#/${segments.join('/')}`;
 }
 
 /**
@@ -268,9 +270,7 @@ function projectDraft07Node(node, legacyDefinitionPointers = collectLegacyDefini
       continue;
     }
     if (key === '$ref' && typeof value === 'string') {
-      projected.$ref = value.startsWith('#')
-        ? rewriteLocalDefinitionRef(value, legacyDefinitionPointers)
-        : value;
+      projected.$ref = rewriteLocalDefinitionRef(value, legacyDefinitionPointers);
       continue;
     }
     if (key === 'definitions') {
@@ -394,26 +394,30 @@ function parseExternalRef(ref, currentFile, sourceDir) {
   return { resolved, fragment };
 }
 
-function compactDraft07Schema(rootSchema, rootFile, sourceDir) {
+function compactDraft07Schema(rootSchema, rootFile, sourceDir, { rootId } = {}) {
   assertDraft07SourceSchema(rootSchema, rootFile);
+  if (rootId !== undefined && (typeof rootId !== 'string' || rootId.length === 0)) {
+    throw new Error('rootId must be a non-empty string');
+  }
   const externalDefinitions = {};
   const bundledFiles = new Map();
 
   function localRef(fragment, currentKey) {
     if (!currentKey) return `#${fragment}`;
     const base = `#/definitions/${pointerSegment(currentKey)}`;
-    if (!fragment) return base;
+    const rootBase = rootId || '';
+    if (!fragment) return `${rootBase}${base}`;
     if (!fragment.startsWith('/')) {
       throw new Error(`Unsupported anchor reference #${fragment} in ${currentKey}`);
     }
-    return `${base}${fragment}`;
+    return `${rootBase}${base}${fragment}`;
   }
 
   function rewriteRef(ref, currentFile, currentKey) {
     if (ref.startsWith('#')) return localRef(ref.slice(1), currentKey);
 
     const { resolved, fragment } = parseExternalRef(ref, currentFile, sourceDir);
-    if (resolved === rootFile) return `#${fragment}`;
+    if (resolved === rootFile) return `${currentKey && rootId ? rootId : ''}#${fragment}`;
     if (resolved === currentFile) return localRef(fragment, currentKey);
 
     const key = definitionKey(sourceDir, resolved);
@@ -422,12 +426,15 @@ function compactDraft07Schema(rootSchema, rootFile, sourceDir) {
       externalDefinitions[key] = true;
       const referenced = JSON.parse(fs.readFileSync(resolved, 'utf8'));
       assertDraft07SourceSchema(referenced, resolved);
-      delete referenced.$id;
+      if (!rootId) delete referenced.$id;
       delete referenced.$schema;
       externalDefinitions[key] = rewriteNode(referenced, resolved, key);
     }
     const base = `#/definitions/${pointerSegment(key)}`;
-    return fragment ? `${base}${fragment.startsWith('/') ? fragment : `#${fragment}`}` : base;
+    const rootBase = currentKey && rootId ? rootId : '';
+    return fragment
+      ? `${rootBase}${base}${fragment.startsWith('/') ? fragment : `#${fragment}`}`
+      : `${rootBase}${base}`;
   }
 
   function rewriteNode(node, currentFile, currentKey) {
@@ -487,12 +494,20 @@ function compactDraft07Schema(rootSchema, rootFile, sourceDir) {
 }
 
 function collectExternalRefs(schema) {
+  const documentIds = new Set();
+  walkSchema(schema, node => {
+    if (typeof node === 'object' && node !== null && typeof node.$id === 'string') {
+      documentIds.add(node.$id.split('#', 1)[0]);
+    }
+  });
   const refs = [];
   walkSchema(schema, node => {
     if (typeof node !== 'object' || node === null) return;
     for (const keyword of ['$ref', '$dynamicRef', '$recursiveRef']) {
       const value = node[keyword];
-      if (typeof value === 'string' && !value.startsWith('#')) refs.push(value);
+      if (typeof value !== 'string' || value.startsWith('#')) continue;
+      const resource = value.split('#', 1)[0];
+      if (!documentIds.has(resource)) refs.push(value);
     }
   });
   return refs;
@@ -743,11 +758,21 @@ function projectMcpDiscoveryInputSchema(schema) {
 }
 
 function assertLocalRefsResolve(schema) {
+  const resources = new Map();
+  walkSchema(schema, node => {
+    if (typeof node === 'object' && node !== null && typeof node.$id === 'string') {
+      resources.set(node.$id.split('#', 1)[0], node);
+    }
+  });
   let count = 0;
   walkSchema(schema, node => {
     if (typeof node !== 'object' || node === null || typeof node.$ref !== 'string') return;
-    if (!node.$ref.startsWith('#')) throw new Error(`External $ref remains: ${node.$ref}`);
-    if (resolvePointer(schema, node.$ref) === undefined) {
+    const hashIndex = node.$ref.indexOf('#');
+    const resourceId = hashIndex === -1 ? node.$ref : node.$ref.slice(0, hashIndex);
+    const fragment = hashIndex === -1 ? '#' : node.$ref.slice(hashIndex);
+    const resource = resourceId ? resources.get(resourceId) : schema;
+    if (!resource) throw new Error(`External $ref remains: ${node.$ref}`);
+    if (resolvePointer(resource, fragment) === undefined) {
       throw new Error(`Unresolved local $ref: ${node.$ref}`);
     }
     count++;
@@ -984,8 +1009,19 @@ function projectSourceSchema(
   schemaUrlPrefix = `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}`,
   discoveryInput = false,
 ) {
-  const compact = compactDraft07Schema(schema, rootFile, sourceDir);
+  const projectionId = `${SCHEMA_ORIGIN}/schemas/${schemaUrlPrefix}/${relativePath}`;
+  // Prompt-only model-context views intentionally omit document metadata and
+  // are never validation registries. Validation projections and profiles keep
+  // the complete compound-resource identity graph.
+  const preserveDocumentIdentities = annotationMode !== 'model-context';
+  const compact = compactDraft07Schema(
+    schema,
+    rootFile,
+    sourceDir,
+    preserveDocumentIdentities ? { rootId: projectionId } : undefined,
+  );
   let projected = projectDraft07Node(compact);
+  if (preserveDocumentIdentities) projected.$id = projectionId;
   let discoveryDescriptions = new Map();
   let discoveryRootDescription;
   if (discoveryInput) {
@@ -1008,7 +1044,21 @@ function projectSourceSchema(
     if (typeof discoveryRootDescription === 'string') projected.description = discoveryRootDescription;
   }
   projected.$schema = JSON_SCHEMA_2020_12;
-  projected.$id = `${SCHEMA_ORIGIN}/schemas/${schemaUrlPrefix}/${relativePath}`;
+  walkSchema(projected, node => {
+    if (
+      typeof node === 'object'
+      && node !== null
+      && typeof node.$id === 'string'
+      && node.$id.startsWith('/schemas/')
+    ) {
+      const versionPrefix = `/schemas/${urlVersion}/`;
+      const relativeId = node.$id.startsWith(versionPrefix)
+        ? node.$id.slice(versionPrefix.length)
+        : node.$id.slice('/schemas/'.length);
+      node.$id = `${SCHEMA_ORIGIN}${versionPrefix}${relativeId}`;
+    }
+  });
+  projected.$id = projectionId;
   if (annotationMode === 'model-context') {
     delete projected.$schema;
     delete projected.$id;

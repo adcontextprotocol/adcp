@@ -1064,6 +1064,69 @@ export function getDocsCorpusFingerprint(): string | null {
   return initialized ? docsCorpusFingerprint : null;
 }
 
+const RELEASE_LINE_IDENTITY_BOOST = 40;
+const RELEASE_LINE_TITLE_BOOST = 40;
+/** Path/title weight when the query is about something other than the release itself. */
+const RELEASE_LINE_TIEBREAK_BOOST = 5;
+/**
+ * Words that make a query about a release itself ("what's new in 3.2",
+ * "migrate 3.1 to 3.2", "is 3.2 stable"). Without one, a release number only
+ * scopes a feature query ("get_products 3.2"), so release pages must not
+ * outrank the feature's own page.
+ */
+const RELEASE_INTENT_WORDS = new Set([
+  'new', 'whats', 'change', 'changes', 'changed', 'changelog', 'migrate', 'migrating',
+  'migration', 'upgrade', 'upgrading', 'stable', 'ga', 'release', 'releases', 'version',
+  'versions', 'difference', 'differences', 'breaking',
+]);
+/** Bound per-query scoring work: longer input is truncated before matching. */
+export const MAX_SEARCH_QUERY_CHARS = 500;
+/** Release lines scored per query; a real question names one or two. */
+const MAX_QUERY_RELEASE_LINES = 4;
+
+/**
+ * Extract up to `max` unique `major.minor` release lines (for example, `3.2`
+ * from "3.2.0-rc.7").
+ */
+export function extractReleaseLines(text: string, max = MAX_QUERY_RELEASE_LINES): string[] {
+  const lines = new Set<string>();
+  for (const match of text.matchAll(/(?<![\d.])(\d{1,3})\.(\d{1,3})(?!\d)/g)) {
+    lines.add(`${match[1]}.${match[2]}`);
+    if (lines.size >= max) break;
+  }
+  return [...lines];
+}
+
+function isDigit(char: string | undefined): boolean {
+  return char !== undefined && char >= '0' && char <= '9';
+}
+
+/**
+ * Count `token` occurrences that are not embedded in a longer number, so
+ * `3.2` matches "3.2" and "3.2.0" but not "13.2", "3.25", or "1.3.2", and
+ * `3-2` matches "3-1-to-3-2" but not "1-3-2".
+ */
+function countReleaseLineOccurrences(haystack: string, token: string, max: number): number {
+  let count = 0;
+  let offset = 0;
+  while (count < max) {
+    const index = haystack.indexOf(token, offset);
+    if (index === -1) break;
+    const before = haystack[index - 1];
+    const after = haystack[index + token.length];
+    const continuesNumber = isDigit(before)
+      || before === '.'
+      || (before === '-' && isDigit(haystack[index - 2]));
+    if (!continuesNumber && !isDigit(after)) count++;
+    offset = index + 1;
+  }
+  return count;
+}
+
+function containsReleaseLine(haystack: string, token: string): boolean {
+  return countReleaseLineOccurrences(haystack, token, 1) > 0;
+}
+
 /**
  * Search indexed docs using simple keyword matching
  */
@@ -1078,7 +1141,7 @@ export function searchDocs(
   const limit = options.limit ?? 5;
   const selectedVersion = resolveDocsVersion(options.version);
   if (!selectedVersion) return [];
-  const queryLower = query.toLowerCase();
+  const queryLower = query.slice(0, MAX_SEARCH_QUERY_CHARS).toLowerCase();
   const allowedErrorCodes = errorCodesByDocsVersion.get(selectedVersion.version);
   if (allowedErrorCodes) {
     // Only a literal enum token (for example, `ACCOUNT_REQUIRED`) proves the
@@ -1097,6 +1160,11 @@ export function searchDocs(
       .flatMap((word) => [word, word.replace(/_/g, '-'), word.replace(/-/g, '_')])
       .filter((word) => word.length > 2)
   )];
+  const queryReleaseLines = extractReleaseLines(queryLower);
+  const releaseIntent = queryReleaseLines.length > 0
+    && queryLower.split(/[^a-z0-9]+/).some((word) => RELEASE_INTENT_WORDS.has(word));
+  const releasePathBoost = releaseIntent ? RELEASE_LINE_IDENTITY_BOOST : RELEASE_LINE_TIEBREAK_BOOST;
+  const releaseTitleBoost = releaseIntent ? RELEASE_LINE_TITLE_BOOST : RELEASE_LINE_TIEBREAK_BOOST;
 
   const countOccurrences = (content: string, word: string, max: number): number => {
     let count = 0;
@@ -1127,7 +1195,8 @@ export function searchDocs(
     .map((doc) => {
       const titleLower = doc.title.toLowerCase();
       const contentLower = doc.content.toLowerCase();
-      const identityLower = `${doc.id} ${doc.path}`.toLowerCase();
+      const pathLower = doc.path.toLowerCase();
+      const identityLower = `${doc.id.toLowerCase()} ${pathLower}`;
 
       let score = 0;
 
@@ -1158,6 +1227,24 @@ export function searchDocs(
         // Count occurrences in content (limited to avoid huge scores)
         const occurrences = countOccurrences(contentLower, word, 10);
         score += occurrences * 2;
+      }
+
+      // Release numbers ("3.2") split into single digits above and are
+      // dropped, so match them separately. Page slugs spell the line with a
+      // hyphen (`whats-new-in-3-2`, `migration/3-1-to-3-2`); titles use the
+      // dotted form. `doc.path` excludes the `doc:<version>:` ID prefix, which
+      // would otherwise match every page in that release's index. Only a
+      // question about the release itself gets the full boost.
+      for (const line of queryReleaseLines) {
+        if (containsReleaseLine(pathLower, line.replace('.', '-'))) {
+          score += releasePathBoost;
+        }
+        if (containsReleaseLine(titleLower, line)) {
+          score += releaseTitleBoost;
+        }
+        if (releaseIntent) {
+          score += countReleaseLineOccurrences(contentLower, line, 10) * 2;
+        }
       }
 
       return { doc, score };

@@ -168,14 +168,22 @@ export const uniqueOrgPerEmailDomainInvariant: Invariant = {
             },
           },
           remediation_hint:
-            // The merge endpoint (POST /api/admin/accounts/:source/merge-into/:target)
-            // moves memberships and stripe state to `keeper`, then deletes the
-            // empty row. Use that for stub-vs-real cases. For stub-vs-stub,
-            // direct DELETE is fine after confirming both rows are empty.
-            `If duplicate has 0 members AND no Stripe customer, DELETE FROM organizations ` +
-            `WHERE workos_organization_id = '${dup.workos_organization_id}'. Otherwise use ` +
-            `POST /api/admin/accounts/${dup.workos_organization_id}/merge-into/${keeper.workos_organization_id} ` +
-            `(if implemented) to consolidate.`,
+            // #6827: this hint used to emit a ready-to-paste raw SQL delete
+            // against the organizations table, and pointed at a merge
+            // endpoint that does not exist. Both organization deletion
+            // and organization merge are contained precisely because removing
+            // an organization locally while its WorkOS organization survives
+            // is the split state #6827 tracks. Do not hand an operator the
+            // statement the containment exists to prevent: report the pair and
+            // route it to the owning engineer instead.
+            `Duplicate email_domain. Inspect the pair read-only with ` +
+            `GET /api/admin/cleanup/preview-merge?primary=${keeper.workos_organization_id}` +
+            `&secondary=${dup.workos_organization_id}. Consolidation is not available: ` +
+            `organization deletion and organization merge are contained under #6827 ` +
+            `(organization_deletion_unavailable / organization_merge_unavailable). ` +
+            `Do not delete the row directly or edit it in psql — that reproduces the ` +
+            `split provider/local state the containment prevents. Escalate to the ` +
+            `engineering owner of #6827 with this violation attached.`,
         });
       }
     }

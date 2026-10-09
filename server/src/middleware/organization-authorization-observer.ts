@@ -1,4 +1,4 @@
-import type { Request } from 'express';
+import type { Request, RequestHandler } from 'express';
 import { getAuthorizationObserverWorkos } from '../auth/workos-client.js';
 import { createLogger } from '../logger.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
@@ -7,6 +7,22 @@ import { captureEvent } from '../utils/posthog.js';
 const logger = createLogger('organization-authorization-observer');
 const MAX_CONCURRENT_COMPARISONS = 5;
 let inFlightComparisons = 0;
+
+// Two kinds of request opt out of post-response observation. Exact membership
+// mutations have their own mandatory authority checks, and the #6827 contained
+// organization-deletion routes deliberately have no authority checks at all
+// because they return before authentication. Neither should trigger additional
+// canonical-credential provider reads afterwards, including on
+// authentication/preflight denials and on an already populated principal.
+// Exclusion therefore does NOT imply an authority check ran. This server-only
+// marker changes observation only; it never supplies or bypasses authorization.
+// Re-enabling organization deletion must drop its exclusion so the
+// canonical-vs-exact shadow telemetry covers the route again.
+const excludedRequests = new WeakSet<object>();
+export const excludeOrganizationAuthorizationObservation: RequestHandler = (req, _res, next) => {
+  excludedRequests.add(req);
+  next();
+};
 
 export type OrganizationSelectorSource =
   | 'header'
@@ -208,7 +224,7 @@ export async function observeLinkedCredentialOrganizationAuthorization(
   route: string,
   responseStatus: number,
 ): Promise<void> {
-  if (process.env.ORG_AUTHORIZATION_OBSERVER_ENABLED === 'false') return;
+  if (excludedRequests.has(req) || process.env.ORG_AUTHORIZATION_OBSERVER_ENABLED === 'false') return;
 
   const canonicalUserId = req.user?.id;
   const authenticatedUserId = req.user?.authWorkosUserId;

@@ -17,6 +17,24 @@ vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
   isWebUserAAOAdmin: vi.fn().mockResolvedValue(false),
 }));
 
+vi.mock('../../src/addie/admin-status-lookup.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/addie/admin-status-lookup.js')>();
+  const checkMembership = vi.fn(async (id: string) => {
+    if (id === 'user_lookup_unavailable') throw new actual.AAOAdminLookupUnavailableError();
+    return id === 'user_platform_admin';
+  });
+  const resolve = async (principal: any, email?: string | null) => {
+    const id = typeof principal === 'string' ? principal : principal.authWorkosUserId ?? principal.id;
+    return actual.decideAAOAdminAccess(await checkMembership(id), typeof principal === 'string' ? email : principal.email);
+  };
+  return {
+    ...actual,
+    isWebUserAAOAdmin: checkMembership,
+    resolveWebUserAAOAdminAccess: resolve,
+    isAuthenticatedUserAAOAdmin: async (principal: any) => (await resolve(principal)).isAdmin,
+  };
+});
+
 /**
  * Tests for the retryAfter fallback field we surface on the 429 body
  * from `agentReadRateLimiter` (#2804/#2939). Reverse proxies sometimes
@@ -102,11 +120,14 @@ describe('capability probe rate limiter', () => {
     max?: number;
     responseStatus?: number;
     isAdmin?: boolean;
+    principal?: { id: string; authWorkosUserId?: string; email?: string; isAdmin?: boolean };
+    isStaticAdminApiKey?: boolean;
   } = {}) {
     const app = express();
     app.use((req, _res, next) => {
-      (req as any).user = {
-        id: 'capability-probe-rate-limit-user',
+      (req as any).isStaticAdminApiKey = options.isStaticAdminApiKey;
+      (req as any).user = options.principal ?? {
+        id: options.isAdmin ? 'user_platform_admin' : 'capability-probe-rate-limit-user',
         isAdmin: options.isAdmin === true,
       };
       next();
@@ -152,6 +173,29 @@ describe('capability probe rate limiter', () => {
 
     expect((await request(app).get('/probe')).status).toBe(500);
     expect((await request(app).get('/probe')).status).toBe(429);
+  });
+
+  it.each([
+    ['user_platform_admin', 'user_member', false, 200],
+    ['user_member', 'user_platform_admin', true, 429],
+  ] as const)('uses authenticated %s instead of canonical %s or cached flags', async (authenticated, canonical, staleFlag, status) => {
+    const app = buildApp({ max: 1, principal: {
+      id: canonical, authWorkosUserId: authenticated, isAdmin: staleFlag,
+    } });
+    expect((await request(app).get('/probe')).status).toBe(200);
+    expect((await request(app).get('/probe')).status).toBe(status);
+  });
+
+  it('applies ordinary limits when administrator authority is unavailable', async () => {
+    const app = buildApp({ max: 1, principal: { id: 'user_lookup_unavailable', isAdmin: true } });
+    expect((await request(app).get('/probe')).status).toBe(200);
+    expect((await request(app).get('/probe')).status).toBe(429);
+  });
+
+  it('preserves the explicitly authenticated static administrator key exemption', async () => {
+    const app = buildApp({ max: 1, principal: { id: 'admin_api_key' }, isStaticAdminApiKey: true });
+    expect((await request(app).get('/probe')).status).toBe(200);
+    expect((await request(app).get('/probe')).status).toBe(200);
   });
 
   it('bypasses the capability budget for platform admins', async () => {

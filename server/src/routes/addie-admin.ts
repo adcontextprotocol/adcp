@@ -1,3 +1,4 @@
+import { respondToAdminAuthorizationError } from '../auth/admin-authorization-response.js';
 /**
  * Addie Admin routes module
  *
@@ -1640,7 +1641,10 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         }
 
         targetUserId = workosUserId;
-        content = await getWebHomeContent(workosUserId);
+        // This admin-only preview simulates the explicitly selected WorkOS
+        // credential, including its own email; no canonical identity lookup.
+        const previewCredential = await workos.userManagement.getUser(workosUserId);
+        content = await getWebHomeContent({ id: workosUserId, email: previewCredential.email });
       }
 
       // Return based on format
@@ -1659,6 +1663,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         });
       }
     } catch (error) {
+      if (respondToAdminAuthorizationError(error, res)) return;
       logger.error({ err: error }, "Error previewing Addie Home");
       res.status(500).json({
         error: "Internal server error",

@@ -53,7 +53,8 @@ import {
 import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
-import { supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
+import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -70,9 +71,10 @@ import {
   getCoreRevisionContentPageForAccountDurably,
   hasCoreRevisionContentForAccountDurably,
   listReportingAccountsDurably,
+  reportingDayStart,
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
-import { validateSourceSchema } from './source-schema.js';
+import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -122,7 +124,8 @@ import type {
 } from '@adcp/sdk';
 import { CreativeAssetSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
-import { getCanonicalBase } from './canonical-base.js';
+import { getGovernanceSigningPublicJwk } from './governance-signing.js';
+import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
 import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
 import { getPromotedFormatShapes } from '../services/format-shape-promotion-registry.js';
 import { validateCtvSemantics } from './ctv-experience-matrix.js';
@@ -210,7 +213,25 @@ type GetProductsReadDirectives = {
   staleDirective?: { tool: string; upstreamName?: string; cacheAgeSeconds?: number; createdAt: string };
 };
 type PricingOption = Product['pricing_options'][number];
-type CompactProductPurchase = ProposalPurchase & {
+type CompactProductPurchase = Omit<
+  ProposalPurchase,
+  | 'format_option_refs'
+  | 'catalog_ids'
+  | 'budget'
+  | 'daily_budget_cap'
+  | 'min_spend_target'
+  | 'pacing'
+  | 'bidding'
+  | 'targeting_overlay'
+  | 'optimization_goals'
+  | 'audience_evidence_requirements'
+  | 'audience_evidence_pins'
+  | 'agency_estimate_number'
+  | 'measurement_terms'
+  | 'performance_standards'
+  | 'context'
+  | 'ext'
+> & {
   budget?: number;
   format_option_refs?: unknown[];
   catalog_ids?: string[];
@@ -1995,6 +2016,91 @@ function isValidDaypartTimezone(value: unknown): boolean {
   }
 }
 
+/**
+ * Canonical reporting timezone for a product's reporting_capabilities.timezone,
+ * or undefined when a seeded fixture declares something Intl cannot resolve.
+ * Absent means the training agent's UTC default.
+ */
+function canonicalReportingTimezone(value: unknown): string | undefined {
+  if (value === undefined) return 'UTC';
+  if (typeof value !== 'string' || !DAYPART_IANA_TIMEZONE_SHAPE.test(value)) return undefined;
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: value }).resolvedOptions().timeZone;
+  } catch {
+    return undefined;
+  }
+}
+
+const DAYPART_CLOCK_TIME = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;
+const DAYPART_GRANULARITY_RANK = { hour: 0, quarter_hour: 1, minute: 2 } as const;
+type DaypartTimeGranularity = keyof typeof DAYPART_GRANULARITY_RANK;
+
+/** Shape errors for an entry's whole-hour vs HH:MM window fields, relative to
+ * the entry path. These are INVALID_REQUEST; capability matching never sees
+ * them. */
+function daypartWindowErrors(entry: Record<string, unknown>): Array<{ field: string; message: string }> {
+  const hasHour = entry.start_hour !== undefined || entry.end_hour !== undefined;
+  const hasTime = entry.start_time !== undefined || entry.end_time !== undefined;
+  if (hasHour && hasTime) {
+    return [{ field: '', message: 'start_hour/end_hour and start_time/end_time are mutually exclusive' }];
+  }
+  if (hasTime) {
+    const errors: Array<{ field: string; message: string }> = [];
+    for (const key of ['start_time', 'end_time'] as const) {
+      const clock = entry[key];
+      if (typeof clock !== 'string' || !DAYPART_CLOCK_TIME.test(clock)) {
+        errors.push({ field: `.${key}`, message: `${key}: must be a 24-hour HH:MM clock time` });
+      }
+    }
+    if (errors.length === 0 && entry.start_time === entry.end_time) {
+      errors.push({ field: '.end_time', message: 'end_time: must differ from start_time' });
+    }
+    return errors;
+  }
+  if (!hasHour) {
+    return [{ field: '', message: 'a window requires start_hour/end_hour or start_time/end_time' }];
+  }
+  const errors: Array<{ field: string; message: string }> = [];
+  for (const key of ['start_hour', 'end_hour'] as const) {
+    if (!Number.isInteger(entry[key])) {
+      errors.push({ field: `.${key}`, message: `${key}: required with its pair and must be an integer` });
+    }
+  }
+  return errors;
+}
+
+/** Finest granularity a validated entry needs. Whole-hour windows and HH:00
+ * clock times need hour; :15/:30/:45 need quarter_hour; anything else minute. */
+function daypartEntryGranularity(entry: Record<string, unknown>): DaypartTimeGranularity {
+  let needed: DaypartTimeGranularity = 'hour';
+  for (const key of ['start_time', 'end_time'] as const) {
+    const clock = entry[key];
+    if (typeof clock !== 'string') continue;
+    const minutes = Number(clock.slice(3));
+    if (minutes % 15 !== 0) return 'minute';
+    if (minutes !== 0) needed = 'quarter_hour';
+  }
+  return needed;
+}
+
+/** Granularity a support or requirement object names. Omission means hour; an
+ * unrecognized value is undefined so matching fails closed. */
+function daypartDeclaredGranularity(source: unknown): DaypartTimeGranularity | undefined {
+  if (!isRecord(source) || source.time_granularity === undefined) return 'hour';
+  return typeof source.time_granularity === 'string'
+    && Object.hasOwn(DAYPART_GRANULARITY_RANK, source.time_granularity)
+    ? source.time_granularity as DaypartTimeGranularity
+    : undefined;
+}
+
+/** True when the support object honors at least the required granularity. */
+function daypartGranularityAtLeast(support: unknown, requirement: unknown): boolean {
+  const supported = daypartDeclaredGranularity(support);
+  const required = daypartDeclaredGranularity(requirement);
+  return supported !== undefined && required !== undefined
+    && DAYPART_GRANULARITY_RANK[supported] >= DAYPART_GRANULARITY_RANK[required];
+}
+
 function validateDaypartTargets(value: unknown, pathLabel: string): TaskError[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length === 0) {
@@ -2022,11 +2128,18 @@ function validateDaypartTargets(value: unknown, pathLabel: string): TaskError[] 
         field: `${entryPath}.timezone`,
       });
     }
+    for (const windowError of daypartWindowErrors(entry)) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${entryPath}${windowError.field}: ${windowError.message}`,
+        field: `${entryPath}${windowError.field}`,
+      });
+    }
   }
   return errors;
 }
 
-function validateListRef(ref: unknown, pathLabel: string): { ref?: ListReference; error?: TaskError } {
+function validateListRef(ref: unknown, pathLabel: string, dialed = false): { ref?: ListReference; error?: TaskError } {
   if (ref === undefined || ref === null) return {};
   if (typeof ref !== 'object' || Array.isArray(ref)) {
     return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}: must be an object with agent_url and list_id`, field: pathLabel } };
@@ -2040,6 +2153,12 @@ function validateListRef(ref: unknown, pathLabel: string): { ref?: ListReference
   }
   if (!/^https?:\/\//i.test(agent_url)) {
     return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.agent_url: must use http:// or https://`, field: `${pathLabel}.agent_url` } };
+  }
+  // The agent URL is buyer-supplied and later dialed, so refuse private hosts
+  // before any fetch. This deployment's own governance tenant is allowed.
+  const hostRejection = dialed ? listAgentUrlRejection(agent_url) : undefined;
+  if (hostRejection) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.agent_url: ${hostRejection}`, field: `${pathLabel}.agent_url` } };
   }
   if (typeof list_id !== 'string' || list_id.length === 0 || list_id.length > MAX_ID_LEN) {
     return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.list_id: must be a non-empty string up to ${MAX_ID_LEN} chars`, field: `${pathLabel}.list_id` } };
@@ -2057,8 +2176,8 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   }
   const src = t as Record<string, unknown>;
   const errors: TaskError[] = [];
-  const pl = validateListRef(src.property_list, `${pathLabel}.property_list`);
-  const ple = validateListRef(src.property_list_exclude, `${pathLabel}.property_list_exclude`);
+  const pl = validateListRef(src.property_list, `${pathLabel}.property_list`, true);
+  const ple = validateListRef(src.property_list_exclude, `${pathLabel}.property_list_exclude`, true);
   const cl = validateListRef(src.collection_list, `${pathLabel}.collection_list`);
   const cle = validateListRef(src.collection_list_exclude, `${pathLabel}.collection_list_exclude`);
   const validateAudienceIds = (value: unknown, field: string): string[] | undefined => {
@@ -2138,6 +2257,8 @@ interface ReportingCapabilitiesView {
   vendor_metrics?: VendorMetricRefView[];
   available_metrics?: string[];
   supports_format_breakdown?: boolean;
+  supports_property_breakdown?: boolean;
+  supports_installment_property_breakdown?: boolean;
 }
 
 function deterministicTimeBasedViews(impressions: number): Array<Record<string, unknown>> {
@@ -2213,6 +2334,52 @@ function formatDeliveryBreakdown(
     by_format_truncated: rows.length > limit,
     by_format_sorted_by: appliedSort,
     by_format_sort_direction: appliedDirection,
+  };
+}
+
+/**
+ * Property-grain breakdowns echo only rows injected through
+ * comply_test_controller simulate_delivery. They are never derived from
+ * catalog eligibility or publisher_properties: absent injected rows, the
+ * array is empty.
+ */
+function injectedRowsBreakdown(
+  field: 'by_property' | 'by_installment_property',
+  injectedRows: Array<Record<string, unknown>> | undefined,
+  dimension: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!dimension) return {};
+  const rows = injectedRows ?? [];
+  const requestedSort = typeof dimension.sort_by === 'string' ? dimension.sort_by : 'spend';
+  const requestedDirection = dimension.sort_direction === 'asc' ? 'asc' : 'desc';
+  // The reference seller sorts on flat row metrics only; a metric it does not
+  // carry at this grain (for example nested viewability) falls back to spend,
+  // which delivery-breakdown-controls.json permits.
+  const hasMetric = (row: Record<string, unknown>, metric: string) => (
+    typeof row[metric] === 'number' && Number.isFinite(row[metric])
+  );
+  // Fall back to spend only when no row reports the requested metric; rows
+  // lacking it order last regardless of direction.
+  const appliedSort = rows.some(row => hasMetric(row, requestedSort)) ? requestedSort : 'spend';
+  const appliedDirection = appliedSort === requestedSort ? requestedDirection : 'desc';
+  const ordered = structuredClone(rows).sort((left, right) => {
+    const leftHas = hasMetric(left, appliedSort);
+    const rightHas = hasMetric(right, appliedSort);
+    if (!leftHas || !rightHas) return Number(rightHas) - Number(leftHas);
+    const a = left[appliedSort] as number;
+    const b = right[appliedSort] as number;
+    return appliedDirection === 'asc' ? a - b : b - a;
+  });
+  const limit = typeof dimension.limit === 'number' && Number.isInteger(dimension.limit) && dimension.limit >= 1
+    ? dimension.limit
+    : 25;
+  return {
+    [field]: ordered.slice(0, limit),
+    [`${field}_truncated`]: ordered.length > limit,
+    // Injected rows are exempt from threshold suppression.
+    [`${field}_suppressed`]: false,
+    [`${field}_sorted_by`]: appliedSort,
+    [`${field}_sort_direction`]: appliedDirection,
   };
 }
 
@@ -3003,6 +3170,7 @@ import {
   resolveAccountCurrencyForRef,
   resolveAccountBrandForRef,
   resolveGovernanceAgentsForAccount,
+  isTrainingSelfGovernanceAuthority,
   handleSyncAccounts,
   handleSyncGovernance,
 } from './account-handlers.js';
@@ -3021,6 +3189,7 @@ import {
   handleLogEvent,
   handleProvidePerformanceFeedback,
   findEventSourceInSession,
+  availableEventSourcesInSession,
 } from './catalog-event-handlers.js';
 import {
   AUDIENCE_TOOLS,
@@ -3043,6 +3212,7 @@ import {
   getSeededCreativeFormats,
 } from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
+import { applyPropertyListTargeting, listAgentUrlRejection, packageExtWithPropertyApplication } from './property-list-targeting.js';
 import {
   isMutatingTool,
   validateKeyFormat,
@@ -3052,7 +3222,12 @@ import {
   REPLAY_TTL_SECONDS,
 } from './idempotency.js';
 import { maybeEmitCompletionWebhook } from './webhooks.js';
-import { isProtocolMethodName, selectSigningCapability } from './request-signing.js';
+import {
+  CURRENT_REQUEST_SIGNING_PROFILE_VERSION,
+  isProtocolMethodName,
+  requestSigningProfileVersion,
+  selectSigningCapability,
+} from './request-signing.js';
 import {
   getScopedTrainingTaskStore,
   resetTrainingTaskStore,
@@ -3165,6 +3340,14 @@ function lifecycleSplitVersionForContext(ctx: TrainingContext): string | undefin
   return isThreeZeroStoryboardCompat(ctx) ? '3.0' : ctx.servedAdcpVersion;
 }
 
+/** The seller-optimized capabilities this request's served release line declares. */
+function sellerOptimizedDeclarationForContext(ctx: TrainingContext) {
+  // In-process callers may carry no served version; they speak the current line.
+  return sellerOptimizedDeclarationForVersion(
+    lifecycleSplitVersionForContext(ctx) ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
+}
+
 function compareAdcpPrerelease(left: string, right: string): number {
   const leftParts = left.split('.');
   const rightParts = right.split('.');
@@ -3210,7 +3393,11 @@ function highestSupportedRelease(
 
 function signingCompatibleReleaseVersions(ctx: TrainingContext): readonly string[] {
   const signingCap = selectSigningCapability(ctx);
-  if (!signingCap.supported || signingCap.covers_content_digest === 'required') {
+  // Only a route whose verifier is pinned to the 3.2 signing profile may
+  // advertise 3.2: the route pin, not the request, selects the sf-binary
+  // parser. Legacy-profile routes (either/forbidden digest policy, or the
+  // required-digest legacy route) advertise 3.0/3.1 only.
+  if (!signingCap.supported || requestSigningProfileVersion(ctx) === CURRENT_REQUEST_SIGNING_PROFILE_VERSION) {
     return SUPPORTED_RELEASE_VERSIONS;
   }
   return SUPPORTED_RELEASE_VERSIONS.filter(version => {
@@ -4061,12 +4248,22 @@ async function governedCommitmentAuthorization(
   authority?: import('./account-handlers.js').GovernanceAgentEntry,
   buyerBrand?: GovernanceBuyerBrand,
 ) {
-  const verificationJwk = authority
-    ? await governanceVerificationJwk(authority, governanceContext, buyerBrand)
-    : undefined;
+  // A registered third-party authority must sign as its registered URL and
+  // publish its key through the buyer's brand.json. The training agent's own
+  // governance service signs as this deployment's governance issuer with the
+  // single key this deployment publishes; it is verified against exactly
+  // those values, never against a caller-supplied issuer or local demo keys.
+  const selfAuthority = authority !== undefined && isTrainingSelfGovernanceAuthority(authority.url);
+  const verificationJwk = selfAuthority
+    ? getGovernanceSigningPublicJwk()
+    : authority
+      ? await governanceVerificationJwk(authority, governanceContext, buyerBrand)
+      : undefined;
   return verifyGovernedServiceAuthorization({
     token: governanceContext,
-    expectedIssuer: authority?.url ?? `${getCanonicalBase()}/governance`,
+    expectedIssuer: authority === undefined || selfAuthority
+      ? getTrainingGovernanceIssuer()
+      : authority.url,
     expectedTask: expectedTool,
     expectedAudience,
     payload: actualPayload,
@@ -4116,6 +4313,7 @@ async function sellerGovernanceExecutionError(
   plannedDelivery: PlannedDelivery,
   intentClaims: Record<string, unknown>,
   buyerBrand: GovernanceBuyerBrand | undefined,
+  sellerCtx: TrainingContext,
 ): Promise<TaskError | undefined> {
   if (!agent.authentication.schemes.some(scheme => scheme.toLowerCase() === 'bearer')) {
     return {
@@ -4132,22 +4330,39 @@ async function sellerGovernanceExecutionError(
       plannedDelivery,
       phase: 'purchase',
     });
-    const testOverride = governanceAuthorityTestOverrides.get(agent.url);
-    const rawResponse = await ProtocolClient.callTool({
-      id: `governance-${createHash('sha256').update(agent.url).digest('hex').slice(0, 12)}`,
-      name: 'Registered governance agent',
-      agent_uri: agent.url,
-      protocol: 'mcp',
-      auth_token: agent.authentication.credentials,
-    }, 'check_governance', checkRequest as unknown as Record<string, unknown>, {
-      transport: {
-        trustedFetchFn: testOverride?.fetch ?? governanceSafeFetch,
-        allowPrivateIp: false,
-        requestTimeoutMs: GOVERNANCE_NETWORK_TIMEOUT_MS,
-        maxResponseBytes: GOVERNANCE_MAX_RESPONSE_BYTES,
-      },
-    });
-    const response = unwrapProtocolResponse(rawResponse, 'check_governance', 'mcp');
+    const selfAuthority = isTrainingSelfGovernanceAuthority(agent.url);
+    let response: unknown;
+    if (selfAuthority) {
+      // The training governance service is this deployment's /governance
+      // tenant. The seller consults it in process, authenticated as the
+      // seller identity it names in `caller`, instead of dialing the
+      // registered service locator over the network.
+      response = await handleCheckGovernance(checkRequest as unknown as ToolArgs, {
+        mode: sellerCtx.mode,
+        tenantId: 'governance',
+        ...(sellerCtx.userId !== undefined && { userId: sellerCtx.userId }),
+        ...(sellerCtx.moduleId !== undefined && { moduleId: sellerCtx.moduleId }),
+        ...(sellerCtx.principal !== undefined && { principal: sellerCtx.principal }),
+        authenticatedAgentUrl: callerUrl,
+      });
+    } else {
+      const testOverride = governanceAuthorityTestOverrides.get(agent.url);
+      const rawResponse = await ProtocolClient.callTool({
+        id: `governance-${createHash('sha256').update(agent.url).digest('hex').slice(0, 12)}`,
+        name: 'Registered governance agent',
+        agent_uri: agent.url,
+        protocol: 'mcp',
+        auth_token: agent.authentication.credentials,
+      }, 'check_governance', checkRequest as unknown as Record<string, unknown>, {
+        transport: {
+          trustedFetchFn: testOverride?.fetch ?? governanceSafeFetch,
+          allowPrivateIp: false,
+          requestTimeoutMs: GOVERNANCE_NETWORK_TIMEOUT_MS,
+          maxResponseBytes: GOVERNANCE_MAX_RESPONSE_BYTES,
+        },
+      });
+      response = unwrapProtocolResponse(rawResponse, 'check_governance', 'mcp');
+    }
     const verdict = normalizeGovernanceVerdict(response);
     if (verdict?.checkType !== 'execution' || verdict.verdict !== 'approved') {
       return {
@@ -4165,12 +4380,14 @@ async function sellerGovernanceExecutionError(
         message: 'The governance agent approved execution without a signed purchase authorization.',
       };
     }
-    const verificationJwk = await governanceVerificationJwk(agent, executionContext, buyerBrand);
+    const verificationJwk = selfAuthority
+      ? getGovernanceSigningPublicJwk()
+      : await governanceVerificationJwk(agent, executionContext, buyerBrand);
     const totalBudget = plannedDelivery.total_budget ?? 0;
     const currency = plannedDelivery.currency ?? 'USD';
     const verification = await verifyGovernedServiceAuthorization({
       token: executionContext,
-      expectedIssuer: agent.url,
+      expectedIssuer: selfAuthority ? getTrainingGovernanceIssuer() : agent.url,
       expectedAudience: callerUrl,
       expectedTask: 'create_media_buy',
       expectedPhase: 'purchase',
@@ -7332,6 +7549,11 @@ function buildCanonicalCommercialTerms(
       ...(typeof recommendedBudget === 'number' && {
         budget: recommendedBudget * (allocation.allocation_percentage ?? 0) / 100,
       }),
+      // criteria.outcome_target.cost_per: the media-buy bidding policy binds
+      // to each purchase's primary goal, which is the outcome_target goal.
+      ...(isRecord(internal.__outcome_target_optimization_goal) && {
+        optimization_goals: [structuredClone(internal.__outcome_target_optimization_goal)],
+      }),
       ...(isRecord((product as unknown as Record<string, unknown> | undefined)?.measurement_terms)
         && { measurement_terms: structuredClone((product as unknown as Record<string, unknown>).measurement_terms) }),
       ...(Array.isArray((product as unknown as Record<string, unknown> | undefined)?.performance_standards)
@@ -7339,6 +7561,10 @@ function buildCanonicalCommercialTerms(
     };
   });
   const changeTerms = proposalChangeTermsForPurchases(purchases, products);
+  // A vendor_metric goal is optimized only against committed reporting of the
+  // same (vendor, metric_id), so each purchase commits to report it.
+  const outcomeGoal = internal.__outcome_target_optimization_goal;
+  const vendorOutcomeGoal = isRecord(outcomeGoal) && outcomeGoal.kind === 'vendor_metric' ? outcomeGoal : undefined;
   return {
     brand,
     purchases,
@@ -7349,6 +7575,19 @@ function buildCanonicalCommercialTerms(
     }),
     ...(typeof recommendedBudget === 'number' && {
       total_budget: { amount: recommendedBudget, currency },
+    }),
+    ...(isRecord(internal.__outcome_target_bidding) && {
+      bidding: structuredClone(internal.__outcome_target_bidding),
+    }),
+    ...(vendorOutcomeGoal && {
+      reporting_commitments: purchases.map((_purchase, purchaseIndex) => ({
+        purchase_index: purchaseIndex,
+        metrics: [{
+          scope: 'vendor',
+          vendor: structuredClone(vendorOutcomeGoal.vendor),
+          metric_id: vendorOutcomeGoal.metric_id,
+        }],
+      })),
     }),
     ...(changeTerms.length > 0 && { change_terms: changeTerms }),
   };
@@ -7381,6 +7620,13 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
   };
 }
 
+// Default list_products projection onto the closed core/canonical-product.json.
+// Legacy-only Product keys stay on get_products: audience_activation (the
+// experimental per-product declaration has no canonical counterpart yet; the
+// seller-wide union remains on get_adcp_capabilities), installments (deferred
+// until installment.json drops the deprecated collection_id shorthand), and
+// is_custom (canonical products mark request-specific configured offers with
+// expires_at alone).
 const COMPACT_PRODUCT_FIELDS = new Set([
   'product_id', 'name', 'description', 'publisher_properties', 'channels',
   'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
@@ -7389,12 +7635,23 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'signal_targeting_rules', 'max_optimization_goals', 'measurement_terms',
   'performance_standards', 'audience_evidence', 'audience_evidence_selections',
   'acceptance_policy_profile_ids',
-  'demographic_targeting', 'audience_activation', 'exclusivity', 'audio_distribution_types',
+  'demographic_targeting', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
-  'sponsored_placement_types', 'is_custom', 'overlay_support', 'media_buy_support', 'identity',
-  'targeting_resolution', 'collections', 'collection_targeting_allowed',
-  'installments', 'ext',
+  'sponsored_placement_types', 'overlay_support', 'media_buy_support', 'identity',
+  'targeting_resolution', 'collections', 'collection_targeting_allowed', 'ext',
 ]);
+
+let canonicalReportingCapabilityFields: ReadonlySet<string> | undefined;
+
+/** Project reporting_capabilities onto the closed canonical
+ * reporting-capabilities properties (including
+ * reporting_delivery_offering_ids), dropping any legacy-only keys. */
+function compactReportingCapabilityFields(): ReadonlySet<string> {
+  canonicalReportingCapabilityFields ??= new Set(Object.keys(
+    (loadSourceSchema('core/canonical-reporting-capabilities.json').properties ?? {}) as Record<string, unknown>,
+  ));
+  return canonicalReportingCapabilityFields;
+}
 
 const COMPACT_FORMAT_OPTION_FIELDS = new Set([
   'format_option_id', 'format_kind', 'display_name', 'publisher_domain',
@@ -7420,6 +7677,15 @@ function compactLifecycleProduct(
     ? new Set(['product_id', 'name', ...requestedFields, ...requiredFields])
     : COMPACT_PRODUCT_FIELDS;
   const projected = pickCompactFields(product, selectedFields);
+  // A returned overlay_support.collection_list is only schema-valid alongside
+  // collection_targeting_allowed: true, so it overrides a narrower projection.
+  if (
+    isRecord(projected.overlay_support)
+    && projected.overlay_support.collection_list !== undefined
+    && product.collection_targeting_allowed !== undefined
+  ) {
+    projected.collection_targeting_allowed = product.collection_targeting_allowed;
+  }
   if (selectedFields.has('format_options') && Array.isArray(product.format_options)) {
     projected.format_options = product.format_options
       .filter(isRecord)
@@ -7429,6 +7695,12 @@ function compactLifecycleProduct(
     projected.pricing_options = product.pricing_options
       .filter(isRecord)
       .map(option => canonicalPricingSnapshot(option, String(option.pricing_option_id ?? '')));
+  }
+  if (selectedFields.has('reporting_capabilities') && isRecord(product.reporting_capabilities)) {
+    projected.reporting_capabilities = pickCompactFields(
+      product.reporting_capabilities,
+      compactReportingCapabilityFields(),
+    );
   }
   return projected;
 }
@@ -7446,7 +7718,11 @@ function overlaySupportContains(
   if (support === true) {
     if (capabilityField === 'daypart_targets' && isRecord(requirement)) {
       const modes = requirement.timezone_modes;
-      return Array.isArray(modes) && modes.every(mode => mode === 'inventory_local');
+      return (
+        Array.isArray(modes)
+          ? modes.every(mode => mode === 'inventory_local')
+          : modes === undefined && requirement.time_granularity !== undefined
+      ) && daypartDeclaredGranularity(requirement) === 'hour';
     }
     return true;
   }
@@ -7463,6 +7739,11 @@ function overlaySupportContains(
     // or a containing frequency_cap_support after seller-wide inheritance.
     if (field === 'frequency_cap_support') {
       return packageFrequencyCapRequirementMatches({ overlay_support: support }, requiredValue);
+    }
+    // Time granularity is ordered, not a subset: finer support satisfies a
+    // coarser requirement, and an omitted support value means hour.
+    if (capabilityField === 'daypart_targets' && field === 'time_granularity') {
+      return daypartGranularityAtLeast(support, requirement);
     }
     return support[field] !== undefined
       && overlaySupportContains(support[field], requiredValue, field);
@@ -7491,17 +7772,23 @@ function concreteTargetingSupported(field: string, support: unknown, value: unkn
     && (
       !Array.isArray(value)
       || value.length === 0
-      || value.some(entry => !isRecord(entry) || !isValidDaypartTimezone(entry.timezone))
+      || value.some(entry => (
+        !isRecord(entry)
+        || !isValidDaypartTimezone(entry.timezone)
+        || daypartWindowErrors(entry).length > 0
+      ))
     )
   ) {
-    // Input validation owns malformed and unknown-zone errors; capability
+    // Input validation owns malformed, mixed-form, and unknown-zone errors; capability
     // matching must not turn them into UNSUPPORTED_FEATURE.
     return true;
   }
   if (support === true) {
     if (field !== 'daypart_targets') return true;
     return Array.isArray(value) && value.every(entry => (
-      isRecord(entry) && (entry.timezone === undefined || entry.timezone === 'inventory_local')
+      isRecord(entry)
+      && (entry.timezone === undefined || entry.timezone === 'inventory_local')
+      && daypartEntryGranularity(entry) === 'hour'
     ));
   }
   if (!isRecord(support)) return false;
@@ -7572,8 +7859,14 @@ function concreteTargetingSupported(field: string, support: unknown, value: unkn
     }
     if (field === 'daypart_targets') {
       const timezoneModes = support.timezone_modes;
+      const supportedGranularity = daypartDeclaredGranularity(support);
       return Array.isArray(timezoneModes) && value.every(entry => {
         if (!isRecord(entry)) return false;
+        // Never round a clock time to a coarser boundary: reject instead.
+        if (
+          supportedGranularity === undefined
+          || DAYPART_GRANULARITY_RANK[daypartEntryGranularity(entry)] > DAYPART_GRANULARITY_RANK[supportedGranularity]
+        ) return false;
         const timezone = entry.timezone ?? 'inventory_local';
         if (typeof timezone !== 'string') return false;
         const mode = timezone === 'inventory_local' ? 'inventory_local' : 'iana';
@@ -8471,6 +8764,135 @@ const OUTCOME_TARGET_EVENT_RESPONSE_RATE = 0.0002;
 const OUTCOME_TARGET_DEFAULT_CPM = 10;
 const OUTCOME_TARGET_FORECAST_RATIOS = [0.5, 1, 1.5] as const;
 
+// vendor_metric goals. volume is a total of the metric's declared unit across
+// the flight, so only cumulative count metrics are plannable. This table is the
+// reference seller's deterministic model of those metrics, keyed by metric_id:
+// store_visits_14d_exposed models 1 attributed visit per 2,000 impressions.
+// Training-fixture constants, not vendor measurements or market claims. A
+// metric a product declares that is absent here (such as attention_score, a
+// score) is rejected rather than planned as a total.
+const OUTCOME_TARGET_VENDOR_CUMULATIVE_METRICS: ReadonlyMap<string, { unit: string; responseRate: number }> = new Map([
+  ['store_visits_14d_exposed', { unit: 'visits', responseRate: 0.0005 }],
+]);
+
+type OutcomeTargetVendorGoal = { vendor: { domain: string; brand_id?: string }; metric_id: string };
+
+function outcomeTargetVendorGoal(goal: Record<string, unknown>): OutcomeTargetVendorGoal | undefined {
+  if (goal.kind !== 'vendor_metric' || !isRecord(goal.vendor) || typeof goal.vendor.domain !== 'string'
+    || typeof goal.metric_id !== 'string') return undefined;
+  return {
+    vendor: {
+      domain: goal.vendor.domain,
+      ...(typeof goal.vendor.brand_id === 'string' && { brand_id: goal.vendor.brand_id }),
+    },
+    metric_id: goal.metric_id,
+  };
+}
+
+/** The product's vendor_metric_optimization.supported_metrics[] entry for the
+ * goal's vendor (domain and brand_id) and metric_id, if it declares one and
+ * also lists the pair in reporting_capabilities.vendor_metrics: the proposal
+ * commits to reporting the metric, and accepting a commitment the product
+ * cannot report fails TERMS_REJECTED. */
+function productVendorMetricEntry(product: Product | undefined, goal: OutcomeTargetVendorGoal): VendorMetricRefView | undefined {
+  const key = vendorMetricKey(goal);
+  const supported = (product as (Product & { vendor_metric_optimization?: VendorMetricOptimizationView }) | undefined)
+    ?.vendor_metric_optimization?.supported_metrics;
+  const reportable = (product?.reporting_capabilities as ReportingCapabilitiesView | undefined)?.vendor_metrics;
+  if (!Array.isArray(reportable) || !reportable.some(entry => vendorMetricKey(entry) === key)) return undefined;
+  return Array.isArray(supported) ? supported.find(entry => vendorMetricKey(entry) === key) : undefined;
+}
+
+function vendorEntrySupportsCostPer(entry: VendorMetricRefView | undefined): boolean {
+  return Array.isArray(entry?.supported_targets) && entry.supported_targets.includes('cost_per');
+}
+
+/** Validate a vendor_metric goal against the products in scope before any
+ * cost target: INVALID_REQUEST naming criteria.outcome_target.goal when no
+ * product declares the (vendor, metric_id), or when it is a score or rate the
+ * seller cannot plan as a cumulative total. */
+function outcomeTargetVendorGoalRejection(
+  goal: Record<string, unknown>,
+  scopeProducts: readonly Product[],
+): string | undefined {
+  const vendorGoal = outcomeTargetVendorGoal(goal);
+  if (!vendorGoal) return 'A vendor_metric goal requires vendor.domain and metric_id.';
+  const label = `${vendorGoal.vendor.domain} ${vendorGoal.metric_id}`;
+  if (!scopeProducts.some(product => productVendorMetricEntry(product, vendorGoal))) {
+    return `No product in scope declares ${label} in both vendor_metric_optimization.supported_metrics and reporting_capabilities.vendor_metrics, and the seller cannot substitute another vendor or metric.`;
+  }
+  if (!OUTCOME_TARGET_VENDOR_CUMULATIVE_METRICS.has(vendorGoal.metric_id)) {
+    return `${label} cannot be planned as a cumulative total: volume is a total of the metric's declared unit across the flight, and this metric is a score or rate.`;
+  }
+  return undefined;
+}
+
+/** Keep only the allocations whose product declares the goal's pair (with
+ * cost_per in its supported_targets when planning a cost target), scaling the
+ * remaining allocation_percentage values proportionally to whole-cent
+ * percentages that sum to exactly 100 (the last absorbs the rounding
+ * remainder; equal split when none carries a percentage). undefined when none
+ * remain. */
+function outcomeTargetVendorEligibleProposal(
+  proposal: Proposal,
+  goal: Record<string, unknown>,
+  requireCostPer: boolean,
+  productsById: ReadonlyMap<string, Product>,
+): Proposal | undefined {
+  const vendorGoal = outcomeTargetVendorGoal(goal);
+  if (!vendorGoal) return undefined;
+  const kept = proposal.allocations.filter(allocation => {
+    const entry = productVendorMetricEntry(productsById.get(allocation.product_id), vendorGoal);
+    return entry !== undefined && (!requireCostPer || vendorEntrySupportsCostPer(entry));
+  });
+  if (kept.length === 0) return undefined;
+  if (kept.length === proposal.allocations.length) return proposal;
+  const weights = kept.map(allocation => allocation.allocation_percentage ?? 0);
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+  const shares = weightTotal > 0 ? weights.map(weight => weight / weightTotal) : kept.map(() => 1 / kept.length);
+  let assignedCents = 0;
+  const allocations = kept.map((allocation, index) => {
+    const cents = index === kept.length - 1 ? 10000 - assignedCents : Math.round(shares[index]! * 10000);
+    assignedCents += cents;
+    return { ...allocation, allocation_percentage: cents / 100 };
+  });
+  return { ...proposal, allocations: allocations as Proposal['allocations'] };
+}
+
+/** One forecast point for a plan. A metric or event goal carries its key in
+ * metrics. A vendor_metric goal carries the flight total in
+ * vendor_metric_values[] under the goal's (vendor, metric_id) and the
+ * planned spend in metrics.spend, never a metrics key for the vendor metric.
+ * The forecast_range_unit 'spend' names the budget-curve axis while
+ * metrics.spend is the planned spend at a point; both are intended. */
+function outcomeTargetForecastPoint(
+  goal: Record<string, unknown>,
+  budget: number,
+  volume: number,
+  spend: number | undefined,
+): Record<string, unknown> {
+  const vendorGoal = outcomeTargetVendorGoal(goal);
+  if (vendorGoal) {
+    return {
+      budget,
+      metrics: { spend: { mid: spend ?? budget } },
+      vendor_metric_values: [{
+        vendor: structuredClone(vendorGoal.vendor),
+        metric_id: vendorGoal.metric_id,
+        value: { mid: volume },
+        unit: OUTCOME_TARGET_VENDOR_CUMULATIVE_METRICS.get(vendorGoal.metric_id)?.unit ?? 'count',
+      }],
+    };
+  }
+  return {
+    budget,
+    metrics: {
+      [outcomeTargetGoalKey(goal)]: { mid: volume },
+      ...(spend !== undefined && { spend: { mid: spend } }),
+    },
+  };
+}
+
 /** The metrics{} key a goal's forecast points carry: the metric name for a
  * metric goal, or the event type (custom_event_name when custom) for an
  * event goal — the same key the buyer will later use on optimization_goals. */
@@ -8478,6 +8900,7 @@ function outcomeTargetGoalKey(goal: Record<string, unknown>): string {
   if (goal.kind === 'event') {
     return goal.event_type === 'custom' ? String(goal.custom_event_name) : String(goal.event_type);
   }
+  if (goal.kind === 'vendor_metric') return String(goal.metric_id);
   return String(goal.metric);
 }
 
@@ -8490,7 +8913,26 @@ function outcomeTargetIsUnplannable(goal: Record<string, unknown>): boolean {
 
 function outcomeTargetForecastRangeUnit(goal: Record<string, unknown>): string {
   if (goal.kind === 'event') return 'conversions';
+  if (goal.kind === 'vendor_metric') return 'spend';
   return goal.metric === 'clicks' ? 'clicks' : 'spend';
+}
+
+function outcomeTargetCpm(pricing: PricingOptionView | undefined): number {
+  return typeof pricing?.fixed_price === 'number'
+    ? pricing.fixed_price
+    : typeof pricing?.floor_price === 'number'
+      ? pricing.floor_price
+      : OUTCOME_TARGET_DEFAULT_CPM;
+}
+
+function outcomeTargetResponseRate(goal: Record<string, unknown>): number {
+  if (goal.kind === 'vendor_metric') {
+    return OUTCOME_TARGET_VENDOR_CUMULATIVE_METRICS.get(String(goal.metric_id))?.responseRate
+      ?? OUTCOME_TARGET_METRIC_RESPONSE_RATE;
+  }
+  return goal.kind === 'event'
+    ? OUTCOME_TARGET_EVENT_RESPONSE_RATE
+    : OUTCOME_TARGET_METRIC_RESPONSE_RATE;
 }
 
 /** Solve a deterministic budget and delivery curve for one proposal against
@@ -8504,25 +8946,15 @@ function computeOutcomeTargetPlan(
   proposal: Proposal,
   productsById: Map<string, Product>,
 ): { totalBudgetGuidance: Record<string, unknown>; forecast: Record<string, unknown> } {
-  const goalKey = outcomeTargetGoalKey(goal);
-  const responseRate = goal.kind === 'event'
-    ? OUTCOME_TARGET_EVENT_RESPONSE_RATE
-    : OUTCOME_TARGET_METRIC_RESPONSE_RATE;
-  const impressions = volume / responseRate;
+  const impressions = volume / outcomeTargetResponseRate(goal);
   const firstAllocation = proposal.allocations[0];
   const product = firstAllocation ? productsById.get(firstAllocation.product_id) : undefined;
-  const firstPricing = product?.pricing_options?.[0] as PricingOptionView | undefined;
-  const cpm = typeof firstPricing?.fixed_price === 'number'
-    ? firstPricing.fixed_price
-    : typeof firstPricing?.floor_price === 'number'
-      ? firstPricing.floor_price
-      : OUTCOME_TARGET_DEFAULT_CPM;
+  const cpm = outcomeTargetCpm(product?.pricing_options?.[0] as PricingOptionView | undefined);
   const budget = Math.round((impressions / 1000) * cpm);
   const now = Date.now();
-  const points = OUTCOME_TARGET_FORECAST_RATIOS.map(ratio => ({
-    budget: Math.round(ratio * budget),
-    metrics: { [goalKey]: { mid: Math.round(ratio * volume) } },
-  }));
+  const points = OUTCOME_TARGET_FORECAST_RATIOS.map(ratio => (
+    outcomeTargetForecastPoint(goal, Math.round(ratio * budget), Math.round(ratio * volume), undefined)
+  ));
   return {
     totalBudgetGuidance: {
       min: Math.round(0.8 * budget),
@@ -8539,6 +8971,515 @@ function computeOutcomeTargetPlan(
       valid_until: toUtcSecondsIso(now + 5 * 60 * 1000),
     },
   };
+}
+
+// ── outcome_target.cost_per (cost target) ───────────────────────────────────
+//
+// A cost target is answered through BiddingPolicy: the proposal's
+// commercial_terms.bidding.cost_per carries the cost the seller can plan to,
+// with the buyer's strength and an amount no lower than the ask, and every
+// purchase carries the matching primary optimization goal so the fixed
+// media-buy policy binds to it. Purchases never carry their own bidding.
+// Metric goals bind when they have a canonical optimization-goal form; event
+// goals bind through an event source available on the buyer's account
+// (buyer-synced or seller-managed, as sync_event_sources lists them), with
+// the attribution window the seller will use.
+
+export type OutcomeTargetCostPer = { amount: number; currency: string; strength: 'cap' | 'target' };
+export type OutcomeTargetBudgetRange = { min?: number; max?: number };
+
+const OUTCOME_TARGET_COST_BINDABLE_METRICS: ReadonlySet<string> = new Set([
+  'clicks', 'views', 'completed_views', 'engagements', 'follows', 'saves', 'profile_visits', 'reach',
+]);
+
+/** Training-fixture model of the impressions a proposal can deliver over its
+ * flight. It sizes a cost target that has neither a volume nor a buyer
+ * budget: the seller plans the volume it can deliver at the cost and states
+ * the resulting spend. Not a market claim. */
+const OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS = 10_000_000;
+
+/** Attribution the reference seller states on an event goal it fills from
+ * the event sources on the buyer's account; advertised as its only
+ * conversion_tracking.attribution_windows entry. */
+const OUTCOME_TARGET_EVENT_ATTRIBUTION_WINDOW = {
+  post_click: { interval: 7, unit: 'days' },
+  post_view: { interval: 1, unit: 'days' },
+  model: 'last_touch',
+} as const;
+
+export const TRAINING_ATTRIBUTION_WINDOWS = [{
+  post_click: [OUTCOME_TARGET_EVENT_ATTRIBUTION_WINDOW.post_click],
+  post_view: [OUTCOME_TARGET_EVENT_ATTRIBUTION_WINDOW.post_view],
+}];
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function readOutcomeTargetCostPer(value: unknown): OutcomeTargetCostPer | undefined {
+  if (!isRecord(value)) return undefined;
+  if (typeof value.amount !== 'number' || typeof value.currency !== 'string') return undefined;
+  if (value.strength !== 'cap' && value.strength !== 'target') return undefined;
+  return { amount: value.amount, currency: value.currency, strength: value.strength };
+}
+
+function trainingMediaBuyCostPerStrengthSupported(strength: string): boolean {
+  return (TRAINING_BIDDING_POLICY_CAPABILITY.media_buy.fixed.cost_per_strengths as readonly string[])
+    .includes(strength);
+}
+
+/** The canonical optimization goal a cost target binds to, or undefined when
+ * the goal has no canonical form the seller can fill. An event goal takes the
+ * event sources available on the buyer's account for that event,
+ * buyer-synced or seller-managed, in the order given (see
+ * availableEventSourcesInSession: seller-managed first, then buyer-synced in
+ * registration order), plus the seller's stated attribution window, the one
+ * it advertises in conversion_tracking.attribution_windows. The agent does
+ * not advertise conversion_tracking.multi_source_event_dedup, so it binds
+ * exactly one source: the first that tracks the event. */
+export function outcomeTargetOptimizationGoal(
+  goal: Record<string, unknown>,
+  availableEventSources: ReadonlyArray<{ event_source_id: string; event_types: readonly string[] }> = [],
+): Record<string, unknown> | undefined {
+  if (goal.kind === 'metric') {
+    if (typeof goal.metric !== 'string' || !OUTCOME_TARGET_COST_BINDABLE_METRICS.has(goal.metric)) return undefined;
+    return { kind: 'metric', metric: goal.metric, priority: 1 };
+  }
+  const vendorGoal = outcomeTargetVendorGoal(goal);
+  if (vendorGoal) {
+    return { kind: 'vendor_metric', vendor: structuredClone(vendorGoal.vendor), metric_id: vendorGoal.metric_id, priority: 1 };
+  }
+  if (goal.kind === 'event' && typeof goal.event_type === 'string') {
+    const eventType = goal.event_type;
+    const sources = availableEventSources.filter(source => source.event_types.includes(eventType)).slice(0, 1);
+    if (sources.length === 0) return undefined;
+    return {
+      kind: 'event',
+      event_sources: sources.map(source => ({
+        event_source_id: source.event_source_id,
+        event_type: eventType,
+        ...(eventType === 'custom' && typeof goal.custom_event_name === 'string'
+          && { custom_event_name: goal.custom_event_name }),
+      })),
+      attribution_window: structuredClone(OUTCOME_TARGET_EVENT_ATTRIBUTION_WINDOW),
+      priority: 1,
+    };
+  }
+  return undefined;
+}
+
+/** The buyer budget bounds for a cost target: offer_filters.budget_range. */
+function outcomeTargetBudgetRange(filters: unknown): OutcomeTargetBudgetRange | undefined {
+  if (!isRecord(filters) || !isRecord(filters.budget_range)) return undefined;
+  const range = filters.budget_range;
+  const min = typeof range.min === 'number' && range.min > 0 ? range.min : undefined;
+  const max = typeof range.max === 'number' && range.max > 0 ? range.max : undefined;
+  return min === undefined && max === undefined ? undefined : { ...(min !== undefined && { min }), ...(max !== undefined && { max }) };
+}
+
+/** The pricing option a cost plan uses in the requested currency, preferring
+ * CPM because the reference model converts a CPM into a cost per result. */
+function pricingOptionInCurrency(product: Product | undefined, currency: string): PricingOptionView | undefined {
+  const options = (product?.pricing_options as PricingOptionView[] | undefined)
+    ?.filter(option => option.currency === currency) ?? [];
+  return options.find(option => option.pricing_model === 'cpm') ?? options[0];
+}
+
+function ceilToCents(value: number): number {
+  return Math.ceil(Math.round(value * 1e6) / 1e4) / 100;
+}
+
+/** Validate a cost target before any plan is built. Returns the rejection
+ * message for INVALID_REQUEST at criteria.outcome_target.cost_per, or
+ * undefined when the target can be represented and bound. A valid target
+ * with no viable inventory is a separate outcome ("rejected"). Currency is
+ * never converted: a budget range, pricing_currencies filter,
+ * currency-bound account, or product set in another currency makes the
+ * target unplannable. */
+function outcomeTargetCostPerRejection(
+  goal: Record<string, unknown>,
+  costPer: OutcomeTargetCostPer,
+  optimizationGoal: Record<string, unknown> | undefined,
+  request: { filters?: unknown; account?: unknown },
+  requestedProducts: readonly Product[],
+): string | undefined {
+  if (!trainingMediaBuyCostPerStrengthSupported(costPer.strength)) {
+    return `The seller does not advertise media-buy cost_per strength '${costPer.strength}' in features.bidding_policy.`;
+  }
+  const vendorGoal = outcomeTargetVendorGoal(goal);
+  if (vendorGoal && !requestedProducts.some(product => (
+    vendorEntrySupportsCostPer(productVendorMetricEntry(product, vendorGoal))
+  ))) {
+    return `No product in scope lists cost_per in the supported_targets of its ${vendorGoal.vendor.domain} ${vendorGoal.metric_id} vendor_metric_optimization entry, so the seller cannot plan a cost target on the goal. Plan it by volume instead.`;
+  }
+  if (!optimizationGoal) {
+    return goal.kind === 'event'
+      ? `No event source available on this account, buyer-synced or seller-managed, tracks '${String(goal.event_type)}', so the seller cannot bind a cost target to the event goal. Register one with sync_event_sources, or plan the goal by volume.`
+      : `A cost target requires a goal expressible as a canonical optimization goal; metric '${String(goal.metric)}' has none. Plan it by volume instead.`;
+  }
+  const filters = isRecord(request.filters) ? request.filters : undefined;
+  const budgetRange = isRecord(filters?.budget_range) ? filters.budget_range : undefined;
+  if (typeof budgetRange?.currency === 'string' && budgetRange.currency !== costPer.currency) {
+    return `cost_per.currency ${costPer.currency} must equal offer_filters.budget_range.currency ${budgetRange.currency}; the seller does not convert currency.`;
+  }
+  if (Array.isArray(filters?.pricing_currencies) && !filters.pricing_currencies.includes(costPer.currency)) {
+    return `cost_per.currency ${costPer.currency} is excluded by offer_filters.pricing_currencies; the seller does not convert currency.`;
+  }
+  const account = isRecord(request.account) ? request.account : undefined;
+  if (typeof account?.currency === 'string' && account.currency !== costPer.currency) {
+    return `cost_per.currency ${costPer.currency} does not match the currency-bound account's ${account.currency}; the seller does not convert currency.`;
+  }
+  if (requestedProducts.length > 0 && !requestedProducts.some(product => pricingOptionInCurrency(product, costPer.currency))) {
+    return `None of the requested products is priced in ${costPer.currency}, so the seller cannot plan a cost target in that currency; the seller does not convert currency.`;
+  }
+  return undefined;
+}
+
+export type OutcomeTargetCostPlan = {
+  totalBudgetGuidance: Record<string, unknown>;
+  forecast: Record<string, unknown>;
+  bidding: { cost_per: { amount: number; strength: 'cap' | 'target' } };
+  optimizationGoal: Record<string, unknown>;
+  allocations: Proposal['allocations'];
+  /** Lowest cost per result the model can plan to. Not on the wire; exposed
+   * so the planner's arithmetic is testable. */
+  plannableCost: number;
+  /** Goal volume at the planned spend. A plan below one result is dropped. */
+  plannedVolume: number;
+};
+
+/** Plan one proposal against a cost target. The plannable cost per goal
+ * result is the selected CPM divided by the modeled results per thousand
+ * impressions, rounded up to the cent; multi-product plans use the first
+ * allocation's CPM. The answered amount is the ask when the seller can plan
+ * to it, otherwise the lowest amount it can plan to: max(ask, plannable
+ * cost), with the ask never rounded, so it is never below the ask. The
+ * strength is always the buyer's. A cap plans volume at the plannable cost
+ * (the average it expects at or below the cap); a target plans volume at the
+ * answered amount. The spend is:
+ * - with a volume, the volume at that cost, clamped into any budget range;
+ * - with only a budget range, its max (else min);
+ * - with neither, the spend for the volume the proposal can deliver.
+ * Returns undefined when some allocation has no pricing option in the
+ * currency. */
+export function computeOutcomeTargetCostPlan(
+  goal: Record<string, unknown>,
+  optimizationGoal: Record<string, unknown>,
+  costPer: OutcomeTargetCostPer,
+  volume: number | undefined,
+  budgetRange: OutcomeTargetBudgetRange | undefined,
+  proposal: Proposal,
+  productsById: Map<string, Product>,
+): OutcomeTargetCostPlan | undefined {
+  if (proposal.allocations.length === 0) return undefined;
+  const pricings = proposal.allocations.map(allocation => (
+    pricingOptionInCurrency(productsById.get(allocation.product_id), costPer.currency)
+  ));
+  if (pricings.some(pricing => typeof pricing?.pricing_option_id !== 'string')) return undefined;
+  const allocations = proposal.allocations.map((allocation, index) => ({
+    ...allocation,
+    pricing_option_id: pricings[index]!.pricing_option_id,
+  })) as Proposal['allocations'];
+  const responseRate = outcomeTargetResponseRate(goal);
+  const plannableCost = ceilToCents(outcomeTargetCpm(pricings[0]) / (1000 * responseRate));
+  const answeredAmount = Math.max(costPer.amount, plannableCost);
+  const planningCost = costPer.strength === 'cap' ? plannableCost : answeredAmount;
+  const rangeFloor = budgetRange?.min ?? 0;
+  const rangeCeiling = budgetRange?.max ?? Number.POSITIVE_INFINITY;
+  const budget = roundMoney(volume !== undefined
+    ? Math.min(Math.max(volume * planningCost, rangeFloor), rangeCeiling)
+    : budgetRange
+      ? budgetRange.max ?? budgetRange.min!
+      : OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS * responseRate * planningCost);
+  const now = Date.now();
+  return {
+    totalBudgetGuidance: {
+      min: roundMoney(Math.min(budget, Math.max(rangeFloor, 0.8 * budget))),
+      recommended: budget,
+      max: roundMoney(Math.max(budget, budgetRange?.max ?? 1.25 * budget)),
+      currency: costPer.currency,
+    },
+    forecast: {
+      // Points never exceed the buyer's budget ceiling. Each carries the
+      // planned spend, which falls below the point budget when the budget
+      // does not divide into whole results.
+      points: OUTCOME_TARGET_FORECAST_RATIOS
+        .filter(ratio => ratio <= 1 || ratio * budget <= rangeCeiling)
+        .map(ratio => {
+          const pointVolume = Math.floor((ratio * budget) / planningCost);
+          return outcomeTargetForecastPoint(
+            goal,
+            roundMoney(ratio * budget),
+            pointVolume,
+            roundMoney(pointVolume * planningCost),
+          );
+        }),
+      forecast_range_unit: outcomeTargetForecastRangeUnit(goal),
+      method: 'modeled',
+      currency: costPer.currency,
+      generated_at: toUtcSecondsIso(now),
+      valid_until: toUtcSecondsIso(now + 5 * 60 * 1000),
+    },
+    bidding: { cost_per: { amount: answeredAmount, strength: costPer.strength } },
+    optimizationGoal: structuredClone(optimizationGoal),
+    allocations,
+    plannableCost,
+    plannedVolume: Math.floor(budget / planningCost),
+  };
+}
+
+// ── Canonical bidding-policy validation (create, update, control) ────────────
+
+const BIDDING_POLICY_MODES = ['automatic', 'bid_amount', 'max_bid', 'cost_per', 'roas'] as const;
+
+type BiddingScopeProfile = { modes: readonly string[]; cost_per_strengths?: readonly string[] };
+
+type BiddingAllocation = 'fixed' | 'seller_optimized';
+
+function advertisedBiddingProfile(scope: 'media_buy' | 'package', allocation: BiddingAllocation): BiddingScopeProfile | undefined {
+  const scopes = TRAINING_BIDDING_POLICY_CAPABILITY as unknown as Record<string, Record<string, BiddingScopeProfile> | undefined>;
+  return scopes[scope]?.[allocation];
+}
+
+/** Why a canonical bidding block falls outside the advertised profile for its
+ * scope and allocation mode, or undefined when it is supported. */
+function unadvertisedBiddingPolicyReason(
+  bidding: Record<string, unknown>,
+  scope: 'media_buy' | 'package',
+  allocation: BiddingAllocation,
+): string | undefined {
+  const modes = BIDDING_POLICY_MODES.filter(mode => bidding[mode] !== undefined);
+  const profile = advertisedBiddingProfile(scope, allocation);
+  if (!profile) return `${scope} bidding is not supported under ${allocation} allocation`;
+  if (modes.length === 0) return `the ${scope} bidding block names no policy mode`;
+  if (modes.length > 1) return `the ${modes.join(' + ')} combination is not supported at ${scope} scope`;
+  const mode = modes[0]!;
+  if (!profile.modes.includes(mode)) return `${mode} is not supported at ${scope} scope under ${allocation} allocation`;
+  if (mode === 'cost_per') {
+    const strength = isRecord(bidding.cost_per) ? bidding.cost_per.strength : undefined;
+    if (typeof strength !== 'string' || !profile.cost_per_strengths?.includes(strength)) {
+      return `cost_per strength '${String(strength)}' is not supported at ${scope} scope`;
+    }
+  }
+  return undefined;
+}
+
+/** The primary goal: earliest entry among goals tied for the lowest explicit
+ * priority; unprioritized goals follow prioritized ones. */
+function primaryOptimizationGoal(goals: unknown): Record<string, unknown> | undefined {
+  if (!Array.isArray(goals)) return undefined;
+  const records = goals.filter(isRecord);
+  const prioritized = records.filter(goal => typeof goal.priority === 'number');
+  if (prioritized.length === 0) return records[0];
+  const lowest = Math.min(...prioritized.map(goal => goal.priority as number));
+  return prioritized.find(goal => goal.priority === lowest);
+}
+
+/** Result-unit identity of a goal for cost_per compatibility: metric plus its
+ * result-defining qualifiers, vendor plus metric_id, or the event identity
+ * set plus the attribution window. */
+function costPerResultUnit(goal: Record<string, unknown>): string {
+  const kind = typeof goal.kind === 'string' ? goal.kind : (typeof goal.metric === 'string' ? 'metric' : 'unknown');
+  if (kind === 'metric') {
+    const { priority: _priority, target: _target, kind: _kind, ...qualifiers } = goal;
+    return canonicalize({ kind, ...qualifiers });
+  }
+  if (kind === 'vendor_metric') return canonicalize({ kind, vendor: goal.vendor, metric_id: goal.metric_id });
+  if (kind === 'event') {
+    const events = Array.isArray(goal.event_sources)
+      ? [...new Set(goal.event_sources.filter(isRecord).map(source => `${String(source.event_type)}:${String(source.custom_event_name ?? '')}`))].sort()
+      : [];
+    // Compare the resolved window: fields the goal omits take the seller's
+    // default, so an explicit default and an omitted window are one unit.
+    const window = isRecord(goal.attribution_window) ? goal.attribution_window : {};
+    const resolvedWindow = {
+      post_click: window.post_click ?? OUTCOME_TARGET_EVENT_ATTRIBUTION_WINDOW.post_click,
+      post_view: window.post_view ?? OUTCOME_TARGET_EVENT_ATTRIBUTION_WINDOW.post_view,
+      model: window.model ?? OUTCOME_TARGET_EVENT_ATTRIBUTION_WINDOW.model,
+    };
+    return canonicalize({ kind, events, attribution_window: resolvedWindow });
+  }
+  return canonicalize(goal);
+}
+
+function biddingAllocationMode(budgetAllocation: unknown): BiddingAllocation {
+  return isRecord(budgetAllocation) && budgetAllocation.mode === 'seller_optimized' ? 'seller_optimized' : 'fixed';
+}
+
+/** UNSUPPORTED_FEATURE for a canonical bidding block outside the advertised
+ * profile, naming the request field that carries it. */
+function unsupportedBiddingPolicyError(
+  bidding: Record<string, unknown>,
+  scope: 'media_buy' | 'package',
+  allocation: BiddingAllocation,
+  field: string,
+): TaskError | undefined {
+  const reason = unadvertisedBiddingPolicyReason(bidding, scope, allocation);
+  if (!reason) return undefined;
+  return { code: 'UNSUPPORTED_FEATURE', message: `Unsupported bidding policy: ${reason}.`, field, recovery: 'correctable' };
+}
+
+/** Result unit of a package's primary optimization goal, or undefined when it
+ * has no goal a cost_per can bind to. */
+function primaryGoalResultUnit(goals: unknown): string | undefined {
+  const primary = primaryOptimizationGoal(goals);
+  return primary ? costPerResultUnit(primary) : undefined;
+}
+
+/** A fixed media-buy cost_per is valid only when every inheriting package has
+ * a primary goal and all of them share one result unit. */
+function inheritorsShareOneResultUnit(units: Array<string | undefined>): boolean {
+  return !units.some(unit => unit === undefined) && new Set(units).size <= 1;
+}
+
+function fixedCostPerPlacementError(field: string): TaskError {
+  return {
+    code: 'BIDDING_PLACEMENT_CONFLICT',
+    message: 'A fixed media-buy cost_per binds to each inheriting package\'s primary optimization goal, and those goals do not share one result unit.',
+    field,
+    recovery: 'correctable',
+  };
+}
+
+/** Validate canonical bidding blocks on a create_media_buy request against
+ * the advertised features.bidding_policy profile and the fixed media-buy
+ * cost_per binding rule, before any mutation. Legacy bid_price is outside
+ * this check. */
+export function createMediaBuyBiddingPolicyError(
+  request: Record<string, unknown>,
+  options: { packagesField?: 'packages' | 'purchases' } = {},
+): TaskError | undefined {
+  const packagesField = options.packagesField ?? 'packages';
+  const allocation = biddingAllocationMode(request.budget_allocation);
+  const packages = Array.isArray(request.packages) ? request.packages.filter(isRecord) : [];
+  if (isRecord(request.bidding)) {
+    const error = unsupportedBiddingPolicyError(request.bidding, 'media_buy', allocation, 'bidding');
+    if (error) return error;
+  }
+  for (let index = 0; index < packages.length; index += 1) {
+    const bidding = packages[index]!.bidding;
+    if (!isRecord(bidding)) continue;
+    const error = unsupportedBiddingPolicyError(bidding, 'package', allocation, `${packagesField}[${index}].bidding`);
+    if (error) return error;
+  }
+  if (isRecord(request.bidding) && request.bidding.cost_per !== undefined && allocation === 'fixed') {
+    const units = packages
+      .filter(pkg => pkg.bidding === undefined)
+      .map(pkg => primaryGoalResultUnit(pkg.optimization_goals));
+    if (!inheritorsShareOneResultUnit(units)) return fixedCostPerPlacementError('bidding.cost_per');
+  }
+  return undefined;
+}
+
+/** Validate the bidding an update_media_buy or control_media_buy request
+ * leaves in effect, before any mutation. Bidding blocks replace completely:
+ * a non-null block replaces the authored block at its scope, and null clears
+ * it, so a cleared package inherits the media-buy block. Checked against the
+ * advertised profile for the resulting allocation mode:
+ * - every block the request authors (bidding, packages[i].bidding,
+ *   new_packages[i].bidding);
+ * - retained blocks when the request changes the allocation mode, since they
+ *   are then read against a different profile entry.
+ * The fixed media-buy cost_per result-unit rule is checked against the
+ * resulting inheriting packages whenever the request changes the media-buy
+ * policy, the allocation mode, or an inheriting package's goals or override,
+ * or adds packages. Cancellation dominates a package's sibling fields, and a
+ * canceled package no longer inherits. Blocks the request leaves untouched
+ * were validated when they were authored. */
+function mediaBuyUpdateBiddingPolicyError(
+  mb: MediaBuyState,
+  request: Record<string, unknown>,
+): TaskError | undefined {
+  const currentAllocation = biddingAllocationMode(mb.budgetAllocation);
+  const allocation = isRecord(request.budget_allocation)
+    ? biddingAllocationMode(request.budget_allocation)
+    : currentAllocation;
+  const allocationChanged = allocation !== currentAllocation;
+
+  const mediaBuyBiddingAuthored = request.bidding !== undefined;
+  const mediaBuyBidding = mediaBuyBiddingAuthored
+    ? (isRecord(request.bidding) ? request.bidding : undefined)
+    : mb.aggregateBidding;
+  if (mediaBuyBidding && (mediaBuyBiddingAuthored || allocationChanged)) {
+    const error = unsupportedBiddingPolicyError(
+      mediaBuyBidding,
+      'media_buy',
+      allocation,
+      mediaBuyBiddingAuthored ? 'bidding' : 'budget_allocation',
+    );
+    if (error) return error;
+  }
+
+  const updates = Array.isArray(request.packages) ? request.packages : [];
+  const canceledIds = new Set<string>();
+  const liveUpdates = new Map<string, { update: Record<string, unknown>; index: number }>();
+  for (const [index, update] of updates.entries()) {
+    if (!isRecord(update)) continue;
+    const packageId = typeof update.package_id === 'string' ? update.package_id : undefined;
+    if (update.canceled === true) {
+      if (packageId !== undefined) canceledIds.add(packageId);
+      continue;
+    }
+    if (isRecord(update.bidding)) {
+      const error = unsupportedBiddingPolicyError(update.bidding, 'package', allocation, `packages[${index}].bidding`);
+      if (error) return error;
+    }
+    if (packageId !== undefined) liveUpdates.set(packageId, { update, index });
+  }
+
+  // The packages the buy will have, with the policy and goals each resolves.
+  // `field` names the request element that changed a package's policy or
+  // goals, so a result-unit conflict it introduces points at it.
+  const resulting: Array<{ bidding?: Record<string, unknown>; goals: unknown; field?: string }> = [];
+  for (const pkg of mb.packages) {
+    if (pkg.canceled || canceledIds.has(pkg.packageId)) continue;
+    const entry = liveUpdates.get(pkg.packageId);
+    const biddingAuthored = entry !== undefined && entry.update.bidding !== undefined;
+    const bidding = biddingAuthored
+      ? (isRecord(entry.update.bidding) ? entry.update.bidding : undefined)
+      : pkg.bidding;
+    const goalsReplaced = entry !== undefined && Array.isArray(entry.update.optimization_goals);
+    if (bidding && !biddingAuthored && allocationChanged) {
+      const error = unsupportedBiddingPolicyError(bidding, 'package', allocation, 'budget_allocation');
+      if (error) return error;
+    }
+    resulting.push({
+      bidding,
+      goals: goalsReplaced ? entry.update.optimization_goals : pkg.optimizationGoals,
+      ...(entry && (biddingAuthored || goalsReplaced) && {
+        field: goalsReplaced ? `packages[${entry.index}].optimization_goals` : `packages[${entry.index}].bidding`,
+      }),
+    });
+  }
+  const newPackages = Array.isArray(request.new_packages) ? request.new_packages : [];
+  for (const [index, npkg] of newPackages.entries()) {
+    if (!isRecord(npkg)) continue;
+    if (isRecord(npkg.bidding)) {
+      const error = unsupportedBiddingPolicyError(npkg.bidding, 'package', allocation, `new_packages[${index}].bidding`);
+      if (error) return error;
+    }
+    resulting.push({
+      bidding: isRecord(npkg.bidding) ? npkg.bidding : undefined,
+      goals: npkg.optimization_goals,
+      field: `new_packages[${index}].optimization_goals`,
+    });
+  }
+
+  if (allocation !== 'fixed' || mediaBuyBidding?.cost_per === undefined) return undefined;
+  const inheriting = resulting
+    .filter(pkg => pkg.bidding === undefined)
+    .map(pkg => ({ field: pkg.field, unit: primaryGoalResultUnit(pkg.goals) }));
+  const changed = inheriting.filter(pkg => pkg.field !== undefined);
+  if (!mediaBuyBiddingAuthored && !allocationChanged && changed.length === 0) return undefined;
+  if (inheritorsShareOneResultUnit(inheriting.map(pkg => pkg.unit))) return undefined;
+  if (mediaBuyBiddingAuthored) return fixedCostPerPlacementError('bidding.cost_per');
+  if (allocationChanged) return fixedCostPerPlacementError('budget_allocation');
+  // Name the first changed package that has no primary goal or leaves the
+  // unit the unchanged inheritors share.
+  const baseline = inheriting.find(pkg => pkg.field === undefined && pkg.unit !== undefined)?.unit
+    ?? changed.find(pkg => pkg.unit !== undefined)?.unit;
+  const offender = changed.find(pkg => pkg.unit === undefined || pkg.unit !== baseline);
+  return fixedCostPerPlacementError(offender?.field ?? 'bidding.cost_per');
 }
 
 /** Project the broad 3.x handler result into the compact split-tool domain
@@ -8617,7 +9558,6 @@ export function projectProductDiscoveryResult(
       requiredProductFields.add('media_buy_support');
     }
     if (isRecord(criteria?.targeting_overlay)) {
-      requiredProductFields.add('is_custom');
       requiredProductFields.add('expires_at');
       if (products.some(product => isRecord(product.targeting_resolution))) {
         requiredProductFields.add('targeting_resolution');
@@ -10753,9 +11693,46 @@ async function handleGetProductsUnlocked(
   // In refine mode, use session proposals (which may include finalized
   // versions). In other discovery modes, replace registry drafts with the
   // exact committed object already held by this session.
-  const contextualProposals = (buyingMode === 'refine' && session.lastGetProductsContext?.proposals)
-    ? session.lastGetProductsContext.proposals
-    : getProposals().map(proposal => committedProposals.get(proposal.proposal_id) ?? proposal);
+  // A brief asking for a shared budget over buyer-seeded fixture products is
+  // answered with a seller-optimized proposal, when the seller declares it.
+  const sellerOptimizedProposal = buyingMode === 'brief'
+    ? sellerOptimizedProposalForBrief(
+        typeof brief === 'string' ? brief : undefined,
+        products.filter(product => session.complyExtensions.seededProducts.has(product.product_id)),
+        sellerOptimizedDeclarationForContext(ctx),
+      ) as unknown as Proposal | undefined
+    : undefined;
+  // The draft must stay resolvable by finalize and execution. Persist it
+  // insert-only: an existing entry (including a committed one) is never replaced.
+  if (
+    sellerOptimizedProposal
+    && !session.lastGetProductsContext?.proposals?.some(proposal => proposal.proposal_id === sellerOptimizedProposal.proposal_id)
+  ) {
+    session.lastGetProductsContext = {
+      ...session.lastGetProductsContext,
+      proposals: [
+        ...(session.lastGetProductsContext?.proposals ?? []),
+        sellerOptimizedProposal,
+      ],
+    };
+  }
+  // Session context holding only synthesized drafts (identified by ID prefix) is not a refine history:
+  // the registry proposals stay part of the refine view.
+  const sessionProposals = session.lastGetProductsContext?.proposals;
+  const onlySynthesizedDrafts = sessionProposals?.every(
+    proposal => isSellerOptimizedProposalId(proposal.proposal_id),
+  ) ?? false;
+  const contextualProposals = (buyingMode === 'refine' && sessionProposals)
+    ? onlySynthesizedDrafts
+      ? [...sessionProposals, ...getProposals()]
+      : sessionProposals
+    : [
+        // The brief asked for a shared budget, so that plan leads.
+        ...(sellerOptimizedProposal
+          ? [committedProposals.get(sellerOptimizedProposal.proposal_id) ?? sellerOptimizedProposal]
+          : []),
+        ...getProposals().map(proposal => committedProposals.get(proposal.proposal_id) ?? proposal),
+      ];
   const sourceProposals = [
     ...contextualProposals,
     ...Array.from(explicitlySelectedProposals.values()).filter(selected =>
@@ -10828,6 +11805,56 @@ async function handleGetProductsUnlocked(
       }] as TaskError[],
     };
   }
+  const outcomeTargetRequestRecord = req as unknown as Record<string, unknown>;
+  const outcomeTargetRequestedIds = Array.isArray(outcomeTargetRequestRecord.product_ids)
+    ? new Set((outcomeTargetRequestRecord.product_ids as unknown[]).filter((id): id is string => typeof id === 'string'))
+    : undefined;
+  const outcomeTargetScopeProducts = !outcomeTargetGoal
+    ? []
+    : outcomeTargetRequestedIds
+    ? products.filter(product => outcomeTargetRequestedIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id))
+    : products;
+  // A vendor_metric goal is validated before any cost target, so a bad goal
+  // is reported first.
+  const outcomeTargetGoalError = (message: string) => ({
+    errors: [{
+      code: 'INVALID_REQUEST',
+      message,
+      field: 'criteria.outcome_target.goal',
+      recovery: 'correctable',
+    }] as TaskError[],
+  });
+  if (outcomeTargetGoal?.kind === 'vendor_metric') {
+    const rejection = outcomeTargetVendorGoalRejection(outcomeTargetGoal, outcomeTargetScopeProducts);
+    if (rejection) return outcomeTargetGoalError(rejection);
+  }
+  const outcomeTargetCostPer = outcomeTargetGoal ? readOutcomeTargetCostPer(outcomeTarget?.cost_per) : undefined;
+  const outcomeTargetCostPerError = (message: string) => ({
+    errors: [{
+      code: 'INVALID_REQUEST',
+      message,
+      field: 'criteria.outcome_target.cost_per',
+      recovery: 'correctable',
+    }] as TaskError[],
+  });
+  const outcomeTargetOptimization = outcomeTargetGoal && (outcomeTargetCostPer || outcomeTargetGoal.kind === 'vendor_metric')
+    ? outcomeTargetOptimizationGoal(
+        outcomeTargetGoal,
+        outcomeTargetGoal.kind === 'event'
+          ? availableEventSourcesInSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId))
+          : [],
+      )
+    : undefined;
+  if (outcomeTargetGoal && outcomeTargetCostPer) {
+    const rejection = outcomeTargetCostPerRejection(
+      outcomeTargetGoal,
+      outcomeTargetCostPer,
+      outcomeTargetOptimization,
+      { filters: outcomeTargetRequestRecord.filters, account: outcomeTargetRequestRecord.account },
+      outcomeTargetScopeProducts,
+    );
+    if (rejection) return outcomeTargetCostPerError(rejection);
+  }
   if (requireProposals) {
     const exactProductIds = Array.isArray((req as unknown as Record<string, unknown>).product_ids)
       ? new Set(((req as unknown as Record<string, unknown>).product_ids as unknown[])
@@ -10859,6 +11886,55 @@ async function handleGetProductsUnlocked(
             allocation_percentage: allocationPercentage,
             rationale: 'Selected explicitly by the compact lifecycle request.',
             pricing_option_id: product.pricing_options[0].pricing_option_id,
+          })) as Proposal['allocations'],
+        } as Proposal];
+      }
+    } else if (
+      proposals.length === 0
+      && !exactProductIds?.size
+      && seededProductIds(session).size > 0
+      && products.length > 0
+    ) {
+      // Brief/criteria-only request_proposals (no explicit product_ids) in a
+      // controller-seeded session. `products` is only guaranteed to be
+      // seeded-only when required_media_buy_support/media_buy_frequency_cap
+      // scoping ran in applyDiscoveryTargeting; a plain brief can still pull
+      // in real catalog products that scored well against keyword matching.
+      // Filter explicitly to seeded fixtures before building the proposal —
+      // mirrors the exactProductIds branch above, but for the criteria-driven
+      // path the typed-negotiation storyboards exercise (adcp#7796).
+      const seededIds = seededProductIds(session);
+      const fixtureProducts = products.filter(product => (
+        seededIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
+      ));
+      // One proposal carries one budget currency, so fixtures priced in
+      // different currencies cannot share it; leave proposals empty and let
+      // the existing rejection path answer.
+      const fixtureCurrencies = new Set(
+        fixtureProducts.map(product => product.pricing_options[0]?.currency ?? 'USD'),
+      );
+      if (fixtureProducts.length > 0 && fixtureCurrencies.size === 1) {
+        const allocationPercentage = 100 / fixtureProducts.length;
+        const sortedProductIds = fixtureProducts.map(product => product.product_id).sort();
+        proposals = [{
+          proposal_id: `fixture_match_${createHash('sha256').update(sortedProductIds.join('\0')).digest('hex').slice(0, 16)}`,
+          name: 'Fixture-matched product proposal',
+          description: 'Deterministic proposal generated from controller-seeded fixtures matching the requested criteria.',
+          brief_alignment: typeof brief === 'string'
+            ? brief
+            : 'Matches seeded fixtures satisfying the requested campaign criteria.',
+          total_budget_guidance: {
+            min: 1_000,
+            recommended: 1_000,
+            currency: fixtureProducts[0].pricing_options[0]?.currency ?? 'USD',
+          },
+          allocations: fixtureProducts.map(product => ({
+            product_id: product.product_id,
+            allocation_percentage: allocationPercentage,
+            rationale: 'Seeded fixture product matching the requested campaign criteria.',
+            ...(product.pricing_options[0] && {
+              pricing_option_id: product.pricing_options[0].pricing_option_id,
+            }),
           })) as Proposal['allocations'],
         } as Proposal];
       }
@@ -10930,17 +12006,78 @@ async function handleGetProductsUnlocked(
       ...(typeof requestAccount?.currency === 'string' && { currency: requestAccount.currency }),
       ...(typeof requestAccount?.sandbox === 'boolean' && { sandbox: requestAccount.sandbox }),
     });
-    proposals = proposals.map((proposal, index) => {
+    const outcomeTargetVolume = typeof outcomeTarget?.volume === 'number' ? outcomeTarget.volume : undefined;
+    const outcomeTargetBudget = outcomeTargetCostPer ? outcomeTargetBudgetRange(requestRecord.filters) : undefined;
+    // A proposal that cannot be priced in cost_per.currency is a
+    // representation failure (INVALID_REQUEST when none remain); one whose
+    // budget buys less than one result is a valid target without viable
+    // inventory (outcome "rejected" when none remain).
+    let costPlanCurrencyDrops = 0;
+    // A vendor_metric goal is planned only on allocations whose product
+    // declares the pair (with cost_per for a cost target); a proposal left
+    // without one is dropped.
+    if (outcomeTargetGoal?.kind === 'vendor_metric' && proposals.length > 0) {
+      const declaring = proposals.flatMap(proposal => (
+        outcomeTargetVendorEligibleProposal(proposal, outcomeTargetGoal, false, productsById) ?? []
+      ));
+      if (declaring.length === 0) {
+        return outcomeTargetGoalError(
+          'No proposal can be planned entirely on products that declare the vendor_metric goal in vendor_metric_optimization.supported_metrics.',
+        );
+      }
+      proposals = outcomeTargetCostPer
+        ? declaring.flatMap(proposal => outcomeTargetVendorEligibleProposal(proposal, outcomeTargetGoal, true, productsById) ?? [])
+        : declaring;
+      if (proposals.length === 0) {
+        return outcomeTargetCostPerError(
+          'No proposal can be planned on products that list cost_per in the goal\'s vendor_metric_optimization supported_targets.',
+        );
+      }
+    }
+    const proposalsBeforeCostPlan = proposals.length;
+    proposals = proposals.flatMap((proposal, index) => {
       const digest = createHash('sha256')
         .update(`${proposalOwner}:${key}:${proposal.proposal_id}:${index}`)
         .digest('hex')
         .slice(0, 24);
       const proposalId = `proposal_request_${digest}`;
-      const outcomeTargetPlan = outcomeTargetGoal && typeof outcomeTarget?.volume === 'number'
-        ? computeOutcomeTargetPlan(outcomeTargetGoal, outcomeTarget.volume, proposal, productsById)
+      // A cost target is answered in cost_per.currency or not at all: a
+      // proposal whose products cannot all be priced in it is dropped.
+      const costPlan = outcomeTargetGoal && outcomeTargetCostPer && outcomeTargetOptimization
+        ? computeOutcomeTargetCostPlan(
+            outcomeTargetGoal,
+            outcomeTargetOptimization,
+            outcomeTargetCostPer,
+            outcomeTargetVolume,
+            outcomeTargetBudget,
+            proposal,
+            productsById,
+          )
         : undefined;
+      if (outcomeTargetCostPer && !costPlan) {
+        costPlanCurrencyDrops += 1;
+        return [];
+      }
+      if (costPlan && costPlan.plannedVolume < 1) return [];
+      const outcomeTargetPlan = costPlan ?? (outcomeTargetGoal && outcomeTargetVolume !== undefined
+        ? computeOutcomeTargetPlan(outcomeTargetGoal, outcomeTargetVolume, proposal, productsById)
+        : undefined);
       const snapshot = {
         ...proposal,
+        // The cost answer's total_budget is the planned budget in the
+        // requested currency, so commercial_terms.total_budget, purchase
+        // pricing, and bidding.cost_per share one media-buy currency.
+        ...(costPlan && {
+          allocations: costPlan.allocations,
+          total_budget_guidance: costPlan.totalBudgetGuidance,
+          __outcome_target_bidding: costPlan.bidding,
+          __outcome_target_optimization_goal: costPlan.optimizationGoal,
+        }),
+        // A vendor goal planned by volume alone still binds as the purchase's
+        // primary goal, with its reporting commitment.
+        ...(!costPlan && outcomeTargetGoal?.kind === 'vendor_metric' && outcomeTargetOptimization && {
+          __outcome_target_optimization_goal: structuredClone(outcomeTargetOptimization),
+        }),
         proposal_id: proposalId,
         ...(typeof requestBrand?.domain === 'string' && { __brand_domain: requestBrand.domain.toLowerCase() }),
         ...(typeof requestBrand?.brand_id === 'string' && { __brand_id: requestBrand.brand_id }),
@@ -10956,8 +12093,8 @@ async function handleGetProductsUnlocked(
         }),
       } as unknown as Proposal;
       const existing = existingById.get(proposalId);
-      if (existing) return existing;
-      return bindConfiguredTargetingToProposal(withCanonicalProposalEnvelope(
+      if (existing) return [existing];
+      return [bindConfiguredTargetingToProposal(withCanonicalProposalEnvelope(
           draftProposalSnapshot(snapshot),
           productsById,
           {
@@ -10968,8 +12105,13 @@ async function handleGetProductsUnlocked(
             ...(Array.isArray(requestBrand?.countries)
               && { countries: [...requestBrand.countries].filter(country => typeof country === 'string').sort() }),
           },
-        ), session);
+        ), session)];
     });
+    if (outcomeTargetCostPer && proposalsBeforeCostPlan > 0 && costPlanCurrencyDrops === proposalsBeforeCostPlan) {
+      return outcomeTargetCostPerError(
+        `No proposal can be priced entirely in ${outcomeTargetCostPer.currency}, so the seller cannot plan the cost target; the seller does not convert currency.`,
+      );
+    }
     if (proposals.length === 0) {
       return {
         status: 'rejected',
@@ -13542,6 +14684,83 @@ async function captureMediaBuyReportingState(
   );
 }
 
+/**
+ * Validate a `viewable_rate` metric goal (core/optimization-goal.json).
+ * `standard` is required and targets are `threshold_rate` proportions. The
+ * product must declare `viewable_rate` in
+ * `metric_optimization.supported_metrics`, and the standard must appear in
+ * `supported_viewability_standards` when that list is declared. A named
+ * vendor must be one the seller can optimize against. Capability mismatches
+ * are rejected with TERMS_REJECTED
+ * (docs/media-buy/media-buys/optimization-reporting.mdx), never accepted
+ * unmeasured.
+ *
+ * The training catalog declares no `viewable_rate` optimization and has no
+ * viewability-vendor integration. So a well-formed goal is rejected unless a
+ * seeded product declares support.
+ */
+function viewableRateGoalError(
+  goal: object,
+  product: Product | undefined,
+  fieldPath: string,
+): TaskError | undefined {
+  const candidate = goal as { metric?: unknown; standard?: unknown; vendor?: unknown; target?: unknown };
+  if (candidate.metric !== 'viewable_rate') return undefined;
+  if (typeof candidate.standard !== 'string' || candidate.standard.length === 0) {
+    return {
+      code: 'INVALID_REQUEST',
+      message: 'viewable_rate goals require standard, the viewability standard the goal is judged against',
+      field: `${fieldPath}.standard`,
+    };
+  }
+  if (candidate.target !== undefined) {
+    const target = isRecord(candidate.target) ? candidate.target : undefined;
+    if (target?.kind !== 'threshold_rate') {
+      return {
+        code: 'INVALID_REQUEST',
+        message: 'viewable_rate goals accept only threshold_rate targets',
+        field: `${fieldPath}.target.kind`,
+      };
+    }
+    if (typeof target.value !== 'number' || !(target.value > 0) || target.value > 1) {
+      return {
+        code: 'INVALID_REQUEST',
+        message: 'viewable_rate target.value must be a proportion greater than 0 and at most 1',
+        field: `${fieldPath}.target.value`,
+      };
+    }
+  }
+  if (!product) return undefined;
+  const metricOptimization = product.metric_optimization as {
+    supported_metrics?: readonly string[];
+    supported_viewability_standards?: readonly string[];
+  } | undefined;
+  if (!metricOptimization?.supported_metrics?.includes('viewable_rate')) {
+    return {
+      code: 'TERMS_REJECTED',
+      message: `Product ${product.product_id} cannot optimize toward viewable_rate: it is not in the product's metric_optimization.supported_metrics`,
+      field: `${fieldPath}.metric`,
+      suggestion: 'Choose a metric the product declares in metric_optimization.supported_metrics, or negotiate viewability through performance_standards.',
+    };
+  }
+  const standards = metricOptimization.supported_viewability_standards;
+  if (Array.isArray(standards) && !standards.includes(candidate.standard)) {
+    return {
+      code: 'TERMS_REJECTED',
+      message: `Viewability standard ${JSON.stringify(candidate.standard.slice(0, 64))} is not in the product's metric_optimization.supported_viewability_standards`,
+      field: `${fieldPath}.standard`,
+    };
+  }
+  if (candidate.vendor !== undefined) {
+    return {
+      code: 'TERMS_REJECTED',
+      message: 'The training seller cannot optimize against a named viewability vendor. Omit vendor to use the seller default measurement.',
+      field: `${fieldPath}.vendor`,
+    };
+  }
+  return undefined;
+}
+
 export async function handleCreateMediaBuy(
   args: ToolArgs,
   ctx: TrainingContext,
@@ -13657,6 +14876,11 @@ async function handleCreateMediaBuyUnlocked(
       }] as TaskError[],
     };
   }
+  // Canonical bidding outside the advertised features.bidding_policy
+  // profile, or a fixed media-buy cost_per without one shared result unit,
+  // is rejected before any mutation.
+  const biddingPolicyError = createMediaBuyBiddingPolicyError(req as unknown as Record<string, unknown>);
+  if (biddingPolicyError) return { errors: [biddingPolicyError] };
   const mediaBuyCurrency = accountCurrency ?? req.total_budget?.currency ?? 'USD';
   let executedCompactProposal: Proposal | undefined;
   let executedCompactProposalSession: SessionState | undefined;
@@ -13909,6 +15133,8 @@ async function handleCreateMediaBuyUnlocked(
           view_duration_seconds?: number;
         };
         if (goal?.kind !== 'metric') continue;
+        const viewableRateError = viewableRateGoalError(goal, product, `packages[${i}].optimization_goals[${j}]`);
+        if (viewableRateError) return { errors: [viewableRateError] };
         if (goal.metric === 'reach' && typeof goal.reach_unit === 'string' && goal.reach_unit.length > 0) {
           const supported = product?.metric_optimization?.supported_reach_units;
           // Reach is honest-bounded by reach-unit.json enum; reject when the
@@ -14285,9 +15511,33 @@ async function handleCreateMediaBuyUnlocked(
     // Compact 3.2 proposals commit complete per-purchase terms. Preserve that
     // immutable envelope in operational package state; legacy proposals still
     // expand their percentage allocations as before.
+    const proposalAllocationMode = (proposal as unknown as { budget_allocation?: { mode?: string } }).budget_allocation?.mode;
     (req as { packages?: unknown[] }).packages = compactProposal && committedPurchases?.length
       ? legacyPackagesFromPurchases(committedPurchases, totalBudget, productMap)
-      : proposal.allocations.map(alloc => {
+      : proposalAllocationMode === 'seller_optimized'
+        // A seller-optimized proposal carries no allocation_percentage: the
+        // seller allocates the shared total, so packages carry only the
+        // controls the proposal committed (percentages become targets/caps,
+        // allocation pacing becomes package pacing).
+        ? proposal.allocations.map(alloc => {
+            const controls = alloc as unknown as {
+              min_spend_target_percentage?: number;
+              max_spend_percentage?: number;
+              pacing?: string;
+            };
+            return {
+              product_id: alloc.product_id,
+              pricing_option_id: alloc.pricing_option_id
+                || productMap.get(alloc.product_id)?.pricing_options[0]?.pricing_option_id
+                || '',
+              ...(controls.max_spend_percentage !== undefined
+                && { budget: Math.round(totalBudget * controls.max_spend_percentage / 100) }),
+              ...(controls.min_spend_target_percentage !== undefined
+                && { min_spend_target: Math.floor(totalBudget * controls.min_spend_target_percentage / 100) }),
+              ...(controls.pacing !== undefined && { pacing: controls.pacing }),
+            };
+          })
+        : proposal.allocations.map(alloc => {
           const product = productMap.get(alloc.product_id);
           const pricingOptionId = alloc.pricing_option_id || product?.pricing_options[0]?.pricing_option_id || '';
           const pricing = product?.pricing_options.find(po => po.pricing_option_id === pricingOptionId);
@@ -14305,7 +15555,55 @@ async function handleCreateMediaBuyUnlocked(
             ...(bidPrice !== undefined && { bid_price: bidPrice }),
           };
         });
+    // The proposal's vendor-scope reporting_commitments are the packages'
+    // committed metrics: accepting a vendor_metric goal needs no separate
+    // committed_metrics, because the commitment is part of the accepted terms.
+    // Standard-scope commitments are not copied.
+    if (compactProposal && committedPurchases?.length && Array.isArray(committedTerms?.reporting_commitments)) {
+      const packages = (req as { packages?: Array<Record<string, unknown>> }).packages ?? [];
+      for (const commitment of committedTerms.reporting_commitments.filter(isRecord)) {
+        const pkg = typeof commitment.purchase_index === 'number' ? packages[commitment.purchase_index] : undefined;
+        if (!pkg || !Array.isArray(commitment.metrics)) continue;
+        const vendorMetrics = commitment.metrics.filter(isRecord).filter(metric => metric.scope === 'vendor');
+        if (vendorMetrics.length === 0) continue;
+        pkg.committed_metrics = vendorMetrics.map(({ effective_at: _effectiveAt, ...metric }) => structuredClone(metric));
+      }
+    }
     const proposalRecord = proposal as unknown as Record<string, unknown>;
+    if (proposalAllocationMode === 'seller_optimized') {
+      // The committed proposal supplies the allocation and aggregate pacing.
+      // A buyer-authored value may repeat them but never contradict them.
+      const sellerOptimizedReq = req as unknown as Record<string, unknown>;
+      if (
+        sellerOptimizedReq.budget_allocation !== undefined
+        && !isDeepStrictEqual(sellerOptimizedReq.budget_allocation, proposalRecord.budget_allocation)
+      ) {
+        return {
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: 'budget_allocation must be omitted or match the committed proposal when executing a proposal.',
+            field: 'budget_allocation',
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
+      if (
+        sellerOptimizedReq.pacing !== undefined
+        && typeof proposalRecord.pacing === 'string'
+        && sellerOptimizedReq.pacing !== proposalRecord.pacing
+      ) {
+        return {
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: 'pacing must be omitted or match the committed proposal when executing a proposal.',
+            field: 'pacing',
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
+      sellerOptimizedReq.budget_allocation = structuredClone(proposalRecord.budget_allocation);
+      if (typeof proposalRecord.pacing === 'string') sellerOptimizedReq.pacing = proposalRecord.pacing;
+    }
     const proposalFrequencyCap = isRecord(committedTerms?.frequency_cap)
       ? committedTerms.frequency_cap
       : isRecord(proposalRecord.frequency_cap)
@@ -14353,6 +15651,26 @@ async function handleCreateMediaBuyUnlocked(
   if (buyStart !== 'asap' && new Date(buyStart) < new Date()) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must not be in the past' }] as TaskError[] };
   }
+
+  // Seller-optimized controls the seller does not declare are rejected before
+  // any other package validation or mutation; they are never dropped or coerced.
+  const sellerOptimizedDeclaration = sellerOptimizedDeclarationForContext(ctx);
+  const createSellerOptimizedState: SellerOptimizedState = {
+    allocationMode: (req as unknown as { budget_allocation?: { mode?: string } }).budget_allocation?.mode,
+    totalBudget: req.total_budget?.amount,
+    pacing: (req as unknown as { pacing?: string }).pacing,
+    packages: req.packages.map((pkg, index) => {
+      const controls = pkg as unknown as Partial<PackageInput>;
+      return {
+        ref: `packages[${index}]`,
+        budget: controls.budget,
+        min_spend_target: controls.min_spend_target,
+        pacing: controls.pacing,
+      };
+    }),
+  };
+  const sellerOptimizedUnsupported = sellerOptimizedUnsupportedError(createSellerOptimizedState, sellerOptimizedDeclaration);
+  if (sellerOptimizedUnsupported) return { errors: [sellerOptimizedUnsupported] as TaskError[] };
 
   // Validate all packages and collect errors before returning
   const confirmedAt = new Date().toISOString();
@@ -14483,7 +15801,9 @@ async function handleCreateMediaBuyUnlocked(
     const pricingStructure = pricingStructureForOption(pricing);
     if (pricingView.currency !== mediaBuyCurrency) {
       errors.push({
-        code: 'INVALID_REQUEST',
+        // A shared seller-optimized buy rejects a pricing option outside the
+        // media-buy currency as a terms conflict; fixed buys keep the legacy code.
+        code: createSellerOptimizedState.allocationMode === 'seller_optimized' ? 'TERMS_REJECTED' : 'INVALID_REQUEST',
         message: `${pkgLabel}: pricing option ${pkg.pricing_option_id} is denominated in ${pricingView.currency}, but the media buy uses ${mediaBuyCurrency}.`,
         field: `packages[${i}].pricing_option_id`,
         recovery: 'correctable',
@@ -14502,7 +15822,10 @@ async function handleCreateMediaBuyUnlocked(
     );
     const storedBidPrice = allowSeededMetricFloorCoercion ? floorPrice : pkg.bid_price;
 
-    if (isAuction && pkg.bid_price === undefined) {
+    // A seller-optimized buy delegates allocation and bidding to the seller.
+    // package-request.json makes bid_price optional (and deprecated in 3.2), so
+    // an omitted bid on a delegated buy is not an error.
+    if (isAuction && pkg.bid_price === undefined && createSellerOptimizedState.allocationMode !== 'seller_optimized') {
       errors.push({
         code: 'INVALID_REQUEST',
         message: `${pkgLabel}: bid_price is required for auction pricing (pricing option ${pkg.pricing_option_id})`,
@@ -14658,6 +15981,21 @@ async function handleCreateMediaBuyUnlocked(
     if (targetingResult.errors.length) {
       errors.push(...targetingResult.errors);
     }
+    // Fetch and apply buyer property lists. Any failure rejects the whole
+    // create; a list is never partially applied or silently dropped.
+    let propertyListApplication: PackageState['propertyListApplication'];
+    if (targetingResult.errors.length === 0) {
+      const listOutcome = await applyPropertyListTargeting({
+        product,
+        targeting: targetingResult.targeting,
+        path: targetingPath,
+        session,
+        ctx,
+        account: req.account ?? ctx.resolvedAccount,
+      });
+      if ('error' in listOutcome) errors.push(listOutcome.error as TaskError);
+      else propertyListApplication = listOutcome.application;
+    }
     const requestedAssignmentRows = [
       ...(Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments : []),
       ...inlineCreativeAssignmentRows(pkg.creatives),
@@ -14762,6 +16100,7 @@ async function handleCreateMediaBuyUnlocked(
       creativeAssignmentDetails: requestedAssignmentRows.map(assignment => structuredClone(assignment)),
       targeting: targetingResult.targeting,
       ...(targetingResolution && { targetingResolution }),
+      ...(propertyListApplication && { propertyListApplication }),
       frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
       ...(isRecord(pkg.context) && { context: pkg.context }),
       ...(isRecord(pkg.measurement_terms) && { measurementTerms: structuredClone(pkg.measurement_terms) }),
@@ -14774,6 +16113,13 @@ async function handleCreateMediaBuyUnlocked(
       ...(committedMetrics && committedMetrics.length > 0 && { committedMetrics }),
     };
     createdPackages.push(candidatePackage);
+  }
+
+  // Over-subscription applies only to declared controls, so it runs after the
+  // undeclared-control gate and the per-package checks, and before mutation.
+  if (errors.length === 0) {
+    const oversubscription = sellerOptimizedOversubscriptionError(createSellerOptimizedState, sellerOptimizedDeclaration);
+    if (oversubscription) errors.push(oversubscription as TaskError);
   }
 
   // Root frequency cap: one counter shared across every package. Accepted
@@ -14855,6 +16201,7 @@ async function handleCreateMediaBuyUnlocked(
       plannedDelivery,
       governanceIntentClaims,
       governanceBuyerBrand,
+      ctx,
     );
     if (executionError) return { errors: [executionError] };
   }
@@ -15023,8 +16370,10 @@ async function handleCreateMediaBuyUnlocked(
       product_id: pkg.productId,
       budget: pkg.budget,
       pricing_option_id: pkg.pricingOptionId,
+      ...(pkg.minSpendTarget !== undefined && { min_spend_target: pkg.minSpendTarget }),
       ...(pkg.bidPrice !== undefined && { bid_price: pkg.bidPrice }),
       ...(pkg.impressions !== undefined && { impressions: pkg.impressions }),
+      ...(pkg.pacing !== undefined && { pacing: pkg.pacing }),
       paused: pkg.paused,
       start_time: pkg.startTime,
       end_time: pkg.endTime,
@@ -15033,6 +16382,9 @@ async function handleCreateMediaBuyUnlocked(
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
       ...(pkg.context && { context: pkg.context }),
+      ...(pkg.propertyListApplication && {
+        ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
+      }),
       ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
       creative_assignments: pkg.creativeAssignmentDetails
         ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -15210,7 +16562,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             ...(pkg.audienceEvidenceRequirements && { audience_evidence_requirements: pkg.audienceEvidenceRequirements }),
             ...(pkg.audienceEvidencePins && { audience_evidence_pins: pkg.audienceEvidencePins }),
             ...(pkg.agencyEstimateNumber && { agency_estimate_number: pkg.agencyEstimateNumber }),
-            ...(pkg.ext && { ext: pkg.ext }),
+            ...((pkg.ext || pkg.propertyListApplication) && {
+              ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
+            }),
             ...(pkg.optimizationGoals && { optimization_goals: pkg.optimizationGoals }),
             ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
             ...(pkg.canceledAt && {
@@ -15244,6 +16598,11 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 }
 
 export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+  if ((args as unknown as Record<string, unknown>).reporting_revision_id) {
+    const { dispatchTrainingGcsReporting } = await import('./gcs-reporting-tools.js');
+    const gcs = await dispatchTrainingGcsReporting('get_media_buy_delivery', args as unknown as Record<string, unknown>, ctx.principal);
+    if (gcs) return gcs as unknown as Record<string, unknown>;
+  }
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & {
     media_buy_id?: string;
     reporting_revision_id?: string;
@@ -15321,7 +16680,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         );
       }
     }
-    if (!content) return { errors: [{ code: 'REPORTING_REVISION_NOT_FOUND', message: 'The requested reporting revision is unavailable.', field: 'reporting_revision_id' }] };
+    if (!content) return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'The requested reporting revision is unavailable.', field: 'reporting_revision_id' }] };
     const exactResponse = {
       reporting_period: content.revision.period,
       media_buy_deliveries: [],
@@ -15392,11 +16751,58 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     )
     : undefined;
 
+  // start_date/end_date are calendar dates in the reporting timezone of the
+  // buy's products (reporting_capabilities.timezone). Catalog and default
+  // seeded products report in UTC. A dated request cannot pick one timezone
+  // for packages whose products report on different clocks. Zone names are
+  // canonicalized so aliases such as "utc" and "Etc/UTC" do not count as mixed.
+  const livePackages = mb.packages.filter(pkg => !pkg.canceled);
+  const reportingTimezoneList = (livePackages.length > 0 ? livePackages : mb.packages).map(pkg => (
+    canonicalReportingTimezone((productMap.get(pkg.productId)?.reporting_capabilities as { timezone?: unknown } | undefined)?.timezone)
+  ));
+  const hasInvalidReportingTimezone = reportingTimezoneList.includes(undefined);
+  const reportingTimezones = new Set(reportingTimezoneList.filter((tz): tz is string => tz !== undefined));
+  const dated = Boolean(req.start_date || req.end_date);
+  if (dated && hasInvalidReportingTimezone) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'A product in this media buy declares a reporting timezone that is not UTC or a recognized IANA identifier; request delivery without start_date/end_date.',
+        field: 'start_date',
+      }],
+    };
+  }
+  if (dated && reportingTimezones.size > 1) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: `Media buy ${mb.mediaBuyId} spans products with different reporting timezones (${[...reportingTimezones].sort().join(', ')}); narrow media_buy_ids or request delivery without start_date/end_date.`,
+        field: 'start_date',
+      }],
+    };
+  }
+  const echoReportingTimezone = !hasInvalidReportingTimezone && reportingTimezones.size === 1;
+  const reportingTimezone = reportingTimezones.size === 1 ? [...reportingTimezones][0] : 'UTC';
+
+  // Lifetime reads with calendar-grain time_granularity require a single timezone
+  // anchor, just like dated requests. (post_campaign and hourly have no calendar
+  // boundaries, so they are unaffected.)
+  const CALENDAR_GRANULARITIES = new Set(['daily', 'weekly', 'monthly', 'quarterly']);
+  if (!dated && reportingTimezones.size > 1 && typeof req.time_granularity === 'string' && CALENDAR_GRANULARITIES.has(req.time_granularity)) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: `Media buy ${mb.mediaBuyId} spans products with different reporting timezones (${[...reportingTimezones].sort().join(', ')}); time_granularity of daily, weekly, monthly or quarterly requires a single reporting timezone — narrow media_buy_ids to buys sharing one reporting timezone.`,
+        field: 'time_granularity',
+      }],
+    };
+  }
+
   const now = new Date();
   const start = new Date(mb.startTime);
   const end = new Date(mb.endTime);
-  const reportingStart = req.start_date ? new Date(`${req.start_date}T00:00:00.000Z`) : start;
-  const reportingEnd = req.end_date ? new Date(`${req.end_date}T00:00:00.000Z`) : now;
+  const reportingStart = req.start_date ? reportingDayStart(req.start_date, reportingTimezone) : start;
+  const reportingEnd = req.end_date ? reportingDayStart(req.end_date, reportingTimezone) : now;
   if (req.start_date && req.end_date && reportingStart.getTime() >= reportingEnd.getTime()) {
     return {
       errors: [{ code: 'VALIDATION_ERROR', message: 'start_date must be before end_date', field: 'start_date' }],
@@ -15410,7 +16816,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   // Read simulated delivery upfront so vendor_metric_values can be spread into
   // per-package entries inside the map below.
   const simDeliveryEarly = req.start_date || req.end_date
-    ? getDeliverySimulationForPeriod(session, mb.mediaBuyId, reportingStart, reportingEnd)
+    ? getDeliverySimulationForPeriod(session, mb.mediaBuyId, reportingStart, reportingEnd, reportingTimezone)
     : getDeliverySimulation(session, mb.mediaBuyId);
 
   // Build per-package metrics
@@ -15425,6 +16831,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   let totalSixSecondViews = 0;
   const formatDimension = isRecord(req.reporting_dimensions?.format)
     ? req.reporting_dimensions.format
+    : undefined;
+  const propertyDimension = isRecord(req.reporting_dimensions?.property)
+    ? req.reporting_dimensions.property
+    : undefined;
+  const installmentPropertyDimension = isRecord(req.reporting_dimensions?.installment_property)
+    ? req.reporting_dimensions.installment_property
     : undefined;
 
   const mediaBuyPaused = mb.status === 'paused';
@@ -15762,9 +17174,21 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     }
 
     const formatBreakdown = formatDeliveryBreakdown(product, packageDeliveryMetrics, formatDimension);
+    // Injected rows are single-package scoped; a multi-package buy has none,
+    // so a requested breakdown is an empty array rather than a guess.
+    const injectedRows = mb.packages.length === 1 ? simDelivery : undefined;
+    const injectedPropertyBreakdown = {
+      ...(reporting?.supports_property_breakdown === true
+        ? injectedRowsBreakdown('by_property', injectedRows?.propertyDelivery, propertyDimension)
+        : {}),
+      ...(reporting?.supports_installment_property_breakdown === true
+        ? injectedRowsBreakdown('by_installment_property', injectedRows?.installmentPropertyDelivery, installmentPropertyDimension)
+        : {}),
+    };
     const packageMetricsWithBreakdown = {
       ...packageDeliveryMetrics,
       ...formatBreakdown,
+      ...injectedPropertyBreakdown,
     };
     return {
       package_id: pkg.packageId,
@@ -15951,6 +17375,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     reporting_period: {
       start: reportingStart.toISOString(),
       end: reportingEnd.toISOString(),
+      ...(echoReportingTimezone && { timezone: reportingTimezone }),
     },
     currency: mb.currency,
     media_buy_deliveries: [{
@@ -17300,6 +18725,17 @@ async function handleUpdateMediaBuyUnlocked(
     };
   }
 
+  // Canonical bidding the update would leave in effect must stay inside the
+  // advertised features.bidding_policy profile, as on create. This runs after
+  // the governance gate, so a governed buy still answers GOVERNANCE_DENIED
+  // first (the spec does not order the two), and before the detached copy is
+  // mutated, so a rejected update leaves the buy untouched. Accepted proposal
+  // terms are applied as accepted and are not re-validated here.
+  if (!options.acceptedProposalExecution) {
+    const biddingPolicyError = mediaBuyUpdateBiddingPolicyError(mb, validationReq as unknown as Record<string, unknown>);
+    if (biddingPolicyError) return { errors: [biddingPolicyError] };
+  }
+
   const now = new Date().toISOString();
   const affectedPackageIds = new Set<string>();
 
@@ -17356,6 +18792,7 @@ async function handleUpdateMediaBuyUnlocked(
   }
 
   // Update packages
+  const propertyListApplications = new Map<string, PackageState['propertyListApplication']>();
   if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
 
@@ -17368,6 +18805,25 @@ async function handleUpdateMediaBuyUnlocked(
       const pkg = mb.packages.find(candidate => candidate.packageId === pkgId);
       if (!pkg) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}` }] };
+      }
+      // Replacing a package's targeting re-resolves its buyer property lists
+      // against the current list snapshot. Resolving before any mutation keeps
+      // the update atomic: an unresolvable list rejects the whole request.
+      const replacementTargeting = update.targeting_overlay ?? update.targeting;
+      if (replacementTargeting !== undefined) {
+        const listTargetingPath = `packages[${pkgId}].targeting_overlay`;
+        const listTargeting = validateTargeting(replacementTargeting, listTargetingPath);
+        if (listTargeting.errors.length) return { errors: listTargeting.errors };
+        const listOutcome = await applyPropertyListTargeting({
+          product: productMap.get(pkg.productId),
+          targeting: listTargeting.targeting,
+          path: listTargetingPath,
+          session,
+          ctx,
+          account: req.account ?? ctx.resolvedAccount,
+        });
+        if ('error' in listOutcome) return { errors: [listOutcome.error as TaskError] };
+        propertyListApplications.set(pkgId, listOutcome.application);
       }
       const assignments = (update as PackageUpdate & { creative_assignments?: LegacyCreativeAssignmentRow[] }).creative_assignments;
       const traffickingChanged = update.creatives !== undefined
@@ -17600,6 +19056,13 @@ async function handleUpdateMediaBuyUnlocked(
         affectedPackageIds.add(pkgId);
       }
       if (Array.isArray(compactControl.optimization_goals)) {
+        const goalProduct = productMap.get(pkg.productId);
+        for (let j = 0; j < compactControl.optimization_goals.length; j++) {
+          const goal = compactControl.optimization_goals[j];
+          if (!isRecord(goal) || goal.kind !== 'metric') continue;
+          const viewableRateError = viewableRateGoalError(goal, goalProduct, `packages[${pkgId}].optimization_goals[${j}]`);
+          if (viewableRateError) return { errors: [viewableRateError] };
+        }
         pkg.optimizationGoals = compactControl.optimization_goals.filter(isRecord).map(goal => structuredClone(goal));
         affectedPackageIds.add(pkgId);
       }
@@ -17687,6 +19150,9 @@ async function handleUpdateMediaBuyUnlocked(
         }
         const before = pkg.targeting;
         pkg.targeting = targetingResult.targeting;
+        const listApplication = propertyListApplications.get(pkgId);
+        if (listApplication) pkg.propertyListApplication = listApplication;
+        else delete pkg.propertyListApplication;
         const changed = JSON.stringify(before ?? null) !== JSON.stringify(pkg.targeting ?? null);
         // A valid exact restatement is still an accepted package operation and
         // belongs in affected_packages even when it is state-idempotent.
@@ -17760,6 +19226,18 @@ async function handleUpdateMediaBuyUnlocked(
       if (!product) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Product not found for new package: ${productId}` }] };
       }
+      const addedPricing = product.pricing_options?.find(option => option.pricing_option_id === npkg.pricing_option_id) as
+        { currency?: string } | undefined;
+      if (sellerOptimized && addedPricing?.currency !== undefined && addedPricing.currency !== mb.currency) {
+        return {
+          errors: [{
+            code: 'TERMS_REJECTED',
+            message: `new_packages[${i}]: pricing option ${npkg.pricing_option_id} is denominated in ${addedPricing.currency}, but the media buy uses ${mb.currency}.`,
+            field: `new_packages[${i}].pricing_option_id`,
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
       const selectorCompatibilityError = validatePackageSelectorCompatibility(
         npkg,
         product,
@@ -17782,6 +19260,15 @@ async function handleUpdateMediaBuyUnlocked(
       if (targetingResult.errors.length) {
         return { errors: targetingResult.errors };
       }
+      const newPackageListOutcome = await applyPropertyListTargeting({
+        product,
+        targeting: targetingResult.targeting,
+        path: `new_packages[${i}].targeting_overlay`,
+        session,
+        ctx,
+        account: req.account ?? ctx.resolvedAccount,
+      });
+      if ('error' in newPackageListOutcome) return { errors: [newPackageListOutcome.error as TaskError] };
       const identityAbsenceCapError = identityAbsenceFrequencyCapError(
         product,
         targetingResult.targeting ?? {},
@@ -17874,6 +19361,7 @@ async function handleUpdateMediaBuyUnlocked(
         creativeAssignments: assignmentRows.flatMap(row => typeof row.creative_id === 'string' ? [row.creative_id] : []),
         creativeAssignmentDetails: assignmentRows.map(row => structuredClone(row)),
         targeting: targetingResult.targeting,
+        ...(newPackageListOutcome.application && { propertyListApplication: newPackageListOutcome.application }),
         frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
         context: npkg.context ? structuredClone(npkg.context) : undefined,
       };
@@ -17963,6 +19451,23 @@ async function handleUpdateMediaBuyUnlocked(
   if (aggregateUpdate.bidding === null) delete mb.aggregateBidding;
   else if (aggregateUpdate.bidding !== undefined) {
     mb.aggregateBidding = structuredClone(aggregateUpdate.bidding);
+  }
+  // The detached copy now carries the update's resulting state. A resulting
+  // seller-optimized buy must stay inside the declared package controls and
+  // must not over-subscribe them; a rejection discards the copy untouched.
+  {
+    const resultingSellerOptimizedError = sellerOptimizedStateError({
+      allocationMode: mb.budgetAllocation?.mode as string | undefined,
+      totalBudget: mb.totalBudget,
+      pacing: mb.aggregatePacing,
+      packages: mb.packages.filter(pkg => !pkg.canceled).map(pkg => ({
+        ref: `packages[${pkg.packageId}]`,
+        budget: pkg.budgetCapRemoved ? undefined : pkg.budget,
+        min_spend_target: pkg.minSpendTarget,
+        pacing: pkg.pacing,
+      })),
+    }, sellerOptimizedDeclarationForContext(ctx));
+    if (resultingSellerOptimizedError) return { errors: [resultingSellerOptimizedError] };
   }
   const reportingWebhook = (req as unknown as Record<string, unknown>).reporting_webhook;
   if (isRecord(reportingWebhook)) mb.reportingWebhook = structuredClone(reportingWebhook);
@@ -18091,6 +19596,9 @@ async function handleUpdateMediaBuyUnlocked(
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
     ...(pkg.context && { context: pkg.context }),
+    ...(pkg.propertyListApplication && {
+      ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
+    }),
     ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
     creative_assignments: pkg.creativeAssignmentDetails
       ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -18214,9 +19722,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         'query_provenance_audit_observations',
       ];
   // AdCP 3.2 requires every signing-capable endpoint to require
-  // content-digest coverage. The legacy conformance routes intentionally
-  // exercise the 3.0/3.1 `either` and `forbidden` policies, so they must not
-  // claim support for releases whose schema forbids those postures.
+  // content-digest coverage and to verify under the 3.2 sf-binary profile.
+  // The legacy conformance routes intentionally exercise the 3.0/3.1
+  // `either` and `forbidden` policies or the 3.0/3.1 Base64URL encoding, so
+  // they must not claim support for releases whose profile forbids them.
   const supportedReleaseVersions = [...signingCompatibleReleaseVersions(ctx)];
   const requestedRelease = parseAdcpReleaseVersion((args as unknown as Record<string, unknown>).adcp_version);
   if (
@@ -18252,7 +19761,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       : []),
     ...((ctx.tenantId === 'sales' || ctx.tenantId == null) ? ['measurement.core'] : []),
     ...(!isThreeZeroResponse && (ctx.tenantId === 'sales' || ctx.tenantId == null)
-      ? ['media_buy.audience_activation', 'media_buy.product_identity']
+      ? ['media_buy.audience_activation', 'media_buy.product_identity', 'media_buy.daypart_granularity']
       : []),
   ];
   const supportedCreativeFormats = includeThreeOneFields(ctx)
@@ -18308,6 +19817,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       },
     }),
     media_buy: {
+      anonymous_discovery: true,
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       ...(acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId) && {
         acceptance_policy_discovery: acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId),
@@ -18333,6 +19843,25 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       features: {
         inline_creative_management: true,
         catalog_management: true,
+        // Rollups for the per-product flags. The training agent honors them
+        // by echoing property rows injected via comply_test_controller; it
+        // never derives property delivery from catalog eligibility.
+        ...(!isThreeZeroResponse && {
+          supports_property_breakdown: true,
+          supports_installment_property_breakdown: true,
+        }),
+        // Canonical bidding the agent preserves: fixed media-buy cost_per.
+        // The outcome_target planner answers cost targets inside this
+        // profile; create_media_buy rejects canonical policies outside it.
+        // Frozen 3.0 projections (including 3.0 storyboard compat, which may
+        // resolve a newer served version) only allow boolean features.
+        ...(!isThreeZeroResponse && supportsBiddingPolicyCapability(servedAdcpVersion) && {
+          bidding_policy: structuredClone(TRAINING_BIDDING_POLICY_CAPABILITY),
+        }),
+        // Declared only when create/update enforce the contract: undeclared
+        // package controls are rejected with UNSUPPORTED_FEATURE and declared
+        // ones are checked for over-subscription before mutation.
+        ...(!isThreeZeroResponse && sellerOptimizedFeatureFlags(sellerOptimizedDeclarationForVersion(servedAdcpVersion))),
       },
       portfolio: {
         publisher_domains: publisherDomains,
@@ -18354,6 +19883,14 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         supported_event_types: ['purchase', 'add_to_cart', 'lead', 'page_view'],
         supported_hashed_identifiers: ['hashed_email'],
         supported_action_sources: ['website', 'app'],
+        // Event-goal cost targets the outcome_target planner binds to a
+        // source. supported_targets is a 3.1+ field; frozen 3.0 projections
+        // omit it.
+        ...(!isThreeZeroResponse && {
+          supported_targets: [...TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS],
+        }),
+        // The single window the outcome_target planner states on event goals.
+        attribution_windows: structuredClone(TRAINING_ATTRIBUTION_WINDOWS),
       },
       vendor_metric_optimization: {
         supported_targets: ['threshold_rate'],
@@ -18385,6 +19922,14 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
           language: true,
           keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] },
           negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] },
+          // Seller-wide rollups. Product.overlay_support is authoritative:
+          // every product honours exclusion; only products whose property set
+          // a buyer can subdivide honour inclusion. The 3.0 capabilities
+          // schema predates these flags.
+          ...(!isThreeZeroResponse && {
+            property_list: true,
+            property_list_exclude: true,
+          }),
         },
         ...(includeThreeOneFields(ctx) && {
           creative_specs: {
@@ -18428,6 +19973,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     },
     ...(wholesaleProfile.signalWholesale && {
       signals: {
+        anonymous_discovery: true,
         discovery_modes: ['brief', 'wholesale'],
         features: {
           catalog_signals: true,
@@ -18634,26 +20180,41 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
 
   // Build response signals with deployments
   const signals: SignalResponse[] = results.map(s => {
-    // Check if this signal has been activated in this session
-    const activationKey = `${s.signalAgentSegmentId}:${agentUrl}`;
-    const activation = session.signalActivations.get(activationKey);
-    const isLive = activation?.isLive ?? false;
-
-    const deployment = {
-      type: 'agent' as const,
-      agent_url: agentUrl,
-      is_live: isLive,
-      ...(isLive ? {
-        activation_key: {
-          type: 'key_value' as const,
-          key: 'audience_segment',
-          value: s.signalAgentSegmentId,
-        },
-        deployed_at: activation?.activatedAt,
-      } : {
-        estimated_activation_duration_minutes: 0, // sandbox: instant
-      }),
+    // Report every live activation of this signal recorded in the caller's
+    // session (the session is account-scoped, so another account's
+    // activations never appear here), plus this agent's own deployment.
+    // Ordering invariant: live deployments come first, most recently
+    // activated at [0]; this agent's own deployment is appended as
+    // not-live when nothing activated it.
+    const liveActivations = [...session.signalActivations.values()]
+      .filter(a => a.signalAgentSegmentId === s.signalAgentSegmentId && a.isLive)
+      .sort((a, b) => b.activatedAt.localeCompare(a.activatedAt));
+    const activationKey = {
+      type: 'key_value' as const,
+      key: 'audience_segment',
+      value: s.signalAgentSegmentId,
     };
+    const deployments: SignalDeployment[] = liveActivations.map(a => ({
+      type: a.destinationType,
+      ...(a.destinationType === 'agent'
+        ? { agent_url: a.destinationId }
+        : { platform: a.destinationId }),
+      ...(a.account ? { account: a.account } : {}),
+      is_live: true,
+      activation_key: activationKey,
+      deployed_at: a.activatedAt,
+    }));
+    const ownAgentLive = liveActivations.some(
+      a => a.destinationType === 'agent' && a.destinationId === agentUrl,
+    );
+    if (!ownAgentLive) {
+      deployments.push({
+        type: 'agent' as const,
+        agent_url: agentUrl,
+        is_live: false,
+        estimated_activation_duration_minutes: 0, // sandbox: instant
+      });
+    }
 
     const signal = {
       signal_agent_segment_id: s.signalAgentSegmentId,
@@ -18668,7 +20229,7 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
       signal_type: s.signalType,
       data_provider: s.providerName,
       coverage_percentage: s.coveragePercentage,
-      deployments: [deployment],
+      deployments,
       pricing_options: s.pricingOptions.map(po => ({
         pricing_option_id: po.pricingOptionId,
         model: po.model,
@@ -18723,6 +20284,25 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
   return response;
 }
 
+/**
+ * Whether a stored activation is of `segmentId` and, when `dest` is given,
+ * deployed to that destination and destination seat. Callers match on these
+ * recorded fields rather than rebuilding the map key: the key shape has
+ * changed (`${segment}:${destination}`, then `${segment}:${destination}#${seat}`)
+ * and persisted sessions can hold either.
+ */
+function signalActivationMatches(
+  state: SignalActivationState,
+  segmentId: string,
+  dest?: Destination,
+): boolean {
+  if (state.signalAgentSegmentId !== segmentId) return false;
+  if (!dest) return true;
+  return state.destinationType === dest.type
+    && state.destinationId === (dest.type === 'agent' ? dest.agent_url : dest.platform)
+    && (state.account || undefined) === (dest.account || undefined);
+}
+
 export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ActivateSignalRequest & ToolArgs;
   const segmentId = req.signal_agent_segment_id || '';
@@ -18741,6 +20321,20 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   }
   if (!destinations?.length) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'destinations array is required' }] };
+  }
+  for (const [i, dest] of destinations.entries()) {
+    const id = dest.type === 'agent' ? dest.agent_url : dest.platform;
+    if (typeof id !== 'string' || id.length === 0) {
+      const field = dest.type === 'agent' ? 'agent_url' : 'platform';
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: `destinations[${i}].${field} is required for a ${dest.type} destination.`,
+          field: `destinations[${i}].${field}`,
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
   }
 
   // Find the signal in our catalog
@@ -18811,18 +20405,29 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
     };
   }
 
-  const agentUrl = getAgentUrl();
   const now = new Date().toISOString();
 
   const destId = (dest: Destination): string =>
-    dest.type === 'agent' ? dest.agent_url : dest.platform || agentUrl;
+    dest.type === 'agent' ? dest.agent_url : dest.platform;
+  // One activation per (destination, destination account): two seats on the
+  // same platform are distinct deployments. Account-less keys keep the
+  // `${segment}:${destination}` shape.
+  const activationKeyFor = (dest: Destination): string =>
+    `${segmentId}:${destId(dest)}${dest.account ? `#${dest.account}` : ''}`;
+  // Match stored activations by their recorded destination rather than by map
+  // key, so sessions persisted under the older account-less key shape are
+  // still replaced on re-activation and removed on deactivation.
+  const removeActivationsFor = (dest: Destination): void => {
+    for (const [key, state] of session.signalActivations) {
+      if (signalActivationMatches(state, segmentId, dest)) {
+        session.signalActivations.delete(key);
+      }
+    }
+  };
 
   if (action === 'deactivate') {
     // Remove activations for this signal
-    for (const dest of destinations) {
-      const activationKey = `${segmentId}:${destId(dest)}`;
-      session.signalActivations.delete(activationKey);
-    }
+    for (const dest of destinations) removeActivationsFor(dest);
 
     return {
       deployments: destinations.map(dest => ({
@@ -18838,7 +20443,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   // Activate: store activation state and return deployment info
   const deployments = destinations.map(dest => {
     const id = destId(dest);
-    const activationKey = `${segmentId}:${id}`;
+    const activationKey = activationKeyFor(dest);
 
     const activationState: SignalActivationState = {
       signalAgentSegmentId: segmentId,
@@ -18850,6 +20455,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
       isLive: true,
       activatedAt: now,
     };
+    removeActivationsFor(dest);
     session.signalActivations.set(activationKey, activationState);
 
     return {
@@ -20278,10 +21884,22 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
       }
     }
 
-    // Validate signal_agent_segment_id exists if provided
+    // Validate signal_agent_segment_id against the account's activations.
+    // A usage record identifies a signal by its account and
+    // signal_agent_segment_id only; the report-usage schema has no
+    // destination or seat field. The record's account selects the session
+    // (activations are account-scoped, so another account's activations are
+    // never visible here), and any live deployment of the segment in that
+    // session satisfies the record, whatever its destination or seat. When a
+    // segment is live on several destinations, the usage counts against the
+    // signal and is not attributed to one deployment. Unknown, deactivated
+    // and other-account segments all get the same SIGNAL_NOT_FOUND, per the
+    // uniform not-found rule for that code.
     if (record.signal_agent_segment_id) {
-      const activation = session.signalActivations.get(record.signal_agent_segment_id);
-      if (!activation) {
+      const segmentId = record.signal_agent_segment_id;
+      const activated = [...session.signalActivations.values()]
+        .some(state => state.isLive && signalActivationMatches(state, segmentId));
+      if (!activated) {
         errors.push({ code: 'SIGNAL_NOT_FOUND', message: `Signal "${record.signal_agent_segment_id}" not found in session. Use activate_signal first.`, field: `usage[${i}].signal_agent_segment_id` });
         continue;
       }
@@ -20851,7 +22469,7 @@ function legacyPackagesFromPurchases(
 }
 
 function purchaseBindings(
-  purchases: readonly CompactProductPurchase[],
+  purchases: readonly Pick<ProposalPurchase, 'product_id'>[],
   response: Record<string, unknown>,
 ): Array<{ purchase_index: number; product_id: string; package_id: string }> {
   const packages = Array.isArray(response.packages) ? response.packages.filter(isRecord) : [];
@@ -21023,6 +22641,15 @@ export async function handleBuyProducts(
     });
   }
 
+  // Check canonical bidding on the purchases themselves so errors name
+  // purchases[i].bidding, the buy_products wire field, rather than the
+  // packages[i] of the create_media_buy facade.
+  const purchaseBiddingError = createMediaBuyBiddingPolicyError({
+    budget_allocation: args.budget_allocation,
+    bidding: args.bidding,
+    packages: canonicalPurchases,
+  }, { packagesField: 'purchases' });
+  if (purchaseBiddingError) return { errors: [purchaseBiddingError] };
   const createResult = await handleCreateMediaBuy({
     ...(args as unknown as Record<string, unknown>),
     packages: legacyPackagesFromPurchases(canonicalPurchases, args.total_budget?.amount, catalog),

@@ -132,6 +132,8 @@ describe('Training Agent documented public token', () => {
     ['tasks/cancel', '/api/training-agent/sales/mcp-strict-required'],
     ['tasks/pushNotificationConfig/set', '/api/training-agent/sales/mcp-strict-required'],
     ['CreateTaskPushNotificationConfig', '/api/training-agent/sales/mcp-strict-required'],
+    ['tasks/cancel', '/api/training-agent/sales/mcp-strict-required-legacy'],
+    ['CreateTaskPushNotificationConfig', '/api/training-agent/sales/mcp-strict-required-legacy'],
     ['tasks/cancel', '/api/training-agent/sales/mcp-strict-forbidden'],
     ['tasks/pushNotificationConfig/set', '/api/training-agent/sales/mcp-strict-forbidden'],
     ['CreateTaskPushNotificationConfig', '/api/training-agent/sales/mcp-strict-forbidden'],

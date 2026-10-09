@@ -119,8 +119,8 @@ const CODE_RECOVERY = {
  * mapping when recovery field is absent.
  */
 function getRecovery(error) {
-  if (error.recovery) return error.recovery;
-  return CODE_RECOVERY[error.code] || 'terminal';
+  if (error.recovery !== undefined) return error.recovery;
+  return CODE_RECOVERY[error.code] || 'transient';
 }
 
 /**
@@ -214,13 +214,15 @@ describe('Transport error mapping test vectors', () => {
 
   it('should have vectors testing missing recovery field', () => {
     const missingRecoveryVectors = data.vectors.filter(
-      v => v.expected_error && !v.expected_error.recovery
+      v => v.expected_error && v.expected_error.recovery === undefined
     );
     assert.ok(missingRecoveryVectors.length >= 2,
       'must have at least 2 vectors with missing recovery field');
     const actions = new Set(missingRecoveryVectors.map(v => v.expected_action));
     assert.ok(actions.has('retry'), 'must have missing-recovery vector that infers transient');
-    assert.ok(actions.has('escalate_to_human'), 'must have missing-recovery vector that defaults to terminal');
+    assert.ok(actions.has('surface_to_caller'), 'must have missing-recovery vector that infers a known correctable class');
+    const unknown = missingRecoveryVectors.find(v => v.expected_error.code === 'X_VENDOR_UNKNOWN');
+    assert.equal(unknown?.expected_action, 'retry', 'unknown missing-recovery vector uses transient fallback');
   });
 
   it('should have vectors testing null extraction from non-AdCP responses', () => {

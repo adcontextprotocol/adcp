@@ -18,6 +18,7 @@ import {
   recordProviderToolResults,
 } from '../../../src/addie/model-providers/tool-orchestration.js';
 import { githubIssueCreatedResult } from '../../../src/addie/github-issue-receipt.js';
+import { ToolError } from '../../../src/addie/tool-error.js';
 import type { AddieTool } from '../../../src/addie/types.js';
 
 const notifyToolError = vi.hoisted(() => vi.fn());
@@ -43,9 +44,46 @@ function call(input: Record<string, unknown> = { id: 'abc' }): ModelToolCallCont
 describe('createAddieToolExecutor', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('reuses only identical deterministic validation failures within one executor turn', async () => {
+    const raw = '❌ **Invalid.** Validation errors against https://adcontextprotocol.org/schemas/3.1.24/core/product.json:\n\n- /totals: must be object';
+    const handler = vi.fn().mockResolvedValue(raw);
+    const options = { executionMode: 'evaluation' as const, policy: () => ({ allowed: true }) };
+    const makeExecutor = () => createAddieToolExecutor([{ ...tool, name: 'validate_json' }], new Map([['validate_json', handler]]), options);
+    const execute = makeExecutor();
+    const first = { ...call({ json: { totals: [], status: 'ok' }, schema_path: 'core/product.json' }), name: 'validate_json' };
+    await execute(first, 1);
+    const duplicate = await execute({ ...first, id: 'duplicate', input: { schema_path: 'core/product.json', json: { status: 'ok', totals: [] } } }, 2);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(duplicate.execution).toMatchObject({ is_error: true, reused_result: true, duration_ms: 0, sequence: 2 });
+    expect(duplicate.result).toMatchObject({ toolCallId: 'duplicate', isError: true });
+    expect(duplicate.result.content).toContain('Change the candidate or schema');
+    expect(duplicate.result.content).toContain('/totals: must be object');
+    await execute({ ...first, input: { ...first.input, json: { totals: {}, status: 'ok' } } }, 3);
+    await execute({ ...first, input: { ...first.input, schema_path: 'core/format.json' } }, 4);
+    await execute({ ...first, input: { ...first.input, version: '3.2-rc' } }, 5);
+    await makeExecutor()(first, 1);
+    expect(handler).toHaveBeenCalledTimes(5);
+  });
+
+  it.each([
+    '❌ **Invalid.** Validation errors against https://adcontextprotocol.org/schemas/3.1.24/core/product.json:\n\n- Schema validation failed: upstream unavailable',
+    '✅ **Valid!** The JSON validates successfully against https://adcontextprotocol.org/schemas/3.1.24/core/product.json',
+    'Error: Temporary timeout',
+  ])('does not cache successful or nondeterministic validation results', async raw => {
+    const handler = vi.fn().mockResolvedValue(raw);
+    const execute = createAddieToolExecutor([{ ...tool, name: 'validate_json' }], new Map([['validate_json', handler]]), {
+      executionMode: 'evaluation', policy: () => ({ allowed: true }),
+    });
+    const request = { ...call({ json: {} }), name: 'validate_json' };
+    await execute(request, 1);
+    await execute(request, 2);
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     ['list_github_issues', 'GitHub rejected the request while trying to list issues (422).', 'invalid_input'],
     ['call_adcp_task', '**Task failed:** `si_initiate_session`\n\n**Error:** Unknown tool: si_initiate_session', 'error'],
+    ['get_agent', '{"error":"url is required"}', 'invalid_input'],
   ])('marks %s adapter failures in provider results and persisted execution receipts', async (name, raw, status) => {
     const execute = createAddieToolExecutor([{ ...tool, name }], new Map([[name, async () => raw]]), {
       executionMode: 'evaluation', policy: () => ({ allowed: true }),
@@ -107,6 +145,35 @@ describe('createAddieToolExecutor', () => {
     expect(blocked.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
   });
 
+  it('dispatches the typed get_products read without a mutation reservation', async () => {
+    const getProductsTool: AddieTool = { ...tool, name: 'call_adcp_get_products', replaySafety: 'external_read' };
+    const handler = vi.fn().mockResolvedValue({
+      status: 'ok', model_context: 'Products found.', user_summary: 'Products found.',
+      telemetry: { operation: 'get_products' },
+    });
+    const reserveSideEffect = vi.fn().mockResolvedValue(undefined);
+    const execute = createAddieToolExecutor([getProductsTool], new Map([[getProductsTool.name, handler]]), {
+      executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect,
+    });
+    const input = { agent_url: 'https://seller.example', idempotency_key: 'stable-products-key', buying_mode: 'wholesale' };
+    await execute({ ...call(input), name: getProductsTool.name }, 1);
+    expect(handler).toHaveBeenCalledWith(input);
+    expect(reserveSideEffect).not.toHaveBeenCalled();
+  });
+
+  it('reserves actual mutations dispatched through generic call_adcp_task', async () => {
+    const genericTool: AddieTool = { ...tool, name: 'call_adcp_task' };
+    const handler = vi.fn().mockResolvedValue({ status: 'ok', model_context: 'Created.', user_summary: 'Created.', telemetry: { operation: 'create_media_buy' } });
+    const reserveSideEffect = vi.fn().mockResolvedValue(undefined);
+    const execute = createAddieToolExecutor([genericTool], new Map([[genericTool.name, handler]]), {
+      executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect,
+    });
+    const input = { agent_url: 'https://seller.example', task: 'create_media_buy', params: { idempotency_key: 'stable-mutation-key' } };
+    await execute({ ...call(input), name: genericTool.name }, 1);
+    expect(reserveSideEffect.mock.invocationCallOrder[0]).toBeLessThan(handler.mock.invocationCallOrder[0]!);
+    expect(reserveSideEffect).toHaveBeenCalledWith({ toolName: genericTool.name, parameters: input });
+  });
+
   it('does not let an ok-shaped GitHub result settle a mutation without its typed receipt', async () => {
     const issueTool: AddieTool = { ...tool, name: 'create_github_issue' };
     const handler = vi.fn().mockResolvedValue({
@@ -156,6 +223,50 @@ describe('createAddieToolExecutor', () => {
     expect(reserveSideEffect).toHaveBeenCalledWith({ toolName: 'create_github_issue', parameters: { id: 'abc' } });
     expect(handler).not.toHaveBeenCalled();
     expect(result.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
+  });
+
+  it('marks a normally returned certification gate rejection as a known durable outcome', async () => {
+    const certificationTool: AddieTool = { ...tool, name: 'complete_certification_module' };
+    const handler = vi.fn().mockResolvedValue(
+      'NOT COMPLETED: Module C3 — missing required demonstration evidence.',
+    );
+    const execute = createAddieToolExecutor(
+      [certificationTool],
+      new Map([['complete_certification_module', handler]]),
+      {
+        executionMode: 'production',
+        policy: () => ({ allowed: true }),
+        reserveSideEffect: vi.fn().mockResolvedValue(undefined),
+      },
+    );
+
+    const result = await execute({ ...call(), name: 'complete_certification_module' }, 1);
+
+    expect(result.execution).toMatchObject({
+      is_error: true,
+      durable_outcome: 'known',
+      normalized_result: { status: 'error' },
+    });
+  });
+
+  it('leaves a thrown certification handler outcome unknown', async () => {
+    const certificationTool: AddieTool = { ...tool, name: 'complete_certification_module' };
+    const execute = createAddieToolExecutor(
+      [certificationTool],
+      new Map([['complete_certification_module', async () => {
+        throw new ToolError('Database connection was interrupted.');
+      }]]),
+      {
+        executionMode: 'production',
+        policy: () => ({ allowed: true }),
+        reserveSideEffect: vi.fn().mockResolvedValue(undefined),
+      },
+    );
+
+    const result = await execute({ ...call(), name: 'complete_certification_module' }, 1);
+
+    expect(result.execution).toMatchObject({ is_error: true });
+    expect(result.execution.durable_outcome).toBeUndefined();
   });
 
   it('rejects structurally malformed provider input before policy or handler dispatch', async () => {
@@ -589,6 +700,66 @@ describe('AddieToolExecutionLedger', () => {
       'Custom-tool completion does not match its start event',
     );
   });
+
+  it('marks a same-turn same-operation error recovered by a later success', async () => {
+    const ledger = new AddieToolExecutionLedger();
+    const calls = [
+      { ...call({ agent_url: 'https://agent-a.example', task: 'get_products', params: { idempotency_key: 'same-products-request-key' } }), id: 'call_error', name: 'call_adcp_task' },
+      { ...call({ agent_url: 'https://agent-a.example', idempotency_key: 'same-products-request-key', buying_mode: 'wholesale' }), id: 'call_success', name: 'call_adcp_get_products' },
+    ];
+    let invocation = 0;
+    const execute = vi.fn(async (toolCall: ModelToolCallContent, sequence: number) => {
+      const failed = invocation++ === 0;
+      return {
+        result: { type: 'tool_result' as const, toolCallId: toolCall.id, toolName: toolCall.name, content: failed ? 'correct input' : 'ok', ...(failed && { isError: true }) },
+        execution: {
+          tool_name: toolCall.name, parameters: toolCall.input, result: failed ? 'correct input' : 'ok',
+          is_error: failed, duration_ms: 1, sequence,
+          normalized_result: {
+            status: failed ? 'invalid_input' as const : 'ok' as const,
+            user_summary: failed ? 'Correct input.' : 'Completed.', source: 'structured' as const,
+            telemetry: { operation: 'get_products', ...(failed && { error_code: 'INVALID_GET_PRODUCTS_REQUEST', error_category: 'validation' as const }) },
+          },
+        },
+      };
+    });
+    for await (const _event of ledger.executeCustomCalls(calls, execute, [])) {
+      // consume
+    }
+    expect(ledger.executions[0]?.normalized_result?.telemetry?.recovered_by_later_success).toBe(true);
+    expect(ledger.executions[1]?.normalized_result?.telemetry?.recovered_by_later_success).toBeUndefined();
+  });
+
+  it.each([
+    ['another agent', 'https://agent-b.example', 'same-products-request-key'],
+    ['another logical request', 'https://agent-a.example', 'a-different-products-key'],
+  ])('does not let %s success recover a failed target with the same operation', async (_label, agentUrl, idempotencyKey) => {
+    const ledger = new AddieToolExecutionLedger();
+    const calls = [
+      { ...call({ agent_url: 'https://agent-a.example', task: 'get_products', params: { idempotency_key: 'same-products-request-key' } }), id: 'call_error', name: 'call_adcp_task' },
+      { ...call({ agent_url: agentUrl, idempotency_key: idempotencyKey, buying_mode: 'wholesale' }), id: 'call_success', name: 'call_adcp_get_products' },
+    ];
+    let invocation = 0;
+    const execute = vi.fn(async (toolCall: ModelToolCallContent, sequence: number) => {
+      const failed = invocation++ === 0;
+      return {
+        result: { type: 'tool_result' as const, toolCallId: toolCall.id, toolName: toolCall.name, content: failed ? 'retry' : 'ok', ...(failed && { isError: true }) },
+        execution: {
+          tool_name: toolCall.name, parameters: toolCall.input, result: failed ? 'retry' : 'ok',
+          is_error: failed, duration_ms: 1, sequence,
+          normalized_result: {
+            status: failed ? 'recoverable_error' as const : 'ok' as const,
+            user_summary: failed ? 'Retry.' : 'Completed.', source: 'structured' as const,
+            telemetry: { operation: 'get_products', ...(failed && { error_code: 'TRANSIENT_TRANSPORT_FAILURE', error_category: 'transport' as const }) },
+          },
+        },
+      };
+    });
+    for await (const _event of ledger.executeCustomCalls(calls, execute, [])) {
+      // consume
+    }
+    expect(ledger.executions[0]?.normalized_result?.telemetry?.recovered_by_later_success).toBeUndefined();
+  });
 });
 
 describe('orchestrateAcceptedAddieTurn', () => {
@@ -859,4 +1030,17 @@ describe('orchestrateAcceptedAddieTurn', () => {
       },
     });
   });
+});
+
+
+it('explains the standalone GitHub confirmation without dispatching or issuing a receipt', async () => {
+  const handler = vi.fn();
+  const execute = createAddieToolExecutor([{ ...tool, name: 'create_github_issue' }], new Map([['create_github_issue', handler]]), {
+    executionMode: 'production', policy: () => ({ allowed: false, reason: 'github_confirmation_required' }),
+  });
+  const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
+  expect(handler).not.toHaveBeenCalled();
+  expect(result.result.content).toContain('separate message with only "Create it" or "Yes"');
+  expect(result.execution).toMatchObject({ is_error: true, blocked_by_policy: true });
+  expect(result.execution.github_issue_receipt).toBeUndefined();
 });

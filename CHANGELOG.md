@@ -1,5 +1,1076 @@
 # Changelog
 
+## 3.2.3
+
+### Patch Changes
+
+- 1e5a85c: Security errata for GHSA-2pm6-6mc8-8xcm (adcp#7820): `request_signing.required_for` / `supported_for` / `warn_for` now match the AdCP operation resolved from the request, so they apply over A2A. This resolves a contradiction in favor of the fail-closed reading. The A2A profile extension already requires the signing rules used for the equivalent task over MCP, while `security.mdx` said a `required_for` match could not be satisfied by any JSON-RPC `method` other than `tools/call`, which made `required_for` unenforceable for A2A messages and let an unsigned A2A `create_media_buy` through a seller that listed it. The `tools/call`-only sentence is superseded. This is a behavior change for sellers that followed that sentence literally: once their verifier adopts the rule, unsigned A2A calls to an operation in `required_for` are rejected. Stage the change through `warn_for` first. `required_for` still yields to a configured fallback authenticator, and 3.0/3.1 digest postures do not bind the body.
+  
+  Core rules (MUST): MCP `tools/call` resolves to `params.name`; A2A `SendMessage`, `SendStreamingMessage`, `message/send`, `message/stream`, and the A2A HTTP+JSON and gRPC equivalents resolve to the `skill` of the Message's sole DataPart; `protocol_methods_*` keep matching the JSON-RPC `method` only. A request that does not resolve to exactly one operation fails closed with the existing `request_body_malformed` code (the code's description is widened; no new code), and the resolved operation is the only input to the signature gate, handler dispatch, and schema selection. A2A 0.3 and the non-JSON-RPC bindings are covered by analogy; the A2A profile defines only 1.0 over JSON-RPC.
+  
+  Hardening, additions beyond the contradiction (SHOULD in 3.2.x, MUST from 3.3): strict parsing of unsigned bodies including batches, duplicate and case-variant member names; A2A Part shape (one content member, no FilePart, `kind` agreement); and task-continuation binding. Adds 33 A2A conformance vectors under `test-vectors/request-signing/a2a/`, tagged `contradiction-resolution` or `hardening`, with a generator and an independent test. This relies on the maintainer-approved security-errata exception to the signing-profile patch rule.
+- 4a2da37: Make the acceptance-policy discovery compliance scenario provision and explicitly select its sandbox account, so account-scoped product fixtures remain visible when SDK discovery no longer synthesizes an account. Preserve the catalog and product-profile assertions and require the additional account-seeding check to pass.
+- 4a2da37: Clarify that `authorized_agents[].url` in `adagents.json` is the agent's full protocol endpoint URL, including the path (for example `https://agent.example.com/mcp`), not the agent's origin. A new "Agent URL matching" section says which URL differences canonicalization ignores and which it keeps (trailing slash, path case, scheme, query). It also says to list one entry for each agent URL when MCP and A2A are served at different paths.
+- 4a2da37: Correct the creative evaluator authentication storyboard's experimental feature membership check to inspect individual declared feature IDs, so agents advertising `creative.evaluator` pass the capability contract while agents omitting it still fail.
+- 4a2da37: Gate advanced delivery reporting on advertised wholesale discovery support and
+  proposal-finalization replay on advertised idempotency support. Sellers that
+  opt out skip the unsupported checks while proposal finalization and acceptance
+  remain graded.
+- 4a2da37: Make the sales-guaranteed compliance storyboard exercise its documented polling path without requiring an optional task webhook.
+- 4a2da37: Gate the 3.2 CTV experience and premium display validation storyboards on
+  validate_input so controller-only agents are not selected. Retain the controller
+  workflow requirement for fixture setup. This is a narrow part of #7404; it does
+  not complete the hosted compliance landing, deployment, or public-card checks.
+
+## 3.2.2
+
+### Patch Changes
+
+- 2d96555: docs(accounts): clarify how buyer-declared account references behave before provisioning. A new "Account references before provisioning" section in the accounts overview spells out what the error table and the `cache_scope` contract already required:
+  
+  - a natural key resolves only after the account is provisioned (`sync_accounts`, or lazy provisioning where the seller offers it);
+  - an `account` that doesn't resolve, and that the seller doesn't lazily provision, returns `ACCOUNT_NOT_FOUND` even where `account` is optional, instead of being dropped in favour of public results;
+  - buyers omit `account` and send `brand` until the account is provisioned, and provision before `request_proposals` when they intend to accept;
+  - account errors describe buyer setup, not seller health;
+  - an `account_id` echoed by `sync_accounts` for a buyer-declared account is a seller handle that buyers must not assume is accepted as an `AccountRef`.
+  
+  `ACCOUNT_NOT_FOUND` now gives the same recovery everywhere: provision a natural key, or verify an `account_id`. It previously said "terminal, verify via list_accounts" in the error-code enum and "re-run sync_accounts" in the L2 guide. The capabilities, `get_products`, `get_signals`, `account-ref`, `sync_accounts`, and sandbox texts point to the new section, and the account-status intro no longer says reads are always available, which contradicted the status table.
+- 602fca9: Fix contradictions between the trust and verification docs and the spec. The verification overview no longer says `get_products` responses are signed: it anchors on the agent URL and points to the request-signing and webhook-signing profiles. Only `verify_brand_claim` and `verify_brand_claims` carry a signed response payload. The docs now use the `relationship_trust` values from the schema and `house_domain` instead of `parent_house`. They also say that `direct`, `delegated`, and `ad_network` all pair with an adagents.json `delegation_type`, and that only `owned` has no counterpart. The accounts page now says a missing `authorized_operators` listing leads to a rejection or a manual review, never automatic approval. Examples, including one in the `brand.json` schema, use `agents[]` with `type: "brand"` or `type: "rights"` instead of the deprecated `brand_agent` and `rights_agent` fields. Schema `spec` links now point to `docs/building/by-layer/L1/security.mdx`.
+
+## 3.2.1
+
+This is the first stable 3.2 release. `3.2.0` is a permanently withdrawn version number and was never released. On 2026-06-30 an accidental Version Packages cut (5dbe4ae) committed 3.2.0 from 3.1-era main. #5769 reverted it and deleted its tag and GitHub Release, but its signed schema, compliance, and protocol artifacts remain on the artifact CDN with immutable caching and are never overwritten or retired. 3.2 GA therefore ships as 3.2.1; the wire pin stays "3.2".
+
+### Minor Changes
+
+- 114f168: schema(media-buy): close canonical Product gaps on the compact lifecycle. `core/canonical-product.json` (returned by `list_products` and the proposal lifecycle) gains:
+  
+  - `targeting_resolution` (`core/product-targeting-resolution.json`), so a seller that modifies `criteria.targeting_overlay` can disclose the change through `Product.targeting_resolution.modifications` as the discovery criteria and `request_proposals` response already direct. It was added only to the legacy Product in the targeting-aware discovery work that followed the canonical Product's introduction. A canonical product carrying `targeting_resolution` MUST carry `expires_at`.
+  - `collections` (explicit `collection_ids` selectors) and `collection_targeting_allowed` (default `false`), so a compact buyer can see a product's collections and build a `selected`-mode `collection_selection` on `buy_products`. As on the legacy Product, `overlay_support.collection_list` requires `collection_targeting_allowed: true`.
+  
+  `core/canonical-reporting-capabilities.json` gains the optional `reporting_delivery_offering_ids`, with the legacy semantics (an empty array declares no managed offering; absence means unknown and MUST NOT be inferred from the seller-wide list), so `reporting-delivery-config.json` applicability can be proven from compact products. The item shape moves to a shared `core/reporting-delivery-offering-id.json` referenced by both reporting-capabilities schemas (same string constraints and `x-entity`), so generated SDKs define one `ReportingDeliveryOfferingId` type.
+  
+  `media-buy/product-fields.json` adds `targeting_resolution`, `collections`, and `collection_targeting_allowed`, and states that `targeting_resolution` and `expires_at` are returned whenever the seller returns modifications, and `collection_targeting_allowed` whenever returned `overlay_support` declares `collection_list`, regardless of `fields`. `get_products` accepts the same names as before.
+  
+  Per-product `audience_activation` with an `audience_activation_methods` offer filter, and canonical `installments`, are deferred to 3.3 and documented in Known Limitations.
+- 7ad0230: Add an optional cost target to `criteria.outcome_target`. `outcome_target.cost_per` carries `amount`, `strength`, and `currency`. The object lives in its own schema, `core/outcome-target-cost-per.json`, and `strength` uses the new `enums/outcome-target-cost-strength.json` (`cap` or `target`, pinned by test to `BiddingPolicy.cost_per.strength`), so generated SDKs get distinct `OutcomeTargetCostPer` and `OutcomeTargetCostStrength` types instead of colliding with BiddingPolicy's. `BiddingPolicy.cost_per` has no currency because it inherits the media-buy currency, and no media-buy currency exists at request time, so the request states it. `volume` becomes optional, including in generated types; at least one of `volume` or `cost_per` is required, so every document valid today stays valid.
+  
+  A buyer can now ask for "clicks at 3 or less on a 5,000 budget" without pre-computing a volume. Four request shapes are defined: volume only (unchanged), a cost target with a buyer budget, a cost target with a volume, and a cost target with neither, where the seller MUST state the spend for the volume it can deliver in `total_budget_guidance`. The seller plans within `budget_range.max`, else at or above `min`, and `total_budget` never exceeds `max` or falls below `min`.
+  
+  The seller answers in the proposal's `commercial_terms.bidding.cost_per`, which the buyer adopts on acceptance. It is an execution control, not an expected price, and billing stays on the selected pricing option. The answer keeps the buyer's `strength`, and its `amount` is never below the ask: the requested amount when it is plannable (the seller can forecast goal volume under it within the buyer's budget, spending at least `budget_range.min`), otherwise the lowest plannable amount. A cap of 3 the seller can only meet at 4.50 comes back as `{ amount: 4.50, strength: "cap" }`, never as a target. When the planned spend is below `total_budget`, forecast points carry `metrics.spend`. Sellers MAY return additional proposals at higher amounts under the same strength.
+  
+  Answering proposals carry no purchase-level bidding. The primary optimization goal the policy binds to (each purchase's under fixed allocation, `budget_allocation`'s under seller-optimized) matches `outcome_target.goal` and resolves to one result unit exactly as `BiddingPolicy.cost_per` defines it. Event goals bind through event sources available on the buyer's account, buyer-synced or seller-managed: exactly one unless the seller advertises `multi_source_event_dedup`, with a stated attribution window that SHOULD be one it advertises. A seller answers only inside its advertised `features.bidding_policy` profile.
+  
+  `cost_per.currency` is the answer's currency: `purchases[].pricing.currency` and `forecast.currency` MUST equal it, as MUST `total_budget` and `total_budget_guidance` when present. Sellers MUST NOT convert currency. A cost target that cannot be represented or bound (strength, currency, goal, or bidding capability) is rejected with `INVALID_REQUEST` naming `criteria.outcome_target.cost_per`. A valid target with no viable inventory returns `outcome: "rejected"`. `list_products` returns no proposals and gives `outcome_target` no answer.
+  
+  The `media_buy_seller/outcome_target` storyboard moves to 1.1.0. Two new phases, a clicks cost cap on a budget and a clicks volume at a cost cap without a budget range, run against a new auction-priced USD fixture and are gated on fixed media-buy cost-cap support in `features.bidding_policy`. They assert the answered amount is not below the ask and that purchases carry no bidding. A new ungated phase, a EUR cost target against the USD-only fixture, applies to every seller that already declares `media_buy.outcome_target`: they must now reject it with `INVALID_REQUEST`.
+- 2b80738: Add experimental `Product.execution_requirements` (feature id `media_buy.execution_requirements`, #7763): an account-independent list of the resources a package on a product needs before `create_media_buy` succeeds. Three kinds, each bound through an existing request field: `event_source` (satisfied by an event optimization goal's `event_sources[]`, optionally restricted to `event_types`), `catalog` (satisfied by `packages[].catalogs[]` of a listed type, including `app` for app promotion), and `downstream_connection` (a seller-side grant such as a publisher identity, reusing `downstream-connection-requirement`). Every entry is required, the declaration does not change `cache_scope`, and when present it — together with the selected format declarations' `required_connections` — is complete for these kinds; connections every package needs, including the advertiser account, belong on the product. Connection entries carry no `resource_ref`, `connection_id`, or `expires_at`, no `status` other than `unknown`, and a `required_for` that includes `create_media_buy` when present. Full products declaring an `event_source` requirement must declare `conversion_tracking`, and full or canonical products declaring a `catalog` requirement must declare `catalog_types`. Unmet event-source or catalog requirements on buyer-supplied `create_media_buy` packages, `update_media_buy` `new_packages[]`, or an update that removes a satisfying binding reject with `VALIDATION_ERROR`, `error.field` at the binding, and new `error-details/execution-requirement-unmet.json` details (`not_bound`, `not_found`, `ineligible`); unmet connections keep using `AUTHORIZATION_REQUIRED`. The field is added to the canonical product, the product-fields projection enum, and the schema index. Per-account readiness (resource availability, candidates, and selection) is deferred to 3.3. Proposal-derived packages are outside the rejection rule in 3.2.
+- 28aeec1: Add experimental structured accessibility-violation details to the existing `CREATIVE_REJECTED` error so producers can return machine-readable criteria, pointers, failure kinds, and remediation without introducing a backward-incompatible error code.
+- 2fecc3e: Add the AdCP 3.2 experimental account change feed from RFC #6810 (feature id `account.change_feed`; sellers list it in `experimental_features`): source-neutral authoritative reads, `list_account_changes`, `account.change_recorded`, account-specific connected-source coverage, 90-day retention, explicit cursor-expiry recovery, capability-gated conformance, and a shared-account training lab. The RFC remains open for integration feedback while the surface is experimental.
+- 5638ce3: Add basis-aware age targeting without weakening the canonical age predicate. Buyers can constrain `demographics.age.accepted_bases`, products declare user-level `supported_bases`, and package readback records effective applied bases and verification methods. Age compliance continues to override demographic permissions, and World ID threshold claims must entail the requested age predicate. This new capability should be reflected in future media-buy certification coverage.
+- 84ff78e: Define atomic media-buy total-budget updates, proportional fixed-package redistribution, and conformance coverage.
+- 48ccce9: Add immutable product audience evidence, buyer-authored admissibility and ranking requirements, seller capability discovery, digest-pinned package readback, portable attestation evaluation, and conformance vectors for AdCP 3.2.
+- 51ffa95: Add the `audio_vast` canonical format for VAST-tagged audio delivery while retaining `audio_daast` for existing DAAST integrations. VAST 4.1+ is the standards-conformant audio profile; sellers may explicitly advertise older versions for legacy audio interoperability.
+- 1c8d320: Add deterministic brand.json locale fallback and whole-array localization for tone and asset metadata.
+- 02e477f: Add portable browser-family inclusion and exclusion to targeting-aware product discovery and package execution. Products declare `browser` and `browser_exclude` support independently, either without restriction or with explicit supported-family subsets. The canonical taxonomy distinguishes recognized-but-unlisted `other` browsers from unclassifiable `unknown` browsers and intentionally excludes browser versions and seller-native targeting IDs.
+- b07891e: Add pixel-density and rendition-set support for 3.2 canonical images. Canonical image declarations now separate logical render dimensions from accepted intrinsic `pixel_ratios`; image assets may declare `pixel_ratio`; and image slots may use `required_pixel_ratios` to require coverage such as 1x plus 2x while leaving 1.5x optional. Top-level and slot density sets combine by intersection for both singular assets and rendition arrays. SDK inference, ambiguity, intersection, rendition coverage, and v2-narrows-v1 comparison are pinned by shared positive and negative vectors. The unversioned legacy reference catalog gains distinct 2x-only and paired 1x-plus-2x compatibility IDs that become discoverable across 3.x when deployed; their density and coverage annotations are forward-projection metadata for 3.2-aware SDKs, not pre-3.2 canonical semantics. New integrations use the 3.2 parameterized `display_image` template with `format_id.pixel_ratio`, and the v1-to-v2 registry exposes machine-readable rules that preserve its dimensions and density during SDK projection.
+- 6d21174: Define deterministic capability-selected runtime tool projections, publish concise manifest summaries for every active Media Buy and Creative role tool, and keep response schemas available for lazy SDK validation outside model context.
+- 5ef5592: Add capability-gated buyer-pushed catalog item suppression, restoration, and current-state readback to `sync_catalogs`, with immutable catalog generations, optimistic concurrency, bounded batches, optional expiry, deterministic privacy-preserving failures, exact per-item correlation, atomic mixed requests, and enforcement against selection, dynamic rendering, and lineage-known cached creatives.
+- 71f0046: Add per-route creative preview origin discovery, publisher-authorized preview delegation, isolated community reference-renderer declarations, and versioned placement-presentation composition.
+- 675a2f0: Add buyer-authored immutable creative revision identity across sync, review,
+  library readback, and delivery attribution, plus agent-unique served variant
+  identity for unambiguous post-flight preview replay.
+- 4439b18: Add AdCP 3.2 CTV experience profiles implementing the IAB CTV Ad Portfolio without new channel-named canonicals. A shared `ctv_ad_experience` vocabulary (menu, pause, screensaver, overlay, squeezeback, in_scene) pairs each experience with the canonical contracts sellers ingest in practice: `native_in_feed` gains a menu profile with a Native 1.2 video slot, `menu_placement` (tile or headline banner), and `focus_behavior`; `video_vast` gains an explicit `creative_type` (linear, nonlinear, either) superseding `linear_required`, with nonlinear required for the five video-backed experiences and per-experience constraints (overlay and squeezeback need 10s minimum duration, in_scene needs 3s and forbids interactivity, pause is unfloored). SIMID remains available to ordinary Linear VAST but is rejected on every nonlinear CTV profile because VAST serializes `InteractiveCreativeFile` only under Linear `MediaFiles`. `image` accepts pause and screensaver (the image-plus-copy contract major pause-ad sellers ingest); `video_hosted` accepts screensaver; `sponsored_placement` accepts catalog-derived menu tiles, squeezeback, and in_scene. Shared `motion_level` (AdCOM attributes 21–23) and `activation_method` (QR, deep link, push, email, tune-in, SMS) vocabularies carry the interaction layer; activations are engagement events, never impressions. Pairings outside the experience matrix fail validation. The docs distinguish buyer-selected experience commitments from player-resolved runtime eligibility and define multi-canonical cells as sibling format options, not an implicit fallback field. The IAB OpenRTB/AdCOM signaling mapping (plcmt 5–9, playbackmethod 8–11, motion attributes, Native plcmttype) is documented as a bridge annex. Includes worked menu/pause/overlay examples and compliance vectors.
+- ee66e24: Add optional `delivery_date` support to `simulate_delivery` so compliance
+  storyboards can seed deterministic delivery rows and verify half-open
+  `get_media_buy_delivery` date filters. The training agent now aggregates dated
+  simulations within `[start_date, end_date)` while preserving cumulative behavior
+  for legacy undated simulations. Date-bounded training-agent responses now follow
+  the task's documented half-open range semantics, including an exclusive midnight
+  `reporting_period.end` and rejection of empty ranges where the dates are equal.
+- efa8dbc: Add explicit inventory-local and IANA timezone semantics to daypart targeting, with product-scoped timezone-mode capability declarations.
+- 381ede4: Add opt-in demographic delivery breakdowns to `get_media_buy_delivery`, with product-scoped reportable age ranges, measurement systems, and privacy-suppression disclosure kept distinct from targeting execution capability.
+- e206c35: Add the `sales-dooh` specialism and a digital out-of-home, non-guaranteed compliance storyboard using the existing channel, product, placement, canonical-format, play, and DOOH-metric contracts. Exercise typed DOOH placement identifiers, loop/slot timing, screen resolution, and motion facts while keeping canonical `format_options` authoritative for creative acceptance. Extend deterministic delivery simulation to prove `plays` and `dooh_metrics`, document optional vendor-defined attention without making it part of the core DOOH claim, require every 3.2 product-list path to expose resolved canonical formats without a separate source-mode capability, set a 128 KiB MCP interoperability target with `tools/list` pagination guidance, prevent success-payload duplication across MCP text and `structuredContent`, and clarify that sandbox behavior is selected by the resolved account rather than switched on per media-buy request.
+- 59bd8b6: Define AdCP 3.2 storyboard fixture resolution. Fixture IDs remain literal seed
+  IDs for compatibility and become run-scoped handles when a storyboard opts into
+  explicit `seed`, `discover`, or future entity-specific `construct` strategies.
+  Add deterministic matching and binding rules, schema-aware ID substitution,
+  resolution evidence, `fixture_unsatisfied` coverage grading, controller ID
+  `x-entity` annotations, authoring documentation, and a source lint. Pilot the
+  discovery contract on the `sales_non_guaranteed` specialism without changing
+  legacy runner behavior.
+- 56f9224: Add capability-gated delivery breakdowns by canonical creative `format_kind` to `get_media_buy_delivery`, including explicit GET-only scope, `custom` aggregation, truncation disclosure, independent reconciliation from creative-level rows, and the full sort contract (`sort_direction` plus the `by_format_sorted_by`/`by_format_sort_direction` applied-sort echo with row-grain fallback and nulls-last semantics).
+- cac7e69: Add a structured `GetProductsRejected` business-outcome arm for sellers that understand a well-formed brief or refinement but deliberately decline it. Define transport-success and mutual-exclusion semantics, expose deterministic conformance coverage through `force_get_products_arm`, and keep no-match, incomplete, async, and technical-failure outcomes distinct.
+- 77d17df: Add attributed delivery reconciliation and a two-party, append-only campaign adjustment lifecycle for AdCP 3.2. Disagreement handling splits by evidence source: a forwarded seller-statement copy whose ID or digest mismatches the canonical statement is `disputed` and blocks adjustment acceptance, while buyer measurement variance is a recorded, non-blocking `measurement_variance` — the higher of seller-stated and buyer-observed spend bounds both conservative exposure and the verified-decommitment ceiling, so manufactured variance can only shrink what either side can extract. Sellers report canonical delivery statements and evidence-bound adjustments; buyers submit separate observations, close operational governance periods without asserting final billing truth, and accept or dispute adjustments. Audit logs expose discrepancies, period state, conservative exposure, gross commitment, verified economic reductions, and accounting-mode-specific headroom without weakening sticky trailing-window fragmentation defense.
+  
+  ## Migration
+  
+  This change breaks three experimental surfaces (`x-status: experimental`). All three are changed for the first time in 3.2 beta, making the beta publication itself the required 6-week-notice vehicle per `docs/reference/experimental-status.mdx`.
+  
+  **`report_plan_outcome` request `delivery` object** (`report-plan-outcome-request.json`): The deprecated unbound delivery snapshot is superseded by a required buyer-attributed observation. Before: `deprecated: true`, `additionalProperties: true`, no required fields. After: `additionalProperties: false` with six required fields (`observation_id`, `source`, `observed_at`, `reporting_period`, `cumulative_spend`, `currency`), plus `seller_statement_id`/`seller_statement_digest` required when `source` is `seller_statement_copy`.
+  
+  ```json
+  // Before (any shape accepted)
+  { "delivery": { "media_buy_id": "mb_123", "impressions": 4200000, "spend": 137500 } }
+  
+  // After (minimum required)
+  {
+    "delivery": {
+      "observation_id": "obs_001",
+      "source": "buyer_measurement",
+      "observed_at": "2026-03-22T01:05:00Z",
+      "reporting_period": { "start": "2026-03-15T00:00:00Z", "end": "2026-03-22T00:00:00Z" },
+      "cumulative_spend": 12500,
+      "currency": "USD"
+    }
+  }
+  ```
+  
+  **`check_governance` request `delivery_metrics`** (`check-governance-request.json`): Required fields expand from 1 (`reporting_period`) to 7: `statement_id`, `statement_digest`, `sequence`, `issued_at`, `reporting_period`, `cumulative_spend`, `currency`. (`seller_reference` and `canonical_payload` are not `delivery_metrics` request fields — they exist only on the response's `delivery_statement`.)
+  
+  ```json
+  // Before
+  { "delivery_metrics": { "reporting_period": { "start": "2026-03-15T00:00:00Z", "end": "2026-03-22T00:00:00Z" } } }
+  
+  // After
+  {
+    "delivery_metrics": {
+      "statement_id": "stmt_001",
+      "statement_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "sequence": 1,
+      "issued_at": "2026-03-22T00:05:00Z",
+      "reporting_period": { "start": "2026-03-15T00:00:00Z", "end": "2026-03-22T00:00:00Z" },
+      "cumulative_spend": 12500,
+      "currency": "USD"
+    }
+  }
+  ```
+  
+  **`report_plan_outcome` with `outcome: "delivery"`** (`report-plan-outcome-request.json`): `check_id` and `governance_context` are now unconditionally required for this outcome. Previously both could be omitted, which allowed a delivery observation with no bound plan-owner check — the both-or-neither plan-owner path.
+  
+  ```json
+  // Before (accepted without check_id/governance_context)
+  { "plan_id": "plan_1", "idempotency_key": "outcome-delivery-001", "outcome": "delivery", "delivery": { /* ... */ } }
+  
+  // After (both required)
+  {
+    "plan_id": "plan_1",
+    "idempotency_key": "outcome-delivery-001",
+    "check_id": "chk_seller_delivery_001",
+    "governance_context": "gc_mb_seller_456",
+    "outcome": "delivery",
+    "delivery": { /* ... */ }
+  }
+  ```
+- 5f1199f: Add symmetric, product-scoped application receipts for property and collection lists in product discovery and proposal-refinement responses.
+- b7b6ba9: Add the experimental managed reporting delivery surface: caller-owned account
+  configuration with protocol-managed destination provisioning, `get_reporting_status`
+  summary/period/revision views, independently scheduled feed purposes, consistent
+  ledger reconciliation, durable delivery capabilities, immutable
+  obligation/revision/materialization records, a normative file manifest, authenticated
+  consumer reconciliation through `sync_reporting_receipts`, and the
+  `reporting.delivery_ready` notification. Advertise snapshot/official schedules as
+  atomic offerings, bind their applicability to products, and preserve explicit
+  full/partial/none/unknown package coverage through configuration, revisions, and
+  status aggregation. Publish portable, byte-exact reconciliation scenarios for SDKs,
+  machine-identify required canonicalization vectors, and enforce control-value and
+  physical-checksum discriminants in the source schemas.
+  
+  Stage the surface into three conformance tiers over one data model: `reporting.core` (obligations, revisions, five health states, `get_reporting_status` over existing transports — the only required tier, implementable by a polling-only seller with no destination, materialization, manifest, canonicalization, or receipt code), `managed_delivery` (file/dataset-share/warehouse offerings with materializations plus retention and revocation bounds), and `reconciled_billing` (`sync_reporting_receipts` plus the canonical-digest contract). Push is optional in every tier: `reporting.status_changed` is available to Core, while the materialization-specific `reporting.delivery_ready` doorbell is managed-delivery-only. Webhook signing is required only when a reporting notification is declared.
+  
+  Complete the tier boundary one layer down: obligation destination and materialization fields, receipt counts, configuration destination readiness, and the healthy/complete conditions are now conditional on their tiers — Core healthy/complete is defined around an authoritative readable revision over existing API transports. `reporting.delivery_ready` is managed-delivery-only, and a new tier-independent `reporting.status_changed` invalidation announces health transitions in either direction (including clock-driven waiting-to-delayed and delayed-to-action_required) with stable `issue_id`s for durable work-item projection. Ships with the reporting.core implementation guide.
+- fa8c262: Add compact, self-contained JSON Schema 2020-12 input and output artifacts for MCP 2026-07-28 tool discovery.
+- f1848ee: Add a shared MediaBuy-level `frequency_cap` (one counter across every package) with `media_buy.aggregate_frequency_capping` seller capability, `Product.media_buy_support` participation, discovery via `required_media_buy_support` and `media_buy_frequency_cap`, the `update_media_buy_frequency_cap` action, and proposal-refinement removal. Scope is determined by field location; package caps are unchanged. `ACTION_NOT_ALLOWED.attempted_action` now references the structured action-id schema so it can name `update_media_buy_frequency_cap`; 3.1 SDKs that validate that field against the flat `media-buy-valid-action` enum should update.
+- 6468688: Add the `INVALID_PRICING_OPTION` and `INVALID_USAGE_DATA` standard error codes used by `report_usage`, with canonical descriptions and recovery metadata. Align the shared pricing-option example and clarify that idempotent replays return the original response without emitting a duplicate-request advisory.
+- eebd81b: Add an optional, persisted `name` to media-buy create, update, success, and read surfaces so buyers and sellers can share a human-readable trafficking label without overloading financial references or opaque context.
+- 6947106: Add the shared MediaBuy `name` to `buy_products`, `accept_proposal`, and the
+  compact commitment response, keeping it outside accepted commercial terms and
+  defining buyer-supplied precedence over a proposal-derived default.
+- 71953f8: Add a materialized creative-localization contract with source-only or source-plus-target variants, a shared cross-protocol BCP 47 language-tag primitive with an explicit AdCP wire profile, contextual text/markdown language conformance, strict RFC 4647 Lookup over externally supplied delivery preferences, explicit language-family fallback rules, default and unmatched-locale behavior, creative-wide review, transactional replacement, exact request-to-sync-to-list identity, per-item fail-closed readback, localized delivery attribution, and seller-enforced product-format locale policies using RFC 4647 Basic Filtering. Document the separate architecture patterns for authoritative agent input declarations, observable response-language selection, whole-value published content maps, and executable creative so later surfaces reuse language semantics without copying creative topology. Translation and generation remain separate creative-production operations.
+- 294cb5b: Add `nielsen_audio` to `demographic-system` (same P/M/W notation as Nielsen TV, measured on the radio panel) and broaden the enum's scope to audio channels. RAJAR remains a `measurement_source`, not a notation system. Documents radio delivery reconciliation in the channel guide: demographic notation, provider identity, and `measurement_windows` maturation as the three declarations, with weekly panel cadence as an optimization-eligibility gate. Implements the WG-ratified #6139 decisions.
+- b2fc579: Add the AdCP 3.2 OAuth capability declaration and capability-gated universal compliance storyboard for RFC 9728/RFC 8414 discovery consistency, backed by a credential-free, SSRF-bounded runner contract and deterministic metadata-graph vectors.
+- 121d8b3: Add owner-selectable Legacy and Strict Spec grading profiles for verified agents, with Sandbox preview support. Persist immutable exact-role/version assessments and audited selections, project public badges through durable retries, and expose the selected profile through registry APIs, feeds, dashboard controls, badge metadata, and verification tokens.
+- 48ccce9: Add reference-first portable attestation schemas, evaluator capability discovery, normative resolution and verification rules, and conformance vectors for AdCP 3.2.
+- 9a7cf31: Add the experimental AdCP 3.2 `seller_rendered_stateful_display` and `coordinated_placements` canonical creative formats. The stateful display declaration is an executable template contract — slots with limits, safe zones, breakpoints, and a disclosed state/transition graph — with `supply_mode` selecting who renders: `components` (buyer supplies focal-pointed imagery and copy; seller assembles every state × breakpoint deterministically), `rendered_canvases` (buyer authors externally against the published contract), or transitional `layered_source`. Sellers offering the canonical must support deterministic `preview_creative` rendering of every state × breakpoint. Sizing supports fixed, range, aspect-ratio, and fluid (`full_bleed`, `gutter_residual`, viewport-percent) breakpoints; single-state reveal units declare a `reveal` mechanic and `underlay` anchoring instead of fabricated states; transitions add `in_view_timer`, `media_event`, scroll `direction`, and `hover` inputs with per-state click URLs and a `clickthrough` policy. Validation enforces a dismissibility floor for overlay anchoring, an anti-strobe floor on timer cycles, per-canonical slot asset-type whitelists, and non-blocking LEAN policy warnings for IAB-prohibited trigger/anchoring combinations. `coordinated_placements` binds multiple product placements atomically with shared slots, optional `sequence` ordering, and per-component `serving_policy`, with placement-reference normalization and schema validation of referenced sibling options. Includes compliance scenarios, worked product declarations, and adopter documentation.
+- 3934dda: Add buyer-opt-in asynchronous rendering to preview_creative while retaining synchronous default behavior; build_creative's existing async contract is unchanged.
+- 877f6a2: Add the experimental principal layer: the `sync_principal` task for a party's (buyer agent or operator identity) standing configuration with a seller and the side-effect-free `get_principal` read task. Includes reusable reporting destinations with per-pattern normative proof (file write-probe, warehouse commit verification, dataset-share recipient acceptance), destination suspension and revocation semantics with an advertised halt interval, retained superseded and revoked destination generations in readback, two-sided negotiation through `reporting_destination_offerings` capability advertising, capability-change webhook compatibility, optimistic concurrency with cross-task version coherence, principal-scoped idempotency, principal isolation, and credential-free destination setup state. Interactive clients such as Claude do not have to register as buyer agents, but must propagate a stable delegated user identity.
+- 17162cf: Add experimental product-scoped identity-absence and reach-methodology declarations, require a reach unit on frequency-only delivery for identity-absent products, and add sales-DOOH conformance for frequency-cap rejection and identity-safe delivery reporting.
+- 6307ff1: Add optional audio loudness constraints and document canonical file-based radio :15, :30, and :60 creative contracts, including industry identifiers and the absence of VAST or tracker semantics.
+- 487df50: Add issuer-bound rights-grant attestations for AdCP 3.2. Rights constraints now carry digest-pinned portable attestation references, sellers advertise and return verifier-of-record evaluations, and the legacy buyer-controlled `verification_url` is explicitly non-authoritative and never fetched for authorization.
+- 48ccce9: Add portable runtime signal-quality attestations to check_governance, including action-specific capability policy, normalized evaluation results, signed-context binding, audit readback, and conformance vectors.
+- 7dfeef8: Re-add `sales-exchange` specialism with storyboard covering programmatic exchange product discovery with floor prices and bid guidance, auction-priced media buys, in-flight bid adjustment, and delivery with auction transparency metrics. Addresses the exchange portion of #2511.
+- 7dfeef8: Re-add `sales-retail-media` specialism with storyboard covering catalog sync, keyword-targeted sponsored search, item availability management, and product discovery for retail media networks. Addresses the retail-media portion of #2511.
+- 7dfeef8: Re-add `sales-streaming-tv` specialism with storyboard covering CTV product discovery, VAST creative sync, household frequency-capped media buys, and delivery with household reach metrics. Addresses the streaming-tv portion of #2511.
+- d44756a: Add structured product frequency-cap constraints (`overlay_support.frequency_cap_support`) and constraint-aware discovery without changing the legacy `frequency_cap: true` boolean, plus package-qualified `update_frequency_caps` availability.
+- 19fd2d5: Add seller-optimized shared budgets and explicit bidding policy placement across media-buy packages. Media buys and proposals can delegate cross-package allocation to the seller under an aggregate budget, optimization goals, and pacing, while preserving fixed package budgets as the default. Package caps, soft minimum-spend targets, and package-level pacing are each gated on their own capability (`seller_optimized_package_budgets`, `seller_optimized_min_spend_targets`, `seller_optimized_package_pacing`) in addition to `seller_optimized_budget`. A new media-buy/package `bidding` block separates objective functions from automatic bidding, manual bids, auction ceilings, average-cost controls, and ROAS controls, with complete-block inheritance and authored-scope-preserving readback. Media-buy outcome controls bind to allocation goals in seller-optimized mode and compatible package goals in fixed mode; package controls bind to package goals. All canonical monetary fields use one media-buy currency, ROAS event sources declare supported value currencies, and structured capabilities advertise support by scope, allocation context, mode, strength, and combination.
+- 7082ff1: Add an optional seller-policy decline reason to `REQUOTE_REQUIRED` and buy-specific `ACTION_NOT_ALLOWED` errors, with typed details for the existing envelope-field and change-term conventions. The coarse vocabulary includes inventory, share-of-voice, minimum-commitment, notice-period, contract-term, frequency-cap, and other policy dimensions while preserving seller control over sensitive policy disclosure.
+- 6572ef6: Add consumer conformance coverage for designated-task signed brand responses. The new sandbox runner contract dynamically signs `verify_brand_claim` and `verify_brand_claims` fixtures and grades fresh acceptance plus expiry, request-replay, and tenant-mismatch rejection against the normative verifier checklist.
+  
+  Closes #6147
+- 64a26e7: Add opt-in spot-level as-run delivery reporting for scheduled inventory, with stable spot identity, actual airing time, and explicit product capability for metrics available at spot grain.
+- 253f984: Add optional creative identity to spot-level as-run delivery records so buyers can reconcile each airing with multi-creative package rotations.
+- b2ae44a: Add the static OOH channel contract (experimental in 3.2): an `ooh_metrics` delivery block — panels with multi-scheme identifiers, posting periods, share of voice, illuminated hours, modeled `estimated_impressions` with a declared methodology tier (`estimation_basis`), and posting records whose evidence artifacts use the new channel-neutral `placement-evidence` core schema (shared with print tearsheets) — plus an out-of-home channel guide. Also mirrors `measurement_source` from delivery-forecast into delivery-metrics (WG-ratified) so measured-channel rows are self-describing about whose data produced them. Static units have no play events; delivery is a period-level modeled audience estimate and settlement rests on proof-of-posting, per OAAA conventions.
+- aee4f79: Add an assessed synthetic-depiction provenance declaration, seller policy requirement, and canonical missing-declaration error for AdCP 3.2.
+- 1656819: Add optional storyboard coverage for search_brands, get_creative_features, and get_media_buy_artifacts without gating agents that do not advertise the experimental tasks.
+- a35dfdb: Add `time_based_views` to delivery reporting: an array of time-threshold video view counts, each entry keyed by (threshold_seconds, basis). The new `view-threshold-basis` enum distinguishes play-time counting (platform 2s/6s video views) from in-view counting (IAB/MRC viewable video), which are materially different numbers at the same threshold and must not be conflated or summed. Capability-gated via the `time_based_views` token in available-metric. Implements RFC #6430 with the basis discriminator the RFC's open questions pointed toward.
+- ad899c2: Add format-scoped production tracker execution contracts for first-class pixel,
+  VAST, and DAAST tracker assets. Pin effective commitments, execution versions,
+  placement scope, and digests in immutable package format snapshots so buyers can
+  distinguish supported, unsupported, and undeclared tracker behavior before
+  spend without coupling the production promise to preview observation.
+- 2785fcb: Add `viewable_rate` as a `kind: "metric"` optimization goal, closing a schema omission: the optimization docs already described viewability as a standard metric goal, but neither goal schema accepted it. A `viewable_rate` goal requires a viewability `standard` (`mrc` or `groupm`), takes an optional measurement `vendor`, and bounds `threshold_rate.value` to at most 1. Products and seller capabilities can advertise `viewable_rate` in their supported optimization metrics, and products can declare `metric_optimization.supported_viewability_standards`. When a package carries both a `viewable_rate` goal and a viewability performance standard, a lower goal never relaxes the standard.
+- ba81c91: Add optional, addressable percentile and histogram distributions alongside `viewability.viewed_seconds` for comparable duration reporting.
+- 1eb51fe: Add the optional `voice_synthesis.rights_offering_id` brand-side provenance pointer and clarify how it joins a configured voice to `get_rights`, `acquire_rights`, and transformer provenance without creating a build-time authorization gate.
+- 9753caa: Extend the experimental principal layer per RFC #7015: caller-level webhook subscribers may carry account-anchored event types with fire-time authorization scoping and an explicit `include_future_event_types` opt-in; a new `declarations` section carries buyer-declared consumption facts (async payload versions, verifiable webhook signing algorithms, experimental opt-ins) with a seller-computed accepted intersection governing asynchronous interactions; and a new caller-anchored `principal.changed` invalidation webhook fires on seller-driven connection-state transitions with repair through `get_principal`. Account-anchored subscription requires the explicit `all_authorized_accounts` acknowledgment with per-delivery-attempt authorization (revocation suppresses queued retries); `include_future_event_types` extends only to invalidation-only classified types; declarations readback persists the accepted intersection, the seller's `selected_async_adcp_version`, and per-value exclusion reasons. Capabilities advertise `caller_event_types` so buyers select from the offering instead of probing by rejection, and every readback carries the seller-resolved `principal_kind` with an `expected_principal_kind` assertion fence.
+- 49825ba: Allow `null` for video-only delivery metrics (`quartile_data`, `completion_rate`). Sellers running non-video inventory (display, audio-only, DOOH-without-video) legitimately have no value for these metrics, and returning `null` is the correct "not applicable" signal. The schema previously required `type: "number"` / `type: "object"` and rejected `null`, causing receivers to fail validation on every valid display-inventory delivery report.
+  
+  `delivery-metrics.json` (`totals` / `by_package[]`) now accepts `["number", "null"]` for `completion_rate` and `["object", "null"]` for `quartile_data`; `get-media-buy-delivery-response.json` `aggregated_totals.completion_rate` gets the same loosening so the aggregate path can't re-trigger the failure. The `minimum`/`maximum` constraints on `completion_rate` still apply to non-null values, and the type stays narrowed to null (no strings/arrays). Every other delivery metric continues to signal "not applicable" by omission, not `null` — this exception is scoped to the two video-only fields. Spec-loosening for the receiver contract: producers already sending numbers/objects remain valid.
+  
+  The separate inline `completion_rate` in `report-plan-outcome-request.json` (a governance self-report block, not on the `get_media_buy_delivery` path) is intentionally left unchanged.
+- dc349b0: Add audience activation method declarations (#4324), WG-approved as **experimental** for 3.2 (`media_buy.audience_activation` in `experimental_features`; schemas carry `x-status: experimental`). Products declare how buyer audience data can reach them via `audience_activation.methods` — `sync_audiences`, `tmp_identity_match`, `file_transfer`, `dataset_query`, `clean_room`, or `platform_distribution` — with vendor identity as a BrandRef domain. The seller-level union surfaces as `media_buy.audience_targeting.supported_activation_methods` in `get_adcp_capabilities` for fast-fail discovery, and buyers filter products with `filters.audience_activation_methods` (OR across entries, AND within an entry, omitted fields as wildcards). Dataset entries may publish `consumer_identities[]` with an opaque principal and optional paired cloud/region deployment metadata. Platform destinations are optional account-scoped coordinates. Clean-room declarations cover only collaborations that produce targetable audiences and compose with the declared dataset or distribution rail; analytics-only rooms do not imply audience activation. Grant-based paths are in-protocol only when the vendor flow is grantee-identified.
+- 172dae7: Add external audience source references on `sync_audiences` (#6540), the runtime leg of the audience-activation surface (experimental, `media_buy.audience_activation`). An audience carries either inline member deltas or a `source` reference (`core/audience-source.json`): `dataset` (the seller reads a grantee-identified share — Snowflake, Databricks Delta Sharing with D2D or OIDC token federation, BigQuery authorized views) or `platform_segment` (binds a vendor-distributed segment to an `audience_id`). Data never transits AdCP. Responses echo the source with `access_status` and `columns_read`; counts anchor to `last_synced_at` (required once counts populate). Normative lifecycle rules: transport fixed at creation (cross-transport upserts → `CONFLICT`), loss of source access never changes audience status (frozen membership stays targetable; `suspended` reserved for consent/policy causes), access expiry is not deletion. New error code `SOURCE_ACCESS_FAILED` with `error.field`-keyed recovery.
+- 7213f46: Define the snapshot/log contract as authoritative current-state convergence for state notifications and capability-scoped data parity for delivery notifications. Add optional, migration-safe `notification_id` correlation to webhook activity, register `window_update` consistently, and document exact repair keys and recovery procedures across current push/read pairs.
+- aa9f21f: Define media-buy portfolio channels and countries as exhaustive routing allowlists when present, treat omission as unknown rather than global coverage, validate assigned country codes, and add advisory checks for missing or empty scope plus required checks for contradictory returned product channels.
+- 18f5f8e: Add conformance surface for flexible-window availability discovery. New `media_buy.availability_horizon` capability declaration gates the new `media_buy_seller/availability_windows` scenario (required by the sales-guaranteed specialism): horizon partitioning into coalesced half-open time windows, eligibility-aware `availability_status` (a gap shorter than the product's minimum bookable duration is `unavailable` even with no competing hold), forecast excluded from `list_products` conditional reads, and `PRODUCT_UNAVAILABLE` on buys against closed or too-short windows. Product fixtures accept an optional seller-internal `availability` calendar (`min_bookable_days`, `booked_windows`) consumed by seeding. Adds schema test vectors for the `availability_horizon` mutual-exclusion and time-dimension shapes.
+- fb744bd: Add the 3.2 advisory brand-authorization binding for `verify_brand_claim` and `verify_brand_claims`. A verifier can now report a cryptographically valid but unbound response as `untrusted` through the new `brand-response-authorization-result` schema instead of treating the brand-agent's assertion or rejection as authoritative.
+  
+  The security and task docs define the advisory lookup, canonical agent-URL matching, authorized-JWKS scoping, batch deduplication, and safe failure behavior. Conformance vectors plus an executable reference evaluator cover authorized, unavailable, ambiguous, wrong-agent, wrong-key, and forged rejection cases. Mandatory cryptographic brand authorization and hard rejection remain deferred to 4.0.
+- e3cb7e7: Add buyer-safe structured error reasons using the comprehensive error-code vocabulary, including creative validation codes, and expose public and members-only registration counts on registry and directory lookups without revealing private registrations.
+- 609a3b0: Add buyer and orchestrator agent storyboards: 6 specialisms (buyer-discovery, buyer-activation, buyer-negotiation, buyer-monitoring, buyer-recovery, orchestrator-multi-agent), fixture publisher contract and reference implementation, buyer-orchestrator compliance track with three certification levels, and 10 buyer-specific check kinds.
+- 8c0c982: Promote the reporting-cadence optimization-eligibility rule from guidance to normative: buy-side agents MUST treat a product's declared `available_reporting_frequencies` as an optimization-eligibility gate and MUST NOT make mid-flight optimization decisions against metrics whose declared cadence is `quarterly` or `post_campaign`. Enforcement routes through buyer-artifact grading (sellers have nothing to attest); an anti-drift test pins the normative language to the enum and the governing doc. Ratified with the radio and OOH WG packets (#6138/#6139/#6140).
+- f36f565: Make canonical creative formats the AdCP 3.2 authoring and discovery path. Creative agents now advertise stable `creative.supported_formats[].capability_id` entries and explicit `operations` through `get_adcp_capabilities`; `build_creative` and `list_transformers` select those capabilities with string IDs; and the registry supports reverse discovery by canonical format, publisher format option, and creative operation. Consumers retain 3.x compatibility with catalog entries that omit either new routing field, treating absent `operations` as `build`.
+  
+  Deprecate `list_creative_formats`, compound named format IDs, and format-attached transformer I/O throughout the schemas and current documentation while retaining explicit 3.x compatibility branches. Sales agents declare deliverability on `Product.format_options[]`, publishers declare acceptance in `adagents.json.formats[]`, and portable creative manifests continue to carry `format_kind` plus an optional `format_option_ref` rather than agent-local capability identity. Add normative multi-placement eligibility guidance and reusable canonical classification vectors.
+  
+  Make publisher catalog freshness observable: `publisher.adagents_changed` now covers semantic changes in every top-level `adagents.json` field, including formats-only and placements-only revisions, and new events populate `changed_fields` plus format and placement counts. Clarify that the registry publisher lookup—not the origin-only `validateAdAgents()` path—provides the community-catalog fallback and its provenance.
+- ea5c643: Restore the normative constraints `canonical-forecast-point` dropped from its source twin: the `maximum: 1` bounds on `viewable_rate` and `metrics.coverage_rate` ranges, and the `anyOf` requiring `standard` whenever any viewability value is present. A shared forecast-rate range keeps generated SDK types unambiguous, while a parity contract test compares the twins' resolved viewability schemas and exceptional metric constraints so canonical-pair drift fails CI instead of shipping silently.
+- 316d55d: Add `sample_render_url` to canonical format declarations and registry summaries so publisher catalogs retain a human-facing preview path without a creative agent owning the format. Define declaration-scoped authority and safe consumer behavior without implying buyer-asset rendering, validation, creative approval, publisher acceptance, or live-delivery fidelity.
+- fe6c585: Add authority-discriminated placement identity and property, collection,
+  installment, collection-by-property, installment-by-property, and
+  placement-by-property delivery
+  reporting. The new intersections provide affirmative delivery evidence instead
+  of relying on independent marginals, with explicit per-response suppression
+  flags. Released-compatible whole-placement echo shapes remain accepted in
+  placement selection. Also add optional `creative_name` convenience metadata
+  while keeping `creative_id` as stable identity.
+- c0366ba: Define the verified canonical `brand.json` Agent URL as the stable identity input for RFC 9421 signed callers, preserving principal continuity across key rotation while keeping distinct Agent URLs isolated.
+- 5bf55d3: Add agent-level `capabilities.changed` notifications for cached `get_adcp_capabilities` responses, plus account-anchored `account.status_changed` notifications for durable account lifecycle changes. Includes freshness metadata, registration schemas, webhook payload documentation, and read-side account webhook activity.
+- 267860b: Clarify bounded discovery redirects: adagents.json follows its existing same-registrable-domain policy, while identity-sensitive brand.json follows only the original hostname and its exact www counterpart. Explicit authoritative URLs use zero HTTP redirects. Define JSON-number equivalence, safe-integer rejection, and exact-decimal string guidance for AdCP payloads carried through A2A protobuf DataParts, with portable vectors for both changes.
+- 1d5f020: Complete cross-role governance conformance coverage for AdCP 3.2 with exact task-and-mode capability gates, positive and negative rights and paid-creative proofs, a universal discoverability index, and matching reference-agent enforcement.
+- 93d39c0: Add `targeting_overlay.collection_selection`, mirroring `placement_selection`: buyers name a complete committed collection set as domain-qualified selectors (partial selection gated by `collection_targeting_allowed`), and sellers MUST echo the committed selection on package readback — materializing concrete selectors even when the selection was produced through `collection_list` references — making the package readback collection-echo obligation satisfiable. Resolved collection-list rows can now carry the domain-qualified identity (`publisher_domain` + `collection_id`) so rows remain matchable without a platform-independent distribution identifier.
+- 2b312e0: Add a deterministic controller probe and compact media-buy lifecycle
+  storyboards for product-to-proposal acceptance, declined-proposal terminality,
+  and proposal expiry, and restore testable task documentation for the four
+  compact planning operations.
+- 2ec0882: Add a compact, backwards-compatible performance-feedback assertion and make measurement agents discoverable producers of optimizer-ready feedback through buyer-controlled orchestrator gateways. The request now names its baseline, reuses standard/vendor metric identity, attributes a producer and provider-scoped methodology, carries a small evidence summary or provider-hosted evidence reference, and supports immutable maturation through final/as-of/supersession fields. The first gateway tier deliberately reuses two fixed tasks: providers pull buyer-approved delivery with `get_media_buy_delivery` and return compact assertions with `provide_performance_feedback`. Orchestrators authenticate returned assertions and fan normalized feedback out to sellers under the buyer's identity; sellers can return a receipt and honest optimizer application disposition. Existing per-account `allowed_tasks` grants authorize these gateway reads and writes, so measurement providers never need seller credentials and no new RBAC primitive is required. Webhook and offline interchange are deferred until complete registration, credential, payload, and receipt contracts exist. Also clarifies Accounts Protocol conformance: buyer-declared sellers (`require_operator_auth: false`) MAY omit `sync_accounts` when they lazily provision from the natural key and expose `list_accounts` as the cold-start recovery read.
+- 675a2f0: Add explicit creative delivery contracts for inline display tags, atomic paired redirects, and revision-bound creative representation sets. A complete representation set is one immutable buyer revision; deterministic selection identifies one `representation_id` without creating a build or served variant and carries the complete revision digest into the seller-bound manifest. Define exact VAST asset versions versus product and seller acceptance sets, VAST MediaFile delivery/MIME/container/codec/dimension/bitrate/byte requirements, decimal file-size units, and declaration-level technical completeness. Add declared macro dialect, resolver ownership, encoding depth, capability matching, per-token validation results, structured rejection errors, documentation, and conformance vectors for issues #6761–#6764.
+- 3f1bfeb: Define governance enforcement as a cross-role core capability. Consequential request schemas now declare `x-governed-commitment`, while `adcp.governance_enforcement` advertises the enforcement modes and covered tasks.
+  
+  Tighten the experimental authorization boundary: buyer intent checks use `plan_id`, approved decisions alone issue `governance_context`, downstream services treat that context as the opaque plan binding, and media-buy online execution enforcement follows prepare → check → commit. `conditions` is now an intent-only counterproposal with a separate non-authorizing consultation handle.
+  
+  Harden governance identity and accounting at the same boundary. Authenticated buyer identity controls delegations across the full lifecycle, while the intent's target audience controls seller authorization. Purchase checks may run before a durable media-buy ID exists, must authenticate as that audience, and may narrow but never widen or change the currency of the intent authorization. For media-buy updates, buyers propose a positive-delta ceiling and sellers independently compute and enforce the actual delta from authoritative state. Indirectly priced tasks require an explicit commitment, including amount zero for verified no-cost work. Critical JWS extensions bind the monetary ceiling, exact task, and canonical payload hash so services can verify authorization without reading governance-private state. Outcome reports authenticate as the original buyer, preserve purchase type, settle an opaque action binding once across all lifecycle check IDs, cache identical retries before mutable plan lookup, validate all monetary inputs, and reserve the governance-owned approved budget rather than trusting a buyer-reported amount.
+  
+  Publish one cross-language fixture set with JCS payload hashes, decision tables, and 27 byte-exact Ed25519 compact-JWS cases. The cases cover critical markers, audience/caller/task/payload bindings, commitments, time bounds, replay identifiers, signature tampering, and zero-cost authorization using an explicitly test-only public keypair.
+  
+  This intentionally changes validation on the experimental campaign-governance schemas in the next minor release; integrations on that experimental surface must update together when adopting 3.2.
+- 98b9bda: Add structured discovery for exact supported language-targeting ranges while preserving legacy boolean capabilities, and widen targeting language values from ISO 639-1 to canonical BCP 47 ranges with explicit RFC 4647 Basic Filtering semantics.
+- 0eee990: Add hard daily budget caps to the shared media-buy budget hierarchy (RFC #5983).
+  
+  - Media-buy `daily_budget_cap` bounds aggregate daily spend without creating package allocations; optional package caps are subordinate ceilings, not reservations.
+  - One media-buy `budget_cap_timezone` defines the calendar-day boundary for every cap. Without an override, the cap capability selects the account timezone or an advertised feature-specific fixed timezone.
+  - Legacy create/update and compact buy/control/accept lifecycle schemas expose the aggregate cap and timezone; package request/update/control and readback schemas expose only the subordinate cap.
+  - Numeric updates apply immediately with current-day spend counted; `null` removes a cap. Timezone changes begin at the next existing cap-day boundary.
+  - Account capabilities now declare seller-fixed versus account-fixed operational timezones. Buyer-selected account timezones are established through `sync_accounts`, round-trip through account reads and natural references, and remain distinct from explicit reporting and billing clocks.
+  - `media_buy.budget_capping` declares `supported_scopes`, `supported_periods`, `timezone_basis`, optional `fixed_timezone`, and optional buyer override support. A `daily_budget_cap` is always hard; sellers must reject unsupported scopes instead of silently dropping or softening them.
+- 496920a: Define cross-transport async identity and convergence rules for direct
+  responses, AdCP polling, A2A tasks, continuations, and webhooks. The contract
+  separates identifier namespaces, makes terminal settlement and publication
+  single-winner, binds webhook delivery keys immutably to payloads, requires
+  recoverable continuation-generation handoffs, preserves legacy composite
+  atomicity, and advertises webhook retry horizons.
+- e037258: Define DOOH share of voice as duration-weighted time share, align contracted and delivered units, and add seller-packaged slot contiguity parameters.
+- 3e52da3: Define Trusted Match publisher authentication as a deployment obligation, require HTTP 401 with a WWW-Authenticate challenge for missing or failed authentication, bind authenticated publishers to allowed Context Match properties in multi-publisher deployments, and add gated raw-HTTP conformance coverage for absent and invalid authentication on Context Match and Identity Match.
+- 4cc68e1: Deprecate cross-buy delivery aggregates and response-wide currency, add media-buy-level currency with a package-grain fallback for mixed-currency external buys, and preserve qualified standard delivery values on each package.
+- 9ceac99: Deprecate inline provider credentials in secured artifact access. Signed URLs are now the recommended default for one-off delivery, while credential-free workload identity remains available for established relationships and bounded bearer tokens remain available for origins that require them.
+  
+  Document the AdCP 3.2 migration path and require secret-safe handling of legacy credentials, bearer tokens, and complete signed URLs during the compatibility window. The deprecated `service_account.credentials` field remains schema-valid throughout 3.x and is eligible for removal in 4.0 or later once the six-month notice and full-release-cycle policy gates are satisfied.
+- 6ce1133: Disambiguate cross-buy reach as deduplicated or summed constituent reach, forbid aggregate frequency for summed reach, and preserve legacy payload validity when the new discriminator is absent.
+- c6b0513: Allow products to disclose per-package cardinality limits for country
+  inclusion, country exclusion, and proximity targeting.
+- 5a0aff8: Add DOOH structured selling-unit fields to placements: `dooh_placement_attributes` (slot_duration_seconds, loop_duration_seconds, screen_resolution, motion) and `identifiers[]` on both placement.json and placement-definition.json. Define deterministic publisher/product inheritance, post-merge slot-to-loop validation, versioned OpenOOH identifiers, and canonical-format authority. Add the `dooh-motion-type` enum and supersede pricing-layer loop_duration_seconds in flat-rate-option.json.
+- f3e3e0c: Add `quality_used` to successful `preview_creative` responses so buyers can detect render-quality downgrades before approval.
+- cc917a4: Require delivery, media-buy, and creative-list responses to honor deterministic date, identity, and status filters through observable membership and boundary semantics.
+- 133f1f8: Extend `reporting-frequency` with `weekly`, `quarterly`, and `post_campaign` to match audience-currency publication cadences in measured channels (OOH, radio, print), with guidance that a product's declared cadence gates mid-flight optimization eligibility. Surface the print channel guide in docs navigation.
+- dc69e0b: Publish canonical supply-path verification golden vectors and an explicit evaluator semantics version. Clarify fail-closed owner-sold carriage verification for affirmative collection constraints, dangling property references, unknown or unevaluated authorization constraints, revocation precedence, agent URL identity and independent domain-level paths.
+  
+  Retain authority-scoped revocations and authoritative-location pins in persistent registry state. Refuse stale or non-authoritative cache provenance and require explicit publisher attribution in cross-origin shared catalogs. Expose cache observation times and resolved URLs.
+  
+  Add publisher_domain attribution to shared collection declarations and require it for cross-origin owner evidence. Preserve successful-fetch provenance through failed crawls and provide an operator command for independently confirmed authority migrations.
+- a66cce5: Define a normative VAST validation contract for `vast` creative assets. Today the entire format-layer contract for a VAST asset is the `vast_version` string in `vast-asset-requirements.json`: nothing in the spec requires parsing the document, checking for an `<Ad>` or `<MediaFile>`, verifying the version attribute, or bounding wrapper chains, and `error-code.json` has no VAST codes, so a structurally valid manifest can carry an unplayable tag that fails silently at serve time.
+  
+  This change adds:
+  
+  - `creative_specs.vast_validation` on `get_adcp_capabilities` (`structural` | `document` | `wrapper`, default `structural`), following the capability-gating pattern of `media_buy.governance_aware`: sellers that do not inspect VAST documents keep the default and are unaffected.
+  - A "VAST Validation" section in the video channel docs specifying the checks at each level: document parse, root element and `<VAST version>` agreement with the declared `vast_version` / format requirement / seller `vast_versions`, `<Ad>` and `<MediaFile>` presence, HTTPS URLs, wrapper resolution bounded by the format's existing `max_wrapper_depth`, loop detection, per-hop timeout, and terminal-document checks. Validation runs at `sync_creatives` (including `dry_run`); `validate_input` stays manifest-structure-only. A passing preflight is explicitly not approval of future responses from a decisioning endpoint.
+  - Three error codes with `enumDescriptions` and `enumMetadata`: `VAST_PARSE_FAILED`, `VAST_VERSION_MISMATCH`, `VAST_WRAPPER_DEPTH_EXCEEDED` (all correctable, with `error.details.reason` discriminators).
+  
+  Macro correctness and substitution verification are explicitly out of scope (in-flight WG work on click-tracker insertion and decisioning-time substitution). Additive; no change for sellers that do not declare the capability.
+- 9c66556: Add `CreativeFilters.asset_types` to `list_creatives`, add `zip` to `AssetContentType`, define exact OR-within-field and AND-across-fields matching semantics for top-level creative assets, and add focused published-post and HTML5-bundle conformance coverage. Generated SDK types expose these additions only after the matching SDK release is published; pinned consumers must upgrade explicitly.
+- b41666f: Align brand property and verification schemas with the canonical property-type enum, including `linear_tv` and `ai_assistant`.
+- d3a6daf: Require universal-macro translation diagnostics to flag native ad-server token syntax embedded inside concrete `value` mappings, while preserving ordinary bracketed text as non-suspect.
+- 8d0a0c8: Add flexible-window availability discovery. `offer_filters.availability_horizon` lets a buyer ask "which dates can I run?" instead of filtering to one exact flight; sellers answer by partitioning the horizon into `time`-dimensioned forecast points (new `forecast-dimension-time` variant) carrying the new `availability_status` field (`available` | `unavailable`). Availability data is a snapshot bounded by the forecast's `valid_until`, never a hold — proposal finalization remains the firm-avails and commitment boundary. Forecast data is excluded from `list_products` feed-version scoping, and a `list_products` request whose `fields` includes `forecast` must not be answered with `outcome: "unchanged"`.
+- afd1e98: Add identifier-based named-place geographic targeting:
+  
+  - `targeting_overlay.geo_places` and `geo_places_exclude` carry stable identifiers with country, system, place type, optional catalog version, and diagnostic labels.
+  - `get_adcp_capabilities` declares exact country/type pairs, accepted catalog versions, and a standard resolver for every collision-safe identifier system.
+  - `get_products.targeting_overlay` carries known place IDs so configured products, pricing, and forecasts reflect them; `required_overlay_support` and Product `overlay_support` declare collision-safe permission for place values selected later.
+  - Package status MUST echo persisted place overlays with the applied catalog version through the existing `targeting_overlay` contract.
+  - Resolver responses echo their normalized query, carry machine-verifiable disambiguation and lifecycle metadata, and support existing-ID refresh after catalog rollover.
+  - `PLACE_TARGET_UNAVAILABLE` provides a nonfatal, correctable read-path signal when a pinned target can no longer execute without silently changing geography.
+  - Create-time place overlays use deterministic `UNSUPPORTED_FEATURE`, `INVALID_REQUEST`, and `PRODUCT_UNAVAILABLE` dispositions while preserving the configured product's binding pricing contract.
+  - Place forecast and delivery breakdowns remain deferred; package echo is the interim configuration-audit path.
+  
+  Refs #5588.
+- 465cb85: Add `requested_metrics` to `get_media_buy_delivery`, giving the GET path the same metric narrowing the reporting webhook already has. Omitted means unchanged full payloads; impressions and spend are always included; requesting a leaf metric identity returns its canonical nested carrier; and `missing_metrics` MUST NOT flag absences caused solely by request narrowing. Implements RFC #6624.
+- 6947106: Require verifiers to treat unsigned MCP transport sessions as
+  non-authoritative: identity, authorization, account and resource selection,
+  and task ownership must derive from each request rather than
+  `Mcp-Session-Id`.
+- 39ef6da: Require AdCP 3.2 producers to emit integer `error.retry_after` seconds while preserving the released numeric wire type for 3.x compatibility, and define ceiling-before-clamp behavior for clients that encounter legacy fractional values.
+- 6a5ceb9: Add leaf metric identities so nested delivery values are individually declarable, committable, aggregatable, and sortable: `quartile_25`–`quartile_100` (resolving to `quartile_data.q1_views`–`q4_views`) and `viewable_rate`, `viewable_impressions`, `measurable_impressions`, `viewed_seconds` (resolving to the same-named `viewability` fields) join `available-metric` and `sort-metric`. This closes an existing contradiction: `committed-metric` qualifier rules and `delivery-metric-aggregate` conditionals already referenced these metric_ids, and the shipped `committed_metrics` / `metric_aggregates` examples were invalid against their own schemas. Also adds the missing flat transactional scalars (`commissionable_value`, `plays`, `cost_per_completed_view`, `cpm`, `downloads`, `units_sold`, `new_to_brand_units`) to `sort-metric`, with survey/model-based lift scalars documented as intentionally sort-excluded. Leaf identities resolve to the nested canonical values — no duplicate flat response fields are introduced. A metric-identity coherence contract test now enforces enum/schema/example agreement.
+  
+  **Seller conformance note:** the `viewability` description now requires (MUST) that sellers populate `standard` on reported viewability objects when `committed_metrics` carry a `viewability_standard` qualifier — upgraded from a SHOULD. The trigger is any `committed_metrics` entry with `qualifier.viewability_standard` set, including the container `metric_id: "viewability"` (already in the enum). Sellers with an existing `{metric_id: "viewability", qualifier: {viewability_standard: "mrc"}}` commitment who were sometimes omitting `standard` become non-conformant. Sellers who never use the `viewability_standard` qualifier are unaffected.
+- a793fc8: Fix the vendor-scope qualifier on `delivery-metric-aggregate` (previously a closed object with no properties, so only `{}` could validate) and add the optional 5-key qualifier to the vendor branches of `committed-metric`, `missing-metric`, `package-request` committed_metrics, the performance-feedback surfaces, and — critically — the `vendor-metric-value` delivery carrier, whose row uniqueness re-keys from `(vendor, metric_id)` to `(vendor, metric_id, qualifier)` so a vendor metric committed under two attribution windows is representable in the delivery report. Container tokens (`viewability`, `quartile_data`, `dooh_metrics`) are barred as value-bearing aggregate `metric_id`s — leaf identities exist for that. Matches what `canonical-reporting-commitment` already allows; a qualifier parity contract test now enforces an identical closed key set across every hand-maintained copy.
+- bdfadfc: Model programmed audio and video streams, including FAST and virtual linear services, as first-class `channel` collections. Collection distributions can identify exact host properties and use a publisher-scoped `platform_channel_id`, while host `adagents.json` declarations provide collection-scoped authorization for owner-sold avails without requiring host-defined placement catalogs. Collection selectors gain a bulk-grant form (`collection_ids` omitted = all collections at that publisher domain) so hosts do not sync owner-assigned IDs; `platform_channel_id` is forbidden in bare `{type, value}` contexts because its identity is `(publisher_domain, value)`. Registry projection now materializes the collection narrowing onto authorization rows, snapshots, and change-feed events (fail-closed when a declared constraint is unparseable), collection-constrained validate queries without collection scope fail closed, and a collection selector naming an external publisher no longer satisfies the ads.txt `managerdomain` explicit-scope gate.
+- 6b4525e: Make the automatic delivery breakdowns (creative, keyword, catalog_item) optionally negotiable: including their keys in `reporting_dimensions` adds `limit`/`sort_by`/`sort_direction` control and makes the new `by_X_truncated` and applied-sort echo fields binding, so "top creatives by quartile_100" is answerable with a completeness contract. Omitting the keys preserves today's automatic behavior exactly. Implements RFC #6623.
+- 81c409b: Add conformance surface for outcome_target reverse forecasting. The new `media_buy_seller/outcome_target` scenario (required by the sales-proposal-mode specialism, gated on `media_buy.outcome_target`) grades the answer contract: `total_budget_guidance` on every returned proposal and a forecast whose points carry the goal's metric or event key, with `forecast_range_unit` `clicks`/`conversions` structuring the curves. Fixes the canonical-proposal gap the contract exposed (#6745): `core/canonical-proposal.json` gains optional `total_budget_guidance` and `forecast`, restoring parity with the legacy proposal's planning outputs so the compact `request_proposals` lifecycle can actually express the answer. The training agent implements a deterministic reverse-forecast reference model.
+- e93e3e4: Add structured reverse-forecast planning input. `criteria.outcome_target` lets a buyer state the outcome they need — a compact goal (a `forecastable-metric` delivery metric or an `event-type` conversion event) plus a desired volume, e.g. "10,000 clicks" — and ask the seller to solve for budget, answering with `total_budget_guidance` on proposals and forecasts whose points carry the goal's key in `metrics`. The goal vocabulary is shared with forecast reporting and package-level optimization goals, so every permitted goal has a defined answer and buyers carry the same metric or event name from plan to buy. Gated by the new `media_buy.outcome_target` capability declaration; sellers that do not declare it reject the field with `UNSUPPORTED_FEATURE` rather than silently ignoring it.
+- b8ab4fe: Add cursor pagination for truncated `get_media_buy_delivery` breakdowns on the bounded-enum dimensions: `device_type`, `device_platform`, `audience`, and `placement`. Previously `by_<dim>_truncated: true` was a retrieval dead end — there was no protocol-defined way to fetch the dropped rows. Requests can now set `reporting_dimensions.<dim>.cursor` (reusing the response's new `by_<dim>_pagination` field, itself the existing `pagination-response.json` shape already used by `get_products`) to page through the rest of a truncated breakdown. `geo` is deliberately excluded — at `postal_area` granularity it can reach tens of thousands of rows, closer to a bulk-export shape than per-package cursor pagination, and is deferred to the bulk-export/security work tracked in #5669/#5666. Closes #5671.
+- 4097b73: Add creative rejection conformance for the one-policy-per-error invariant. The new controller-gated `creative/policy_backed_rejections` storyboard first discovers an isolated product that declares exactly the automatic-redirect and HTTPS-only registry policies, then submits a canonical hosted display tag that deterministically violates both. Conformance requires exactly two `CREATIVE_REJECTED` entries with one `details.policy_id` each. The runner contract also publishes the reusable `array_length` assertion used to grade exact error cardinality.
+- eb9ce94: Add portable age-targeting intent, product-scoped continuous/bucket/signal execution capabilities, authoritative demographic signal predicates, and lossless exact package readback for AdCP 3.2.
+- 1f898d3: Add sub-country product coverage filters and define request-preserving behavior
+  for retained get_products facades. Correct migration guidance that converted
+  coverage and signal-option eligibility into delivery targeting, and add
+  regression coverage for native and legacy discovery.
+- 8f47ee4: Preserve Trusted Match Context targeting key-values in router-authored, provider-attributed buckets.
+  
+  **Migration for experimental TMP adopters:** provider-to-router responses continue
+  to use `signals.targeting_kvs`. Router-to-publisher responses that previously used
+  `signals.targeting_kvs: [{ "key": "category", "value": "sports" }]` must instead
+  preserve attribution as `signals_by_provider[provider_id].targeting_kvs: [{ "key":
+  "category", "value": "sports" }]` and validate that hop against
+  `context-match-response.json`. The flattened router field is removed rather than
+  accepted as an alias because it loses the provider identity required for safe
+  publisher mapping.
+  
+  This breaking change to the experimental `trusted_match.core` surface was
+  [announced in #6252](https://github.com/adcontextprotocol/adcp/issues/6252) on
+  August 6, 2026. Under the [experimental-surface notice
+  contract](https://adcontextprotocol.org/docs/reference/experimental-status), it
+  must not appear in a release before September 17, 2026.
+- 0096e30: Add `reference_assets` array to `product_card_detailed` for typed seller collateral (coverage maps, sample renders, environment photos, media kits). New schema: `core/product-card-reference-asset.json`.
+- e72ff10: Add the projection-only `products_available` outcome for valid AdCP 2.5, 3.0,
+  and 3.1 products-only brief results. The response now provides either a real
+  seller-fenced `listed_purchase` continuation or an explicitly lossy,
+  fail-closed `legacy_create` continuation without fabricating proposals, terms
+  digests, or feed versions. AdCP 2.5 continuations additionally disclose the
+  absence of a mutation replay guarantee. Document transaction-boundary
+  differences between the established and compact media-buy lifecycles, and route
+  supported MediaBuy name actions through compact control.
+- 9577ad2: Generate MCP tool discovery input schemas with plain object roots for strict
+  hosts, while retaining canonical request schemas as the call-time validation
+  authority.
+- 245d11c: Promote the released 20-value media channel taxonomy from draft documentation status to a stable normative surface by lazy consensus.
+- e75f12f: Add `property_list_exclude` to the targeting overlay: a reference to a property list whose properties must not carry the buyer's ads, for brand-safety do-not-run lists (apps and sites). Mirrors `collection_list_exclude` and reuses `property-list-ref.json`. Exclude wins on overlap with `property_list` and applies regardless of the product's `property_targeting_allowed` flag. Sellers declare support via the property/collection list entries in the `get_adcp_capabilities` targeting table.
+- 9288de4: Standardize property-list change notifications on the RFC 9421 webhook profile. Keep the undefined legacy body-level `signature` field as a required, deprecated compatibility marker through 3.x; remove it in 4.0.
+- 1760c31: Gate signal-activation governance conformance on the task-scoped `adcp.governance_enforcement` claim. The denied activation scenario now exercises an explicit paid activation, grades missing signed authorization, and verifies that rejection caused no platform-primary deployment call instead of treating a response echo as governance evidence.
+- 03d00cf: Publish the complete request-signing transport error vocabulary with normative,
+  machine-readable recovery classifications and remediation hints. Keep these
+  lowercase `WWW-Authenticate` codes separate from task error codes, and bind the
+  security profile to the new schema so SDKs no longer infer recovery from names
+  or independently transcribe prose tables.
+- 3cea56c: Add protocol-specific `anonymous_discovery` declarations for media-buy product discovery and signal discovery. The optional booleans let callers plan anonymous catalog reads without making catalog-completeness claims or weakening authentication requirements for mutations and private state.
+- f81c406: Allow buyers to reconcile an existing advertiser account's operator identity through revision-checked `sync_accounts` settings updates. Sellers advertise supported operator and operator-unit changes, return machine-readable dry-run impacts, preserve account continuity during atomic rekeying, route operator-domain handoffs through explicit approval with billing and grant revalidation, reject target-key collisions without merging, expose pending approval state through account reads, and tombstone former natural keys with an `ACCOUNT_MOVED` repair reference instead of provisioning duplicate accounts.
+- 0bb862e: Add a joined 3.2 warnings and indicators contract aligned to the compact media-buy lifecycle. Completed `buy_products`, `accept_proposal`, and `control_media_buy` operations may carry structured non-blocking warnings, mirrored by the `create_media_buy` and `update_media_buy` 3.x facades; continuing conditions appear as compact current indicators on media buys, packages, or package–creative assignments. Seven standard indicator types cover creative, audience, inventory, pacing, and budget risks or optimization opportunities that warrant buyer attention. Mixed publisher approvals use scoped outcomes. Polling through `get_media_buys` is the baseline; sellers may additionally support signed `indicators.changed` invalidations. Assignment notifications remain independent, and creative-library sellers may expose bounded reverse assignment state through `list_creatives`. No indicator IDs, sub-versions, history API, automatic action dispatcher, or separate `get_indicators` task is introduced.
+- dd6ab0b: Make Reliable Reporting a proper-name AdCP 3.2 capability with explicit version discovery and Core, Managed Delivery, and Reconciled Billing conformance stories. Strengthen it with upstream source-timezone schedules, immutable billing-purpose reporting evidence and control-total adjustments, a health-independent `reporting.ledger_changed` invalidation, checkpointed incremental ledger repair, and evidence-scoped offering reliability statistics.
+- bb58a59: Remove the deprecated top-level media-buy lifecycle `status` property from synchronous `create_media_buy` and `update_media_buy` success payloads for AdCP 3.2. Lifecycle state now uses only `media_buy_status`; top-level `status` remains reserved for the protocol task envelope. This intentionally uses a minor changeset under the ratified DR-0011 exception so the approved removal in #4906 is released as 3.2 rather than being mechanically retargeted to 4.0.
+- 3785751: Rename the experimental Trusted Match Protocol Offer `macros` field to `creative_data` before stabilization, without retaining a deprecated alias, and keep tracker URLs in the creative manifest where they belong.
+- cfc33f6: Require recovery on AdCP 3.2 producer errors while preserving legacy 3.1 decoding and adding compatibility vectors for retry classification and scheduling.
+- 0b772e7: Require every AdCP 3.2 request signature on a body-bearing request to cover `content-digest`, retain legacy digest modes only for 3.0/3.1 compatibility, migrate 3.2 request `Signature` and `Content-Digest` binary fields from the legacy Base64URL override to RFC 8941 padded Base64 while keeping webhook v1 on its explicitly routed legacy encoding throughout 3.x, add versioned body-substitution conformance coverage, and reject non-canonical release versions with leading zeros or malformed prerelease suffixes across AdCP version-negotiation surfaces.
+  
+  The external signed-request storyboard remains explicitly 3.1-compatible until profile-aware vector selection lands; repository CI provides the 3.2 body-integrity coverage in the interim.
+- 6947106: Require idempotency key ledgers to outlive created resources for the declared
+  replay window, and add the terminal `COMMITTED_RESOURCE_PURGED` outcome for a
+  write that commits before its resource is independently deleted. Ambiguous
+  handler or downstream timeouts now retain a fail-closed reconciliation claim
+  instead of freeing the key for duplicate execution, with sandbox purge/replay
+  coverage in the compliance controller.
+- 2639ace: Add optional AdCP 3.x migration fields that make `get_creative_features`
+  retry-safe and reconcilable without breaking existing implementations. Clients
+  SHOULD send `idempotency_key`; providers that advertise replay support MUST
+  honor supplied keys for at least 24 hours. Providers SHOULD emit a stable
+  `evaluation_id`, which remains stable across replays and async completion when
+  present. Both fields are planned to become required in AdCP 4.0. Add
+  deterministic conformance coverage for the recommended keyed and identified
+  profile, including synchronous, asynchronous, conflicting, and concurrent
+  retries plus terminal pricing and consumption reconciliation.
+- 3bdadda: Add contingent revenue-share pricing for affiliate and other outcome-priced media.
+  
+  The new `revenue_share` pricing option applies a decimal `commission_rate` to settled `commissionable_value`. Product discovery can filter fixed, auction, and contingent pricing independently; delivery and `report_usage` expose the commission basis for formula-checked reconciliation.
+  
+  Revenue-share packages bind billing to an event source and measurement window, do not use `bid_price`, and treat package budget as the maximum payable commission.
+- 68d3b93: Define trailing DNS root-dot stripping and empty-label rejection for request-signing canonicalization.
+- 0b4a2e2: Add package-scoped weighted, even, sequential, and random creative rotation with package-local groups and validated sequence positions.
+- 1607036: Scope optional media-buy compliance paths to the capabilities sellers actually advertise. Creative-library storyboards now require an explicit library claim, including compound gates where another applicability predicate already exists. Measurement-term acceptance is split from the universal rejection contract behind a new optional capability, and product refinement requires the `refine` buying mode. Sellers outside these optional surfaces will see the affected scenarios move from runnable badge/completeness denominators to not applicable.
+- 0bb862e: Add the compact AdCP 3.2 product and MediaBuy lifecycle: `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy`. The task-specific contracts separate offer discovery, immutable draft proposal creation, explicit finalization with inventory reservation, terminal decline, direct purchase, proposal acceptance, and operational delivery control while retaining `get_products`, `create_media_buy`, and `update_media_buy` as compatibility facades throughout 3.x. New purchase and control inputs never accept inline creatives; commercial amendments and negotiated cancellations fork an accepted proposal, while operational controls remain revision-checked. Compact purchase snapshots preserve resolved package flight, billing-measurement, performance, and reporting terms. A shared opportunity reference connects planning-cycle context through purchase without duplicating proposal version identity. Canonical inputs use stable brand keys, catalog references, and compact account and optimization types so brand assets, legacy named formats, creative provenance, and compliance payloads do not transitively enter the clean tools. Publish machine-readable SDK fallback grades and task-result schema resolution, plus MCP production, media-buy, and creative catalogs that remove presentation annotations without changing validation semantics. The role catalogs select active 3.2 seller-hosted operations and publish client-side input-only prompt views while retaining output and terminal task-result schemas in their parent validation catalogs.
+  
+  Preserve the AdCP 3.1 inventory-reservation contract in the compact lifecycle: requested and revised proposals remain immutable drafts until `refine_proposals` finalizes them, and a finalized `committed` snapshot guarantees inventory is held until `expires_at`. Add `countries` and `property_list` product-attribute filters, and publish compact task-specific async envelopes for consultative proposal planning and re-underwriting.
+  Let compact BrandKeys qualify commercial advertiser identity with canonical `countries[]` without turning identity into delivery targeting. Extend buyer-declared natural accounts with an operator-owned unit (`id` plus mutable display `name`), optional immutable account currency, and sandbox identity. These fields round-trip through `sync_accounts` and `list_accounts`; the operator unit remains explicitly distinct from the seller/storefront `account_id`. Require sellers implementing 3.2 advertiser-account provisioning to advertise fixed versus per-media-buy account currency support while keeping the additive field optional on the shared 3.x response schema for 3.1 compatibility, and define only the BrandKey projection of a compatibility BrandRef as account identity.
+- a1672f9: Add registry-backed seller acceptance-policy discovery with reusable version-pinned platform profiles, proposal-bound media-buy change terms, structured seller disposition evidence on failed governance outcomes, and seller acceptance criteria for buyer-selected governance agents. Add typed change constraints and status scope, project accepted terms into current `available_actions` through `change_term_id`, and deprecate the released 3.1 `terms_ref` action-link overload for removal in 4.0 while retaining explicit 3.1 compatibility. Add compliance storyboards for product promises, proposal materialization, accepted-term persistence, service-mode routing, state transitions, latent rights, and cross-version action parsing. Harden all four surfaces against stale or ambiguous policy, authorization confusion, untrusted audit evidence, unsafe remote resolution, and rejected-binding persistence.
+- ec02269: Settle TMP router merge behavior for 3.2: Context Match duplicate offers use provider priority with arrival-order tie-breaking, while Identity Match uses an explicit responder-scoped union that preserves silent-ignore privacy semantics.
+- a26d30a: Add signed-response verifier error codes and response-signing verifier checklist.
+  
+  - Add `SIGNED_RESPONSE_ENVELOPE_EXPIRED`, `SIGNED_RESPONSE_REQUEST_HASH_MISMATCH`, and `SIGNED_RESPONSE_TENANT_MISMATCH` to `enums/error-code.json` with normative descriptions and recovery classifications.
+  - Add a 10-step verifier checklist for designated-task response signing in `docs/building/by-layer/L1/security.mdx`, formalizing the MUST-level verification steps for `verify_brand_claim` / `verify_brand_claims` signed responses — expiry, request-hash binding, tenant binding, and payload consistency.
+  
+  Refs #6147
+- be68a66: Add `sort_direction` (asc/desc, default desc) to the six sortable delivery breakdown dimensions and a per-breakdown applied-sort echo (`by_X_sorted_by` / `by_X_sort_direction`, MUST whenever the breakdown is present) so the existing silent fallback-to-spend becomes visible to buyers. Ascending sort enables bottom-N optimization queries (worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.
+- 60f368f: Use stable structural schema titles for generated type names, consistently annotate deprecated fields with `deprecated: true`, and deprecate exact `format_ids` fields in AdCP 3.2 ahead of their removal in AdCP 4.0.
+- 5c3ba24: Define the versioned AdCP A2A 1.0 profile extension, including structured { skill, input } invocation, completed-Task mapping for submitted AdCP work, get_task_status polling, and binding vectors.
+- 09764b1: Define deterministic PackageRequest format-selector normalization, reject
+  conflicting canonical and legacy projections, require fixed image dimensions to
+  travel together, and add compliance coverage for the 3.x compatibility paths.
+- fd610b5: Add deterministic proposal-refinement constraints (total budget, CPM ceiling, impression floor, flight window), product changes, alternatives, outcome reasons with hold and batch-abort codes, negotiation lineage via required `parent_proposal_id`, buyer-verifiable `terms_digest` semantics, and capability discovery; rename the unreleased revision `instructions` field to `ask`.
+- 33edf91: Add an optional `account` field to `sync_accounts` response rows, echoed for settings-update-mode entries. Previously the response schema required `brand` + `operator` on every row, which made settings-update mode unimplementable for account-id-namespace sellers with no buyer-declared natural key, and made `action: "failed"` rows for such accounts unrepresentable entirely. The new discriminator mirrors the pattern `sync_governance` already uses. Closes #7517.
+- 146f106: Unify targeting across `list_products`, `request_proposals`, `refine_proposals`, the `get_products` compatibility facade, configured product selection, and media-buy execution.
+  
+  Buyers can now provide concrete `targeting_overlay` values during discovery and require product-scoped future targeting through `required_overlay_support`. Products disclose selectable `overlay_support`, sparse buyer-reviewable `targeting_resolution` changes, and opaque buyable `product_id` values: non-custom wholesale IDs remain stable for the same logical offer within seller and cache scope, while custom IDs remain lineage-bound. Product pricing and forecasts are bound to concrete effective targeting; future support alone guarantees selectability, not value-specific availability or forecasting. Buyers should prefer structured fields over equivalent brief prose, while sellers continue to apply explicit hard brief requirements. A material structured interpretation is confirmed at response-root `targeting_resolution.brief_targeting` for `request_proposals` and `get_products`, or on the affected `refine_proposals.results[]` entry for refinement instructions.
+  
+  Move purchased placement selection into `targeting_overlay` alongside property and collection selection, while preserving creative placement references as routing-only. Fixed placement sets may be restated exactly across discovery, create, and update without advertising selectable support. Add typed device-platform exclusion with independently declared product support, and keep arbitrary buyer-supplied ad-server key/value targeting outside the protocol trust boundary. Put discovery and package resolution behind lifecycle-specific schemas, move demographic package execution readback to `targeting_resolution.demographics` before its 3.2 release, deprecate targeting-like product filters, add migration guidance and conformance coverage, and retain exact-only booked package execution.
+  
+  Clarify that deterministic product filters exclude non-matching products in `brief`, `wholesale`, and `refine` modes, and add seeded behavioral conformance coverage that detects full and partial filter no-ops.
+  
+  Update the buyer skill, Addie knowledge, and buyer learning modules to teach structured-first request decomposition and targeting-resolution review. Live training-agent support follows the generated 3.2 beta SDKs under issue #6199.
+- db1ee5f: Add request-only targeting and product-purchase input schemas for established
+  and compact create/update surfaces. Each targeting dimension now distinguishes
+  omission (inherit or preserve), a non-null replacement, and `null` (clear),
+  while discovery, capability, accepted-commercial-term, and readback schemas
+  remain strict and non-null.
+- 8448085: Restructure `Format.assets[]` oneOf from a flat 16-variant union to a two-tier discriminated union. Outer discriminator on `item_type` ("individual" | "repeatable_group"); inner discriminator on `asset_type` for the 15 individual-asset variants. Adds `discriminator.propertyName` hints at both tiers and direct `required` constraints on each variant so codegen tools (openapi-generator, quicktype) produce proper discriminated-union types. Wire-payload acceptance set is unchanged.
+- 636d461: Add typed proposal negotiation compliance storyboard.
+  
+  - Add `typed_proposal_negotiation.yaml` exercising the AdCP 3.2 typed
+    negotiation lifecycle through `refine_proposals`: capability-gated
+    constraint satisfaction (total_budget, product_changes, alternatives),
+    partial invariant, unsupported dimension rejection, finalize atomicity,
+    idempotent replay, immutable lineage, digest-verified acceptance,
+    amendment, cancellation, double-finalize rejection, and multi-source batch.
+  - Register the scenario in the media-buy seller `index.yaml`.
+  
+  Refs #6559
+- 0b5a576: Extract `enums/delivery-status.json` and `$ref` it from `get-media-buys-response.json`, `get-media-buy-delivery-response.json`, and `media-buy-delivery-webhook-result.json`. These three schemas previously inlined `delivery_status` independently: the `get_media_buys` snapshot path had 6 values (including `not_delivering`), while the delivery report and webhook paths only had 5. A buyer polling `get_media_buy_delivery` or receiving a delivery webhook had no way to observe `not_delivering` even though that is precisely the "zero delivery during flight" signal those paths exist to surface. All three now resolve to the same 6-value enum.
+  
+  Fixes #6103.
+- acc022a: Publish schema-validated language-neutral universal-macro translation vectors for ratified behavior, including control-character rejection, frozen-consent diagnostics, and bare-query normalization.
+- be8acd6: Add country- and value-aware ISO subdivision support declarations for `geo_regions` and `geo_regions_exclude` across seller capabilities, targeting-aware product discovery, and product-scoped future overlay support. Define exact configured discovery/refinement as region preflight and document independent include/exclude matching, atomic execution, and deterministic error dispositions.
+- 56c03e9: Add VAST 4.3 to the VAST version enum. IAB Tech Lab released VAST 4.3 in December 2022, but `vast-version.json` stopped at 4.2, so a buyer trafficking a 4.3 tag had to declare a version the document does not carry. `vast_version` mirrors the `version` attribute on a VAST document's root element, and the enum already carries 2.0 and 3.0, so the roster is the published-version list rather than a curated feature set. The two schemas that restated the list inline (`core/requirements/vast-asset-requirements.json` and `formats/canonical/video_vast.json`) now `$ref` the shared enum, per the Enum Consolidation rule in `docs/spec-guidelines.md`. VAST 4.4 is deliberately excluded: its XSD is annotated "DRAFT for working group discussion" and is not a published specification.
+- 6cf4e18: Make first-party measurement legible on the vendor-metric surface (#7150). Add the closed `vendor_relationship` enum (`first_party` / `affiliated` / `third_party`, defined on structural ownership/control facts, a relationship disposition rather than a trust ranking) to `reporting_capabilities.vendor_metrics[]` so a seller declares its relationship to the measurement vendor — required whenever the vendor is the seller itself or under common ownership with it, with absence meaning undeclared rather than third-party — and MAY echo it on `vendor_metric_values[]` rows; methodology stays at the vendor catalog's `methodology_url` / `methodology_version` rather than as free text on the row. Add `measurable_plays` and `measurable_play_seconds` coverage denominators to `vendor-metric-value` and `forecast-vendor-metric-value` for play-based channels (DOOH, cinema, place-based) where `impressions` is itself modelled. Add `methodology_version` to vendor-scope `committed_metrics` entries (request and response) so the version pin the measurement catalog already promises exists on the contract. Document that a seller MAY be its own measurement vendor when it publishes the metric catalog like any other vendor and declares `first_party`.
+- 5997d58: signals + media-buy: enforce cache-scope isolation for wholesale-feed conditional fetch
+  
+  The schemas already state the wholesale-feed token is keyed by `(cache_scope, wholesale_feed_version)`, but nothing exercised that a token minted under one `cache_scope` cannot short-circuit (`unchanged: true`) a request the agent resolves to another. The reference training agent advertises `wholesale_feed_versioning.cache_scope_account: true` yet keys conditional fetch on a scope-independent token, so it would silently answer `unchanged` across scopes — exactly the gap reported in #5739.
+  
+  - **Schemas** — `signals/get-signals-response.json` and `media-buy/get-products-response.json`: add a normative cross-scope MUST-NOT to the `unchanged` description, scoped to the conditional-fetch comparator (it MUST key on `(cache_scope, wholesale_feed_version)`, not the token alone).
+  - **Storyboards** — new universal `wholesale-feed-signals-scope-isolation` and `wholesale-feed-products-scope-isolation`, gated on `wholesale_feed_versioning.cache_scope_account: true`; agents without per-account overlays grade `not_applicable`.
+  - **Reference agent** — scope-key the wholesale feed/pricing tokens so the comparator rejects cross-scope tokens (and the existing same-scope `unchanged` path still matches).
+  
+  Closes #5739.
+- 81cf467: Withdraw the incorrectly specified `publisher_domain` filter from `get_products` before the next minor release. The filter was not patch-eligible for the stable 3.1.x line, and its implementation incorrectly accepted the plural `publisher_domains[]` form that product schemas reject.
+
+### Patch Changes
+
+- 9377c59: compliance: thread the external creative ID in the `media_buy_seller/account_change_feed` storyboard through a `context_outputs` generator instead of a `$generate:uuid_v4#alias`. Runner aliases are phase-scoped, so the drain, repair, update, and rebootstrap phases were comparing the feed against a freshly generated UUID rather than the creative the connected platform seeded.
+- c4040c3: Mark the AdCP 3.2 account change feed experimental (feature id `account.change_feed`) while RFC #6810 remains open. `list_account_changes` request/response, the `account.change_recorded` webhook payload, and the `account.change_feed` capability block now carry `x-status: experimental`; the `account.change_recorded` notification type and `CURSOR_EXPIRED` error code descriptions name the feature id. `docs/reference/experimental-status` registers `account.change_feed`, and the task page replaces the "not normative until ratified" warning with the standard experimental callout: sellers implementing the feed MUST list `account.change_feed` in `experimental_features`, and the surface may change in 3.x minors with at least 6 weeks' notice. Annotation and documentation only; no wire shape changes.
+- 12920e8: Align the 3.2 reference docs with the published 3.2.0-rc.7 checkpoint and @adcp/sdk@14.0.0-rc.49, which embeds it exactly. Add the RC.4, RC.6, and RC.7 rows, record RC.5 as withheld, and move the public training agent and SDK guidance to the `3.2-rc.7` wire pin.
+- 469cda7: Compliance: `brand_rights/governance_denied` now accepts either response to an `acquire_rights` request that arrives without `governance_context`. The brand agent may use the structured `AcquireRightsRejected` arm or reject with `PERMISSION_DENIED`, which `specification.mdx` (Seller enforcement) requires for a request without a governance token. Either way, the existing `update_rights` probe must still prove that no grant was created. Before this change, only the rejection arm passed, so a seller following the spec sentence failed. This is an interim change: the working group still has to choose one placement (#7790). No schema or normative change.
+- 1c3b5b7: docs: add a seller walkthrough for buyer-declared accounts (`require_operator_auth: false`) covering agent identification, where the account operator comes from, the `sync_accounts` → `get_products` flow, and which error applies when. Adds an "Operator" glossary entry separating the account operator from the agent's operator, fixes the Python request-verifier example, and lists A2A 0.3 and 1.0 method-name pairs for `protocol_methods_*`. No normative change.
+- 3af5ca9: compliance: make every buyer-storyboard fixture product valid as both a legacy and a canonical Product. The fixture publisher serves the same products from `get_products` and `list_products`, but the `buyer_discovery`, `buyer_activation`, `buyer_negotiation`, and `buyer_recovery` fixtures failed both schemas: missing `name`, `description`, `publisher_properties`, `reporting_capabilities`, and formats, a CTV price under a non-schema `rate` key instead of `fixed_price`, and a per-product `audience_activation` the canonical Product does not define. `buyer_activation` now declares the `format_options` its creative step grades against. The fixture-publisher contract states the rule, and a new test enforces it.
+- 3a81e7f: compliance(media-buy): the `canonical_formats` direct canonical selector carries every param the product constrains.
+  
+  `create_media_buy_with_direct_canonical_selector` sent `{format_kind: "image", params: {width: 300, height: 250}}` against `canonical_formats_mrec_display`, whose image declaration also constrains `max_file_size_kb: 200`. The runner's `canonical_format_satisfaction` check correctly classified the omitted constrained param as `directionality` (`local_satisfied: false`), so the step failed for every seller even when the create was accepted. The selector now includes `max_file_size_kb: 200`, and the check description says "selector" rather than "dimensions" since the satisfying param is not a spatial one. No schema or wire change; the packaged `dist/compliance/` cache is generated from this source.
+- 114f168: docs(media-buy): canonical products carry no `is_custom`. The `list_products`, `request_proposals`, product-discovery, and targeting-aware discovery migration pages now say that on the compact lifecycle `expires_at` marks a request-specific configured offer; `is_custom` remains a legacy `get_products` Product member and its documentation there is unchanged.
+- 3965bef: Complete the 3.1 to 3.2 upgrade guide. This is a documentation-only change with no schema or normative-rule changes.
+  
+  - `versioning.mdx`: reconcile the 3.x stability guarantees with 3.2. A new "3.2 exceptions to 3.x compatibility" section lists every exception: the ratified `status` removal, the request-signing profile correction, eight tightened request rules, and three producer-side tightenings. It also adds non-normative guidance for serving an older negotiated release; #7718 tracks the normative gap.
+  - `3-1-to-3-2.mdx`: add the following sections:
+    - compatibility exceptions
+    - mixed-version request signing (the endpoint, not the request pin, selects the signing profile)
+    - a buyer and seller version-negotiation matrix
+    - MediaBuy-level frequency caps, Reliable Reporting, authenticated principals, and the new sales specialisms
+    - an SDK version map with links to each SDK's upgrade guide
+    - day-one checklists by role
+    - a verified wire-change table from 3.1.24 to 3.2
+  - Migration index: make it a hub that leads with 3.1 to 3.2.
+  - L2 authentication and security-model pages: align with the canonical L1 signing timeline. Signing is optional and capability-gated in 3.x, `content-digest`-bound when used in 3.2, and required for spend-committing operations in 4.0. This replaces an incorrect "required in 3.1+ / Bearer prohibited" claim.
+  - Correct stale facts:
+    - Python `adcp==8.0.0b18` embeds RC.7 (also in `3-2-beta.mdx` and `intro.mdx`).
+    - The missing 3.1.24 row.
+    - The RC.3 tarball reference.
+    - The unmerged `cache_namespace` claim (#7446).
+    - Broken `schemas-and-sdks` anchors.
+- 98cfb1e: Refresh remaining RC.7 release guidance, document the deprecated media-buy `list_creative_formats.account` behavior, and correct Reliable Reporting checkpoint links and timing.
+- 44b9308: fix(compliance): scope `creative/get_creative_features_idempotency` to agents that expose `get_creative_features`.
+  
+  The scenario's `required_tools` listed `get_adcp_capabilities`, `get_task_status`, and `comply_test_controller` alongside `get_creative_features`. Because `required_tools` is an any-of applicability gate, the scenario was selected for every creative agent and failed at capability discovery on agents that do not evaluate creative features. It now lists only `get_creative_features`. Assertions are unchanged.
+- d09b97d: media-buy: report `get_media_buy_delivery` dates on the seller's reporting timezone. This resolves a contradiction introduced during 3.2, before GA (#7736). One rule said `reporting_period` must be exact UTC day boundaries. The other said buyers must align daily and monthly reports to `reporting_capabilities.timezone`. A seller with a non-UTC product could not satisfy both. Neither rule shipped in a stable release.
+  
+  - `start_date`, `end_date`, and buy-level and package-level `daily_breakdown[].date` are calendar dates in the reporting timezone, which is the in-scope products' `reporting_capabilities.timezone`. They are UTC days only when that timezone is `UTC`.
+  - `reporting_period.start` and `end` stay `date-time` instants. For a dated request they are the instants at which the requested dates begin in the reporting timezone, for example `2026-04-15T00:00:00-04:00`. Daily, weekly, and monthly `windows[]` use the same boundaries. The deterministic filter contract still requires a start-inclusive, end-exclusive interval, now measured in reporting-timezone days.
+  - Adds optional `reporting_period.timezone` to the delivery response, and to the delivery webhook result for shape alignment. It echoes the reporting timezone applied, and sellers SHOULD return it on reads without `reporting_revision_id`. Exact-revision reads keep the revision period's `source_timezone`. This is additive and non-breaking.
+  - A dated request whose in-scope packages span more than one reporting timezone MUST be rejected with `VALIDATION_ERROR`. The buyer then narrows `media_buy_ids` or omits both dates. There is no package filter, so a single buy that mixes zones across packages can only be read without dates. Lifetime requests are unaffected.
+  - Removes the legacy "All periods use UTC timezone" wording and updates the `reporting_capabilities.timezone` description so the two rules agree. The `simulate_delivery` `delivery_date` is now a reporting-timezone calendar date. The webhook examples in the optimization and reporting guide now use half-open boundaries.
+  - compliance: the `media_buy_seller/read_filter_behavior` fixture product declares a UTC reporting timezone. The storyboard checks that any echoed `reporting_period.timezone` is `UTC` and matches boundaries by pattern, so equivalent UTC spellings pass (`Z`, `+00:00`, optional fractional zeros). The runner compares strings, so it cannot check local-midnight offsets for arbitrary IANA zones.
+- ae223c7: Compliance: the buyer storyboards `buyer_discovery`, `buyer_activation`, `buyer_recovery`, `buyer_monitoring` and `orchestrator_multi_agent` (0.1.1) now advertise `lifecycle_tools: ["list_products"]` on their fixture publisher. They advertised `buy_products` and `control_media_buy` (and, in `buyer_discovery`, `request_proposals`, `accept_proposal` and `supports_proposals: true`) while grading the `get_products` / `create_media_buy` facades, and the fixture-publisher contract defines no handler for those tools. A buyer that gated correctly on `lifecycle_tools` was sent to a tool the publisher cannot answer; a buyer that ignored the advertisement passed. The buyer fixture-publisher contract (0.2.0) adds `authoring_rules.lifecycle_tools_constraint`: a fixture may only advertise lifecycle tools listed in `permitted_values`, and every permitted value must have a `tool_handlers` entry. `build:compliance` enforces both. `buyer_negotiation` has the same drift but its steps invoke the proposal tools, so it needs contract handlers and is tracked separately. Preview-status test fixtures and build tooling only; no schema or normative change.
+- 71e1978: Compliance: `media_buy_seller/governance_denied` and `media_buy_seller/governance_denied_recovery` now exercise the seller's own execution check instead of sending `create_media_buy` without `governance_context`. A request without a token must be rejected with `PERMISSION_DENIED`, so the old scenarios failed a correct seller. Both now obtain an approved intent for a $25K buy under a $100K plan, amend the plan to $10K, and expect the seller's purchase execution check to be denied, with the seller returning `GOVERNANCE_DENIED`. The recovery scenario then gets a fresh intent for a corrected $8K buy and expects the seller to accept it. `governance_denied` no longer buys on the `sandbox: true` account while governance is registered on the non-sandbox account. It now seeds fixed-price fixtures and names `seller_agent_url` in its context. `governance_denied_recovery` is gated on `adcp.governance_enforcement` (`signed_context` + `online_execution_check` for `create_media_buy`) instead of the legacy `media_buy.governance_aware` boolean, and is listed with the online-execution proofs. No schema or normative change.
+- d796ed5: Fix the `reporting_core` storyboard's non-empty exact-read phase so a conformant seller can complete it. The phase now re-prepares the same sandbox account as the obligation lifecycle (`reporting_core_lab`) instead of a second `reporting_core_nonempty_lab` account. Storyboard runners address controller and `get_media_buy_delivery` calls with the test-kit account, so the second account ID named a ledger the controller never wrote to. The two rejection steps (`exact_nonempty_reject_mixed_selector`, `exact_nonempty_reject_rc0`) now declare `expect_error: true`, matching every other storyboard that grades an `error_code`. The fixed RFC 8785/JCS vector and all of its assertions are unchanged.
+- b5fd864: compliance: carry cross-phase generated IDs through `context_outputs` generators instead of `$generate:uuid_v4#alias` tokens. The storyboard runner scopes `$generate` aliases to a single phase, so a later phase that reused an alias minted a different UUID. In `media_buy_seller/governance_conditions`, `governance_spend_authority`, and the `governance_approved` scenarios for brand rights, creative transformers, and signal marketplace, the governed mutation's `idempotency_key` differed from the one in the `check_governance` payload that authorized it, so the executed request no longer matched the authorized payload. `media_buy_seller/account_change_feed` gets the same fix (as in #7716). A new build-time lint (`scripts/lint-storyboard-generate-phase-scope.cjs`) fails when a `$generate` alias appears in more than one phase of a storyboard.
+- 92878b8: docs: flip the AdCP 3.2 documentation to general availability. 3.2 ships as release `3.2.1` (tag `v3.2.1`, wire pin `"3.2"`); `3.2.0` was never released. Rewrites the 3.2 release notes and What's new for GA (including the seller-optimized budget core contract and package-control capabilities, delivery dates on the seller's reporting timezone, the experimental account change feed, the `views` goal correction, and the 3.2 request-signing vectors), converts `reference/3-2-beta` into the 3.2 prerelease history (same URL) with an RC.7-to-3.2.1 change list, moves the 3.1 to 3.2 migration guide, versions, versioning, roadmap, intro, FAQ, SDK guidance, and task pages off release-candidate framing and onto `@adcp/sdk@14.0.0` / `adcp==8.0.0`, updates the docs banner, and describes the post-GA release topology in `RELEASING.md` and the agent playbook. Documentation only; no schema or normative changes.
+- d421adf: compliance: the multi-agent governance storyboards (`media_buy_seller/governance_approved`, `governance_conditions`, `governance_denied`, `governance_denied_recovery`, and the brand-rights, signal-marketplace, and creative-transformers `governance_approved` storyboards) now use the buyer brand `hosted-grader.adcontextprotocol.org` instead of `acmeoutdoor.example`, and a new `test-kits/hosted-grader.yaml` test kit declares it. The authored intent-check `caller` is now `https://hosted-grader.adcontextprotocol.org/buyer` instead of `https://pinnacle-agency.example`.
+  
+  A `.example` brand has no resolvable `brand.json`. A seller following the signed governance context checklist therefore could not confirm the token issuer against the buyer's `brand.json` (step 13) or discover the governance keys. The new AgenticAdvertising.org-controlled domain serves a `brand.json` that lists the sandbox governance agent with a governance-only `jwks_uri`; that deploys with the hosted-grading server change.
+  
+  The fixed `caller` is the buyer agent that hosted grading authenticates as on the sandbox governance agent. A seller maps the credential it gives hosted grading to that buyer agent and brand, so the seller's authenticated caller matches the token `caller`.
+  
+  Steps, validations, and grading are unchanged. No normative change. Refs #7758.
+- 93d22f5: compliance(media-buy): `delivery_reporting`, `advanced_delivery_reporting`, `revenue_share_pricing`, and `metric_container_subsumption` (1.0.1) seed `non_guaranteed` fixture products, so sellers that declare only `sales-non-guaranteed` no longer fail `create_media_buy` with `DELIVERY_MODE_NOT_SUPPORTED`. Follow-up to #7754 / #7756 (same fix as #5703 and #5731). Pricing stays `fixed_price` (or contingent, for `revenue_share_pricing`) because the create steps send no bid. `revenue_share_pricing`'s `is_guarantee_basis` measurement window is not conditioned on `delivery_type`. `metric_container_subsumption` keeps its deterministic container-vs-leaf disambiguation by swapping the two products' delivery types (and the discovery filter) instead of gating. Test fixtures only.
+- 6fd64c4: compliance(media-buy): `canonical_formats` (1.1.1), `billing_finality_delivery`, `measurement_accountability`, and `vendor_metric_accountability` (1.0.1) seed `non_guaranteed` fixture products, so sellers that declare only `sales-non-guaranteed` no longer fail `create_media_buy` with `DELIVERY_MODE_NOT_SUPPORTED`. This is the same fix as #5703 and #5731. Pricing stays `fixed_price` because the create steps send no bid. `is_guarantee_basis` is not conditioned on `delivery_type`. `measurement_accountability`'s fixture now declares `completed_views` so it matches its own discovery filter. Test fixtures only.
+- 1e522b3: Correct the `views` entry in the optimization goal `metric` description. It said `views` meant viewable impressions, which contradicted the delivery-metrics definition of `views` (content views counted toward the billable view threshold, the quantity CPV bills on) and duplicated the dedicated `viewable_rate` goal. The description now matches delivery-metrics and points viewability goals at `viewable_rate`. No enum, type or validation change.
+- 17aeaa5: Make `criteria.outcome_target` inert on `list_products` for every seller. `list_products` returns no proposals, so the field has no answer there; it does not filter or rank products and MUST NOT cause a rejection beyond schema validation, whether or not the seller declares `media_buy.outcome_target`. Before this change, the rule that non-declaring sellers reject the field with `UNSUPPORTED_FEATURE` applied to `list_products` too, while declaring sellers gave the same request a normal product list. The `UNSUPPORTED_FEATURE` rule now applies to `request_proposals` and proposal refinement, where declaring sellers answer. Buyers can reuse one `criteria` object across both tasks.
+- ea768e3: compliance: fix the storyboard-level capability gate in `media_buy_seller/refine_frequency_cap_negotiation`. It declared `requires_capability: { all: [...] }`, which is not a valid gate shape (`requires_capability` is a single predicate with `path`), so runners crashed before executing any step. The predicates now use `requires_all_capabilities`, and the refinement predicate requires `supported_dimensions` to contain `criteria` and `product_changes` (the dimensions the storyboard exercises) instead of mere presence, since an empty list authoritatively means ask-only refinement.
+- 8fbdda7: compliance: add 27 AdCP 3.2 request-signing vectors under `test-vectors/request-signing/profile-3.2/`: 10 positives and 17 negatives. They are content-digest-covered versions of the root positive vectors and of the checklist step 2–12 negatives, and each keeps the number and slug of the root vector it mirrors. Before this, 36 of the 40 root vectors signed without `content-digest`, so a verifier advertising `covers_content_digest: "required"` (the only posture a 3.2 signing peer may advertise) could grade almost none of the checklist (adcp#7733). Existing vectors are unchanged. The new vectors come from the committed `scripts/generate-request-signing-profile-3.2-vectors.mjs` and are independently verified in `tests/request-signing-profile-3.2-vectors.test.cjs`. The README now also tells harnesses to reset verifier state between vectors, and the signed-requests test-kit comments note that the stateful contracts cover the 3.2 counterparts.
+- 7fa4829: media-buy: gate seller-optimized package controls behind their own capabilities (pre-GA narrowing approved as a freeze exception).
+  
+  `media_buy.features.seller_optimized_budget` now covers only the core shared-budget contract: one hard `total_budget`, seller allocation across packages against `budget_allocation.optimization_goals`, media-buy-level pacing, and allocation echo on read surfaces. Package controls inside a seller-optimized buy move to three new optional booleans:
+  
+  - `seller_optimized_package_budgets` for package `budget` hard caps (and proposal `max_spend_percentage`)
+  - `seller_optimized_min_spend_targets` for package `min_spend_target` (and proposal `min_spend_target_percentage`), including over-subscription validation
+  - `seller_optimized_package_pacing` for package `pacing` (and proposal allocation `pacing`)
+  
+  Each is meaningful only with `seller_optimized_budget: true`. The `get_adcp_capabilities` response schema rejects a seller declaring one without the parent, while buyer `required_features` filters (legacy and canonical) may request one alone. A seller that declares the parent without a given sub-capability MUST reject a seller-optimized request carrying that package control with `UNSUPPORTED_FEATURE` before any over-subscription validation or provider mutation, and MUST NOT silently drop or coerce it. Over-subscription `INVALID_REQUEST` applies only to declared controls: package minimums summing above `total_budget` require `seller_optimized_min_spend_targets`, and a `min_spend_target` above its package `budget` requires both that and `seller_optimized_package_budgets`. A core-only seller that receives an over-subscribed `min_spend_target` returns `UNSUPPORTED_FEATURE`. The field descriptions on `create_media_buy`, `update_media_buy`, `buy_products`, `control_media_buy`, and proposal allocations now name their gating capability, following the pattern `daily_budget_cap` already uses.
+  
+  Core media-buy pacing: a seller declaring `seller_optimized_budget` MUST accept omitted media-buy `pacing` (which defaults to `even` when `total_budget` is present) and `pacing: "even"` on seller-optimized buys. It MAY reject `asap` or `front_loaded` with `UNSUPPORTED_FEATURE` (`error.field` set to `pacing`) before any provider mutation, and MUST NOT silently coerce them to `even`. This covers `create_media_buy`, `update_media_buy`, `buy_products`, and `control_media_buy`. Fixed-allocation pacing semantics are unchanged.
+  
+  Buyer guidance: omitting `budget_allocation` still means fixed allocation. Buyer agents SHOULD now send it explicitly (`{mode: "fixed"}` or `seller_optimized`). When the principal's instruction does not determine whether the budget is one shared pool or split per package, the buyer agent SHOULD ask the principal rather than guess.
+  
+  This lets a shared-budget platform that supports only the core contract declare `seller_optimized_budget` honestly. Pre-GA 3.2 sellers that declared `seller_optimized_budget: true` and support package caps, minimum-spend targets, or package pacing must also declare the matching sub-capabilities. Otherwise the v1.1.0 storyboard runs its absent-capability negative phases against them and expects `UNSUPPORTED_FEATURE`. Package pacing equal to the media-buy pacing adds no subordinate constraint, so a core-only seller accepts it without the sub-capability.
+  
+  Compliance: `media_buy_seller/seller_optimized_budget` (v1.1.0) now runs its core phases without package caps, minimum-spend targets, or package pacing. Each package control gets a positive phase gated on its sub-capability, plus explicit-false and absent negative phases that require `UNSUPPORTED_FEATURE`. The negative requests are deliberately over-subscribed, which proves the capability rejection comes first. The aggregate over-subscription check is gated on `seller_optimized_min_spend_targets`. The new `media_buy_seller/seller_optimized_min_spend_target_exceeds_package_cap` scenario grades a minimum above its own package cap and requires the parent, package budgets, and minimum-spend targets. The new `media_buy_seller/seller_optimized_proposal_package_pacing` scenario grades proposal-derived package pacing and requires the parent, package pacing, and `supports_proposals`.
+- e09a8ad: Release tooling: 3.2 GA ships as `3.2.1` over the permanently withdrawn `3.2.0` (the reverted 2026-06-30 accidental cut whose artifacts remain on the CDN). A reviewed `.changeset/withdrawn-release.json` marker makes the pre-exit Version Packages cut produce `3.2.1`, and `npm run version` now refuses to generate any withdrawn/unpublished version. Release discovery keeps `3.2.0` and `3.2.0-rc.5` unpublished consistently across generated schemas, the server, and the CDN worker, and prerelease `superseded_by` now points at the first selectable stable release on the line (so the 3.2 candidates stop naming `3.2.0`). The wire pin stays `"3.2"`.
+- f347194: Mark 3.1.24 as the latest stable 3.1 patch in the versions reference, and add its row to the 3.1.x patch history.
+- 10c9ac7: Docs: lead the 3.2 release notes and "What's new in 3.2" with the release's five themes: platform power (shared budgets, cost controls, outcome planning, and execution prerequisites), Reliable Reporting, data collaboration including clean rooms, the compact lifecycle, and trust you can check.
+- 30f10f1: Add audience dependency-impairment conformance coverage and clarify `list_accounts` as the recommended cold-start recovery read for buyer-declared accounts.
+- c7209a7: Add capability-gated compliance storyboards for seller-fixed, buyer-selected,
+  and seller-assigned account timezones; account-based and feature-fixed daily
+  budget-cap boundaries; buyer cap-timezone overrides; and independent account,
+  reporting, and billing clocks. Cover buyer-preference mismatches against a
+  seller-fixed UTC clock, portable natural-key reconnects, and selecting a second
+  advertised timezone as a separate immutable account identity. Reject
+  unadvertised buyer timezone overrides with the canonical unsupported-feature
+  error.
+- 362ed68: Add literal v1 canonical mappings for observed duration-, dimension-, and VAST-suffixed legacy format ids, with reference vectors that preserve encoded constraints and fail closed for durationless placements.
+- 70a91fe: Add compliance scenario for frequency-cap negotiation through proposal refinement (refine_frequency_cap_negotiation). Exercises replace-cap, clear-cap, and unable outcomes against the fields introduced in #7449.
+- f1b32c0: Align the training agent and compliance guidance with the published AdCP `3.2.0-beta.10` bundle in `@adcp/sdk@14.0.0-beta.27`. Keep legacy creative synchronization and listing in the same trusted account partition as current media-buy creation, restore the sales compliance account seeder, and keep the DOOH baseline ungoverned while its separate governance scenario exercises registration.
+- f9f0a6b: Align the public training agent, Addie certification guidance, and version documentation with the AdCP 3.2 beta.11 wire bundle and `@adcp/sdk@14.0.0-beta.29`.
+- 73a2957: Align the public training agent, reporting compliance examples, Addie certification guidance, and version documentation with the AdCP 3.2 RC.0 wire bundle, `@adcp/sdk@14.0.0-beta.31`, and Python `adcp==8.0.0b13`.
+- a72fbd7: Clarify that future brand relationship declarations do not extend trust before their effective time and that omitted declaration timestamps age from a durable first observation.
+- 336546b: Align the 3.2 docs, announcement banner, and SDK guidance with the published 3.2.0-rc.3 checkpoint and @adcp/sdk@14.0.0-rc.36.
+- 8644cdf: Update the TypeScript SDK dependency and current 3.2 RC guidance, certification prompts, conformance metadata, and provenance assertions to `@adcp/sdk@14.0.0-rc.35`.
+- d54e7d8: Autolink machine-resolved error codes and task names in compliance reference docs, with build-failing unknown-symbol checks and reviewed exceptions.
+- 4deb946: compliance(media-buy): the `available_actions` scenario uses a non-guaranteed product fixture so `sales-non-guaranteed`-only sellers can run it.
+  
+  `available_actions.yaml` seeded a guaranteed-only product, so its `create_buy_from_product` step (and the whole available-actions enforcement flow that follows) failed with a terminal `DELIVERY_MODE_NOT_SUPPORTED` for sellers that declare only `specialisms: ["sales-non-guaranteed"]`. The `allowed_actions` behavior the scenario actually grades is delivery-type-agnostic, so the fixture is switched to `non_guaranteed` (floor-priced) — the same fix applied to the base `media_buy_seller` flow. The packaged `dist/compliance/` cache is generated from this source.
+- 4deb946: Runner output contract: document the branch-set `any_of` peer cascade exemption. `cascade_rules` now names a `branch_set_cascade_exemption` (parallel to `sole_stateful_step_exemption`) stating that a stateful peer's genuine failure or `peer_branch_taken` skip MUST NOT cascade `prerequisite_failed` onto a sibling phase sharing the same `branch_set.id` under `any_of` semantics — the peers are mutually-exclusive alternatives, not a dependency chain. The exemption is scoped to `any_of`, is N-ary-safe (any number of peers), leaves cross-set and within-phase cascade unchanged, and is explicitly `depends_on`-agnostic (it fires whether the sibling's dependency is the implicit default or an explicit `depends_on` naming the peer). `storyboard-schema.yaml`'s `depends_on` section gains a cross-reference. Documents-only; codifies the runner behavior shipped in adcp-client#2306 (closing adcp-client#2305), root-caused in adcp#5337. No schema or wire change.
+- 7a470ca: Allow partial reporting coverage to be represented when a media buy has mixed support across reporting slices, and clarify that an explicitly empty denominator is fully covered.
+- afe8b67: Update the TypeScript SDK checkpoint and current RC.1 guidance to `@adcp/sdk@14.0.0-rc.33`.
+- 4deb946: Enforce `cancellation_fee.rate` / `.amount` by fee `type` in `cancellation-policy.json`. Both fields are documented as conditionally required — `rate` "Required when type is 'percent_remaining'", `amount` "Required when type is 'fixed_fee'" — and the requirement is restated in the pricing-models reference, but `cancellation_fee` listed only `["type"]` in `required[]`. A validator therefore accepted `{ "type": "percent_remaining" }` (or `{ "type": "fixed_fee" }`) with no fee value at all, leaving a money-path term that declares nothing computable for a buyer accepting the product's cancellation terms.
+  
+  Adds `if/then` conditionals: `percent_remaining` requires `rate`, `fixed_fee` requires `amount`; `full_commitment` and `none` are unaffected. No prose change — this aligns the schema with the already-documented contract, and no existing example regresses (both doc examples already carry `rate`). Regression coverage added to `tests/composed-schema-validation.test.cjs`.
+- 0bcfe47: `canonical_format_validate_input` no longer lists `comply_test_controller` in `required_tools`. The storyboard runner's per-storyboard gate admits a storyboard when any listed tool is present, so any agent exposing the (universal) test controller was selected and then failed all 17 steps on the missing `validate_input`. Agents without `validate_input` now receive a coverage-gap skip; agents implementing it run unchanged. Same shape as #6774 (fixes #7404, bug 1).
+- eac2f7a: Emit canonical version-qualified HTTPS `$id` and external `$ref` values in published schema artifacts so locally loaded schemas resolve references consistently.
+- f672367: Add the `capabilities_response_schema_invalid` canonical notice code and a `capability_pointer` (RFC 6901) optional notice field to the runner output contract, so a schema-invalid `get_adcp_capabilities` response is reported once as a root cause ahead of the track results instead of fanning out into unrelated-looking track failures.
+- d312e3c: Add conformance storyboards for owner-sold channel carriage and committed collection selection, and pin the normative anchors they grade against: a schema-valid selector referencing an unknown collection_id or publisher_domain is rejected with REFERENCE_NOT_FOUND per the error-code registry (INVALID_REQUEST remains the code for schema-invalid shapes), and a mode-default purchase reads back as mode selected naming the product's complete bundle because the default branch carries no selectors and cannot satisfy the readback echo. create_media_buy's fixed-restatement exception now names the collection_selection full-bundle case alongside placements.
+- 6217bae: Clarify that the `dooh` property type covers venue-operated digital endpoints, including audio-only players, while the `dooh` channel remains buyer-facing allocation vocabulary. Document multi-channel property declaration plus the canonical audio, publisher authorization, placement, pricing, and proof-of-play pattern without adding a delivery-environment value to the audio feed taxonomy.
+- badabd9: Clarify that `brand.json` supplies master brand identity while catalogs supply product and item payload, including item-level property or franchise logos that do not override the master brand kit.
+- 62d6a64: Clarify that A2A conversation continuity uses the transport-native contextId, while schema-declared MCP request-body context_id fields are compatibility-only and ignored.
+- 4deb946: Clarify the boundary between `validate_input` manifest preflight and `sync_creatives` dry-run trafficking rehearsal.
+- 71706fb: Correct the OpenRTB source and complete the PAIR profile mapping, including
+  matcher, match method, publisher scope, key rotation, and TMP's lossy scope
+  boundary.
+- ee58aac: Clarify that 3.1 SDKs preserve pixel-ratio registry metadata without interpreting it, while typed validation, precedence, and error semantics begin in 3.2.
+- 39fff21: Clarify that exhausting the rate-limit trip runner without observing a
+  `RATE_LIMITED` response is a coverage gap reported with
+  `skip_result.reason: not_applicable` and
+  `skip_result.detail: rate_limit_not_triggered`, not a seller conformance
+  failure.
+- deedffb: Define period-boundary reporting obligation availability and expand two-sided implementer guidance and training.
+- 4eed58a: Align the AdCP 3.2 release story, SDK compatibility guidance, and Reliable Reporting reference docs with the published RC.1 checkpoint.
+- 5cac963: Add end-to-end conformance coverage for external audience dataset binding, isolate sourced audiences by seller account, reject credential-bearing source references, preserve frozen-version response shapes, complete the reference seller's async product-discovery task lifecycle, add executable capability gates to optional creative scenarios, and clarify how storyboard applicability is resolved before dispatch.
+- 388e78e: Add the opt-in experimental Reliable Reporting `sync_reporting_status` loop: buyers report whether each expected period was received, omitted from the seller ledger, missing its revision, or unreadable. Preserve immutable buyer-attributed status history beside seller obligations in `get_reporting_status`, detect when a previously received revision becomes stale after a seller restatement, surface caller-scoped mismatches as typed issues, and publish notice that the task becomes required Core only in the next eligible minor after October 24, 2026.
+- 5c7b835: Add a deterministic AdCP 3.2 compliance storyboard for the compact direct-purchase lifecycle from versioned product discovery through operational control and authoritative MediaBuy readback.
+- 5c7b835: Extend the compact proposal lifecycle storyboard through revision-checked
+  MediaBuy control and readback, including lifecycle, revision-history, and
+  accepted-proposal linkage assertions.
+- d9879ad: Accept the deprecated `adcp_major_version` compatibility field on every AdCP
+  3.2 compact media-buy lifecycle request.
+- bc3cfc9: Add deterministic compliance coverage for reconciling submitted `create_media_buy` tasks through `get_task_status` and `list_tasks`, including controller-driven terminal completion.
+- 170fc1a: Require the compact direct-buy compliance storyboard to chain the listed pricing version and verify the accepted proposal identity and terms digest during MediaBuy readback.
+- 54afa6a: Complete the sponsored-intelligence training tenant with the SDK's native SI platform surface, accountable sponsored-context fixtures, and required storyboard coverage.
+- dd518c1: Complete the reference test-vector index with every published compliance and unversioned set, accurate development-snapshot guidance, and direct links to the media-buy vector files.
+- 6f2172e: Document the 3.2 creative-format discovery deprecation posture and relax conformance so agents that declare equivalent canonical-format discovery are not required to expose `list_creative_formats`. Buyers MUST NOT assume the v1 discovery tool when canonical discovery is declared. `list_creatives` remains the creative-library query task; v1 `format_id` / `format_ids[]` remain supported through 4.x. Compliance storyboard steps that call `list_creative_formats` are gated with `requires_tool`, producing an explicit non-failing `missing_tool` skip when the canonical discovery branch passes.
+- 26432e6: Declare the deprecated `account` field in `media-buy/list-creative-formats-request.json` so the universal `pagination_integrity_creative_formats` storyboard keeps its account scoping against media-buy agents. Previously the runner stripped `account` and emitted `input_schema_field_stripped`, so sellers that scope seeded formats by account could return a different result set during the pagination walk.
+- cebb3c6: Decouple community format revisions from immutable reference-renderer package pins while retaining the legacy renderer revision annotation for compatibility.
+- da3954f: Deprecate the legacy `list_creative_formats` pricing request fields through 3.x and direct transformation and generation pricing discovery to `list_transformers`.
+- 0629a1a: Document the experimental authenticated-principal connection layer across the AdCP 3.2 release guide, release notes, introduction, roadmap, and cross-surface release instrumentation.
+- 53bd11c: Correct capability gating and fixture inputs in the current conformance storyboards, and make training-agent matrix coverage capability-resolved with explicit not-applicable and quarantine accounting.
+- 266264c: Fail closed during release signing when the current protocol tarball is missing.
+- 0547bde: Seed fixture accounts in package_correlation_legacy_fallback storyboard so account-scoped requests resolve before attribution is checked.
+- 752adad: Guard empty RUNNER_ARGS array expansion in sharded runner scripts for bash 3.2 compatibility
+- fb1d7af: Fix invalid channel value "video" in compliance fixture products. The Channel enum has never included "video"; the correct value is "olv" (online video). Affects 19 occurrences across 17 compliance source files.
+- 420d1e8: Move stale active-window dates in compliance fixtures and 3.0 compatibility bundles forward so storyboard runs continue to exercise protocol behavior instead of calendar drift.
+- 8b9868a: Allow complete reporting summaries to carry the nearest future period start
+  from active committed configuration schedules while preserving both scope
+  guards, obligation boundaries, and evaluated coverage. Clarify the seller's
+  population rule and add portable compliance vectors, a lifecycle storyboard,
+  and source, generated, and runtime validation regressions.
+- 4deb946: Replace phantom error codes in creative and campaign-governance task docs with canonical enum members. `sync_creatives`, `build_creative`, the Creative Protocol specification, `check_governance`, and `sync_plans` documented 13 `errors[].code` values that do not exist in `enums/error-code.json` (`INVALID_FORMAT`, `ASSET_PROCESSING_FAILED`, `BRAND_SAFETY_VIOLATION`, `FORMAT_MISMATCH`, `CREATIVE_IN_ACTIVE_DELIVERY`, `ASSET_MISSING`, `ASSET_INVALID`, `GENERATION_FAILED`, `INVALID_MANIFEST`, `AMBIGUOUS_CHECK_TYPE`, `SELLER_NOT_RECOGNIZED`, `INVALID_PLAN`, `BUDGET_BELOW_COMMITTED`). SDKs that validate `errors[].code` against the published enum reject responses built from the docs literally, the same failure mode as #4852 and #5307. Each phantom is remapped to the existing code with matching semantics (`UNSUPPORTED_FEATURE`, `VALIDATION_ERROR`, `CREATIVE_REJECTED`, `INVALID_STATE`, `INVALID_REQUEST`, `PERMISSION_DENIED`); `GENERATION_FAILED` is replaced with guidance that generation-pipeline failures surface as task-level failure with the most specific applicable canonical code, per the open-vocabulary rule on `error-code.json`. Also fixes the one live `INVALID_FORMAT` emission in the training-agent reference implementation. Docs and reference implementation only; no wire change.
+- 4deb946: Fix false failures in creative compliance storyboards (canonical_supported_formats, evaluator_auth).
+  
+  `canonical_supported_formats`: removes the hardcoded `capability_id: "training_image_generation"` assertion (capability_id is agent-local; any valid value must pass) and the `field_absent` check on `supported_formats[1]` (agents may advertise multiple canonical formats). Fixes `context_outputs` field name from `key:` to `name:`.
+  
+  `evaluator_auth`: adds `requires_capability` guards to all five optional phases so agents that correctly declare `creative.supports_evaluator: false` receive `not_applicable` instead of failing the evaluator track. Guards evaluate against the raw capabilities response, bypassing a runner-side boolean-false accumulator bug. Fixes `context_outputs` field name from `key:` to `name:`.
+- 4deb946: Fix a misleading `get_media_buy_delivery` example that implied buyers can look up delivery by their own reference. `media_buy_ids` are seller-assigned; the top-level `buyer_ref` field was removed in 3.0.0. The example is retitled "Correlating Your Own Reference", uses seller-assigned `mb_...` IDs, and adds a note pointing buyers to reconcile their own reference via `context` echoed on `create_media_buy` / `get_media_buys`.
+- 4eaee12: Gate the deterministic SI session follow-up steps on `si_initiate_session` so
+  agents outside the sponsored intelligence domain cascade-skip the phase instead
+  of receiving a false `si_send_message` failure. Reported in adcp-client#2827.
+- 350a22c: Map the standard unsuffixed `display_160x600` legacy format to a canonical 160×600 image declaration.
+- 1f7f4c2: Fix the creative-fate compliance storyboard to build creative assets from the required slots declared by the seller's selected product format. Clarify that runners must resolve context substitutions recursively before sending requests.
+- a601dfb: Correct three `enums/error-code.json` prose recovery tags that named a value outside the closed `recovery` enum. `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE`, `PIXEL_TRACKER_LOSSY_DOWNGRADE` and `PIXEL_TRACKER_UPGRADE_INFERRED` ended their `enumDescriptions` with `Recovery: warning`, but `core/error.json` closes `recovery` to `transient` / `correctable` / `terminal`, and all three carry `correctable` in `enumMetadata` — which the block's own `$comment` makes the normative authority the prose MUST match. Prose now reads `Recovery: correctable — non-fatal advisory, do not auto-retry`, preserving the non-fatal semantics without inventing an enum member. Extends `tests/error-recovery-vectors.test.cjs` to hold `error-code.json` to the same prose/metadata agreement already asserted for `request-signing-error-code.json`. No schema shape or wire-behaviour change.
+- 58eddf8: Fix `VERSION_UNSUPPORTED` recovery value in `error-compliance.yaml` storyboard prose.
+  
+  Two occurrences of `fatal` (which is not in the `recovery` enum) have been corrected:
+  - `unsupported_major_version` step `expected:` block: `recovery: fatal` → `recovery: correctable`, matching `enumMetadata.VERSION_UNSUPPORTED.recovery` across all 3.x bundles.
+  - General error-shape narrative: `correctable, transient, or fatal` → `transient, correctable, or terminal`, matching the enum declaration order in `core/error.json`.
+  
+  The storyboard validations do not assert `recovery`, so no existing conformance test is affected. This corrects misleading prose that could cause hand-implementers to emit schema-invalid error envelopes.
+- 5739f1b: Align legacy format asset declarations with the canonical asset union and guard both individual and repeatable-group variants against future drift.
+- 3c8fbfd: Correct the OpenRTB/AdCOM `cattax` mappings documented for IAB Content Taxonomy 3.0 and 2.2.
+- 2c1d02d: Fix three inline enum drift bugs where canonical enum files gained values that were missed in inline copies, and add a CI lint to prevent the class of bug.
+  
+  - Replace inline property-type enum in get-adcp-capabilities-response.json trusted_match.surfaces with $ref (missing linear_tv)
+  - Replace inline adcp-protocol enum in registry-event.json badgeRole with $ref (missing measurement)
+  - Replace inline catalog-type enum in sponsored_placement.json supported_catalog_types with $ref (missing promotion)
+  - Add scripts/lint-schema-enum-drift.cjs: detects inline enums that are strict subsets of canonical enums, preventing future drift
+- 7970889: Correct the `input_schema_field_stripped` compliance notice so it identifies request payload drift without blaming agents for omitting fields that are not part of the canonical task schema, and consume the SDK release that keeps broad `list_accounts` discovery requests unscoped.
+- 66736ae: Allow `list_creatives` response rows to use either the legacy `format_id` identity or the AdCP 3.1 canonical `format_kind` and optional `format_option_ref` identity.
+- 17f0921: Provenance storyboards now mark every creative-library and test-controller step
+  with its actual tool prerequisite, so hosted grading does not fail sellers for
+  optional surfaces they do not advertise. Fixes #7586.
+- 3981795: Make proposal-finalization cardinality conditional on observed proposal identities, restore audience-impairment coherence grading through the compliance controller, and re-enable async signals task-scope grading across account, owner, and tenant boundaries.
+- 7b5472f: Stop the universal `read_tool_idempotency` storyboard from sending the creative-agent-only `type` filter to `list_creative_formats`, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
+- 03ebb90: Allow release-only storyboard validation to resolve a generated candidate bundle against the training agent's current stable-line capability, while preserving the agent's advertised versions and wire version. Synchronize TypeScript SDK AdCP metadata and Python SDK package manifests before validating a schema candidate.
+- 7483a04: Add separate provider-native immutable version references to reporting file entries, and standardize reporting object and version reference bounds for S3-compatible managed delivery.
+- a3657f9: Fix get-reporting-status-response schema compilation under AJV strictTypes and strictRequired.
+  
+  Adds `properties` stubs alongside bare `required` arrays in `not`/`then` subschemas (17 locations: Summary view not.anyOf×10, Periods view then.not and not, Revision view not.anyOf×5) and adds `"type": "object"` to the `pagination` property in the Periods and Revision view discriminator arms. Runtime validation behavior with strictTypes/strictRequired disabled is unchanged.
+- d156fae: Remove hard-coded request-signing conformance vector counts from the compliance runner header and request-signing documentation. The examples now cover both vector directories without totals and explicitly supply matching local vector and key inputs instead of relying on package-internal cache paths. This changes only protocol comments and documentation, not schemas or runner behavior; documentation drift linting and its regression tests are also hardened to preserve the corrected CLI guidance.
+- 4deb946: Align idempotency and rate-limit guidance with the canonical top-level `error.retry_after` field across schemas, documentation, and compliance storyboards.
+- 04fb691: Remove a literal tab character from a comment line in
+  `static/compliance/source/universal/runner-output-contract.yaml` (line 303).
+  Tabs cannot start a token in YAML, so strict parsers fail to load the file
+  entirely — platform engines consuming the packaged 3.1.4/3.1.5 compliance
+  caches could not parse the runner output contract. Comment text unchanged;
+  no semantic content changes.
+- da636b4: Clarify and enforce governed signal activation: `activate_signal` now documents `governance_context`, signal agents fail closed on governed accounts without a valid approval context, and signal governance compliance checks no longer require the signals tenant to own `sync_plans`.
+- a1e72ec: Fix 17 compliance storyboards that incorrectly included `get_adcp_capabilities` in `required_tools` alongside capability-specific tools. Because `required_tools` uses OR semantics, listing a universal tool made the storyboard-level gate trivially satisfied for every conformant agent — agents lacking the actual capability tool (e.g. `sync_accounts`, `build_creative`, `get_products`) would enter the storyboard and fail at the first capability-specific step instead of receiving a clean coverage-gap skip.
+  
+  Affected storyboards: `billing_gate_dispatch`, `agent_notification_configs`, and 15 scenarios across the `media-buy` and `creative` protocol families.
+- 810d9fa: Correct the `video_16x9_30s` legacy canonical mapping to retain `16:9` as an aspect ratio, guard ratio tokens from pixel misclassification, and publish observed AAO-namespace static-display literals with their declared size constraints.
+- b01c18b: Reconcile the experimental Reliable Reporting waiver lifecycle with its health and issue projections. An exact bilateral waiver now retires the caller-scoped `CONSUMER_STATUS_MISMATCH`, restores the underlying seller health in summary and period views, leaves the immutable consumer statement auditable, and uses the existing `reporting.status_changed` recovery transition when health changes. This repairs an unrepresentable state without changing the JSON Schema wire shape.
+- 0f83623: Fix webhook-emission compliance setup to discover and bind a real product and
+  pricing option before create_media_buy, waiting for asynchronous discovery to
+  complete when needed. Replace unresolved test-kit schema
+  references with explicit request and response schema paths and complete the
+  trigger samples so conformance validation cannot silently skip these requests.
+- e36e319: Update the 3.2 SDK guidance after the Go RC.1 regeneration merged and its package release entered review.
+- b09c757: Gate the `create_media_buy` submitted-arm compliance storyboard on the seller advertising `force_create_media_buy_arm` under `compliance_testing.scenarios`. Sellers without that sandbox-only forcing capability now skip the whole storyboard before its independent downstream phase can incorrectly fail their otherwise conformant synchronous or provisional media-buy flow.
+- 516c9d2: Skip billing capability discovery when an agent does not advertise the account capability block, preventing unrelated agents from receiving failing billing grades.
+- 4e603eb: Gate property-list compliance scenarios on declared execution support and require an actionable no-inventory rejection for empty intersections.
+- af1ea26: Gate the webhook-emission storyboard's wholesale `get_products` branch set and its aggregate assertion on the advertised wholesale buying mode, so non-media-buy agents grade the branch family as not applicable.
+- 19599f3: Generate compliance error-code and storyboard documentation from the canonical machine sources, with build-failing drift checks.
+- 420d1e8: Allow governance checks to accept human approval from `ext.human_approval` and use that approval to clear reallocation-threshold human review.
+- aa99113: Require governance-aware media-buy storyboards to prove approved execution through durable seller readback and governance audit evidence, without requiring a response echo.
+- 298d99c: Grade creative-asset fixture coverage gaps as `not_applicable` with the new
+  canonical `fixture_unavailable` skip reason instead of failing the seller,
+  preflight future directives before intervening side effects, preserve the skip
+  as non-failing untested coverage in registry aggregation, require explicit
+  text-slot mappings, and add common image fixtures for 970x250,
+  300x600, 336x280, and 1080x1920 formats. Storyboards that previously stopped on
+  a missing common-size fixture can now execute and produce real behavioral
+  signal; valid formats the runner still cannot synthesize no longer count
+  against the agent under test.
+- 032c624: Grade the `account.supported_billing` contract with data-driven out-of-set probes and applied-value membership checks.
+- a48e844: Grade synchronous wholesale product discovery over a five-second observation
+  window and fail when the seller emits a matching task webhook after returning
+  an inline terminal response.
+- a9e6ba9: Add `update_rights` to the brand-rights conformance lifecycle now that its schemas and completion-webhook task type are published.
+- 0afad76: Ground media-buy, creative, and governance read/list storyboard assertions in state created by prior steps.
+- acab756: Harden the experimental Reliable Reporting consumer-status loop. Reserve `authoritative_party` on `reporting-delivery-config.json` (sellers MUST reject `consumer` with `UNSUPPORTED_FEATURE` until a later minor defines the buyer-deposited revision task) and relax the seller-authoritative billing-feed constraint accordingly. Give a `received` status made stale only by a seller restatement a bounded `delayed` grace window before it escalates. Make the buyer's posting deadline `expected_at + automated_recovery_window_seconds` and surface unmet deadlines through `obligation_counts.consumer_status_pending`, a count that never changes seller health. Add issue lifecycle fields (`opened_at`, `issue_state`, `external_ref`) with optional `consumer_mismatch_escalation_seconds` and `operations_contact` capability advertisement. Add the `content_mismatch` consumer status with a closed `mismatch_code` for contract-fact disagreements, which are explicitly not measurement disputes. Extend the `reporting_core_lifecycle_probe` controller with `restate_after_received` so the grace projection is graded live, and make the reference seller reject the reserved `authoritative_party` value so the normative MUST has working code behind it.
+- dd8edda: Include `get_principal` alongside `sync_principal` in the MCP media-buy role profile.
+- 7509a53: Keep the universal media-buy lifecycle and non-governance seller specialisms
+  ungoverned, and isolate their account natural keys so governance bindings from
+  other compliance scenarios cannot leak into their runs. Refs #7585.
+- 4d0b482: Test kits declare the account their storyboards address. `acme-outdoor` and `nova-motors`
+  now carry an `account:` block naming the operator (and both sandbox spellings) that
+  account-bearing steps send, so a seller implementing a kit can seed the accounts those
+  steps reference instead of inferring them from the storyboards' sample requests. Closes the
+  seeding half of #7588, where one unseeded account produced 19 check failures attributed to
+  the tools the steps name rather than to the account they could not resolve.
+- 23491e3: Make the compact 3.2 media-buy lifecycles primary in navigation, concepts, and
+  walkthroughs, and document the TypeScript SDK beta. Keep the established
+  facades at an explicit compatibility boundary.
+- 91cbf0e: Grade current-source storyboard jobs for pull requests targeting main and pushes to main with the explicit candidate-version resolver, while keeping immutable 3.0 compatibility runs strict.
+- b6e0240: Add a compliance storyboard (`media_buy_seller/metric_container_subsumption`) pinning independent implementations to the container-subsumption rule in `enums/available-metric.json`: a container token (e.g. `viewability`) satisfies `required_metrics` filtering and `requested_metrics` selection for its leaf identities (e.g. `viewable_rate`), leaf selection resolves to the canonical carrier object rather than a flat duplicate, and a leaf never implies a sibling leaf. The training agent's reference seller gains the missing `required_metrics` filter on `get_products`, evaluated through the same subsumption-aware availability check its `requested_metrics` narrowing already uses, closing the divergence hazard flagged in #6785.
+- c12dfd3: Document Python SDK 8.0.0b12 as the exact schema and type pairing for AdCP 3.2.0-beta.11.
+- cc51898: Declare the concrete AdCP release represented by development `latest` schema roots so public SDK schema-root validation can bind them without cache overlays.
+- efe8a4b: Add the AdCP 3.2 beta program overview, release notes, migration guidance, and
+  release runbook needed for the beta.0 → SDK → beta.1 readiness cycle.
+- 66e2064: Prepare the AdCP 3.2 candidate experience: center the adopter narrative on the compact proposal lifecycle, expose a public training-agent demo through Addie, add a durable authenticated registry refresh/status lifecycle for long-running compliance suites, document the hosted verifier's candidate-profile boundaries, preserve stable 3.2 documentation aliases across the beta-to-RC transition, add a guarded `3.2.0-rc.0` promotion path, and let candidate-bundle storyboard discovery use the generated external schema root.
+- 8a4aac7: Preserve canonical document identities across bundled schemas and embedded MCP
+  profile resources so relocated schema packages resolve nested references fully
+  offline.
+- 4deb946: Preserve withdrawn and unpublished release status when generating file-based schema discovery so exact artifacts remain available without becoming stable alias targets.
+- 8b0980d: Let side-effect-free `get_principal` return a distinct `recognized` result for an existing durable principal identity before standing configuration exists, without read-time materialization.
+- 1046d10: Add optional conformance coverage and cross-linked guidance that keeps buyer-managed synced audiences distinct from seller- and source-native signals through discovery, media-buy selection, rejection, and exact readback.
+- 830e306: Serve AdCP 3.2 RC.1 from the public training surface, including Reliable Reporting tools and revision digests, and align the release notes, migration guidance, training, and TypeScript, Python, and Go SDK instructions with the published RC.1 packages.
+- cd63082: Advance stable schema discovery aliases to the published 3.1.20 bundle and refresh the 3.2 beta documentation for the beta.10 TypeScript and Python SDK wave.
+- c4c8aff: Run long release verification before minting the short-lived GitHub App token used to update version-package pull requests and publish releases.
+- 4deb946: Remove an incidental video-only constraint from the inventory list targeting storyboards so single-channel sellers can exercise the channel-agnostic scenarios.
+- f85a040: Repair MDX syntax in the generated tool reference and 3.2 creative documentation
+  so versioned release snapshots build successfully, and advance the public beta
+  guidance to the beta.8 checkpoint.
+- 1fdb7fc: Give 35 request-signing conformance vectors bodies that are schema-valid for the operation their URL names, so a seller that validates the request payload before authenticating the caller still reaches the RFC 9421 verifier checklist. Only `request.body` changes; headers, URLs, `verifier_capability` and `expected_outcome` are untouched, and each vector's intended fault is preserved (#7567).
+- b407de6: Require a human approval on the final release PR head before publishing committed protocol artifacts, and leave generated documentation snapshots open for human review.
+- 9770326: Clarify that AdCP-defined property names remain reserved for their existing semantics at the same wire location after deprecation, rename, or removal.
+- b438eb4: Rewrite the governance-conditions compliance flow around the cross-role authorization contract: conditions now yield only a consultation handle, the adjusted intent must receive approval, seller execution is binary, and committed state plus the plan outcome replace response-echo assertions.
+- b03bb8d: Restore frozen AdCP 3.0 storyboard compatibility with the fail-closed training-agent comply controller sandbox gate.
+- 39290c4: Restore Changesets v2 compatibility while retaining git-backed pushes for
+  large generated release commits.
+- 8244f16: Prohibit Context Match embeddings derived from non-public content attributable to a single user or session, require privacy reduction for free-form keywords and summaries, and align Trusted Match guidance and examples with the publisher privacy boundary.
+- 502b22d: Mark all AdCP v2 schema releases as deprecated in discovery metadata after their end-of-life date while preserving the historical v2 and v2.5 aliases and pinned schema URLs.
+- decd95f: Retire superseded 3.x beta prerelease artifacts from `dist/schemas`, `dist/compliance`, and `dist/protocol`, keeping only the `3.2.0-beta.11` schema bundle (frozen `3.2-beta` documentation selector), `3.2.0-beta.6` (the training agent's retained checkpoint), and `3.1.0-beta.7` (the TypeScript SDK side bundle). This removes about 2 GB from the repository and the runtime image, whose size gate the rc.3 release branch had started to exceed. Previously published beta URLs continue to be served from the artifact CDN on a best-effort basis; documentation now links to the `3.2.0-rc.2` bundle. The immutable-release-artifact guard now permits whole-tree deletion of tagged beta checkpoints while still rejecting in-place edits and any deletion of release-candidate or stable artifacts.
+- 0005361: Revert the unreleased dotted-domain restriction from the 3.2 release line. The breaking BrandRef and BrandKey constraint remains deferred to 4.0.
+- d6b16c6: compliance: SHOULD-level session-lifecycle guidance for conformance runners
+  
+  Adds a `session_lifecycle` block to `runner-output-contract.yaml` (per the
+  #6204 triage): runners SHOULD establish one MCP session per storyboard and
+  reuse it across that storyboard's steps, SHOULD close sessions gracefully at
+  storyboard end, and SHOULD treat an HTTP 404 on a known-terminated session id
+  as terminal rather than retryable. A fresh streamable-HTTP session per call
+  spends 4-5 protocol round trips on handshake alone (~5x per-step wall time,
+  attributed to the agent under test rather than the runner), and orphaned
+  GET-stream reconnects against expired sessions generate silent 4xx volume
+  that is easily misread as rate limiting. Guidance only — no wire or schema
+  change; the session-per-storyboard implementation lands in `adcp-client`.
+- 2d4b210: Scope guaranteed idempotency replay to state-mutating requests while requiring read wrappers to tolerate optional keys.
+- 6fad41c: Surface relationship trust state in SearchBrandResult and the AgenticAdvertising.org registry API brand list endpoints.
+  
+  `SearchBrandResult` (the stub returned by `search_brands`) gains three optional fields — `relationship_trust`, `relationship_verified_at`, and `claimed_house_domain` — using the canonical semantics already defined on `ResolvedBrand`. The `house` field becomes optional (brands with no verified or claimed house are no longer required to supply it). Trust values follow the existing enum: `inline | mutual | leaf_only | house_only | standalone | unverifiable`. An absent `relationship_trust` means trust has not yet been computed and MUST NOT be interpreted as `standalone`.
+  
+  The AgenticAdvertising.org registry API (`/api/brands/registry` and `/api/brands/find`) and registry MCP list tools now return the same three fields on each brand row. Trust is persisted to the `brands` index table by the crawler after each brand.json resolution cycle, including house-side-only declarations discovered through `brand_refs[]`, so list endpoints return it without a per-row `resolveBrand()` call at query time. The `BrandRegistryItemSchema` and `CompanySearchResultSchema` Zod schemas are updated to match.
+  
+  The training agent now implements the experimental `search_brands` task end to end, including deterministic filtering, pagination, context echoing, and canonical trust vocabulary.
+- 70e8363: Controller-seed canonical test-kit account prerequisites before account-scoped
+  storyboard steps run, using deterministic per-storyboard operator units to keep
+  account state isolated. This prevents missing or leaked setup from being
+  misgraded as failures of the tools those steps exercise. The reference training
+  agent now accepts those account fixtures on every applicable tenant and lets
+  framework task settlement emit terminal webhooks before controller completion
+  returns, with a bounded wait that releases the tenant lock if settlement stalls.
+  Refs #7588.
+- 1df9f18: Add deterministic compliance coverage for seeded `update_rights` lifecycle updates and unknown grant references.
+- 4461fdb: Share the package delivery metric value schema across pull and webhook reporting so generated SDK types remain unambiguous.
+- 64f99dd: Define capability-driven RFC 9421 signing for sandbox functional storyboard
+  dispatch. Runners reuse the existing published compliance key, sign operations
+  advertised in `request_signing.required_for` or `supported_for`, preserve bearer
+  authentication, and never bypass seller verification or retry unsigned after a
+  signer failure.
+- 2bc2054: Skip the per-agent billing permission phases when a seller does not advertise agent billing, preventing capability-level `BILLING_NOT_SUPPORTED` responses from being graded as failures against the narrower `BILLING_NOT_PERMITTED_FOR_AGENT` contract.
+- 530b859: Add an experimental publisher configuration schema for mapping provider-attributed Trusted Match targeting KVs to local ad-server destinations.
+- a6d1e49: Expand and harden the 3.2 reference sales agent and conformance corpus with targeting-aware discovery, advanced delivery reporting, audience-activation discovery, governed seller delegation, and strict current-source sales grading; restore and regression-gate the packaged wholesale-product scope check; and document the remaining runtime and coverage boundaries precisely.
+- 5300e38: Keep the unpublishable 3.2.0-rc.5 bundle out of release aliases and advance its two post-cut release blockers through a freshly reviewed release candidate.
+- dea443d: Allow request-signing capability declarations to name both A2A 0.3 slash-path methods, including the nested push-notification-config family, and A2A 1.0 PascalCase methods. Matching remains exact and case-sensitive, so dual-stack agents advertise each supported wire name independently.
+- 0863e4d: Add isolated regression coverage for vendor metric semantic uniqueness validation.
+- e82f055: Tighten the unreleased `viewable_rate` optimization goal before 3.2.0-rc.7. The legacy goal shape now accepts only `threshold_rate` targets for `viewable_rate`, so a meaningless `cost_per` target is rejected rather than silently capped at 1. Viewability `standard` and `vendor` are now allowed on `viewed_seconds` goals too, which were already governed by the viewability standard, and both goal shapes reject those fields on other metrics. The migration guide documents the `BrandRef`-to-`BrandKey` vendor mapping when converting legacy goals to the canonical shape.
+- bd4dc10: TMP: publisher-owned TMPX macro mapping with provider-declared slot IDs and split provider→router / router→publisher response schemas.
+  
+  **Provider slot contract.** Providers declare a stable, provider-local slot list on their registration (`tmpx_slots: [string]` in provider-registration.json), e.g. `["primary","secondary"]`. Slot IDs are opaque provider-namespaced tokens, NOT ad-server macro names — distinct providers MAY reuse the same slot_id because publisher lookup is keyed on `(provider_id, slot_id)`. Ordering carries the ordered-prefix invariant: shorter responses emit an ordered prefix of the registered slots and are never shifted or sparse.
+  
+  **Response schemas.** Provider-to-router responses (`provider-identity-match-response.json`) carry `tmpx_chunks: [{slot_id, value}]`. Router-to-publisher responses (`identity-match-response.json`) reshape `tmpx_providers[provider_id]` to `{ chunks: [{slot_id, value}] }`, preserving the emitting provider's slot IDs and order. Chunks share a single definition — the new `trusted-match/tmpx-chunk.json` schema — `$ref`d from both hops. Both hop schemas add explicit negative constraints (`not: {anyOf: […]}`) that reject the other hop's fields (`tmpx_providers`/`tmpx` on the provider hop; `tmpx_chunks` on the publisher hop) and envelope-extension fields (`context`, `ext`) that would leak across the identity privacy boundary. Both maps carry `propertyNames` constraints matching the `provider_id` charset (and `slot_id` charset on inner maps), so the wire cannot carry map keys outside the registered form.
+  
+  **Publisher-owned config.** `publisher-tmpx-config.json` captures the publisher-owned deployment configuration as `tmpx_macro_mapping: { provider_id: { slot_id: destination } }`. The publisher's adapter reads `tmpx_providers[provider_id].chunks[]` from the response and, for each chunk, substitutes `chunk.value` into `tmpx_macro_mapping[provider_id][chunk.slot_id]`. Publishers use registered `tmpx_slots` to validate the mapping at startup and to detect provider slot-contract drift before serve time. When a response carries a `slot_id` (or whole `provider_id`) the mapping does not cover, the adapter MUST fail closed for that provider on that impression — none of that provider's chunks are fired into the ad-serving path and the adapter logs a configuration error; other providers on the same response are unaffected.
+  
+  **Security-motivated reshape.** Restores the direction described in #2203 by removing publisher-local names from the untrusted-provider boundary, and closes the cross-provider name-hijack surface tracked as #5945 by construction — the router never accepts destination names from providers.
+  
+  **Why 3.1.x, not 3.2 — bounded pre-production correction.** TMP has no production use yet, and this corrected shape will be in place before any 3.1 TMP production deployment ships. That fact — not the general experimental-surface rule — is the primary justification: the surface exists but has no live consumers to migrate. `x-status: experimental` (see `docs/reference/experimental-status.mdx`) is what makes the reshape technically permissible inside 3.x; the pre-production posture is what makes it practically safe. #5729 shipped the surface being reshaped 26 days ago into 3.1.1–3.1.4, but this changeset does not lean on that as a general precedent — the reshape is bounded to the pre-production window regardless of what came before. The change lives on the single-source schema tree, so it rolls forward into 3.2 automatically with no 3.1.x fork to maintain.
+  
+  **Migration.** Providers declare `tmpx_slots` on their registration (opaque provider-local IDs; drop the previous `tmpx_macros` list if adopted). Providers emit `tmpx_chunks: [{slot_id, value}]` on their identity-match response (previously `tmpx_macros[{name,value}]` or `tmpx_values[value]`). Routers produce `tmpx_providers[provider_id].chunks[{slot_id, value}]` (previously `.macros[{name,value}]` or `.values[value]`). Publishers configure `tmpx_macro_mapping[provider_id][slot_id] = destination` (a slot-keyed map, previously an ordered array). The legacy singular `tmpx` field remains supported through 3.x (removed in 4.0). Blast radius: the shape being replaced shipped only in 3.1.1–3.1.4 on an experimental field with no production adopters; the earlier working-tree ordinal variant introduced in this PR was never released.
+  
+  **Test coverage.** `tests/example-validation-simple.test.cjs` adds twenty new fixtures (positive + negative) proving each schema-encoded invariant actually rejects the wrong shape: wrong-hop fields on both hop schemas, legacy carrier fields (`tmpx_values`, `tmpx_macros`) on both hops, envelope-extension bleed-through, `provider_id`/`slot_id` charset violations on both maps, and duplicate slot IDs on `tmpx_slots`.
+  
+  **Router slot-contract enforcement.** The router MUST validate each provider's registered slot contract before forwarding: if the provider has no `tmpx_slots` registration, or if the returned `slot_id` sequence is not an exact non-empty ordered prefix of the registered list, the router MUST drop that provider's chunks atomically. This covers duplicate, reordered, sparse, and unregistered slot IDs before they reach publisher mappings.
+- 98fa207: Add the `media_buy_frequency_cap_updates` compliance scenario covering root-cap
+  replace and clear through `update_media_buy_frequency_cap`, atomic rejection of
+  `new_packages` whose product cannot join the shared counter, the resulting-state
+  rule for clearing a cap while adding packages, and the `ACTION_NOT_ALLOWED`
+  path when the package mix can no longer change the root cap. The reference
+  training seller now implements package and shared MediaBuy frequency caps so
+  the four frequency-cap scenarios execute against it, and the specification
+  states the `ACTION_NOT_ALLOWED` rule for root-cap changes explicitly.
+- 1467e46: Training agent implements the rc.3 Reliable Reporting consumer-status hardening and the conformance storyboard grades it.
+  
+  The public training agent now advertises `consumer_status_task`, serves
+  `sync_reporting_status`, and projects the full RC.3 contract: `content_mismatch`
+  with its closed `mismatch_code`, `obligation_counts.consumer_status_pending`,
+  issue `opened_at` / `issue_state` / `external_ref`, and the
+  `operations_contact` / `consumer_mismatch_escalation_seconds` capability fields
+  driving `recommended_action` escalation — with the escalation boundary taking
+  precedence over the stale-`received` grace deadline.
+  
+  `comply_test_controller`'s `reporting_core_lifecycle_probe` gains two additive
+  operations, `advance_past_status_deadline` and `advance_past_escalation`, and
+  the capability-gated `reporting_consumer_status` storyboard uses them to grade
+  counted silence, each `mismatch_code`, `opened_at` stability across the
+  severity change, escalation to a `contact_*` action, and `operations_contact`
+  presence.
+- 49c81e0: Align the AdCP 3.2 beta compliance surface and training agent with `@adcp/sdk@14.0.0-beta.4`.
+- 8074975: Align the AdCP 3.2 beta compliance surface and training agent with `@adcp/sdk@14.0.0-beta.5`. The beta.5 validators carry the flexible-window availability vocabulary, so the `availability_windows` `list_with_horizon` step is no longer registered known-failing (closes the adcp-client#2637 exclusion) and the scenario grades all eight steps. Wire pins move from `3.2-beta.3` to `3.2-beta.4` across the training agent, compliance scenarios, and versioned reference docs.
+- bd2ef39: Align the AdCP 3.2 beta compliance surface, training agent, and current TypeScript guidance with `@adcp/sdk@14.0.0-beta.8`. The SDK embeds the exact `3.2.0-beta.6` schema and compliance bundle, so active wire pins move from `3.2-beta.5` to `3.2-beta.6`.
+- 2edb737: Build deterministic, retained commit-addressed schema PR bundles and validate them against both official SDK generators before protocol changes merge.
+- 32b0128: Close the metric-accountability loop in the reference seller and conformance suite. Package commitments are seller-stamped and read back, vendor values and deferrals are reconciled per package, and unified `missing_metrics` reports overdue standard or vendor commitments. Packages without a snapshot fall back to current product reporting capabilities, while metrics not yet measurable in the current window stay out of the gap list.
+- 832ebb0: Fix the build-time vendor-metric uniqueness lint so `vendor_metric_values` rows key on `(vendor.domain, vendor.brand_id, metric_id, qualifier)` — the rule `delivery-metrics.json` already states — instead of collapsing qualifier-distinct rows (7-day vs 30-day attribution windows) into false duplicates. Qualifier canonicalization is key-sorted deep equality, matching the structured-qualifier join rule on `committed-metric.json`. `reporting_capabilities.vendor_metrics` declarations keep the 3-tuple. No wire change.
+- 322e39c: Update the pinned Changesets release action to v2.1.2 and refresh its vendored contract fixture and release-workflow verification.
+- ee66e24: Add behavioral conformance scenarios for media-buy status and ID filters,
+  half-open delivery date ranges, and sales-agent creative status and assignment
+  filters. Update the training agent to honor `list_creatives` media-buy filters.
+
+## 3.2.0-rc.7
+
+### Minor Changes
+
+- 2785fcb: Add `viewable_rate` as a `kind: "metric"` optimization goal, closing a schema omission: the optimization docs already described viewability as a standard metric goal, but neither goal schema accepted it. A `viewable_rate` goal requires a viewability `standard` (`mrc` or `groupm`), takes an optional measurement `vendor`, and bounds `threshold_rate.value` to at most 1. Products and seller capabilities can advertise `viewable_rate` in their supported optimization metrics, and products can declare `metric_optimization.supported_viewability_standards`. When a package carries both a `viewable_rate` goal and a viewability performance standard, a lower goal never relaxes the standard.
+
+### Patch Changes
+
+- 26432e6: Declare the deprecated `account` field in `media-buy/list-creative-formats-request.json` so the universal `pagination_integrity_creative_formats` storyboard keeps its account scoping against media-buy agents. Previously the runner stripped `account` and emitted `input_schema_field_stripped`, so sellers that scope seeded formats by account could return a different result set during the pagination walk.
+- 0547bde: Seed fixture accounts in package_correlation_legacy_fallback storyboard so account-scoped requests resolve before attribution is checked.
+- 7b5472f: Stop the universal `read_tool_idempotency` storyboard from sending the creative-agent-only `type` filter to `list_creative_formats`, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
+- e82f055: Tighten the unreleased `viewable_rate` optimization goal before 3.2.0-rc.7. The legacy goal shape now accepts only `threshold_rate` targets for `viewable_rate`, so a meaningless `cost_per` target is rejected rather than silently capped at 1. Viewability `standard` and `vendor` are now allowed on `viewed_seconds` goals too, which were already governed by the viewability standard, and both goal shapes reject those fields on other metrics. The migration guide documents the `BrandRef`-to-`BrandKey` vendor mapping when converting legacy goals to the canonical shape.
+
+## 3.1.27
+
+### Patch Changes
+
+- 21f694a: Backport macro-bearing URL validation from 3.2 to the 3.1 maintenance line so VAST, DAAST, URL, and tracker assets accept ordinary ad-server tokens such as `%%CACHEBUSTER%%`, `%%PATTERN:url%%`, and `%%CLICK_URL_UNESC%%` without pre-encoding their delimiters. Preserve all previously accepted URI-template values and existing substitution semantics. Fixes #7993.
+
+## 3.1.26
+
+### Patch Changes
+
+- 83e02b0: Fix `field_contains` path in `creative/evaluator_auth` storyboard to use `experimental_features[*]` so the array-membership check fans out over elements instead of comparing the whole array to the scalar value. Every conformant agent that declares `creative.evaluator` was incorrectly failing this step.
+- bdd9d99: Backport the hosted-grader buyer brand from #7803 to the four 3.1 media-buy governance scenarios. The scenarios and their new sandbox test kit consistently use `hosted-grader.adcontextprotocol.org`, whose brand.json lists the sandbox governance agent and its governance-only JWKS. This allows hosted multi-agent routing to register the same buyer account and governance relationship that it authenticates.
+
+  Only buyer/test-kit identities change; the existing 3.1 steps, schemas, validations, and grading behavior remain unchanged. Published release artifacts are preserved. Refs #7758.
+
+- ba2f0dd: Restrict maintained 3.1 release publication to the approved committed version and original release merge. Require current-branch, final-head maintainer permission and provenance checks; stage and verify the exact four signed GitHub assets before publication; preserve immutable R2 bytes with conditional creation. Remove publisher re-signing, direct Changesets tagging and unfiltered historical uploads. Existing released artifacts and protocol semantics remain unchanged.
+- 356df06: Recheck final-head human approval after all four signed release assets are staged, before making a maintained release public. Bind verification to the original producer commit, maintained branch, repository and push event while preserving the committed archive and signature bytes during same-version recovery. CDN verification refuses failed tuple downloads or checksums before signature verification.
+
+## 3.1.25
+
+### Patch Changes
+
+- 7e25a62: compliance(media-buy): `delivery_reporting` (1.0.1) seeds `non_guaranteed` fixture products. Sellers that declare only `sales-non-guaranteed` no longer fail `create_media_buy` with `DELIVERY_MODE_NOT_SUPPORTED`. This is the same fix as #5703 and #5731, backported from #7770. Pricing stays `fixed_price` because the create steps send no bid. Test fixtures only.
+- c3b0b64: compliance(media-buy): `canonical_formats`, `billing_finality_delivery`, `measurement_accountability`, and `vendor_metric_accountability` (1.0.1) seed `non_guaranteed` fixture products. Sellers that declare only `sales-non-guaranteed` no longer fail `create_media_buy` with `DELIVERY_MODE_NOT_SUPPORTED`. This is the same fix as #5703 and #5731, backported from #7756. Pricing stays `fixed_price` because the create steps send no bid. `is_guarantee_basis` is not conditioned on `delivery_type`. `measurement_accountability`'s fixture now declares `completed_views` so it matches its own discovery filter. Test fixtures only.
+
+## 3.1.24
+
+### Patch Changes
+
+- 802211e: Gate the 3.1 governance approval and conditions storyboards on `media_buy.governance_aware` so sellers that do not claim governance support are not graded against multi-agent governance scenarios.
+- 150139c: Keep the 3.1 guaranteed and non-guaranteed sales baselines ungoverned, and
+  isolate their account natural keys so governance bindings from other compliance
+  scenarios cannot leak into their media-buy requests. Fixes #7628.
+- f2abd96: Canonicalize `format_ids[].agent_url` in the `get_products_pagination_integrity` storyboard: `https://compliance.adcontextprotocol.org` → `https://compliance.adcontextprotocol.org/`. `core/format-id.json` requires callers to canonicalize `agent_url` before treating two `format-id` values as the same, and `docs/reference/url-canonicalization.mdx` step 5 substitutes `/` for an empty path when an authority is present — so a schema-conformant seller emits the trailing slash and failed the storyboard's raw string comparison. Corrects all six occurrences (both seeded fixtures, both request filters, and the `field_contains` values on `wholesale_first_page` and `wholesale_terminal_page`). Partially addresses #7367; the runner-side canonicalization in `adcp-client` remains the general fix.
+- 56f93da: Correct the 3.1 creative-generative storyboard to require `creative_manifest.format_kind` instead of the mutually exclusive legacy `format_id`, matching the canonical-formats storyboard and response schema.
+- 5f52da3: Fix `VERSION_UNSUPPORTED` recovery value in error-compliance storyboards: `fatal` → `correctable`, matching `core/error.json` `enumMetadata`. Also corrects the general error-shape narrative enum list from `correctable, transient, or fatal` to `transient, correctable, or terminal`. Affects `error-compliance.yaml` and `error-compliance-signals.yaml`. Backport of #7376 to the 3.1.x line.
+- 023d726: Route the 3.1 governance approval and conditions storyboards across their sales and governance agents, capture the synchronized governance plan ID, and include it in the governed media-buy request.
+- cf424a5: Provenance storyboards now mark every creative-library and test-controller step
+  with its actual tool prerequisite, so hosted grading does not fail sellers for
+  optional surfaces they do not advertise. Fixes #7586.
+- b23175a: Keep the universal media-buy lifecycle and non-governance seller specialisms
+  ungoverned, and isolate their account natural keys so governance bindings from
+  other compliance scenarios cannot leak into their runs. Refs #7585.
+
+## 3.2.0-rc.6
+
+### Patch Changes
+
+- a601dfb: Correct three `enums/error-code.json` prose recovery tags that named a value outside the closed `recovery` enum. `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE`, `PIXEL_TRACKER_LOSSY_DOWNGRADE` and `PIXEL_TRACKER_UPGRADE_INFERRED` ended their `enumDescriptions` with `Recovery: warning`, but `core/error.json` closes `recovery` to `transient` / `correctable` / `terminal`, and all three carry `correctable` in `enumMetadata` — which the block's own `$comment` makes the normative authority the prose MUST match. Prose now reads `Recovery: correctable — non-fatal advisory, do not auto-retry`, preserving the non-fatal semantics without inventing an enum member. Extends `tests/error-recovery-vectors.test.cjs` to hold `error-code.json` to the same prose/metadata agreement already asserted for `request-signing-error-code.json`. No schema shape or wire-behaviour change.
+- b01c18b: Reconcile the experimental Reliable Reporting waiver lifecycle with its health and issue projections. An exact bilateral waiver now retires the caller-scoped `CONSUMER_STATUS_MISMATCH`, restores the underlying seller health in summary and period views, leaves the immutable consumer statement auditable, and uses the existing `reporting.status_changed` recovery transition when health changes. This repairs an unrepresentable state without changing the JSON Schema wire shape.
+- 5300e38: Keep the unpublishable 3.2.0-rc.5 bundle out of release aliases and advance its two post-cut release blockers through a freshly reviewed release candidate.
+
+## 3.2.0-rc.5
+
+### Minor Changes
+
+- 6947106: Add the shared MediaBuy `name` to `buy_products`, `accept_proposal`, and the
+  compact commitment response, keeping it outside accepted commercial terms and
+  defining buyer-supplied precedence over a proposal-derived default.
+- 7dfeef8: Re-add `sales-exchange` specialism with storyboard covering programmatic exchange product discovery with floor prices and bid guidance, auction-priced media buys, in-flight bid adjustment, and delivery with auction transparency metrics. Addresses the exchange portion of #2511.
+- 7dfeef8: Re-add `sales-retail-media` specialism with storyboard covering catalog sync, keyword-targeted sponsored search, item availability management, and product discovery for retail media networks. Addresses the retail-media portion of #2511.
+- 7dfeef8: Re-add `sales-streaming-tv` specialism with storyboard covering CTV product discovery, VAST creative sync, household frequency-capped media buys, and delivery with household reach metrics. Addresses the streaming-tv portion of #2511.
+- 7082ff1: Add an optional seller-policy decline reason to `REQUOTE_REQUIRED` and buy-specific `ACTION_NOT_ALLOWED` errors, with typed details for the existing envelope-field and change-term conventions. The coarse vocabulary includes inventory, share-of-voice, minimum-commitment, notice-period, contract-term, frequency-cap, and other policy dimensions while preserving seller control over sensitive policy disclosure.
+- 6947106: Require verifiers to treat unsigned MCP transport sessions as
+  non-authoritative: identity, authorization, account and resource selection,
+  and task ownership must derive from each request rather than
+  `Mcp-Session-Id`.
+- 03d00cf: Publish the complete request-signing transport error vocabulary with normative,
+  machine-readable recovery classifications and remediation hints. Keep these
+  lowercase `WWW-Authenticate` codes separate from task error codes, and bind the
+  security profile to the new schema so SDKs no longer infer recovery from names
+  or independently transcribe prose tables.
+- 6947106: Require idempotency key ledgers to outlive created resources for the declared
+  replay window, and add the terminal `COMMITTED_RESOURCE_PURGED` outcome for a
+  write that commits before its resource is independently deleted. Ambiguous
+  handler or downstream timeouts now retain a fail-closed reconciliation claim
+  instead of freeing the key for duplicate execution, with sandbox purge/replay
+  coverage in the compliance controller.
+- 2639ace: Add optional AdCP 3.x migration fields that make `get_creative_features`
+  retry-safe and reconcilable without breaking existing implementations. Clients
+  SHOULD send `idempotency_key`; providers that advertise replay support MUST
+  honor supplied keys for at least 24 hours. Providers SHOULD emit a stable
+  `evaluation_id`, which remains stable across replays and async completion when
+  present. Both fields are planned to become required in AdCP 4.0. Add
+  deterministic conformance coverage for the recommended keyed and identified
+  profile, including synchronous, asynchronous, conflicting, and concurrent
+  retries plus terminal pricing and consumption reconciliation.
+
+### Patch Changes
+
+- a3657f9: Fix get-reporting-status-response schema compilation under AJV strictTypes and strictRequired.
+  
+  Adds `properties` stubs alongside bare `required` arrays in `not`/`then` subschemas (17 locations: Summary view not.anyOf×10, Periods view then.not and not, Revision view not.anyOf×5) and adds `"type": "object"` to the `pagination` property in the Periods and Revision view discriminator arms. Runtime validation behavior with strictTypes/strictRequired disabled is unchanged.
+- 0f83623: Fix webhook-emission compliance setup to discover and bind a real product and
+  pricing option before create_media_buy, waiting for asynchronous discovery to
+  complete when needed. Replace unresolved test-kit schema
+  references with explicit request and response schema paths and complete the
+  trigger samples so conformance validation cannot silently skip these requests.
+
+## 3.2.0-rc.4
+
+### Minor Changes
+
+- 121d8b3: Add owner-selectable Legacy and Strict Spec grading profiles for verified agents, with Sandbox preview support. Persist immutable exact-role/version assessments and audited selections, project public badges through durable retries, and expose the selected profile through registry APIs, feeds, dashboard controls, badge metadata, and verification tokens.
+- dc69e0b: Publish canonical supply-path verification golden vectors and an explicit evaluator semantics version. Clarify fail-closed owner-sold carriage verification for affirmative collection constraints, dangling property references, unknown or unevaluated authorization constraints, revocation precedence, agent URL identity and independent domain-level paths.
+  
+  Retain authority-scoped revocations and authoritative-location pins in persistent registry state. Refuse stale or non-authoritative cache provenance and require explicit publisher attribution in cross-origin shared catalogs. Expose cache observation times and resolved URLs.
+  
+  Add publisher_domain attribution to shared collection declarations and require it for cross-origin owner evidence. Preserve successful-fetch provenance through failed crawls and provide an operator command for independently confirmed authority migrations.
+- 3cea56c: Add protocol-specific `anonymous_discovery` declarations for media-buy product discovery and signal discovery. The optional booleans let callers plan anonymous catalog reads without making catalog-completeness claims or weakening authentication requirements for mutations and private state.
+- cfc33f6: Require recovery on AdCP 3.2 producer errors while preserving legacy 3.1 decoding and adding compatibility vectors for retry classification and scheduling.
+- 33edf91: Add an optional `account` field to `sync_accounts` response rows, echoed for settings-update-mode entries. Previously the response schema required `brand` + `operator` on every row, which made settings-update mode unimplementable for account-id-namespace sellers with no buyer-declared natural key, and made `action: "failed"` rows for such accounts unrepresentable entirely. The new discriminator mirrors the pattern `sync_governance` already uses. Closes #7517.
+
+### Patch Changes
+
+- 70a91fe: Add compliance scenario for frequency-cap negotiation through proposal refinement (refine_frequency_cap_negotiation). Exercises replace-cap, clear-cap, and unable outcomes against the fields introduced in #7449.
+- 336546b: Align the 3.2 docs, announcement banner, and SDK guidance with the published 3.2.0-rc.3 checkpoint and @adcp/sdk@14.0.0-rc.36.
+- eb3cbd6: `canonical_format_validate_input` no longer lists `comply_test_controller` in `required_tools`. The storyboard runner's per-storyboard gate admits a storyboard when any listed tool is present, so any agent exposing the (universal) test controller was selected and then failed all 17 steps on the missing `validate_input`. Agents without `validate_input` now receive a coverage-gap skip; agents implementing it run unchanged. Same shape as #6774 (fixes #7404, bug 1).
+- 8b9868a: Allow complete reporting summaries to carry the nearest future period start
+  from active committed configuration schedules while preserving both scope
+  guards, obligation boundaries, and evaluated coverage. Clarify the seller's
+  population rule and add portable compliance vectors, a lifecycle storyboard,
+  and source, generated, and runtime validation regressions.
+- 17f0921: Provenance storyboards now mark every creative-library and test-controller step
+  with its actual tool prerequisite, so hosted grading does not fail sellers for
+  optional surfaces they do not advertise. Fixes #7586.
+- 516c9d2: Skip billing capability discovery when an agent does not advertise the account capability block, preventing unrelated agents from receiving failing billing grades.
+- af1ea26: Gate the webhook-emission storyboard's wholesale `get_products` branch set and its aggregate assertion on the advertised wholesale buying mode, so non-media-buy agents grade the branch family as not applicable.
+- 7509a53: Keep the universal media-buy lifecycle and non-governance seller specialisms
+  ungoverned, and isolate their account natural keys so governance bindings from
+  other compliance scenarios cannot leak into their runs. Refs #7585.
+- 4d0b482: Test kits declare the account their storyboards address. `acme-outdoor` and `nova-motors`
+  now carry an `account:` block naming the operator (and both sandbox spellings) that
+  account-bearing steps send, so a seller implementing a kit can seed the accounts those
+  steps reference instead of inferring them from the storyboards' sample requests. Closes the
+  seeding half of #7588, where one unseeded account produced 19 check failures attributed to
+  the tools the steps name rather than to the account they could not resolve.
+- 8a4aac7: Preserve canonical document identities across bundled schemas and embedded MCP
+  profile resources so relocated schema packages resolve nested references fully
+  offline.
+- 1fdb7fc: Give 35 request-signing conformance vectors bodies that are schema-valid for the operation their URL names, so a seller that validates the request payload before authenticating the caller still reaches the RFC 9421 verifier checklist. Only `request.body` changes; headers, URLs, `verifier_capability` and `expected_outcome` are untouched, and each vector's intended fault is preserved (#7567).
+- 70e8363: Controller-seed canonical test-kit account prerequisites before account-scoped
+  storyboard steps run, using deterministic per-storyboard operator units to keep
+  account state isolated. This prevents missing or leaked setup from being
+  misgraded as failures of the tools those steps exercise. The reference training
+  agent now accepts those account fixtures on every applicable tenant and lets
+  framework task settlement emit terminal webhooks before controller completion
+  returns, with a bounded wait that releases the tenant lock if settlement stalls.
+  Refs #7588.
+- 98fa207: Add the `media_buy_frequency_cap_updates` compliance scenario covering root-cap
+  replace and clear through `update_media_buy_frequency_cap`, atomic rejection of
+  `new_packages` whose product cannot join the shared counter, the resulting-state
+  rule for clearing a cap while adding packages, and the `ACTION_NOT_ALLOWED`
+  path when the package mix can no longer change the root cap. The reference
+  training seller now implements package and shared MediaBuy frequency caps so
+  the four frequency-cap scenarios execute against it, and the specification
+  states the `ACTION_NOT_ALLOWED` rule for root-cap changes explicitly.
+- 1467e46: Training agent implements the rc.3 Reliable Reporting consumer-status hardening and the conformance storyboard grades it.
+  
+  The public training agent now advertises `consumer_status_task`, serves
+  `sync_reporting_status`, and projects the full RC.3 contract: `content_mismatch`
+  with its closed `mismatch_code`, `obligation_counts.consumer_status_pending`,
+  issue `opened_at` / `issue_state` / `external_ref`, and the
+  `operations_contact` / `consumer_mismatch_escalation_seconds` capability fields
+  driving `recommended_action` escalation — with the escalation boundary taking
+  precedence over the stale-`received` grace deadline.
+  
+  `comply_test_controller`'s `reporting_core_lifecycle_probe` gains two additive
+  operations, `advance_past_status_deadline` and `advance_past_escalation`, and
+  the capability-gated `reporting_consumer_status` storyboard uses them to grade
+  counted silence, each `mismatch_code`, `opened_at` stability across the
+  severity change, escalation to a `contact_*` action, and `operations_contact`
+  presence.
+
+## 3.1.23
+
+### Patch Changes
+
+- 0bcfe47: `canonical_format_validate_input` no longer lists `comply_test_controller` in `required_tools`. The storyboard runner's per-storyboard gate admits a storyboard when any listed tool is present, so any agent exposing the (universal) test controller was selected and then failed all 17 steps on the missing `validate_input`. Agents without `validate_input` now receive a coverage-gap skip; agents implementing it run unchanged. Same shape as #6774 (Refs #7404, bug 1 only).
+- 8a933df: Correct the v3.1.22 release record to include the request-aware Context Match
+  cache partitioning from #7397 alongside the single-user privacy protections
+  from #7396, document the emergency privacy/security notice exception and
+  immutable artifacts, and direct operators with unsafe caches to bypass caching
+  until both request and trusted provider-evaluation contexts are isolated, while
+  keeping the additional `cache_namespace` conformance contract in 3.2.
+- 0bcfe47: Fix the four compliance storyboards present on the 3.1 maintenance line that incorrectly included `get_adcp_capabilities` in `required_tools` alongside capability-specific tools: `billing_gate_dispatch`, `billing_out_of_band`, `canonical_supported_formats`, and `evaluator_auth`.
+
+  Removing the universal capability-discovery tool prevents agents without the storyboard's capability-specific tools from entering through the per-storyboard OR gate. This backports the applicable subset of #6774; the other 13 storyboards changed on main do not exist on this line.
+
+## 3.1.22
+
+### Patch Changes
+
+- 5739f1b: Align legacy format asset declarations with the canonical asset union and guard both individual and repeatable-group variants against future drift.
+- 8244f16: Restrict Context Match embeddings derived from non-public single-user content and require privacy reduction for free-form context signals.
+
 ## 3.2.0-rc.3
 
 ### Minor Changes

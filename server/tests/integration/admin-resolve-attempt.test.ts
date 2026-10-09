@@ -18,6 +18,7 @@ import { query } from '../../src/db/client.js';
 const TEST_USER = 'test-admin-resolve-001';
 
 async function cleanupTestUser(userId: string) {
+  await query('DELETE FROM admin_attempt_resolutions WHERE workos_user_id = $1', [userId]);
   await query('DELETE FROM certification_attempts WHERE workos_user_id = $1', [userId]);
   await query('DELETE FROM teaching_checkpoints WHERE workos_user_id = $1', [userId]);
   await query('DELETE FROM learner_progress WHERE workos_user_id = $1', [userId]);
@@ -39,6 +40,7 @@ describe('Admin attempt resolution', () => {
   });
 
   afterAll(async () => {
+    await query('DELETE FROM admin_attempt_resolutions WHERE workos_user_id = $1', [TEST_USER]);
     await query('DELETE FROM certification_attempts WHERE workos_user_id = $1', [TEST_USER]);
     await query('DELETE FROM teaching_checkpoints WHERE workos_user_id = $1', [TEST_USER]);
     await query('DELETE FROM learner_progress WHERE workos_user_id = $1', [TEST_USER]);
@@ -48,6 +50,7 @@ describe('Admin attempt resolution', () => {
   });
 
   beforeEach(async () => {
+    await query('DELETE FROM admin_attempt_resolutions WHERE workos_user_id = $1', [TEST_USER]);
     await query('DELETE FROM certification_attempts WHERE workos_user_id = $1', [TEST_USER]);
   });
 
@@ -156,6 +159,61 @@ describe('Admin attempt resolution', () => {
       await expect(
         certDb.adminCompleteAttempt(attempt.id, { x: 80 }, 80, true, 'should fail')
       ).rejects.toThrow('not found or not in_progress');
+    });
+  });
+
+  describe('adminResolveAttempt', () => {
+    it('commits an exactly-once completion with append-only provenance', async () => {
+      const attempt = await certDb.createAttempt(TEST_USER, 'S', 'thread-audit', 'S1');
+      const resolved = await certDb.adminResolveAttempt({
+        attemptId: attempt.id,
+        action: 'complete',
+        adminUserId: 'admin-test',
+        reason: 'Verified persisted assessment evidence',
+        scores: { protocol_mastery: 84 },
+        overallScore: 84,
+        passing: true,
+        moduleId: 'S1',
+      });
+
+      expect(resolved.attempt).toMatchObject({ status: 'passed', passing: true, overall_score: 84 });
+      expect(resolved.audit).toMatchObject({
+        attempt_id: attempt.id,
+        workos_user_id: TEST_USER,
+        module_id: 'S1',
+        admin_user_id: 'admin-test',
+        action: 'complete',
+        status_before: 'in_progress',
+        status_after: 'passed',
+      });
+
+      await expect(certDb.adminResolveAttempt({
+        attemptId: attempt.id,
+        action: 'complete',
+        adminUserId: 'admin-test',
+        reason: 'Duplicate retry',
+        scores: { protocol_mastery: 84 },
+        overallScore: 84,
+        passing: true,
+      })).rejects.toThrow('not found or not in_progress');
+      const audits = await query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM admin_attempt_resolutions WHERE attempt_id = $1',
+        [attempt.id],
+      );
+      expect(audits.rows[0].count).toBe('1');
+    });
+
+    it('audits cancellation in the same transaction', async () => {
+      const attempt = await certDb.createAttempt(TEST_USER, 'S', undefined, 'S1');
+      const resolved = await certDb.adminResolveAttempt({
+        attemptId: attempt.id,
+        action: 'cancel',
+        adminUserId: 'admin-test',
+        reason: 'Attempt was abandoned',
+      });
+
+      expect(resolved.attempt).toMatchObject({ status: 'failed', passing: false });
+      expect(resolved.audit).toMatchObject({ action: 'cancel', status_after: 'failed' });
     });
   });
 

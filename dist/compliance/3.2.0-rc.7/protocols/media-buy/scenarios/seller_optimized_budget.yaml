@@ -1,0 +1,683 @@
+id: media_buy_seller/seller_optimized_budget
+version: "1.0.0"
+title: "Seller accepts and persists a seller-optimized budget across packages"
+category: media_buy_seller
+summary: "Verifies that a seller advertising seller_optimized_budget accepts and persists a shared total with cross-package goals, package caps, a soft minimum-spend target, and two-level pacing. When media-buy cost caps are also advertised, verifies that the control binds to the allocation goal."
+track: media_buy
+
+requires_capability:
+  path: media_buy.features.seller_optimized_budget
+  equals: true
+
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buys
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  A seller-optimized buy has one hard media-buy total and multiple eligible
+  packages. Package budgets are optional hard caps rather than reserved
+  allocations; min_spend_target is a soft preference. The seller allocates
+  the shared total continuously against budget_allocation.optimization_goals.
+
+  The scenario verifies the configuration boundary rather than an internal
+  optimizer algorithm: acceptance, aggregate budget and pacing echo, package
+  constraint echo, and durable readback. Continuous internal allocation is
+  delivery behavior and does not mutate package caps or the buy revision.
+  An optional phase for sellers advertising media-buy cost caps verifies that
+  the outcome-cost control binds to the allocation goal, not independently to
+  unrelated package-local goals.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - seller_optimized_budget
+  examples:
+    - "Social platforms allocating a campaign budget across ad sets"
+    - "Retail-media platforms allocating a shared budget across tactics"
+    - "DSPs optimizing one insertion-order budget across line items"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller supports a common click optimization goal across two
+    non-guaranteed products in one currency. The test controller seeds both
+    products so the sample request does not rely on undeclared fixture IDs.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "shared_budget_prospecting"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "shared_budget_retargeting"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "shared_budget_prospecting"
+      pricing_option_id: "prospecting_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.50
+    - product_id: "shared_budget_retargeting"
+      pricing_option_id: "retargeting_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.00
+    - product_id: "shared_budget_retargeting"
+      pricing_option_id: "retargeting_cpm_eur"
+      pricing_model: "cpm"
+      currency: "EUR"
+      floor_price: 2.00
+
+phases:
+  - id: setup
+    title: "Establish account and discover eligible products"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: "Return an active account."
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a seller-assigned identifier"
+
+      - id: get_products_for_shared_budget
+        title: "Discover products for shared allocation"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: "Return the seeded products with compatible USD pricing and click optimization."
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_setup_get_products_for_shared_budget"
+          buying_mode: "brief"
+          brief: "Allocate a $100,000 performance budget across prospecting and retargeting display packages, optimizing for clicks."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_present
+            path: "products[1]"
+            description: "At least two products are available for cross-package allocation"
+
+  - id: create_shared_budget_buy
+    title: "Create a seller-optimized buy"
+    steps:
+      - id: create_media_buy_with_shared_budget
+        title: "Delegate allocation across two packages"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Accept the shared $100,000 total. Echo seller_optimized allocation,
+          even aggregate pacing, and the package constraints without replacing
+          them with seller-generated fixed allocations.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          pacing: "even"
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              budget: 70000
+              min_spend_target: 20000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              budget: 60000
+              pacing: "front_loaded"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_create_shared_budget_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller creates the media buy"
+          - check: field_value
+            path: "total_budget"
+            value: 100000
+            description: "Response echoes the hard aggregate budget"
+          - check: field_value
+            path: "budget_allocation.mode"
+            value: "seller_optimized"
+            description: "Response preserves delegated allocation mode"
+          - check: field_value
+            path: "pacing"
+            value: "even"
+            description: "Response preserves aggregate pacing"
+          - check: field_value
+            path: "packages[0].min_spend_target"
+            value: 20000
+            description: "Response preserves the soft package minimum-spend target"
+
+  - id: read_shared_budget_buy
+    title: "Verify durable allocation configuration"
+    steps:
+      - id: get_media_buy_with_shared_budget
+        title: "Read back the media buy"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: "Return the accepted shared total, allocation mode, pacing, and package constraints unchanged."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].media_buy_id"
+            value: "$context.media_buy_id"
+            description: "Read returns the created buy"
+          - check: field_value
+            path: "media_buys[0].total_budget"
+            value: 100000
+            description: "Read preserves the aggregate budget"
+          - check: field_value
+            path: "media_buys[0].budget_allocation.mode"
+            value: "seller_optimized"
+            description: "Read preserves seller-optimized allocation"
+          - check: field_value
+            path: "media_buys[0].pacing"
+            value: "even"
+            description: "Read preserves aggregate pacing"
+          - check: field_value
+            path: "media_buys[0].packages[0].min_spend_target"
+            value: 20000
+            description: "Read preserves the package minimum-spend target"
+
+  - id: reject_mixed_currency_shared_buy
+    title: "Reject a pricing option outside the media-buy currency"
+    steps:
+      - id: create_mixed_currency_shared_buy
+        title: "Reject a mixed-currency shared allocation"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation because the second package's EUR pricing
+          option does not match the media buy's USD denomination.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm_eur"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_currency_mismatch"
+        validations:
+          - check: error_code
+            value: "TERMS_REJECTED"
+            description: "Seller enforces the single media-buy currency before mutation"
+
+  - id: reject_package_minimum_exceeds_budget
+    title: "Reject a package minimum-spend target that exceeds its own budget"
+    steps:
+      - id: create_oversubscribed_package_minimum
+        title: "Reject min_spend_target greater than the package budget"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation because the prospecting package carries a
+          min_spend_target (80000) that exceeds its own budget (70000).
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              budget: 70000
+              min_spend_target: 80000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_min_exceeds_package"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Seller rejects a min_spend_target that exceeds the package budget before mutation"
+
+  - id: reject_aggregate_minimum_exceeds_total
+    title: "Reject package minimums that collectively exceed the total budget"
+    steps:
+      - id: create_oversubscribed_aggregate_minimum
+        title: "Reject sum(min_spend_target) greater than total_budget"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation because the package minimum-spend targets
+          (60000 + 50000 = 110000) collectively exceed total_budget (100000).
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              min_spend_target: 60000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              min_spend_target: 50000
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_aggregate_min_exceeds_total"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Seller rejects over-subscribed aggregate minimum-spend targets before mutation"
+
+  - id: bind_media_buy_cost_to_allocation_goal
+    title: "Bind a shared cost control to the allocation goal"
+    requires_capability:
+      path: media_buy.features.bidding_policy.media_buy.seller_optimized.cost_per_strengths
+      contains: cap
+    steps:
+      - id: create_shared_budget_buy_with_cost_cap
+        title: "Create a shared buy with a cross-package click cost cap"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Accept the cost cap as a control on the primary allocation goal
+          (clicks), independent of any package-local optimization goals.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          bidding:
+            cost_per:
+              amount: 4
+              strength: "cap"
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              budget: 70000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              budget: 60000
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_cost_cap"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller accepts the allocation-goal cost cap"
+          - check: field_value
+            path: "bidding.cost_per.amount"
+            value: 4
+            description: "Response preserves the media-buy-authored allocation cost cap"
+
+  - id: preserve_shared_package_automatic
+    title: "Preserve package automatic bidding under shared allocation"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.features.bidding_policy.package.seller_optimized.modes
+      contains: automatic
+    steps:
+      - id: create_shared_buy_with_package_automatic
+        title: "Author package automatic bidding in a shared buy"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: "Preserve the explicit automatic policy only on the retargeting package."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              bidding:
+                automatic: true
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_package_automatic"
+        context_outputs:
+          - name: shared_automatic_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_contains
+            path: "packages[*]"
+            value:
+              product_id: "shared_budget_retargeting"
+              bidding:
+                automatic: true
+            description: "Response preserves the explicit package automatic policy"
+
+      - id: read_shared_buy_with_package_automatic
+        title: "Read back shared package automatic bidding"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: "Return the explicit automatic block on the same package."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.shared_automatic_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "shared_budget_retargeting"
+              bidding:
+                automatic: true
+            description: "Readback preserves the package-authored automatic policy"
+
+  - id: execute_seller_optimized_proposal
+    title: "Execute a committed seller-optimized proposal"
+    depends_on: [setup]
+    requires_capability:
+      path: media_buy.supports_proposals
+      equals: true
+    steps:
+      - id: get_seller_optimized_proposal
+        title: "Request a shared-budget proposal with two-level pacing"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        expected: |
+          Return a seller-optimized proposal with aggregate even pacing and a
+          subordinate front-loaded pacing term on the second allocation.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_execute_seller_optimized_proposal_get_seller_optimized_proposal"
+          buying_mode: "brief"
+          brief: "Propose a $100,000 shared display budget across prospecting and retargeting, optimize allocation for clicks, pace the buy evenly, and front-load retargeting."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - name: shared_proposal_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "proposals[0].budget_allocation.mode"
+            value: "seller_optimized"
+            description: "Proposal delegates cross-package allocation"
+          - check: field_value
+            path: "proposals[0].pacing"
+            value: "even"
+            description: "Proposal preserves aggregate pacing"
+          - check: field_contains
+            path: "proposals[0].allocations[*]"
+            value:
+              product_id: "shared_budget_retargeting"
+              pacing: "front_loaded"
+            description: "Proposal expresses subordinate pacing on the intended product"
+
+      - id: finalize_seller_optimized_proposal
+        title: "Commit the shared-budget proposal"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        expected: "Return the same seller-optimized proposal as committed firm terms."
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_execute_seller_optimized_proposal_finalize_seller_optimized_proposal"
+          buying_mode: "refine"
+          refine:
+            - scope: "proposal"
+              proposal_id: "$context.shared_proposal_id"
+              action: "finalize"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "proposals[0].proposal_id"
+            value: "$context.shared_proposal_id"
+            description: "Finalization returns the proposal the buyer targeted"
+          - check: field_value
+            path: "proposals[0].proposal_status"
+            value: "committed"
+            description: "Proposal is ready for execution"
+          - check: field_value
+            path: "proposals[0].budget_allocation.mode"
+            value: "seller_optimized"
+            description: "Finalization preserves shared allocation terms"
+          - check: field_value
+            path: "proposals[0].pacing"
+            value: "even"
+            description: "Finalization preserves aggregate pacing"
+          - check: field_contains
+            path: "proposals[0].allocations[*]"
+            value:
+              product_id: "shared_budget_retargeting"
+              pacing: "front_loaded"
+            description: "Finalization preserves product-specific subordinate pacing"
+
+      - id: create_from_seller_optimized_proposal
+        title: "Execute the shared-budget proposal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create packages from the committed constraints, preserve the shared
+          allocation goals and aggregate pacing, and translate allocation
+          pacing to package pacing.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          proposal_id: "$context.shared_proposal_id"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_proposal_execute"
+        context_outputs:
+          - name: shared_proposal_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_value
+            path: "budget_allocation.mode"
+            value: "seller_optimized"
+            description: "Execution preserves delegated allocation"
+          - check: field_value
+            path: "pacing"
+            value: "even"
+            description: "Execution preserves aggregate pacing"
+          - check: field_contains
+            path: "packages[*]"
+            value:
+              product_id: "shared_budget_retargeting"
+              pacing: "front_loaded"
+            description: "Execution derives package pacing for the intended product"
+
+      - id: read_seller_optimized_proposal_buy
+        title: "Read back the proposal-derived shared buy"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: "Return the proposal-derived allocation and pacing configuration unchanged."
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.shared_proposal_media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].budget_allocation.mode"
+            value: "seller_optimized"
+            description: "Readback preserves shared allocation"
+          - check: field_contains
+            path: "media_buys[0].packages[*]"
+            value:
+              product_id: "shared_budget_retargeting"
+              pacing: "front_loaded"
+            description: "Readback preserves product-matched proposal pacing"

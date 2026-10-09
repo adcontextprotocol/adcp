@@ -1,0 +1,261 @@
+---
+title: Context & Sessions
+description: "AdCP context_id vs task_id explained. How A2A and MCP handle conversation state, task continuity, and application context."
+"og:title": "AdCP — Context & Sessions"
+---
+
+AdCP uses identifiers and data fields to maintain state across requests. Understanding these is essential for building effective integrations.
+
+## Key Identifiers
+
+AdCP uses two distinct identifiers for different purposes:
+
+### context_id vs task_id
+
+| Identifier | Purpose | Lifespan | Scope |
+|------------|---------|----------|-------|
+| **context_id** | A2A conversation correlation | Transport-defined | Across A2A messages in one conversation |
+| **task_id** | Tracking specific operations | Until completion (hours to days) | Single operation |
+
+**context_id**:
+- Maps to A2A's native Message/Task `contextId`
+- Is managed in the A2A transport envelope, not inside the AdCP task body
+- Is not an MCP request-body session mechanism
+- Is correlation and routing metadata, not authorization
+
+**task_id**:
+- Specific to individual requests that could be asynchronous
+- Lives beyond the conversation
+- Used for tracking operation progress over time
+- Persists until the task completes (may be days for complex media buys)
+- Can be referenced across different conversations or sessions
+
+### A2A usage example
+
+```javascript
+// First call - establishes context and creates task
+const first = await a2a.send({ message: { parts: [/* AdCP request */] } });
+
+// Later in the same A2A conversation, use the native envelope fields.
+const followUp = await a2a.send({
+  message: {
+    contextId: first.contextId,
+    taskId: first.taskId,
+    parts: [/* follow-up AdCP request */]
+  }
+});
+```
+
+## Protocol Differences
+
+- **A2A**: Conversation continuity uses native `contextId` in the A2A envelope.
+- **MCP**: Continuity, when offered, belongs to the transport session. Do not send an AdCP `context_id` tool argument to create or resume it.
+
+### A2A Context
+
+A2A carries conversation correlation in the native message envelope:
+
+```javascript
+const task = await a2a.send({ message: {...} });
+
+// Follow-ups explicitly carry the transport-native contextId.
+const followUp = await a2a.send({
+  message: {
+    contextId: task.contextId,
+    taskId: task.taskId,
+    ...
+  }
+});
+```
+
+### MCP context
+
+MCP callers send task arguments without an AdCP session identifier:
+
+```javascript
+// First call - no context
+await mcp.call('get_products', {
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442076",
+  buying_mode: "brief",
+  brief: "Video ads"
+});
+
+// Follow-up in the same MCP transport session, if the host provides one.
+await mcp.call('get_products', {
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442077",
+  buying_mode: "brief",
+  brief: "Focus on premium inventory"
+});
+```
+
+Where the selected request schema admits `context_id`, MCP servers MUST ignore it. It cannot select session state, identity, account, authorization, task continuation, or idempotency scope. Use the MCP transport session, if provided, for ephemeral continuity and schema-declared task or resource identifiers for durable state.
+
+## What Context Maintains
+
+An A2A `contextId` can associate conversational state such as:
+- Current media buy and products being discussed
+- Search results and applied filters
+- Conversation history and user intent
+- User preferences expressed in the session
+- Workflow state and temporary decisions
+
+Note: Long-term task state (like media buy status, creative assets, performance data) is tracked via `task_id`, not `context_id`.
+
+## Extension Fields (`ext`)
+
+Extension fields enable platform-specific functionality while maintaining protocol compatibility.
+
+### Schema Pattern
+
+Extensions appear consistently across requests, responses, and domain objects:
+
+```json
+{
+  "product_id": "ctv_premium",
+  "name": "Connected TV Premium Inventory",
+  "ext": {
+    "gam": {
+      "order_id": "1234567890",
+      "dashboard_url": "https://..."
+    },
+    "roku": {
+      "content_genres": ["comedy", "drama"]
+    }
+  }
+}
+```
+
+The `ext` object:
+- Is always **optional** (never required)
+- Accepts any valid JSON structure
+- Must be preserved by implementations (even unknown fields)
+- Is not validated by AdCP schemas (implementation-specific validation allowed)
+
+### Namespacing (Critical)
+
+Extensions MUST use vendor/platform namespacing:
+
+```json
+// ✅ Correct - Namespaced
+{
+  "ext": {
+    "gam": { "test_mode": true },
+    "roku": { "app_ids": ["123"] }
+  }
+}
+
+// ❌ Incorrect - Not namespaced
+{
+  "ext": {
+    "test_mode": true,  // Missing namespace!
+    "app_ids": ["123"]  // Which platform?
+  }
+}
+```
+
+## Application Context (`context`)
+
+Context provides opaque correlation data that is echoed unchanged in responses and webhooks.
+
+### Key Properties
+
+- Agents NEVER parse or use context to affect behavior
+- Exists solely for the initiator's internal tracking needs
+- Echoed unchanged in responses and webhook payloads
+
+### Normative echo contract
+
+Agents MUST obey the following rules. The compliance runner asserts on these literally, and buyers rely on them for correlation.
+
+1. **Echo on success.** When the caller includes a top-level `context` object on a request, the agent MUST include the same JSON value in the response. This applies whether the response status is `completed`, `submitted`, `working`, `input-required`, or any other terminal or intermediate state.
+2. **Echo on error.** Failure responses MUST also echo the same `context` JSON value. Dropping context on the error path breaks correlation exactly when the buyer needs it most. Agents that return `adcp_error`, `errors[]`, or any other error envelope MUST still carry through the caller's `context`.
+3. **Echo on async updates.** Push notifications, webhook payloads, and any subsequent messages the agent emits for the same operation MUST carry the original `context`. The agent MUST NOT drop context between the initial response and a later status update — a buyer that correlated by `context.trace_id` expects every message for that operation to surface the same trace.
+4. **No synthesis.** When the caller does NOT provide a `context` object, the agent MUST NOT fabricate one. Responses to context-less requests MUST omit the `context` field (or emit it as null / absent per the transport's normal serialization). Synthetic context from the agent side is a conformance failure — the whole point of context is that it is owned by the caller.
+5. **No mutation.** Agents MUST NOT add, remove, rename, or change the JSON type or value of fields in the echoed context. JSON value equivalence applies: object member order and number lexical form are not types or values. For example, `{"a":1,"b":2}` and `{"b":2.0,"a":1.0}` are equivalent for the echo rule. An integer-valued number remains an integer for JSON Schema validation when serialized with a zero fractional part, so A2A's `3` → `3.0` serialization does not count as retyping. Changing the mathematical value does. Across A2A, the comparison value is the post-decoding `google.protobuf.Value`; senders and receivers MUST enforce the [A2A numeric domain](/dist/docs/3.2.0-rc.3/building/by-layer/L0/a2a-profile-extension#json-number-interoperability). Verifiers MUST compare parsed JSON values; a verifier that hashes context SHOULD canonicalize the parsed value instead of hashing transport bytes.
+6. **No action.** Agents MUST NOT parse, validate, log fields from, or branch on any value inside `context`. Context is opaque to the agent — a value that looks like a structured identifier is not an invitation to interpret it.
+
+<Warning>
+A2A 1.0 carries structured data in `google.protobuf.Value`, whose numeric representation is an IEEE 754 double. Callers using A2A MUST encode exact integer identifiers outside the interoperable range `[-9007199254740991, 9007199254740991]` as strings inside `context`; exact decimals that need more precision than binary64 provides MUST also be strings. The transport cannot preserve those numeric values reliably. This is distinct from the harmless lexical change between `3` and `3.0`.
+</Warning>
+
+### Schema Pattern
+
+```json
+{
+  "tool": "create_media_buy",
+  "arguments": {
+    "packages": [...],
+    "context": {
+      "ui_session_id": "sess_abc123",
+      "trace_id": "trace_xyz789",
+      "internal_campaign_id": "camp_456"
+    }
+  }
+}
+```
+
+Response echoes the context:
+
+```json
+{
+  "status": "input-required",
+  "message": "Media buy requires manual approval before activation.",
+  "context_id": "ctx_ghi789",
+  "context": {
+    "ui_session_id": "sess_abc123",
+    "trace_id": "trace_xyz789",
+    "internal_campaign_id": "camp_456"
+  }
+}
+```
+
+### Common Context Uses
+
+1. **UI/Session tracking** - Maintaining state across async operations
+2. **Request correlation** - Tracing requests through distributed systems
+3. **Internal identifiers** - Mapping to your internal data structures
+4. **Organization context** - Multi-tenant tracking
+
+## When to Use What
+
+| Field | Purpose | Agent Reads? | Agent Modifies? |
+|-------|---------|--------------|-----------------|
+| `context_id` | A2A conversation correlation; MCP compatibility no-op | A2A transport only | A2A transport only |
+| `task_id` | Operation tracking | Yes | Yes (creates) |
+| `ext` | Platform-specific config | MAY | MAY add response data |
+| `context` | Opaque correlation | NEVER | NEVER |
+
+### Use `ext` when:
+- Platform needs to parse the data
+- Data MAY affect operational behavior
+- Data represents platform-specific configuration
+- Data should persist across operations
+
+### Use `context` when:
+- Data is only for caller's internal use
+- Data should never affect agent behavior
+- Data is for correlation/tracking only
+- Data needs to be echoed unchanged
+
+## Best Practices
+
+### For A2A
+- Let the protocol handle context
+- Use contextId for explicit conversation threading
+- Trust the session management
+
+### For MCP
+- Do not copy response `context_id` values into later tool arguments
+- Use the MCP transport session, if provided, for ephemeral continuity
+- Use `task_id` or the task's resource identifiers for durable work
+- Ignore a request-body `context_id` where the selected schema admits it
+
+### For Extensions
+- Always namespace under vendor keys
+- Document your extensions extensively
+- Consider proposing standardization for common patterns
+
+### For Application Context
+- Keep it opaque - don't structure for agents to parse
+- Avoid large payloads - context is echoed in every response
+- Use for correlation only - never for operational data

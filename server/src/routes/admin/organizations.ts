@@ -1289,6 +1289,7 @@ export function setupOrganizationRoutes(
               resource_type: "membership",
               resource_id: membership.id,
               details: {
+                ...req.staticAdminAuditDetails,
                 target_user_id: userId,
                 target_email: user.email,
                 role: membership.role?.slug ?? "member",

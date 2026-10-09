@@ -6,6 +6,8 @@ description: "AdCP push notifications: how sellers deliver async task status upd
 
 Push notifications let sellers deliver task status updates to you directly, instead of requiring you to poll. You provide a webhook URL in the task request; the seller POSTs status changes to that URL as the task progresses.
 
+The current 3.x request field is optional. The [proposed AdCP 4.0 async webhook baseline](/docs/building/verification/conformance#proposed-adcp-40-async-webhook-baseline) would require agents seeking that version's verification to accept callbacks for asynchronous operations and defined durable lifecycle events. It does not change existing 3.x grades.
+
 ## How it works
 
 1. A unique operation ID is generated per task invocation for webhook correlation
@@ -268,7 +270,9 @@ This inner result object is valid delivery-report content, but it is **not valid
 
 The top-level `status` is the async webhook status (`completed`, `failed`, `working`, and so on). The nested `media_buy_deliveries[].status` is the media buy lifecycle or reporting state (`active`, `paused`, `reporting_delayed`, and so on). Do not collapse the two fields.
 
-For delivery-report data events such as `scheduled`, `final`, `delayed`, `adjusted`, and `window_update`, `notification_id` is absent by design; dedupe the transport event with `idempotency_key`. The `aggregated_totals` field is API-only for `get_media_buy_delivery` responses and must not be emitted in reporting webhook result payloads.
+For delivery-report data events such as `scheduled`, `final`, `delayed`, `adjusted`, and `window_update`, `notification_id` is absent by design; dedupe the transport event with `idempotency_key`. The `aggregated_totals` field is API-only for `get_media_buy_delivery` responses. Senders MUST NOT emit it in reporting webhook result payloads. Receivers MUST ignore `aggregated_totals` if present in a webhook result and MUST NOT treat it as authoritative, but MUST NOT reject the payload for carrying it. A request-scoped rollup has no defined meaning in a push event, so reconcile totals from `get_media_buy_delivery` or from the per-delivery rows.
+
+AdCP schemas are open by policy ([DR-0009](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0009-additional-properties-default-true.md)), so a prose MUST NOT on a field that is absent from the schema is normative even though schema validation will not flag it. Conformance is meant to grade it through storyboards rather than schema validation.
 
 Signatures and content digests are computed over the exact raw JSON bytes sent as this full envelope. Re-serializing just the `result` object, adding whitespace, or changing field order before verification changes the bytes and breaks signature validation.
 
@@ -364,7 +368,7 @@ Property-list change payloads retain a required body-level `signature: "rfc9421"
 
 - Error codes use the `webhook_signature_*` prefix (see [Webhook error taxonomy](/docs/building/by-layer/L1/security#webhook-error-taxonomy)).
 - `tag` MUST be `adcp/webhook-signing/v1`.
-- Resolve `keyid` via the seller operator's `brand.json` `agents[].jwks_uri`, applying any publisher `adagents.json` `signing_keys[]` pin when present (you already have the seller's agent URL from your integration).
+- Resolve `keyid` with [Agent resolution](/docs/building/by-layer/L1/security#agent-resolution): the seller agent's `identity.brand_json_url` leads to its operator `brand.json` `agents[].jwks_uri`. When the webhook concerns a publisher whose `adagents.json` pins `signing_keys[]` for this seller, accept only JWKS keys whose thumbprint matches a pinned entry, taking the publishers from your own record of the media buy (you already have the seller's agent URL from your integration).
 
 **Receiver implementation sketch:**
 ```typescript
@@ -646,6 +650,38 @@ Machine-readable test vectors are available at [`/static/test-vectors/webhook-pa
 ## Reporting webhooks
 
 Reporting webhooks are separate from task status webhooks. They deliver periodic performance data for active media buys and are configured via `reporting_webhook` in `create_media_buy`, not via `push_notification_config`.
+
+As of AdCP 3.3, each `reporting_webhook` registration MAY carry a buyer-supplied `operation_id` (same constraints as `push_notification_config.operation_id`); the seller MUST echo it verbatim in every delivery payload's `operation_id`, and MUST NOT derive it by parsing the registration URL. Sellers MUST NOT emit delivery reports to a registration that omits it — fail closed rather than emitting a schema-invalid payload.
+
+### AdCP 3.2 interim reporting correlation
+
+AdCP 3.2.1 requires `operation_id` in the `media_buy_delivery` webhook envelope, but its `reporting_webhook` registration schema does not define that field ([#7885](https://github.com/adcontextprotocol/adcp/issues/7885)). The field is standardized as an optional field in AdCP 3.3; the 3.2 interim wire shape is identical. The fail-closed `MUST NOT` above applies from 3.3; on 3.2 it remains opt-in guidance.
+
+On the 3.2 line, cooperating buyers and sellers can agree to carry `reporting_webhook.operation_id` as an additive field. The published 3.2.1 registration schema has `additionalProperties: true`, so this uses the existing [extensibility allowance](/docs/reference/versioning#extensibility). No `ext.{namespace}` wrapper is needed inside this container. This is opt-in implementation guidance, not a new requirement for all 3.2 implementations; accepting the field does not establish that a seller supports it. Confirm support during integration onboarding before depending on scheduled delivery.
+
+For integrations adopting this interim agreement:
+
+- The buyer supplies a unique reporting-stream ID of 1–255 characters from `A–Z`, `a–z`, `0–9`, `_`, `.`, `:`, and `-`, matching `push_notification_config.operation_id` constraints. Its SDK preserves the field when validating and serializing every registration or update.
+- The seller stores that value with the reporting registration and copies it verbatim to `mcp-webhook-payload.operation_id` on each `media_buy_delivery` notification, including retries. The registration's value is independent of any task-status `push_notification_config.operation_id`.
+- A registration without a buyer-supplied ID cannot enable this interim delivery path. Flag the missing value for the buyer and suppress scheduled sends; do not fabricate an ID or extract one from the URL. Existing buyers need to update their registration with an ID before reports resume. They can use `get_media_buy_delivery` while arranging support.
+- Keep existing webhook authentication, required envelope fields, and delivery deduplication unchanged. The stream ID is a correlation value, not a delivery-specific `idempotency_key`.
+
+For example, the reporting registration below validates against the published 3.2.1 schema; `operation_id` is an agreed additional field:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.1/core/reporting-webhook.json",
+  "url": "https://buyer.example.com/webhooks/reporting",
+  "operation_id": "op_reporting_001",
+  "authentication": {
+    "schemes": ["Bearer"],
+    "credentials": "example_reporting_credential_32_chars"
+  },
+  "reporting_frequency": "daily"
+}
+```
+
+The Python SDK restoration is tracked in [adcp-client-python#1092](https://github.com/adcontextprotocol/adcp-client-python/issues/1092). Adding model support alone does not persist the seller's registration or resume existing subscriptions. Verify registration → storage → scheduled send → authenticated receipt together. Where a release defines this field in core (3.3 and later), its definition takes precedence over the interim agreement.
 
 See [Task Reference](/docs/media-buy/task-reference) for details on `reporting_webhook`.
 

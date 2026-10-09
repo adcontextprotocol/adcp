@@ -75,13 +75,14 @@
               },
               "item_issues": {
                 "type": "array",
-                "description": "Per-item issues reported by the platform (rejections, warnings). Only present when the platform performs item-level review.",
+                "description": "Per-item review outcomes. Ordinarily contains issues such as rejections and warnings. When media_buy.features.catalog_ingestion.item_status_reporting is per_item, terminal results for created, updated, or unchanged catalogs MUST include exactly one entry for every item in the resulting catalog, including approved and pending items, keyed by canonical item_id. This includes discovery-only reads of accessible buyer-managed catalogs: current statuses are returned without re-ingestion or restarting review. The number of unique item_id entries MUST equal item_count. Buyers MUST reject incomplete reports or duplicate item IDs. Replayed results are historical snapshots; a fresh idempotency_key obtains a current read. Dry-run outcomes are previews and do not prove live eligibility. Aggregate counts or a sparse issues list do not satisfy per_item reporting.",
                 "items": {
                   "type": "object",
                   "properties": {
                     "item_id": {
                       "type": "string",
-                      "description": "ID of the catalog item with an issue"
+                      "description": "Canonical catalog item key, including approved and pending items when complete per-item reporting is declared.",
+                      "x-entity": "catalog_item"
                     },
                     "status": {
                       "$ref": "/schemas/enums/catalog-item-status.json",

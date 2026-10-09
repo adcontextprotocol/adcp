@@ -266,9 +266,9 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(workflow, /sales_storyboards:\n\s+name: Storyboards \(current \/sales\)/);
   assert.match(workflow, /needs: sales_storyboard_orchestrators/);
   assert.match(workflow, /ORCHESTRATOR_RESULT: \$\{\{ needs\.sales_storyboard_orchestrators\.result \}\}/);
-  assert.match(workflow, /MIN_CLEAN: 133/);
-  assert.match(workflow, /MIN_PASSED: 632/);
-  assert.match(matrixRunner, /"sales:133:632"/);
+  assert.match(workflow, /MIN_CLEAN: 135/);
+  assert.match(workflow, /MIN_PASSED: 646/);
+  assert.match(matrixRunner, /"sales:135:646"/);
   assert.match(workflow, /Training agent · current \/sales/);
   assert.match(workflow, /echo "failed=\$\{failed_sum\}"/);
   assert.match(workflow, /echo "not_applicable=\$\{not_applicable_sum\}"/);
@@ -276,7 +276,7 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(matrixRunner, /--shard-count 8 --max-parallel 2 --timeout-ms 180000/);
   assert.match(matrixRunner, /orchestrator_failure=1/);
   assert.match(workflow, /wholesale_feed_products_scope_isolation/);
-  assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:7:0/);
+  assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:8:0/);
 });
 
 test('creative-builder uses bounded isolated children in local and CI matrices', () => {
@@ -300,19 +300,18 @@ test('creative-builder uses bounded isolated children in local and CI matrices',
 test('current training-agent floors are ratcheted and mirrored by local and CI runners', () => {
   const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
   const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
-  // governance and brand dropped one passing step each when
-  // canonical_format_validate_input stopped listing comply_test_controller in
-  // required_tools: both tenants expose the controller but not validate_input,
-  // so the storyboard is no longer selected for them and the single step it
-  // contributed is gone. Deliberate de-ratchet, not a regression — the
-  // clean-storyboard floors are untouched.
+  // The CTV and premium-display validate_input gates previously admitted
+  // controller-only /brand and /governance: 14 + 18 product seeds passed while
+  // every validator check skipped. The live tool-catalog drift test replays
+  // both gates and proves that exact loss. Subtract only those 32 setup passes;
+  // pin all clean floors, other tenants, and the frozen 3.0 floors below.
   const baselines = [
     ['signals', 45, 80],
-    ['sales', 133, 632],
-    ['governance', 47, 160],
+    ['sales', 135, 646],
+    ['governance', 47, 160 - (14 + 18)],
     ['creative', 49, 209],
     ['creative-builder', 50, 184],
-    ['brand', 45, 115],
+    ['brand', 45, 115 - (14 + 18)],
     ['si', 42, 50],
   ];
 
@@ -402,6 +401,9 @@ process.exit(creative ? Number(process.env.CREATIVE_EXIT) : 0);
     ADCP_SCHEMA_ROOT: path.join(directory, 'dist/schemas/latest'),
     ADCP_COMPLIANCE_DIR: path.join(directory, 'dist/compliance/latest'),
     CREATIVE_CLEAN: '49', CREATIVE_PASSED: '209', CREATIVE_EXIT: '0',
+    // The workflow always provides STORYBOARD_ID (empty for whole-tenant rows)
+    // and its run block uses `set -u`, so the mock environment must too.
+    STORYBOARD_ID: '',
   };
   return { directory, env };
 }
@@ -465,7 +467,8 @@ test('workflow preserves creative job selection, floors, required-clean checks a
     { surface: 'current', tenant: 'creative', min_clean_storyboards: 49, min_passing_steps: 209 });
   assert.equal(job.strategy.matrix.exclude.some(row => row.tenant === 'creative'), false);
   const run = workflowSteps.find(step => step.id === 'run');
-  assert.equal(run.env.TENANT_PATH, '${{ matrix.tenant }}');
+  assert.equal(run.env.TENANT_PATH, '${{ matrix.tenant_path || matrix.tenant }}');
+  assert.equal(run.env.STORYBOARD_ID, '${{ matrix.storyboard_id }}');
   assert.equal(run.env.PUBLIC_TEST_AGENT_TOKEN, 'storyboard-ci-token');
   assert.match(run.env.ADCP_COMPLIANCE_DIR, /dist\/compliance\/latest/);
   assert.match(run.env.ADCP_SCHEMA_ROOT, /dist\/schemas\/latest/);
@@ -488,6 +491,31 @@ test('workflow leaves 3.0 creative monolithic and preserves creative-builder iso
     assert.equal(result.status, 0, result.stderr + result.stdout);
     const invocation = JSON.parse(fs.readFileSync(env.INVOCATIONS, 'utf8').trim().split('\n').at(-1));
     assert.equal(invocation.isolated, isolated);
+  }
+});
+
+test('workflow profile rows keep their selected storyboard and are never captured by creative isolation', (t) => {
+  const rows = workflowDefinition.jobs.storyboards.strategy.matrix.include;
+  const profileRows = rows.filter(row => row.storyboard_id);
+  assert.ok(profileRows.length >= 2, 'profile rows are present in the matrix');
+  // Isolation keys on the tenant name, so no profile row may be named creative.
+  for (const row of rows.filter(entry => entry.tenant === 'creative')) {
+    assert.equal(row.storyboard_id, undefined);
+    assert.equal(row.tenant_path, undefined);
+  }
+  const { directory, env } = makeCreativeGradingFixture(t);
+  for (const row of profileRows) {
+    assert.notEqual(row.tenant_path, row.tenant);
+    fs.rmSync(env.INVOCATIONS, { force: true });
+    const result = spawnSync('bash', ['-c', workflowScript(workflowSteps.find(step => step.id === 'run'), directory, row.tenant, row.surface)], {
+      cwd: directory, encoding: 'utf8',
+      env: { ...env, TENANT_PATH: row.tenant_path, STORYBOARD_ID: row.storyboard_id },
+    });
+    assert.equal(result.status, 0, result.stderr + result.stdout);
+    const invocation = JSON.parse(fs.readFileSync(env.INVOCATIONS, 'utf8').trim().split('\n').at(-1));
+    assert.equal(invocation.isolated, false, `${row.tenant} must stay monolithic`);
+    assert.equal(invocation.tenant, row.tenant_path);
+    assert.deepEqual(invocation.args.slice(-2), ['--storyboard-id', row.storyboard_id]);
   }
 });
 

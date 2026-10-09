@@ -12,7 +12,7 @@
  *   - versionInlineSchemaIds: post-pass that rewrites every nested $id from
  *     source-form (/schemas/core/foo.json) to the versioned flat-tree URI
  *     (/schemas/{version}/core/foo.json). The root $id is left for the
- *     bundled-prefix rewrite that runs separately.
+ *     root canonicalization that runs separately.
  *
  * Tests cover the alias-wins case, the no-version-double-stamp guard, the
  * isRoot propagation through arrays, and external/relative $id passthrough.
@@ -34,6 +34,7 @@ const {
   canonicalPublishedSchemaUri,
   canonicalizePublishedSchemaUris,
   generateExtensionRegistry,
+  generateBundledSchemas,
 } = require('../scripts/build-schemas.cjs');
 
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -110,6 +111,33 @@ function withSourceTree(files, fn) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
+
+test('bundled root keeps the canonical document identity', async () => {
+  const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-bundled-source-'));
+  const bundledDir = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-bundled-output-'));
+  try {
+    const relativePath = path.join('media-buy', 'identity-response.json');
+    const sourcePath = path.join(sourceDir, relativePath);
+    fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+    fs.writeFileSync(sourcePath, JSON.stringify({
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/media-buy/identity-response.json',
+      type: 'object',
+    }));
+
+    const result = await generateBundledSchemas(sourceDir, bundledDir, '3.2.1');
+    assert.deepEqual(result, { successCount: 1, errorCount: 0 });
+    const bundled = JSON.parse(fs.readFileSync(path.join(bundledDir, relativePath), 'utf8'));
+    assert.equal(
+      bundled.$id,
+      'https://adcontextprotocol.org/schemas/3.2.1/media-buy/identity-response.json',
+    );
+    assert.ok(!bundled.$id.includes('/bundled/'));
+  } finally {
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+    fs.rmSync(bundledDir, { recursive: true, force: true });
+  }
+});
 
 test('resolveRefs preserves $id on inlined subtree', () => {
   withSourceTree({
@@ -204,7 +232,7 @@ test('versionInlineSchemaIds stamps inner $ids and skips the root', () => {
     },
   };
   versionInlineSchemaIds(schema, '3.1.0');
-  assert.equal(schema.$id, '/schemas/core/root.json', 'root $id is left for the bundled-prefix rewrite');
+  assert.equal(schema.$id, '/schemas/core/root.json', 'root $id is left for canonicalization');
   assert.equal(schema.properties.a.$id, '/schemas/3.1.0/core/a.json');
   assert.equal(schema.properties.b.items.$id, '/schemas/3.1.0/core/b.json');
 });

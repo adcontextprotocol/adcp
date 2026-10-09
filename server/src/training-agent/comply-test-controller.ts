@@ -43,6 +43,7 @@ import {
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
 } from './types.js';
 import {
+  clearSession,
   findSessionsMatching,
   findSessionMatching,
   controllerFixturePrincipal,
@@ -52,6 +53,7 @@ import {
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import {
+  clearAccountStoreForSession,
   emitAccountChangeRecordedWebhook,
   expireAccountChangeCursors,
   getAccountNotificationSubscribers,
@@ -61,6 +63,7 @@ import {
   sandboxAccountRefForId,
   seedAccountFixture,
 } from './account-handlers.js';
+import { clearCatalogEventStoresForSession } from './catalog-event-handlers.js';
 import {
   canonicalizeAccountRef,
   normalizeControllerAccountRef,
@@ -93,6 +96,8 @@ import {
   type TrainingTaskRegistryScope,
 } from './task-registry-scope.js';
 import {
+  advancePastConsumerMismatchEscalationProbe,
+  advancePastConsumerStatusDeadlineProbe,
   advanceReportingCoreLifecycleProbe,
   omitReportingCoreObligationProbe,
   prepareReportingCoreLifecycleProbe,
@@ -101,11 +106,12 @@ import {
   prepareReliableReportingCoreIntegrityProbe,
   publishReliableReportingReconciledAdjustments,
   publishReliableReportingCoreIntegrityCorrection,
-  publishReportingCoreLifecycleProbeRows,
+  publishReportingCoreLifecycleProbeVector,
   publishZeroRowReportingCoreLifecycleProbe,
   restateAfterReceivedReportingCoreLifecycleProbe,
   restateReportingCoreLifecycleProbeSnapshot,
   probeReportingSourceCalendarDst,
+  reportingDayStart,
   resolveReportingAccountDurably,
   updateReliableReportingManagedDeliveryProbe,
   withDurableReportingLedger,
@@ -307,6 +313,7 @@ export function getDeliverySimulationForPeriod(
   mediaBuyId: string,
   start: Date,
   end: Date,
+  reportingTimezone = 'UTC',
 ): ComplyDeliveryAccumulator | undefined {
   const cumulative = getDeliverySimulation(session, mediaBuyId);
   if (!cumulative?.datedSimulations?.length) return cumulative;
@@ -318,7 +325,8 @@ export function getDeliverySimulationForPeriod(
     conversions: 0,
   };
   for (const simulation of cumulative.datedSimulations) {
-    const timestamp = new Date(`${simulation.deliveryDate}T00:00:00.000Z`).getTime();
+    // delivery_date is a calendar date in the product's reporting timezone.
+    const timestamp = reportingDayStart(simulation.deliveryDate, reportingTimezone).getTime();
     if (timestamp < start.getTime() || timestamp >= end.getTime()) continue;
     const { impressions, clicks, plays, conversions, reportedSpend, ...extensions } = simulation.metrics;
     filtered.impressions += impressions;
@@ -329,6 +337,9 @@ export function getDeliverySimulationForPeriod(
     filtered.reportedSpend.currency = reportedSpend.currency;
     Object.assign(filtered, extensions);
   }
+  // Property-grain rows are undated, so period filtering never excludes them.
+  if (cumulative.propertyDelivery) filtered.propertyDelivery = cumulative.propertyDelivery;
+  if (cumulative.installmentPropertyDelivery) filtered.installmentPropertyDelivery = cumulative.installmentPropertyDelivery;
   return filtered;
 }
 
@@ -450,6 +461,12 @@ function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, para
   if (isRecord(params.dooh_metrics)) {
     cumulative.doohMetrics = params.dooh_metrics;
   }
+  if (Array.isArray(params.property_delivery)) {
+    cumulative.propertyDelivery = params.property_delivery as Array<Record<string, unknown>>;
+  }
+  if (Array.isArray(params.installment_property_delivery)) {
+    cumulative.installmentPropertyDelivery = params.installment_property_delivery as Array<Record<string, unknown>>;
+  }
   if (Array.isArray(params.not_yet_measurable_vendor_metrics)) {
     cumulative.deferredVendorMetrics = normalizeVendorMetricIdentities(params.not_yet_measurable_vendor_metrics) ?? [];
   }
@@ -482,6 +499,8 @@ function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record
     ...(cumulative.viewability ? { viewability: cumulative.viewability } : {}),
     ...(cumulative.plays !== undefined ? { plays: cumulative.plays } : {}),
     ...(cumulative.doohMetrics ? { dooh_metrics: cumulative.doohMetrics } : {}),
+    ...(cumulative.propertyDelivery ? { property_delivery: cumulative.propertyDelivery } : {}),
+    ...(cumulative.installmentPropertyDelivery ? { installment_property_delivery: cumulative.installmentPropertyDelivery } : {}),
     ...(cumulative.deferredVendorMetrics ? { not_yet_measurable_vendor_metrics: cumulative.deferredVendorMetrics } : {}),
     ...(cumulative.vendorMetricValuesByPackage ? { vendor_metric_values_by_package: cumulative.vendorMetricValuesByPackage } : {}),
     ...(cumulative.deferredVendorMetricsByPackage ? { not_yet_measurable_vendor_metrics_by_package: cumulative.deferredVendorMetricsByPackage } : {}),
@@ -1134,6 +1153,33 @@ function createStore(
         }
       }
 
+      for (const [field, rowSchema] of [
+        ['property_delivery', '/schemas/core/property-delivery-metrics.json'],
+        ['installment_property_delivery', '/schemas/core/installment-property-delivery-metrics.json'],
+      ] as const) {
+        const rows = typedParams[field];
+        if (rows === undefined) continue;
+        if (mb.packages.length !== 1) {
+          throw new TestControllerError('INVALID_PARAMS', `media-buy-scoped ${field} is unambiguous only for a single-package buy`);
+        }
+        if (deliveryDate !== undefined) {
+          throw new TestControllerError('INVALID_PARAMS', `${field} is undated and cannot be combined with delivery_date`);
+        }
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new TestControllerError('INVALID_PARAMS', `${field} must be a non-empty array`);
+        }
+        for (const [index, row] of rows.entries()) {
+          const schemaResult = await validateProtocolSchema(rowSchema, row);
+          if (!schemaResult.valid) {
+            const first = schemaResult.errors[0];
+            throw new TestControllerError(
+              'INVALID_PARAMS',
+              `${field}[${index}] schema: ${first?.instancePath || '/'} ${first?.message ?? 'is invalid'}`,
+            );
+          }
+        }
+      }
+
       const distributionViolations = validateViewedSecondsDistributionSemantics(typedParams.viewability);
       if (distributionViolations.length > 0) {
         const first = distributionViolations[0];
@@ -1186,6 +1232,8 @@ function createStore(
       if (typedParams.viewability !== undefined) simulated.viewability = typedParams.viewability;
       if (typedParams.plays !== undefined) simulated.plays = typedParams.plays;
       if (typedParams.dooh_metrics !== undefined) simulated.dooh_metrics = typedParams.dooh_metrics;
+      if (typedParams.property_delivery !== undefined) simulated.property_delivery = typedParams.property_delivery;
+      if (typedParams.installment_property_delivery !== undefined) simulated.installment_property_delivery = typedParams.installment_property_delivery;
       if (typedParams.is_final !== undefined) simulated.is_final = typedParams.is_final;
       if (typedParams.finalized_at !== undefined) simulated.finalized_at = typedParams.finalized_at;
       if (typedParams.measurement_window !== undefined) simulated.measurement_window = typedParams.measurement_window;
@@ -1458,6 +1506,7 @@ function createStore(
  * entry in place during the transition; remove once a release has landed and the
  * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = [
+  'reset_state',
   'expire_account_change_cursor',
   'force_create_media_buy_arm',
   'force_get_products_arm',
@@ -1706,18 +1755,7 @@ async function handleReportingCoreLifecycleProbe(
     if (operation === 'publish_nonempty') {
       return {
         success: true,
-        simulated: publishReportingCoreLifecycleProbeRows(ctx.principal, accountId, [
-          {
-            period_start: '2026-08-01T00:00:00.000Z', period_end: '2026-08-01T01:00:00.000Z', impressions: 2,
-            dimensions: { media_buy_id: 'media-buy-core-001', package_id: 'package-core-001', country: 'US' },
-            metrics: { impressions: 2, clicks: 1 },
-          },
-          {
-            period_start: '2026-08-01T00:00:00.000Z', period_end: '2026-08-01T01:00:00.000Z', impressions: 3,
-            dimensions: { media_buy_id: 'media-buy-core-002', package_id: 'package-core-002', country: 'CA' },
-            metrics: { impressions: 3, clicks: 0 },
-          },
-        ]),
+        simulated: publishReportingCoreLifecycleProbeVector(ctx.principal, accountId),
         message: 'Published a deterministic non-empty immutable Core revision for exact-read verification.',
       };
     }
@@ -1758,6 +1796,20 @@ async function handleReportingCoreLifecycleProbe(
         message: 'Prepared a deliberately omitted elapsed obligation for buyer-side denominator reconciliation.',
       };
     }
+    if (operation === 'advance_past_status_deadline') {
+      return {
+        success: true,
+        simulated: advancePastConsumerStatusDeadlineProbe(ctx.principal, accountId),
+        message: 'Advanced past the buyer consumer-status deadline without recording any statement.',
+      };
+    }
+    if (operation === 'advance_past_escalation') {
+      return {
+        success: true,
+        simulated: advancePastConsumerMismatchEscalationProbe(ctx.principal, accountId),
+        message: 'Advanced past the open consumer-status mismatch escalation boundary.',
+      };
+    }
   } catch (error) {
     return {
       success: false,
@@ -1768,7 +1820,7 @@ async function handleReportingCoreLifecycleProbe(
   return {
     success: false,
     error: 'INVALID_PARAMS',
-    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, or omit_obligation',
+    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, publish_nonempty, restate_snapshot, restate_after_received, omit_obligation, advance_past_status_deadline, or advance_past_escalation',
   };
   }, account);
 }
@@ -1797,6 +1849,13 @@ async function handleReliableReportingCoreIntegrityProbe(
           success: true,
           simulated: prepareReliableReportingCoreIntegrityProbe(ctx.principal, accountId),
           message: 'Prepared one daily official Core obligation in the upstream source timezone.',
+        };
+      }
+      if (operation === 'probe_scheduler_dst') {
+        return {
+          success: true,
+          simulated: probeReportingSourceCalendarDst(ctx.principal, accountId),
+          message: 'Ran the installed source-timezone scheduler across both 2026 DST transitions.',
         };
       }
       if (operation === 'publish_official_adjustment') {
@@ -2060,7 +2119,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const scenario = rawArgs.scenario;
   const targetsGetProductsState = scenario === 'force_get_products_arm'
     || (scenario === 'force_upstream_unavailable' && params.tool === 'get_products');
-  const targetsControllerFixtureState = scenario === 'seed_product'
+  const targetsControllerFixtureState = scenario === 'reset_state'
+    || scenario === 'seed_product'
     || scenario === 'seed_pricing_option'
     || scenario === 'seed_measurement_catalog'
     || (
@@ -2149,6 +2209,18 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       ctx.moduleId,
       targetsControllerFixtureState ? controllerFixturePrincipal(ctx.principal) : undefined,
     );
+  if (scenario === 'reset_state') {
+    // These stores intentionally use the same keys as their public handlers,
+    // which differ from the principal-aware controller-fixture session above.
+    const accountSessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
+    const catalogSessionKey = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+    await clearSession(sessionKey);
+    clearAccountStoreForSession(accountSessionKey, ctx.principal);
+    clearCatalogEventStoresForSession(catalogSessionKey);
+    clearForcedTaskCompletionsForScope(ctx.taskRegistryScope);
+    SEED_CACHES.delete(sessionKey);
+    return { success: true };
+  }
   let session = await getSession(sessionKey);
   if (
     scenario === 'simulate_delivery'
@@ -2435,7 +2507,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   // doesn't return UNKNOWN_SCENARIO. Idempotency (same ID + same fixture
   // succeeds; same ID + different fixture → INVALID_STATE) is enforced
   // inline to match the guarantee handleTestControllerRequest provides for
-  // the other seed_* scenarios via SEED_CACHE. agent_url is stamped at
+  // the other seed_* scenarios via the session-scoped seed cache. agent_url is stamped at
   // write time so any future reader gets a schema-valid format_id without
   // knowing the agent's URL.
   if (scenario === 'seed_creative_format') {
@@ -2486,12 +2558,14 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
           || params.not_yet_measurable_vendor_metrics !== undefined
           || params.plays !== undefined
           || params.dooh_metrics !== undefined
+          || params.property_delivery !== undefined
+          || params.installment_property_delivery !== undefined
         )
       ) {
         return {
           success: false,
           error: 'INVALID_PARAMS',
-          error_detail: 'Multi-package buys require package-scoped simulation values; plays and dooh_metrics are supported only for single-package buys',
+          error_detail: 'Multi-package buys require package-scoped simulation values; plays, dooh_metrics, property_delivery, and installment_property_delivery are supported only for single-package buys',
         };
       }
       if (
@@ -2518,7 +2592,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     args.account,
     controllerAccountId,
   );
-  const sdkResponse = await handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
+  const sdkResponse = await handleTestControllerRequest(store, rawArgs, {
+    seedCache: seedCacheForSession(sessionKey),
+  });
 
   if (
     scenario === 'simulate_delivery'
@@ -2545,6 +2621,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     if (params.viewability !== undefined) simulatedExtras.viewability = params.viewability;
     if (params.plays !== undefined) simulatedExtras.plays = params.plays;
     if (params.dooh_metrics !== undefined) simulatedExtras.dooh_metrics = params.dooh_metrics;
+    if (params.property_delivery !== undefined) simulatedExtras.property_delivery = params.property_delivery;
+    if (params.installment_property_delivery !== undefined) simulatedExtras.installment_property_delivery = params.installment_property_delivery;
     if (params.is_final !== undefined) simulatedExtras.is_final = params.is_final;
     if (params.finalized_at !== undefined) simulatedExtras.finalized_at = params.finalized_at;
     if (params.measurement_window !== undefined) simulatedExtras.measurement_window = params.measurement_window;
@@ -3366,6 +3444,25 @@ export function clearForcedTaskCompletions(): void {
   PENDING_FORCED_TASK_COMPLETIONS.clear();
 }
 
+function clearForcedTaskCompletionsForScope(
+  scope: TrainingContext['taskRegistryScope'],
+): void {
+  if (!scope) return;
+  const matches = (candidate: TrainingTaskRegistryScope): boolean =>
+    candidate.registryNamespace === scope.registryNamespace
+      && candidate.accountId === scope.accountId
+      && candidate.ownerScope === scope.ownerScope;
+  for (const [key, completed] of FORCED_TASK_COMPLETIONS) {
+    if (matches(completed.scope)) FORCED_TASK_COMPLETIONS.delete(key);
+  }
+  for (const [key, pending] of PENDING_FORCED_TASK_COMPLETIONS) {
+    if (!matches(pending.scope)) continue;
+    clearTimeout(pending.timeout);
+    pending.reject(new Error('Forced task completion state was reset'));
+    PENDING_FORCED_TASK_COMPLETIONS.delete(key);
+  }
+}
+
 /** Test-only: read the forced-completion pool. */
 export function getForcedTaskCompletions(): ReadonlyMap<string, ForcedTaskCompletionRecord> {
   return FORCED_TASK_COMPLETIONS;
@@ -3508,10 +3605,19 @@ function handleQueryProvenanceAuditObservations(session: SessionState, rawArgs: 
   };
 }
 
-// Module-level seed-fixture cache enforces the spec's same-ID-different-
-// fixture rejection rule across all seed calls in the process. Scoping per-
-// process keeps it aligned with the CONTROLLER_SCENARIOS list being static.
-const SEED_CACHE = createSeedFixtureCache();
+// Seed-fixture equivalence is scoped to the same caller session as the seeded
+// entities. A reset can therefore discard one run without touching another.
+const SEED_CACHES = new Map<string, ReturnType<typeof createSeedFixtureCache>>();
+
+function seedCacheForSession(sessionKey: string): ReturnType<typeof createSeedFixtureCache> {
+  let cache = SEED_CACHES.get(sessionKey);
+  if (!cache) {
+    enforceMapCap(SEED_CACHES, sessionKey, 'seed fixture sessions');
+    cache = createSeedFixtureCache();
+    SEED_CACHES.set(sessionKey, cache);
+  }
+  return cache;
+}
 
 // Process-global pool for seed_creative_format. list_creative_formats has no
 // tenant identity in its request schema (it's a global catalog read), so a

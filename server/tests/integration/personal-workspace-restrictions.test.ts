@@ -19,7 +19,7 @@ const {
     TEST_PERSONAL_ORG_ID: 'org_personal_test',
     TEST_TEAM_ORG_ID: 'org_team_test',
     listOrganizationMemberships: vi.fn(),
-    sendInvitation: vi.fn().mockResolvedValue({ id: 'inv_test' }),
+    sendInvitation: vi.fn(),
     generateAdminPortalLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
   };
 });
@@ -31,6 +31,7 @@ vi.mock('@workos-inc/node', () => ({
     userManagement = {
       listOrganizationMemberships,
       sendInvitation,
+      getInvitation: async () => sendInvitation.mock.results.at(-1)?.value,
     };
     organizations = {
       getOrganization: vi.fn().mockImplementation((orgId: string) => Promise.resolve({
@@ -44,35 +45,30 @@ vi.mock('@workos-inc/node', () => ({
   },
 }));
 
-// Mock WorkOS client BEFORE any imports that use it
-vi.mock('../../src/auth/workos-client.js', () => ({
-  workos: {
-    userManagement: {
-      listOrganizationMemberships,
-      sendInvitation,
-    },
-    organizations: {
-      getOrganization: vi.fn().mockImplementation((orgId: string) => Promise.resolve({
-        id: orgId,
-        name: orgId === TEST_PERSONAL_ORG_ID ? 'Personal Workspace' : 'Team Workspace',
-      })),
-    },
-    adminPortal: {
-      generateLink: generateAdminPortalLink,
-    },
-  },
+// The mutation boundary uses the enforcement wrapper; both clients expose the
+// same provider fixture. Real cookie/JWT authentication is covered separately.
+vi.mock('../../src/auth/workos-client.js', async () => {
+  const { WorkOS } = await import('@workos-inc/node');
+  const instance = new WorkOS();
+  return { workos: instance, getWorkos: () => instance, getAuthorizationEnforcementWorkos: () => instance };
+});
+
+vi.mock('../../src/auth/workos-jwt.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/auth/workos-jwt.js')>()),
+  verifyWorkOSJWT: async (value: string) => ({ sub: value, isM2M: false }),
 }));
 
 import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
 import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { stampOrganizationTestUser } from '../helpers/organization-auth-fixture.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
 // Mock auth middleware to bypass authentication in tests
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
-  requireAuth: (req: any, _res: any, next: any) => {
+  requireAuth: async (req: any, _res: any, next: any) => {
     req.user = {
       id: TEST_USER_ID,
       email: 'owner@test.com',
@@ -80,6 +76,8 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
       lastName: 'User',
       is_admin: false
     };
+    req.accessToken = TEST_USER_ID;
+    await stampOrganizationTestUser(req.user, req.params.orgId);
     next();
   },
   requireAdmin: (_req: any, res: any) => {
@@ -131,13 +129,19 @@ describe('Personal Workspace Restrictions', () => {
 
   beforeEach(async () => {
     generateAdminPortalLink.mockClear();
+    sendInvitation.mockReset().mockImplementation(async ({ email, organizationId }) => ({
+      id: 'inv_personal_policy_test', email, organizationId, state: 'pending',
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    }));
+    await pool.query('DELETE FROM registry_audit_log WHERE workos_organization_id = ANY($1)', [[TEST_PERSONAL_ORG_ID, TEST_TEAM_ORG_ID]]);
+    await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = ANY($1)', [[TEST_PERSONAL_ORG_ID, TEST_TEAM_ORG_ID]]);
     // Reset per-test: handler calls workos!.userManagement.listOrganizationMemberships via the new
     // WorkOS() instance; return owner membership for test user in known org IDs.
     // Note: the invitation test (team org) relies on community_only seat limit = 1 from DEFAULT_SEAT_LIMITS.
     listOrganizationMemberships.mockReset().mockImplementation(({ organizationId }: { organizationId: string }) => {
       if (organizationId === TEST_PERSONAL_ORG_ID || organizationId === TEST_TEAM_ORG_ID) {
         return Promise.resolve({
-          data: [{ id: 'om_test', userId: TEST_USER_ID, organizationId, role: { slug: 'owner' }, status: 'active' }],
+          data: [{ id: `om_${organizationId}`, userId: TEST_USER_ID, organizationId, role: { slug: 'owner' }, status: 'active' }],
         });
       }
       return Promise.resolve({ data: [] });
@@ -157,10 +161,20 @@ describe('Personal Workspace Restrictions', () => {
        ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, is_personal = false`,
       [TEST_TEAM_ORG_ID, 'Team Workspace']
     );
+
+    await pool.query('INSERT INTO users (workos_user_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING', [TEST_USER_ID, 'owner@test.com']);
+    // Exact owner authority must exist locally and at WorkOS. A contributor
+    // owner leaves the existing one-community-seat invitation allowance free.
+    for (const orgId of [TEST_PERSONAL_ORG_ID, TEST_TEAM_ORG_ID]) {
+      await pool.query(`INSERT INTO organization_memberships
+        (workos_user_id, workos_organization_id, workos_membership_id, email, role, seat_type)
+        VALUES ($1, $2, $3, 'owner@test.com', 'owner', 'contributor')`, [TEST_USER_ID, orgId, `om_${orgId}`]);
+    }
   });
 
   afterEach(async () => {
     // Clean up test data; invitation_seat_types has no FK to organizations so must be deleted explicitly.
+    await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = ANY($1)', [[TEST_PERSONAL_ORG_ID, TEST_TEAM_ORG_ID]]);
     await pool.query('DELETE FROM invitation_seat_types WHERE workos_organization_id LIKE $1', ['org_team%']);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id LIKE $1', ['org_personal%']);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id LIKE $1', ['org_team%']);
@@ -173,8 +187,9 @@ describe('Personal Workspace Restrictions', () => {
         .send({ email: 'test@example.com', role: 'member' })
         .expect(400);
 
-      expect(response.body.error).toBe('Personal workspace');
-      expect(response.body.message).toContain('Personal workspaces cannot have team members');
+      expect(response.body.error).toBe('invalid_request');
+      expect(sendInvitation).not.toHaveBeenCalled();
+      expect((await pool.query('SELECT 1 FROM registry_audit_log WHERE workos_organization_id = $1', [TEST_PERSONAL_ORG_ID])).rowCount).toBe(0);
     });
 
     it('should allow invitations to team workspaces', async () => {
@@ -184,6 +199,9 @@ describe('Personal Workspace Restrictions', () => {
         .expect(200);
 
       expect(response.body.invitation).toBeDefined();
+      expect(sendInvitation).toHaveBeenCalledWith(expect.objectContaining({ inviterUserId: TEST_USER_ID, organizationId: TEST_TEAM_ORG_ID }));
+      const audit = await pool.query('SELECT workos_user_id FROM registry_audit_log WHERE workos_organization_id = $1', [TEST_TEAM_ORG_ID]);
+      expect(audit.rows).toEqual([{ workos_user_id: TEST_USER_ID }]);
     });
   });
 

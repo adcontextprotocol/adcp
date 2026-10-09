@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/media-buy-frequency-cap-capability.json",
+  "title": "Media Buy Frequency Cap Capability",
+  "description": "Complete seller-wide executable domain for aggregate MediaBuy frequency caps. Unlike product detail, this root capability cannot inherit omitted values: it declares the supported max-impression mode, entity units, impression limits, and exact window intervals. Product constraints may only narrow this domain.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/core/frequency-cap-constraints.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "supported_control_modes": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.6/enums/media-buy-frequency-cap-control-mode.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "supported_control_modes",
+        "supported_per_units",
+        "max_impressions_constraints",
+        "window_constraints"
+      ],
+      "not": {
+        "required": [
+          "suppression_constraints"
+        ]
+      }
+    }
+  ]
+}

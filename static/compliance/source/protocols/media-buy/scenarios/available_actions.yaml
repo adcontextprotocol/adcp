@@ -4,6 +4,9 @@ title: "Seller carries product allowed actions into per-buy available actions"
 category: media_buy_seller
 summary: "Validates the AdCP 3.1 media-buy action-discovery flow: product allowed_actions[], buy available_actions[], SLAWindow duration fields, self-serve mutation, and ACTION_NOT_ALLOWED enforcement."
 track: media_buy
+requires:
+  - controller
+
 default_agent: sales
 
 # This scenario drives a synced creative straight into an active media buy so
@@ -60,6 +63,27 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_4d8a1059ed3c"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_available_actions-798c3be3"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_fd6a80b9eecd"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_available_actions-798c3be3"
+        billing: "operator"
+        status: "active"
+        sandbox: false
   products:
     - product_id: "available_actions_display"
       name: "Available Actions Display Package"
@@ -134,6 +158,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_available_actions-798c3be3"
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -212,6 +238,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_available_actions-798c3be3"
           creatives:
             - creative_id: "available_actions_display_creative"
               name: "Acme Outdoor Available Actions Display Creative"
@@ -253,6 +281,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_available_actions-798c3be3"
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "available_actions_product_mb"
@@ -338,6 +368,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_available_actions-798c3be3"
           brand:
             domain: "acmeoutdoor.example"
           media_buy_ids: ["$context.available_actions_media_buy_id"]
@@ -401,6 +433,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_available_actions-798c3be3"
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "$context.available_actions_media_buy_id"
@@ -456,6 +490,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_available_actions-798c3be3"
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "$context.available_actions_media_buy_id"
@@ -508,6 +544,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_available_actions-798c3be3"
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "$context.available_actions_media_buy_id"
@@ -562,6 +600,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_available_actions-798c3be3"
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "$context.available_actions_media_buy_id"
@@ -616,6 +656,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_available_actions-798c3be3"
           brand:
             domain: "acmeoutdoor.example"
           media_buy_id: "$context.available_actions_media_buy_id"

@@ -11,6 +11,7 @@ export interface DirectToolSession {
 
 export interface DirectToolContext {
   activeCertificationKind?: ActiveCertificationKind | null;
+  activeAgentRegistration?: boolean;
   sponsoredIntelligenceContextKind?: SponsoredIntelligenceContextKind | null;
 }
 
@@ -28,6 +29,9 @@ export function createGeminiDirectTools(
   const requiredGroups = selectRoutedToolSets({
     source: 'dm', isAdmin, routerAvailable: true, routerSelectedSets: ['knowledge', 'schema_reference'], ...context,
   });
+  if (context.activeAgentRegistration && !context.activeCertificationKind) {
+    requiredGroups.push('adcp_agent_management');
+  }
   // Active teaching uses the same trusted workflow restriction as Sonnet.
   const groupNames = context.activeCertificationKind
     ? new Set(requiredGroups)
