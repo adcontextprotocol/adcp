@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/booking-round.json",
+  "title": "Booking Round",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "One round on a seller's published booking calendar for an airing or publication window: buying opens, a request round closes, and the seller confirms later. Unlike installment.deadlines.booking_deadline (the hard close for one installment), a round also says what happens to a request after request_deadline. Order: opens_at < request_deadline <= booking_deadline; request_deadline <= expected_confirmation_at. booking_deadline MUST NOT be later than that of any installment covered. Applies only when the flight falls inside one covers window. Experimental sketch for WG review.",
+  "type": "object",
+  "properties": {
+    "round_id": {
+      "type": "string",
+      "description": "Identifier for this round, unique within the product.",
+      "x-entity": "booking_round"
+    },
+    "covers": {
+      "$ref": "/schemas/core/date-range.json",
+      "description": "Airing or publication window this round books, for example one calendar month. Calendar dates in the seller's timezone."
+    },
+    "opens_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When buying opens for this round (ISO 8601)."
+    },
+    "request_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Soft close of the request round (ISO 8601). A request received after this is governed by late_request_handling."
+    },
+    "booking_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Hard close (ISO 8601), as installment.deadlines.booking_deadline: after it the seller accepts no new requests for this round. When absent, late requests stay open until an installment's own booking_deadline."
+    },
+    "expected_confirmation_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller expects to confirm requests in this round (ISO 8601). An estimate, not a commitment. A submitted create_media_buy response for a request in this round SHOULD carry this as its expected_confirmation_at."
+    },
+    "late_request_handling": {
+      "$ref": "/schemas/enums/late-request-handling.json",
+      "description": "Treatment of a request received after request_deadline and before booking_deadline."
+    },
+    "late_request_pricing_option_id": {
+      "type": "string",
+      "description": "Pricing option on the same product that prices an accepted late request, with the late rate in its own binding price (so it stays inside terms_digest). 3.4 candidate: a round-keyed price_adjustments dimension (#7659 / #7955). Not meaningful when late_request_handling is rejected.",
+      "x-entity": "product_pricing_option"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "round_id",
+    "covers",
+    "request_deadline"
+  ],
+  "if": {
+    "properties": {
+      "late_request_handling": {
+        "const": "rejected"
+      }
+    },
+    "required": [
+      "late_request_handling"
+    ]
+  },
+  "then": {
+    "not": {
+      "required": [
+        "late_request_pricing_option_id"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

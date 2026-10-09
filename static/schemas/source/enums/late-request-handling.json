@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/late-request-handling.json",
+  "title": "Late Request Handling",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "What a seller does with a request that arrives after a booking round's request_deadline. Consumers MUST tolerate values added in later minors.",
+  "type": "string",
+  "enum": [
+    "accepted",
+    "accepted_without_guarantee",
+    "rejected"
+  ],
+  "enumDescriptions": {
+    "accepted": "Accepted with the same placement guarantee as an on-time request. Any late_request_pricing_option_id still selects the price.",
+    "accepted_without_guarantee": "Accepted, but the seller does not guarantee placement or positioning. The downgrade MUST be visible to the buyer before commitment.",
+    "rejected": "Not accepted for this round. The seller returns a terminal error, not a submitted task."
+  }
+}

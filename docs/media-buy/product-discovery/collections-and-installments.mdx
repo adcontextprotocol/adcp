@@ -504,6 +504,43 @@ The two-stage pattern — draft then final — covers a wide range of channels:
 
 Deadlines are optional. Run-of-collection digital products typically omit them. The pattern is most valuable for guaranteed inventory with advance material requirements.
 
+## Booking rounds (experimental sketch)
+
+<Note>
+Draft for WG review (#8010). Not part of AdCP 3.3 unless the working group adopts it. The field names and shape may change.
+</Note>
+
+Installment deadlines describe one installment. Some scheduled media is booked in rounds on a published calendar instead: buying opens on a fixed date, a request round closes, and the seller confirms orders later. A request after the round closes may still be accepted, at a different price and without a placement guarantee. A product MAY declare `booking_rounds[]` to publish that calendar.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `round_id` | string | Identifier of the round within the product. Required. |
+| `covers` | date range | Airing or publication window the round books, for example one month. Required. Calendar dates in the seller's timezone. |
+| `opens_at` | datetime | When buying opens |
+| `request_deadline` | datetime | Soft close of the request round. Required. |
+| `booking_deadline` | datetime | Hard close, same meaning as on an installment. Optional. |
+| `expected_confirmation_at` | datetime | When the seller expects to confirm requests received in the round. An estimate, not a commitment. |
+| `late_request_handling` | enum | `accepted`, `accepted_without_guarantee`, or `rejected`: treatment of a request after `request_deadline` |
+| `late_request_pricing_option_id` | string | Pricing option on the same product that prices an accepted late request |
+
+Ordering: `opens_at` < `request_deadline` ≤ `booking_deadline`, and `request_deadline` ≤ `expected_confirmation_at`. A round's `booking_deadline` MUST NOT be later than the `booking_deadline` of any installment it covers; rounds describe soft closes and the calendar, and hard closes stay with the installment (or `deadline_policy`). Round semantics apply only to a request whose flight falls inside one `covers` window.
+
+When a seller answers `create_media_buy` with a `submitted` response for a request in a round, it SHOULD set [`expected_confirmation_at`](/docs/media-buy/task-reference/create_media_buy#expected-confirmation-time) to the round's `expected_confirmation_at`, so a buyer can schedule a check instead of polling.
+
+```json
+{
+  "$schema": "/schemas/core/booking-round.json",
+  "round_id": "2026-11",
+  "covers": { "start": "2026-11-01", "end": "2026-11-30" },
+  "opens_at": "2026-10-01T08:00:00+02:00",
+  "request_deadline": "2026-10-09T17:00:00+02:00",
+  "booking_deadline": "2026-10-28T17:00:00+01:00",
+  "expected_confirmation_at": "2026-10-23T12:00:00+02:00",
+  "late_request_handling": "accepted_without_guarantee",
+  "late_request_pricing_option_id": "cpp_late_booking"
+}
+```
+
 ## Deadline policy
 
 High-frequency collections (daily newspapers, weekly podcasts) would generate large payloads if every installment carried explicit deadlines. The `deadline_policy` on a collection declares lead-time rules that agents use to compute deadlines from each installment's `scheduled_at`.
