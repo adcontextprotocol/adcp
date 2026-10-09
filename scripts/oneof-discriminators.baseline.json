@@ -370,6 +370,11 @@
       "kind": "dangerous",
       "variants": 2,
       "note": "shared-required=[∅]; 0:boolean | 1:req=[∅]"
+    },
+    "trust/v1/trust.json##/oneOf": {
+      "kind": "dangerous",
+      "variants": 2,
+      "note": "shared-required=[∅]; 0:req=[authoritative_location] | 1:req=[∅]"
     }
   }
 }
