@@ -56,7 +56,7 @@ export function resolveAgentNotificationScope(ctx: ScopeContext): AgentNotificat
   return { tenant_id: 'training-agent', principal_id: principal };
 }
 
-function documentId(scope: Readonly<AgentNotificationScope>): string {
+export function agentNotificationDocumentId(scope: Readonly<AgentNotificationScope>): string {
   return createHash('sha256')
     .update(scope.tenant_id)
     .update('\0')
@@ -107,7 +107,7 @@ export async function syncAgentNotificationConfigs(
 ): Promise<SyncAgentNotificationConfigsResponse> {
   const scope = ctx.callerMutationScope;
   if (!scope) throw new Error('caller mutation scope was not resolved');
-  const id = documentId(scope);
+  const id = agentNotificationDocumentId(scope);
   const prior = await ctx.store.get<PersistedAgentNotificationConfigs>(COLLECTION, id);
   const priorConfigs = prior?.notification_configs ?? [];
 
@@ -195,6 +195,15 @@ export async function syncAgentNotificationConfigs(
   };
 }
 
+/** Stable caller key for the training agent's session-backed store. Shared with
+ * the principal layer so both tasks read and write one subscriber set. */
+export function trainingCallerPrincipal(trainingCtx: TrainingContext): string | undefined {
+  if (trainingCtx.authenticatedAgentUrl) return `agent:${trainingCtx.authenticatedAgentUrl}`;
+  return trainingCtx.principal && trainingCtx.principal !== 'anonymous'
+    ? `client:${trainingCtx.principal}`
+    : undefined;
+}
+
 /** Adapter for the decisioning platform's custom-tool seam. SDK 14.0.0-beta.12
  * projects platform capabilities over low-level protocol capabilities, so the
  * built-in protocol handler cannot currently be mounted through
@@ -204,11 +213,7 @@ export async function syncAgentNotificationConfigsLegacy(
   args: ToolArgs,
   trainingCtx: TrainingContext,
 ): Promise<Record<string, unknown>> {
-  const principal = trainingCtx.authenticatedAgentUrl
-    ? `agent:${trainingCtx.authenticatedAgentUrl}`
-    : trainingCtx.principal && trainingCtx.principal !== 'anonymous'
-      ? `client:${trainingCtx.principal}`
-      : undefined;
+  const principal = trainingCallerPrincipal(trainingCtx);
   if (!principal) {
     return {
       errors: [{

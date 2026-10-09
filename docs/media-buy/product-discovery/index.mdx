@@ -103,7 +103,7 @@ without asking the seller to author a media plan:
 
 ```javascript
 const result = await seller.listProducts({
-  adcp_version: '3.2-beta.10',
+  adcp_version: '3.2',
   account: { account_id: 'account_123' },
   criteria: {
     offer_filters: {
@@ -129,9 +129,10 @@ returned product before purchase:
 - `targeting_resolution.modifications` is an ordered, sparse disclosure of the
   alternative the seller can execute. Selecting that `product_id` accepts the
   modified result.
-- A request-specific configured product carries `is_custom: true` and
-  `expires_at`. Purchase that exact ID before expiry; do not substitute the
-  baseline product ID or send a conflicting overlay at commitment.
+- A request-specific configured product carries `expires_at`; compact
+  products have no `is_custom` flag. Purchase that exact ID before expiry; do
+  not substitute the baseline product ID or send a conflicting overlay at
+  commitment.
 
 After `buy_products`, verify that the package readback preserves the accepted
 targeting. If the buyer requested only `required_overlay_support`, rediscover
@@ -155,7 +156,7 @@ structured criteria to StreamHaus while keeping strategy in prose:
 
 ```javascript
 const response = await seller.requestProposals({
-  adcp_version: '3.2-beta.10',
+  adcp_version: '3.2',
   idempotency_key: 'acme-q2-proposals-001',
   account: { account_id: 'account_123' },
   brand: { domain: 'acme-outdoor.example' },

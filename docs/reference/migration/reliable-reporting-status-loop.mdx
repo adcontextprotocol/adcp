@@ -8,22 +8,22 @@ description: "Breaking-change notice and migration guide for sync_reporting_stat
 **Experimental breaking-change notice published September 12, 2026.** Under
 AdCP's six-week experimental-surface notice policy, the Core requirement
 described here must not appear in an immutable release before October 24,
-2026. `3.2.0-rc.2` publishes the task as opt-in and `3.2.0-rc.3` hardens it;
-making it *required* is what the notice window governs. Published
-`3.2.0-rc.1` remains unchanged.
+2026. `3.2.0-rc.2` published the task as opt-in, `3.2.0-rc.3` hardened it, and
+AdCP 3.2 ships it opt-in; making it *required* is what the notice window
+governs. Published `3.2.0-rc.1` remains unchanged.
 </Warning>
 
-Reliable Reporting RC.1 lets a seller publish its obligation/revision state and
+Reliable Reporting without this loop lets a seller publish its obligation/revision state and
 requires a buyer to derive an independent expected-period denominator. It does
 not give the buyer a standard way to tell the seller that reporting was absent
 or unreadable. A seller can therefore project `healthy` while the buyer's
 webhook, exact revision read, or destination access is failing.
 
-`3.2.0-rc.2` closes that loop additively with opt-in
-[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status),
-and `3.2.0-rc.3` hardens it. A seller advertises `consumer_status_task` only
-when the task and readback are implemented. The requirement itself lands only in the next eligible minor
-after the notice window. Both changes remain inside the experimental
+AdCP 3.2 closes that loop additively with opt-in
+[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status).
+A seller advertises `consumer_status_task` only when the task and readback are
+implemented. The requirement itself lands no earlier than the first minor after
+the notice window. Both changes remain inside the experimental
 `media_buy.reporting_delivery` surface.
 
 ## Capability change
@@ -44,8 +44,8 @@ Before (`3.2.0-rc.1`):
 }
 ```
 
-Current opt-in form (`3.2.0-rc.3`), and required form in the next eligible
-minor after the notice window:
+Opt-in form in AdCP 3.2, and required form no earlier than the first minor
+after the notice window:
 
 ```json
 {
@@ -83,8 +83,9 @@ operator; they never dereference the URL, send protocol traffic to it, or treat
 either value as a credential or as evidence of agent identity.
 
 The new field is optional during the notice window. When present, it commits the
-seller to the complete task and readback contract below. The next eligible minor
-makes the field required for Reliable Reporting Core. It does not add a buyer
+seller to the complete task and readback contract below. The first minor after
+the notice window, at the earliest, makes the field required for Reliable
+Reporting Core. It does not add a buyer
 endpoint or webhook: buyers call the seller-hosted task using the same
 authenticated transport as other AdCP tasks.
 
@@ -188,8 +189,8 @@ billing-feed constraints. Tracked in
 `reporting_status_id` are now required on that issue code. The code itself
 shipped in RC.1's `reporting-status-issue.json` enum, so an RC.1 seller that
 already emits it must add `opened_at` — fixed at first emission, never advanced
-on re-emission — before validating against
-[`3.2.0-rc.3`](https://adcontextprotocol.org/schemas/3.2.0-rc.3/core/reporting-status-issue.json).
+on re-emission — before validating against the
+[3.2 schema](https://adcontextprotocol.org/schemas/3.2.1/core/reporting-status-issue.json).
 No other issue code is affected.
 </Note>
 

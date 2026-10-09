@@ -1,8 +1,13 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { pathsFromNameStatus, planServerUnitRun } = require('../scripts/precommit-server-unit.cjs') as {
+const { failedFilesFromReport, pathsFromNameStatus, planServerUnitRun, resolveShardCount } = require('../scripts/precommit-server-unit.cjs') as {
+  failedFilesFromReport(reportPath: string, serverDir?: string): string[] | null;
+  resolveShardCount(env?: Record<string, string | undefined>, cpus?: number): number;
   pathsFromNameStatus(output: Buffer): string[];
   planServerUnitRun(
     files: string[],
@@ -133,5 +138,43 @@ describe('precommit server unit planner', () => {
       kind: 'full',
       files: [],
     });
+  });
+});
+
+describe('precommit server unit sharding', () => {
+  it('defaults to half the CPUs, capped at four shards and never below one', () => {
+    expect(resolveShardCount({}, 16)).toBe(4);
+    expect(resolveShardCount({}, 8)).toBe(4);
+    expect(resolveShardCount({}, 6)).toBe(3);
+    expect(resolveShardCount({}, 2)).toBe(1);
+    expect(resolveShardCount({}, 1)).toBe(1);
+  });
+
+  it('honors an explicit shard count and ignores invalid values', () => {
+    expect(resolveShardCount({ ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: '1' }, 16)).toBe(1);
+    expect(resolveShardCount({ ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: '6' }, 4)).toBe(6);
+    expect(resolveShardCount({ ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: '0' }, 8)).toBe(4);
+    expect(resolveShardCount({ ADCP_PRECOMMIT_SERVER_UNIT_SHARDS: 'two' }, 8)).toBe(4);
+  });
+
+  it('lists failed files relative to the server root and refuses unreadable reports', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'precommit-report-'));
+    try {
+      const serverDir = join(dir, 'server');
+      const report = join(dir, 'shard.json');
+      writeFileSync(report, JSON.stringify({
+        testResults: [
+          { name: join(serverDir, 'tests/unit/b.test.ts'), status: 'failed' },
+          { name: join(serverDir, 'tests/unit/ok.test.ts'), status: 'passed' },
+          { name: join(serverDir, 'src/a.test.ts'), status: 'failed' },
+        ],
+      }));
+      expect(failedFilesFromReport(report, serverDir)).toEqual(['src/a.test.ts', 'tests/unit/b.test.ts']);
+      expect(failedFilesFromReport(join(dir, 'missing.json'), serverDir)).toBeNull();
+      writeFileSync(report, '{"not":"a report"}');
+      expect(failedFilesFromReport(report, serverDir)).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

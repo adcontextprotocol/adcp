@@ -246,8 +246,8 @@ asyncio.run(create_and_pause_campaign())
 | `daily_budget_cap` | number \| null | No | Replace the hard aggregate daily cap; `null` removes it. Numeric changes apply immediately with spend already incurred in the current cap day counted against the new value. Package caps are not redistributed. |
 | `frequency_cap` | MediaBuyFrequencyCap \| null | No | Replace the shared MediaBuy-level frequency cap; `null` removes it. Changes apply immediately without resetting the shared counter, so prior qualifying exposures in the resulting window still count. Every active package must support the resulting cap or the request is rejected atomically. Requires `update_media_buy_frequency_cap`. |
 | `budget_cap_timezone` | string \| null | No | Replace the shared IANA cap-day timezone override; `null` restores the default selected by `budget_capping.timezone_basis` (`Account.timezone` or `fixed_timezone`). The new timezone begins at the next boundary under the previously effective timezone. |
-| `budget_allocation` | BudgetAllocation | No | Updated fixed or seller-optimized allocation configuration. Mode changes require `update_budget_allocation` in `available_actions`. |
-| `pacing` | string | No | Updated aggregate media-buy pacing strategy. |
+| `budget_allocation` | BudgetAllocation | No | Updated fixed or seller-optimized allocation configuration. Mode changes require `update_budget_allocation` in `available_actions`. A resulting seller-optimized buy requires `seller_optimized_budget`, and any package caps, minimum-spend targets, or package pacing it retains require their own sub-capability (see [capability layering](/docs/media-buy/task-reference/create_media_buy#seller-optimized-allocation)). On a seller without `seller_optimized_package_budgets`, a switch from fixed mode must clear every package `budget` with `null` in the same atomic update, which also requires `increase_budget`. On a seller without `seller_optimized_package_pacing`, it must align any differing package `pacing` with the media-buy pacing. |
+| `pacing` | string | No | Updated aggregate media-buy pacing strategy. When the resulting buy is seller-optimized, a seller advertising only the core `seller_optimized_budget` contract must accept `even` and may reject `asap` or `front_loaded` with `UNSUPPORTED_FEATURE` (never coercing them to `even`). |
 | `bidding` | BiddingPolicy \| null | No | Replace the complete media-buy bidding default, use `{automatic: true}` for an explicit automatic policy, or clear it with `null`. Goal binding follows the resulting allocation mode; monetary amounts remain in the media-buy currency. Package-authored overrides remain explicit. |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
@@ -319,6 +319,7 @@ Configure automated delivery reporting for this media buy:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `url` | string | Yes | Webhook endpoint URL |
+| `operation_id` | string | No | Buyer-supplied correlation ID for the reporting stream (1–255 chars, `[A-Za-z0-9_.:-]`). Sellers echo it verbatim as `operation_id` on every `media_buy_delivery` webhook and MUST NOT send reports to a registration that omits it. See [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks). |
 | `authentication` | object | Yes | Auth config with `schemes` and `credentials` |
 | `reporting_frequency` | string | Yes | `hourly`, `daily`, `weekly`, `monthly`, `quarterly`, or `post_campaign` |
 | `requested_metrics` | string[] | No | Specific metrics to include (defaults to all) |
@@ -334,12 +335,12 @@ Configure automated delivery reporting for this media buy:
 | `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
 | `canceled` | boolean | Cancel this package (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
 | `cancellation_reason` | string | Reason for canceling this package |
-| `budget` | number \| null | Updated hard package spend cap in the media-buy currency. In seller-optimized mode this is not a current allocation; `null` removes the cap. A resulting fixed allocation still requires a budget on every package. |
-| `min_spend_target` | number \| null | Updated soft package minimum-spend target in the media-buy currency for seller-optimized allocation; `null` removes the target. |
+| `budget` | number \| null | Updated hard package spend cap in the media-buy currency. In seller-optimized mode this is not a current allocation; a number requires `media_buy.features.seller_optimized_package_budgets` and `null` removes the cap. A resulting fixed allocation still requires a budget on every package. |
+| `min_spend_target` | number \| null | Updated soft package minimum-spend target in the media-buy currency for seller-optimized allocation; a number requires `media_buy.features.seller_optimized_min_spend_targets` and `null` removes the target. |
 | `impressions` | number | Updated impression goal for this package |
 | `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `end_time` | string | Updated flight end date/time in ISO 8601 format. Must fall within the media buy's date range. |
-| `pacing` | string | Updated pacing strategy |
+| `pacing` | string | Updated pacing strategy. In a seller-optimized buy, package pacing that differs from the media-buy pacing requires `media_buy.features.seller_optimized_package_pacing`. |
 | `daily_budget_cap` | number \| null | Replace the hard package-level daily spend ceiling; `null` removes it. The change applies immediately to the current cap day and counts spend already incurred that day. Package caps remain subordinate to the aggregate media-buy cap. |
 | `bidding` | BiddingPolicy \| null | Replace the complete package-authored override, use `{automatic: true}` to explicitly disable inherited buyer controls, or clear it with `null` so the package inherits media-buy bidding. During legacy migration, `null` may accompany `bid_price` or a monetary optimization-goal target; only a non-null canonical block conflicts with those representations. |
 | `bid_price` | number | **Deprecated in 3.2.** Legacy package bid representation; cannot be combined with a non-null `bidding` object. |
@@ -858,6 +859,7 @@ Common errors and resolutions:
 | [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
 | [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | On 3.2, use optional `error.details.decline_reason` to target a refinement of `accepted_proposal_id`; `envelope_field` names the breached paths and `change_term_id` identifies the governing accepted right. Legacy 3.1 callers adjust the update, rediscover terms, add packages when available, or create a separate buy. |
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Request field values, including a duplicate submitted `creative_id`, violate seller/product business rules | Follow `error.field` and `error.message`; for a duplicate inline creative, use a different package-scoped `creative_id` |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) with `details.unmet_requirements[]` | A `new_packages[]` entry does not bind an event source or catalog its product declares in the experimental `execution_requirements`, or an update removes or replaces a package's satisfying binding | Bind the resource at `error.field` (`new_packages[i]…` or `packages[i]…`); for `reason: "not_found"`, register it through [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) or [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) first. See [Product execution requirements](/docs/media-buy/specification#product-execution-requirements-experimental) |
 
 Example error response:
 

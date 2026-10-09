@@ -126,9 +126,12 @@ describe('product discovery MCP schema parity', () => {
     // targeting adds nullable command wrappers, and structured package
     // frequency-cap requirements add their shared SDK-safe enum definitions,
     // and aggregate MediaBuy cap discovery adds its root value and support
-    // closure; the measured four-tool surface is 151.06 KiB, bounded at
-    // 152 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(152 * 1024);
+    // closure; the measured four-tool surface was 151.06 KiB, bounded at
+    // 152 KiB. Experimental minute-resolution dayparts add the clock-time
+    // pair, its exclusion, and the time_granularity requirement to the shared
+    // daypart graph (~0.45 KiB per tool; 152.93 KiB measured), bounded at
+    // 154 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(154 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

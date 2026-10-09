@@ -6,12 +6,32 @@ maintenance-line checklist, see `.agents/shortcuts/cut-patch.md`.
 
 ## Current topology
 
+AdCP 3.2 GA ships as `3.2.1` (tag `v3.2.1`, wire pin `"3.2"`); `3.2.0` is
+permanently withdrawn. The branch topology changes on GA day, in the order in
+[`.agents/shortcuts/cut-minor-ga.md`](.agents/shortcuts/cut-minor-ga.md):
+
+**Until `v3.2.1` is tagged:**
+
 - `3.1.x` is the stable maintenance line. Patch fixes are reviewed on `main`
   first, then cherry-picked to a PR targeting `3.1.x`.
-- `main` is the next-minor line. It must be in Changesets beta pre mode
-  (`.changeset/pre.json` with `"tag": "beta"`) while developing 3.2, so its
-  Version Packages PRs produce `3.2.0-beta.N` rather than stable `3.2.0`.
-- Forward merges are one-way: `3.1.x → main`. Never merge `main` into the
+- `main` is the 3.2 line. It stays in Changesets RC pre mode
+  (`.changeset/pre.json` with `"tag": "rc"`) until the separately reviewed
+  pre-exit PR; the next Version Packages cut after that exit produces `3.2.1`.
+- Forward merges are one-way: `3.1.x → main`.
+
+**After `v3.2.1` (GA runbook Phase 10):**
+
+- `3.2.x` is created from the `v3.2.1` Version Packages merge and becomes the
+  stable maintenance line. Patches continue as `3.2.2`, `3.2.3`, and so on.
+  Fixes land on `main` first and are cherry-picked to `3.2.x`.
+- `main` re-enters Changesets **beta** pre mode for 3.3 the same day
+  (`npx changeset pre enter beta`), so minor changesets can never cut an
+  accidental stable release.
+- `3.1.x` stays a security and critical-fix line for a maintainer-decided
+  window; the fix flow among `3.1.x`, `3.2.x`, and `main` is recorded when
+  `3.2.x` is created.
+- Forward merges stay one-way from maintenance lines toward `main`
+  (`3.2.x → main` through `forward-merge-3.2.yml`). Never merge `main` into a
   maintenance branch.
 
 The root `adcontextprotocol` package is private. Its version is release
@@ -33,7 +53,7 @@ stable protocol surface, and `major` for breaking stable changes. Addie,
 website, infrastructure, internal tooling, and non-normative docs do not get a
 protocol changeset.
 
-For a fix that must ship in 3.1.x:
+For a fix that must ship in 3.1.x (after GA, the same flow applies to `3.2.x`):
 
 1. Land the normal PR on `main`.
 2. Confirm every protocol changeset in the merged commit is `patch`.
@@ -43,7 +63,7 @@ For a fix that must ship in 3.1.x:
    `changeset-release/3.1.x` Version Packages PR.
 
 Do not downgrade a `minor` or `major` changeset during a backport. Reclassify
-the change on `main` first or leave it for 3.2.
+the change on `main` first or leave it for the next minor.
 
 ## Cutting a 3.1.x patch
 
@@ -190,7 +210,50 @@ npx changeset pre exit
 ```
 
 The resulting Version Packages PR removes the prerelease suffix. Do not
-re-enter another tag before that stable versioning step.
+re-enter another tag before that stable versioning step. 3.2 GA ships as
+**`3.2.1`**, not `3.2.0` (see the next section). Follow the ordered GA runbook
+in [`.agents/shortcuts/cut-minor-ga.md`](.agents/shortcuts/cut-minor-ga.md):
+freeze gates, pre-exit PR contents, the Version Packages audit, CDN worker
+deploy and discovery refresh, docs snapshot, SDK stable releases, hosted
+surfaces, and the `3.2.x` branch and 3.3 pre-mode re-entry.
+
+## Shipping a stable release over a withdrawn version number
+
+A stable version number whose bytes were exposed without a release (for
+example the 2026-06-30 accidental `3.2.0` cut, reverted in #5769, whose
+signed artifacts remain on the artifact CDN) is permanently withdrawn. Its
+bytes are never overwritten, deleted, or retired, and it stays marked
+`unpublished` in `scripts/build-schemas.cjs`, `server/src/schemas-middleware.ts`,
+and `workers/artifact-cdn/src/index.js` so it never wins `latest_stable` or a
+`vN` / `vN.M` alias. `tests/schema-release-status.test.ts` keeps those three
+maps identical. Prerelease `superseded_by` is derived from the first
+*selectable* stable release on the minor line, so the 3.2 candidates point at
+`3.2.1` only once it exists.
+
+`npm run version` refuses to generate any withdrawn/unpublished number. To
+ship the line's first stable release as the next patch instead, land a
+reviewed `.changeset/withdrawn-release.json` while the line is still in pre
+mode. It binds:
+
+- `withdrawn_version` and `target_version` (must be the next patch);
+- `withdrawn_release_commit` (the accidental Version Packages commit, which
+  must commit that version) and `revert_commit` (whose first parent is that
+  commit);
+- `withdrawn_protocol_sha256`, the exposed tarball's digest; and
+- a concrete `reason`, which is copied into the changelog.
+
+During ordinary prerelease cuts, `scripts/version-packages.mjs` verifies the
+marker and leaves it in place. On the pre-exit cut it additionally proves that
+no tag or GitHub Release exists for the withdrawn number. Changesets then
+consumes the complete pending and archived pool and computes the withdrawn
+number. The step retitles that changelog block, moves the package to
+`target_version`, and deletes the marker. Any mismatch fails closed. Preview
+the effect without versioning:
+
+```bash
+GITHUB_REPOSITORY=adcontextprotocol/adcp node scripts/skip-withdrawn-release.mjs check --remote
+GITHUB_REPOSITORY=adcontextprotocol/adcp node scripts/skip-withdrawn-release.mjs preview
+```
 
 ## Recovery
 
@@ -424,3 +487,14 @@ The safe incident handoff, requiring separate maintainer authorization, is:
 These are recovery instructions, not a record of operations performed. The
 ordering-fix work must not publish, delete, roll back, tag, release, deploy,
 rerun/cancel workflows, mutate R2/CDN, or change branch rules.
+## Maintained 3.1 publication authority
+
+The 3.1 release workflow publishes only the exact committed version after current-branch and original release-merge provenance checks. Its final generated head needs approval from a non-author human with current repository write, maintain or admin permission. Existing approval on an older head does not authorize a refreshed candidate. Here, non-author means the release PR author; this check does not establish last-pusher independence. Independently verify the actual bot producer/run and final generated head before recording human approval.
+
+This maintained-line policy overrides the older direct tag/public-release fallbacks in `cut-patch.md` and `cut-major.md`; do not use those fallbacks or their `--latest` flag for 3.1 publication. Keep the maintained branch unchanged until its publication run completes.
+
+Changesets prepares the release PR without tagging or publishing. Publication requires all four committed signed tuple files; it never re-signs or rebuilds missing artifacts. Signature verification binds the original producer commit (the original release merge's first parent), maintained branch, repository and push event; it does not identify a particular run attempt. GitHub assets are byte-checked and staged as an exact four-file draft before publication. The workflow rechecks final-head review state and current maintainer permission after all four assets are read back, immediately before making the release public. R2 publication uses `--version VERSION --skip-latest`, preserves existing objects only when their bytes match, and conditionally creates missing objects. It cannot write historical versions, mutable aliases, CORS or deletions. CDN verification retries the full tuple and stops each attempt on any failed download or checksum before checking the signature. A failed or stale release remains held for separately reviewed recovery.
+
+R2 object writes are individually atomic, not a bundle transaction. A branch move or storage failure after GitHub publication can leave the CDN version missing or partial. The failed publication/CDN verification run is the signal; the later `pending` check verifies GitHub only and does not certify R2 completeness. Do not rerun an obsolete workflow, bulk-backfill, or infer authority from a public tag alone. Hold publication and prepare a separately reviewed recovery plan tied to the original signed tuple, exact original release merge, current tested maintained head and current-version final-head human approval. Historical versions need separate explicit authorization. Any regenerated release candidate needs a fresh human review on its exact head. Maintenance publication explicitly preserves the repository's GitHub Latest alias.
+
+Recovery dispatch checks out the current tested workflow commit and keeps the requested original release commit in `RELEASE_SHA`. The original release must still be an ancestor of the current supported branch. Its package version and all six artifact surfaces must match the current tested tree and local checkout; a later helper change does not replace the original signed producer. A newer package version requires a separately reviewed historical recovery plan.

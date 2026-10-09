@@ -21,8 +21,10 @@ export const MODEL_CONTEXT_LIMITS: Record<string, number> = {
   'claude-opus-4-7': 1000000,
   'claude-opus-4-8': 1000000,
   'claude-opus-5': 1000000,
+  'claude-opus-5-5': 1000000,
   'claude-sonnet-4-6': 1000000,
   'claude-sonnet-5': 1000000,
+  'claude-sonnet-5-5': 1000000,
   'claude-haiku-4-5': 200000,
   // Default for unknown models
   default: 200000,

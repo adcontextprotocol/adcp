@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
+import { AccountRequiredError, UnsupportedBuyingModeError } from '@adcp/sdk';
 
 const sdkMocks = vi.hoisted(() => ({
   getAdcpCapabilities: vi.fn(),
@@ -293,5 +294,29 @@ describe('public agent discovery proxies', () => {
       currency: 'USD',
       format_options: [],
     }]);
+  });
+
+  it.each([
+    ['no declared wholesale buying mode', () => new UnsupportedBuyingModeError('wholesale', ['brief'])],
+    ['a required buyer account', () => new AccountRequiredError('explicit', 'get_products')],
+  ])('reports %s as unsupported product browsing, not an agent failure', async (_label, makeError) => {
+    sdkMocks.getProducts.mockRejectedValue(makeError());
+
+    const response = await request(app).get('/api/public/agent-products?url=https://sales.example.com/mcp');
+
+    expect(response.status).toBe(422);
+    expect(response.body).toEqual({
+      error: 'Product browsing not supported',
+      message: expect.stringContaining('does not offer public product browsing'),
+    });
+  });
+
+  it('keeps unexpected product fetch failures as 502', async () => {
+    sdkMocks.getProducts.mockRejectedValue(new Error('socket hang up'));
+
+    const response = await request(app).get('/api/public/agent-products?url=https://sales.example.com/mcp');
+
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({ error: 'Failed to fetch products' });
   });
 });

@@ -63,6 +63,18 @@ transaction**, with a fresh snapshot and a bounded attempt count. There is no
 automatic trigger retry and no provider retry authorization. Never retry an
 uncertain external operation without its durable reconciliation protocol.
 
+Current `identity-db.ts` behavior (a real availability decision for database
+review, not changed here): `withCredentialEventMutation` and the multi-credential
+authority mutation retry 55P03/40P01 up to `CREDENTIAL_MUTATION_MAX_ATTEMPTS`, but
+only while `mutationStarted` is false, i.e. for its own credential locks. The
+595 gate fires inside the mutation callback (or inside confirmed credential
+deletion, which has no retry loop), after `mutationStarted = true`. A 55P03 from
+`pg_try_advisory_xact_lock(6827, 595)` there is rolled back and rethrown
+unretried; the error propagates to the caller, so signed-webhook handlers are
+expected to fail the delivery for provider redelivery and login/MCP callers keep
+their existing error handling. Whether to add a bounded
+whole-transaction retry is undecided and no retry is added by this change.
+
 This is not a claim that arbitrary PostgreSQL code is deadlock-free. Explicit
 row/table locks and TRUNCATE's relation locks may deadlock before these triggers
 run. PostgreSQL aborts a participant without breaking the invariant. Installation
@@ -119,8 +131,24 @@ Never disable triggers on an active application database to import conflicts.
 
 Migration 595 is self-contained against main's current schema and is rerunnable
 under the repository runner. It does not redefine any 592 function or alter its
-journal/uncertain-operation semantics. Operational stack position is strictly
-591 -> 592 -> 593 -> unpublished 594 -> 595, after coordinator allocation audit.
+journal/uncertain-operation semantics. The frozen SQL header still records the
+intended stack position 591 -> 592 -> 593 -> unpublished 594 -> 595, after
+coordinator allocation audit.
+
+Allocation status, as observed in this worktree (source inspection only; no
+command was run for this refresh): main's file `591` is
+`enable_verification_profile_comparisons`, which is unrelated to the email stack,
+so the "591" in that header is a stack-position label, not a reference to main's
+591. Versions 592, 593, 594 and 596 are absent; 595 is this file; main's highest
+is 620 (`620_training_gcs_reporting`). The runner skips by applied-version
+membership (`appliedVersions.has`) rather than by highest version, so mechanically
+it can apply a late-filled 595 on a database that already applied higher versions.
+That is not an allocation decision. The production 591 -> 596 allocation, the
+coordinator serialization of the 592-596 range, and the human holds on the legacy
+conflict inventory (see "Ownership and legacy policy") are unchanged and still
+required before this migration may ship. Do not renumber or edit 595 to resolve
+them here. Treating the runner's ability as release approval would be wrong.
+
 The alias atomicity candidate and #7458/#7459/#7464 application containment must
 be composed/reviewed in their intended order. No dependency migration is copied
 into this production branch.
@@ -132,25 +160,35 @@ remove the integrity guarantee. Application rollback alone must retain 595.
 
 ## Production writer inventory
 
-Line references are to exact parent `8d50c0e3c303391c8bb35c5042248eb847b06bb9`.
-All 21 statements below are covered by the table triggers after installation.
-Historical boot SQL runs before 595 and is covered by installation preflight.
+Line references were refreshed by source inspection of this worktree (main plus
+the 595 stack); the original table referenced parent
+`8d50c0e3c303391c8bb35c5042248eb847b06bb9`. The credential UPSERT/DELETE
+writers that were previously inlined in login, WorkOS webhook/backfill and MCP
+OAuth code are now centralized in `identity-db.ts`, so the 21 original statement
+sites collapse to the 17 below. All are covered by the table triggers after
+installation. Historical boot SQL runs before 595 and is covered by installation
+preflight. Line numbers drift; re-inspect before relying on them.
 
 | File | Lines | SQL writer |
 |---|---|---|
-| server/src/http.ts | 7758, 7807 | Login UPSERT and Google credential import INSERT |
-| server/src/http.ts | 7828, 7880 | Legacy Google alias INSERT / cleanup DELETE |
-| server/src/routes/account-linking.ts | 298, 303, 308, 480 | Primary email UPDATE; alias DELETE/INSERT; verification alias INSERT |
-| server/src/routes/workos-webhooks.ts | 448, 506 | WorkOS user event UPSERT / DELETE with FK cascades |
-| server/src/routes/workos-webhooks.ts | 1430, 1552 | Global/per-org backfill UPSERT / provider-404 cleanup DELETE |
-| server/src/routes/admin/users.ts | 939, 1094 | Fresh credential INSERT / existing provider credential import INSERT |
-| server/src/mcp/oauth-provider.ts | 271 | MCP OAuth credential UPSERT |
-| server/src/db/user-merge-db.ts | 714, 722 | Alias duplicate DELETE / owner UPDATE |
+| server/src/db/identity-db.ts | 675 | Single credential UPSERT (`upsertWorkosUserInCredentialEvent`); callers: login (`http.ts:7870`), WorkOS user events (`workos-webhooks.ts:457`, 983, 1089), MCP OAuth finalize (`oauth-provider.ts:282`), and the backfill helper `upsertWorkosUserUnlessConfirmedDeleted` (`workos-webhooks.ts:1381`) |
+| server/src/db/identity-db.ts | 1116 | Confirmed credential DELETE with FK cascades (`deleteIdentityCredentialTransaction`); callers: WorkOS user deletion and backfill provider-404 cleanup (`workos-webhooks.ts:1500`) |
+| server/src/http.ts | 7925 | Google credential import INSERT |
+| server/src/http.ts | 7949, 8001 | Legacy Google alias INSERT / cleanup DELETE |
+| server/src/routes/account-linking.ts | 298, 303, 308, 480 | Primary email UPDATE; alias DELETE/INSERT; email-link verification alias INSERT |
+| server/src/routes/admin/users.ts | 940, 1095 | Fresh credential INSERT / existing provider credential import INSERT |
+| server/src/db/user-merge-db.ts | 722, 730 | Alias duplicate DELETE / alias owner UPDATE |
 | server/src/dev-setup.ts | 246 | Dev credential INSERT |
-| server/scripts/setup-sandbox.ts | 226, 283 | Sandbox credential UPSERT / cleanup DELETE |
+| server/scripts/setup-sandbox.ts | 226, 283 | Sandbox credential INSERT / cleanup DELETE |
 | server/src/db/migrations/079_users_table.sql | 130 | Historical credential backfill UPSERT |
 
-The dynamic `users SET` builder in `addie/mcp/member-tools.ts:3024` allows only
+The user-merge alias UPDATE moves an alias to the merge primary; if the moved
+alias's normalized email equals another credential's `users.email` (a case the
+LOWER-based duplicate DELETE above does not cover), the trigger now rejects the
+merge with 23505. That denial is the invariant working as intended; this change
+adds no merge-time authority or repair logic.
+
+The dynamic `users SET` builder in `addie/mcp/member-tools.ts:3115` allows only
 headline, bio, city, linkedin_url, twitter_url, expertise and interests; it is
 nevertheless protected. `user-merge-db.ts` has fixed-list dynamic UPDATE/DELETE
 helpers; their current call sites do not target the two email tables. Migration
@@ -159,16 +197,19 @@ still participate. Migration 460 creates explicit identity bindings after user
 insertion. Binding-only writes cannot change this exact-credential invariant.
 No production COPY/MERGE/TRUNCATE writer was found; DB tests cover their seams.
 
-Dependency writer movements are also covered: #7459/#7464 centralize credential
-UPSERT/DELETE in `identity-db.ts`; #7464 adds an INSERT in
-`services/admin-credential-bind.ts`; 592 adds UPDATE users and alias DELETE/UPSERT
+Dependency writer movements are also covered: credential UPSERT/DELETE is now
+centralized in `identity-db.ts` on this base (the #7459/#7464 movement);
+`services/admin-credential-bind.ts` (#7464) is not present here, so its INSERT is
+not inventoried; 592 adds UPDATE users and alias DELETE/UPSERT
 in `services/email-mutation.ts`. #7458 removes legacy automatic Google alias
 authority behavior. The new migration adds no authority inference.
 
 ## Application and composition limits
 
-Database-seam tests execute the actual production INSERT/UPSERT strings from
-login/Google, WorkOS event/backfill, admin create/import, MCP and sandbox code.
+Database-seam tests execute the actual production INSERT/UPSERT strings scanned
+from `http.ts` (Google import), `identity-db.ts` (the shared login, WorkOS
+event/backfill and MCP credential UPSERT), admin create/import, dev setup and
+sandbox code.
 Those tests prove storage enforcement. They do not claim provider ordering:
 base login/MCP still catch local persistence errors and continue authentication,
 and base/admin #7464 preflight only checks users with LOWER(email). An alias
@@ -181,6 +222,9 @@ when an unrelated trigger returns NULL. Exact candidate 8847fc performs the
 required rowCount/readback checks; its production verification flow has no
 required audit INSERT. Its existing test-only audit/storage faults are included
 in composition validation. Main's legacy verifier remains outside this fix.
+The atomic `ON CONFLICT DO NOTHING` alias insert followed by marking the token
+verified belongs to existing PR #7499 / candidate 8847fc and is deliberately not
+duplicated in this branch; `account-linking.ts` is untouched here.
 
 `normalized-email-composition.test.ts` intentionally runs only with
 `ADCP_EMAIL_COMPOSITION=true` in an isolated checkout containing published #7463

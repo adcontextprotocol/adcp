@@ -47,7 +47,7 @@ The storyboard runner should not encode those buyer decisions. It should emit ty
 
 ## Specialism manifests
 
-Each specialism's `requires_scenarios` field lists the scenarios the runner will grade. Example — the `sales-guaranteed` manifest declares eight required scenarios:
+Each specialism's `requires_scenarios` field lists the scenarios the runner considers alongside the parent protocol baseline. For example, the `sales-guaranteed` manifest includes these scenarios:
 
 ```yaml
 # /compliance/{version}/specialisms/sales-guaranteed/ (source: static/compliance/source/specialisms/sales-guaranteed/index.yaml)
@@ -56,14 +56,19 @@ requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/measurement_terms_rejected
+  - media_buy_seller/measurement_terms_accepted
   - media_buy_seller/pending_creatives_to_start
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
   - media_buy_seller/proposal_finalize   # ← capability-gated
+  - media_buy_seller/proposal_finalize_asap_timing
+  - media_buy_seller/availability_windows
+  - media_buy_seller/proposal_not_found_errors
+  - governance_aware_seller/governance_multi_agent_rejected
 ```
 
-Seven of these run unconditionally for any `sales-guaranteed` agent. The eighth — `proposal_finalize` — carries a capability gate.
+Capability gates on individual scenarios still apply; for example, `proposal_finalize` requires `media_buy.supports_proposals: true`. The parent `media_buy_seller` baseline also runs, including scenarios outside this list.
 
 ## Capability gates
 
@@ -95,7 +100,7 @@ Phase-level gates use the same shape and scope only the phase that declares the 
 }
 ```
 
-**Runner behavior:** all eight `requires_scenarios` run, including `proposal_finalize`. Priya's platform is graded on the full proposal lifecycle — brief with proposals, refine, finalize, and execute via [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy).
+**Runner behavior:** applicable required scenarios run, including `proposal_finalize`. Priya's platform is graded on the full proposal lifecycle — brief with proposals, refine, finalize, and execute via [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy).
 
 ---
 
@@ -144,7 +149,7 @@ This flag is only the grading gate. Buyer agents should not use it to decide whe
 
 In a raw `StoryboardResult`, `overall_passed` combines executed-step results with [storyboard invariants](/docs/building/verification/compliance-catalog#cross-resource-invariants). A storyboard-scoped assertion can set `overall_passed: false` even when `failed_count` — and the aggregate `summary.steps_failed` count — is zero. Inspect `assertions[]` for its `assertion_id`, `scope`, optional `step_id`, and `error` or structured `hint`. Step-scoped assertion failures also appear in that step's `validations[]` with `check: "assertion"`.
 
-As of `@adcp/sdk@13.0.0-rc.17`, the compliance aggregate preserves storyboard-scoped assertion failures as structured error observations and represents the failed invariant as a storyboard-level scenario. The containing track cannot report `pass`, while `summary.steps_failed` remains a truthful step counter and can stay zero when no individual step failed. Consumers should inspect the structured observation or storyboard-level scenario for the failed `assertion_id`; do not fabricate a failed step for an `onEnd`-only invariant.
+As of `@adcp/sdk@13.0.0`, the compliance aggregate preserves storyboard-scoped assertion failures as structured error observations and represents the failed invariant as a storyboard-level scenario. The containing track cannot report `pass`, while `summary.steps_failed` remains a truthful step counter and can stay zero when no individual step failed. Consumers should inspect the structured observation or storyboard-level scenario for the failed `assertion_id`; do not fabricate a failed step for an `onEnd`-only invariant.
 
 Skipped steps (`skip` block present) and not-selected items (`summary.not_selected[]` entries) do not contribute to `summary.steps_failed`, but they mean different things. `summary.steps_not_selected` says the runner deliberately excluded those scenarios from this run. `summary.steps_skipped` says the runner selected those scenarios but could not execute them; use `summary.skipped_by_reason` and `skip.detail` to distinguish optional capability choices from missing required surfaces. For ordinary step validation failures, see [Storyboard troubleshooting](/docs/building/operating/storyboard-troubleshooting).
 
@@ -177,8 +182,9 @@ Runner summaries distinguish **failure** from **coverage**:
 | `summary.steps_failed = 0` with a failed `StoryboardResult.assertions[]` entry | The raw storyboard failed despite passing step counters; the rc15 aggregate does not preserve this verdict | Fix the invariant failure and treat the run as failed; do not rely on the aggregate status |
 | `summary.steps_failed = 0`, with `summary.steps_not_selected > 0` only | The requested suite or run mode intentionally excluded some probes, such as live-only checks during a sandbox-only run | No implementation ask; label the run mode clearly |
 | `summary.steps_failed = 0`, with only capability-gate `not_applicable` skips | Narrower declared scope, not a failure | The agent honestly declined an optional capability, such as `media_buy.supports_proposals: false` |
-| `summary.steps_failed = 0`, with `missing_test_controller` skips | Deterministic-test-surface coverage gap | Run a dev/staging deterministic pass or publish the skipped lifecycle coverage explicitly |
-| Any `missing_tool`, `requirement_unmet`, or `unsatisfied_contract` skip for a declared protocol or specialism | The seller declared a claim the runner could not fully test | Fix the missing surface or narrow the declaration |
+| `summary.steps_failed = 0`, with `missing_test_controller` skips | Deterministic-test-surface coverage gap: the controller was available at load time but became unavailable mid-run, or a step calls it in a storyboard that does not gate on it | Run a dev/staging deterministic pass or publish the skipped lifecycle coverage explicitly |
+| `requirement_unmet` skip naming `controller` on controller-seeded storyboards | The seller exposes no [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller#who-is-expected-to-implement-the-controller); reference sellers SHOULD implement it, translator and adapter sellers that cannot seed state are not expected to | Reference sellers: implement the controller. Translator and adapter sellers: no ask; publish the skipped coverage list |
+| Any `missing_tool`, `unsatisfied_contract`, or other `requirement_unmet` skip (except the `controller` row above) for a declared protocol or specialism | The seller declared a claim the runner could not fully test | Fix the missing surface or narrow the declaration |
 
 This distinction matters for production-path sandbox runs. A seller can run the storyboard suite against the real production endpoint under sandbox-flagged traffic and get **zero failures** while still seeing a `partial` summary because the production endpoint correctly does not expose [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller). After confirming that the raw storyboard results contain no failed storyboard-scoped assertions, that result says: "the buyer-visible sandbox path passed every assertion the runner could grade, but controller-seeded lifecycle scenarios were skipped." It is useful evidence for sandbox readiness, but it is not the same as full deterministic specialism coverage.
 

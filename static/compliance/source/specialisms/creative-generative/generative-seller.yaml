@@ -4,6 +4,9 @@ title: "Generative seller agent"
 category: creative_generative
 summary: "Seller agent that generates creatives from briefs at buy time — no pre-built assets required."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy

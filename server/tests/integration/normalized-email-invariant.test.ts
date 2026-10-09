@@ -237,8 +237,8 @@ describe('database-wide normalized credential email invariant', () => {
     expect((await pool.query('SELECT * FROM users WHERE workos_user_id=ANY($1) ORDER BY workos_user_id', [[A, B]])).rows).toEqual(before);
   });
   const productionSources = [
-    '../../src/http.ts', '../../src/routes/workos-webhooks.ts', '../../src/routes/admin/users.ts',
-    '../../src/mcp/oauth-provider.ts', '../../src/dev-setup.ts', '../../scripts/setup-sandbox.ts',
+    '../../src/http.ts', '../../src/db/identity-db.ts', '../../src/routes/admin/users.ts',
+    '../../src/dev-setup.ts', '../../scripts/setup-sandbox.ts',
   ];
   for (const path of productionSources) {
     it(`covers actual INSERT SQL at the ${path} production database seam`, async () => {
@@ -258,6 +258,15 @@ describe('database-wide normalized credential email invariant', () => {
             : column === 'email_verified' ? false : column.endsWith('_at') ? new Date().toISOString()
             : column === 'primary_organization_id' ? null : 'Test';
         });
+        // Bind only the current shared UPSERT's explicit name-conflict policy;
+        // unexpected new parameters must fail this production-seam fixture.
+        for (const [, index] of sql.matchAll(/\$(\d+)/g)) {
+          const position = Number(index) - 1;
+          if (position in params) continue;
+          expect(path).toBe('../../src/db/identity-db.ts');
+          expect(index).toBe('8');
+          params[position] = 'provider_authoritative';
+        }
         await pool.query('DELETE FROM users WHERE workos_user_id=$1', [B]);
         await expect(pool.query(sql, params)).rejects.toMatchObject({ code: '23505' });
         if (sql.includes('DO UPDATE')) {

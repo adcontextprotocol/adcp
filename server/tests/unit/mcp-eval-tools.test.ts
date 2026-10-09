@@ -41,6 +41,7 @@ import {
   createStatelessToolHandlers,
 } from '../../src/mcp/exposed-tools.js';
 import { MEMBER_TOOLS, createMemberToolHandlers } from '../../src/addie/mcp/member-tools.js';
+import { SCHEMA_TOOLS } from '../../src/addie/mcp/schema-tools.js';
 import type { MemberContext } from '../../src/addie/member-context.js';
 
 afterEach(() => {
@@ -258,9 +259,9 @@ describe('AGENT_CONTEXT_TOOL_DEFINITIONS', () => {
 });
 
 describe('SCHEMA_TOOL_DEFINITIONS', () => {
-  const EXPECTED = ['validate_json', 'get_schema'];
+  const EXPECTED = ['validate_json', 'get_schema', 'validate_json_file', 'open_json_validator', 'validate_json_upload'];
 
-  it('exports exactly the 2 schema tools', () => {
+  it('exports exactly the 5 schema tools', () => {
     const names = SCHEMA_TOOL_DEFINITIONS.map((t) => t.name);
     expect(names).toEqual(expect.arrayContaining(EXPECTED));
     expect(names).toHaveLength(EXPECTED.length);
@@ -269,6 +270,18 @@ describe('SCHEMA_TOOL_DEFINITIONS', () => {
   it('validate_json requires json parameter', () => {
     const tool = SCHEMA_TOOL_DEFINITIONS.find((t) => t.name === 'validate_json');
     expect(tool!.inputSchema.required).toContain('json');
+  });
+
+  it('adds an optional upload integrity guard without mutating the internal tool contract', () => {
+    const internal = SCHEMA_TOOLS.find((t) => t.name === 'validate_json')!;
+    const external = SCHEMA_TOOL_DEFINITIONS.find((t) => t.name === 'validate_json')!;
+    const schema = external.inputSchema as { properties: Record<string, { type: string }>; required: string[] };
+    expect(schema.properties.expected_json_sha256.type).toBe('string');
+    expect(schema.required).not.toContain('expected_json_sha256');
+    expect(external.inputSchema).not.toBe(internal.input_schema);
+    expect(internal.input_schema.properties).not.toHaveProperty('expected_json_sha256');
+    expect(external.description).toContain('Do not manually reconstruct');
+    expect(internal.description).not.toContain('local attachment');
   });
 
   it('get_schema requires schema_path parameter', () => {
@@ -289,8 +302,8 @@ describe('PROPERTY_TOOL_DEFINITIONS', () => {
 });
 
 describe('ALL_EXPOSED_TOOL_DEFINITIONS', () => {
-  it('combines all tool groups (4 eval + 3 context + 2 schema + 1 property = 10)', () => {
-    expect(ALL_EXPOSED_TOOL_DEFINITIONS).toHaveLength(10);
+  it('combines all tool groups (4 eval + 3 context + 5 schema + 1 property = 13)', () => {
+    expect(ALL_EXPOSED_TOOL_DEFINITIONS).toHaveLength(13);
   });
 
   it('has no duplicate tool names', () => {
@@ -757,9 +770,24 @@ describe('createMemberToolHandler', () => {
 });
 
 describe('createStatelessToolHandlers', () => {
+  it('rejects altered source JSON through the external MCP handler before schema fetching', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const handler = createStatelessToolHandlers().get('validate_json')!;
+      // SHA-256 of canonical {}, supplied before the argument was altered.
+      await expect(handler({ json: { extra: true }, expected_json_sha256: '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a' }))
+        .rejects.toThrow('JSON integrity mismatch');
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('returns handlers for schema and property tools', () => {
     const handlers = createStatelessToolHandlers();
     expect(handlers.has('validate_json')).toBe(true);
+    expect(handlers.has('validate_json_file')).toBe(true);
     expect(handlers.has('get_schema')).toBe(true);
     expect(handlers.has('validate_adagents')).toBe(true);
   });

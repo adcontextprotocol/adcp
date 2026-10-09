@@ -24,6 +24,10 @@ declare module 'multer' {
     storage?: unknown;
     limits?: {
       fileSize?: number;
+      files?: number;
+      fields?: number;
+      parts?: number;
+      fieldSize?: number;
     };
     fileFilter?: (
       req: Request,

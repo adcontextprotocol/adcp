@@ -4,6 +4,9 @@ title: "Seller filters products by accepted pricing currencies"
 category: media_buy_seller
 summary: "Verifies that get_products filters.pricing_currencies returns only products buyable in the requested media pricing currency and prunes returned product pricing_options."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - comply_test_controller

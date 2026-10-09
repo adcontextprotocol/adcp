@@ -19,7 +19,8 @@
  *   public sandbox token is in use (otherwise every caller on that token
  *   sees the same oracle).
  * - `getIdempotencyStore` — returns a process-wide store backed by
- *   Postgres when a DB pool is available, in-memory otherwise.
+ *   Postgres in production (with lazy pool lookup) or when a DB pool is
+ *   available, in-memory otherwise.
  */
 
 import {
@@ -472,7 +473,12 @@ function validateTtl(seconds: number): number {
 }
 
 function fencedPgBackend(): FencedIdempotencyBackend {
-  const db = getPool();
+  // Tenant registry prewarming starts before initializeDatabase(). Resolve
+  // the pool only when querying so construction never downgrades production
+  // to process-local memory; operations still fail closed until DB startup.
+  const db = {
+    query: (text: string, values?: unknown[]) => getPool().query(text, values),
+  };
   const base = pgBackend(db);
   return {
     ...base,
@@ -504,7 +510,7 @@ function fencedPgBackend(): FencedIdempotencyBackend {
 
 export function getIdempotencyStore(): OwnedIdempotencyStore {
   if (storeInstance) return storeInstance;
-  const backend = isDatabaseInitialized()
+  const backend = process.env.NODE_ENV === 'production' || isDatabaseInitialized()
     ? fencedPgBackend()
     : memoryBackend();
   const base = createHashAwareIdempotencyStore({ backend, ttlSeconds: REPLAY_TTL_SECONDS });

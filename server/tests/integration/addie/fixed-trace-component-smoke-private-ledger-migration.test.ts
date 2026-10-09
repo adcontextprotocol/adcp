@@ -11,8 +11,12 @@ let authorizationDigest = '';
 const plan = fixedTraceComponentSmokePrivateLedgerPlan()!;
 const admission = fixedTraceComponentSmokeAdmission();
 const LEGACY_ADMISSION_FINGERPRINT = '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d';
+// Admitted by migration 583; superseded by the 3.2 GA tool-description reissue (615).
+const REISSUED_583_ADMISSION_FINGERPRINT = '817ab57d30cc89dab4a81016f5c826857b8dc2a83e2f73aa0b7eb9c82f0b5d71';
+const CURRENT_PLAN_MANIFEST_DIGEST = 'bda91890329f1da236a0cddbafa65afe25ff986fb1aa0b04594d2c79d521f70a';
 const BASE_LEDGER_MIGRATION = readFileSync(new URL('../../../src/db/migrations/582_addie_fixed_trace_component_smoke_private_ledger.sql', import.meta.url), 'utf8');
 const REISSUED_GUARD_MIGRATION = readFileSync(new URL('../../../src/db/migrations/583_reissue_addie_fixed_trace_component_smoke_plan_guard.sql', import.meta.url), 'utf8');
+const GA_REISSUE_MIGRATION = readFileSync(new URL('../../../src/db/migrations/615_reissue_addie_fixed_trace_component_smoke_3_2_ga.sql', import.meta.url), 'utf8');
 
 async function rejects(statement: string, values: unknown[] = [], subject = client!) {
   await subject.query('SAVEPOINT private_ledger_expected_failure');
@@ -33,6 +37,11 @@ function reservationFor(digest: string) {
   return { authorizationDigest: digest, reservationId: reservationIdFor(digest), entryCount: 168 as const, providerDispatchEntryCount: 126 as const, reservationMicrodollars: 2_819_484 as const };
 }
 function uniqueAttemptId() { return `attempt_${createHash('sha256').update(randomUUID()).digest('hex').slice(0, 32)}`; }
+function fixtureAttemptId(suffix: string, digest = authorizationDigest) {
+  // Some tests commit immutable attempts. A later run against the same DB
+  // must address its own authorization instead of colliding with old rows.
+  return `attempt_${createHash('sha256').update(`${digest}:${suffix}`).digest('hex').slice(0, 32)}`;
+}
 function deferred() {
   let resolve: (() => void) | undefined;
   const promise = new Promise<void>((done) => { resolve = done; });
@@ -82,8 +91,9 @@ async function insertAuthorization(
 
 function planForAdmissionFingerprint(aggregateAdmissionFingerprint: string) {
   if (aggregateAdmissionFingerprint === admission.fingerprints.aggregateAdmission) return plan;
-  if (aggregateAdmissionFingerprint !== LEGACY_ADMISSION_FINGERPRINT) {
-    throw new Error('test only supports the current or migration-582 admission fingerprint');
+  if (aggregateAdmissionFingerprint !== LEGACY_ADMISSION_FINGERPRINT
+    && aggregateAdmissionFingerprint !== REISSUED_583_ADMISSION_FINGERPRINT) {
+    throw new Error('test only supports the current, migration-582, or migration-583 admission fingerprint');
   }
   return plan.map((entry) => ({
     ...entry,
@@ -137,12 +147,12 @@ function dispatchEntryFor(aggregateAdmissionFingerprint: string) {
     .find((entry) => entry.disposition === 'provider_dispatch')!;
 }
 async function insertIntent(subject: Client, digest: string, entry = dispatchEntry(), suffix = 'e', ordinal = 1) {
-  const token = suffix.length === 1 ? suffix.repeat(32) : suffix;
+  const attemptId = suffix.length === 1 ? fixtureAttemptId(suffix, digest) : `attempt_${suffix}`;
   return subject.query(
     `INSERT INTO addie_fixed_trace_component_smoke_attempts
      (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac)
      VALUES ($1,$2,$3,$4,'intent_recorded',$5)`,
-    [`attempt_${token}`, digest, entry.assignmentId, ordinal, 'f'.repeat(64)],
+    [attemptId, digest, entry.assignmentId, ordinal, 'f'.repeat(64)],
   );
 }
 
@@ -153,9 +163,10 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
   afterEach(async () => { await client!.query('ROLLBACK'); });
   afterAll(async () => { await client?.end().catch(() => undefined); });
 
-  it('applies the reissued guard to a clean schema and accepts the current exact plan', async () => {
+  it('applies the reissued guards to a clean schema and accepts the current exact plan', async () => {
     await withLedgerMigrationSchema(async (isolated) => {
       await isolated.query(REISSUED_GUARD_MIGRATION);
+      await isolated.query(GA_REISSUE_MIGRATION);
       const admissionConstraint = await isolated.query<{ conname: string; definition: string }>(
         `SELECT conname, pg_get_constraintdef(oid) AS definition
            FROM pg_constraint
@@ -175,8 +186,32 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
       const guard = await isolated.query<{ definition: string }>(
         "SELECT pg_get_functiondef('addie_fixed_trace_component_smoke_check_plan_group(character)'::regprocedure) AS definition",
       );
-      expect(guard.rows[0]?.definition).toContain('c9b2b82185f4723cb8059e0c2064d946d825939ef84b813d3df8f3ef11656530');
+      expect(guard.rows[0]?.definition).toContain(CURRENT_PLAN_MANIFEST_DIGEST);
       expect(guard.rows[0]?.definition).toContain(admission.fingerprints.aggregateAdmission);
+    });
+  });
+
+  it('upgrades a migration-583 schema without discarding its authority and fails that plan closed', async () => {
+    await withLedgerMigrationSchema(async (isolated) => {
+      await isolated.query(REISSUED_GUARD_MIGRATION);
+      await isolated.query('BEGIN');
+      const reissuedAuthorization = await seedExactPlan(isolated, false, REISSUED_583_ADMISSION_FINGERPRINT);
+      await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
+      await isolated.query('COMMIT');
+      await isolated.query(GA_REISSUE_MIGRATION);
+      expect((await isolated.query(
+        'SELECT aggregate_admission_fingerprint FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1',
+        [reissuedAuthorization],
+      )).rows).toEqual([{ aggregate_admission_fingerprint: REISSUED_583_ADMISSION_FINGERPRINT }]);
+      await expect(isolated.query(
+        'SELECT addie_fixed_trace_component_smoke_check_plan_group($1)', [reissuedAuthorization],
+      )).rejects.toThrow('fixed-trace component smoke plan is not the admitted exact plan');
+      await isolated.query('BEGIN');
+      const currentAuthorization = await seedExactPlan(isolated);
+      await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
+      await isolated.query('COMMIT');
+      await expect(insertIntent(isolated, reissuedAuthorization, dispatchEntryFor(REISSUED_583_ADMISSION_FINGERPRINT), 'r')).rejects.toThrow('fixed-trace component smoke plan is not the admitted exact plan');
+      await expect(insertIntent(isolated, currentAuthorization, undefined, 'c')).resolves.toBeDefined();
     });
   });
 
@@ -189,6 +224,7 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
       await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
       await isolated.query('COMMIT');
       await isolated.query(REISSUED_GUARD_MIGRATION);
+      await isolated.query(GA_REISSUE_MIGRATION);
       expect((await isolated.query(
         'SELECT aggregate_admission_fingerprint FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1',
         [legacyAuthorization],
@@ -221,17 +257,17 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
   });
 
   it('permits only consumed intent insertion and rejects direct terminal insertion', async () => {
-    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac,response_hmac,returned_provider,returned_model,returned_effort,input_tokens,output_tokens,actual_cost_microdollars,latency_ms,terminal_at) VALUES ($1,$2,$3,1,'succeeded',$4,$5,$6,$7,$8,0,0,0,0,clock_timestamp())`, [`attempt_${'d'.repeat(32)}`, authorizationDigest, dispatchEntry().assignmentId, 'f'.repeat(64), '1'.repeat(64), dispatchEntry().provider, dispatchEntry().model, dispatchEntry().effort])).resolves.toBeInstanceOf(Error);
+    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac,response_hmac,returned_provider,returned_model,returned_effort,input_tokens,output_tokens,actual_cost_microdollars,latency_ms,terminal_at) VALUES ($1,$2,$3,1,'succeeded',$4,$5,$6,$7,$8,0,0,0,0,clock_timestamp())`, [fixtureAttemptId('d'), authorizationDigest, dispatchEntry().assignmentId, 'f'.repeat(64), '1'.repeat(64), dispatchEntry().provider, dispatchEntry().model, dispatchEntry().effort])).resolves.toBeInstanceOf(Error);
     await client!.query("UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'halted' WHERE authorization_digest = $1", [authorizationDigest]);
-    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,1,'intent_recorded',$4)`, [`attempt_${'a'.repeat(32)}`, authorizationDigest, dispatchEntry().assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,1,'intent_recorded',$4)`, [fixtureAttemptId('a'), authorizationDigest, dispatchEntry().assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
     const unknown = await seedExactPlan();
     await client!.query("UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'unknown_exposure', unknown_exposure_at = clock_timestamp() WHERE authorization_digest = $1", [unknown]);
-    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,1,'intent_recorded',$4)`, [`attempt_${'b'.repeat(32)}`, unknown, dispatchEntry().assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,1,'intent_recorded',$4)`, [fixtureAttemptId('b', unknown), unknown, dispatchEntry().assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
   });
 
   it('enforces ordinal reservation and immutable direct SQL state', async () => {
     await insertIntent(client!, authorizationDigest);
-    const attemptId = `attempt_${'e'.repeat(32)}`;
+    const attemptId = fixtureAttemptId('e');
     await expect(rejects('UPDATE addie_fixed_trace_component_smoke_attempts SET actual_cost_microdollars = 99999999 WHERE attempt_id = $1', [attemptId])).resolves.toBeInstanceOf(Error);
     await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'intent_recorded' WHERE attempt_id = $1", [attemptId])).resolves.toBeInstanceOf(Error);
     await expect(rejects('DELETE FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [attemptId])).resolves.toBeInstanceOf(Error);
@@ -240,29 +276,29 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
 
   it('enforces contiguous ordinal sequencing and refuses a concurrent second open intent', async () => {
     const generation = plan.find((entry) => entry.disposition === 'provider_dispatch' && entry.maximumProviderInvocations === 2)!;
-    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,2,'intent_recorded',$4)`, [`attempt_${'1'.repeat(32)}`, authorizationDigest, generation.assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,2,'intent_recorded',$4)`, [fixtureAttemptId('1'), authorizationDigest, generation.assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
     await insertIntent(client!, authorizationDigest, generation, '2');
-    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,2,'intent_recorded',$4)`, [`attempt_${'3'.repeat(32)}`, authorizationDigest, generation.assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
-    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'2'.repeat(32)}`, '2'.repeat(64), generation.provider, generation.model, generation.effort]);
-    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,2,'intent_recorded',$4)`, [`attempt_${'4'.repeat(32)}`, authorizationDigest, generation.assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
-    await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = 'wrong', returned_model = 'wrong', returned_effort = 'wrong', input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'2'.repeat(32)}`, '2'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,2,'intent_recorded',$4)`, [fixtureAttemptId('3'), authorizationDigest, generation.assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('2'), '2'.repeat(64), generation.provider, generation.model, generation.effort]);
+    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,2,'intent_recorded',$4)`, [fixtureAttemptId('4'), authorizationDigest, generation.assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = 'wrong', returned_model = 'wrong', returned_effort = 'wrong', input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('2'), '2'.repeat(64)])).resolves.toBeInstanceOf(Error);
   });
 
   it('rejects mismatched identity and mismatched actual-cost settlement while each attempt is still open', async () => {
     const first = dispatchEntry(4);
     await insertIntent(client!, authorizationDigest, first, 'a');
-    await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = 'wrong', returned_model = 'wrong', returned_effort = 'wrong', input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'a'.repeat(32)}`, 'a'.repeat(64)])).resolves.toBeInstanceOf(Error);
-    expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [`attempt_${'a'.repeat(32)}`])).rows).toEqual([{ status: 'intent_recorded' }]);
-    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'a'.repeat(32)}`, 'a'.repeat(64), first.provider, first.model, first.effort]);
+    await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = 'wrong', returned_model = 'wrong', returned_effort = 'wrong', input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('a'), 'a'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [fixtureAttemptId('a')])).rows).toEqual([{ status: 'intent_recorded' }]);
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('a'), 'a'.repeat(64), first.provider, first.model, first.effort]);
     const second = dispatchEntry(5);
     await insertIntent(client!, authorizationDigest, second, 'b');
-    await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'provider_failed', response_hmac = $2, returned_provider = 'wrong', returned_model = 'wrong', returned_effort = 'wrong', input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 1, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'b'.repeat(32)}`, 'b'.repeat(64)])).resolves.toBeInstanceOf(Error);
-    expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [`attempt_${'b'.repeat(32)}`])).rows).toEqual([{ status: 'intent_recorded' }]);
+    await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'provider_failed', response_hmac = $2, returned_provider = 'wrong', returned_model = 'wrong', returned_effort = 'wrong', input_tokens = 0, output_tokens = 0, actual_cost_microdollars = 1, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('b'), 'b'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [fixtureAttemptId('b')])).rows).toEqual([{ status: 'intent_recorded' }]);
   });
 
   it('rejects contradictory terminal receipt accounting evidence at the database boundary', async () => {
     const entry = dispatchEntry(7);
-    const attemptId = `attempt_${'d'.repeat(32)}`;
+    const attemptId = fixtureAttemptId('d');
     await insertIntent(client!, authorizationDigest, entry, 'd');
     await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'identity_mismatch', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [attemptId, 'd'.repeat(64), entry.provider, entry.model, entry.effort])).resolves.toBeInstanceOf(Error);
     await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, observed_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [attemptId, 'd'.repeat(64), entry.provider, entry.model, entry.effort])).resolves.toBeInstanceOf(Error);
@@ -280,14 +316,14 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     for (const [index, [profileId, input, output, cacheRead, cacheWrite, expectedCost]] of vectors.entries()) {
       const entry = plan.find((candidate) => candidate.disposition === 'provider_dispatch' && candidate.pricingProfileId === profileId)!;
       const suffix = (index + 1).toString(16);
-      const attemptId = `attempt_${suffix.repeat(32)}`;
+      const attemptId = fixtureAttemptId(suffix);
       await insertIntent(client!, authorizationDigest, entry, suffix);
       await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = $6, output_tokens = $7, cache_read_tokens = $8, cache_write_tokens = $9, actual_cost_microdollars = $10, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [attemptId, suffix.repeat(64), entry.provider, entry.model, entry.effort, input, output, cacheRead, cacheWrite, expectedCost + 1])).resolves.toBeInstanceOf(Error);
       await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = $6, output_tokens = $7, cache_read_tokens = $8, cache_write_tokens = $9, actual_cost_microdollars = $10, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [attemptId, suffix.repeat(64), entry.provider, entry.model, entry.effort, input, output, cacheRead, cacheWrite, expectedCost]);
     }
     const entry = dispatchEntry(10);
     await insertIntent(client!, authorizationDigest, entry, 'f');
-    await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'invalid_limits', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, observed_cost_microdollars = NULL, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'f'.repeat(32)}`, 'f'.repeat(64), entry.provider, entry.model, entry.effort])).resolves.toBeInstanceOf(Error);
+    await expect(rejects("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'invalid_limits', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, observed_cost_microdollars = NULL, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('f'), 'f'.repeat(64), entry.provider, entry.model, entry.effort])).resolves.toBeInstanceOf(Error);
   });
 
   it('application terminalization uses the locked aggregate CTE on PostgreSQL', async () => {
@@ -386,16 +422,67 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     await insertIntent(client!, authorizationDigest, open, openId.slice('attempt_'.length));
     await client!.query('COMMIT');
     const pool = new Pool({ connectionString: databaseUrl, max: 2 });
+    const recoveryAtGate = deferred();
+    const releaseRecovery = deferred();
+    const intentRecoveryAtGate = deferred();
+    let recoveryPid = 0;
+    let intentRecoveryPid = 0;
+    const ledgerPool = (standalone: boolean) => ({
+      connect: async () => {
+        const connection = await pool.connect();
+        const pid = (await connection.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+        return {
+          query: async (sql: string, values?: unknown[]) => {
+            // This test proves concurrent recovery ordering, including deferred
+            // COMMIT checks. The separate lock-failure test keeps production
+            // bounds; leave headroom beyond the 5s DB observation window.
+            if (sql.startsWith('SET LOCAL lock_timeout =')) return connection.query("SET LOCAL lock_timeout = '15s'");
+            if (sql.startsWith('SET LOCAL statement_timeout =')) return connection.query("SET LOCAL statement_timeout = '15s'");
+            if (sql === 'LOCK TABLE addie_fixed_trace_component_smoke_run_plan IN SHARE ROW EXCLUSIVE MODE') {
+              if (!standalone) {
+                intentRecoveryPid = pid;
+                intentRecoveryAtGate.resolve();
+              }
+              const output = await connection.query(sql, values);
+              if (standalone) {
+                recoveryPid = pid;
+                recoveryAtGate.resolve();
+                await waitForBarrier(releaseRecovery.promise, 'standalone recovery release');
+              }
+              return output;
+            }
+            return connection.query(sql, values);
+          },
+          release: () => connection.release(),
+        };
+      },
+    });
+    let pendingIntent: ReturnType<PostgresFixedTraceComponentSmokePrivateLedger['recordProviderIntent']> | undefined;
+    let pendingRecovery: ReturnType<PostgresFixedTraceComponentSmokePrivateLedger['recordUnknownExposure']> | undefined;
     try {
-      const ledger = new PostgresFixedTraceComponentSmokePrivateLedger(pool);
-      const [intent, recovery] = await Promise.all([
-        ledger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId: uniqueAttemptId(), assignmentId: target.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'c'.repeat(64) }),
-        ledger.recordUnknownExposure(reservationFor(authorizationDigest)),
-      ]);
+      const recoveryLedger = new PostgresFixedTraceComponentSmokePrivateLedger(ledgerPool(true) as never);
+      const intentLedger = new PostgresFixedTraceComponentSmokePrivateLedger(ledgerPool(false) as never);
+      pendingRecovery = recoveryLedger.recordUnknownExposure(reservationFor(authorizationDigest));
+      await waitForBarrier(recoveryAtGate.promise, 'standalone recovery table lock');
+      pendingIntent = intentLedger.recordProviderIntent({ reservation: reservationFor(authorizationDigest), attemptId: uniqueAttemptId(), assignmentId: target.assignmentId, invocationOrdinal: 1, preparedRequestHmac: 'c'.repeat(64) });
+      await waitForBarrier(intentRecoveryAtGate.promise, 'provider-intent standalone recovery');
+      expect(intentRecoveryPid).not.toBe(recoveryPid);
+      await expect.poll(async () => (await client!.query(
+        'SELECT wait_event_type, pg_blocking_pids(pid) AS blockers FROM pg_stat_activity WHERE pid = $1',
+        [intentRecoveryPid],
+      )).rows, { timeout: 5_000, interval: 10 }).toEqual([{
+        wait_event_type: 'Lock', blockers: expect.arrayContaining([recoveryPid]),
+      }]);
+      releaseRecovery.resolve();
+      const [intent, recovery] = await Promise.all([pendingIntent, pendingRecovery]);
       expect(intent).toEqual({ status: 'refused', reason: 'unknown_exposure' });
       expect(recovery).toEqual({ status: 'recorded' });
       expect((await client!.query("SELECT a.status, count(*) FILTER (WHERE t.status = 'intent_recorded')::int AS open FROM addie_fixed_trace_component_smoke_authorizations a JOIN addie_fixed_trace_component_smoke_attempts t USING (authorization_digest) WHERE a.authorization_digest = $1 GROUP BY a.status", [authorizationDigest])).rows).toEqual([{ status: 'unknown_exposure', open: 0 }]);
-    } finally { await pool.end(); await client!.query('BEGIN'); }
+    } finally {
+      releaseRecovery.resolve();
+      await Promise.allSettled([pendingIntent, pendingRecovery]);
+      await pool.end(); await client!.query('BEGIN');
+    }
   });
 
   it('releases provider-intent target locking before standalone recovery after the precheck race', async () => {
@@ -699,7 +786,7 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     const digest = await seedExactPlan(client!);
     const entry = dispatchEntry(12);
     const suffix = `${({ provider_failed: '1', malformed_response: '2', identity_mismatch: '3', missing_usage: '4', timeout_after_dispatch: '5', invalid_limits: '6', pricing_unavailable: '7', unknown_exposure: '8' } as Record<string, string>)[status]}`;
-    const attemptId = `attempt_${suffix.repeat(32)}`;
+    const attemptId = fixtureAttemptId(suffix, digest);
     await insertIntent(client!, digest, entry, suffix);
     const values: unknown[] = [attemptId];
     if (assignment.includes('$2')) values.push('e'.repeat(64));
@@ -708,7 +795,7 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     if (assignment.includes('$5')) values.push(entry.effort);
     await client!.query(`UPDATE addie_fixed_trace_component_smoke_attempts SET ${assignment}, terminal_at = clock_timestamp() WHERE attempt_id = $1`, values);
     expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1', [digest])).rows).toEqual([{ status: expectedAuthorizationStatus }]);
-    await expect(rejects("INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,1,'intent_recorded',$4)", [`attempt_${'f'.repeat(32)}`, digest, dispatchEntry(13).assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    await expect(rejects("INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,1,'intent_recorded',$4)", [fixtureAttemptId('f', digest), digest, dispatchEntry(13).assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
     if (status === 'provider_failed') {
       await client!.query("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_failed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [digest, entry.assignmentId]);
       expect((await client!.query('SELECT assignment_outcome FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1 AND assignment_id = $2', [digest, entry.assignmentId])).rows).toEqual([{ assignment_outcome: 'provider_failed' }]);
@@ -718,7 +805,7 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
   it('idempotently recovers a committed provider failure after unknown exposure has already committed', async () => {
     const entry = dispatchEntry(6);
     await insertIntent(client!, authorizationDigest, entry, 'c');
-    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'provider_failed', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'c'.repeat(32)}`, 'c'.repeat(64), entry.provider, entry.model, entry.effort]);
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'provider_failed', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('c'), 'c'.repeat(64), entry.provider, entry.model, entry.effort]);
     await client!.query('COMMIT');
     const pool = new Pool({ connectionString: databaseUrl });
     try {
@@ -735,8 +822,8 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
   it('settles an admitted maximum-ordinal continuation as a halt with observed cost', async () => {
     const router = dispatchEntry();
     await insertIntent(client!, authorizationDigest, router, '5');
-    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'tool_continuation_required', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'5'.repeat(32)}`, '5'.repeat(64), router.provider, router.model, router.effort]);
-    expect((await client!.query('SELECT status, actual_cost_microdollars, observed_cost_microdollars FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [`attempt_${'5'.repeat(32)}`])).rows).toEqual([{ status: 'invalid_limits', actual_cost_microdollars: null, observed_cost_microdollars: '0' }]);
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'tool_continuation_required', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('5'), '5'.repeat(64), router.provider, router.model, router.effort]);
+    expect((await client!.query('SELECT status, actual_cost_microdollars, observed_cost_microdollars FROM addie_fixed_trace_component_smoke_attempts WHERE attempt_id = $1', [fixtureAttemptId('5')])).rows).toEqual([{ status: 'invalid_limits', actual_cost_microdollars: null, observed_cost_microdollars: '0' }]);
     expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1', [authorizationDigest])).rows).toEqual([{ status: 'halted' }]);
     await client!.query("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_failed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, router.assignmentId]);
   });
@@ -758,7 +845,7 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
       expect(settled).toBe(true);
       await client!.query('BEGIN');
       await client!.query("UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'unknown_exposure', unknown_exposure_at = clock_timestamp() WHERE authorization_digest = $1", [authorizationDigest]);
-      await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'unknown_exposure', terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'6'.repeat(32)}`]);
+      await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'unknown_exposure', terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('6')]);
       await client!.query("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_unknown_exposure', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, started.assignmentId]);
       expect((await client!.query('SELECT status, assignment_outcome FROM addie_fixed_trace_component_smoke_authorizations a JOIN addie_fixed_trace_component_smoke_run_plan p USING (authorization_digest) WHERE a.authorization_digest = $1 AND p.assignment_id = $2', [authorizationDigest, started.assignmentId])).rows).toEqual([{ status: 'unknown_exposure', assignment_outcome: 'provider_unknown_exposure' }]);
       for (const entry of plan.filter((entry) => entry.assignmentId !== started.assignmentId)) {
@@ -772,21 +859,21 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     const generation = plan.find((entry) => entry.disposition === 'provider_dispatch' && entry.maximumProviderInvocations === 2)!;
     await expect(rejects("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_completed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, generation.assignmentId])).resolves.toBeInstanceOf(Error);
     await insertIntent(client!, authorizationDigest, generation);
-    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'tool_continuation_required', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'e'.repeat(32)}`, '1'.repeat(64), generation.provider, generation.model, generation.effort]);
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'tool_continuation_required', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('e'), '1'.repeat(64), generation.provider, generation.model, generation.effort]);
     await expect(rejects("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_completed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, generation.assignmentId])).resolves.toBeInstanceOf(Error);
     await insertIntent(client!, authorizationDigest, generation, '8', 2);
-    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'8'.repeat(32)}`, '3'.repeat(64), generation.provider, generation.model, generation.effort]);
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('8'), '3'.repeat(64), generation.provider, generation.model, generation.effort]);
     await client!.query("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_completed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 2 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, generation.assignmentId]);
     const router = dispatchEntry();
     await insertIntent(client!, authorizationDigest, router, '7');
-    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'7'.repeat(32)}`, '2'.repeat(64), router.provider, router.model, router.effort]);
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('7'), '2'.repeat(64), router.provider, router.model, router.effort]);
     await client!.query("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_completed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, router.assignmentId]);
     await expect(rejects("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_completed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, router.assignmentId])).resolves.toBeInstanceOf(Error);
     const finalFirst = plan.filter((entry) => entry.disposition === 'provider_dispatch' && entry.maximumProviderInvocations === 2)[1]!;
     await insertIntent(client!, authorizationDigest, finalFirst, '9');
-    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${'9'.repeat(32)}`, '4'.repeat(64), finalFirst.provider, finalFirst.model, finalFirst.effort]);
+    await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [fixtureAttemptId('9'), '4'.repeat(64), finalFirst.provider, finalFirst.model, finalFirst.effort]);
     await client!.query("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_completed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, finalFirst.assignmentId]);
-    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,2,'intent_recorded',$4)`, [`attempt_${'0'.repeat(32)}`, authorizationDigest, finalFirst.assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,2,'intent_recorded',$4)`, [fixtureAttemptId('0'), authorizationDigest, finalFirst.assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
     await client!.query("UPDATE addie_fixed_trace_component_smoke_authorizations SET status = 'halted' WHERE authorization_digest = $1", [authorizationDigest]);
     const local = plan.find((entry) => entry.disposition === 'local_terminal')!;
     const untouchedProvider = dispatchEntry(2);
@@ -822,7 +909,7 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     for (const entry of plan) {
       if (finalTwo.some((remaining) => remaining.assignmentId === entry.assignmentId)) continue;
       if (entry.disposition === 'provider_dispatch') {
-        const token = (++index).toString(16).padStart(32, '0');
+        const token = createHash('sha256').update(`${authorizationDigest}:${++index}`).digest('hex').slice(0, 32);
         await insertIntent(client!, authorizationDigest, entry, token);
         await client!.query("UPDATE addie_fixed_trace_component_smoke_attempts SET status = 'succeeded', response_disposition = 'final_response', response_hmac = $2, returned_provider = $3, returned_model = $4, returned_effort = $5, input_tokens = 0, output_tokens = 0, cache_read_tokens = 0, cache_write_tokens = 0, actual_cost_microdollars = 0, latency_ms = 0, terminal_at = clock_timestamp() WHERE attempt_id = $1", [`attempt_${token}`, 'a'.repeat(64), entry.provider, entry.model, entry.effort]);
         await client!.query("UPDATE addie_fixed_trace_component_smoke_run_plan SET assignment_outcome = 'provider_completed', assignment_terminal_at = clock_timestamp(), assignment_final_invocation_ordinal = 1 WHERE authorization_digest = $1 AND assignment_id = $2", [authorizationDigest, entry.assignmentId]);
@@ -848,6 +935,6 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
       await first.end(); await second.end(); await client!.query('BEGIN');
     }
     expect((await client!.query('SELECT status FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1', [authorizationDigest])).rows).toEqual([{ status: 'completed' }]);
-    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,1,'intent_recorded',$4)`, [`attempt_${'f'.repeat(32)}`, authorizationDigest, dispatchEntry().assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
+    await expect(rejects(`INSERT INTO addie_fixed_trace_component_smoke_attempts (attempt_id,authorization_digest,assignment_id,invocation_ordinal,status,prepared_request_hmac) VALUES ($1,$2,$3,1,'intent_recorded',$4)`, [fixtureAttemptId('f'), authorizationDigest, dispatchEntry().assignmentId, 'f'.repeat(64)])).resolves.toBeInstanceOf(Error);
   });
 });

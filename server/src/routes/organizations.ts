@@ -24,6 +24,8 @@ import { validateOrganizationName } from "../middleware/validation.js";
 import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, getSeatUsage, getSeatLimits, resolveMembershipTier, listSeatUpgradeRequests, type Organization } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
+import { MemberDatabase } from "../db/member-db.js";
+import { cascadeOrganizationRename } from "../services/identity-rename.js";
 import * as referralDb from "../db/referral-codes-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
@@ -1037,6 +1039,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Update in WorkOS
+      const previousName = (await orgDb.getOrganization(orgId))?.name;
       const updatedOrg = await workos!.organizations.updateOrganization({
         organization: orgId,
         name: trimmedName,
@@ -1044,6 +1047,14 @@ export function createOrganizationsRouter(): Router {
 
       // Update in our database
       await orgDb.updateOrganization(orgId, { name: trimmedName });
+
+      // Carry the rename into the member profile name and agent labels that
+      // were still the old name (#7851). Best effort: the rename itself stands.
+      const cascade = await cascadeOrganizationRename(new MemberDatabase(), orgId, previousName, trimmedName)
+        .catch((err) => {
+          logger.warn({ err, orgId }, 'Organization rename cascade failed');
+          return { displayNameUpdated: false, agentLabelsUpdated: 0 };
+        });
 
       // Record audit log. Tag dev-bypass writes so post-incident triage can
       // distinguish them from real-user writes.
@@ -1055,6 +1066,9 @@ export function createOrganizationsRouter(): Router {
         resource_id: orgId,
         details: {
           new_name: trimmedName,
+          ...(previousName && { previous_name: previousName }),
+          ...(cascade.displayNameUpdated && { profile_display_name_updated: true }),
+          ...(cascade.agentLabelsUpdated > 0 && { agent_labels_updated: cascade.agentLabelsUpdated }),
           ...(membership.via_dev_bypass ? { auth_method: 'dev-bypass' } : {}),
         },
       });

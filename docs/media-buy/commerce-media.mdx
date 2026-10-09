@@ -627,7 +627,7 @@ The legacy `outcome_measurement` field is **deprecated** but continues to work f
 }
 ```
 
-When `platform_managed` is `true`, the retailer provides always-on measurement. No buyer-side pixel or event source configuration needed.
+When `platform_managed` is `true`, the retailer provides always-on measurement. No buyer-side pixel or event source configuration needed. If the product also declares an `event_source` [execution requirement](/docs/media-buy/specification#product-execution-requirements-experimental), the package binds the seller-managed source: its ID is the `sync_event_sources` response entry with `managed_by: "seller"`.
 
 <Info>
 Different retailers use different attribution windows (e.g., 14-day click vs. 7-day click). The `attribution_window` in delivery responses makes this transparent so buyers can normalize ROAS comparisons across retailers.

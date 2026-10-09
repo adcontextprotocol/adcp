@@ -38,9 +38,9 @@ const logger = createLogger("csrf");
  * Tenant segment is `[a-z][a-z0-9-]+` to match the live TENANT_IDS
  * (`signals`, `sales`, `governance`, `creative`, `creative-builder`, `brand`)
  * without requiring this file to import or stay in sync with that list.
- * Suffix variants enumerate the four production route shapes.
+ * Suffix variants enumerate the five production route shapes.
  */
-const PER_TENANT_MCP_PATH = /^\/[a-z][a-z0-9-]+\/mcp(-strict(-required|-forbidden)?)?$/;
+const PER_TENANT_MCP_PATH = /^\/[a-z][a-z0-9-]+\/mcp(-strict(-required(-legacy)?|-forbidden)?)?$/;
 
 const CSRF_COOKIE = "csrf-token";
 const CSRF_HEADER = "x-csrf-token";
@@ -67,6 +67,11 @@ const EXEMPT_MCP_EXACT = [
   "/mcp-strict",
   "/mcp-strict-required",
   "/mcp-strict-forbidden",
+  // Training-agent root: the sandbox governance agent's registered URL
+  // (https://test-agent.adcontextprotocol.org) serves MCP so sellers can call
+  // check_governance there. Bearer-authenticated; no cookie route handles
+  // POST / on any host.
+  "/",
 ];
 
 /** Other exact paths exempt from CSRF (not prefix-matched to avoid over-matching). */

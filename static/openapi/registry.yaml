@@ -823,7 +823,7 @@ components:
             type: array
             items:
               type: string
-          description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.1', '3.0'] }). Use this when choosing a version-pinned badge URL."
+          description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.2', '3.1'] }). Use this when choosing a version-pinned badge URL."
       required:
         - status
         - lifecycle_stage
@@ -4347,39 +4347,9 @@ components:
           properties:
             available:
               type: boolean
-            retryable:
-              type: boolean
-              description: Whether retrying the same human refresh request later is expected to succeed without a platform change.
-            scope:
-              type: string
-              enum:
-                - platform
-            applies_to:
-              type: string
-              enum:
-                - human_session
-            code:
-              type: string
-              enum:
-                - refresh_authorization_provenance_required
-            notice:
-              type: string
-            alternative_action:
-              type: string
-              enum:
-                - monitoring_requeue
-            alternative_description:
-              type: string
           required:
             - available
-            - retryable
-            - scope
-            - applies_to
-            - code
-            - notice
-            - alternative_action
-            - alternative_description
-          description: Current human refresh admission state. Monitoring requeue is a separate scheduler operation and is not a retry or ETA for this endpoint.
+          description: Whether authenticated owners and administrators can queue an agent refresh.
         tracks:
           type: object
           additionalProperties:
@@ -4434,6 +4404,58 @@ components:
           type: integer
         storyboards_total:
           type: integer
+        latest_attempt:
+          type:
+            - object
+            - "null"
+          properties:
+            id:
+              type: string
+              format: uuid
+            tested_at:
+              type: string
+            triggered_by:
+              type: string
+              enum:
+                - heartbeat
+                - owner_test
+                - manual
+                - webhook
+            completeness:
+              type: string
+              enum:
+                - complete
+                - timed_out
+                - not_completed
+            is_authoritative:
+              type: boolean
+            requested_compliance_target:
+              type:
+                - string
+                - "null"
+            storyboards_completed:
+              type:
+                - integer
+                - "null"
+            storyboards_total:
+              type:
+                - integer
+                - "null"
+            first_blocker:
+              type:
+                - string
+                - "null"
+          required:
+            - id
+            - tested_at
+            - triggered_by
+            - completeness
+            - is_authoritative
+            - requested_compliance_target
+            - storyboards_completed
+            - storyboards_total
+            - first_blocker
+          description: Owner/operator-only newest persisted full assessment, including audit-only timeouts. Null for other viewers. This does not change the public verdict.
         check_interval_hours:
           type: integer
           description: How often the heartbeat re-tests this agent, in hours
@@ -4514,6 +4536,11 @@ components:
                 type: array
                 items: {}
                 description: Validation evidence for the first failure. Populated only for owners and empty for other callers.
+              skipped_steps:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StoryboardSkippedStep"
+                description: Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step. Populated only for owners and empty for other callers.
               last_tested_at:
                 type:
                   - string
@@ -4537,6 +4564,7 @@ components:
               - first_failed_step_task
               - first_failure_message
               - first_failure_validations
+              - skipped_steps
               - last_tested_at
               - last_passed_at
           description: Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers.
@@ -4670,6 +4698,55 @@ components:
             - storyboards_untested
       required:
         - code
+    StoryboardSkippedStep:
+      type: object
+      properties:
+        step_id:
+          type:
+            - string
+            - "null"
+          description: Skipped step id (derived from the title when the runner omits it).
+        title:
+          type:
+            - string
+            - "null"
+        task:
+          type:
+            - string
+            - "null"
+        reason:
+          type:
+            - string
+            - "null"
+          description: Runner skip reason, e.g. prerequisite_failed or controller_seeding_failed.
+        detail:
+          type:
+            - string
+            - "null"
+          description: Redacted runner skip detail. May echo agent-supplied text.
+        blocked_by_step_id:
+          type:
+            - string
+            - "null"
+          description: Nearest earlier step in the same storyboard that did not pass, when one exists.
+        blocked_by_step_title:
+          type:
+            - string
+            - "null"
+        blocked_by_reason:
+          type:
+            - string
+            - "null"
+          description: "'failed', or the skip reason of the earlier step."
+      required:
+        - step_id
+        - title
+        - task
+        - reason
+        - detail
+        - blocked_by_step_id
+        - blocked_by_step_title
+        - blocked_by_reason
     PublicComplianceNotice:
       type: object
       properties:
@@ -4746,7 +4823,7 @@ components:
             - description: Canonical role this verification badge covers.
         adcp_version:
           type: string
-          description: AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK.
+          description: AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.1', '3.2'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK.
         verified_at:
           type: string
         verified_specialisms:
@@ -5456,6 +5533,11 @@ components:
             - string
             - "null"
           description: Runner error/detail text for the first root failing or actionable skipped step, when captured.
+        skipped_steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryboardSkippedStep"
+          description: Up to 5 cascaded prerequisite skips with runner reason/detail and the nearest earlier non-passing step, when captured. Owner-scoped; empty for other callers.
         last_tested_at:
           type:
             - string
@@ -5478,6 +5560,7 @@ components:
         - first_failed_step_title
         - first_failed_step_task
         - first_failure_message
+        - skipped_steps
         - last_tested_at
         - last_passed_at
     ComplianceRun:
@@ -10336,6 +10419,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "422":
+          description: Agent does not offer public product browsing (no wholesale buying mode, or a buyer account is required)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
         "429":
           description: Rate limit exceeded
           content:
@@ -12307,9 +12404,9 @@ paths:
           in: path
         - schema:
             type: string
-            description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
+            description: AdCP release as MAJOR.MINOR (e.g. '3.1', '3.2')
           required: true
-          description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
+          description: AdCP release as MAJOR.MINOR (e.g. '3.1', '3.2')
           name: version
           in: path
       responses:
@@ -13233,11 +13330,11 @@ paths:
       operationId: refreshAgent
       summary: Refresh agent snapshot
       description: |-
-        Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).
+        Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat.
 
-        **Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.
+        **Compliance re-run:** when the caller owns the agent or is an AgenticAdvertising.org admin and the capability probe succeeds, the full storyboard suite runs with a fresh test session. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Only a complete authoritative run can update public grades or badges.
 
-        **Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`. Human submissions are temporarily fenced with HTTP 503 until durable authorization provenance is supported; static admin API key submissions remain available.
+        **Auth:** an authenticated owner or administrator credential is checked at admission and throughout execution. Static admin API keys cannot queue a refresh.
 
         **Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.
       tags:
@@ -13339,10 +13436,10 @@ paths:
                         description: Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh.
                       requested_compliance_target:
                         type: string
-                        description: Requested compliance target before alias resolution, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true.
+                        description: Requested compliance target before alias resolution, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta. Present when `ran` is true.
                       adcp_version:
                         type: string
-                        description: Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true.
+                        description: Concrete AdCP compliance bundle version used for the run, e.g. 3.2.1, 3.1.24, or 3.2.0-rc.7. Present when `ran` is true.
                       badge_eligible:
                         type: boolean
                         description: True when this run can update public badge state.
@@ -13350,7 +13447,7 @@ paths:
                         type: array
                         items:
                           type: string
-                        description: Public badge versions this run can issue, e.g. ['3.0'].
+                        description: Public badge versions this run can issue, e.g. ['3.2'].
                       overall_status:
                         type: string
                         description: Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true.
@@ -13488,61 +13585,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "503":
-          description: Refresh queue or authorization unavailable. Human submissions are fenced with refresh_authorization_provenance_required until durable authorization provenance is supported; this response is non-retryable and carries no ETA. Static admin API key submissions remain supported.
+          description: Refresh queue or authorization temporarily unavailable.
           content:
             application/json:
               schema:
-                anyOf:
-                  - type: object
-                    properties:
-                      error:
-                        type: string
-                        enum:
-                          - admin_authorization_unavailable
-                      message:
-                        type: string
-                    required:
-                      - error
-                      - message
-                  - type: object
-                    properties:
-                      error:
-                        type: string
-                      code:
-                        type: string
-                        enum:
-                          - refresh_authorization_provenance_required
-                      retryable:
-                        type: boolean
-                        enum:
-                          - false
-                      scope:
-                        type: string
-                        enum:
-                          - platform
-                      applies_to:
-                        type: string
-                        enum:
-                          - human_session
-                      alternative_action:
-                        type: string
-                        enum:
-                          - monitoring_requeue
-                      alternative_description:
-                        type: string
-                      tracking_issue:
-                        type: string
-                        format: uri
-                        description: Issue tracking the restoration of human-initiated refresh
-                    required:
-                      - error
-                      - code
-                      - retryable
-                      - scope
-                      - applies_to
-                      - alternative_action
-                      - alternative_description
-                      - tracking_issue
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/refreshes/{operationId}:
     get:
       operationId: getAgentRefreshOperation
@@ -13807,6 +13854,53 @@ paths:
                   - connected
                   - has_auth
                   - agent_context_id
+        "400":
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: removeAgentAuthToken
+      summary: Clear saved bearer or basic credentials
+      description: Clear the selected organization's static credential while retaining OAuth configuration and compliance history. Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+          required: false
+          name: org
+          in: query
+      responses:
+        "204":
+          description: Static credential cleared
         "400":
           description: Invalid parameters
           content:
@@ -14272,9 +14366,9 @@ paths:
           in: query
         - schema:
             type: string
-            description: Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta
+            description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
           required: false
-          description: Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta
+          description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
           name: compliance_target
           in: query
       responses:
@@ -14323,9 +14417,9 @@ paths:
           in: path
         - schema:
             type: string
-            description: Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta
+            description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
           required: false
-          description: Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta
+          description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
           name: compliance_target
           in: query
       responses:
@@ -14801,9 +14895,9 @@ paths:
           in: path
         - schema:
             type: string
-            description: Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta
+            description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
           required: false
-          description: Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta
+          description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
           name: compliance_target
           in: query
       responses:
@@ -14970,6 +15064,10 @@ paths:
                       first_failure_validations:
                         type: array
                         items: {}
+                      skipped_steps:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/StoryboardSkippedStep"
                     required:
                       - storyboard_id
                       - status
@@ -14982,6 +15080,7 @@ paths:
                       - first_failed_step_task
                       - first_failure_message
                       - first_failure_validations
+                      - skipped_steps
                     description: Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status.
                   phases: {}
                   summary: {}

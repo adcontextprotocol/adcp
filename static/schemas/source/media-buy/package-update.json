@@ -12,16 +12,17 @@
     },
     "budget": {
       "type": ["number", "null"],
-      "description": "Updated hard spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized mode a number changes the package ceiling and null removes it so only the shared total and other constraints bound the package. null is invalid when the resulting allocation mode is fixed.",
+      "description": "Updated hard spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized mode a number changes the package ceiling and null removes it so only the shared total and other constraints bound the package. null is invalid when the resulting allocation mode is fixed. A number in a resulting seller-optimized buy requires advertised media_buy.features.seller_optimized_package_budgets; otherwise rejected with UNSUPPORTED_FEATURE before any over-subscription validation.",
       "minimum": 0
     },
     "min_spend_target": {
       "type": ["number", "null"],
-      "description": "Updated soft lifetime spend target for this package. A number is valid only for seller-optimized allocation and must not exceed the resulting package budget when one exists. null removes the target. Sellers MUST validate the complete post-update state atomically.",
+      "description": "Updated soft lifetime spend target for this package. A number is valid only for seller-optimized allocation, requires advertised media_buy.features.seller_optimized_min_spend_targets (otherwise UNSUPPORTED_FEATURE, before any over-subscription validation), and must not exceed the resulting package budget when one exists. null removes the target. Sellers MUST validate the complete post-update state atomically.",
       "minimum": 0
     },
     "pacing": {
-      "$ref": "/schemas/enums/pacing.json"
+      "$ref": "/schemas/enums/pacing.json",
+      "description": "Updated package pacing, subordinate to media-buy pacing. In a resulting seller-optimized buy, pacing that differs from the media-buy pacing requires advertised media_buy.features.seller_optimized_package_pacing; otherwise rejected with UNSUPPORTED_FEATURE."
     },
     "bid_price": {
       "type": "number",

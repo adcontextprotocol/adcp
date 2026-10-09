@@ -25,7 +25,8 @@ import {
   type AgentClient,
   type TaskRequestFor,
 } from '@adcp/sdk';
-import { buildAgentOAuthAuthorizeUrl } from '../../routes/helpers/agent-oauth-prompt.js';
+import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
+import { isOAuthOwnerReauthorizationError } from '../../routes/helpers/oauth-error-detection.js';
 import { TRAINING_AGENT_HOSTNAMES } from '../../training-agent/config.js';
 import {
   PROPOSAL_NEGOTIATION_PROFILES,
@@ -33,7 +34,7 @@ import {
   type TrainingContext,
   type ProposalNegotiationProfile,
 } from '../../training-agent/types.js';
-import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
+import { agentConfigAuthFields, assertOwnerOAuthReady, type SdkAuth } from '../../services/sdk-auth-adapter.js';
 import {
   ADDIE_TRANSIENT_TRANSPORT_ERROR_CODE,
   withSdkSafeTransport,
@@ -197,6 +198,30 @@ function safeProtocolJson(value: unknown): string {
     ]));
   };
   return JSON.stringify(redact(value), null, 2);
+}
+
+/** Classify domain errors independently of transport success, for every task. */
+export function adcpTaskResponse(task: string, data: unknown, sandbox = false, attempts = 1): StructuredToolResult {
+  const payload = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+  // Submitted envelopes may carry advisory errors. They confirm acceptance,
+  // never completion; the terminal task result still needs to be retrieved.
+  const submitted = payload.status === 'submitted' && typeof payload.task_id === 'string' && payload.task_id.length > 0;
+  const errors = Array.isArray(payload.errors) ? payload.errors : [];
+  if (errors.length > 0 && !submitted) {
+    const code = typeof errors[0]?.code === 'string' ? errors[0].code : 'ADCP_PROTOCOL_ERROR';
+    return structuredAdcpResult({
+      status: 'error', operation: task, code, category: 'protocol', retryable: false, attempts,
+      modelContext: `Task ${task} returned a protocol error. Do not claim or teach successful completion. Preserve any partial results and report the errors.\nResponse:\n${safeProtocolJson(data)}\nRecovery: inspect all errors and details, correct the request, and preserve the same idempotency_key for the same logical operation.`,
+      userSummary: 'The agent returned protocol errors. The operation is not confirmed as successful.',
+    });
+  }
+  return structuredAdcpResult({
+    status: 'ok', operation: task, attempts,
+    modelContext: submitted
+      ? `Task ${task} was submitted, not completed. Follow up using task_id; surface any advisories.\nResponse:\n${safeProtocolJson(data)}`
+      : `Task ${task} returned a response${sandbox ? ' (sandbox)' : ''}. Inspect per-item outcomes before claiming success; a batch may include failures.\nResponse:\n${safeProtocolJson(data)}`,
+    userSummary: submitted ? 'The task was submitted; completion is pending.' : 'The agent returned a task result.',
+  });
 }
 
 /**
@@ -1040,7 +1065,7 @@ const getAdcpCapabilitiesTool: AddieTool = {
       debug: { type: 'boolean' },
       adcp_version: {
         type: 'string',
-        description: 'Optional exact release pin, for example "3.2-rc.3" during prerelease testing',
+        description: 'Optional release pin, for example "3.2"',
       },
       adcp_major_version: {
         type: 'integer',
@@ -1108,11 +1133,13 @@ export function createAdcpToolHandlers(
                 access_token: tokens.access_token,
                 refresh_token: refreshToken,
                 ...(tokens.expires_at && { expires_at: tokens.expires_at.toISOString() }),
+                ...(tokens.issuer !== undefined && { issuer: tokens.issuer }),
               },
               ...(client && {
                 client: {
                   client_id: client.client_id,
                   ...(client.client_secret && { client_secret: client.client_secret }),
+                  ...(client.issuer !== undefined && { issuer: client.issuer }),
                 },
               }),
             };
@@ -1290,16 +1317,7 @@ export function createAdcpToolHandlers(
             userSummary: 'The training agent rejected the request parameters.',
           });
         }
-        const protocolErrors = (result.data as { errors?: Array<{ code?: string; message?: string }> } | undefined)?.errors;
-        if (task.startsWith('si_') && Array.isArray(protocolErrors) && protocolErrors.length > 0) {
-          const firstError = protocolErrors[0];
-          return structuredAdcpResult({
-            status: 'error', operation: task, code: firstError?.code ?? 'SI_TASK_ERROR', category: 'protocol', retryable: false,
-            modelContext: `Task ${task} returned a protocol error: ${firstError?.code ?? 'SI_TASK_ERROR'}${firstError?.message ? ` — ${firstError.message}` : ''}. Correct the request before retrying; preserve the idempotency key for the same logical request.`,
-            userSummary: 'The agent returned a protocol error.',
-          });
-        }
-        return structuredAdcpResult({ status: 'ok', operation: task, modelContext: `Task ${task} succeeded (sandbox).\nResponse:\n${safeProtocolJson(result.data)}`, userSummary: 'The sandbox task completed successfully.' });
+        return adcpTaskResponse(task, result.data, true);
       }
     } catch (err) {
       logger.warn({ error: err, agentUrl, task }, 'Training agent in-process shortcut failed');
@@ -1315,6 +1333,7 @@ export function createAdcpToolHandlers(
     logger.info({ agentUrl, task, hasAuth: !!authInfo, authType: authInfo?.type, debug }, `AdCP: executing ${task}`);
 
     try {
+      await assertOwnerOAuthReady(authInfo, agentUrl);
       const { AdCPClient } = await import('@adcp/sdk');
       const { getRequestSigningProvider } = await import('../../security/gcp-kms-signer.js');
 
@@ -1394,22 +1413,22 @@ export function createAdcpToolHandlers(
         });
       }
       if (debug && result.debug_logs?.length) logger.debug({ agentUrl, task, debugLogCount: result.debug_logs.length }, 'AdCP protocol debug logs captured');
-      return structuredAdcpResult({ status: 'ok', operation: task, attempts: executed.attempts, modelContext: `Task ${task} succeeded.\nResponse:\n${safeProtocolJson(result.data)}`, userSummary: 'The AdCP task completed successfully.' });
+      return adcpTaskResponse(task, result.data, false, executed.attempts);
     } catch (error) {
       logger.warn({ error, agentUrl, task }, `AdCP: ${task} failed`);
 
       // Handle AuthenticationRequiredError from @adcp/sdk (includes OAuth metadata)
-      if (error instanceof AuthenticationRequiredError) {
+      if (isOAuthRequiredError(error)) {
         const organizationId = memberContext?.organization?.workos_organization_id;
-        if (error.hasOAuth) {
+        if (isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth)) {
           const authUrl = await buildAgentOAuthAuthorizeUrl(
             agentUrl,
             organizationId,
             agentContextDb,
-            { pendingTask: task, pendingParams: requestParams },
+            { pendingTask: task, pendingParams: requestParams, authorizationError: error },
           );
           if (authUrl) {
-            return structuredAdcpResult({ status: 'access_denied', operation: task, code: 'OAUTH_AUTHORIZATION_REQUIRED', category: 'authentication', retryable: false, modelContext: `OAuth authorization is required. Ask the user to authorize using this one-time link, then retry ${task}: ${authUrl}`, userSummary: 'Authorize the agent, then try the request again.' });
+            return structuredAdcpResult({ status: 'access_denied', operation: task, code: 'OAUTH_AUTHORIZATION_REQUIRED', category: 'authentication', retryable: false, modelContext: `${isOAuthOwnerReauthorizationError(error) ? "Saved OAuth credentials require an explicit owner sign-in. If the authorization server changed, confirm independently trusted client configuration; saved clients are not rebound automatically." : "OAuth authorization is required."} Ask the user to authorize using this one-time link, then retry ${task}: ${authUrl}`, userSummary: 'Authorize the agent, then try the request again.' });
           }
         }
 

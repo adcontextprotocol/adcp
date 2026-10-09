@@ -2,7 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/account-change-recorded-webhook.json",
   "title": "Account Change Recorded Webhook",
-  "description": "Compact account-anchored invalidation fired after a material account change and its authoritative snapshot are readable. The payload is not current state and through_cursor is only a drain target; receivers continue from their own persisted list_account_changes cursor.",
+  "x-status": "experimental",
+  "description": "Compact account-anchored invalidation fired after a material account change and its authoritative snapshot are readable. The payload is not current state and through_cursor is only a drain target; receivers continue from their own persisted list_account_changes cursor. Experimental in 3.2 (RFC #6810): sellers emitting this webhook MUST list account.change_feed in experimental_features.",
   "type": "object",
   "properties": {
     "idempotency_key": {

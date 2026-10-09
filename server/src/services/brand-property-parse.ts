@@ -19,7 +19,7 @@ import { BrandDatabase } from '../db/brand-db.js';
 import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { getBrandPrimaryDomain } from './brand-domain-resolver.js';
 import { validateFetchUrl, safeFetch, sanitizeUrl } from '../utils/url-security.js';
-import { ModelConfig } from '../config/models.js';
+import { ModelConfig, forcedToolChoice } from '../config/models.js';
 
 const logger = createLogger('brand-property-parse');
 
@@ -203,7 +203,7 @@ export async function extractPropertiesFromText(
         },
       },
     ],
-    tool_choice: { type: 'tool', name: 'extract_properties' },
+    ...forcedToolChoice(ModelConfig.fast, 'extract_properties'),
     messages: [
       {
         role: 'user',
@@ -216,9 +216,9 @@ export async function extractPropertiesFromText(
     (block) => block.type === 'tool_use' && block.name === 'extract_properties',
   );
   if (!toolUse || toolUse.type !== 'tool_use') {
-    // tool_choice forces the tool, so this path is defensive — it only
-    // fires if the model refuses (e.g. policy block) or the SDK shape
-    // changes upstream.
+    // Defensive: fires if the model refuses (e.g. policy block), the SDK
+    // shape changes upstream, or a model that rejects forced tool_choice
+    // (see forcedToolChoice) answers without calling the tool.
     logger.warn('Property parse: model did not invoke the extraction tool');
     return { properties: [], warning: 'Could not parse identifiers from input', userMessage };
   }

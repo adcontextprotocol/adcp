@@ -6,6 +6,7 @@
  */
 
 import { enforceOutcomeClaims, outcomeClaimContext } from './outcome-claims.js';
+import { enforceJsonValidationClaims } from './json-validation-evidence.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { createHash, createHmac } from 'node:crypto';
 import { createLogger } from '../logger.js';
@@ -485,7 +486,7 @@ function githubIssueCreationExecutionPolicy(
     if (
       request.toolName === 'create_github_issue'
       && !mayDispatchGithubIssueCreation(creationRequested, request.executionMode)
-    ) return { allowed: false };
+    ) return { allowed: false, reason: 'github_confirmation_required' };
     return callerPolicy?.(request) ?? { allowed: request.executionMode === 'production' };
   };
 }
@@ -533,12 +534,25 @@ function finalizeAssistantText(
     outcome.text,
     toolExecutions,
   );
-  const lengthExceeded = processed.text.length > MAX_OUTPUT_LENGTH;
+  // Match receipts to the final rendered candidate after all prose transforms.
+  const validation = enforceJsonValidationClaims(processed.text, toolExecutions);
+  const lengthExceeded = validation.text.length > MAX_OUTPUT_LENGTH;
   const truncated = forceTruncation || lengthExceeded;
+  let delivered = validation;
+  if (truncated) {
+    let contentBudget = MAX_OUTPUT_LENGTH;
+    do {
+      delivered = enforceJsonValidationClaims(formatTruncatedOutput(validation.text, contentBudget), toolExecutions);
+      // Removing a payload can turn its short confirmation into a longer
+      // disclaimer. Reserve that expansion and recheck the newly cut candidate.
+      // The budget strictly decreases; at zero only the continuation cue remains.
+      contentBudget -= Math.max(1, delivered.text.length - MAX_OUTPUT_LENGTH);
+    } while (delivered.text.length > MAX_OUTPUT_LENGTH);
+  }
   return {
-    text: truncated ? formatTruncatedOutput(processed.text) : processed.text,
+    text: delivered.text,
     emptyReason: processed.reason,
-    localReplacementReason: githubIssueOutcome.reason ?? evidenceBoundary.reason ?? outcome.reason,
+    localReplacementReason: githubIssueOutcome.reason ?? evidenceBoundary.reason ?? outcome.reason ?? validation.reason ?? delivered.reason,
     lengthExceeded,
   };
 }

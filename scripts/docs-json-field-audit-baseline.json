@@ -4,6 +4,14 @@
   "description": "Baseline for docs-json-field-audit. CI fails only on findings whose key count exceeds this baseline.",
   "entries": [
     {
+      "file": "docs/building/by-layer/L3/webhooks.mdx",
+      "path": "$",
+      "field": "operation_id",
+      "schema": "https://adcontextprotocol.org/schemas/3.2.1/core/reporting-webhook.json",
+      "count": 1,
+      "reason": "Intentional opt-in 3.2 additional field for reporting correlation (#7885), pending core standardization in 3.3 (#7895). The pinned 3.2.1 schema permits additionalProperties; JSON Schema validation remains enabled."
+    },
+    {
       "file": "docs/creative/channels/broadcast.mdx",
       "path": "$",
       "field": "type",

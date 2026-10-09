@@ -1297,6 +1297,84 @@ describe('AddieClaudeClient isolated execution policy', () => {
 });
 
 describe('persisted outcome delivery guard', () => {
+  it.each(['streaming', 'non_streaming'] as const)('keeps post-truncation validation rewrites within the output cap on %s delivery', async delivery => {
+    const handler = vi.fn().mockResolvedValue('✅ **Valid!** The JSON validates successfully against https://adcontextprotocol.org/schemas/3.1.24/a.json');
+    const json = { x: 'a'.repeat(500) };
+    const scoped = requestTools([tool('validate_json', 'pure_local')], [['validate_json', handler]]);
+    const queue = delivery === 'streaming' ? sdkState.streamingResponses : sdkState.nonStreamingResponses;
+    queue.push(
+      toolUseResponse([{ id: 'validation', name: 'validate_json', input: { json, schema_path: 'a.json' } }]),
+      textResponse(`Context.\n${'A'.repeat(31840)}.\nThe JSON passes validation.\n\`\`\`json\n${JSON.stringify(json)}\n\`\`\``),
+    );
+    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true };
+    const client = new AddieClaudeClient('unused');
+    let text: string;
+    if (delivery === 'streaming') {
+      const events: StreamEvent[] = [];
+      for await (const event of client.processMessageStream('Validate this JSON', undefined, scoped, options)) events.push(event);
+      text = events.filter(event => event.type === 'text').map(event => event.text).join('');
+    } else {
+      text = (await client.processMessage('Validate this JSON', undefined, scoped, { systemPrompt: 'system' }, options)).text;
+    }
+    expect(text.length).toBeLessThanOrEqual(32_000);
+    expect(text).not.toContain('passed validation');
+    expect(text).not.toContain('passes validation.');
+  });
+
+  it.each(['streaming', 'non_streaming'] as const)('preserves the validated final candidate through all %s transforms', async delivery => {
+    const handler = vi.fn().mockResolvedValue('✅ **Valid!** The JSON validates successfully against https://adcontextprotocol.org/schemas/3.1.24/core/product.json');
+    const json = { description: 'You earned your certificate.' };
+    const scoped = requestTools([tool('validate_json', 'pure_local')], [['validate_json', handler]]);
+    const queue = delivery === 'streaming' ? sdkState.streamingResponses : sdkState.nonStreamingResponses;
+    queue.push(
+      toolUseResponse([{ id: 'validation', name: 'validate_json', input: { json, schema_path: 'core/product.json' } }]),
+      textResponse(`The JSON passes validation.\n\n\`\`\`json\n${JSON.stringify(json, null, 2)}\n\`\`\``),
+    );
+    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true };
+    const client = new AddieClaudeClient('unused');
+    let text: string;
+    if (delivery === 'streaming') {
+      const events: StreamEvent[] = [];
+      for await (const event of client.processMessageStream('Validate this JSON', undefined, scoped, options)) events.push(event);
+      text = events.filter(event => event.type === 'text').map(event => event.text).join('');
+    } else {
+      text = (await client.processMessage('Validate this JSON', undefined, scoped, { systemPrompt: 'system' }, options)).text;
+    }
+    expect(text).toContain('passed validation against');
+    expect(text).toContain(JSON.stringify(json, null, 2));
+    expect(text).not.toContain("haven't confirmed");
+  });
+
+  it.each(['streaming', 'non_streaming'] as const)('deduplicates rejected validation and blocks unsupported success before %s delivery', async delivery => {
+    const handler = vi.fn().mockResolvedValue('❌ **Invalid.** Validation errors against https://adcontextprotocol.org/schemas/3.1.24/core/product.json:\n\n- /name: must be string');
+    const scoped = requestTools([tool('validate_json', 'pure_local')], [['validate_json', handler]]);
+    const queue = delivery === 'streaming' ? sdkState.streamingResponses : sdkState.nonStreamingResponses;
+    const input = { json: { name: 42 }, schema_path: 'core/product.json' };
+    queue.push(
+      toolUseResponse([{ id: 'validation-1', name: 'validate_json', input }]),
+      toolUseResponse([{ id: 'validation-2', name: 'validate_json', input }]),
+      textResponse('Schema-Validated MVP Response\n\n```json\n{"name":42}\n```'),
+    );
+    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true };
+    const client = new AddieClaudeClient('unused');
+    let text: string;
+    if (delivery === 'streaming') {
+      const events: StreamEvent[] = [];
+      for await (const event of client.processMessageStream('Validate this JSON', undefined, scoped, options)) events.push(event);
+      text = events.filter(event => event.type === 'text').map(event => event.text).join('');
+      const done = events.find(event => event.type === 'done');
+      expect(done?.type === 'done' && done.response.flagged).toBe(true);
+      expect(done?.type === 'done' && done.response.text).toBe(text);
+    } else {
+      const result = await client.processMessage('Validate this JSON', undefined, scoped, { systemPrompt: 'system' }, options);
+      text = result.text;
+      expect(result.flagged).toBe(true);
+    }
+    expect(text).toContain('unvalidated candidate');
+    expect(text).not.toContain('Schema-Validated');
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['streaming', 'non_streaming'] as const)('preserves ordinary identifier conclusions on %s delivery', async delivery => {
     const client = new AddieClaudeClient('unused');
     const text = 'Your Q4 campaign is complete. The V2 migration is done.';

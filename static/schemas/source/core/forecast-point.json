@@ -31,7 +31,7 @@
     },
     "metrics": {
       "type": "object",
-      "description": "Forecasted metric values. Keys are forecastable-metric enum values for delivery/engagement or event-type enum values for outcomes. Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. When budget is present, these are the expected metrics at that spend level. When budget is omitted, these represent total available inventory — use spend to express the estimated cost. Additional keys beyond the documented properties are allowed for event-type values (purchase, lead, app_install, etc.).",
+      "description": "Forecasted metric values. Keys are forecastable-metric enum values for delivery/engagement or event-type enum values for outcomes; vendor metrics use vendor_metric_values. Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. When budget is present, these are the expected metrics at that spend level. When budget is omitted, these represent total available inventory — use spend to express the estimated cost. Additional keys beyond the documented properties are allowed for event-type values (purchase, lead, app_install, etc.).",
       "properties": {
         "audience_size": { "$ref": "/schemas/core/forecast-range.json" },
         "reach": { "$ref": "/schemas/core/forecast-range.json" },
@@ -118,7 +118,7 @@
     },
     "vendor_metric_values": {
       "type": "array",
-      "description": "Forecasted values for vendor-defined metrics that the product's reporting_capabilities.vendor_metrics declared. Mirrors delivery-metrics.vendor_metric_values, but value and measurable_impressions use ForecastRange. These forecasted measurement values are independent of pricing_options.",
+      "description": "Forecasted values for vendor-defined metrics that the product's reporting_capabilities.vendor_metrics or vendor_metric_optimization declared. For an outcome_target vendor_metric goal, value is the flight total at this point's budget. Mirrors delivery-metrics.vendor_metric_values, but value and measurable_impressions use ForecastRange. These forecasted measurement values are independent of pricing_options.",
       "items": {
         "$ref": "/schemas/core/forecast-vendor-metric-value.json"
       }

@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { extractAdcpErrorInfo } from '@adcp/sdk';
 
 const executeTrainingAgentTool = vi.hoisted(() => vi.fn());
+const executeRemoteTask = vi.hoisted(() => vi.fn());
+vi.mock('@adcp/sdk', async importOriginal => ({
+  ...await importOriginal<typeof import('@adcp/sdk')>(),
+  AdCPClient: class {
+    agent() { return { executeTask: executeRemoteTask, executeTaskLegacy: executeRemoteTask, executeCustomTask: executeRemoteTask }; }
+  },
+}));
+vi.mock('../../../src/security/gcp-kms-signer.js', () => ({ getRequestSigningProvider: vi.fn().mockResolvedValue(undefined) }));
+
 
 vi.mock('../../../src/training-agent/task-handlers.js', () => ({
   executeTrainingAgentTool,
@@ -13,6 +22,7 @@ import {
   CUSTOM_ADCP_TASK_NAMES,
   LEGACY_ADCP_TASK_NAMES,
   adcpExecutionMode,
+  adcpTaskResponse,
   createAdcpToolHandlers,
   executeWithTransientAdcpRetry,
   typedSdkTransientTransportResult,
@@ -731,3 +741,64 @@ describe('call_adcp_task training module isolation', () => {
     );
   });
 });
+
+
+describe('domain results across AdCP tasks', () => {
+  it.each([...Object.keys(ADCP_TASK_REGISTRY), 'get_adcp_capabilities'])(
+    'classifies embedded errors for %s without dropping details', task => {
+      const data = { errors: [
+        { code: 'INVALID_REQUEST', message: 'Correct the field.', details: { field: 'account' } },
+        { code: 'NOT_FOUND', message: 'Missing resource.' },
+      ] };
+      const result = adcpTaskResponse(task, data);
+      expect(result).toMatchObject({ status: 'error', telemetry: { operation: task, error_code: 'INVALID_REQUEST', error_category: 'protocol', retryable: false } });
+      expect(result.model_context).toContain('NOT_FOUND');
+      expect(result.model_context).toContain('account');
+      expect(result.model_context).toContain('Do not claim or teach successful completion');
+    },
+  );
+
+  it('classifies non-SI errors through the sandbox handler and redacts their details', async () => {
+    executeTrainingAgentTool.mockResolvedValue({ success: true, data: {
+      errors: [{ code: 'INVALID_REQUEST', message: 'Bearer secret-value', details: { access_token: 'secret-value', field: 'account' } }],
+    } });
+    const result = await createAdcpToolHandlers(null).get('call_adcp_task')!({
+      task: 'list_products', agent_url: 'https://test-agent.adcontextprotocol.org/sales/mcp', params: {},
+    });
+    expect(result).toMatchObject({ status: 'error' });
+    expect(modelContext(result)).toContain('account');
+    expect(modelContext(result)).not.toContain('secret-value');
+  });
+
+  it.each([{}, { errors: [] }, { products: [] }, { warnings: [{ code: 'ADVISORY' }] }])(
+    'preserves legitimate successful responses: %j', data => {
+      expect(adcpTaskResponse('list_products', data).status).toBe('ok');
+    },
+  );
+
+  it('preserves partial results alongside errors without calling the operation successful', () => {
+    const result = adcpTaskResponse('get_products', { products: [{ product_id: 'p1' }], errors: [{ message: 'One product unavailable' }] });
+    expect(result).toMatchObject({ status: 'error', telemetry: { error_code: 'ADCP_PROTOCOL_ERROR' } });
+    expect(result.model_context).toContain('p1');
+  });
+
+  it('preserves submitted advisories and per-item failures without claiming completion', () => {
+    const submitted = adcpTaskResponse('create_media_buy', { status: 'submitted', task_id: 'task_1', errors: [{ code: 'ADVISORY' }] });
+    expect(submitted.status).toBe('ok');
+    expect(submitted.model_context).toContain('submitted, not completed');
+    expect(submitted.model_context).toContain('ADVISORY');
+    const partial = adcpTaskResponse('sync_creatives', { creatives: [{ creative_id: 'c1', action: 'created' }, { creative_id: 'c2', action: 'failed', errors: ['Invalid asset'] }] });
+    expect(partial.status).toBe('ok');
+    expect(partial.model_context).toContain('Inspect per-item outcomes');
+    expect(partial.model_context).toContain('Invalid asset');
+  });
+});
+
+
+it.each(['list_products', 'list_creative_formats', 'sync_catalogs'])(
+  'classifies remote %s errors using the same receipt boundary', async task => {
+    executeRemoteTask.mockResolvedValue({ success: true, data: { errors: [{ code: 'INVALID_REQUEST', message: 'Correct the request.' }] } });
+    const result = await createAdcpToolHandlers(null).get('call_adcp_task')!({ task, agent_url: 'https://seller.example/mcp', params: {} });
+    expect(result).toMatchObject({ status: 'error', telemetry: { error_code: 'INVALID_REQUEST', error_category: 'protocol' } });
+  },
+);

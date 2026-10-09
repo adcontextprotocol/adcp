@@ -312,3 +312,14 @@ describe('perspective external URL persistence validation', () => {
     expect(update?.[1]?.[0]).toBe(CANONICAL_URL);
   });
 });
+
+
+it('returns a typed membership denial before any content database write', async () => {
+  const { checkContentSubmissionTier } = await import('../../src/services/membership-tiers.js');
+  vi.mocked(checkContentSubmissionTier).mockResolvedValueOnce(false);
+  mocks.poolQuery.mockClear();
+  const result = await proposeContentForUser({ id: 'user_dayo' }, { title: 'Campaign notes', content: 'A short draft.' });
+  expect(result).toMatchObject({ success: false, error_code: 'MEMBERSHIP_REQUIRED' });
+  expect(result.error).toContain('/dashboard/membership');
+  expect(mocks.poolQuery).not.toHaveBeenCalled();
+});

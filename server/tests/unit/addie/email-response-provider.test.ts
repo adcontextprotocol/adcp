@@ -19,6 +19,7 @@ vi.mock('../../../src/routes/addie-chat.js', () => ({
     forkForGeminiDirect: () => ({ processMessage: mocks.gemini }) }),
 }));
 import { handleEmailConversation } from '../../../src/addie/email-conversation-handler.js';
+import { ModelConfig } from '../../../src/config/models.js';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -36,7 +37,7 @@ const input = { emailId: 'inbound', messageId: 'email-id', from: 'sam@example.te
 describe('Email response policy integration', () => {
   it.each(['gemini', 'sonnet'])('continues email threads on %s without trusting spoofable identity', async provider => {
     vi.stubEnv('ADDIE_RESPONSE_PROVIDER', provider);
-    const model = provider === 'gemini' ? 'gemini-3.7-flash' : 'claude-sonnet-5';
+    const model = provider === 'gemini' ? 'gemini-3.7-flash' : ModelConfig.primary;
     const model_execution = { source: 'provider', requested_provider: provider === 'gemini' ? 'google' : 'anthropic',
       requested_model: model, provider: provider === 'gemini' ? 'google' : 'anthropic', model, model_resolution: 'exact', fallback_reason: null };
     const selected = provider === 'gemini' ? mocks.gemini : mocks.sonnet;

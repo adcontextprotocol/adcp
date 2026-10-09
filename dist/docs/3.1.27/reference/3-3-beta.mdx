@@ -1,0 +1,157 @@
+---
+title: AdCP 3.3 beta program
+sidebarTitle: 3.3 beta program
+description: "How to test AdCP 3.3 beta.0 before SDK support, prepare SDKs from the signed protocol bundle, complete beta.1 protocol and SDK convergence, and see which proposals are still in working-group review."
+"og:title": "AdCP — 3.3 beta program"
+---
+
+# AdCP 3.3 beta program
+
+<Warning>
+**Use the beta in development and staging, not production.** New production integrations should stay on AdCP 3.2 until 3.3 reaches general availability. Every beta is an immutable checkpoint, but later betas may change 3.3 surfaces before GA.
+</Warning>
+
+3.3 is a minor release with a deliberately short cycle. Its beta follows the same order as 3.2: the protocol first, then the SDKs.
+
+| Checkpoint | Purpose | Who should test |
+|---|---|---|
+| `3.3.0-beta.0` | Canonical schemas, compliance assets, skills, and protocol manifest for SDK implementation | SDK maintainers, code-generator maintainers, raw-wire implementers, and agent teams that can validate without generated 3.3 SDK types |
+| SDK wave | SDKs ingest the signed beta.0 tarball and publish exact support statements | TypeScript, Python, and Go maintainers and early adopters |
+| `3.3.0-beta.1` | Pull integration corrections into the protocol; a second SDK refresh then establishes exact beta.1 support | Buyer and seller teams running end-to-end integrations, followed by SDK maintainers |
+
+Beta.0 is not waiting for the SDKs. Beta.1 is a two-stage convergence point: publish the corrected protocol checkpoint, then have SDKs ingest that exact bundle. Call beta.1 SDK-backed only after the matching SDK versions and integration evidence are published.
+
+## Know which version string to use
+
+The artifact version, wire pin, and documentation selector are related but not interchangeable:
+
+| Surface | beta.0 | beta.1 |
+|---|---|---|
+| Protocol artifact | `3.3.0-beta.0` | `3.3.0-beta.1` |
+| Git tag | `v3.3.0-beta.0` | `v3.3.0-beta.1` |
+| `adcp_version` wire pin | `"3.3-beta.0"` | `"3.3-beta.1"` |
+| Documentation selector | `3.3-beta` | `3.3-beta` |
+
+Only send a prerelease wire pin to a peer that advertises that exact value in `get_adcp_capabilities.adcp.supported_versions`. Prerelease pins are exact: a buyer pinned to `"3.3-beta.0"` must not silently negotiate to beta.1, and a stable `"3.2"` pin must not silently negotiate to a beta.
+
+## Test beta.0 without an SDK
+
+Once `v3.3.0-beta.0` is published, download the signed protocol bundle rather than copying schemas from `main` or from the moving `/schemas/3.1.27/` path:
+
+```bash
+curl -fLO https://adcontextprotocol.org/protocol/3.3.0-beta.0.tgz
+curl -fLO https://adcontextprotocol.org/protocol/3.3.0-beta.0.tgz.sha256
+shasum -a 256 -c 3.3.0-beta.0.tgz.sha256
+tar -xzf 3.3.0-beta.0.tgz
+```
+
+The extracted `adcp-3.3.0-beta.0/` directory contains:
+
+- `manifest.json`: release version, bundle contents, skills, and file count;
+- `schemas/`: source-shaped and bundled request/response schemas, including `schemas/manifest.json` for the task and capability inventory;
+- `compliance/`: storyboards, test kits, vectors, and runner contracts;
+- `skills/`: role guidance for coding agents;
+- `openapi/`: published OpenAPI artifacts.
+
+Verify the Sigstore signature before using the bundle as a build input. See [Verifying protocol tarballs](/dist/docs/3.1.27/reference/verifying-protocol-tarballs) for the certificate-identity and issuer checks.
+
+At beta.0, useful tests are:
+
+1. Generate or refresh types from the pinned bundled schemas.
+2. Validate representative requests and responses for the roles you implement, including `media_buy.features.catalog_ingestion` and the DOOH `location` and `dooh_inventory_summary` fields.
+3. Compare your advertised tools with `schemas/manifest.json`.
+4. Exercise raw MCP or A2A calls with `adcp_version: "3.3-beta.0"` against a staging peer that advertises the same pin.
+5. Run the compliance assets with a source-compatible runner if you maintain one. Do not weaken production authentication to accommodate a beta runner.
+
+<Note>
+**No 3.3 verification badge is issued from beta.0.** The protocol-first cut is an implementation input, not a certification target.
+</Note>
+
+## SDK support contract
+
+An SDK support claim must name all of the following:
+
+- exact SDK package version;
+- exact AdCP prerelease bundle used to generate or load schemas;
+- supported roles and transports;
+- known unsupported or raw-only surfaces;
+- install command and one tested validation command.
+
+The SDK compatibility matrix lives in [Choose your SDK](/dist/docs/3.1.27/building/by-layer/L4/choose-your-sdk). Until a row names beta.0 support, treat that SDK's generated 3.3 types and validators as unavailable. Raw JSON calls may still be possible, but they are not equivalent to SDK support.
+
+SDK maintainers should report protocol ambiguities against the [AdCP repository](https://github.com/adcontextprotocol/adcp/issues). Report SDK implementation bugs in the SDK's own repository. Accepted protocol fixes receive a changeset and ship in beta.1; beta.0 is never rebuilt in place.
+
+## beta.1 convergence
+
+The beta.1 protocol checkpoint is ready to cut when:
+
+- every first-party SDK's beta.0 support is marked supported, partial, or unavailable with an exact package version;
+- accepted beta.0 protocol feedback is merged;
+- the integration scenarios below have run against beta.0 and identify any correction included in the beta.1 candidate;
+- copy/paste installation and validation commands have been executed as published;
+- the cumulative migration guide and release notes describe any beta.0-to-beta.1 correction that requires adopter action.
+
+After `3.3.0-beta.1` is published, SDK maintainers ingest that signed bundle and publish an exact beta.1 support statement or an explicit unsupported/partial result. Only after the matching buyer/seller scenarios pass is beta.1 the SDK-backed ecosystem checkpoint. Do not combine an SDK generated from beta.0 with a beta.1 wire pin unless that SDK explicitly documents forward compatibility.
+
+## Required integration evidence
+
+Retain the exact protocol bundle, SDK package versions, capability responses, redacted requests and responses, task IDs, and account and MediaBuy identifiers for each run.
+
+1. **Account lifecycle.** Call a discovery task (`get_products` or `list_products`) with a buyer-declared natural key that was never provisioned. The seller returns `ACCOUNT_NOT_FOUND` (a seller that provisions lazily instead of exposing `sync_accounts` may answer without creating the account), and `list_accounts` shows no new account. Then provision, with `sync_accounts` or the seller's lazy path on a provisioning task, and repeat the read.
+2. **Signed traffic.** Send a signed request and receive a signed webhook between two agents that publish `identity.brand_json_url`. Confirm agent resolution by canonical URL, and that a pinned key missing from the agent's JWKS is rejected.
+3. **Catalog intake.** For a seller that declares `media_buy.features.catalog_ingestion`, confirm `sync_catalogs` rejects an unlisted catalog type, mode, or feed format, and an explicit `content_id_type` outside a declared `supported_content_id_types`, with `UNSUPPORTED_FEATURE` before mutation, including on a dry run, and reports one `item_issues` entry per item on terminal results and discovery reads under `per_item` reporting.
+4. **End to end.** Run one buyer and seller lifecycle through purchase, creative assignment, and a delivery readback.
+
+## What may still change
+
+The [3.3.0 milestone](https://github.com/adcontextprotocol/adcp/milestone/10) is the live scope record for work that may still land during the beta cycle. Use these maintained GitHub views as the live record:
+
+- [Open 3.3 issues](https://github.com/adcontextprotocol/adcp/issues?q=is%3Aopen+is%3Aissue+milestone%3A3.3.0)
+- [Open 3.3 pull requests](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+milestone%3A3.3.0)
+- [Closed 3.3 milestone work](https://github.com/adcontextprotocol/adcp/milestone/10?closed=1)
+
+Milestone assignment means **candidate for the 3.3 line**, not a commitment to beta.1 or GA. A change is included in a beta only when it is merged before that beta's tag. Items may be deferred, split, or moved to a later release as working groups resolve scope and interoperability risk.
+
+### In working-group review for 3.3
+
+<Info>
+**These are proposals, not features.** Each issue below carries the `needs-wg-review` label and was open in the 3.3.0 milestone on 2026-10-06 (44 issues). None is part of a beta unless it merges before that beta's tag. The live list is [`needs-wg-review` in the 3.3.0 milestone](https://github.com/adcontextprotocol/adcp/issues?q=is%3Aopen+is%3Aissue+milestone%3A3.3.0+label%3Aneeds-wg-review).
+</Info>
+
+- **Commercial flow and discovery:** [#7902](https://github.com/adcontextprotocol/adcp/issues/7902) core `opportunity` on `get_products`, [#7107](https://github.com/adcontextprotocol/adcp/issues/7107) delegated proposal composition, [#7659](https://github.com/adcontextprotocol/adcp/issues/7659) price adjustments, [#7676](https://github.com/adcontextprotocol/adcp/issues/7676) cost and vendor-metric outcome targets, [#7763](https://github.com/adcontextprotocol/adcp/issues/7763) per-account execution readiness, [#7852](https://github.com/adcontextprotocol/adcp/issues/7852) delivery-mode-aware baseline, [#6303](https://github.com/adcontextprotocol/adcp/issues/6303) fixed-price non-guaranteed specialism, [#5673](https://github.com/adcontextprotocol/adcp/issues/5673) best-first ordering, [#5316](https://github.com/adcontextprotocol/adcp/issues/5316) advertiser legal entity.
+- **Delivery reporting and measurement:** [#7885](https://github.com/adcontextprotocol/adcp/issues/7885) `operation_id` on `reporting_webhook`, [#7240](https://github.com/adcontextprotocol/adcp/issues/7240) metric aggregation semantics, [#7253](https://github.com/adcontextprotocol/adcp/issues/7253) DOOH impression basis, [#6208](https://github.com/adcontextprotocol/adcp/issues/6208) cross-tabulated breakdowns, [#5880](https://github.com/adcontextprotocol/adcp/issues/5880) `by_property` breakdown, [#5850](https://github.com/adcontextprotocol/adcp/issues/5850) projection block, [#5968](https://github.com/adcontextprotocol/adcp/issues/5968) operational delivery issues, [#5687](https://github.com/adcontextprotocol/adcp/issues/5687) print delivery semantics, [#6878](https://github.com/adcontextprotocol/adcp/issues/6878) seller-initiated trackers, [#2041](https://github.com/adcontextprotocol/adcp/issues/2041) measurement source attribution.
+- **Security and signing:** [#7878](https://github.com/adcontextprotocol/adcp/issues/7878) Web Bot Auth profile, [#7820](https://github.com/adcontextprotocol/adcp/issues/7820) `required_for` over A2A, [#7817](https://github.com/adcontextprotocol/adcp/issues/7817) discoverable signer agent URL, [#7066](https://github.com/adcontextprotocol/adcp/issues/7066) production security profile, [#7812](https://github.com/adcontextprotocol/adcp/issues/7812) `error.mutation_outcome`.
+- **Targeting and inventory:** [#7921](https://github.com/adcontextprotocol/adcp/issues/7921) gender in demographic targeting, [#6708](https://github.com/adcontextprotocol/adcp/issues/6708) presence versus interest targeting, [#7051](https://github.com/adcontextprotocol/adcp/issues/7051) collection-list exclusions, [#6135](https://github.com/adcontextprotocol/adcp/issues/6135) property coverage completeness.
+- **Creative and brand:** [#6782](https://github.com/adcontextprotocol/adcp/issues/6782) preview observation sessions, [#6700](https://github.com/adcontextprotocol/adcp/issues/6700) `get_creative_addons`, [#5545](https://github.com/adcontextprotocol/adcp/issues/5545) derivative lineage, [#5544](https://github.com/adcontextprotocol/adcp/issues/5544) on-brand check, [#5542](https://github.com/adcontextprotocol/adcp/issues/5542) rights channel restrictions, [#5375](https://github.com/adcontextprotocol/adcp/issues/5375) `build_creative` refinement scope, [#5241](https://github.com/adcontextprotocol/adcp/issues/5241) creative evaluator.
+- **Signals, audiences, and catalogs:** [#6552](https://github.com/adcontextprotocol/adcp/issues/6552) provider-initiated signal delivery, [#5409](https://github.com/adcontextprotocol/adcp/issues/5409) `build_signal`, [#5967](https://github.com/adcontextprotocol/adcp/issues/5967) catalog-item lifecycle, [#5966](https://github.com/adcontextprotocol/adcp/issues/5966) audience lifecycle.
+- **Conformance and governance:** [#7858](https://github.com/adcontextprotocol/adcp/issues/7858) storyboard questions from SDK grading (partly addressed), [#7068](https://github.com/adcontextprotocol/adcp/issues/7068) machine-observed implementation matrix, [#5849](https://github.com/adcontextprotocol/adcp/issues/5849) renewal lineage, [#4587](https://github.com/adcontextprotocol/adcp/issues/4587) seller advisory signals, [#3959](https://github.com/adcontextprotocol/adcp/issues/3959) governance framework mapping.
+
+## Known beta boundaries
+
+- Experimental surfaces retain their [experimental-status contract](/dist/docs/3.1.27/reference/experimental-status). A 3.3 beta does not graduate them to stable.
+- The `3.3-beta` documentation selector moves forward; pinned semver artifacts and documentation snapshots remain immutable.
+- Stable schema aliases continue to resolve to stable releases during beta. Use pinned prerelease URLs when validating beta behavior.
+- The `media_buy_seller/unprovisioned_account_reference` storyboard is advisory until runner capability `14.1.0`.
+
+## Report useful feedback
+
+Include this information in a beta issue:
+
+- protocol artifact version and wire pin;
+- SDK name and version, or `raw wire`;
+- buyer, seller, creative, signals, brand, measurement, or governance role;
+- transport and task name;
+- schema path or JSON Pointer involved;
+- expected and actual behavior;
+- minimal redacted payload and validation error;
+- whether the problem blocks beta.1 interoperability.
+
+Never include credentials, signed URLs, bearer tokens, private keys, or live customer payloads.
+
+## Related
+
+- [What's new in AdCP 3.3](/dist/docs/3.1.27/reference/whats-new-in-3-3)
+- [Migrating from 3.2 to 3.3](/dist/docs/3.1.27/reference/migration/3-2-to-3-3)
+- [Release Notes](/dist/docs/3.1.27/reference/release-notes#version-3-3-0)
+- [Versions & Compatibility](/dist/docs/3.1.27/reference/versions)
+- [Choose your SDK](/dist/docs/3.1.27/building/by-layer/L4/choose-your-sdk)

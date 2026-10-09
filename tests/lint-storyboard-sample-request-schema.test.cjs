@@ -147,15 +147,6 @@ test('create_media_buy sample requests avoid concrete 2026 flight dates', () => 
 // that implement media-buy/list-creative-formats-request.json. The runner
 // strips any request field that is neither an AdCP envelope field nor declared
 // by that schema, and reports it as an input_schema_field_stripped notice.
-// The pagination storyboard sends `account`, which
-// media-buy/list-creative-formats-request.json does not declare. Whether to
-// drop it from the storyboard or declare it in the schema is undecided, so
-// those steps are exempt.
-const MEDIA_BUY_UNDECLARED_FIELD_EXCEPTIONS = new Set([
-  'universal/pagination-integrity-creative-formats.yaml#pagination_walk/first_page:account',
-  'universal/pagination-integrity-creative-formats.yaml#pagination_walk/terminal_page:account',
-]);
-
 test('universal list_creative_formats sample requests only send fields a media-buy agent declares', () => {
   const mediaBuySchema = JSON.parse(
     fs.readFileSync(
@@ -171,10 +162,7 @@ test('universal list_creative_formats sample requests only send fields a media-b
     for (const phase of doc?.phases || []) {
       for (const step of phase?.steps || []) {
         if (step?.task !== 'list_creative_formats') continue;
-        const stripped = Object.keys(step.sample_request || {}).filter(
-          (field) =>
-            !declared.has(field) && !MEDIA_BUY_UNDECLARED_FIELD_EXCEPTIONS.has(`${rel}#${phase.id}/${step.id}:${field}`),
-        );
+        const stripped = Object.keys(step.sample_request || {}).filter((field) => !declared.has(field));
         if (stripped.length > 0) {
           violations.push(`${rel} :: ${phase.id}/${step.id} sends ${stripped.join(', ')}`);
         }

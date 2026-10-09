@@ -1,0 +1,30 @@
+{
+  "name": "URL path percent-encoded unreserved bytes decoded per RFC 3986 §6.2.2.2",
+  "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 6: decode percent-encoded unreserved characters)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/a%7Eb%2Dc%5Fd%2Ee/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:o2kFcTvxhbtnyteqXSKBvg_WcDeh7Ev-6rmhbl5bqEa5LHEDBBQbzoB8JEgOxtYjsrANKz8qygxfc0JOUQnKBg:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://seller.example.com/adcp/a~b-c_d.e/create_media_buy\n\"@authority\": seller.example.com\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+  "expected_outcome": {
+    "success": true
+  },
+  "$comment": "Companion to 008-percent-encoded-path (which exercises the reserved-byte uppercase rule). This vector covers the decode-side of step 6: the four unreserved characters that are percent-encoded on the wire (%7E=~, %2D=-, %5F=_, %2E=.) MUST be decoded in the canonical @target-uri per RFC 3986 §6.2.2.2. A verifier that uppercases but doesn't decode will fail step 10 (signature invalid) because %7E != ~ in the canonical base. Signature generated with the test-ed25519-2026 private key from the expected_signature_base."
+}

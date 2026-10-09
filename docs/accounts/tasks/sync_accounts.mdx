@@ -295,7 +295,9 @@ covers committed material changes from every origin within the seller's
 advertised resource coverage, including seller surfaces, connected platforms,
 seller automation, and other authorized principals. Before accepting this
 event type, the seller MUST advertise
-`get_adcp_capabilities.account.change_feed.supported: true`.
+`get_adcp_capabilities.account.change_feed.supported: true` and list the
+[experimental](/docs/reference/experimental-status) feature id
+`account.change_feed` in `experimental_features`.
 
 Each feed record produces one logical fire for every active subscriber that
 requested `account.change_recorded`. The fire's `notification_id` equals the
