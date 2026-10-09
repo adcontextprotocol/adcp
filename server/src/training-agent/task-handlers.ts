@@ -3229,7 +3229,7 @@ import {
   getAccountStatus,
   getSeededCreativeFormats,
 } from './comply-test-controller.js';
-import { PUBLISHERS } from './publishers.js';
+import { PUBLISHERS, buildVendorMetricOptimizationCapability } from './publishers.js';
 import { applyPropertyListTargeting, listAgentUrlRejection, packageExtWithPropertyApplication } from './property-list-targeting.js';
 import {
   isMutatingTool,
@@ -19914,9 +19914,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         // The single window the outcome_target planner states on event goals.
         attribution_windows: structuredClone(TRAINING_ATTRIBUTION_WINDOWS),
       },
-      vendor_metric_optimization: {
-        supported_targets: ['threshold_rate'],
-      },
+      // Derived from the catalog's product-level declarations so the rollup
+      // never lists a pair no product supports. Served on every negotiated
+      // version, like supported_targets: the object is additionalProperties:true.
+      vendor_metric_optimization: buildVendorMetricOptimizationCapability(),
       // Seller-level rollup of metric-optimization capabilities. Honest
       // union across catalog products (product-factory.ts assigns these
       // by channel mix). Gate scenarios — clicks_buy_flow / reach_buy_flow

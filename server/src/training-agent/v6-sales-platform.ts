@@ -65,7 +65,7 @@ import {
   isIdentitylessControllerRef,
 } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
-import { PUBLISHERS } from './publishers.js';
+import { PUBLISHERS, buildVendorMetricOptimizationCapability } from './publishers.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
 import { buildCatalog } from './product-factory.js';
@@ -521,9 +521,10 @@ export const TRAINING_SALES_CAPABILITIES = {
   // training platform resolves products dynamically, so it declares the
   // honest union explicitly and the tenant router preserves that declaration.
   supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
-  vendor_metric_optimization: {
-    supported_targets: ['threshold_rate' as const],
-  },
+  // Derived from the catalog's product-level declarations (supported_targets
+  // and the supported_metrics[] rollup), so neither can drift from what
+  // products actually support.
+  vendor_metric_optimization: buildVendorMetricOptimizationCapability()!,
   performance_feedback: {
     reports_application_status: true,
   },
@@ -542,9 +543,7 @@ export function salesCapabilityProjection() {
       inline_creative_management: true,
     },
     supported_optimization_metrics: [...TRAINING_SALES_CAPABILITIES.supported_optimization_metrics],
-    vendor_metric_optimization: {
-      supported_targets: [...TRAINING_SALES_CAPABILITIES.vendor_metric_optimization.supported_targets],
-    },
+    vendor_metric_optimization: structuredClone(TRAINING_SALES_CAPABILITIES.vendor_metric_optimization),
     performance_feedback: {
       ...TRAINING_SALES_CAPABILITIES.performance_feedback,
     },
