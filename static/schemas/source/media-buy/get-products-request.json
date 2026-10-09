@@ -28,6 +28,15 @@
         },
         "required": ["buying_mode"]
       }
+    },
+    {
+      "if": {
+        "properties": { "buying_mode": { "const": "wholesale" } },
+        "required": ["buying_mode"]
+      },
+      "then": {
+        "not": { "required": ["opportunity"] }
+      }
     }
   ],
   "x-mutates-state": true,
@@ -251,6 +260,18 @@
         "type": "string"
       },
       "description": "Registry policy IDs that the buyer requires to be enforced for products in this response. Sellers filter products to only those that comply with or already enforce the requested policies."
+    },
+    "opportunity": {
+      "x-added-in": "3.3.0",
+      "allOf": [
+        { "$ref": "/schemas/core/opportunity-context.json" },
+        {
+          "properties": {
+            "status": { "const": "open" }
+          }
+        }
+      ],
+      "description": "Optional planning-cycle context, as on request_proposals. Valid with brief and refine, not wholesale. Status must be open. A refine call cannot reassign a proposal to another cycle; a mismatch is INVALID_REQUEST. Takes precedence over ext.adcp.opportunity."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
