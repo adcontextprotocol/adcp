@@ -116,7 +116,7 @@ Milestone assignment means **candidate for the 3.3 line**, not a commitment to b
 ### In review for 3.3
 
 <Info>
-**These are proposals, not features.** Each row is an issue that was open in the 3.3.0 milestone on 2026-10-09 (48 issues), with its open pull request where one exists. None is part of a beta unless it merges before that beta's tag. "Merged so far" names the slice that already shipped on `main`; the rest of the issue is still in review. The live lists are the [open 3.3 issues](https://github.com/adcontextprotocol/adcp/issues?q=is%3Aopen+is%3Aissue+milestone%3A3.3.0) and [open pull requests](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Afalse) and [drafts](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Atrue).
+**These are proposals, not features.** Each row is an issue that was open in the 3.3.0 milestone on 2026-10-09 (56 issues), with its open pull request where one exists. None is part of a beta unless it merges before that beta's tag. "Merged so far" names the slice that already shipped on `main`; the rest of the issue is still in review. The live lists are the [open 3.3 issues](https://github.com/adcontextprotocol/adcp/issues?q=is%3Aopen+is%3Aissue+milestone%3A3.3.0) and [open pull requests](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Afalse) and [drafts](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+is%3Apr+draft%3Atrue).
 </Info>
 
 {/*
@@ -140,45 +140,53 @@ Milestone assignment means **candidate for the 3.3 line**, not a commitment to b
 | Commercial flow | [#5673](https://github.com/adcontextprotocol/adcp/issues/5673) | Best-first ordering of products and proposals | [#8037](https://github.com/adcontextprotocol/adcp/pull/8037) (draft) | — |
 | Commercial flow | [#6303](https://github.com/adcontextprotocol/adcp/issues/6303) | Fixed-price, non-guaranteed specialism | [#7963](https://github.com/adcontextprotocol/adcp/pull/7963) (draft) | — |
 | Commercial flow | [#7852](https://github.com/adcontextprotocol/adcp/issues/7852) | Delivery-mode-aware media-buy baseline | [#7973](https://github.com/adcontextprotocol/adcp/pull/7973) (draft) | — |
-| Delivery and measurement | [#5683](https://github.com/adcontextprotocol/adcp/issues/5683) | Linear TV preemption notice and replacement offer | — | Report-time spot lifecycle (#8017); the contract-time remainder is targeted at 3.4 |
+| Commercial flow | [#8096](https://github.com/adcontextprotocol/adcp/issues/8096) | Open opportunities: later proposals and `list_proposals` | [#8103](https://github.com/adcontextprotocol/adcp/pull/8103) | — |
+| Commercial flow | [#8086](https://github.com/adcontextprotocol/adcp/issues/8086) | Hold extension, ranking, and installment holds | [#8097](https://github.com/adcontextprotocol/adcp/pull/8097) (draft) | `expected_confirmation_at` on `refine_proposals` (#8104) |
+| Commercial flow | [#8087](https://github.com/adcontextprotocol/adcp/issues/8087) | Seller-proposed changes to a signed media buy | [#8102](https://github.com/adcontextprotocol/adcp/pull/8102) (draft) | — |
+| Commercial flow | [#8090](https://github.com/adcontextprotocol/adcp/issues/8090) | Usage and amplification rights in the purchase | [#8101](https://github.com/adcontextprotocol/adcp/pull/8101) (draft) | — |
+| Commercial flow | [#8091](https://github.com/adcontextprotocol/adcp/issues/8091) | Notify the buyer when an invoice is issued | [#8095](https://github.com/adcontextprotocol/adcp/pull/8095) | — |
+| Delivery and measurement | [#5683](https://github.com/adcontextprotocol/adcp/issues/5683) | Linear TV preemption notice and replacement offer | — | Report-time spot lifecycle (#8017); contract-time half planned for 3.4 |
 | Delivery and measurement | [#8009](https://github.com/adcontextprotocol/adcp/issues/8009) | Book and report position in break | — | Reporting half (#8017) |
 | Delivery and measurement | [#7777](https://github.com/adcontextprotocol/adcp/issues/7777) | Delivery evidence gaps for scheduled and offline channels | — | `change_cutoff` (#8054) |
 | Delivery and measurement | [#5850](https://github.com/adcontextprotocol/adcp/issues/5850) | Forward-looking delivery projection | [#8043](https://github.com/adcontextprotocol/adcp/pull/8043) | — |
 | Delivery and measurement | [#6878](https://github.com/adcontextprotocol/adcp/issues/6878) | Seller-initiated trackers and measurement sources | [#7940](https://github.com/adcontextprotocol/adcp/pull/7940) (draft) | — |
 | Delivery and measurement | [#6628](https://github.com/adcontextprotocol/adcp/issues/6628) | Reporting metric coherence findings | [#8055](https://github.com/adcontextprotocol/adcp/pull/8055) (draft) | — |
 | Delivery and measurement | [#7718](https://github.com/adcontextprotocol/adcp/issues/7718) | Responses conform to the negotiated release | — | — |
+| Delivery and measurement | [#8088](https://github.com/adcontextprotocol/adcp/issues/8088) | Installment publication record (proof of post) | — | — |
 | Security and signing | [#7066](https://github.com/adcontextprotocol/adcp/issues/7066) | Production security profile | [#7942](https://github.com/adcontextprotocol/adcp/pull/7942) (draft) | — |
 | Security and signing | [#7817](https://github.com/adcontextprotocol/adcp/issues/7817) | Discoverable signer agent URL | [#7942](https://github.com/adcontextprotocol/adcp/pull/7942) (draft) | — |
 | Security and signing | [#7878](https://github.com/adcontextprotocol/adcp/issues/7878) | Web Bot Auth profile for request signing | [#7894](https://github.com/adcontextprotocol/adcp/pull/7894) (draft) | — |
-| Security and signing | [#7809](https://github.com/adcontextprotocol/adcp/issues/7809) | Split identity and trust out of brand.json (`trust.json`) | [#8067](https://github.com/adcontextprotocol/adcp/pull/8067) | — |
+| Security and signing | [#7809](https://github.com/adcontextprotocol/adcp/issues/7809) | Split identity and trust out of brand.json (`trust.json`) | [#8115](https://github.com/adcontextprotocol/adcp/pull/8115) | Experimental `trust.json` v1 schemas (#8067) |
 | Security and signing | [#7812](https://github.com/adcontextprotocol/adcp/issues/7812) | `error.mutation_outcome` on failed mutations | [#7935](https://github.com/adcontextprotocol/adcp/pull/7935) (draft) | — |
 | Security and signing | [#7565](https://github.com/adcontextprotocol/adcp/issues/7565) | JSON-RPC batches in signed bodies | [#8064](https://github.com/adcontextprotocol/adcp/pull/8064) (draft) | — |
 | Security and signing | [#7563](https://github.com/adcontextprotocol/adcp/issues/7563) | Signature requirement triggered by a nested payload field | [#8064](https://github.com/adcontextprotocol/adcp/pull/8064) (draft) | — |
-| Security and signing | [#7733](https://github.com/adcontextprotocol/adcp/issues/7733) | Signed-requests corpus and `covers_content_digest: required` | [#8068](https://github.com/adcontextprotocol/adcp/pull/8068) | — |
-| Security and signing | [#7905](https://github.com/adcontextprotocol/adcp/issues/7905) | Step-1 header rules in the signing vectors | [#8068](https://github.com/adcontextprotocol/adcp/pull/8068) | Vectors 029–031 and guards 013–015 (#8066) |
+| Security and signing | [#7905](https://github.com/adcontextprotocol/adcp/issues/7905) | Step-1 header rules in the signing vectors | — | Vectors 029–031, guards 013–015 (#8066), and profile-3.2 mirrors (#8068) |
 | Security and signing | [#7577](https://github.com/adcontextprotocol/adcp/issues/7577) | Checklist step position grading | — | — |
 | Targeting and inventory | [#7921](https://github.com/adcontextprotocol/adcp/issues/7921) | Gender in demographic targeting | [#7925](https://github.com/adcontextprotocol/adcp/pull/7925) | — |
 | Targeting and inventory | [#7834](https://github.com/adcontextprotocol/adcp/issues/7834) | Combine several collection lists in a package | [#8061](https://github.com/adcontextprotocol/adcp/pull/8061) (draft) | — |
 | Targeting and inventory | [#6135](https://github.com/adcontextprotocol/adcp/issues/6135) | Publisher-property coverage completeness | [#7948](https://github.com/adcontextprotocol/adcp/pull/7948) (draft) | — |
-| Targeting and inventory | [#6978](https://github.com/adcontextprotocol/adcp/issues/6978) | Error codes for unsupported targeting dimensions | [#8052](https://github.com/adcontextprotocol/adcp/pull/8052) | — |
 | Creative and brand | [#8011](https://github.com/adcontextprotocol/adcp/issues/8011) | Broadcast creative: clearinghouse delivery reference | — | `mxf`, broadcast codecs, and `loudness` (#8019) |
 | Creative and brand | [#5241](https://github.com/adcontextprotocol/adcp/issues/5241) | Creative evaluator | [#8045](https://github.com/adcontextprotocol/adcp/pull/8045) | — |
 | Creative and brand | [#5375](https://github.com/adcontextprotocol/adcp/issues/5375) | `build_creative` refinement scope | [#7937](https://github.com/adcontextprotocol/adcp/pull/7937) (draft) | — |
 | Creative and brand | [#4282](https://github.com/adcontextprotocol/adcp/issues/4282) | Provenance on listed and delivered creative variants | [#8063](https://github.com/adcontextprotocol/adcp/pull/8063) (draft) | — |
 | Creative and brand | [#5542](https://github.com/adcontextprotocol/adcp/issues/5542) | Channel restrictions on rights constraints | [#8047](https://github.com/adcontextprotocol/adcp/pull/8047) | — |
 | Creative and brand | [#8048](https://github.com/adcontextprotocol/adcp/issues/8048) | Brand-wide `prohibited_terms` in brand.json | [#8056](https://github.com/adcontextprotocol/adcp/pull/8056) (draft) | — |
+| Creative and brand | [#8110](https://github.com/adcontextprotocol/adcp/issues/8110) | Playback events on `pixel_tracker` for hosted video and audio | [#8111](https://github.com/adcontextprotocol/adcp/pull/8111) | — |
+| Creative and brand | [#8107](https://github.com/adcontextprotocol/adcp/issues/8107) | `3gp`, `mpeg`, and `m4v` video containers | — | — |
+| Creative and brand | [#8092](https://github.com/adcontextprotocol/adcp/issues/8092) | Creator and show cards on collections | [#8094](https://github.com/adcontextprotocol/adcp/pull/8094), [#8098](https://github.com/adcontextprotocol/adcp/pull/8098) (draft) | — |
+| Creative and brand | [#6348](https://github.com/adcontextprotocol/adcp/issues/6348) | Anchored creative feedback and per-party review records | — | — |
 | Signals, audiences, catalogs | [#8023](https://github.com/adcontextprotocol/adcp/issues/8023) | Audience overlap read | [#8031](https://github.com/adcontextprotocol/adcp/pull/8031) (draft) | Audience size ranges (#8024) |
 | Signals, audiences, catalogs | [#6872](https://github.com/adcontextprotocol/adcp/issues/6872) | `uids[].value` shape per type | — | Wire form documented (#8059) |
 | Signals, audiences, catalogs | [#6552](https://github.com/adcontextprotocol/adcp/issues/6552) | Provider-initiated signal delivery | [#8044](https://github.com/adcontextprotocol/adcp/pull/8044) | — |
 | Signals, audiences, catalogs | [#5409](https://github.com/adcontextprotocol/adcp/issues/5409) | `build_signal` and signal status | [#8036](https://github.com/adcontextprotocol/adcp/pull/8036) | — |
 | Signals, audiences, catalogs | [#7898](https://github.com/adcontextprotocol/adcp/issues/7898) | Signal pricing groups | [#8058](https://github.com/adcontextprotocol/adcp/pull/8058) (draft) | — |
 | Signals, audiences, catalogs | [#7807](https://github.com/adcontextprotocol/adcp/issues/7807) | Per-source archive on `sync_event_sources` | [#8060](https://github.com/adcontextprotocol/adcp/pull/8060) (draft) | — |
-| Conformance and governance | [#8032](https://github.com/adcontextprotocol/adcp/issues/8032) | Broadcast TV certification evidence | [#8046](https://github.com/adcontextprotocol/adcp/pull/8046) | — |
 | Conformance and governance | [#7068](https://github.com/adcontextprotocol/adcp/issues/7068) | Machine-observed implementation matrix | [#8040](https://github.com/adcontextprotocol/adcp/pull/8040) (draft) | — |
 | Conformance and governance | [#3959](https://github.com/adcontextprotocol/adcp/issues/3959) | Governance framework mapping | [#8035](https://github.com/adcontextprotocol/adcp/pull/8035) (draft) | — |
-| Conformance and governance | [#7911](https://github.com/adcontextprotocol/adcp/issues/7911) | Training agent honours `property_list` targeting | — | — |
+| Conformance and governance | [#7911](https://github.com/adcontextprotocol/adcp/issues/7911) | Training agent honours `property_list` targeting | — | Training agent support (#8078) |
+| Conformance and governance | [#8093](https://github.com/adcontextprotocol/adcp/issues/8093) | Creator marketplace training fixtures | — | CreatorLoop seller and proposal fixtures (#8106) |
 
-Also open, without a 3.3 milestone issue: [#7958](https://github.com/adcontextprotocol/adcp/pull/7958) composable delivery breakdowns and [#7957](https://github.com/adcontextprotocol/adcp/pull/7957) metric aggregation semantics (both drafts; their issues moved to 3.4.0), and the compliance fix [#8027](https://github.com/adcontextprotocol/adcp/pull/8027) for active non-guaranteed media buys.
+Also open, without a 3.3 milestone issue: [#7958](https://github.com/adcontextprotocol/adcp/pull/7958) composable delivery breakdowns and [#7957](https://github.com/adcontextprotocol/adcp/pull/7957) metric aggregation semantics (both drafts; their issues moved to 3.4.0), and [#8077](https://github.com/adcontextprotocol/adcp/pull/8077), a 3.3 schema coherence sweep that would register a feature id for the offline delivery metrics.
 
 ## Known beta boundaries
 
