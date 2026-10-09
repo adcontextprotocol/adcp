@@ -115,7 +115,8 @@ describe('buyer login through official OAuth and MCP clients', () => {
     const session = createBuyerOAuthSession(file!, DEFAULT_BUYER_AGENT, { trustedFetchFn: boundedPort });
     await expect(session.fetch(`${DEFAULT_BUYER_AGENT}/reporting/destinations/a/b`)).rejects.toThrow();
     expect(tokenExchanges).toBe(1);
-    expect(requests.some(request => request.url.startsWith('https://foreign.example.com'))).toBe(false);
+    const allowedOrigins = new Set([new URL(issuer).origin, new URL(DEFAULT_BUYER_AGENT).origin]);
+    expect(requests.every(request => allowedOrigins.has(new URL(request.url).origin))).toBe(true);
   });
   it('consumes expired state and cannot resume it', async () => {
     const callback = await start(); file!.state.pending.expiresAt = new Date(0).toISOString(); await file!.save();
