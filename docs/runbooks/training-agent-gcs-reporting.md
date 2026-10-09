@@ -26,9 +26,8 @@ The repository's TypeScript response probe captured all 125 cases with SDK
 were unchanged; only the reviewed TypeScript SDK pin in the regression
 baseline was updated. The ordinary conformance report still reports that
 finding rather than claiming complete protocol conformance.
-The inspected main is `a7e5ea11297b3c0e1802572d898742b11e43103e`.
-Existing PR #7968 also changes SDK/OAuth dependencies; coordinate that dependency
-upgrade before landing either PR. This migration uses 619 rather than its 618.
+The change incorporates main through `247127c1a`. PR #7968's SDK/OAuth changes
+are included; reporting migration 620 follows OAuth migrations 618 and 619.
 
 ## Source and authority
 
@@ -76,12 +75,23 @@ A new installation needs a new authority and fresh dedicated bucket. Retain
 the old installation's grants, tombstones and inventory until its cleanup has
 finished. Do not clear the reporting schema to repair a failed deployment.
 
-Before merging or staging the image, a DBA must provision the isolated schema
-on the application primary, owned by the actual application database role.
-Migration 620 checks that prerequisite and creates its tables using the ordinary
-application credential. The runtime needs no database-wide `CREATE` privilege
-or DBA credential. Use a separate operator connection for this one-time setup;
-replace the role placeholder with the verified application login:
+## Database bootstrap prerequisite
+
+**Provision or verify the namespace before running any application migrations,
+even when `TRAINING_REPORTING_GCS_ENABLED=false`.** Migration 620 is unconditional;
+an absent namespace stops the startup migration runner and app startup. This
+prerequisite applies to local development, CI, staging, fresh Fly deployments
+and disaster recovery. Disabling the feature does not remove it. Do not skip
+or mark the migration applied without creating its tables.
+
+Start the database first, verify that it is the authoritative application
+primary, then have a DBA provision the isolated schema owned by the actual
+application database role. Only after that prerequisite passes should the
+ordinary application credential run migrations or the app start with
+`RUN_MIGRATIONS=true`. The runtime needs no new database-wide `CREATE` privilege
+or DBA credential. For a fresh staging, Fly or recovery database, use a separate
+operator connection for this one-time setup; replace the role placeholder with
+the verified application login:
 
 ```bash
 psql "$REPORTING_DBA_DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 \
@@ -92,9 +102,42 @@ SQL
 ```
 
 If the schema already exists, inspect its owner and installation authority
-instead of recreating it. Repository CI provisions the same scoped schema
+instead of recreating it. Verify the application role has `USAGE` and `CREATE`
+on that schema. Preserve its installation UUID, grants, inventory and tombstones;
+do not attach a writable recovery clone to the existing bucket. A fresh
+installation uses fresh authority and a fresh bucket. Repository CI provisions the same scoped schema
 outside the application boundary, then applies and replays migrations with
 the application role's database-wide `CREATE` permission absent.
+
+### Local bootstrap
+
+For the repository's local Docker database, start PostgreSQL separately before
+starting the app. Run the following operator setup for both new and existing
+volumes, including after `docker compose down -v`. It creates the namespace
+when absent, refuses an unexpected owner, and preserves all existing tables
+and installation authority. These commands use only the compose fixture's
+`adcp` role and `adcp_registry` database; use the separate DBA procedure above
+for staging, production and recovery.
+
+```bash
+docker compose up -d --wait postgres
+docker compose exec -T postgres psql -U adcp -d adcp_registry \
+  --single-transaction -v ON_ERROR_STOP=1 <<'SQL'
+DO $bootstrap$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_namespace
+    WHERE nspname = 'training_reporting_gcs' AND nspowner <> 'adcp'::regrole
+  ) THEN
+    RAISE EXCEPTION 'Inspect the existing reporting namespace owner before bootstrap';
+  END IF;
+  CREATE SCHEMA IF NOT EXISTS training_reporting_gcs AUTHORIZATION adcp;
+  REVOKE ALL ON SCHEMA training_reporting_gcs FROM PUBLIC;
+END;
+$bootstrap$;
+SQL
+docker compose up --build
+```
 
 ## Dedicated GCP identity and bucket
 
