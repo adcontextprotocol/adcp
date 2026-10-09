@@ -224,6 +224,16 @@ window appear in the ledger. Consumers must not assume the latest snapshot is th
 only relevant record, and must never treat an adjustment as authority to rewrite an
 invoice or accounting book.
 
+If the seller cannot serve or verify the content of a revision it still owes — its
+stored rows are missing or no longer match `revision_content_sha256` — it opens a
+`REVISION_UNREADABLE` issue naming the revision and each affected obligation. The
+revision stays listed, the obligation is neither `healthy` nor `complete` while the
+issue is open, and exact reads return [`SERVICE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-service-unavailable) rather than a not-found
+result. The issue is `delayed` with `wait_for_retry` while automatic repair runs and
+`action_required` with `contact_seller` once it cannot. It is retired when exact
+reads again return the committed content or the revision's retention window ends.
+An obligation whose official revision is lost never becomes `complete`.
+
 `reporting_revision_id` is the portable AdCP identity. Every ready resource selects
 immutable bytes or an immutable native snapshot/version—for example a Delta version,
 Snowflake object identity, BigQuery snapshot, or manifest generation—and never
