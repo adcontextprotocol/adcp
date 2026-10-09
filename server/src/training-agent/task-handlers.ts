@@ -16598,6 +16598,11 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 }
 
 export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+  if ((args as unknown as Record<string, unknown>).reporting_revision_id) {
+    const { dispatchTrainingGcsReporting } = await import('./gcs-reporting-tools.js');
+    const gcs = await dispatchTrainingGcsReporting('get_media_buy_delivery', args as unknown as Record<string, unknown>, ctx.principal);
+    if (gcs) return gcs as unknown as Record<string, unknown>;
+  }
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & {
     media_buy_id?: string;
     reporting_revision_id?: string;
@@ -16675,7 +16680,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         );
       }
     }
-    if (!content) return { errors: [{ code: 'REPORTING_REVISION_NOT_FOUND', message: 'The requested reporting revision is unavailable.', field: 'reporting_revision_id' }] };
+    if (!content) return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'The requested reporting revision is unavailable.', field: 'reporting_revision_id' }] };
     const exactResponse = {
       reporting_period: content.revision.period,
       media_buy_deliveries: [],

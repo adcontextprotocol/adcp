@@ -959,15 +959,21 @@ export class ComplianceDatabase {
         tracksSummary[t.track] = t.status;
       }
 
-      // 4. Upsert the materialized status and capture transition
+      // 4. Upsert the materialized status and capture transition.
+      // Owner-initiated runs publish the verdict but leave the independent
+      // heartbeat schedule and pending requeues untouched (#7680).
       const statusResult = await client.query(
         `WITH schedule_next AS (
           INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
-          VALUES ($1, NOW() + INTERVAL '12 hours')
+          VALUES ($1, CASE WHEN $7 = 'owner_test' THEN NULL ELSE NOW() + INTERVAL '12 hours' END)
           ON CONFLICT (agent_url) DO UPDATE SET
             next_compliance_check_at = NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours),
             compliance_inconclusive_streak = 0,
             requeued_at = NULL
+          -- TriggeredBy constrains $7 at compile time. Adding a trigger opts it
+          -- into cadence advancement unless this predicate and the INSERT
+          -- CASE above are updated together.
+          WHERE $7 != 'owner_test'
         )
         INSERT INTO agent_compliance_status (
           agent_url, status, last_checked_at,
@@ -1024,6 +1030,7 @@ export class ComplianceDatabase {
           input.headline ?? null,
           input.requested_compliance_target ?? null,
           input.adcp_version ?? null,
+          input.triggered_by ?? 'heartbeat',
         ],
       );
 

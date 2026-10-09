@@ -23,17 +23,17 @@ For the layered model behind this — what each layer contains and what an SDK a
 
 What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide).
 
-*Last updated: 2026-10-06.*
+*Last updated: 2026-10-07.*
 
 | SDK | Current package | 3.2 support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TypeScript) | `15.0.0` | Exact `3.2.1` support | ✅ | ✅ | ✅ | ✅ |
+| **`@adcp/sdk`** (TypeScript) | `15.2.0` | Exact `3.2.1` support | ✅ | ✅ | ✅ | ✅ |
 | **`adcp`** (Python) | `8.0.0` | Exact `3.2.1` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **`adcp/v3`** (Go) | `v3.2.1` | Embeds `3.2.0-rc.1` generated schemas and types and defaults to the `"3.1"` wire pin; final 3.2 support is planned as a follow-up | ✅ | ⚠️ | ⚠️ | ⚠️ |
 
 Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. The L0–L3 columns describe the current package, not a 3.2 support claim.
 
-`@adcp/sdk@15.0.0` is on the npm `latest` dist-tag and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`) and the buyer-side consumer module (`@adcp/sdk/reporting/consumer`). Python `adcp==8.0.0` embeds the final 3.2 schemas. Final 3.2 support for Go is planned as a follow-up release; check the [adcp-go releases](https://github.com/adcontextprotocol/adcp-go/releases).
+`@adcp/sdk@15.2.0` is on the npm `latest` dist-tag and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`) and the buyer-side consumer module (`@adcp/sdk/reporting/consumer`). The production composer (`@adcp/sdk/reporting/service`) and private GCS adapter (`@adcp/sdk/reporting/gcs`) require application-specific provisioning and rollout validation. Python `adcp==8.0.0` embeds the final 3.2 schemas. Final 3.2 support for Go is planned as a follow-up release; check the [adcp-go releases](https://github.com/adcontextprotocol/adcp-go/releases).
 
 SDK 15 tightens OAuth issuer binding and provider/storage defaults. Before upgrading an existing integration, follow the [SDK 15 OAuth migration and owner recovery guide](https://github.com/adcontextprotocol/adcp-client/blob/68614aa0ce84046c78d76dda9721ffbf9328639a/docs/migration-oauth-issuer-bindings.md).
 
@@ -98,7 +98,7 @@ documents coordinator options, continuation storage, and supported projections.
 [![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/sdk@15.0.0
+npm install @adcp/sdk@15.2.0
 ```
 
 ```javascript
@@ -210,11 +210,11 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ### JavaScript CLI
 
 ```bash
-npx @adcp/sdk@15.0.0 --help
-npx @adcp/sdk@15.0.0 --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@15.0.0 my-agent list_products '{"adcp_version":"3.2","account":{"account_id":"account_123"}}'
+npx @adcp/sdk@15.2.0 --help
+npx @adcp/sdk@15.2.0 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@15.2.0 my-agent list_products '{"adcp_version":"3.2","account":{"account_id":"account_123"}}'
 # or against the built-in public test agent:
-npx @adcp/sdk@15.0.0 test-mcp list_products '{"adcp_version":"3.2"}'
+npx @adcp/sdk@15.2.0 test-mcp list_products '{"adcp_version":"3.2"}'
 ```
 
 The `adcp_version` in the payload is a wire pin the CLI passes through, so it

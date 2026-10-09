@@ -1369,6 +1369,8 @@ export interface TenantRouteMiddleware {
   rateLimit?: RequestHandler;
   /** Bearer-auth middleware applied to every tenant POST (sets `res.locals.trainingPrincipal`). */
   requireAuth?: RequestHandler;
+  /** Resource-bound user OAuth only on the canonical sales endpoint. */
+  requireSalesAuth?: RequestHandler;
   /**
    * Bearer-auth middleware for the governance tenant's routes. Accepts the
    * shared credentials plus minted sandbox governance-agent credentials
@@ -1449,6 +1451,10 @@ export function mountTenantRoutes(
   const mw: RequestHandler[] = [];
   if (middleware.rateLimit) mw.push(middleware.rateLimit);
   if (middleware.requireAuth) mw.push(middleware.requireAuth);
+  const salesMw: RequestHandler[] = [];
+  if (middleware.rateLimit) salesMw.push(middleware.rateLimit);
+  const salesAuth = middleware.requireSalesAuth ?? middleware.requireAuth;
+  if (salesAuth) salesMw.push(salesAuth);
   const governanceMw: RequestHandler[] = [];
   if (middleware.rateLimit) governanceMw.push(middleware.rateLimit);
   const governanceAuth = middleware.requireGovernanceAuth ?? middleware.requireAuth;
@@ -1460,7 +1466,7 @@ export function mountTenantRoutes(
     });
     parent.post(
       `/${tenantId}/mcp`,
-      ...(tenantId === 'governance' ? governanceMw : mw),
+      ...(tenantId === 'governance' ? governanceMw : tenantId === 'sales' ? salesMw : mw),
       tenantMcpHandler(holder, tenantId, middleware.storyboardCompat),
     );
     parent.get(`/${tenantId}/mcp`, (_req, res) => {
