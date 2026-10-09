@@ -22,6 +22,9 @@ const WHOLE_FILE_3_3 = [
   'enums/spot-status.json',
   'core/dooh-inventory-summary.json',
   'core/catalog-ingestion-capability.json',
+  'error-details/unsupported-targeting-dimension.json',
+  'trust/v1/trust.json',
+  'trust/v1/trust-acknowledgements.json',
 ];
 
 const PROPERTIES_3_3 = [
@@ -49,6 +52,17 @@ const PROPERTIES_3_3 = [
 
 test('whole-file 3.3 schemas and enums carry x-added-in 3.3.0', () => {
   for (const f of WHOLE_FILE_3_3) assert.equal(load(f)['x-added-in'], '3.3.0', f);
+});
+
+test('expected_confirmation_at sites carry x-added-in 3.3.0', () => {
+  const sites = [
+    ['media-buy/create-media-buy-async-response-submitted.json', ['properties', 'expected_confirmation_at']],
+    ['media-buy/create-media-buy-response.json', ['oneOf', 2, 'properties', 'expected_confirmation_at']],
+    ['media-buy/media-buy-commitment-response.json', ['oneOf', 2, 'properties', 'expected_confirmation_at']],
+    ['media-buy/refine-proposals-async-response-submitted.json', ['properties', 'expected_confirmation_at']],
+    ['media-buy/refine-proposals-response.json', ['properties', 'expected_confirmation_at']],
+  ];
+  for (const [f, keys] of sites) assert.equal(at(load(f), keys)['x-added-in'], '3.3.0', f);
 });
 
 test('3.3 properties carry x-added-in 3.3.0', () => {
