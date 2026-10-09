@@ -1,8 +1,8 @@
 /**
  * v6 SalesPlatform for the `/sales` tenant.
  *
- * Sales platform claiming `sales-non-guaranteed`, `sales-guaranteed`, and
- * `sales-dooh`. Implements `SalesPlatform` (5 required methods +
+ * Sales platform claiming `sales-non-guaranteed`, `sales-guaranteed`,
+ * `sales-broadcast-tv`, and `sales-dooh`. Implements `SalesPlatform` (5 required methods +
  * 4 optional read-side methods).
  *
  * Spike-grade port: bodies shim through to existing v5 handlers via
@@ -441,7 +441,7 @@ const TRAINING_SALES_CHANNELS = [
 ] as const;
 
 export const TRAINING_SALES_CAPABILITIES = {
-  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', SALES_DOOH_SPECIALISM] as const,
+  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', SALES_DOOH_SPECIALISM] as const,
   creative_agents: [],
   channels: TRAINING_SALES_CHANNELS,
   overrides: {
