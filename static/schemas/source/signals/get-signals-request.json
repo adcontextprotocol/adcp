@@ -73,7 +73,7 @@
     },
     "destinations": {
       "type": "array",
-      "description": "Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
+      "description": "Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. If the authenticated caller matches one of these destinations, activation keys will be included in the response. A delivery_method pin on an agent destination applies to activate_signal only and is ignored here.",
       "items": {
         "$ref": "/schemas/core/destination.json"
       },

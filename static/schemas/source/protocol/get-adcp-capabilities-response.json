@@ -247,6 +247,24 @@
     },
     {
       "if": {
+        "properties": {
+          "signals": {
+            "required": ["delivery_methods"]
+          }
+        },
+        "required": ["signals"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "signals.delivery_methods" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "allOf": [
           {
             "properties": {
@@ -2253,6 +2271,16 @@
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "minItems": 1
+        },
+        "delivery_methods": {
+          "type": "array",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Rails this signals agent can use to deliver licensed membership to type 'agent' destinations on activate_signal. Activation intersects it with the destination's audience_activation.methods on pattern and vendor; no intersection fails that destination with UNSUPPORTED_FEATURE. Optional; not required for platform destinations. Experimental: agents declaring it MUST list signals.delivery_methods in experimental_features.",
+          "items": {
+            "$ref": "/schemas/core/signal-delivery-method.json"
           },
           "minItems": 1
         },

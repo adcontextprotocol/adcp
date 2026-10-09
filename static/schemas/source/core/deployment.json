@@ -83,6 +83,68 @@
           "type": "string",
           "format": "date-time",
           "description": "Timestamp when activation completed (if is_live=true)"
+        },
+        "delivery_status": {
+          "$ref": "/schemas/enums/signal-delivery-status.json",
+          "description": "Arrival of provider-initiated membership delivery; separate from is_live (addressability) and match_status.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "delivery": {
+          "allOf": [
+            {
+              "$ref": "/schemas/core/audience-source.json"
+            },
+            {
+              "not": {
+                "required": [
+                  "access_expires_at"
+                ]
+              }
+            }
+          ],
+          "description": "What the signal agent shipped, as a core/audience-source.json reference: the destination-side join key. No access_expires_at. Omitted when the rail has no vendor-addressable artifact. Never a credential.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "delivery_error": {
+          "$ref": "/schemas/core/error.json",
+          "description": "Why delivery failed; present when delivery_status is failed. UNSUPPORTED_FEATURE when no declared rail intersects or the pin does not match.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "match_status": {
+          "$ref": "/schemas/enums/audience-status.json",
+          "description": "Match outcome in the audience-status vocabulary sync_audiences reports; optional and rail-independent. too_small implies is_live false.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "matched_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Members matched; absence is not zero.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "effective_match_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Deduplicated match rate; absence is not zero.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "match_rate_basis": {
+          "$ref": "/schemas/enums/audience-match-rate-basis.json",
+          "description": "Where effective_match_rate came from, as on sync_audiences.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "audience_size": {
+          "$ref": "/schemas/core/audience-size.json",
+          "description": "People matched, as a range with stated precision (the #8024 shape), for platforms that report an interval. May replace matched_count. Omit when match_status is too_small.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
         }
       },
       "required": [
