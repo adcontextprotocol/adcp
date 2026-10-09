@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/signal-status.json",
   "title": "Signal Status",
-  "description": "Construction readiness of a signal returned by get_signals. Experimental in AdCP 3.3 (media signals.signal_lifecycle). Vocabulary note: 'processing' is shared with audience-status.json for the 'being built' state; 'pending' is not used. Unlike audience-status.json, 'failed' is terminal here, and there are no 'too_small' or 'suspended' values because those are seller-side matching and policy outcomes of a synced audience, not properties of a signal agent's segment. Absent on a signal means 'ready'.",
+  "description": "Construction readiness of a signal returned by get_signals. Experimental in AdCP 3.3 (media signals.signal_lifecycle). Vocabulary note: 'processing' is shared with audience-status.json for the 'being built' state. Unlike audience-status.json, 'failed' is terminal here, and there are no 'too_small' or 'suspended' values because those are seller-side matching and policy outcomes of a synced audience, not properties of a signal agent's segment. Absent on a signal means 'ready'.",
   "type": "string",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
