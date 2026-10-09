@@ -111,7 +111,8 @@ describe("property-grain delivery conformance", () => {
   ]) {
     it(`${id} is gated on the seller rollup, seeds the per-product flag, and injects rows`, () => {
       const source = readScenario(id);
-      assert.match(source, new RegExp(`requires_capability:\\n  path: media_buy\\.features\\.${flag}\\n  equals: true`));
+      // The seller-rollup gate is the first predicate; a TEMPORARY delivery-mode gate (adcp#7852) follows it.
+      assert.match(source, new RegExp(`requires_all_capabilities:\\n  - path: media_buy\\.features\\.${flag}\\n    equals: true\\n`));
       assert.match(source, new RegExp(`reporting_capabilities:[\\s\\S]*\\n        ${flag}: true`));
       assert.match(source, new RegExp(`\\n            ${rows}:\\n`));
       assert.match(source, new RegExp(`reporting_dimensions:\\n            ${dimension}:`));

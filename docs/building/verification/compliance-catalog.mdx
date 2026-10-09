@@ -141,7 +141,14 @@ Specialisms are grouped below by parent protocol.
 The `sales-*` specialisms are not mutually exclusive — a hybrid platform with both a guaranteed direct desk and an auction floor should claim both `sales-guaranteed` and `sales-non-guaranteed`. Follow the steps below to resolve your claim.
 
 <Note>
-The current 3.x media-buy protocol baseline uses non-guaranteed fixtures in its core flow and several inherited scenarios. Some workflows require an immediately issued `media_buy_id`; others assert immediate preflight rejection or are capability-gated. A guaranteed-only seller can pass the `sales-guaranteed` approval storyboard yet still lack a complete media-buy grade. A versioned, delivery-mode-aware baseline must preserve synchronous checks for non-guaranteed buys and add task completion and readback for guaranteed buys.
+**Guaranteed-only sellers get a reduced-coverage profile.** The `media_buy_seller` baseline is built on non-guaranteed fixtures, and its follow-on checks need a `media_buy_id` issued in the create response. A seller that sells only one delivery mode declares it in `media_buy.supported_delivery_types` (`["guaranteed"]` or `["non_guaranteed"]`; absent means both) and rejects a create for the other mode with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). For a guaranteed-only seller the runner then grades:
+
+- The base baseline and 37 inherited scenarios carry a temporary `requires_capability` gate on `non_guaranteed`. They grade `not_applicable`. **`not_applicable` means no coverage, not passed**: the seller has not demonstrated those behaviors.
+- `media_buy_seller_guaranteed`, selected only when `non_guaranteed` is not declared, grades an 11-step guaranteed flow: discovery (including that no non-guaranteed product is listed), a `submitted` create, controller-forced task completion, [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) polling, [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) readback by the issued ID, and delivery reporting. If [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) does not advertise `force_create_media_buy_arm` and `force_task_completion`, the storyboard grades a single storyboard-level `missing_test_controller` skip. The run does not fail, but it is a coverage gap and not a complete grade.
+- `sales-guaranteed` and the ungated inherited scenarios are graded as before.
+- Rejecting a create on a non-guaranteed product is attestation-only: no storyboard asserts it, because a seller that sells none cannot be required to seed one.
+
+Sellers that declare both modes, or declare nothing, see no change, provided they emit a `media_buy` block in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) (see the precondition in [`supported_delivery_types`](/docs/protocol/get_adcp_capabilities#supported_delivery_types)). Making each inherited scenario delivery-mode aware, which would remove the gates and restore the coverage, is the real fix and is deferred.
 </Note>
 
 <Warning>

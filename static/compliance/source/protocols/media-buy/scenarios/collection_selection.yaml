@@ -1,5 +1,5 @@
 id: media_buy_seller/collection_selection
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.2"
 title: "Buyer commits collection selection and the seller echoes it as concrete selectors on readback"
 category: media_buy_seller
@@ -7,6 +7,11 @@ summary: "Verifies mode: selected accepts an explicit domain-qualified subset, m
 track: media_buy
 requires:
   - controller
+
+# TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+requires_capability:
+  path: media_buy.supported_delivery_types
+  contains: non_guaranteed
 
 required_tools:
   - get_products

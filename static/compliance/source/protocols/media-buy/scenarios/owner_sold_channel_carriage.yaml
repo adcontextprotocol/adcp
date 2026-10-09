@@ -1,5 +1,5 @@
 id: media_buy_seller/owner_sold_channel_carriage
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.2"
 title: "Seller declares owner-sold channel carriage and enforces collection selector boundaries"
 category: media_buy_seller
@@ -7,6 +7,11 @@ summary: "Verifies an owner-sold channel product combines host property scope wi
 track: media_buy
 requires:
   - controller
+
+# TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+requires_capability:
+  path: media_buy.supported_delivery_types
+  contains: non_guaranteed
 
 required_tools:
   - get_products

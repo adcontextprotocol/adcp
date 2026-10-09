@@ -1,5 +1,5 @@
 id: media_buy_seller/dependency_impairment_cardinality
-version: "1.0.1"
+version: "1.0.2"
 title: "Dependency impairment cardinality — impairments[] tracks each offline resource independently"
 category: media_buy_seller
 summary: "Two creatives on two packages of the same buy. Rejects them sequentially and verifies impairments[] grows 0 → 1 → 2; recovers them sequentially via swap-assignment and verifies impairments[] shrinks 2 → 1 → 0. Pressure-tests the inverse rule under cardinality — a seller emitting any impairment entry rather than the right one fails."
@@ -30,6 +30,9 @@ requires_all_capabilities:
     contains: "snapshot"
   - path: creative.has_creative_library
     equals: true
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 narrative: |
   The base dependency_impairment scenario tests forward + inverse + health-iff

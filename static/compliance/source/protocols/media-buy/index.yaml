@@ -1,5 +1,5 @@
 id: media_buy_seller
-version: "1.0.1"
+version: "1.1.0"
 title: "Media buy seller agent"
 category: media_buy_seller
 summary: "Seller agent that receives briefs, returns products, accepts media buys, and reports delivery."
@@ -81,6 +81,13 @@ narrative: |
   are tested by capability-gated required scenarios that run alongside this storyboard.
   See requires_scenarios for the full set of seller behaviors validated.
 
+  A seller that declares `media_buy.supported_delivery_types` without
+  `non_guaranteed` sells only reserved inventory. This storyboard and the
+  inherited scenarios that need non-guaranteed fixtures grade not_applicable for
+  that seller (no coverage, not a pass), and `media_buy_seller_guaranteed`
+  grades the guaranteed core flow in their place. That is a temporary,
+  reduced-coverage profile until the scenarios are delivery-mode aware.
+
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -107,13 +114,24 @@ prerequisites:
   controller_seeding: true
 
 # The base media-buy lifecycle exercises the universal NON-GUARANTEED
-# (auction-based) path so that every media-buy seller can run it — including
+# (auction-based) path so that every media-buy seller can run it, including
 # sellers that declare only `specialisms: ["sales-non-guaranteed"]`. A
 # non-guaranteed-only seller correctly rejects a guaranteed buy with
-# DELIVERY_MODE_NOT_SUPPORTED, so guaranteed-only fixtures here failed the whole
-# base flow (create_buy + the dependent steps) for that entire seller class. The
-# guaranteed lifecycle (human IO approval, proposal_finalize) is covered by the
+# UNSUPPORTED_FEATURE, so guaranteed-only fixtures here failed the whole base
+# flow for that seller class. The mirror case is gated, not adapted: a seller
+# that declares `media_buy.supported_delivery_types` without `non_guaranteed`
+# cannot take these buys, and every follow-on check here needs a media_buy_id
+# issued in the create response, which a guaranteed buy defers to task
+# completion. The storyboard is therefore not applicable to such a seller, which
+# is graded on `media_buy_seller_guaranteed` instead. Undeclared means both
+# modes (schema default), so existing sellers see no change. The guaranteed
+# lifecycle (human IO approval, proposal_finalize) is covered by the
 # `sales-guaranteed` specialism bundle, which carries its own guaranteed fixtures.
+# TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+requires_capability:
+  path: media_buy.supported_delivery_types
+  contains: non_guaranteed
+
 fixtures:
   products:
     - product_id: "sports_preroll_q2"

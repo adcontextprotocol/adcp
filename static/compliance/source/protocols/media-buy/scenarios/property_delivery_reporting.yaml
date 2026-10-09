@@ -1,14 +1,17 @@
 id: media_buy_seller/property_delivery_reporting
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.3"
 title: "Seller reports delivery by property from injected rows"
 category: media_buy_seller
 summary: "Verifies reporting_dimensions.property returns only controller-injected property rows with truncation, suppression, and applied-sort companions; gated on the seller-wide supports_property_breakdown rollup."
 track: reporting
 
-requires_capability:
-  path: media_buy.features.supports_property_breakdown
-  equals: true
+requires_all_capabilities:
+  - path: media_buy.features.supports_property_breakdown
+    equals: true
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 requires:
   - controller

@@ -1,5 +1,5 @@
 id: media_buy_seller/bidding_cost_binding
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller rejects ambiguous fixed cost-control binding"
 category: media_buy_seller
 summary: "Verifies that fixed media-buy cost caps bind deterministically and cannot mean different result units across inheriting packages."
@@ -7,9 +7,12 @@ track: media_buy
 requires:
   - controller
 
-requires_capability:
-  path: media_buy.features.bidding_policy.media_buy.fixed.cost_per_strengths
-  contains: cap
+requires_all_capabilities:
+  - path: media_buy.features.bidding_policy.media_buy.fixed.cost_per_strengths
+    contains: cap
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - create_media_buy

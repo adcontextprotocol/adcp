@@ -1,11 +1,16 @@
 id: media_buy_seller/product_filter_behavior
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller applies deterministic product filters in every buying mode"
 category: media_buy_seller
 summary: "Verifies schema-valid get_products filters affect brief curation, wholesale feeds, and refinement instead of silently no-oping."
 track: media_buy
 requires:
   - controller
+
+# TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+requires_capability:
+  path: media_buy.supported_delivery_types
+  contains: non_guaranteed
 
 required_tools:
   - get_products

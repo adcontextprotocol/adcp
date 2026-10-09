@@ -1,5 +1,5 @@
 id: media_buy_seller/seller_optimized_proposal_package_pacing
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller-optimized proposal carries subordinate package pacing into the buy"
 category: media_buy_seller
 summary: "Verifies that a seller advertising seller-optimized budgets, package pacing, and proposals can express subordinate allocation pacing on a seller-optimized proposal and translate it into package pacing on execution and readback."
@@ -20,6 +20,9 @@ requires_all_capabilities:
     equals: true
   - path: media_buy.supports_proposals
     equals: true
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - get_products

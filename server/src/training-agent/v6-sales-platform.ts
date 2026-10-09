@@ -93,6 +93,7 @@ import {
   taskRegistryScopeFromContext,
 } from './task-registry-scope.js';
 import { scopedPrincipal } from './idempotency.js';
+import { declaredDeliveryTypes, specialismsForDeliveryModes } from './delivery-mode-seam.js';
 import {
   SellerManagedControlJobCoordinator,
   type SellerManagedControlJobContext,
@@ -1583,7 +1584,24 @@ export class TrainingSalesPlatform
     // no longer derives the retained 3.2-rc.7 checkpoint on its own. Declare
     // the served releases explicitly so exact prerelease pins negotiate to
     // the checkpoint the agent advertises instead of downshifting to 3.1.
-    return { ...TRAINING_SALES_CAPABILITIES, supported_versions: [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS] };
+    // Test-only delivery-mode seam (adcp#7852): when TRAINING_SALES_DELIVERY_MODES is
+    // set, declare media_buy.supported_delivery_types and drop the other mode's
+    // specialism. Unset leaves the capabilities exactly as before.
+    const supportedDeliveryTypes = declaredDeliveryTypes();
+    return {
+      ...TRAINING_SALES_CAPABILITIES,
+      ...(supportedDeliveryTypes && {
+        specialisms: specialismsForDeliveryModes(TRAINING_SALES_CAPABILITIES.specialisms),
+        overrides: {
+          ...TRAINING_SALES_CAPABILITIES.overrides,
+          media_buy: {
+            ...TRAINING_SALES_CAPABILITIES.overrides.media_buy,
+            supported_delivery_types: supportedDeliveryTypes,
+          },
+        },
+      }),
+      supported_versions: [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
+    };
   }
 
   async acknowledgeSellerManagedWebhook(taskId: string): Promise<void> {

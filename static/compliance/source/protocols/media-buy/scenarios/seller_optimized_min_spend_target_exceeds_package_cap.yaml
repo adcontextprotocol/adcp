@@ -1,5 +1,5 @@
 id: media_buy_seller/seller_optimized_min_spend_target_exceeds_package_cap
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller rejects a minimum-spend target above its own package cap"
 category: media_buy_seller
 summary: "Verifies that a seller advertising seller-optimized budgets, package budget caps, and minimum-spend targets rejects a package min_spend_target above that package's budget with INVALID_REQUEST before mutation."
@@ -21,6 +21,9 @@ requires_all_capabilities:
     equals: true
   - path: media_buy.features.seller_optimized_min_spend_targets
     equals: true
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - get_products

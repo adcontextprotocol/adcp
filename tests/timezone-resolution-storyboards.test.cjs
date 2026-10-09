@@ -19,6 +19,18 @@ const scenariosDir = path.join(
   'scenarios'
 );
 
+
+// Scenarios that create buys on non-guaranteed fixtures also carry a delivery-mode
+// gate (adcp#7852). These tests pin the capability gates of the feature under test.
+const DELIVERY_GATE_PATH = 'media_buy.supported_delivery_types';
+function gatesWithoutDelivery(doc) {
+  const predicates = [
+    ...(doc.requires_capability ? [doc.requires_capability] : []),
+    ...(doc.requires_all_capabilities ?? []),
+  ];
+  return predicates.filter(predicate => predicate.path !== DELIVERY_GATE_PATH);
+}
+
 function load(name) {
   return YAML.parse(fs.readFileSync(path.join(scenariosDir, `${name}.yaml`), 'utf8'));
 }
@@ -474,10 +486,10 @@ test('default cap timezone scenarios gate each supported scope and assert durabl
 
   for (const [name, basis] of cases) {
     const doc = load(name);
-    assert.deepEqual(doc.requires_capability, {
+    assert.deepEqual(gatesWithoutDelivery(doc), [{
       path: 'media_buy.budget_capping.timezone_basis',
       equals: basis,
-    });
+    }]);
     assert.deepEqual(doc.phases.find(phase => phase.id === 'aggregate_cap').requires_capability, {
       path: 'media_buy.budget_capping.supported_scopes',
       contains: 'media_buy',
@@ -501,10 +513,10 @@ test('default cap timezone scenarios gate each supported scope and assert durabl
 
 test('buyer override scenario covers aggregate and package caps with one shared boundary', () => {
   const doc = load('budget_cap_timezone_override');
-  assert.deepEqual(doc.requires_capability, {
+  assert.deepEqual(gatesWithoutDelivery(doc), [{
     path: 'media_buy.budget_capping.buyer_timezone_override',
     equals: true,
-  });
+  }]);
 
   for (const phaseId of ['aggregate_override', 'package_override']) {
     const phase = doc.phases.find(candidate => candidate.id === phaseId);
@@ -528,10 +540,10 @@ test('buyer override scenario covers aggregate and package caps with one shared 
 
 test('unadvertised buyer override is an executable negative conformance path', async () => {
   const doc = load('budget_cap_timezone_override_rejected');
-  assert.deepEqual(doc.requires_capability, {
+  assert.deepEqual(gatesWithoutDelivery(doc), [{
     path: 'media_buy.budget_capping.supported_scopes',
     contains: 'media_buy',
-  });
+  }]);
   assert.deepEqual(doc.phases.map(phase => phase.requires_capability), [
     { path: 'media_buy.budget_capping.buyer_timezone_override', equals: false },
     { path: 'media_buy.budget_capping.buyer_timezone_override', present: false },
@@ -556,6 +568,7 @@ test('unadvertised buyer override is an executable negative conformance path', a
             supported_periods: ['daily'],
             timezone_basis: 'account',
           },
+          supported_delivery_types: ['guaranteed', 'non_guaranteed'],
         },
       },
     },

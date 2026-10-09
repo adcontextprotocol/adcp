@@ -1401,6 +1401,17 @@
           "x-status": "experimental",
           "description": "AdCP 3.2 Reliable Reporting capability. The affirmative machine answer to ‘Do you support Reliable Reporting?’ requires this block with supported: true and reliable_reporting_version: 1.0 plus media_buy.reporting_delivery in experimental_features. Core exposes seller get_reporting_status; during the published migration window, consumer_status_task separately advertises opt-in buyer-to-seller sync_reporting_status and becomes required Core only in the next eligible minor. managed_delivery and reconciled_billing identify optional tiers. This generalizes, but does not remove, the legacy reporting_delivery_methods/offline_delivery_protocols surface; those legacy fields and declarations from other protocols do not imply Reliable Reporting support."
         },
+        "supported_delivery_types": {
+          "type": "array",
+          "description": "Product delivery modes this seller sells, seller-wide. 'guaranteed' is a reserved delivery commitment (programmatic guaranteed and other reserved or IO-approved buys); 'non_guaranteed' is everything else, including auction, private marketplace and preferred deals, unless the seller commits delivery, in which case the product is guaranteed (see delivery-type.json). A seller that sells only reserved inventory declares ['guaranteed']; one that sells only auction or best-effort inventory declares ['non_guaranteed']. Absent means both, which is the behavior before this field existed. Sellers MUST reject a create_media_buy whose packages reference a product of an undeclared delivery mode with UNSUPPORTED_FEATURE (correctable: pick a product of a declared mode) and MUST NOT list such products in get_products. Conformance storyboards gate non-guaranteed fixture flows on 'non_guaranteed' being declared and grade a seller that does not declare it on the media_buy_seller_guaranteed baseline, so a subset declaration trades coverage for applicability; declaring a subset while selling the other mode is a misdeclaration. The absent-means-both default is resolved by the runner only when the media_buy object is present, so sellers MUST emit a media_buy block in get_adcp_capabilities. Does not replace the sales-guaranteed and sales-non-guaranteed specialism declarations.",
+          "items": {
+            "$ref": "/schemas/enums/delivery-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["guaranteed", "non_guaranteed"],
+          "x-added-in": "3.3.0"
+        },
         "supports_proposals": {
           "type": "boolean",
           "description": "Conformance declaration that this seller supports proposals through either the compact request/refine/finalize lifecycle or the legacy get_products facade. accept_proposal, or the create_media_buy compatibility facade, consumes a finalized committed proposal_id before expires_at.",

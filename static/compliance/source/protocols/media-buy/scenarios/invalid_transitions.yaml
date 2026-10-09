@@ -1,5 +1,5 @@
 id: media_buy_seller/invalid_transitions
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller rejects illegal state transitions and unknown references"
 category: media_buy_seller
 summary: "Validates that the seller returns structured AdCP errors (MEDIA_BUY_NOT_FOUND, PACKAGE_NOT_FOUND, NOT_CANCELLABLE) rather than 500s or undefined behavior when the buyer references missing entities or attempts forbidden state transitions."
@@ -7,6 +7,10 @@ track: media_buy
 requires:
   - controller
 
+# TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+requires_capability:
+  path: media_buy.supported_delivery_types
+  contains: non_guaranteed
 required_tools:
   - get_products
   - create_media_buy
