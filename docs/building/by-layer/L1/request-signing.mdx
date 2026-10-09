@@ -59,16 +59,20 @@ For blast-radius isolation, publish a second `request-signing` key under a separ
 
 ### Discovery chain
 
-Verifiers find your public key through a three-step chain:
+Verifiers find your public key starting from your agent URL:
 
 ```
-Your domain (e.g., agent.example.com)
-  -> /.well-known/brand.json          # brand manifest with agent declarations
-     -> agents[].jwks_uri             # pointer to your key store
-        -> /.well-known/jwks.json     # JSON Web Key Set with public keys
+Your agent URL (e.g., https://agent.example.com/mcp)
+  -> get_adcp_capabilities                   # protocol call to your agent
+     -> identity.brand_json_url              # pointer to your operator brand.json
+        -> agents[] entry matching your URL  # operator attests the agent
+           -> jwks_uri                       # pointer to your key store
+              -> JWKS                        # public keys, matched by keyid
 ```
 
-The `@adcp/client` SDK provides `BrandJsonJwksResolver` which handles this chain automatically with caching and refresh.
+The verifier calls your agent, not your domain's `/.well-known/brand.json`. Many brand.json files can list the same agent URL, so only the one your agent points to counts. The domain-derived `/.well-known/brand.json` lookup is a 3.x fallback for webhooks from older sellers, never for request signatures. The full algorithm and its error codes are in [Discovering an agent's signing keys via `brand_json_url`](/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url).
+
+The `@adcp/sdk` resolvers `ResolvedAgentJwksResolver` and `BrandJsonJwksResolver` run this chain with caching and refresh. Both call `get_adcp_capabilities` on the agent URL, including when the seller already holds an onboarding record for the agent.
 
 ## Step 1: Generate a signing key
 
@@ -184,7 +188,7 @@ Only public keys go here — no `d` field. Set `Cache-Control: max-age=3600` or 
 
 ### brand.json
 
-Serve at `/.well-known/brand.json` on your brand domain. The `jwks_uri` is how verifiers find your keys:
+Serve at `/.well-known/brand.json` on your brand domain. The `agents[].url` must be your exact agent URL, and the `jwks_uri` is how verifiers find your keys:
 
 ```json
 {
@@ -192,14 +196,32 @@ Serve at `/.well-known/brand.json` on your brand domain. The `jwks_uri` is how v
   "domain": "example.com",
   "agents": [
     {
+      "type": "buying",
+      "id": "media_buyer",
       "url": "https://agent.example.com",
-      "jwks_uri": "https://agent.example.com/.well-known/jwks.json",
-      "capabilities": ["media-buy"],
-      "adcp_use": ["request-signing"]
+      "jwks_uri": "https://agent.example.com/.well-known/jwks.json"
     }
   ]
 }
 ```
+
+### Capabilities pointer
+
+Your agent's `get_adcp_capabilities` response carries `identity.brand_json_url`, the HTTPS URL of the brand.json above. The host of that URL must share a registrable domain (eTLD+1) with your agent URL, unless the brand.json delegates your agent's domain through `authorized_operators[]`.
+
+```json
+{
+  "identity": {
+    "brand_json_url": "https://example.com/.well-known/brand.json"
+  }
+}
+```
+
+<Note>
+**Buyers that only call sellers still answer `get_adcp_capabilities`.** A verifier starts from your agent URL, so a buyer that signs requests must answer `get_adcp_capabilities` there, over MCP or A2A, even if it hosts no other tools. A seller's onboarding record doesn't remove this. The record must be re-confirmed against your `identity.brand_json_url` within the brand.json cache lifetime (see [Agent resolution](/docs/building/by-layer/L1/security#agent-resolution)). A buyer that serves nothing at its agent URL fails verification with `request_signature_capabilities_unreachable`.
+
+Verifiers read only `identity` from this response. The response schema still requires `adcp` and a non-empty `supported_protocols`, whose values commit the agent to the matching seller-side storyboards, and there is no buyer-only value yet. A path for signers with no capabilities endpoint, and a response shape for buyers that serve nothing else, are under discussion in [#6105](https://github.com/adcontextprotocol/adcp/issues/6105).
+</Note>
 
 ## Step 3: Sign outbound requests (buyer / orchestrator)
 
