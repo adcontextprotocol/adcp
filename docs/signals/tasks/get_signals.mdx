@@ -261,6 +261,9 @@ custom or brief-specific signals return deeper inline context when useful.
     - `model: "flat_fee"` — `amount` (fixed charge), `currency` (ISO 4217), `period` (`monthly`, `quarterly`, `annual`, or `campaign`)
     - `model: "per_unit"` — `unit` (what is counted), `unit_price` (cost per one unit), `currency` (ISO 4217)
     - `model: "custom"` — `description` (human-readable), `metadata` (structured parameters), `currency` (optional). Escape hatch for performance kickers, tiered volume, hybrid formulas, or any construct the standard models cannot express. Buyers SHOULD route custom pricing through operator review before commitment.
+  - **pricing_group** (string, optional, experimental): Seller-defined key naming signals whose fees combine under one rule when selected in the same package. Omit for an independent fee.
+
+The response MAY also carry top-level `signal_pricing_group_rules[]` (`{pricing_group, pricing_combination}`, where `pricing_combination` is `highest` or `each`) as signal-agent defaults; a group with no rule is charged `each`. Experimental: see [Signal pricing groups](/docs/media-buy/advanced-topics/targeting#signal-pricing-groups) for the combination rules.
 
 Select the pricing option that matches your billing model. For direct signal activation, pass its `pricing_option_id` in `report_usage` for billing verification; for seller-offered signals selected on a media product, pass it in package-level `targeting_overlay.signal_targeting_groups.groups[].signals[].pricing_option_id`. If a signal offers multiple models (e.g., CPM and flat fee), choose based on your expected delivery volume and campaign structure.
 
