@@ -25,11 +25,13 @@
       "minItems": 1
     },
     "predecessor_media_buy_id": {
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
       "type": "string",
       "minLength": 1,
       "maxLength": 255,
       "x-entity": "media_buy",
-      "description": "Return only the direct successors of this buy: media buys created with this `predecessor_media_buy_id`. Composes with other filters (AND) and, like `media_buy_ids`, suppresses the implicit `[\"active\"]` status default. An unknown or inaccessible ID returns an empty page, not an error."
+      "description": "Return only the direct successors of this buy: media buys created with this `predecessor_media_buy_id`. Composes with other filters (AND) and, like `media_buy_ids`, suppresses the implicit `[\"active\"]` status default. An unknown or inaccessible ID returns an empty page, not an error. Experimental in AdCP 3.3 (`media_buy.lineage`): send it only to sellers that list that feature id."
     },
     "status_filter": {
       "oneOf": [

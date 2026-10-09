@@ -61,11 +61,15 @@
             "description": "Account billed for this media buy"
           },
           "predecessor_media_buy_id": {
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
             "type": "string",
             "x-entity": "media_buy",
-            "description": "Media buy this one succeeds, as set at creation. Same seller and account; the predecessor carries no reverse link and may no longer be retrievable. Sellers MUST echo it for buys created with it."
+            "description": "Media buy this one succeeds, as set at creation. Same seller and account; the predecessor carries no reverse link and may no longer be retrievable. Sellers MUST echo it for buys created with it. Experimental in AdCP 3.3 (`media_buy.lineage`)."
           },
           "lineage_reason": {
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
             "$ref": "/schemas/enums/media-buy-lineage-reason.json",
             "description": "Why this buy succeeds its predecessor. Present whenever `predecessor_media_buy_id` is."
           },

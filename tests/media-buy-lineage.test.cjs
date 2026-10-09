@@ -6,7 +6,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
 const SCHEMA_ROOT = path.join(__dirname, '../static/schemas/source');
-const REASONS = ['renewal', 'terms_change', 'migration', 'sunset'];
+const REASONS = ['renewal', 'terms_change', 'migration', 'sunset', 'replacement'];
 
 function readSchema(uri) {
   assert.ok(uri.startsWith('/schemas/'), `Unexpected schema URI: ${uri}`);
@@ -57,8 +57,12 @@ const REQUESTS = {
   },
 };
 
-test('lineage reason is a closed four-value enum registered in the schema index', () => {
-  assert.deepEqual(readSchema('/schemas/enums/media-buy-lineage-reason.json').enum, REASONS);
+test('lineage reason is a closed five-value experimental enum registered in the schema index', () => {
+  const reason = readSchema('/schemas/enums/media-buy-lineage-reason.json');
+  assert.deepEqual(reason.enum, REASONS);
+  assert.deepEqual(Object.keys(reason.enumDescriptions), REASONS);
+  assert.equal(reason['x-status'], 'experimental');
+  assert.equal(reason['x-added-in'], '3.3.0');
   const entry = readSchema('/schemas/index.json').schemas.enums.schemas['media-buy-lineage-reason'];
   assert.equal(entry.$ref, '/schemas/enums/media-buy-lineage-reason.json');
 });
@@ -77,7 +81,7 @@ for (const [task, { uri, base }] of Object.entries(REQUESTS)) {
     const validate = await compile(readSchema(uri));
     assert.equal(validate({ ...base, predecessor_media_buy_id: 'mb_pinnacle_q3' }), false);
     assert.equal(validate({ ...base, lineage_reason: 'renewal' }), false);
-    assert.equal(validate({ ...base, ...lineage, lineage_reason: 'replacement' }), false);
+    assert.equal(validate({ ...base, ...lineage, lineage_reason: 'bogus' }), false);
     assert.equal(validate({ ...base, ...lineage, predecessor_media_buy_id: '' }), false);
   });
 
@@ -129,5 +133,27 @@ test('get_media_buys items and the core media buy echo the lineage fields', asyn
   assert.equal(validate(wrap(buy)), true, JSON.stringify(validate.errors));
   assert.equal(validate(wrap({ ...buy, ...lineage })), true, JSON.stringify(validate.errors));
   assert.equal(validate(wrap({ ...buy, predecessor_media_buy_id: 'mb_pinnacle_q3' })), false);
-  assert.equal(validate(wrap({ ...buy, ...lineage, lineage_reason: 'replacement' })), false);
+  assert.equal(validate(wrap({ ...buy, ...lineage, lineage_reason: 'bogus' })), false);
+});
+
+test('every new lineage property is experimental, marked 3.3.0, and listed in the registry', () => {
+  const SCHEMAS = [
+    ['/schemas/media-buy/create-media-buy-request.json', (d) => d.properties],
+    ['/schemas/media-buy/buy-products-request.json', (d) => d.properties],
+    ['/schemas/media-buy/accept-proposal-request.json', (d) => d.properties],
+    ['/schemas/media-buy/get-media-buys-response.json', (d) => d.properties.media_buys.items.properties],
+    ['/schemas/core/media-buy.json', (d) => d.properties],
+  ];
+  for (const [uri, pick] of SCHEMAS) {
+    const props = pick(readSchema(uri));
+    for (const name of ['predecessor_media_buy_id', 'lineage_reason']) {
+      assert.equal(props[name]['x-status'], 'experimental', `${uri} ${name}`);
+      assert.equal(props[name]['x-added-in'], '3.3.0', `${uri} ${name}`);
+    }
+  }
+  const filter = readSchema('/schemas/media-buy/get-media-buys-request.json').properties.predecessor_media_buy_id;
+  assert.equal(filter['x-status'], 'experimental');
+  assert.equal(filter['x-added-in'], '3.3.0');
+  const registry = fs.readFileSync(path.join(__dirname, '../docs/reference/experimental-status.mdx'), 'utf8');
+  assert.match(registry, /^\| `media_buy\.lineage` \|/m);
 });

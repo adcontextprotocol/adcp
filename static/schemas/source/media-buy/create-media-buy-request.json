@@ -162,13 +162,17 @@
       "description": "Override the account's default billing entity for this specific buy. When provided, the seller invoices this entity instead. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
     },
     "predecessor_media_buy_id": {
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
       "type": "string",
       "minLength": 1,
       "maxLength": 255,
       "x-entity": "media_buy",
-      "description": "Media buy this one succeeds (renewal, migration, or sunset). Forward-only: set once at creation; the predecessor is never modified. MUST be an existing buy of the same seller and account, else `MEDIA_BUY_NOT_FOUND`. Requires `lineage_reason`. See the Media Buy Lineage section of the media-buy specification."
+      "description": "Media buy this one succeeds (renewal, migration, or sunset). Forward-only: set once at creation; the predecessor is never modified. MUST be an existing buy of the same seller and account, else `MEDIA_BUY_NOT_FOUND`. Requires `lineage_reason`. See the Media Buy Lineage section of the media-buy specification. Experimental in AdCP 3.3: sellers that implement it list `media_buy.lineage` in `experimental_features`, buyers send it only to sellers that do, and a seller that cannot record it rejects the request with `UNSUPPORTED_FEATURE`."
     },
     "lineage_reason": {
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
       "$ref": "/schemas/enums/media-buy-lineage-reason.json",
       "description": "Why this buy succeeds its predecessor. Supplied with, and only with, `predecessor_media_buy_id` (`INVALID_REQUEST` otherwise). Reasons outside the closed enum go in `ext`."
     },
