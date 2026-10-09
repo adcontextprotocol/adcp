@@ -1,0 +1,46 @@
+{
+  "name": "Governance token issued by the governance identity https://governance-7k3q.com with its own key",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#one-agent-per-purpose",
+  "signing_profile": "web-bot-auth",
+  "document_type": "governance_context",
+  "reference_now": 1790841610,
+  "jws": "eyJhbGciOiJFZDI1NTE5IiwidHlwIjoiYWRjcC1nb3YrandzIiwiamt1IjoiaHR0cHM6Ly9nb3Zlcm5hbmNlLTdrM3EuY29tLy53ZWxsLWtub3duL2h0dHAtbWVzc2FnZS1zaWduYXR1cmVzLWRpcmVjdG9yeSIsImtpZCI6IjFYbEozRUl0ZTdiUE9FcUtRdEtyS05UTnk1aHl3VHlyd0ZYV3JNYlhLcUUifQ.eyJpc3MiOiJodHRwczovL2dvdmVybmFuY2UtN2szcS5jb20iLCJhdWQiOiJodHRwczovL3NlbGxlci03azNxLmNvbS9tY3AvIiwicGhhc2UiOiJpbnRlbnQiLCJqdGkiOiIwMUo5WlE0TThUNlczUjVZMks3TjFQMEI5QyIsImlhdCI6MTc5MDg0MTUwMCwiZXhwIjoxNzkwODQyNDAwfQ.p5jSxfBPrQ5Yj7PAGM8sWvABhdHON-6hKAeoaKmZnGdOslxlGrWmWOmjmk1PCCWinRiZAtJEIkaSoWOTZAs6AA",
+  "decoded": {
+    "header": {
+      "alg": "Ed25519",
+      "typ": "adcp-gov+jws",
+      "jku": "https://governance-7k3q.com/.well-known/http-message-signatures-directory",
+      "kid": "1XlJ3EIte7bPOEqKQtKrKNTNy5hywTyrwFXWrMbXKqE"
+    },
+    "payload": {
+      "iss": "https://governance-7k3q.com",
+      "aud": "https://seller-7k3q.com/mcp/",
+      "phase": "intent",
+      "jti": "01J9ZQ4M8T6W3R5Y2K7N1P0B9C",
+      "iat": 1790841500,
+      "exp": 1790842400
+    }
+  },
+  "directories": {
+    "https://governance-7k3q.com": {
+      "keys_ref": [
+        "1XlJ3EIte7bPOEqKQtKrKNTNy5hywTyrwFXWrMbXKqE"
+      ]
+    },
+    "https://buyer-7k3q.com": {
+      "keys_ref": [
+        "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+      ]
+    }
+  },
+  "role_listing": {
+    "adcp:governance": [
+      "https://governance-7k3q.com"
+    ]
+  },
+  "expected_outcome": {
+    "success": true,
+    "issuer": "https://governance-7k3q.com"
+  },
+  "$comment": "The token in RFC #7878's illustrations. jku is the WBA directory of the iss origin, the kid is in that directory, the signature verifies, and the iss origin is listed in the governance role. role_listing stands in for the record the verifier already trusts: in deployment, the governance-typed agents[] entry in the buyer's brand.json, or the adcp:governance role in trust.json once #7809 lands. The token's other claims (aud, phase, sub, action binding, revocation, replay) follow the existing governance checklist and are not graded here."
+}

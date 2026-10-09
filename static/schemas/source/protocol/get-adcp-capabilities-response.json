@@ -2951,6 +2951,20 @@
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a"
           }
+        },
+        "profiles": {
+          "type": "array",
+          "description": "Request-signing profiles this agent verifies, named by the RFC 9421 `tag` value each profile puts in `Signature-Input`. `adcp/request-signing/v1` is the AdCP RFC 9421 profile defined in docs/building/by-layer/L1/security.mdx (Signed Requests (Transport Layer)). `web-bot-auth` is the Web Bot Auth profile proposed for 3.3 in docs/building/by-layer/L1/wba-profile.mdx: the verifier resolves the signer's keys from the origin named in the covered `Signature-Agent` header, and a verified identity the seller has not approved gets no account access. Omission means `[\"adcp/request-signing/v1\"]`, so every 3.0 to 3.2 capability document keeps its meaning. A buyer signs with a profile the seller lists. The operation lists (`required_for`, `warn_for`, `supported_for`, and the `protocol_methods_*` lists) apply to every listed profile.",
+          "items": {
+            "type": "string",
+            "enum": ["adcp/request-signing/v1", "web-bot-auth"]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["adcp/request-signing/v1"],
+          "x-adcp-validation": {
+            "spec": "docs/building/by-layer/L1/wba-profile.mdx#capability"
+          }
         }
       },
       "required": ["supported"]
@@ -3023,6 +3037,19 @@
           "description": "Maximum elapsed time from the first delivery attempt during which this agent may retry the same webhook delivery. The publisher retains the immutable delivery-key-to-RFC-8785-JCS-payload binding and sufficient delivery state for at least this interval, and MUST NOT retry that key afterward. Receivers retain the matching payload binding and terminal publication proof for at least max(86400, this value) seconds in AdCP 3.x. Retries do not extend the horizon. A webhook-emitting AdCP 3.2 agent MUST populate this additive field; it remains schema-optional so existing 3.x capability documents stay valid. Minimum 86400 (24h), maximum 604800 (7d).",
           "minimum": 86400,
           "maximum": 604800
+        },
+        "profiles": {
+          "type": "array",
+          "description": "Webhook-signing profiles this agent can sign outbound webhooks with, named by the RFC 9421 `tag` value. `adcp/webhook-signing/v1` is the AdCP webhook profile named in `profile`. `web-bot-auth` is the Web Bot Auth profile proposed for 3.3 in docs/building/by-layer/L1/wba-profile.mdx (Webhooks), under which a webhook is an ordinary signed request from the seller's identity. The seller signs each delivery with the one profile the subscriber selected in its notification configuration's `signing_profile`, and rejects a configuration that selects a profile not listed here. Omission means `[\"adcp/webhook-signing/v1\"]`. The list includes the value of `profile`.",
+          "items": {
+            "$ref": "/schemas/enums/webhook-signing-profile.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["adcp/webhook-signing/v1"],
+          "x-adcp-validation": {
+            "spec": "docs/building/by-layer/L1/wba-profile.mdx#webhooks"
+          }
         }
       },
       "required": ["supported"]

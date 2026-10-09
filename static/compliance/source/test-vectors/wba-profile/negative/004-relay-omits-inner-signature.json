@@ -1,0 +1,52 @@
+{
+  "name": "Relay adds a second signature that does not cover the brand agent's signature members",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#relays",
+  "signing_profile": "web-bot-auth",
+  "reference_now": 1790841610,
+  "request": {
+    "method": "POST",
+    "url": "https://seller-7k3q.com/mcp/",
+    "headers": {
+      "Content-Type": "application/json",
+      "Content-Digest": "sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:",
+      "Signature-Agent": "brand=\"https://agent.brand-7k3q.com\", relay=\"https://relay.agency-7k3q.com\"",
+      "Signature-Input": "brand=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"brand\");created=1790841600;expires=1790841900;nonce=\"YwSl5nr5sFmghcAAPcAs5F3qh9fJLt9-2hWehzPpaxqlJzZpjJ4xxRKFpVPfuC8fM_Zb1VkZLSHH00cYWL7J-g\";keyid=\"hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI\";alg=\"ed25519\";tag=\"web-bot-auth\", relay=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"relay\");created=1790841601;expires=1790841901;nonce=\"pFCSjj_rt5LZuG-V4YvQAcOlDBrfb8Y35GQsMHTcpO99SLTcz-osapOLlF7767B6CyiDfZCertLo87_dfioQHg\";keyid=\"ZtaFf5jj-EzorJmZn6mX3YnmK_QyZKVLbbinzIQKOjQ\";alg=\"ed25519\";tag=\"web-bot-auth\"",
+      "Signature": "brand=:7QHcZuQ1NGje/glPbC1DTSmnKDFPf8FIJohfZEOs6/INcF1I5I6xcNsWz3+Czj9mtGQWRG9wmDOWTAmnPQcoAA==:, relay=:2yPlznBMeRW3OuZL0nTEiAre21tcqZH04+dfLsykHH+5FOQzdACO+Bf7i1CYQE24TWrz5NallQc2+yr+ehX1CA==:"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"create_media_buy\",\"arguments\":{\"idempotency_key\":\"4f6c1a0e-8d2b-4b7e-9c3a-2e5d7f1b0a96\",\"account\":{\"account_id\":\"acc_42\"},\"proposal_id\":\"prop_7\",\"total_budget\":{\"amount\":25000,\"currency\":\"USD\"}}}}"
+  },
+  "directories": {
+    "https://agent.brand-7k3q.com": {
+      "keys_ref": [
+        "hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI"
+      ]
+    },
+    "https://relay.agency-7k3q.com": {
+      "keys_ref": [
+        "ZtaFf5jj-EzorJmZn6mX3YnmK_QyZKVLbbinzIQKOjQ"
+      ]
+    }
+  },
+  "expected_signature_base": {
+    "brand": "\"@method\": POST\n\"@target-uri\": https://seller-7k3q.com/mcp/\n\"@authority\": seller-7k3q.com\n\"content-type\": application/json\n\"content-digest\": sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:\n\"signature-agent\";key=\"brand\": \"https://agent.brand-7k3q.com\"\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"brand\");created=1790841600;expires=1790841900;nonce=\"YwSl5nr5sFmghcAAPcAs5F3qh9fJLt9-2hWehzPpaxqlJzZpjJ4xxRKFpVPfuC8fM_Zb1VkZLSHH00cYWL7J-g\";keyid=\"hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI\";alg=\"ed25519\";tag=\"web-bot-auth\"",
+    "relay": "\"@method\": POST\n\"@target-uri\": https://seller-7k3q.com/mcp/\n\"@authority\": seller-7k3q.com\n\"content-type\": application/json\n\"content-digest\": sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:\n\"signature-agent\";key=\"relay\": \"https://relay.agency-7k3q.com\"\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"relay\");created=1790841601;expires=1790841901;nonce=\"pFCSjj_rt5LZuG-V4YvQAcOlDBrfb8Y35GQsMHTcpO99SLTcz-osapOLlF7767B6CyiDfZCertLo87_dfioQHg\";keyid=\"ZtaFf5jj-EzorJmZn6mX3YnmK_QyZKVLbbinzIQKOjQ\";alg=\"ed25519\";tag=\"web-bot-auth\""
+  },
+  "expected_outcome": {
+    "success": false,
+    "status": 403,
+    "accept_signature": {
+      "label": "relay",
+      "components": "(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"relay\" \"signature-agent\";key=\"brand\" \"signature-input\";key=\"brand\" \"signature\";key=\"brand\")",
+      "parameters": [
+        "created",
+        "expires",
+        "nonce",
+        "keyid",
+        "tag"
+      ],
+      "tag": "web-bot-auth"
+    },
+    "reason": "The profile requires each later signer to cover the signature-agent, signature-input, and signature members of the signature before it. The relay label covers none of the brand label's members."
+  },
+  "$comment": "Both signatures verify on their own, so a verifier that checks only cryptographic validity accepts the request. The relay's signature then records nothing about the brand agent's signature having been present, which is the evidence the profile requires of a relay (Web Bot Auth section 5.2.2 and Appendix D.2). The profile reports signature failures with HTTP status codes (Web Bot Auth sections 5.3 and 5.4). A 403 carries Accept-Signature naming the components and parameters the profile requires, so the signer can sign again. Conformance grades the status code; the accept_signature object describes the header the verifier sends, and the exact serialization is RFC 9421 section 5.1."
+}

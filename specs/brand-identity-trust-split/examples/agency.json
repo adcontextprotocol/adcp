@@ -4,8 +4,7 @@
   "agents": [
     {
       "url": "https://agent.pinnacle-agency.example/adcp",
-      "roles": ["adcp:buying"],
-      "jwks_uri": "https://agent.pinnacle-agency.example/.well-known/jwks.json"
+      "roles": ["adcp:buying"]
     }
   ],
   "grants": [

@@ -1517,6 +1517,10 @@
           "$ref": "/schemas/enums/auth-scheme.json",
           "description": "Authentication schemes for push notifications"
         },
+        "webhook-signing-profile": {
+          "$ref": "/schemas/enums/webhook-signing-profile.json",
+          "description": "Webhook-signing profiles a seller can sign deliveries with"
+        },
         "creative-sort-field": {
           "$ref": "/schemas/enums/creative-sort-field.json",
           "description": "Fields available for sorting creative listings"

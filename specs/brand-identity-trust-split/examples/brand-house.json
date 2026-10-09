@@ -13,7 +13,7 @@
     {
       "grantee": "sentinel-governance.example",
       "scopes": ["adcp:governance"],
-      "agents": [{ "url": "https://gov.sentinel-governance.example/t/7f3a9c" }]
+      "agents": [{ "url": "https://7f3a9c.sentinel-governance.example/mcp" }]
     }
   ]
 }

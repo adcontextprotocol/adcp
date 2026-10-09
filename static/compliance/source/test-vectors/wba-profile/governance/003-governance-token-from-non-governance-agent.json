@@ -1,0 +1,47 @@
+{
+  "name": "Governance token issued by the buyer agent https://buyer-7k3q.com, which is not the buyer's governance agent, with its own key and directory",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#one-agent-per-purpose",
+  "signing_profile": "web-bot-auth",
+  "document_type": "governance_context",
+  "reference_now": 1790841610,
+  "jws": "eyJhbGciOiJFZDI1NTE5IiwidHlwIjoiYWRjcC1nb3YrandzIiwiamt1IjoiaHR0cHM6Ly9idXllci03azNxLmNvbS8ud2VsbC1rbm93bi9odHRwLW1lc3NhZ2Utc2lnbmF0dXJlcy1kaXJlY3RvcnkiLCJraWQiOiI2V3NLTUNPYmJhNDlWM3VOMHZJRU5uazFCS0FrN2M5empCSmNXS3lROV9JIn0.eyJpc3MiOiJodHRwczovL2J1eWVyLTdrM3EuY29tIiwiYXVkIjoiaHR0cHM6Ly9zZWxsZXItN2szcS5jb20vbWNwLyIsInBoYXNlIjoiaW50ZW50IiwianRpIjoiMDFKOVpRNE04VDZXM1I1WTJLN04xUDBCOUUiLCJpYXQiOjE3OTA4NDE1MDAsImV4cCI6MTc5MDg0MjQwMH0.yrat0BpIuHUsbg-ErWFDHtOpqPYvUcOYgpnbGXPIl5EfsFJMk9FHV2BbY6pdc48lYoLqOtKNyNYgHdvVgbDcCA",
+  "decoded": {
+    "header": {
+      "alg": "Ed25519",
+      "typ": "adcp-gov+jws",
+      "jku": "https://buyer-7k3q.com/.well-known/http-message-signatures-directory",
+      "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+    },
+    "payload": {
+      "iss": "https://buyer-7k3q.com",
+      "aud": "https://seller-7k3q.com/mcp/",
+      "phase": "intent",
+      "jti": "01J9ZQ4M8T6W3R5Y2K7N1P0B9E",
+      "iat": 1790841500,
+      "exp": 1790842400
+    }
+  },
+  "directories": {
+    "https://governance-7k3q.com": {
+      "keys_ref": [
+        "1XlJ3EIte7bPOEqKQtKrKNTNy5hywTyrwFXWrMbXKqE"
+      ]
+    },
+    "https://buyer-7k3q.com": {
+      "keys_ref": [
+        "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+      ]
+    }
+  },
+  "role_listing": {
+    "adcp:governance": [
+      "https://governance-7k3q.com"
+    ]
+  },
+  "expected_outcome": {
+    "success": false,
+    "error_code": "governance_issuer_not_authorized",
+    "reason": "The iss origin is not the buyer's governance agent. The key, jku, and signature are all consistent, so this is the check that rejects the token."
+  },
+  "$comment": "Every check up to the governance-agent check passes: jku is the iss origin's directory, the kid is in it, and the signature verifies. A token is accepted for who issued it, not for which key signed it. A verifier that checks only that the key sits in the iss directory accepts this token. role_listing stands in for the record the verifier already trusts: in deployment, the governance-typed agents[] entry in the buyer's brand.json, or the adcp:governance role in trust.json once #7809 lands. The token's other claims (aud, phase, sub, action binding, revocation, replay) follow the existing governance checklist and are not graded here."
+}

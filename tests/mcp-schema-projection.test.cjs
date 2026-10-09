@@ -93,8 +93,13 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // exclusion, and the time_granularity requirement to the shared daypart
 // graph carried by every targeting-bearing task (+2,087 bytes measured,
 // 443.3 → 445.4 KiB), bounded at 446 KiB.
+// The Web Bot Auth webhook profile adds signing_profile to the push-notification
+// and notification configurations, as one enum schema of its own
+// (enums/webhook-signing-profile.json) that keeps generated SDK type names from
+// colliding. It reaches 11 media-buy inputs (~0.2 KiB each), measured at
+// 458,121 bytes (447.4 KiB) and bounded at 448 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 446,
+  'media-buy': 448,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

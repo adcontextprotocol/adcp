@@ -1,0 +1,47 @@
+{
+  "name": "Governance token naming the governance agent as issuer, signed with a key that only the buyer agent publishes",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#one-agent-per-purpose",
+  "signing_profile": "web-bot-auth",
+  "document_type": "governance_context",
+  "reference_now": 1790841610,
+  "jws": "eyJhbGciOiJFZDI1NTE5IiwidHlwIjoiYWRjcC1nb3YrandzIiwiamt1IjoiaHR0cHM6Ly9nb3Zlcm5hbmNlLTdrM3EuY29tLy53ZWxsLWtub3duL2h0dHAtbWVzc2FnZS1zaWduYXR1cmVzLWRpcmVjdG9yeSIsImtpZCI6IjZXc0tNQ09iYmE0OVYzdU4wdklFTm5rMUJLQWs3Yzl6akJKY1dLeVE5X0kifQ.eyJpc3MiOiJodHRwczovL2dvdmVybmFuY2UtN2szcS5jb20iLCJhdWQiOiJodHRwczovL3NlbGxlci03azNxLmNvbS9tY3AvIiwicGhhc2UiOiJpbnRlbnQiLCJqdGkiOiIwMUo5WlE0TThUNlczUjVZMks3TjFQMEI5RCIsImlhdCI6MTc5MDg0MTUwMCwiZXhwIjoxNzkwODQyNDAwfQ.c4KwhdVq5e1Avl0r2GvuO0SJVQb2WOa7rxzCP_vpnoBWUe0XqIqgd_wdTLnsK4CKPkBITcSDzj-AlKcFiKNXBA",
+  "decoded": {
+    "header": {
+      "alg": "Ed25519",
+      "typ": "adcp-gov+jws",
+      "jku": "https://governance-7k3q.com/.well-known/http-message-signatures-directory",
+      "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+    },
+    "payload": {
+      "iss": "https://governance-7k3q.com",
+      "aud": "https://seller-7k3q.com/mcp/",
+      "phase": "intent",
+      "jti": "01J9ZQ4M8T6W3R5Y2K7N1P0B9D",
+      "iat": 1790841500,
+      "exp": 1790842400
+    }
+  },
+  "directories": {
+    "https://governance-7k3q.com": {
+      "keys_ref": [
+        "1XlJ3EIte7bPOEqKQtKrKNTNy5hywTyrwFXWrMbXKqE"
+      ]
+    },
+    "https://buyer-7k3q.com": {
+      "keys_ref": [
+        "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+      ]
+    }
+  },
+  "role_listing": {
+    "adcp:governance": [
+      "https://governance-7k3q.com"
+    ]
+  },
+  "expected_outcome": {
+    "success": false,
+    "error_code": "governance_key_unknown",
+    "reason": "The kid is not in the key directory of the iss origin. Key lookup is keyed on the pair of origin and key, so a key another agent publishes cannot sign as the governance agent."
+  },
+  "$comment": "The signature is valid under the buyer agent's key, which the directories object lists under the buyer agent's origin. A verifier that looks keys up by thumbprint alone finds the key and accepts the token. role_listing stands in for the record the verifier already trusts: in deployment, the governance-typed agents[] entry in the buyer's brand.json, or the adcp:governance role in trust.json once #7809 lands. The token's other claims (aud, phase, sub, action binding, revocation, replay) follow the existing governance checklist and are not graded here."
+}

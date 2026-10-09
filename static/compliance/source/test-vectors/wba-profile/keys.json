@@ -1,0 +1,45 @@
+{
+  "$comment": "Public test keys for the Web Bot Auth profile conformance vectors. The private seeds are published so that implementations can reproduce every signature. Each seed is SHA-256 of the ASCII string 'rfc004-test/<seed_name>'. Web Bot Auth section 6.8: test keys MUST NOT be used in production, and verifiers SHOULD reject them when detected. Each kid is the RFC 7638 JWK thumbprint (RFC 8037 Appendix A.3 for Ed25519). Each entry's identity is the origin whose key directory publishes the key.",
+  "keys": [
+    {
+      "identity": "https://buyer-7k3q.com",
+      "seed_name": "buyer-request",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I",
+      "x": "yIxM3SIY89_Yhr6EA9hik-AJjWSDPraK5chDqQ3Xlf0",
+      "use": "sig",
+      "_private_d_for_test_only": "qgZV0LEd-ZDGdPdhM182B1YmHy0OAsNAEZT-feYyfbU"
+    },
+    {
+      "identity": "https://agent.brand-7k3q.com",
+      "seed_name": "brand-request",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI",
+      "x": "JB8XPw49dSvDh0kqkCxtoxiNb_RZFhxPdlc-1GedFSc",
+      "use": "sig",
+      "_private_d_for_test_only": "mu0nHxQDWktUz0o16gWmACuOZ86HpAwfmO4iP1qApp8"
+    },
+    {
+      "identity": "https://relay.agency-7k3q.com",
+      "seed_name": "relay-request",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "ZtaFf5jj-EzorJmZn6mX3YnmK_QyZKVLbbinzIQKOjQ",
+      "x": "8nrvWz557SHSlmuXE2dMstsU_WmRQNze3VIIeNhN-VE",
+      "use": "sig",
+      "_private_d_for_test_only": "9HMKspy6Bjt8vLzngwm2L1pzrbxOn6A7nTDBRhmRYOE"
+    },
+    {
+      "identity": "https://governance-7k3q.com",
+      "seed_name": "governance-document",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "1XlJ3EIte7bPOEqKQtKrKNTNy5hywTyrwFXWrMbXKqE",
+      "x": "k-Q_ekTZQ_Hv6lLlIUYfE7jpJSCZ5nsLDfeoLIAkrL4",
+      "use": "sig",
+      "_private_d_for_test_only": "nfv0d9-TrrE1ajrAPEK-2yPoG9PHHbex-aqnv4xVnKQ"
+    }
+  ]
+}
