@@ -136,6 +136,7 @@ These fields are defined by the [`error.json`](https://adcontextprotocol.org/sch
 | `retry_after` | number | No | Seconds to wait before retrying. AdCP 3.2 producers emit whole seconds from 1 through 3600; consumers continue accepting legacy fractional values. |
 | `field` | string | No | Field path in JSONPath-lite format (e.g., `packages[0].targeting`). When `issues` is present, sellers MUST set this to `issues[0].pointer` translated from RFC 6901 to JSONPath-lite (e.g., `/packages/0/targeting` → `packages[0].targeting`). Will be deprecated in a future major version. |
 | `issues` | array | No | Structured list of validation failures. Each entry carries `pointer` (RFC 6901), `message`, `keyword` (JSON Schema keyword that rejected — `required` / `type` / `format` / etc.), and optionally `schema_id`, `schemaPath`, `discriminator`. See [Validator-internals fields](#validator-internals-fields-on-issues) for the `schema_id` / `schemaPath` / `discriminator` semantics, the production-emit rules, and the resolution path for `schema_id`. |
+| `mutation_outcome` | string | No | 3.3, optional. Whether a failed state-changing request changed seller state: `not_applied`, `unknown`, or `applied`. Absent means the seller does not say. Open wire type — receivers treat an unrecognized value as `unknown`. See [Mutation outcome](#mutation-outcome). |
 | `suggestion` | string | No | Suggested fix for the error |
 | `details` | object | No | Additional context-specific information. Sellers MAY mirror `issues[]` here as `details.issues` for backward compatibility with pre-3.1 consumers; new consumers SHOULD prefer the top-level `issues` field. |
 
@@ -581,6 +582,63 @@ function isRetryable(error, knownRecoveryByCode) {
 }
 ```
 
+### Mutation outcome
+
+`recovery` says what to do next; it does not say whether the failed request changed anything. A [`SERVICE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-service-unavailable) / `transient` error can arrive before any write, or after the seller committed a write and then failed building the response. `mutation_outcome` carries that second signal on the error itself, in one fixed place, independent of `code` and `recovery`. It is optional and additive; a buyer that ignores it behaves as before.
+
+```json
+{
+  "code": "SERVICE_UNAVAILABLE",
+  "message": "Downstream ad server timed out",
+  "recovery": "transient",
+  "retry_after": 5,
+  "mutation_outcome": "unknown"
+}
+```
+
+| Value | Meaning | Buyer handling |
+|-------|---------|----------------|
+| `not_applied` | The seller has pre-commit evidence (below) that nothing was attempted or committed. | The request had no effect, as buyers already assume today. |
+| `unknown` | The seller cannot rule out that some or all of the change committed, and has fenced the idempotency claim so a same-key resend cannot run the mutation again. | Do not report the operation as failed, do not undo local records, and do not re-plan. Resend only the exact bytes with the same `idempotency_key`, or read current state. |
+| `applied` | The seller holds durable evidence the change committed; the error reports a later failure, as with [`COMMITTED_RESOURCE_PURGED`](/docs/building/verification/compliance-catalog#error-code-committed-resource-purged). | Treat the change as made. Read current state before any follow-up. |
+| absent | The seller makes no claim. | See the absent-field rule below. |
+
+`unknown` is an affirmative claim that the outcome is uncertain and a fence exists; absent is silence.
+
+**Scope.** The field is meaningful only on an error that terminates a state-changing request: an envelope `adcp_error`, a task-level `errors[]` entry that fails the request, or the terminal error of an async task that ends in `failed`, whether read from `tasks/get` or carried in a webhook's `result.errors[]`. Pure reads never carry it. Sellers MUST NOT set it on warnings or on per-item entries of a partially successful response. A webhook redelivery MUST carry the same value as the original delivery.
+
+**Compound mutations.** On a request that changes several packages, creatives, or items, the value describes the whole request envelope. `unknown` means any subset, including all, may have committed. Per-item outcomes are out of scope; buyers reconcile every item by reading current state.
+
+**Pre-commit evidence (normative).** A *write* here means any write to resource or downstream state, local or remote, other than inserting or releasing the idempotency claim. A seller MAY set `not_applied` only when the failure was either (a) raised before the request's idempotency claim row was inserted and before any write was issued (schema validation, authentication, governance denial, and similar), or (b) a typed AdCP rejection returned by validation that runs strictly before the first write is issued. The following are **not** pre-commit evidence, and the seller MUST NOT set `not_applied` for them:
+
+- A timeout, cancellation, connection error, or any other exception raised from within or after a write, whether the write is local (an in-flight database write) or downstream (an ad server call). A timeout raised from within the claim insert itself is included.
+- An exception caught by a handler-level catch-all or framework error wrapper, because the wrapper cannot tell where in the handler the exception originated.
+- A failure that a later reconciliation proves did not commit. `not_applied` is decided when the error is emitted; a seller that could not show (a) or (b) at that moment sent `unknown`, and the buyer's same-key resend then re-executes once the seller releases the claim.
+
+For an async task the claim exists from submit, so only (b) can apply to a failure after submit.
+
+**Worked example of (b).** [`REFERENCE_DEFINITION_CHANGED`](/docs/building/verification/compliance-catalog#error-code-reference-definition-changed) is pre-commit by construction: [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) re-verifies every definition pin before mutating any state, so no MediaBuy is created or amended. A seller returning it SHOULD set `mutation_outcome: "not_applied"`. A `SERVICE_UNAVAILABLE` from the same task because a pinned document could not be fetched is a different case and follows the rules above for its own failure point.
+
+**Seller obligations (sellers declaring AdCP 3.3 or later in `supported_versions`; earlier sellers MAY emit the field on the same terms).** Emitting `unknown` on a fenced claim is a SHOULD in 3.3 and becomes a MUST in 3.4, the same two-step cadence used for other hardening rules; the prohibitions below apply from 3.3.
+
+1. A seller that fences the idempotency claim rather than releasing it ([Request Safety → Idempotency](/docs/building/by-layer/L1/security#idempotency), rules 3 and 9) SHOULD set `mutation_outcome: "unknown"` on the error it returns, or `applied` when it holds committed evidence. From 3.4 this is a MUST.
+2. A seller MUST NOT emit `unknown` or `applied` unless the claim is fenced, or the seller otherwise guarantees that a same-key resend cannot run the mutation again. Otherwise the advice to resend with the same key is a trap.
+3. A seller MUST NOT set `not_applied` without pre-commit evidence, and MUST NOT set `not_applied` on `COMMITTED_RESOURCE_PURGED`.
+4. A seller SHOULD set `not_applied` on definitive pre-commit failures of state-changing requests, and SHOULD set `applied` on `COMMITTED_RESOURCE_PURGED`. Elsewhere `applied` is a MAY, and only with durable committed evidence.
+5. A seller that forwards an error from a downstream seller MUST NOT turn an upstream `unknown` or `applied` into `not_applied`. It SHOULD pass the upstream value through when it has one.
+6. A seller that fences but cannot tell pre- from post-write failure (for example a proxy in front of a third-party ad server) SHOULD emit `unknown`. A seller with no fence omits the field; it remains non-conformant with rule 9 and gains nothing from claiming `unknown`.
+
+**Buyer obligations.** When an error for a state-changing request carries `unknown`, `applied`, or an unrecognized value (receivers MUST treat an unrecognized, empty, or non-string value as `unknown` and MUST NOT discard the error), buyers:
+
+1. MUST NOT report the operation to their users or systems as definitively failed, and MUST NOT undo their own record of the change on the strength of that error alone.
+2. MUST NOT resend with a new `idempotency_key` or a changed payload until the outcome is reconciled. That is the agent re-plan case in [Request Safety → Buyer obligations](/docs/building/by-layer/L1/security#buyer-obligations). It applies equally to the terminal error of an async task that ends in `failed`, however delivered.
+3. MAY resend the exact same bytes with the same key; the seller's fence replays the stored result, returns [`IDEMPOTENCY_IN_FLIGHT`](/docs/building/verification/compliance-catalog#error-code-idempotency-in-flight), or drives reconciliation. Such resends consume the bounded retry budget in [Retry Logic](#retry-logic).
+4. SHOULD reconcile by reading current state ([`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for the affected `media_buy_id`s). A changed `revision` plus the requested values shows the change landed; an unchanged `revision` and prior values, observed after the seller's fence has resolved, shows it did not.
+
+`mutation_outcome` does not change `recovery`. An `unknown` paired with `correctable` or `terminal` is retried automatically no more than that classification allows; obligations 1 and 2 still apply.
+
+When the field is **absent** on a `transient` error for a state-changing request the seller received, buyers SHOULD read current state before a re-plan. This is a SHOULD, not a MUST: it asks for one read, not a retry ban, and is safe against every seller.
+
 ## Retry Logic
 
 The rules in this section bound every `transient`-classified error a caller may retry, including the `transient` default applied to unknown error codes under [§ Forward-compatible decoding](#forward-compatible-decoding-normative). A receiver that decodes an unknown code and falls back to `transient` MUST apply `maxRetries` and the jittered exponential-backoff schedule below; the open-enum decoding rule does not exempt receivers from the retry budget. A hostile or buggy sender emitting `code=GO_FOREVER, recovery=transient` cannot induce unbounded retries against a conformant client.
@@ -592,6 +650,7 @@ Classification happens before scheduling. `retry_after` specifies when a retry m
 - Callers **MUST NOT** automatically retry an error whose effective recovery is `correctable` or `terminal`, even when `retry_after` is present. A delay is not permission to repeat an uncorrected request or bypass required human action.
 - When automatically retrying a `transient` error with `retry_after`, callers **MUST NOT** retry sooner than the indicated delay. AdCP 3.2 producers **MUST** emit an integer. A caller that receives a legacy finite fractional value **MUST** round it up before clamping to `[1, 3600]` so it never schedules earlier than intended.
 - Callers retrying a `transient` error without `retry_after` **SHOULD** use exponential backoff with jitter. A base of 2 seconds, a cap of 60 seconds, and ±25% jitter is a safe default.
+- When a `transient` error for a state-changing request carries [`mutation_outcome`](#mutation-outcome) `unknown` (or an unrecognized value), the only automatic retry permitted is an exact-bytes resend with the same `idempotency_key`, and it still consumes the retry budget below. Callers **MUST NOT** re-plan, mint a new key, or change the payload until the outcome is reconciled by reading current state.
 - Every automatic retry path **MUST** consume the caller's bounded retry budget, including retries selected from a known-code classification or the unknown-code `transient` fallback.
 - Callers **SHOULD** surface repeated throttling to their operator rather than retrying indefinitely; a persistent [`RATE_LIMITED`](/docs/building/verification/compliance-catalog#error-code-rate-limited) response is a capacity or policy signal, not a transient blip.
 - Sellers **SHOULD** return `RATE_LIMITED` with a populated `retry_after` rather than silently queuing or dropping requests, so well-behaved callers can back off intentionally.
