@@ -646,6 +646,7 @@ A `mode: "estimate"` request returns the `BuildCreativeEstimate` shape (`oneOf` 
 ### Field descriptions
 
 - **creative_manifest**: (single-format) The complete creative manifest ready for use with `sync_creatives` or `preview_creative`
+- **errors**: Optional. Non-terminal advisory entries on an otherwise-successful single- or multi-capability build (for example [`RIGHTS_CHANNEL_VIOLATION`](#rights-channel-restrictions)). When `creative_manifest` or `creative_manifests` is present, `errors[]` is advisory and the build did not fail; only a response with `errors[]` and no manifest is a failure.
 - **creative_manifests**: (multi-capability) Array of portable canonical creative manifests, one per requested capability and in request order. Each contains its own `format_kind` and, when needed, `format_option_ref`.
 - **format_kind**: The canonical format produced by the selected capability
 - **assets**: Map of asset keys to asset content — includes creative content (images, text, URLs), catalogs, briefs, and anything else the format requires
@@ -678,6 +679,60 @@ If the manifest includes a brief asset with `compliance` requirements that the c
 ```
 
 Creative agents MUST validate that all `required_disclosures` can be satisfied in the target format before generating the creative. If any disclosure cannot be placed as specified, the entire request fails. This ensures regulated creatives are never served without required legal text.
+
+### Rights channel restrictions
+
+A `creative_manifest.rights[]` entry may carry an advisory `channels[]` and/or `excluded_channels[]` restriction (values from the [media channel taxonomy](/docs/reference/media-channel-taxonomy)). **Experimental** ([status](/docs/reference/experimental-status); feature id `brand.rights_lifecycle`). The restriction is wire metadata, not enforcement: the buyer's orchestrator and the serving party remain the enforcement points, and a creative agent is not an enforcement principal for the rights holder.
+
+The effective set of permitted channels for one rights entry:
+
+| `channels` / `excluded_channels` | Permitted channels |
+|---|---|
+| both absent | every channel (no restriction) |
+| `excluded_channels` only | every channel except those in `excluded_channels` |
+| `channels` present | only those in `channels`, less any also in `excluded_channels` (deny wins) |
+| `channels: []` | none |
+
+Creative agents SHOULD, before generating, compare each `rights[].channels` / `excluded_channels` restriction against the channel each requested output serves (for example the `applies_to_channels` of the target capability, where declared), and SHOULD NOT build for a channel outside the effective set. When a request would do so, the agent SHOULD surface a structured [`RIGHTS_CHANNEL_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-rights-channel-violation) rather than silently building. Because the restriction is advisory, the agent either proceeds and returns the code as a non-terminal entry in the success response's `errors[]`, or declines the affected output with a terminal `BuildCreativeError`. When `approval_status` is `pending`, the entry grants no placement on any channel until the holder approves — the existing rule that a pending grant never authorizes serving — but that is a placement and serving rule: building creative while a grant is pending is the normal path, so a pending status alone is not a reason to raise `RIGHTS_CHANNEL_VIOLATION`. When a manifest carries several `rights[]` entries in force (not expired, `grant_status` not `paused` or `revoked`) and relevant to the output's `uses`, a channel must be permitted by every such entry; `channels` applies to the grant as a whole, so "likeness on social only, voice anywhere" needs separate entries per use.
+
+The check needs the output's channel. If the agent cannot determine which channels a requested output serves (`applies_to_channels` is optional on a capability), it skips the check and does not emit the code. If the output serves several channels and any one falls outside the effective set, that is a violation. Channels are planning abstractions: denying `ctv` does not by itself restrict the same video running as `olv` inside a CTV app, so a rights holder who cares lists both. A multi-capability request is atomic, so declining one output with a terminal error fails the whole request; prefer the advisory there. In a multi-capability success, point `error.field` at `creative_manifests[N].rights[i].excluded_channels` (or `.channels`) and set `error.details.capability_id`.
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
+  "creative_manifest": {
+    "format_kind": "image",
+    "assets": {
+      "banner_image": {
+        "asset_type": "image",
+        "url": "https://cdn.novabrands.example/renders/talent-banner.png",
+        "width": 300,
+        "height": 250
+      }
+    },
+    "rights": [
+      {
+        "rights_id": "rg_nova_talent_001",
+        "rights_agent": { "url": "https://rights.novabrands.example/mcp", "id": "nova_rights" },
+        "uses": ["likeness"],
+        "excluded_channels": ["ctv", "linear_tv"]
+      }
+    ]
+  },
+  "errors": [
+    {
+      "code": "RIGHTS_CHANNEL_VIOLATION",
+      "message": "Requested output targets ctv, which these rights exclude",
+      "field": "creative_manifest.rights[0].excluded_channels",
+      "details": { "rights_id": "rg_nova_talent_001", "channel": "ctv" },
+      "suggestion": "Target a capability on a permitted channel, or obtain a grant that covers ctv"
+    }
+  ]
+}
+```
+
+A client reading `errors[]` MUST NOT treat it as failure when `creative_manifest` or `creative_manifests` is present. Platform-level scope inside a channel (for example one social network) is not expressed here; carry it in `ext` until a platform axis is specified.
 
 ## Response timing
 
@@ -1409,3 +1464,4 @@ To refine, pass the previous response's `creative_manifest` back as input with a
 | [`CREATIVE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-creative-not-found) | The `creative_id` does not exist in the agent's library (or in the specified `concept_id`) |
 | [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected) | The creative failed content-policy, brand-safety, or accessibility review. Accessibility failures SHOULD use `error-details/accessibility-violation.json`. |
 | [`COMPLIANCE_UNSATISFIED`](/docs/building/verification/compliance-catalog#error-code-compliance-unsatisfied) | A required disclosure from the brief cannot be rendered in the target format (e.g., format does not support the required disclosure position) |
+| [`RIGHTS_CHANNEL_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-rights-channel-violation) | Advisory. A requested output targets a channel outside a `rights[].channels` / `excluded_channels` restriction. See [Rights channel restrictions](#rights-channel-restrictions). |

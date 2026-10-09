@@ -380,6 +380,11 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
       "note": "External audience sources on sync_audiences (#6540, experimental media_buy.audience_activation). Per-audience failure when the seller cannot read a dataset share or platform segment; error.field distinguishes bad reference vs missing grant vs vendor outage. New 3.2 wire code \u2014 held for 3.2."
+    },
+    "RIGHTS_CHANNEL_VIOLATION": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.3",
+      "note": "Advisory channel restrictions on rights constraints (#5542, experimental under brand.rights_lifecycle). Non-terminal creative-agent advisory when a requested build targets a channel outside rights[].channels. New 3.3 wire code \u2014 held for 3.3."
     }
   }
 }

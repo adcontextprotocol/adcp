@@ -63,6 +63,22 @@
         "pattern": "^[A-Z]{2}$"
       }
     },
+    "channels": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Media channels where this creative may run under these rights, using the standard media channel vocabulary (the same enums/channels.json values as sync_plans). If omitted, no channel restriction. When present, only these channels are granted (an empty array grants no channel), less any also in excluded_channels (deny wins). When only excluded_channels is present, every channel except those excluded is permitted. Mirrors countries and excluded_countries. Advisory, like the other constraint fields on the wire: orchestrators and serving parties SHOULD NOT place the creative on a channel outside the effective set, and creative agents SHOULD NOT build for one (see build_creative). While approval_status is `pending` the entry grants no placement on any channel (the existing rule that a pending grant never authorizes serving); that rule applies to placement and serving, not to building, so creative agents do not raise a channel advisory for pending status alone. Verifying an attestation proves the term was granted; it does not turn this advisory check into a mandatory one in 3.3, and terms the holder needs enforced belong in `restrictions`. This is a channel-level restriction only; finer platform or placement scope (for example a single social network) is carried in ext until a platform axis is specified. When the constraint is attested, channels and excluded_channels are covered by content_digest like every other serving-relevant field.",
+      "items": { "$ref": "/schemas/enums/channels.json" },
+      "uniqueItems": true
+    },
+    "excluded_channels": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Media channels excluded under these rights (enums/channels.json values); the creative SHOULD NOT be placed there. Use when the grant is for every channel except specific ones. Wins over channels when a channel appears in both.",
+      "items": { "$ref": "/schemas/enums/channels.json" },
+      "uniqueItems": true
+    },
     "impression_cap": {
       "type": "integer",
       "minimum": 1,
