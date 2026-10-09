@@ -356,6 +356,13 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
     const freshAgent = async (options: { withMetadata?: boolean } = {}) => {
       const url = `https://${randomUUID()}.example.test/mcp`;
       urls.push(url);
+      // Owner tests come from member-registered agents, and the heartbeat only
+      // selects agents with a registry source, so register each one on the
+      // suite's member profile.
+      await pool.query(
+        'UPDATE member_profiles SET agents = agents || $2::jsonb WHERE workos_organization_id = $1',
+        [ownerOrgId, JSON.stringify([{ url }])],
+      );
       if (options.withMetadata ?? true) await db.upsertRegistryMetadata(url, { lifecycle_stage: 'production' });
       return url;
     };
