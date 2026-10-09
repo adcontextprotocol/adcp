@@ -69,7 +69,7 @@ The [4.0 proposal in #7869](https://github.com/adcontextprotocol/adcp/issues/786
 
 ## Property and collection list application receipts
 
-Property and collection lists are resolved outside the seller, but their inventory effect is product-specific. Whenever effective discovery targeting contains `property_list`, `property_list_exclude`, `collection_list`, or `collection_list_exclude`, the seller MUST return one `list_applications` receipt for each targeting reference on every returned product. This requirement overrides a narrow `fields` projection. An exclusion application returns a zero-match receipt; zero matches for any inclusion application leave no eligible inventory, so the seller MUST omit that product. If the same list is referenced for both inclusion and exclusion, those are separate applications and produce separate receipts on any product that remains eligible.
+Property and collection lists are resolved outside the seller, but their inventory effect is product-specific. Whenever effective discovery targeting contains `property_list`, `property_list_exclude`, `collection_list`, `collection_list_exclude`, `collection_lists`, or `collection_lists_exclude`, the seller MUST return one `list_applications` receipt for each targeting reference on every returned product. This requirement overrides a narrow `fields` projection. An exclusion application returns a zero-match receipt; zero matches for any inclusion application leave no eligible inventory, so the seller MUST omit that product. If the same list is referenced for both inclusion and exclusion, those are separate applications and produce separate receipts on any product that remains eligible.
 
 ```json
 {

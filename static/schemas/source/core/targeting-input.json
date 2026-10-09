@@ -160,6 +160,18 @@
         { "type": "null" }
       ]
     },
+    "collection_lists": {
+      "anyOf": [
+        { "$ref": "/schemas/core/targeting.json#/properties/collection_lists" },
+        { "type": "null" }
+      ]
+    },
+    "collection_lists_exclude": {
+      "anyOf": [
+        { "$ref": "/schemas/core/targeting.json#/properties/collection_lists_exclude" },
+        { "type": "null" }
+      ]
+    },
     "placement_selection": {
       "anyOf": [
         { "$ref": "/schemas/core/targeting.json#/properties/placement_selection" },

@@ -92,9 +92,13 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // minute-resolution dayparts add the start_time/end_time pair, its one-of-two
 // exclusion, and the time_granularity requirement to the shared daypart
 // graph carried by every targeting-bearing task (+2,087 bytes measured,
-// 443.3 → 445.4 KiB), bounded at 446 KiB.
+// 443.3 → 445.4 KiB), bounded at 446 KiB. Experimental collection_lists and
+// collection_lists_exclude add the two array properties and their
+// required_overlay_support keys to the shared targeting graph (+2,840 bytes
+// measured across five tasks, 445.4 → 448.1 KiB; descriptions are already
+// omitted from model-context views, so none can be trimmed), bounded at 449 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 446,
+  'media-buy': 449,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

@@ -39,7 +39,7 @@
     "collection_targeting_allowed": {
       "type": "boolean",
       "default": false,
-      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list or targeting_overlay.collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match)."
+      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list, collection_lists, or collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match)."
     },
     "delivery_type": { "$ref": "/schemas/enums/delivery-type.json" },
     "exclusivity": { "$ref": "/schemas/enums/exclusivity.json" },
@@ -141,7 +141,12 @@
       "description": "Collection inclusion support requires selectable product collections.",
       "if": {
         "properties": {
-          "overlay_support": { "required": ["collection_list"] }
+          "overlay_support": {
+            "anyOf": [
+              { "required": ["collection_list"] },
+              { "required": ["collection_lists"] }
+            ]
+          }
         },
         "required": ["overlay_support"]
       },

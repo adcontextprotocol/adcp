@@ -130,8 +130,10 @@ describe('product discovery MCP schema parity', () => {
     // 152 KiB. Experimental minute-resolution dayparts add the clock-time
     // pair, its exclusion, and the time_granularity requirement to the shared
     // daypart graph (~0.45 KiB per tool; 152.93 KiB measured), bounded at
-    // 154 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(154 * 1024);
+    // 154 KiB. Experimental collection_lists / collection_lists_exclude add
+    // two short array properties and their requirement keys to the shared
+    // targeting graph (154.66 KiB measured), bounded at 155 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(155 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

@@ -192,6 +192,24 @@
       "$ref": "/schemas/core/collection-list-ref.json",
       "description": "Reference to a collection list for excluding specific collections (programs, publications, channels) from this product. Matched collections must not carry the buyer's ads. Use for brand safety do-not-air lists. Seller must declare support in get_adcp_capabilities."
     },
+    "collection_lists": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental. Several collection_list refs: intersection. Not with collection_list. Over max_references is rejected, never truncated.",
+      "items": { "$ref": "/schemas/core/collection-list-ref.json" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "collection_lists_exclude": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental. Several collection_list_exclude refs: union. Not with collection_list_exclude. Over max_references is rejected, never truncated.",
+      "items": { "$ref": "/schemas/core/collection-list-ref.json" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "placement_selection": {
       "$ref": "/schemas/core/placement-selection.json",
       "description": "Purchased placement selection within the product. This constrains package inventory; it is distinct from creative_assignments[].placement_refs, which only route individual creatives within the purchased set. On create, mode selected supplies the complete selected set and mode default uses the product default. In request-side Targeting Input, a non-null value replaces this dimension, omission preserves or inherits it, and null clears it when the product permits that broader inventory set."
@@ -465,6 +483,12 @@
       "items": { "$ref": "/schemas/core/negative-keyword.json" },
       "minItems": 1
     }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["collection_list", "collection_lists"] },
+      { "required": ["collection_list_exclude", "collection_lists_exclude"] }
+    ]
   },
   "allOf": [
     { "$ref": "/schemas/core/targeting-unknown-age-eligibility-constraint.json" },

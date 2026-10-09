@@ -205,6 +205,8 @@
     "property_list_exclude": { "$ref": "#/definitions/required" },
     "collection_list": { "$ref": "#/definitions/required" },
     "collection_list_exclude": { "$ref": "#/definitions/required" },
+    "collection_lists": { "$ref": "#/definitions/required" },
+    "collection_lists_exclude": { "$ref": "#/definitions/required" },
     "placement_selection": { "$ref": "#/definitions/required" },
     "age_restriction": { "$ref": "#/definitions/required" },
     "device_platform": { "$ref": "#/definitions/required" },

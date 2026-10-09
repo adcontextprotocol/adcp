@@ -93,6 +93,25 @@ describe('request-only targeting null-clear semantics', () => {
     );
   });
 
+  test('collection_lists plural fields are exclusive with the singular fields', () => {
+    const ref = id => ({ agent_url: 'https://lists.acme.example', list_id: id });
+    assert.equal(validateState({ collection_lists: [ref('a'), ref('b')] }), true, JSON.stringify(validateState.errors));
+    assert.equal(validateState({ collection_lists_exclude: [ref('a'), ref('b')] }), true);
+    assert.equal(validateState({ collection_lists: [] }), false, 'empty plural array is invalid');
+    assert.equal(validateState({ collection_lists: [ref('a'), ref('a')] }), false, 'duplicate refs are invalid');
+    assert.equal(validateState({ collection_list: ref('a'), collection_lists: [ref('b')] }), false);
+    assert.equal(
+      validateState({ collection_list_exclude: ref('a'), collection_lists_exclude: [ref('b')] }),
+      false
+    );
+    assert.equal(validateState({ collection_list: ref('a'), collection_lists_exclude: [ref('b')] }), true);
+    // Switching singular to plural in one request needs null on the old field.
+    assert.equal(validateInput({ collection_list_exclude: null, collection_lists_exclude: [ref('b')] }), true);
+    assert.equal(validateInput({ collection_lists_exclude: null }), true);
+    // Input cannot see stored state, so the exclusivity rule binds the merged strict state.
+    assert.equal(validateInput({ collection_list: ref('a'), collection_lists: [ref('b')] }), true);
+  });
+
   test('accepts null commands but keeps arrays non-empty when non-null', () => {
     for (const dimension of ['geo_regions', 'audience_include', 'audience_exclude']) {
       assert.equal(validateInput({ [dimension]: null }), true, JSON.stringify(validateInput.errors));
