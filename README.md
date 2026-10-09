@@ -75,7 +75,18 @@ adcontextprotocol/
 
 ```bash
 npm install
-docker compose up --build    # Starts PostgreSQL + app with auto-migrations
+docker compose up -d --wait postgres
+```
+
+Before starting the app, complete the required
+[local database bootstrap](docs/runbooks/training-agent-gcs-reporting.md#local-bootstrap)
+to provision or verify `training_reporting_gcs`. Migration 620 requires this
+namespace even when GCS reporting is disabled. Repeat the prerequisite after
+resetting the database volume; preserve an existing installation's tables and
+authority.
+
+```bash
+docker compose up --build    # Starts app with auto-migrations after bootstrap
 ```
 
 The server runs on port 3000. Docs run separately with `mint dev` on port 3333.

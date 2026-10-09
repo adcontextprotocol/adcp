@@ -12,6 +12,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { dispatchTrainingGcsReporting } from './gcs-reporting-tools.js';
 import { createLogger } from '../logger.js';
 import {
   AdcpError,
@@ -1203,6 +1204,8 @@ export function legacyGetProductsHandler(
  */
 export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHandlers['getReportingStatus']> {
   return async (req, ctx) => {
+    const gcs = await dispatchTrainingGcsReporting('get_reporting_status', req as unknown as Record<string, unknown>, ctx.authInfo?.clientId);
+    if (gcs) return gcs;
     const version = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
     if (!version.ok || !supportsReportingStatus(version.servedVersion)) {
       throw new AdcpError('VERSION_UNSUPPORTED', {
@@ -1299,6 +1302,8 @@ function projectRc0ReportingStatus(response: Record<string, unknown>): Record<st
 
 export function legacySyncReportingReceiptsHandler(): NonNullable<LegacyMediaBuyHandlers['syncReportingReceipts']> {
   return async (req, ctx) => {
+    const gcs = await dispatchTrainingGcsReporting('sync_reporting_receipts', req as unknown as Record<string, unknown>, ctx.authInfo?.clientId);
+    if (gcs) return gcs;
     const version = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
     if (!version.ok || !supportsReliableReporting(version.servedVersion)) {
       throw new AdcpError('VERSION_UNSUPPORTED', {
@@ -1372,6 +1377,8 @@ export async function syncReportingStatusForCustomTool(
   ctx: TrainingContext,
 ): Promise<object> {
   try {
+    const gcs = await dispatchTrainingGcsReporting('sync_reporting_status', args as unknown as Record<string, unknown>, ctx.principal);
+    if (gcs) return gcs;
     const version = resolveServedAdcpVersion(args as unknown as Record<string, unknown>);
     if (!version.ok || !supportsReliableReporting(version.servedVersion)) {
       throw new AdcpError('VERSION_UNSUPPORTED', {

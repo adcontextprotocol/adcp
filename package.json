@@ -198,7 +198,7 @@
     "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts"
   },
   "dependencies": {
-    "@adcp/sdk": "15.0.0",
+    "@adcp/sdk": "15.2.0",
     "@anthropic-ai/sdk": "^0.127.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.7",
@@ -207,7 +207,7 @@
     "@google/genai": "^2.23.0",
     "@google/generative-ai": "^0.24.1",
     "@googleapis/calendar": "^16.0.0",
-    "@modelcontextprotocol/sdk": "^1.31.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@mozilla/readability": "^0.6.0",
     "@opentelemetry/api-logs": "^0.222.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.222.0",
