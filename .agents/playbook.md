@@ -604,14 +604,26 @@ This creates a new Addie config version, allowing performance comparison before/
 ## Deployment
 
 Production deploys to **Fly.io** (not Vercel). Migrations run automatically on startup.
+Before the first deployment to a fresh database, or staging/disaster recovery,
+complete the [database bootstrap prerequisite](../docs/runbooks/training-agent-gcs-reporting.md#database-bootstrap-prerequisite).
+Migration 620 requires its namespace even with GCS reporting disabled. Verify
+an existing namespace's owner and installation authority; preserve its state.
 - Deploy logs: `fly logs -a <app-name>`
 - SSH access: `fly ssh console -a <app-name>`
 
 ## Local Development
 
 **Always use Docker for local testing:**
+
+Start PostgreSQL and complete the required
+[local bootstrap](../docs/runbooks/training-agent-gcs-reporting.md#local-bootstrap)
+before starting the app's auto-migrations. Do this for a new volume and after
+every reset; the reporting feature flag does not skip migration 620.
+
 ```bash
-docker compose up --build  # Start postgres + app with auto-migrations
+docker compose up -d --wait postgres
+# Complete the linked local bootstrap before the next command.
+docker compose up --build  # Start app with auto-migrations after bootstrap
 docker compose down -v     # Reset database
 ```
 
@@ -685,7 +697,7 @@ Visual formats use `renders` array with structured dimensions:
 
 ### Useful Commands
 ```bash
-docker compose up --build  # Local dev server (preferred)
+docker compose up --build  # Local dev server, after required database bootstrap
 npm run build              # Build TypeScript
 npm test                   # Run tests
 npm run lint               # Lint
