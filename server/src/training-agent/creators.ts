@@ -7,9 +7,10 @@
  * then a draft cut for review). Audience composition is declared by the
  * platform itself; see `audienceEvidence` for the evidence shape.
  *
- * Slot and deadline dates are relative to catalog build time so the slots stay
- * bookable however long the fixture has been deployed. Audience evidence is an
- * immutable snapshot, so its dates are fixed.
+ * Slot and deadline dates are computed once, relative to process start (the
+ * catalog is also built once), so a redeploy refreshes them; a process that
+ * outlives the 60-day first-slot lead serves slots in the past. Audience
+ * evidence is an immutable snapshot, so its dates are fixed.
  */
 
 import { createHash } from 'node:crypto';
@@ -286,8 +287,6 @@ function creatorShow(seed: CreatorSeed): ShowDefinition {
   };
 }
 
-let showsCache: { day: number; shows: ShowDefinition[] } | undefined;
-
 export const CREATOR_PUBLISHER: PublisherProfile = {
   id: 'creatorloop',
   name: 'CreatorLoop',
@@ -326,11 +325,5 @@ export const CREATOR_PUBLISHER: PublisherProfile = {
       tags: ['creator', 'video', 'short_form'],
     },
   ],
-  // Built lazily and cached per UTC day: slot dates are relative to now, so a
-  // long-running process must not serve slots frozen at module load.
-  get shows(): ShowDefinition[] {
-    const day = Math.floor(Date.now() / DAY_MS);
-    if (showsCache?.day !== day) showsCache = { day, shows: SEEDS.map(creatorShow) };
-    return showsCache.shows;
-  },
+  shows: SEEDS.map(creatorShow),
 };
