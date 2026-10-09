@@ -2,7 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/property-coverage-disclosure.json",
   "title": "Property Coverage Disclosure",
-  "description": "Whether a product's publisher_properties[] is an exhaustive description of the properties on which the product may deliver. complete: the list is exhaustive and delivery outside it is non-conformant. partial: the list names some properties but is explicitly non-exhaustive and is not a delivery-containment guarantee. undisclosed: the seller discloses no property roster; publisher_properties is empty.",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Experimental in AdCP 3.3 (media_buy.property_coverage). Whether a product's publisher_properties[] is an exhaustive description of the properties on which the product may deliver. complete: the list is exhaustive and delivery outside it is non-conformant. partial: the list names some properties but is explicitly non-exhaustive and is not a delivery-containment guarantee. undisclosed: the seller discloses no property roster; publisher_properties is empty.",
   "type": "string",
   "enum": ["complete", "partial", "undisclosed"],
   "enumDescriptions": {
