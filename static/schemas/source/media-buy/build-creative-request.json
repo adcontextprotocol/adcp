@@ -249,7 +249,7 @@
     "refine_from_build_variant_id": {
       "type": "string",
       "x-entity": "build_variant",
-      "description": "Refine a previously produced variant and return new lineage-linked variants. The transformer and target capability are inherited from the parent leaf. A refinement request MUST omit transformer_id, target_capability_id(s), and deprecated target_format_id(s); changing transformer or output format is a new transformation build, not refinement. Requires creative.supports_refinement."
+      "description": "Refine a previously produced variant and return new lineage-linked variants. The transformer and target capability are inherited from the parent leaf. A refinement request MUST omit transformer_id, target_capability_id(s), and deprecated target_format_id(s); changing transformer or output format is a new transformation build, not refinement. Requires creative.supports_refinement. Compliance carries forward: the effective compliance set of a refinement is the `compliance` set (required_disclosures, prohibited_claims) of the parent leaf's retained build inputs, plus anything additionally supplied on the request, which can only add to it. `message` and `config` cannot remove or narrow it; an instruction that does (e.g. \"remove the disclaimer\") MUST fail the call with COMPLIANCE_UNSATISFIED. A refined leaf never inherits the parent's approval state."
     },
     "mode": {
       "type": "string",
