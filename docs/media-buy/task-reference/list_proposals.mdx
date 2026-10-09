@@ -73,6 +73,8 @@ Each `proposal` is the snapshot exactly as the seller issued it, so its `terms_d
 | `expired` | `expires_at` passed before acceptance. Terminal. |
 | `withdrawn` | The seller retracted a draft before expiry. Terminal. A seller must not withdraw a committed proposal before its `expires_at`. |
 
+Sellers keep a snapshot readable while it is `available` and for at least 30 days after it becomes `accepted`, `declined`, `expired`, or `withdrawn`. After that the snapshot may be gone; [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) remains the record of accepted terms, and an older change-feed record repairs as unavailable. Refining or accepting a `withdrawn` snapshot fails with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state), as for a declined one. There is no withdrawal notification.
+
 `origin` says how the snapshot was created: `request`, `refinement`, or `later`. Later proposals also carry `later_reason`.
 
 ## Opportunities

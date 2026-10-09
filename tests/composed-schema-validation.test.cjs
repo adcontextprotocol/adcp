@@ -4895,6 +4895,7 @@ async function runTests() {
     accepted: true,
     window_ends_at: '2026-12-31T23:59:59Z',
     max_count: 5,
+    min_interval: { interval: 1, unit: 'days' },
     created_count: 1,
     updated_at: '2026-10-09T15:02:11Z'
   };
@@ -4945,9 +4946,27 @@ async function runTests() {
     {
       outcome: 'listed',
       proposals: [],
-      opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: true, updated_at: '2026-10-09T15:02:11Z' } }]
+      opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: true, max_count: 5, min_interval: { interval: 1, unit: 'days' }, updated_at: '2026-10-09T15:02:11Z' } }]
     },
     'recorded consent must state its window end'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-response.json',
+    {
+      outcome: 'listed',
+      proposals: [],
+      opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: true, window_ends_at: '2026-12-31T23:59:59Z', updated_at: '2026-10-09T15:02:11Z' } }]
+    },
+    'recorded consent must state the effective limits, defaults included'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-proposals-response.json',
+    {
+      outcome: 'listed',
+      proposals: [],
+      opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: false, updated_at: '2026-10-09T15:02:11Z' } }]
+    },
+    'withdrawn consent needs no window or limits'
   );
   await testSchemaValidation(
     '/schemas/core/proposal-created-webhook.json',

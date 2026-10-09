@@ -98,13 +98,27 @@ reset on purchase, the governance rule, identifiers-only payloads, untrusted
 seller text, the `withdrawn`-committed rule, the version gate on change-feed
 records, the capability split, and the test-controller scenario.
 
-## Open questions
+## Resolved questions
 
-- Protocol defaults for `max_count` and `min_interval` when the buyer sets none.
-- Retention of declined and expired proposals in `list_proposals`.
-- Whether `withdrawn` needs its own notification.
-- Whether a seller-side governance check at creation is required in addition to
-  the check at acceptance.
+These were open in the first draft of #8096. The PR proposes the answers below;
+the working group can overturn them.
+
+- **Default limits.** When the buyer gives consent without limits, the
+  protocol defaults apply: `max_count` 5 and `min_interval` 1 day. Sellers may
+  be stricter, never looser, and the echo states the limits in force. This
+  makes "not annoying" a protocol guarantee that conformance can test, rather
+  than seller policy.
+- **Retention.** Snapshots stay readable through `list_proposals` while
+  available and for at least 30 days after a terminal disposition. Accepted
+  terms remain on `get_media_buys` after that. Older change-feed records repair
+  with `available: false` and `unavailable_reason: "deleted"`.
+- **Withdrawal notification.** None. Only drafts can be withdrawn, and a draft
+  cannot be accepted, so a buyer that learns late loses nothing. Refining or
+  accepting a withdrawn snapshot fails with `INVALID_STATE`, as for a declined
+  one, and sellers on the change feed record the status change.
+- **Seller governance at creation.** None. A later proposal has no
+  `governance_context` of its own and must not borrow the original request's,
+  so the only meaningful check is at acceptance, where the buyer supplies one.
 
 ## Graduation
 

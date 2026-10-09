@@ -62,7 +62,7 @@
     },
     "dispositions": {
       "type": "array",
-      "description": "Return only proposals in these dispositions. Defaults to every disposition the seller still retains.",
+      "description": "Return only proposals in these dispositions. Defaults to every disposition. Terminal snapshots are retained for at least 30 days after their disposition changed.",
       "items": { "$ref": "/schemas/enums/proposal-disposition.json" },
       "minItems": 1,
       "uniqueItems": true

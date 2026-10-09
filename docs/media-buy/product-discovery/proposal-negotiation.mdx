@@ -567,6 +567,7 @@ The buyer gives consent with `opportunity.later_proposals` on [`request_proposal
 - When the opportunity is created, an absent `later_proposals` means no consent. On later calls, absence means no change.
 - An absent `response_deadline` never implies consent. `response_deadline` still governs only the creating task's response.
 - Consent requires an account the seller resolves. The seller echoes what it recorded as `later_proposals` on the `request_proposals` response, including the computed `window_ends_at`. `accepted: false` there means no later proposals will arrive, whatever the request asked for.
+- Without buyer limits, the protocol defaults apply: at most 5 later proposals per consent and at least 1 day between them. A seller may be stricter, never looser. The echo always states the limits in force.
 - The window ends at the earliest of `later_proposals.until`, the end of `planning_horizon.end` in UTC, the seller's advertised `max_open_duration` measured from the call that last set consent, and closure of the opportunity.
 - The buyer withdraws consent by sending `later_proposals.accepted: false` on any call that carries `opportunity`. [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) accepts an empty `declines` array with an `opportunity` update for this purpose, and for closing an opportunity without declining a proposal.
 
@@ -602,7 +603,7 @@ By default, a successful `accept_proposal` or `buy_products` still closes the op
 
 ### Governance
 
-A later proposal is not created under a buyer request, so it carries no governance clearance from creation. Acceptance is governed exactly like acceptance of any other proposal, with the `governance_context` on `accept_proposal`. A seller that verifies governance MUST NOT treat a `governance_context` issued for the original request as covering a later proposal.
+A later proposal is not created under a buyer request, so it carries no governance clearance from creation, and the seller runs no governance check when creating it: it has no `governance_context` of its own and MUST NOT treat one issued for the original request as covering it. Governance applies at acceptance, exactly as for any other proposal, with the `governance_context` on `accept_proposal`.
 
 ### Visibility
 

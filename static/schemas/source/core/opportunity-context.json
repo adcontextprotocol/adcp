@@ -75,11 +75,12 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 50,
-          "description": "Maximum later proposals under this consent. Sellers MUST NOT exceed it."
+          "default": 5,
+          "description": "Maximum later proposals under this consent. Defaults to 5 when omitted. Sellers MUST NOT exceed it and MAY apply a lower cap."
         },
         "min_interval": {
           "allOf": [{ "$ref": "/schemas/core/duration.json" }, { "not": { "properties": { "unit": { "const": "campaign" } }, "required": ["unit"] } }],
-          "description": "Minimum time between later proposals. Sellers MUST NOT create one sooner."
+          "description": "Minimum time between later proposals. Defaults to 1 day when omitted. Sellers MUST NOT create one sooner and MAY apply a longer interval."
         }
       },
       "required": ["accepted"],

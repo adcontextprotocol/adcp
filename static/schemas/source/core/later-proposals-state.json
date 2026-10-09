@@ -20,11 +20,11 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 50,
-      "description": "Buyer-set cap on later proposals under the current consent, echoed when set."
+      "description": "Effective cap on later proposals under the current consent: the buyer's value, the protocol default of 5, or a lower seller cap. Required when accepted is true."
     },
     "min_interval": {
       "allOf": [{ "$ref": "/schemas/core/duration.json" }, { "not": { "properties": { "unit": { "const": "campaign" } }, "required": ["unit"] } }],
-      "description": "Buyer-set minimum time between later proposals, echoed when set."
+      "description": "Effective minimum time between later proposals: the buyer's value, the protocol default of 1 day, or a longer seller interval. Required when accepted is true."
     },
     "created_count": {
       "type": "integer",
@@ -42,6 +42,6 @@
     "properties": { "accepted": { "const": true } },
     "required": ["accepted"]
   },
-  "then": { "required": ["window_ends_at"] },
+  "then": { "required": ["window_ends_at", "max_count", "min_interval"] },
   "additionalProperties": false
 }
