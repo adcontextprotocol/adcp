@@ -40,7 +40,7 @@ page is not verification. `pagination` is available only with
 `reporting_revision_id`; exact mode rejects every other delivery/filter selector.
 When `account` is omitted, the seller searches all accounts accessible to the
 authenticated caller. Unknown and unauthorized revision/account combinations return
-the same nondisclosing `REPORTING_REVISION_NOT_FOUND` result.
+the same nondisclosing [`REFERENCE_NOT_FOUND`](adcp:error-code/REFERENCE_NOT_FOUND) result.
 
 **Request Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json)
 **Response Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)
@@ -695,6 +695,7 @@ asyncio.run(main())
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Only one date is present, `end_date` is not after `start_date`, or a dated request spans products with different reporting timezones | Supply both dates with `start_date < end_date`. Narrow `media_buy_ids` to buys sharing one reporting timezone, or omit both dates for lifetime delivery |
 | [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |
 | [`UNSUPPORTED_GRANULARITY`](/docs/building/verification/compliance-catalog#error-code-unsupported-granularity) | Requested `time_granularity` is not in the product's `windowed_pull_granularities` | Re-issue with a granularity from `error.details.supported_granularities`, or omit `time_granularity` to fall back to cumulative date-range pulls. See [Windowed pull recovery](#windowed-pull-recovery). |
+| [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | Unknown or unauthorized `reporting_revision_id` + account combination (nondisclosing — expired, inaccessible, and absent revisions return the same response) | Verify the revision ID exists and is accessible to the authenticated account |
 
 A valid query with no matching media buys succeeds with an empty `media_buy_deliveries` array.
 
