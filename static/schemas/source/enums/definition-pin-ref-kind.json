@@ -3,6 +3,7 @@
   "$id": "/schemas/enums/definition-pin-ref-kind.json",
   "title": "Definition Pin Reference Kind",
   "description": "Kinds of third-party-published definition that a definition pin can cover. Each kind names the adagents.json array the pinned entry is read from. Property lists, collection lists, product-local format options, seller-inline placements, product and signal-source signals, and default-mode selections are not pinnable.",
+  "x-added-in": "3.3.0",
   "type": "string",
   "enum": [
     "publisher_format_option",

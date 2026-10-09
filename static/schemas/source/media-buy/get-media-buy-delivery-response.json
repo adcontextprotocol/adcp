@@ -942,6 +942,7 @@
                                 "x-entity": "creative"
                               },
                               "spot_status": {
+                                "x-added-in": "3.3.0",
                                 "$ref": "/schemas/enums/spot-status.json",
                                 "x-status": "experimental",
                                 "description": "Lifecycle status of this row. Absent means aired, which preserves AdCP 3.2 behavior. A scheduled row later becomes aired (same spot_id) or preempted. A makegood row is a separate airing, with its own spot_id, that carries replaces_spot_id; a planned replacement is a scheduled row that already carries it. Sellers declare the statuses they report in supports_spot_breakdown.available_statuses; a status not declared there is not reported, which is different from no spot having that status."
@@ -952,12 +953,14 @@
                                 "description": "RFC 3339 timestamp when the spot actually aired. Its presence proves an airing; it is not inferred from impressions. Required when spot_status is aired or makegood, or when spot_status is absent. MUST be absent when spot_status is scheduled or preempted."
                               },
                               "scheduled_at": {
+                                "x-added-in": "3.3.0",
                                 "type": "string",
                                 "format": "date-time",
                                 "x-status": "experimental",
                                 "description": "RFC 3339 timestamp of the planned airing slot. Required when spot_status is scheduled or preempted (for a preempted row, the last slot that was scheduled). The seller may move a scheduled spot until it airs, so the value can change between reports while spot_id does not; a buyer that needs the original slot compares reports. Optional on aired and makegood rows, where it records the last slot scheduled before airing."
                               },
                               "replaces_spot_id": {
+                                "x-added-in": "3.3.0",
                                 "type": "string",
                                 "minLength": 1,
                                 "x-status": "experimental",
@@ -965,6 +968,7 @@
                                 "x-entity": "spot_airing"
                               },
                               "break_position": {
+                                "x-added-in": "3.3.0",
                                 "type": "object",
                                 "x-status": "experimental",
                                 "description": "Where the spot ran inside its commercial break. Sellers declare support in supports_spot_breakdown.supports_break_position; omission means the position is not reported. On a scheduled row the value is the planned position and may change before airing.",
