@@ -218,6 +218,8 @@ definition metadata inline, including `taxonomy`, `data_sources`, `methodology`,
 `consent_basis`, `restricted_attributes`, `policy_categories`, `art9_basis`, and
 `data_subject_rights`.
 
+`signal_status` and `source_audience_id` are also selectable. `signal_status` is always returned when `processing` or `failed`, so a projection cannot hide an unready signal.
+
 When `consent_basis` or `art9_basis` is projected for another provider's signal,
 the value remains provider-declared signal-definition posture. Sellers and
 federating agents MUST NOT substitute their own processing basis for the
@@ -239,6 +241,8 @@ custom or brief-specific signals return deeper inline context when useful.
   - **signal_agent_segment_id**: Opaque signal handle issued by this signal source. Use it verbatim for [`activate_signal`](/docs/signals/tasks/activate_signal); do not treat it as a globally portable signal ID. For package-level `signal_targeting_groups`, `signal_ref` is the buy-time identity and this handle is echoed only when the selected product option exposes it as a separate execution handle.
   - **name**: Human-readable signal name
   - **description**: Detailed signal description
+  - **signal_status**: Optional construction readiness: `processing`, `ready`, or `failed`. Absent means `ready`. See [Custom segments built from a seed audience](#custom-segments-built-from-a-seed-audience).
+  - **source_audience_id**: Optional `audience_id` of the seed audience this signal was derived from, as previously synced with [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences). Lineage only; no seed data is transported.
   - **demographic_predicate**: Authoritative demographic meaning projected from the signal definition. Age predicates carry inclusive bounds and explicit unknown-age membership; names alone are not machine-readable semantics.
   - **signal_type**: Type of signal. One of:
     - `marketplace` — resold third-party segment (provider authorization verifiable via the provider's `adagents.json`)
@@ -790,6 +794,67 @@ Use `coverage_forecast` as the authoritative field for signal-first discovery: "
 5. **Activation Required**: If `is_live` is false, use the [`activate_signal`](/docs/signals/tasks/activate_signal) task
 6. **The message field** provides a quick summary of the most relevant findings
 
+## Custom segments built from a seed audience
+
+<Note>
+**Experimental in 3.3.** `signal_status` and `source_audience_id` are part of the `signals.signal_lifecycle` surface. Agents that emit them MUST declare `signals.features.signal_lifecycle: true` and list `signals.signal_lifecycle` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). See [Experimental status](/docs/reference/experimental-status).
+</Note>
+
+A signal agent that builds custom or lookalike segments from a buyer's first-party seed (for example, a CDP) uses `get_signals` as both the discovery and the construct-or-reuse request. There is no separate build task, and AdCP never carries seed membership: the buyer first moves the seed with [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) (`audience_type: "lookalike_seed"`), then sends `get_signals` with a `signal_spec` and the same `account`.
+
+Two optional fields on each returned signal describe the result:
+
+| Field | Meaning |
+|-------|---------|
+| `signal_status` | `processing` (still being built), `ready`, or `failed`. Absent means `ready`, so agents that do not build segments on demand are unchanged. |
+| `source_audience_id` | The `audience_id` of the seed audience the segment was derived from. |
+
+`processing` is the same "being built" word used by [`audience-status`](/docs/media-buy/task-reference/sync_audiences); `failed` is terminal here, and `too_small` and `suspended` do not apply because they are seller-side outcomes of a synced audience.
+
+The per-signal field is named `signal_status` so it cannot be confused with the response's top-level `status`, whose `failed` value selects the failure branch.
+
+```json
+{
+  "$schema": "/schemas/signals/get-signals-response.json",
+  "status": "completed",
+  "message": "Found 1 lookalike segment modeled from your Nova Brands seed audience; it is still being built.",
+  "cache_scope": "account",
+  "signals": [
+    {
+      "signal_ref": {
+        "scope": "signal_source",
+        "signal_source_url": "https://signals.pinnacle-data.example",
+        "signal_id": "lookalike_nova_buyers"
+      },
+      "signal_agent_segment_id": "sas_abc123",
+      "name": "Nova Brands lookalike buyers",
+      "description": "Lookalike segment modeled from the Nova Brands buyer seed audience",
+      "signal_type": "custom",
+      "signal_status": "processing",
+      "source_audience_id": "aud_seed_xyz",
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "https://dsp.pinnaclemedia.example",
+          "is_live": false,
+          "estimated_activation_duration_minutes": 60
+        }
+      ]
+    }
+  ]
+}
+```
+
+`status: "completed"` means discovery finished, not that every returned signal is built. `signal_agent_segment_id` is stable across the `processing` to `ready` transition. `estimated_activation_duration_minutes` in the example is activation time, separate from build state. Seed provenance such as the seed type is disclosed through `modeling`; `source_audience_id` adds only the lineage id.
+
+Readiness rules:
+
+- A `processing` signal is not yet usable. Agents MUST NOT report `is_live: true` or return an `activation_key` for it, and buyers SHOULD NOT call [`activate_signal`](/docs/signals/tasks/activate_signal) for it or target it in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). A `failed` signal will not become ready; the agent MAY offer a replacement under a new `signal_ref`.
+- To check readiness, re-read with `signal_refs` set to the returned `signal_ref`. Do not repeat the `signal_spec`, which is the construct-or-reuse request. `signal_status` is `ready` (or absent) once the segment is built.
+- When construction outlasts the initial response, the agent MAY use the existing [Submitted arm](#async-discovery) (`submitted` with a `task_id`, plus `push_notification_config` when supplied). Agents SHOULD return only `ready` or `failed` signals on the completion artifact. No separate readiness notification is defined.
+- `wholesale` reads are enumeration only: they carry no `signal_spec`, so they never trigger a build. A wholesale feed MAY list `processing` or `failed` signals, and an agent that emits `processing` or `failed` and returns `wholesale_feed_version` MUST change it when a signal's `signal_status` changes, so `if_wholesale_feed_version` does not return a stale `processing`. Agents that never emit those values are unaffected.
+- `source_audience_id` is buyer-scoped: it is returned only when the request carried `account`, and never in a `cache_scope: "public"` response. Consent basis and residency for the seed stay governed by `sync_audiences`.
+
 ## Seller-offered signals on media products
 
 A sales agent that owns or is authorized to apply targeting signals exposes buy-time product eligibility through [`get_products`](/docs/media-buy/task-reference/get_products). It can also expose a broader cross-product signal feed through `get_signals` when buyers need discovery or activation before package selection:
@@ -954,6 +1019,7 @@ When `unchanged: true`, `signals[]` MUST be omitted and consumers MUST NOT mutat
 - **`filters` canonicalization.** Agents MUST treat the `filters` object as canonicalized before hashing into the `wholesale_feed_version` keyspace: keys sorted lexicographically, omitted-and-default values treated identically, array values sorted where the filter has set semantics (e.g., `catalog_types`, `data_providers`). Callers that pass equivalent-but-differently-shaped filter objects MUST receive the same `wholesale_feed_version`. Prevents silent stale-mirror bugs from key-order or default-elision differences. **Forward-compat default:** new filter fields added in 3.x minor versions MUST declare set-vs-sequence semantics; absent an explicit declaration, the rule defaults to **set-semantics**.
 - **Pagination interaction.** Agents MUST return `wholesale_feed_version` on every paginated page (not only the first) when they declare `wholesale_feed_versioning.supported: true`; agents that do not declare versioning SHOULD do the same. If the wholesale feed mutates between pages, the new version surfaces on the next page and the caller MUST restart pagination from `cursor: null` — the partial pages already received describe a stale version.
 - **`unchanged: true` and in-progress pagination.** A caller mid-pagination MAY send `if_wholesale_feed_version` matching the version their pages so far were drawn from. If the agent confirms `unchanged: true`, the response omits `signals[]` and pagination envelope entirely; the caller abandons their in-progress walk under that version. Agents MAY NOT use the conditional-fetch short-circuit to skip individual pages within an active pagination — `unchanged` is feed-versus-cached-version, not per-page.
+- A change to a signal's `signal_status` is a metadata change: agents that emit `processing` or `failed` MUST change `wholesale_feed_version` when it moves (see [Custom segments built from a seed audience](#custom-segments-built-from-a-seed-audience)).
 - Pre-v3.1 agents that ignore `if_wholesale_feed_version` simply return the full payload — semantically correct, just inefficient.
 
 For pushed change tracking beyond conditional fetch, see `specs/wholesale-feed-webhooks.md`. Wholesale feed webhooks carry the changed signal payload, pricing payload, removal tombstone, or bulk-change summary; `get_signals` remains the repair and reconciliation read.
