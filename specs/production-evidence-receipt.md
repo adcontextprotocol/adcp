@@ -64,7 +64,7 @@ retains the richer private record, pinned by `audit_record_digest`.
 ## Delivery and signing
 
 The receipt is the claims payload. It is delivered as an `AttestationReference`
-with `claim_type` `https://adcontextprotocol.org/claims/production-evidence/v1`,
+with `claim_type` `https://adcontextprotocol.org/claims/production-evidence`,
 resolved and verified under the evaluator's published `adcp.attestations`
 capabilities and local trust policy. A reference to a receipt is a locator and a
 hint, not proof.
@@ -92,7 +92,7 @@ MUST reject a receipt unless:
 
 A co-signer's `attestation` is its own credential, not a field in the issuer's
 claim. It uses a separate claim type,
-`https://adcontextprotocol.org/claims/production-evidence-endorsement/v1`, so an
+`https://adcontextprotocol.org/claims/production-evidence-endorsement`, so an
 auditor's own receipt cannot be replayed as an endorsement. Its subject is a
 resource subject: `resource_type`
 `https://adcontextprotocol.org/claims/subjects/production-evidence-receipt`,
@@ -165,7 +165,7 @@ Evaluator-enforced (not expressible in JSON Schema):
   co-signer in the schema and why a public matrix MUST publish which issuers it
   accepts and why.
 - Both the issuer and each co-signer MUST match the evaluator's accepted issuers.
-- Temporal invariants: `last_observed_on` is not before `first_observed_on` or
+- Temporal invariants: `last_observed_date` is not before `first_observed_date` or
   after `issued_at`; `expires_at` is after `issued_at`; evaluators SHOULD cap
   accepted `expires_at - issued_at` (for example at one year).
 - `supersedes` MUST NOT contain the receipt's own `receipt_id` and MUST refer

@@ -119,7 +119,7 @@ describe('production evidence receipt', () => {
     });
 
     it('binds the co-signer to a distinct endorsement claim over a digest-pinned resource subject', () => {
-      rejects(mutate(production, r => { r.co_signers[0].attestation.claim_type = 'https://adcontextprotocol.org/claims/production-evidence/v1'; }),
+      rejects(mutate(production, r => { r.co_signers[0].attestation.claim_type = 'https://adcontextprotocol.org/claims/production-evidence'; }),
         { instancePath: '/co_signers/0/attestation/claim_type' });
       rejects(mutate(production, r => { delete r.co_signers[0].attestation.subject.content_digest; }),
         { missing: 'content_digest' });
@@ -218,8 +218,8 @@ describe('production evidence receipt', () => {
     });
 
     it('records observations at day granularity', () => {
-      rejects(mutate(production, r => { r.observation.first_observed_on = '2026-09-02T14:00:00Z'; }),
-        { keyword: 'format', instancePath: '/observation/first_observed_on' });
+      rejects(mutate(production, r => { r.observation.first_observed_date = '2026-09-02T14:00:00Z'; }),
+        { keyword: 'format', instancePath: '/observation/first_observed_date' });
     });
 
     it('requires subject consent for a public projection', () => {

@@ -2,9 +2,10 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/production-evidence-receipt.json",
   "title": "Production Evidence Receipt",
-  "description": "Claims payload of a dated, scoped, issuer-signed statement about what an AdCP implementation was observed doing. It is NOT a conformance result, a certification, or a trust decision, and it carries no spend, price, campaign, client, or counterparty identity unless the named party consented. The receipt defines claims only: it is delivered and signed through the existing AttestationReference primitive (claim_type https://adcontextprotocol.org/claims/production-evidence/v1), not through a second signing envelope, and evaluators remain verifier-of-record under their own trust policy. evidence_tier is a ladder, but independence is declared and checkable rather than advisory: the issuer MUST declare every role it played in issuer_counterparty_roles, and at evidence_tier independently_interoperable or above it MUST also declare counterparty_relation and publish an issuance_policy, and a non-empty role declaration requires a structurally independent co-signer. An empty declaration is the issuer's own claim, not proof; evaluators back it with their own accepted-issuer policy. Tiers below conformance_passed (declared, schema_validated) are declarative registry metadata and are not receipts. Experimental in 3.3: shape may change under the experimental-status contract.",
+  "description": "Claims payload of a dated, scoped, issuer-signed statement about what an AdCP implementation was observed doing. It is NOT a conformance result, a certification, or a trust decision, and it carries no spend, price, campaign, client, or counterparty identity unless the named party consented. The receipt defines claims only: it is delivered and signed through the existing AttestationReference primitive (claim_type https://adcontextprotocol.org/claims/production-evidence), not through a second signing envelope, and evaluators remain verifier-of-record under their own trust policy. evidence_tier is a ladder, but independence is declared and checkable rather than advisory: the issuer MUST declare every role it played in issuer_counterparty_roles, and at evidence_tier independently_interoperable or above it MUST also declare counterparty_relation and publish an issuance_policy, and a non-empty role declaration requires a structurally independent co-signer. An empty declaration is the issuer's own claim, not proof; evaluators back it with their own accepted-issuer policy. Tiers below conformance_passed (declared, schema_validated) are declarative registry metadata and are not receipts. Experimental in 3.3: shape may change under the experimental-status contract.",
   "type": "object",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "properties": {
     "receipt_id": {
       "type": "string",
@@ -16,7 +17,7 @@
     },
     "claim_type": {
       "type": "string",
-      "const": "https://adcontextprotocol.org/claims/production-evidence/v1",
+      "const": "https://adcontextprotocol.org/claims/production-evidence",
       "description": "Claim vocabulary URI. Binds the payload to the AttestationReference that delivers it."
     },
     "issuer": {
@@ -114,15 +115,15 @@
       "type": "object",
       "description": "Coarse temporal and volume scope of the observation. Exact counts are deliberately not representable.",
       "properties": {
-        "first_observed_on": {
+        "first_observed_date": {
           "type": "string",
           "format": "date",
           "description": "UTC calendar date of the first observation. Day granularity on purpose: exact timestamps combined with a coarse band could identify a transaction in a counterparty's logs."
         },
-        "last_observed_on": {
+        "last_observed_date": {
           "type": "string",
           "format": "date",
-          "description": "UTC calendar date of the last observation. MUST NOT be before first_observed_on or after the date of issued_at."
+          "description": "UTC calendar date of the last observation. MUST NOT be before first_observed_date or after the date of issued_at."
         },
         "activity_band": {
           "type": "string",
@@ -136,8 +137,8 @@
         }
       },
       "required": [
-        "first_observed_on",
-        "last_observed_on",
+        "first_observed_date",
+        "last_observed_date",
         "activity_band"
       ],
       "additionalProperties": false
@@ -197,7 +198,7 @@
               {
                 "properties": {
                   "claim_type": {
-                    "const": "https://adcontextprotocol.org/claims/production-evidence-endorsement/v1"
+                    "const": "https://adcontextprotocol.org/claims/production-evidence-endorsement"
                   },
                   "subject": {
                     "properties": {
@@ -647,7 +648,7 @@
   "examples": [
     {
       "receipt_id": "per_01JEVID0042",
-      "claim_type": "https://adcontextprotocol.org/claims/production-evidence/v1",
+      "claim_type": "https://adcontextprotocol.org/claims/production-evidence",
       "issuer": {
         "type": "origin",
         "origin": "https://relay-network.example"
@@ -676,8 +677,8 @@
         "media_buy_accepted"
       ],
       "observation": {
-        "first_observed_on": "2026-09-02",
-        "last_observed_on": "2026-09-30",
+        "first_observed_date": "2026-09-02",
+        "last_observed_date": "2026-09-30",
         "activity_band": "1_to_10"
       },
       "capability_response_digest": "sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
@@ -693,7 +694,7 @@
               "type": "origin",
               "origin": "https://audit-co.example"
             },
-            "claim_type": "https://adcontextprotocol.org/claims/production-evidence-endorsement/v1",
+            "claim_type": "https://adcontextprotocol.org/claims/production-evidence-endorsement",
             "subject": {
               "type": "resource",
               "resource_type": "https://adcontextprotocol.org/claims/subjects/production-evidence-receipt",
@@ -729,7 +730,7 @@
     },
     {
       "receipt_id": "per_01JEVID0007",
-      "claim_type": "https://adcontextprotocol.org/claims/production-evidence/v1",
+      "claim_type": "https://adcontextprotocol.org/claims/production-evidence",
       "issuer": {
         "type": "agent",
         "agent_url": "https://compliance.runner.example/adcp"
@@ -755,8 +756,8 @@
         "media_buy_accepted"
       ],
       "observation": {
-        "first_observed_on": "2026-09-20",
-        "last_observed_on": "2026-09-20",
+        "first_observed_date": "2026-09-20",
+        "last_observed_date": "2026-09-20",
         "activity_band": "1_to_10"
       },
       "audit_record_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
