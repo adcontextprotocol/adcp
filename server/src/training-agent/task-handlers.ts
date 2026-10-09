@@ -16675,7 +16675,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         );
       }
     }
-    if (!content) return { errors: [{ code: 'REPORTING_REVISION_NOT_FOUND', message: 'The requested reporting revision is unavailable.', field: 'reporting_revision_id' }] };
+    if (!content) return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'The requested reporting revision is unavailable.', field: 'reporting_revision_id' }] };
     const exactResponse = {
       reporting_period: content.revision.period,
       media_buy_deliveries: [],
