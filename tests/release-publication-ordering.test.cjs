@@ -79,6 +79,8 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
   write(
     "release.json",
     JSON.stringify({
+      id: 100,
+      tag_name: `v${version}`,
       tagName: `v${version}`,
       targetCommitish: source,
       isDraft: false,
@@ -116,7 +118,8 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
     if(args[0]==='api') {
       const url=args.find(a=>a.startsWith('/repos/'));
       const output=value=>console.log(JSON.stringify(args.includes('--slurp')?[value]:value));
-      if(url.includes('/commits/')) { if(process.env.PULLS_ERROR) process.exit(1); output(JSON.parse(process.env.ASSOCIATED_PRS||'[{"number":1,"merged_at":"2026-09-14","base":{"ref":"main"}}]')); }
+      if(url.split('?')[0].endsWith('/releases')) output(fs.existsSync('release.json')?[release()]:[]);
+      else if(url.includes('/commits/')) { if(process.env.PULLS_ERROR) process.exit(1); output(JSON.parse(process.env.ASSOCIATED_PRS||'[{"number":1,"merged_at":"2026-09-14","base":{"ref":"main"}}]')); }
       else if(url.endsWith('/reviews')) output(JSON.parse(process.env.REVIEWS||'[]'));
       else if(url.includes('/collaborators/')) {
         fs.appendFileSync('permission-calls',url+'\\n');
@@ -131,7 +134,7 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
         const q=args[args.indexOf('--jq')+1];const name=q.match(/name == "([^"]+)"/)[1];console.log(r.assets.find(a=>a.name===name)?.name||'');
       } else console.log(JSON.stringify(r));
     } else if(args[1]==='create') {
-      log('github draft'); save({tagName:args[2],targetCommitish:process.env.RELEASE_SHA,isDraft:true,isPrerelease:args.includes('--prerelease'),assets:[]});
+      log('github draft'); save({id:100,tag_name:args[2],tagName:args[2],targetCommitish:process.env.RELEASE_SHA,isDraft:true,isPrerelease:args.includes('--prerelease'),assets:[]});
     } else if(args[1]==='upload') {
       const r=release(); if(!r.isDraft) throw Error('upload was publicly visible before staging completed');
       const name=path.basename(args[3]);r.assets.push({name});save(r);log('github upload '+name);
@@ -193,7 +196,7 @@ function fixture(t, fixtureVersion = version, includeReleaseHistory = false) {
     run(
       "bash",
       ["scripts/backfill-cdn-artifacts.sh", "--bucket", "test", ...options],
-      extra,
+      { REVIEWS: approval(source), ...extra },
     );
   return {
     dir,
@@ -324,7 +327,7 @@ for (const [name, overrides] of [
       "bash",
       [
         "-c",
-        step("Require human approval for committed release artifacts").run,
+        step("Require human approval for committed release artifacts").run.replaceAll("${{ steps.release-artifacts.outputs.version }}", version),
       ],
       { REVIEWS: overrides ? approval(f.source, overrides) : "[]" },
     );
@@ -340,7 +343,7 @@ test("approved publication stages complete GitHub tuple before release and scope
     [
       "-c",
       "set -e\n" +
-        step("Require human approval for committed release artifacts").run +
+        step("Require human approval for committed release artifacts").run.replaceAll("${{ steps.release-artifacts.outputs.version }}", version) +
         "\n" +
         step("Upload protocol tarball to GitHub Release").run.replaceAll(
           "${{ steps.release-artifacts.outputs.version }}",
@@ -532,7 +535,7 @@ for (const [name, env] of [
       [
         "-c",
         "set -e\n" +
-          step("Require human approval for committed release artifacts").run +
+          step("Require human approval for committed release artifacts").run.replaceAll("${{ steps.release-artifacts.outputs.version }}", version) +
           '\nprintf "publication attempted\\n" >> calls',
       ],
       { REVIEWS: approval(f.source), ...env },
@@ -680,7 +683,7 @@ test("workflow wiring binds tested SHA, approval, exact recovery, and publicatio
   assert.equal(artifactCredentials.uses, "actions/checkout@v7.0.1");
   assert.equal(
     artifactCredentials.with.ref,
-    "${{ needs.verify-release.outputs.target_commit }}",
+    "${{ github.sha }}",
   );
   assert.equal(artifactCredentials.with["fetch-depth"], 0);
   assert.equal(artifactCredentials.with.token, "${{ github.token }}");
@@ -850,7 +853,7 @@ test("an existing PR updated by a stale push cannot publish even after trusted a
     [
       "-c",
       "set -e\n" +
-        step("Require human approval for committed release artifacts").run +
+        step("Require human approval for committed release artifacts").run.replaceAll("${{ steps.release-artifacts.outputs.version }}", next) +
         '\nprintf "publication attempted\\n" >> calls',
     ],
     {
@@ -1023,3 +1026,29 @@ for (const mismatch of [false, true]) {
     }
   });
 }
+
+
+test('manual recovery retains the current tested checkout and the exact original release target', t => {
+  const f = fixture(t);
+  f.git('branch', 'main', f.head);
+  f.git('remote', 'add', 'origin', f.dir);
+  const output = path.join(f.dir, 'recovery-output');
+  const resolve = release.jobs['verify-release'].steps.find(s => s.name === 'Resolve release target');
+  const result = f.run('bash', ['-c', resolve.run], {
+    GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF_NAME: 'main', GITHUB_REF: 'refs/heads/main',
+    REQUESTED_COMMIT: f.source, GITHUB_OUTPUT: output,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(f.git('rev-parse', 'HEAD'), f.head);
+  assert.equal(fs.readFileSync(output, 'utf8'), `commit=${f.source}\n`);
+  const committed = f.run('node', ['scripts/check-release-state.cjs', 'committed', version]);
+  assert.equal(committed.status, 0, committed.stderr);
+  f.git('checkout', '--detach', f.source);
+  const stale = f.run('bash', ['-c', resolve.run], {
+    GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF_NAME: 'main', GITHUB_REF: 'refs/heads/main',
+    REQUESTED_COMMIT: f.source, GITHUB_OUTPUT: output,
+  });
+  assert.notEqual(stale.status, 0);
+  assert.match(stale.stderr + stale.stdout, /current tested checkout/);
+  assert.equal(f.calls(), '');
+});

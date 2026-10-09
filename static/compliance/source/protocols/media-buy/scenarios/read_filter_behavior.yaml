@@ -5,6 +5,8 @@ title: "Seller applies deterministic media-buy read filters"
 category: media_buy_seller
 summary: "Verifies get_media_buys membership filters and half-open get_media_buy_delivery date bounds instead of accepting them as no-ops."
 track: reporting
+requires:
+  - controller
 
 required_tools:
   - get_media_buys

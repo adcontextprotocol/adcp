@@ -83,7 +83,7 @@ import {
   withDurableReportingLedger,
 } from './reporting-reliability.js';
 import { getSession, registerSharedPublicBrandPartition, runWithSessionContext, sessionKeyFromArgs } from './state.js';
-import { supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type ToolArgs, type TrainingContext } from './types.js';
+import { supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
@@ -503,6 +503,8 @@ export const TRAINING_SALES_CAPABILITIES = {
     supported_event_types: ['purchase' as const, 'add_to_cart' as const, 'lead' as const, 'page_view' as const],
     supported_hashed_identifiers: ['hashed_email' as const],
     supported_action_sources: ['website' as const, 'app' as const],
+    // Event-goal cost targets the outcome_target planner binds to a source.
+    supported_targets: [...TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS],
     // Mirrors TRAINING_ATTRIBUTION_WINDOWS: the one window the outcome_target
     // planner states on event goals it binds to registered sources.
     attribution_windows: [{
@@ -1558,8 +1560,11 @@ export class TrainingSalesPlatform
     if (this.storyboardCompat?.version === '3.0') {
       const { reporting_delivery: _reportingDelivery, ...mediaBuy } = TRAINING_SALES_CAPABILITIES.overrides.media_buy;
       const { experimental_features: _experimentalFeatures, ...overrides } = TRAINING_SALES_CAPABILITIES.overrides;
+      // conversion_tracking.supported_targets is a 3.1+ field.
+      const { supported_targets: _supportedTargets, ...conversionTracking } = TRAINING_SALES_CAPABILITIES.conversion_tracking;
       return {
         ...TRAINING_SALES_CAPABILITIES,
+        conversion_tracking: conversionTracking,
         specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
         overrides: { ...overrides, media_buy: mediaBuy },
       };

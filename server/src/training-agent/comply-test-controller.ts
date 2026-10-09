@@ -338,6 +338,9 @@ export function getDeliverySimulationForPeriod(
     filtered.reportedSpend.currency = reportedSpend.currency;
     Object.assign(filtered, extensions);
   }
+  // Property-grain rows are undated, so period filtering never excludes them.
+  if (cumulative.propertyDelivery) filtered.propertyDelivery = cumulative.propertyDelivery;
+  if (cumulative.installmentPropertyDelivery) filtered.installmentPropertyDelivery = cumulative.installmentPropertyDelivery;
   return filtered;
 }
 
@@ -459,6 +462,12 @@ function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, para
   if (isRecord(params.dooh_metrics)) {
     cumulative.doohMetrics = params.dooh_metrics;
   }
+  if (Array.isArray(params.property_delivery)) {
+    cumulative.propertyDelivery = params.property_delivery as Array<Record<string, unknown>>;
+  }
+  if (Array.isArray(params.installment_property_delivery)) {
+    cumulative.installmentPropertyDelivery = params.installment_property_delivery as Array<Record<string, unknown>>;
+  }
   if (Array.isArray(params.not_yet_measurable_vendor_metrics)) {
     cumulative.deferredVendorMetrics = normalizeVendorMetricIdentities(params.not_yet_measurable_vendor_metrics) ?? [];
   }
@@ -491,6 +500,8 @@ function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record
     ...(cumulative.viewability ? { viewability: cumulative.viewability } : {}),
     ...(cumulative.plays !== undefined ? { plays: cumulative.plays } : {}),
     ...(cumulative.doohMetrics ? { dooh_metrics: cumulative.doohMetrics } : {}),
+    ...(cumulative.propertyDelivery ? { property_delivery: cumulative.propertyDelivery } : {}),
+    ...(cumulative.installmentPropertyDelivery ? { installment_property_delivery: cumulative.installmentPropertyDelivery } : {}),
     ...(cumulative.deferredVendorMetrics ? { not_yet_measurable_vendor_metrics: cumulative.deferredVendorMetrics } : {}),
     ...(cumulative.vendorMetricValuesByPackage ? { vendor_metric_values_by_package: cumulative.vendorMetricValuesByPackage } : {}),
     ...(cumulative.deferredVendorMetricsByPackage ? { not_yet_measurable_vendor_metrics_by_package: cumulative.deferredVendorMetricsByPackage } : {}),
@@ -1143,6 +1154,33 @@ function createStore(
         }
       }
 
+      for (const [field, rowSchema] of [
+        ['property_delivery', '/schemas/core/property-delivery-metrics.json'],
+        ['installment_property_delivery', '/schemas/core/installment-property-delivery-metrics.json'],
+      ] as const) {
+        const rows = typedParams[field];
+        if (rows === undefined) continue;
+        if (mb.packages.length !== 1) {
+          throw new TestControllerError('INVALID_PARAMS', `media-buy-scoped ${field} is unambiguous only for a single-package buy`);
+        }
+        if (deliveryDate !== undefined) {
+          throw new TestControllerError('INVALID_PARAMS', `${field} is undated and cannot be combined with delivery_date`);
+        }
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new TestControllerError('INVALID_PARAMS', `${field} must be a non-empty array`);
+        }
+        for (const [index, row] of rows.entries()) {
+          const schemaResult = await validateProtocolSchema(rowSchema, row);
+          if (!schemaResult.valid) {
+            const first = schemaResult.errors[0];
+            throw new TestControllerError(
+              'INVALID_PARAMS',
+              `${field}[${index}] schema: ${first?.instancePath || '/'} ${first?.message ?? 'is invalid'}`,
+            );
+          }
+        }
+      }
+
       const distributionViolations = validateViewedSecondsDistributionSemantics(typedParams.viewability);
       if (distributionViolations.length > 0) {
         const first = distributionViolations[0];
@@ -1195,6 +1233,8 @@ function createStore(
       if (typedParams.viewability !== undefined) simulated.viewability = typedParams.viewability;
       if (typedParams.plays !== undefined) simulated.plays = typedParams.plays;
       if (typedParams.dooh_metrics !== undefined) simulated.dooh_metrics = typedParams.dooh_metrics;
+      if (typedParams.property_delivery !== undefined) simulated.property_delivery = typedParams.property_delivery;
+      if (typedParams.installment_property_delivery !== undefined) simulated.installment_property_delivery = typedParams.installment_property_delivery;
       if (typedParams.is_final !== undefined) simulated.is_final = typedParams.is_final;
       if (typedParams.finalized_at !== undefined) simulated.finalized_at = typedParams.finalized_at;
       if (typedParams.measurement_window !== undefined) simulated.measurement_window = typedParams.measurement_window;
@@ -2521,12 +2561,14 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
           || params.not_yet_measurable_vendor_metrics !== undefined
           || params.plays !== undefined
           || params.dooh_metrics !== undefined
+          || params.property_delivery !== undefined
+          || params.installment_property_delivery !== undefined
         )
       ) {
         return {
           success: false,
           error: 'INVALID_PARAMS',
-          error_detail: 'Multi-package buys require package-scoped simulation values; plays and dooh_metrics are supported only for single-package buys',
+          error_detail: 'Multi-package buys require package-scoped simulation values; plays, dooh_metrics, property_delivery, and installment_property_delivery are supported only for single-package buys',
         };
       }
       if (
@@ -2582,6 +2624,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     if (params.viewability !== undefined) simulatedExtras.viewability = params.viewability;
     if (params.plays !== undefined) simulatedExtras.plays = params.plays;
     if (params.dooh_metrics !== undefined) simulatedExtras.dooh_metrics = params.dooh_metrics;
+    if (params.property_delivery !== undefined) simulatedExtras.property_delivery = params.property_delivery;
+    if (params.installment_property_delivery !== undefined) simulatedExtras.installment_property_delivery = params.installment_property_delivery;
     if (params.is_final !== undefined) simulatedExtras.is_final = params.is_final;
     if (params.finalized_at !== undefined) simulatedExtras.finalized_at = params.finalized_at;
     if (params.measurement_window !== undefined) simulatedExtras.measurement_window = params.measurement_window;

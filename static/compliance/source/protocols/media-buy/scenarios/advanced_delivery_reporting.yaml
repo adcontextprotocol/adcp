@@ -5,6 +5,8 @@ title: "Seller narrows metrics and reports delivery by canonical format"
 category: media_buy_seller
 summary: "Verifies requested-metric narrowing, time-threshold video views, negotiated format breakdowns, truncation disclosure, and applied-sort echoes."
 track: reporting
+requires:
+  - controller
 
 required_tools:
   - get_products
@@ -104,6 +106,8 @@ phases:
             - brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "compliance-media_buy_seller_advanced_delivery_r-a37f01cb"
               billing: "operator"
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#advanced_delivery_reporting_sync_account"
@@ -130,6 +134,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_advanced_delivery_r-a37f01cb"
         context_outputs:
           - name: advanced_product_id
             path: "products[0].product_id"
@@ -161,6 +167,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_advanced_delivery_r-a37f01cb"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -217,6 +225,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_advanced_delivery_r-a37f01cb"
           media_buy_ids: ["$context.advanced_media_buy_id"]
           requested_metrics: ["time_based_views"]
           reporting_dimensions:

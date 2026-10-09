@@ -2873,6 +2873,227 @@ describe('comply_test_controller', () => {
       expect(session.complyExtensions.deliverySimulations.has(mediaBuyId)).toBe(false);
     });
 
+    describe('property-grain injection', () => {
+      const PROPERTY_ROWS = [
+        { publisher_domain: 'acme-news.example', identifier: { type: 'domain', value: 'acme-news.example' }, impressions: 5000, spend: 25 },
+        { publisher_domain: 'streamhaus.example', identifier: { type: 'android_package', value: 'example.streamhaus.app' }, impressions: 3000, spend: 90 },
+        { publisher_domain: 'nova-sports.example', identifier: { type: 'domain', value: 'nova-sports.example' }, impressions: 2000, spend: 10 },
+      ];
+      const collectionRef = { publisher_domain: 'studio-network.example', collection_id: 'nightly_news' };
+      const INSTALLMENT_ROWS = [
+        { installment_ref: { collection_ref: collectionRef, installment_id: 'ep_101' }, publisher_domain: 'streamhaus.example', identifier: { type: 'domain', value: 'streamhaus.example' }, impressions: 4000, spend: 40 },
+        { installment_ref: { collection_ref: collectionRef, installment_id: 'ep_101' }, publisher_domain: 'othercast.example', identifier: { type: 'domain', value: 'othercast.example' }, impressions: 1500, spend: 60 },
+        { installment_ref: { collection_ref: collectionRef, installment_id: 'ep_102' }, publisher_domain: 'streamhaus.example', identifier: { type: 'domain', value: 'streamhaus.example' }, impressions: 800, spend: 8 },
+      ];
+
+      async function seedBreakdownBuy(
+        reporting: Record<string, unknown>,
+        packageCount = 1,
+      ): Promise<string> {
+        const productId = `property_breakdown_${crypto.randomUUID().slice(0, 8)}`;
+        const seeded = await simulateCallTool(server, 'comply_test_controller', {
+          scenario: 'seed_product',
+          account: ACCOUNT,
+          brand: BRAND,
+          params: {
+            product_id: productId,
+            fixture: {
+              delivery_type: 'non_guaranteed',
+              channels: ['display'],
+              reporting_capabilities: {
+                available_reporting_frequencies: ['daily'],
+                expected_delay_minutes: 0,
+                timezone: 'UTC',
+                supports_webhooks: false,
+                available_metrics: ['impressions', 'spend'],
+                date_range_support: 'date_range',
+                ...reporting,
+              },
+              pricing_options: [{ pricing_option_id: 'breakdown_cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 10 }],
+            },
+          },
+        });
+        expect(seeded.result.success).toBe(true);
+        const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+          idempotency_key: crypto.randomUUID(),
+          account: ACCOUNT,
+          brand: BRAND,
+          start_time: 'asap',
+          end_time: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+          packages: Array.from({ length: packageCount }, () => ({
+            product_id: productId,
+            pricing_option_id: 'breakdown_cpm',
+            budget: 1000,
+          })),
+        });
+        if (isError || (result as any).errors) throw new Error(`create_media_buy failed: ${JSON.stringify(result)}`);
+        return (result as any).media_buy_id as string;
+      }
+
+      async function simulate(mediaBuyId: string, params: Record<string, unknown>) {
+        return (await simulateCallTool(server, 'comply_test_controller', {
+          scenario: 'simulate_delivery',
+          params: { media_buy_id: mediaBuyId, ...params },
+          account: ACCOUNT,
+          brand: BRAND,
+        })).result;
+      }
+
+      async function packageDelivery(mediaBuyId: string, reportingDimensions: Record<string, unknown>) {
+        const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+          media_buy_ids: [mediaBuyId],
+          reporting_dimensions: reportingDimensions,
+          account: ACCOUNT,
+          brand: BRAND,
+        });
+        return (result as any).media_buy_deliveries[0].by_package[0];
+      }
+
+      it('echoes only injected property rows, applying limit, sort, and truncation', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        const sim = await simulate(mediaBuyId, { impressions: 10000, property_delivery: PROPERTY_ROWS });
+        expect(sim.success).toBe(true);
+        expect((sim as any).cumulative.property_delivery).toHaveLength(3);
+
+        const truncated = await packageDelivery(mediaBuyId, {
+          property: { limit: 2, sort_by: 'impressions', sort_direction: 'desc' },
+        });
+        expect(truncated.by_property.map((row: any) => row.identifier.value)).toEqual([
+          'acme-news.example',
+          'example.streamhaus.app',
+        ]);
+        expect(truncated.by_property_truncated).toBe(true);
+        expect(truncated.by_property_suppressed).toBe(false);
+        expect(truncated.by_property_sorted_by).toBe('impressions');
+        expect(truncated.by_property_sort_direction).toBe('desc');
+
+        const ascending = await packageDelivery(mediaBuyId, {
+          property: { limit: 3, sort_by: 'spend', sort_direction: 'asc' },
+        });
+        expect(ascending.by_property.map((row: any) => row.spend)).toEqual([10, 25, 90]);
+        expect(ascending.by_property_truncated).toBe(false);
+        expect(ascending.by_property_sort_direction).toBe('asc');
+      });
+
+      it('returns an empty breakdown rather than synthesizing rows when none were injected', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        await simulate(mediaBuyId, { impressions: 10000 });
+        const noRows = await packageDelivery(mediaBuyId, { property: { limit: 5 } });
+        expect(noRows.by_property).toEqual([]);
+        expect(noRows.by_property_truncated).toBe(false);
+        expect(noRows.by_property_suppressed).toBe(false);
+        expect(noRows.by_property_sorted_by).toBe('spend');
+        expect(noRows.by_property_sort_direction).toBe('desc');
+
+        await simulate(mediaBuyId, { property_delivery: PROPERTY_ROWS });
+        const notRequested = await packageDelivery(mediaBuyId, { format: { limit: 1 } });
+        expect(notRequested.by_property).toBeUndefined();
+      });
+
+      it('falls back to spend when no row carries the requested sort metric and defaults the limit to 25', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        await simulate(mediaBuyId, { property_delivery: PROPERTY_ROWS });
+        const delivery = await packageDelivery(mediaBuyId, {
+          property: { sort_by: 'viewable_rate', sort_direction: 'asc' },
+        });
+        expect(delivery.by_property_sorted_by).toBe('spend');
+        expect(delivery.by_property_sort_direction).toBe('desc');
+        expect(delivery.by_property.map((row: any) => row.spend)).toEqual([90, 25, 10]);
+        expect(delivery.by_property_truncated).toBe(false);
+      });
+
+      it('returns injected rows for date-bounded requests and keeps them through requested_metrics narrowing', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        await simulate(mediaBuyId, { delivery_date: '2026-02-05', impressions: 100, clicks: 5 });
+        await simulate(mediaBuyId, { property_delivery: [{ ...PROPERTY_ROWS[0], clicks: 7 }] });
+        const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+          media_buy_ids: [mediaBuyId],
+          start_date: '2026-02-01',
+          end_date: '2026-02-28',
+          requested_metrics: ['impressions'],
+          reporting_dimensions: { property: { limit: 5 } },
+          account: ACCOUNT,
+          brand: BRAND,
+        });
+        const row = (result as any).media_buy_deliveries[0].by_package[0].by_property[0];
+        expect(row.identifier.value).toBe('acme-news.example');
+        expect(row.publisher_domain).toBe('acme-news.example');
+        expect(row.spend).toBe(25);
+        expect(row.clicks).toBeUndefined();
+      });
+
+      it('returns an empty breakdown for multi-package buys', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true }, 2);
+        const delivery = await packageDelivery(mediaBuyId, { property: { limit: 5 } });
+        expect(delivery.by_property).toEqual([]);
+        expect(delivery.by_property_truncated).toBe(false);
+      });
+
+      it('omits the breakdown when the product does not declare the per-product flag', async () => {
+        const mediaBuyId = await seedBreakdownBuy({});
+        await simulate(mediaBuyId, { property_delivery: PROPERTY_ROWS });
+        const delivery = await packageDelivery(mediaBuyId, { property: { limit: 5 } });
+        expect(delivery.by_property).toBeUndefined();
+      });
+
+      it('echoes injected installment x property rows with distinct collection-owner and host domains', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_installment_property_breakdown: true });
+        const sim = await simulate(mediaBuyId, { impressions: 6300, installment_property_delivery: INSTALLMENT_ROWS });
+        expect(sim.success).toBe(true);
+
+        const delivery = await packageDelivery(mediaBuyId, {
+          installment_property: { limit: 2, sort_by: 'impressions', sort_direction: 'desc' },
+        });
+        const rows = delivery.by_installment_property;
+        expect(rows).toHaveLength(2);
+        expect(rows[0].installment_ref.collection_ref.publisher_domain).toBe('studio-network.example');
+        expect(rows[0].publisher_domain).toBe('streamhaus.example');
+        expect(rows[1].publisher_domain).toBe('othercast.example');
+        expect(delivery.by_installment_property_truncated).toBe(true);
+        expect(delivery.by_installment_property_suppressed).toBe(false);
+        expect(delivery.by_installment_property_sorted_by).toBe('impressions');
+        expect(delivery.by_installment_property_sort_direction).toBe('desc');
+        expect(delivery.by_property).toBeUndefined();
+      });
+
+      it('replaces earlier injected rows instead of accumulating them', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        await simulate(mediaBuyId, { property_delivery: PROPERTY_ROWS });
+        await simulate(mediaBuyId, { property_delivery: [PROPERTY_ROWS[2]] });
+        const delivery = await packageDelivery(mediaBuyId, { property: { limit: 5 } });
+        expect(delivery.by_property).toHaveLength(1);
+      });
+
+      it('rejects malformed rows, delivery_date combinations, and multi-package buys without mutating state', async () => {
+        const mediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true });
+        const missingDomain = await simulate(mediaBuyId, {
+          property_delivery: [{ identifier: { type: 'domain', value: 'acme-news.example' }, impressions: 1, spend: 1 }],
+        });
+        expect(missingDomain.success).toBe(false);
+        expect(missingDomain.error).toBe('INVALID_PARAMS');
+
+        const missingInstallmentRef = await simulate(mediaBuyId, {
+          installment_property_delivery: [PROPERTY_ROWS[0]],
+        });
+        expect(missingInstallmentRef.success).toBe(false);
+        expect(missingInstallmentRef.error).toBe('INVALID_PARAMS');
+
+        const dated = await simulate(mediaBuyId, { delivery_date: '2026-02-05', property_delivery: PROPERTY_ROWS });
+        expect(dated.success).toBe(false);
+        expect(dated.error).toBe('INVALID_PARAMS');
+
+        const multiMediaBuyId = await seedBreakdownBuy({ supports_property_breakdown: true }, 2);
+        const multi = await simulate(multiMediaBuyId, { property_delivery: PROPERTY_ROWS });
+        expect(multi.success).toBe(false);
+        expect(multi.error).toBe('INVALID_PARAMS');
+
+        const sessionKey = sessionKeyFromArgs({ account: ACCOUNT }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+        const session = await getSession(sessionKey);
+        expect(session.complyExtensions.deliverySimulations.get(mediaBuyId)?.propertyDelivery).toBeUndefined();
+        expect(session.complyExtensions.deliverySimulations.has(multiMediaBuyId)).toBe(false);
+      });
+    });
+
     it('filters dated delivery batches with start-inclusive, end-exclusive boundaries', async () => {
       const mediaBuyId = await createMediaBuy(server);
       const utcDate = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);

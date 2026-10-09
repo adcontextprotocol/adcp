@@ -4,6 +4,8 @@ title: "Seller returns valid delivery reporting"
 category: media_buy_seller
 summary: "Verifies that get_media_buy_delivery returns schema-compliant delivery data after simulated delivery via the test controller."
 track: reporting
+requires:
+  - controller
 
 # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
 requires_capability:

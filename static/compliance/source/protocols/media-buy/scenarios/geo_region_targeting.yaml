@@ -4,6 +4,8 @@ title: "Seller validates and persists value-aware ISO subdivision targeting"
 category: media_buy_seller
 summary: "Verifies exact known-region discovery, country/value future support, independent exclusion, package readback, and deterministic rejection semantics."
 track: media_buy
+requires:
+  - controller
 
 requires_all_capabilities:
   - path: media_buy.execution.targeting.geo_regions.countries.FR.values

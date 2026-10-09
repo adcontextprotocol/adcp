@@ -31,7 +31,7 @@
           },
           "value": {
             "type": "string",
-            "description": "Universal ID value"
+            "description": "Universal ID value, interpreted by `type`. `uid2` and `euid`: the raw UID2/EUID (the 44-character Base64 form issued by the UID2/EUID operator), never the encrypted UID2 token, which rotates per mint and cannot key audience membership. These values are case-sensitive: senders and receivers MUST NOT case-fold or re-encode them. `maid`: IDFA/GAID UUID; senders SHOULD send the lowercase hyphenated form, and receivers SHOULD normalize case and hyphenation before matching. `hashed_email`: the same normalization and `^[a-f0-9]{64}$` form as the top-level `hashed_email`; when both are present they MUST agree. All other types: the identifier as issued by its provider, passed through unmodified."
           }
         },
         "required": ["type", "value"],

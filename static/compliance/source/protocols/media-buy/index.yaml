@@ -4,6 +4,9 @@ title: "Media buy seller agent"
 category: media_buy_seller
 summary: "Seller agent that receives briefs, returns products, accepts media buys, and reports delivery."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy
@@ -12,6 +15,8 @@ requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/advanced_delivery_reporting
+  - media_buy_seller/property_delivery_reporting
+  - media_buy_seller/installment_property_delivery_reporting
   - media_buy_seller/audience_activation_discovery
   - media_buy_seller/external_audience_source_binding
   - media_buy_seller/measurement_terms_rejected

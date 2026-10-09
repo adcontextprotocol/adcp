@@ -4,6 +4,8 @@ title: "Atomic media-buy total budget redistribution"
 category: media_buy_seller
 summary: "Verifies that a fixed media-buy total_budget update proportionally rescales active packages, returns auditable package state, and rejects competing package patches atomically."
 track: media_buy
+requires:
+  - controller
 
 # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
 requires_capability:

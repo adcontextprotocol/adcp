@@ -4,6 +4,8 @@ title: "Seller accepts and persists a seller-optimized budget across packages"
 category: media_buy_seller
 summary: "Verifies that a seller advertising seller_optimized_budget accepts and persists the core shared-budget contract (shared total, cross-package goals, media-buy pacing, allocation echo). Package caps, minimum-spend targets, and package pacing are graded only when their own sub-capability is advertised, and must be rejected with UNSUPPORTED_FEATURE before any over-subscription validation when it is not."
 track: media_buy
+requires:
+  - controller
 
 requires_all_capabilities:
   - path: media_buy.features.seller_optimized_budget

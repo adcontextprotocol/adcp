@@ -157,6 +157,12 @@ export const TRAINING_BIDDING_POLICY_CAPABILITY = {
   },
 } as const;
 
+/** Event-goal target kinds the training agent binds, advertised as
+ * media_buy.conversion_tracking.supported_targets on 3.1+ responses. cost_per
+ * is the criteria.outcome_target cost target the planner binds to an event
+ * source; the planner rejects an event-goal cost target when it is absent. */
+export const TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS = ['cost_per'] as const;
+
 /** Reliable Reporting 1.0 is available only from its matching RC.1 candidate. */
 export function supportsReliableReporting(servedVersion: string | undefined): boolean {
   return atLeastAdcpVersion(servedVersion, RELIABLE_REPORTING_ADCP_VERSION);
@@ -427,6 +433,10 @@ export interface ComplyDeliveryAccumulator {
   plays?: number;
   /** Latest DOOH delivery detail block injected by simulate_delivery. */
   doohMetrics?: Record<string, unknown>;
+  /** Property-grain rows injected by simulate_delivery; echoed verbatim as by_property. */
+  propertyDelivery?: Array<Record<string, unknown>>;
+  /** Installment x property rows injected by simulate_delivery; echoed verbatim as by_installment_property. */
+  installmentPropertyDelivery?: Array<Record<string, unknown>>;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
   conversionValue?: number;

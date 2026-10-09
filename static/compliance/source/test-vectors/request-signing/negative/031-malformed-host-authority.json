@@ -1,0 +1,34 @@
+{
+  "name": "Host header carries an unbracketed IPv6 literal (malformed authority) while the URL is clean",
+  "spec_reference": "#adcp-rfc-9421-profile (@authority derived from the as-received Host header and canonicalized by the URL canonicalization algorithm; malformed authority → request_target_uri_malformed)",
+  "signing_profile_version": "3.1",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://[::1]/adcp/create_media_buy",
+    "headers": {
+      "Host": "::1",
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:54AboGWe1BvlA-epah2osf0Zqsvj_9e5SMO-AUxjIHHAmc-gm8qKMKjSPDzw3TJwsHYHgzc5pqJ_4X-xFmydDA:"
+    },
+    "body": "{\"idempotency_key\":\"vector-negative-031-malformed-host-authority\",\"account\":{\"brand\":{\"domain\":\"acmeoutdoor.example\"},\"operator\":\"pinnacle-agency.example\",\"sandbox\":false},\"packages\":[{\"product_id\":\"prod-1\",\"budget\":5000.0,\"pricing_option_id\":\"cpm_usd_fixed\",\"paused\":false}],\"brand\":{\"domain\":\"brand.example\"},\"start_time\":\"2027-01-04T00:00:00Z\",\"end_time\":\"2027-02-01T00:00:00Z\",\"paused\":false,\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://[::1]/adcp/create_media_buy\n\"@authority\": [::1]\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_target_uri_malformed",
+    "failed_step": 10
+  },
+  "$comment": "The URL is the valid bracketed form https://[::1]/..., and the Signature is a real Ed25519 signature by test-ed25519-2026 over the base computed from the URL authority '[::1]', so the Host header is the only fault. The profile derives @authority from the as-received Host header and canonicalizes it by the same algorithm as @target-uri; an IPv6 literal outside brackets ('::1') is ambiguous with a port and is malformed (canonicalization.json case malformed-bare-ipv6), so the verifier MUST reject with request_target_uri_malformed at step 10. A verifier that derives @authority from the URL alone never judges the header, computes the signed base, verifies the signature, and wrongly accepts. failed_step is informational: step 10 is where @authority derivation happens; grading is on the error code."
+}

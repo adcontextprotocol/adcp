@@ -5,6 +5,9 @@ protocol: media-buy
 category: sales_guaranteed
 summary: "Seller agent that requires human-in-the-loop IO signing before guaranteed media buys go live."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy
@@ -62,7 +65,7 @@ narrative: |
   during the runner's timeout window.
 
   If the production sandbox does not expose the controller, the forced approval
-  phases report a missing_test_controller coverage gap. Their skipped assertions
+  phases report a controller coverage gap (requirement_unmet naming controller, or missing_test_controller for an ungated step). Their skipped assertions
   do not prove the guaranteed approval lifecycle for a Verified (Sandbox) run.
 
   Proposal-driven workflows are part of guaranteed selling: most guaranteed deals start with

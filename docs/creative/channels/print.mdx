@@ -67,6 +67,8 @@ For recurring print inventory, a collection-level `deadline_policy` expresses th
 
 For an installment scheduled at **09:00 UTC on Monday, October 12, 2026**, the booking deadline is September 28, the penalty-free cancellation deadline is October 5, and final artwork is due October 7, all at 09:00 UTC. An explicit `deadlines` object on that installment overrides this policy, which lets a special issue publish a different cancellation window without changing the collection default.
 
+`deadline_policy` does not derive `change_cutoff`, so sellers set it per installment. An installment's `deadlines.change_cutoff` can state the issue close, after which a creative swap or stop instruction no longer takes effect. It is separate from `cancellation_deadline`, which is the penalty-free cancel window.
+
 ## Delivery evidence and circulation
 
 Print has no impression event. What a buyer reconciles against an insertion order is proof that the insertion ran, where it ran, and the circulation it ran against. A seller reports these on the existing `by_installment` breakdown of [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery), one row per issue, using the optional `print_metrics` object that every `by_installment` row inherits from `delivery-metrics.json`. `print_metrics` is [experimental](/docs/reference/experimental-status) in AdCP 3.3.

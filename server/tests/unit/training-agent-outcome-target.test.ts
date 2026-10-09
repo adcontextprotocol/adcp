@@ -11,10 +11,11 @@ import {
   clearCatalogEventStores,
   SELLER_MANAGED_PURCHASE_SOURCE_ID,
 } from '../../src/training-agent/catalog-event-handlers.js';
-import { clearSessions } from '../../src/training-agent/state.js';
+import { clearSessions, findSessionMatching, flushDirtySessions, runWithSessionContext } from '../../src/training-agent/state.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import { validateProductDiscoverySourceResponse } from '../../src/training-agent/source-schema.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
+import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platform.js';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'outcome-target.example.com' }, operator: 'outcome-tester', sandbox: true };
@@ -92,6 +93,54 @@ function requestProposalsArgs(
 }
 
 const CLICKS_GOAL = { kind: 'metric', metric: 'clicks' };
+
+// vendor_metric goals: the pair a seeded product declares in
+// vendor_metric_optimization.supported_metrics, as the storyboard fixture does.
+const VENDOR_PRODUCT_ID = 'outcome_target_vendor_store_visits';
+const VENDOR_NO_COST_PRODUCT_ID = 'outcome_target_vendor_no_cost_per';
+const VENDOR_SCORE_PRODUCT_ID = 'outcome_target_vendor_attention_score';
+const UNDECLARING_PRODUCT_ID = 'outcome_target_vendor_undeclaring';
+const VENDOR_NOT_REPORTABLE_PRODUCT_ID = 'outcome_target_vendor_not_reportable';
+const VENDOR_BRANDED_PRODUCT_ID = 'outcome_target_vendor_branded';
+const STORE_VISITS_VENDOR = { domain: 'footfallvendor.example' };
+const STORE_VISITS_GOAL = { kind: 'vendor_metric', vendor: STORE_VISITS_VENDOR, metric_id: 'store_visits_14d_exposed' };
+const STORE_VISITS_REPORTING_COMMITMENT = {
+  scope: 'vendor', vendor: STORE_VISITS_VENDOR, metric_id: 'store_visits_14d_exposed',
+};
+const STORE_VISITS_OPTIMIZATION_GOAL = { ...STORE_VISITS_GOAL, priority: 1 };
+
+async function seedVendorProduct(
+  server: ReturnType<typeof createTrainingAgentServer>,
+  productId: string,
+  declaration: { vendor: { domain: string; brand_id?: string }; metric_id: string; supported_targets?: string[] } | undefined,
+  pricingOptions: Array<Record<string, unknown>> = [USD_FIXED_CPM_40],
+  // false declares the pair for optimization only, not in
+  // reporting_capabilities.vendor_metrics.
+  reportable = true,
+): Promise<void> {
+  const seed = await callTool(server, 'comply_test_controller', {
+    scenario: 'seed_product',
+    account: ACCOUNT,
+    params: {
+      product_id: productId,
+      fixture: {
+        delivery_type: 'non_guaranteed',
+        channels: ['display'],
+        pricing_options: pricingOptions,
+        ...(declaration && {
+          reporting_capabilities: {
+            available_metrics: ['impressions', 'spend'],
+            vendor_metrics: reportable
+              ? [{ vendor: declaration.vendor, metric_id: declaration.metric_id, vendor_relationship: 'third_party' }]
+              : [],
+          },
+          vendor_metric_optimization: { supported_metrics: [declaration] },
+        }),
+      },
+    },
+  });
+  expect(seed.success, JSON.stringify(seed)).toBe(true);
+}
 
 // The one window the seller advertises in conversion_tracking.attribution_windows.
 const EVENT_ATTRIBUTION_WINDOW = {
@@ -570,6 +619,422 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
     });
   });
 
+  // Regression guards: most vendor_metric tests below cover new behavior.
+  // The bidding-binding test ('binds a fixed media-buy cost_per to
+  // vendor_metric goals...') and the create_media_buy test in
+  // training-agent-bidding-policy.test.ts guard costPerResultUnit's existing
+  // vendor_metric handling, which predates this feature and must not regress.
+  describe('vendor_metric goal', () => {
+    // Fixture: a $40 CPM and the modeled 1 store visit per 2,000 impressions
+    // give a plannable cost of $80 per visit.
+    const declare = (productId = VENDOR_PRODUCT_ID) => seedVendorProduct(
+      server,
+      productId,
+      { vendor: STORE_VISITS_VENDOR, metric_id: 'store_visits_14d_exposed', supported_targets: ['cost_per'] },
+    );
+
+    it('answers a volume in vendor_metric_values with spend only in metrics, and binds the goal and its reporting commitment', async () => {
+      await declare();
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: STORE_VISITS_GOAL,
+        volume: 5000,
+      }, undefined, VENDOR_PRODUCT_ID));
+
+      expectValidResponse(result);
+      const proposal = onlyProposal(result);
+      // impressions = 5000 / 0.0005 = 10,000,000; B = 10,000,000/1000 * 40 = 400,000
+      expect(proposal.total_budget_guidance).toEqual({ min: 320000, recommended: 400000, max: 500000, currency: 'USD' });
+      const forecast = proposal.forecast as Record<string, unknown>;
+      expect(forecast.forecast_range_unit).toBe('spend');
+      const entry = (mid: number) => [{
+        vendor: STORE_VISITS_VENDOR,
+        metric_id: 'store_visits_14d_exposed',
+        value: { mid },
+        unit: 'visits',
+      }];
+      expect(forecast.points).toEqual([
+        { budget: 200000, metrics: { spend: { mid: 200000 } }, vendor_metric_values: entry(2500) },
+        { budget: 400000, metrics: { spend: { mid: 400000 } }, vendor_metric_values: entry(5000) },
+        { budget: 600000, metrics: { spend: { mid: 600000 } }, vendor_metric_values: entry(7500) },
+      ]);
+      for (const point of forecast.points as Array<{ metrics: Record<string, unknown> }>) {
+        expect(point.metrics.store_visits_14d_exposed).toBeUndefined();
+      }
+
+      // Volume-only: no cost answer, but the goal and the reporting commitment
+      // still bind on every purchase.
+      const terms = termsOf(proposal);
+      expect(terms.bidding).toBeUndefined();
+      expect(terms.purchases).toHaveLength(1);
+      for (const purchase of terms.purchases) {
+        expect(purchase.optimization_goals).toEqual([STORE_VISITS_OPTIMIZATION_GOAL]);
+        expect(purchase.bidding).toBeUndefined();
+      }
+      expect(terms.reporting_commitments).toEqual([{ purchase_index: 0, metrics: [STORE_VISITS_REPORTING_COMMITMENT] }]);
+    });
+
+    it('matches the declared vendor on brand_id as well as domain', async () => {
+      await declare();
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: { ...STORE_VISITS_GOAL, vendor: { domain: 'footfallvendor.example', brand_id: 'other_brand' } },
+        volume: 5000,
+      }, undefined, VENDOR_PRODUCT_ID));
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.goal');
+    });
+
+    it('plans a cost cap above the ask with no purchase bidding, in vendor_metric_values', async () => {
+      await declare();
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: STORE_VISITS_GOAL, cost_per: { amount: 4, currency: 'USD', strength: 'cap' } },
+        { budget_range: { max: 5000, currency: 'USD' } },
+        VENDOR_PRODUCT_ID,
+      ));
+
+      expectValidResponse(result);
+      const proposal = onlyProposal(result);
+      const terms = termsOf(proposal);
+      // The seller can only plan to $80, so it answers { 80, cap }: never below
+      // the ask, never a changed strength.
+      expect(terms.bidding).toEqual({ cost_per: { amount: 80, strength: 'cap' } });
+      expect(terms.bidding.cost_per.amount).toBeGreaterThanOrEqual(4);
+      expect(terms.total_budget).toEqual({ amount: 5000, currency: 'USD' });
+      expect(terms.purchases[0].bidding).toBeUndefined();
+      expect(terms.purchases[0].optimization_goals).toEqual([STORE_VISITS_OPTIMIZATION_GOAL]);
+      expect(terms.reporting_commitments).toEqual([{ purchase_index: 0, metrics: [STORE_VISITS_REPORTING_COMMITMENT] }]);
+      const forecast = proposal.forecast as { forecast_range_unit: string; currency: string; points: Array<Record<string, unknown>> };
+      expect(forecast.forecast_range_unit).toBe('spend');
+      expect(forecast.currency).toBe('USD');
+      // Points stop at the $5,000 ceiling: 31 visits at $80 plan to $2,480.
+      expect(forecast.points[0]).toEqual({
+        budget: 2500,
+        metrics: { spend: { mid: 2480 } },
+        vendor_metric_values: [{ vendor: STORE_VISITS_VENDOR, metric_id: 'store_visits_14d_exposed', value: { mid: 31 }, unit: 'visits' }],
+      });
+      expect(forecast.points).toHaveLength(2);
+    });
+
+    it('answers a target strength at the ask when the seller can plan to it', async () => {
+      await declare();
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: STORE_VISITS_GOAL,
+        volume: 100,
+        cost_per: { amount: 120, currency: 'USD', strength: 'target' },
+      }, undefined, VENDOR_PRODUCT_ID));
+
+      expectValidResponse(result);
+      const terms = termsOf(onlyProposal(result));
+      expect(terms.bidding).toEqual({ cost_per: { amount: 120, strength: 'target' } });
+      expect(terms.total_budget).toEqual({ amount: 12000, currency: 'USD' });
+    });
+
+    it('rejects a goal no product in scope declares, naming criteria.outcome_target.goal', async () => {
+      await seedOutcomeTargetProduct(server, [USD_FIXED_CPM_40], UNDECLARING_PRODUCT_ID);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: { kind: 'vendor_metric', vendor: { domain: 'undeclaredvendor.example' }, metric_id: 'store_visits_undeclared' },
+        volume: 5000,
+      }, undefined, UNDECLARING_PRODUCT_ID));
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.goal');
+      expect(result.proposals).toBeUndefined();
+    });
+
+    it('rejects a pair only another product declares when the requested products do not', async () => {
+      await declare();
+      await seedOutcomeTargetProduct(server, [USD_FIXED_CPM_40], UNDECLARING_PRODUCT_ID);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs({
+        goal: STORE_VISITS_GOAL,
+        volume: 5000,
+      }, undefined, UNDECLARING_PRODUCT_ID));
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.goal');
+    });
+
+    it('rejects a declared score metric as not plannable as a cumulative total, and never plans a cost on it', async () => {
+      await seedVendorProduct(server, VENDOR_SCORE_PRODUCT_ID, {
+        vendor: { domain: 'attentionvendor.example' },
+        metric_id: 'attention_score',
+        supported_targets: ['cost_per'],
+      });
+      const goal = { kind: 'vendor_metric', vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_score' };
+
+      const volume = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal, volume: 100 }, undefined, VENDOR_SCORE_PRODUCT_ID,
+      ));
+      expect(volume.code).toBe('INVALID_REQUEST');
+      expect(volume.field).toBe('criteria.outcome_target.goal');
+      expect(String(volume.message)).toContain('cumulative total');
+
+      const cost = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal, cost_per: { amount: 4, currency: 'USD', strength: 'cap' } }, undefined, VENDOR_SCORE_PRODUCT_ID,
+      ));
+      expect(cost.code).toBe('INVALID_REQUEST');
+      expect(cost.field).toBe('criteria.outcome_target.goal');
+    });
+
+    it('leaves out allocations whose product does not declare the pair, rescaling the rest to 100%', async () => {
+      await declare();
+      await seedOutcomeTargetProduct(server, [USD_FIXED_CPM_40], UNDECLARING_PRODUCT_ID);
+
+      const result = await callTool(server, 'request_proposals', {
+        account: ACCOUNT,
+        brief: 'Reverse-forecast planning test',
+        criteria: {
+          product_ids: [VENDOR_PRODUCT_ID, UNDECLARING_PRODUCT_ID],
+          outcome_target: { goal: STORE_VISITS_GOAL, volume: 5000 },
+        },
+      });
+
+      expectValidResponse(result);
+      const terms = termsOf(onlyProposal(result));
+      expect(terms.purchases.map((purchase: { product_id: string }) => purchase.product_id)).toEqual([VENDOR_PRODUCT_ID]);
+      expect(terms.reporting_commitments).toEqual([{ purchase_index: 0, metrics: [STORE_VISITS_REPORTING_COMMITMENT] }]);
+    });
+
+    it('requires the pair in reporting_capabilities.vendor_metrics, not only in vendor_metric_optimization', async () => {
+      await seedVendorProduct(server, VENDOR_NOT_REPORTABLE_PRODUCT_ID, {
+        vendor: STORE_VISITS_VENDOR, metric_id: 'store_visits_14d_exposed', supported_targets: ['cost_per'],
+      }, [USD_FIXED_CPM_40], false);
+
+      const only = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: STORE_VISITS_GOAL, volume: 5000 }, undefined, VENDOR_NOT_REPORTABLE_PRODUCT_ID,
+      ));
+      expect(only.code).toBe('INVALID_REQUEST');
+      expect(only.field).toBe('criteria.outcome_target.goal');
+
+      // Beside a product that does report it, the unreportable one is left out.
+      await declare();
+      const result = await callTool(server, 'request_proposals', {
+        account: ACCOUNT,
+        brief: 'Reverse-forecast planning test',
+        criteria: {
+          product_ids: [VENDOR_PRODUCT_ID, VENDOR_NOT_REPORTABLE_PRODUCT_ID],
+          outcome_target: { goal: STORE_VISITS_GOAL, volume: 5000 },
+        },
+      });
+      expectValidResponse(result);
+      const terms = termsOf(onlyProposal(result));
+      expect(terms.purchases.map((purchase: { product_id: string }) => purchase.product_id)).toEqual([VENDOR_PRODUCT_ID]);
+    });
+
+    it('matches brand_id exactly: a product declaring one does not match a goal that omits it', async () => {
+      const brandedVendor = { domain: 'footfallvendor.example', brand_id: 'retail_arm' };
+      await seedVendorProduct(server, VENDOR_BRANDED_PRODUCT_ID, {
+        vendor: brandedVendor, metric_id: 'store_visits_14d_exposed', supported_targets: ['cost_per'],
+      });
+
+      const omitted = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: STORE_VISITS_GOAL, volume: 5000 }, undefined, VENDOR_BRANDED_PRODUCT_ID,
+      ));
+      expect(omitted.code).toBe('INVALID_REQUEST');
+      expect(omitted.field).toBe('criteria.outcome_target.goal');
+
+      const matched = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: { ...STORE_VISITS_GOAL, vendor: brandedVendor }, volume: 5000 }, undefined, VENDOR_BRANDED_PRODUCT_ID,
+      ));
+      expectValidResponse(matched);
+      const proposal = onlyProposal(matched);
+      expect(termsOf(proposal).purchases[0].optimization_goals[0].vendor).toEqual(brandedVendor);
+      const forecast = proposal.forecast as { points: Array<{ vendor_metric_values: Array<{ vendor: unknown }> }> };
+      expect(forecast.points[0]!.vendor_metric_values[0]!.vendor).toEqual(brandedVendor);
+    });
+
+    it('rescales three kept allocations that do not divide evenly to exactly 100%', async () => {
+      const keptIds = ['outcome_target_vendor_kept_a', 'outcome_target_vendor_kept_b', 'outcome_target_vendor_kept_c'];
+      for (const id of keptIds) await declare(id);
+      await seedOutcomeTargetProduct(server, [USD_FIXED_CPM_40], UNDECLARING_PRODUCT_ID);
+
+      const result = await callTool(server, 'request_proposals', {
+        account: ACCOUNT,
+        brief: 'Reverse-forecast planning test',
+        criteria: {
+          product_ids: [...keptIds, UNDECLARING_PRODUCT_ID],
+          outcome_target: { goal: STORE_VISITS_GOAL, volume: 5000 },
+        },
+      });
+      expectValidResponse(result);
+      const proposal = onlyProposal(result);
+      const budgets = termsOf(proposal).purchases.map((purchase: { budget: number }) => purchase.budget);
+      expect(budgets).toHaveLength(3);
+      // The three shares of the media-buy total cover it without a leftover
+      // or excess: the rescaled allocation percentages sum to exactly 100.
+      const total = termsOf(proposal).total_budget.amount as number;
+      expect(Math.round(budgets.reduce((sum: number, budget: number) => sum + budget, 0) * 100) / 100).toBe(total);
+    });
+
+    it('rejects the catalog attention_score metric as a score, and an undeclared vendor, when no products are selected', async () => {
+      const score = await callTool(server, 'request_proposals', {
+        account: ACCOUNT,
+        brief: 'Plan attention across the catalog',
+        criteria: {
+          outcome_target: {
+            goal: { kind: 'vendor_metric', vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_score' },
+            volume: 100,
+          },
+        },
+      });
+      expect(score.code).toBe('INVALID_REQUEST');
+      expect(score.field).toBe('criteria.outcome_target.goal');
+      expect(String(score.message)).toContain('cumulative total');
+
+      const undeclared = await callTool(server, 'request_proposals', {
+        account: ACCOUNT,
+        brief: 'Plan store visits across the catalog',
+        criteria: { outcome_target: { goal: STORE_VISITS_GOAL, volume: 100 } },
+      });
+      expect(undeclared.code).toBe('INVALID_REQUEST');
+      expect(undeclared.field).toBe('criteria.outcome_target.goal');
+    });
+
+    it('rejects a cost target when the matching entry does not list cost_per, naming cost_per', async () => {
+      await seedVendorProduct(server, VENDOR_NO_COST_PRODUCT_ID, {
+        vendor: STORE_VISITS_VENDOR,
+        metric_id: 'store_visits_14d_exposed',
+        supported_targets: ['threshold_rate'],
+      });
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: STORE_VISITS_GOAL, cost_per: { amount: 4, currency: 'USD', strength: 'cap' } },
+        undefined,
+        VENDOR_NO_COST_PRODUCT_ID,
+      ));
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.cost_per');
+
+      // The same goal still plans by volume.
+      const volume = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: STORE_VISITS_GOAL, volume: 5000 }, undefined, VENDOR_NO_COST_PRODUCT_ID,
+      ));
+      expectValidResponse(volume);
+      expect(onlyProposal(volume).forecast).toBeDefined();
+    });
+
+    it('validates the goal before the cost target, so a bad goal is reported first', async () => {
+      await seedOutcomeTargetProduct(server, [USD_FIXED_CPM_40], UNDECLARING_PRODUCT_ID);
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs(
+        {
+          goal: { kind: 'vendor_metric', vendor: { domain: 'undeclaredvendor.example' }, metric_id: 'store_visits_undeclared' },
+          // Two cost faults: an unsupported currency alongside the bad goal.
+          cost_per: { amount: 4, currency: 'EUR', strength: 'cap' },
+        },
+        undefined,
+        UNDECLARING_PRODUCT_ID,
+      ));
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.goal');
+    });
+
+    it('keeps cost-target currency rejections on cost_per for a declared goal', async () => {
+      await declare();
+
+      const result = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: STORE_VISITS_GOAL, cost_per: { amount: 4, currency: 'EUR', strength: 'cap' } },
+        undefined,
+        VENDOR_PRODUCT_ID,
+      ));
+
+      expect(result.code).toBe('INVALID_REQUEST');
+      expect(result.field).toBe('criteria.outcome_target.cost_per');
+    });
+
+    it('copies only vendor-scope reporting_commitments to committed_metrics on accept', async () => {
+      await declare();
+      const requested = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: STORE_VISITS_GOAL, cost_per: { amount: 4, currency: 'USD', strength: 'cap' } },
+        { budget_range: { max: 5000, currency: 'USD' } },
+        VENDOR_PRODUCT_ID,
+      ));
+      const draft = onlyProposal(requested);
+      const refined = await callTool(server, 'refine_proposals', {
+        refinements: [{ proposal_id: draft.proposal_id, action: 'finalize' }],
+      });
+      const committed = (refined.results as Array<Record<string, unknown>>)[0]!.proposal as Record<string, unknown>;
+
+      // The seller emits only vendor commitments, so add a standard one to the
+      // committed snapshot (both stored copies) before accepting.
+      await runWithSessionContext(async () => {
+        const session = await findSessionMatching(candidate => candidate.proposalRefinementRecords.has(committed.proposal_id as string));
+        expect(session).not.toBeNull();
+        const standard = { scope: 'standard', metric_id: 'impressions' };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const record = session!.proposalRefinementRecords.get(committed.proposal_id as string) as any;
+        record.proposal.commercial_terms.reporting_commitments[0].metrics.push(standard);
+        for (const proposal of session!.lastGetProductsContext?.proposals ?? []) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const internal = proposal as any;
+          if (internal.proposal_id === committed.proposal_id) {
+            internal.__canonical_commercial_terms?.reporting_commitments?.[0]?.metrics.push(standard);
+          }
+        }
+        await flushDirtySessions();
+      });
+
+      const accepted = await callTool(server, 'accept_proposal', {
+        adcp_version: '3.2-rc.7',
+        account: ACCOUNT,
+        proposal_id: committed.proposal_id,
+        proposal_terms_digest: committed.terms_digest,
+      });
+      expect(accepted.errors, JSON.stringify(accepted)).toBeUndefined();
+      const read = await callTool(server, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [accepted.media_buy_id] });
+      const buys = read.media_buys as Array<Record<string, any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
+      expect(buys[0]!.packages[0].committed_metrics).toEqual([expect.objectContaining(STORE_VISITS_REPORTING_COMMITMENT)]);
+    });
+
+    it('survives finalize and accept_proposal, adopting the cost cap and the vendor goal without a separate committed_metrics', async () => {
+      await declare();
+
+      const requested = await callTool(server, 'request_proposals', requestProposalsArgs(
+        { goal: STORE_VISITS_GOAL, cost_per: { amount: 4, currency: 'USD', strength: 'cap' } },
+        { budget_range: { max: 5000, currency: 'USD' } },
+        VENDOR_PRODUCT_ID,
+      ));
+      expectValidResponse(requested);
+      const draft = onlyProposal(requested);
+
+      const refined = await callTool(server, 'refine_proposals', {
+        refinements: [{ proposal_id: draft.proposal_id, action: 'finalize' }],
+      });
+      const finalized = (refined.results as Array<Record<string, unknown>>)[0]!;
+      expect(finalized.outcome, JSON.stringify(refined)).toBe('finalized');
+      const committed = finalized.proposal as Record<string, unknown>;
+      expect(committed.proposal_status).toBe('committed');
+      // Finalization preserves the answer.
+      expect(termsOf(committed).bidding).toEqual({ cost_per: { amount: 80, strength: 'cap' } });
+      expect(termsOf(committed).reporting_commitments).toEqual([{ purchase_index: 0, metrics: [STORE_VISITS_REPORTING_COMMITMENT] }]);
+
+      const accepted = await callTool(server, 'accept_proposal', {
+        // accept_proposal is a 3.2 compact-lifecycle tool; an unversioned call
+        // resolves to an older release that does not serve it.
+        adcp_version: '3.2-rc.7',
+        account: ACCOUNT,
+        proposal_id: committed.proposal_id,
+        proposal_terms_digest: committed.terms_digest,
+      });
+      expect(accepted.errors, JSON.stringify(accepted)).toBeUndefined();
+      expect(typeof accepted.media_buy_id).toBe('string');
+
+      const read = await callTool(server, 'get_media_buys', { account: ACCOUNT, media_buy_ids: [accepted.media_buy_id] });
+      const buys = read.media_buys as Array<Record<string, any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
+      expect(buys[0]!.bidding, JSON.stringify(read)).toEqual({ cost_per: { amount: 80, strength: 'cap' } });
+      expect(buys[0]!.packages[0].optimization_goals).toEqual([STORE_VISITS_OPTIMIZATION_GOAL]);
+      expect(buys[0]!.packages[0].committed_metrics).toEqual([
+        expect.objectContaining(STORE_VISITS_REPORTING_COMMITMENT),
+      ]);
+    });
+  });
+
   describe('bidding_policy capability', () => {
     type Capabilities = { media_buy: { features: Record<string, unknown> } };
     it('advertises fixed media-buy cost_per and package bids on 3.2 responses only', async () => {
@@ -582,6 +1047,25 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
         const legacy = await callTool(server, 'get_adcp_capabilities', args) as Capabilities;
         expect(legacy.media_buy.features.bidding_policy, JSON.stringify(args)).toBeUndefined();
       }
+    });
+
+    it('declares event-goal cost targets in conversion_tracking.supported_targets on 3.1+ responses only', async () => {
+      type ConversionCapabilities = { media_buy: { conversion_tracking: { supported_targets?: string[] } } };
+      for (const args of [{ adcp_version: '3.2-rc.7' }, { adcp_version: '3.1' }]) {
+        const caps = await callTool(server, 'get_adcp_capabilities', args) as ConversionCapabilities;
+        expect(caps.media_buy.conversion_tracking.supported_targets, JSON.stringify(args)).toEqual(['cost_per']);
+      }
+      const compatServer = createTrainingAgentServer({ mode: 'open', storyboardCompat: { version: '3.0' } });
+      const legacy = await callTool(compatServer, 'get_adcp_capabilities', { adcp_version: '3.2-rc.7' }) as ConversionCapabilities;
+      expect(legacy.media_buy.conversion_tracking.supported_targets).toBeUndefined();
+
+      // The sales platform's capability getter (the tenant router's source)
+      // omits it under 3.0 storyboard compat too, and declares it otherwise.
+      const conversionTracking = (platform: TrainingSalesPlatform) => (
+        (platform.capabilities as unknown as { conversion_tracking: { supported_targets?: string[] } }).conversion_tracking
+      );
+      expect(conversionTracking(new TrainingSalesPlatform()).supported_targets).toEqual(['cost_per']);
+      expect(conversionTracking(new TrainingSalesPlatform({ version: '3.0' })).supported_targets).toBeUndefined();
     });
 
     it('does not leak the object-valued feature into 3.0 storyboard compat on a newer served version', async () => {
@@ -614,6 +1098,27 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
         budget_allocation: { mode: 'fixed' },
         bidding: { cost_per: { amount: 4, strength: 'cap' } },
         packages: [clicksPackage, viewsPackage],
+      })).toMatchObject({ code: 'BIDDING_PLACEMENT_CONFLICT', field: 'bidding.cost_per' });
+    });
+
+    it('binds a fixed media-buy cost_per to vendor_metric goals by vendor and metric_id', () => {
+      const visitsPackage = {
+        product_id: 'v', pricing_option_id: 'v_cpm', budget: 100,
+        optimization_goals: [STORE_VISITS_OPTIMIZATION_GOAL],
+      };
+      expect(createMediaBuyBiddingPolicyError({
+        budget_allocation: { mode: 'fixed' },
+        bidding: { cost_per: { amount: 4, strength: 'cap' } },
+        packages: [visitsPackage, { ...visitsPackage, product_id: 'w' }],
+      })).toBeUndefined();
+      const otherVendorPackage = {
+        ...visitsPackage,
+        optimization_goals: [{ ...STORE_VISITS_OPTIMIZATION_GOAL, vendor: { domain: 'othervendor.example' } }],
+      };
+      expect(createMediaBuyBiddingPolicyError({
+        budget_allocation: { mode: 'fixed' },
+        bidding: { cost_per: { amount: 4, strength: 'cap' } },
+        packages: [visitsPackage, otherVendorPackage],
       })).toMatchObject({ code: 'BIDDING_PLACEMENT_CONFLICT', field: 'bidding.cost_per' });
     });
 

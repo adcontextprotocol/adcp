@@ -4,6 +4,8 @@ title: "Seller resolves, validates, and echoes identifier-based place targeting"
 category: media_buy_seller
 summary: "Verifies known-now place discovery, declared-later place permission, create/update persistence, package-state echo, and deterministic semantic rejection cases."
 track: media_buy
+requires:
+  - controller
 
 requires_all_capabilities:
   - path: media_buy.execution.targeting.geo_places.geonames.countries.NL

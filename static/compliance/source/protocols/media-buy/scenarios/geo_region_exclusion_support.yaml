@@ -4,6 +4,8 @@ title: "Seller proves independent ISO subdivision exclusion support"
 category: media_buy_seller
 summary: "Verifies that finite subdivision exclusion support can be discovered and executed without inclusion support."
 track: media_buy
+requires:
+  - controller
 
 requires_all_capabilities:
   - path: media_buy.execution.targeting.geo_regions_exclude.countries.FR.values

@@ -4,6 +4,8 @@ title: "Seller preserves bidding scope and explicit automatic overrides"
 category: media_buy_seller
 summary: "Verifies that a seller advertising fixed media-buy max_bid support accepts an inherited default, echoes it once, and does not materialize package copies. When package automatic support is also advertised, it verifies an explicit automatic override."
 track: media_buy
+requires:
+  - controller
 
 requires_all_capabilities:
   - path: media_buy.features.bidding_policy.media_buy.fixed.modes

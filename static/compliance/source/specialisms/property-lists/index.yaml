@@ -5,6 +5,9 @@ protocol: governance
 category: property_lists
 summary: "Curated property lists for inventory grouping, targeting governance, and delivery compliance — create, query, update, delete, and validate."
 track: governance
+requires:
+  - controller
+
 required_tools:
   - create_property_list
 
