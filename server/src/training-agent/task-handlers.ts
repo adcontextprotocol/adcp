@@ -2139,7 +2139,7 @@ function validateDaypartTargets(value: unknown, pathLabel: string): TaskError[] 
   return errors;
 }
 
-function validateListRef(ref: unknown, pathLabel: string): { ref?: ListReference; error?: TaskError } {
+function validateListRef(ref: unknown, pathLabel: string, dialed = false): { ref?: ListReference; error?: TaskError } {
   if (ref === undefined || ref === null) return {};
   if (typeof ref !== 'object' || Array.isArray(ref)) {
     return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}: must be an object with agent_url and list_id`, field: pathLabel } };
@@ -2153,6 +2153,12 @@ function validateListRef(ref: unknown, pathLabel: string): { ref?: ListReference
   }
   if (!/^https?:\/\//i.test(agent_url)) {
     return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.agent_url: must use http:// or https://`, field: `${pathLabel}.agent_url` } };
+  }
+  // The agent URL is buyer-supplied and later dialed, so refuse private hosts
+  // before any fetch. This deployment's own governance tenant is allowed.
+  const hostRejection = dialed ? listAgentUrlRejection(agent_url) : undefined;
+  if (hostRejection) {
+    return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.agent_url: ${hostRejection}`, field: `${pathLabel}.agent_url` } };
   }
   if (typeof list_id !== 'string' || list_id.length === 0 || list_id.length > MAX_ID_LEN) {
     return { error: { code: 'VALIDATION_ERROR', message: `${pathLabel}.list_id: must be a non-empty string up to ${MAX_ID_LEN} chars`, field: `${pathLabel}.list_id` } };
@@ -2170,8 +2176,8 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   }
   const src = t as Record<string, unknown>;
   const errors: TaskError[] = [];
-  const pl = validateListRef(src.property_list, `${pathLabel}.property_list`);
-  const ple = validateListRef(src.property_list_exclude, `${pathLabel}.property_list_exclude`);
+  const pl = validateListRef(src.property_list, `${pathLabel}.property_list`, true);
+  const ple = validateListRef(src.property_list_exclude, `${pathLabel}.property_list_exclude`, true);
   const cl = validateListRef(src.collection_list, `${pathLabel}.collection_list`);
   const cle = validateListRef(src.collection_list_exclude, `${pathLabel}.collection_list_exclude`);
   const validateAudienceIds = (value: unknown, field: string): string[] | undefined => {
@@ -3206,6 +3212,7 @@ import {
   getSeededCreativeFormats,
 } from './comply-test-controller.js';
 import { PUBLISHERS } from './publishers.js';
+import { applyPropertyListTargeting, listAgentUrlRejection, packageExtWithPropertyApplication } from './property-list-targeting.js';
 import {
   isMutatingTool,
   validateKeyFormat,
@@ -15974,6 +15981,21 @@ async function handleCreateMediaBuyUnlocked(
     if (targetingResult.errors.length) {
       errors.push(...targetingResult.errors);
     }
+    // Fetch and apply buyer property lists. Any failure rejects the whole
+    // create; a list is never partially applied or silently dropped.
+    let propertyListApplication: PackageState['propertyListApplication'];
+    if (targetingResult.errors.length === 0) {
+      const listOutcome = await applyPropertyListTargeting({
+        product,
+        targeting: targetingResult.targeting,
+        path: targetingPath,
+        session,
+        ctx,
+        account: req.account ?? ctx.resolvedAccount,
+      });
+      if ('error' in listOutcome) errors.push(listOutcome.error as TaskError);
+      else propertyListApplication = listOutcome.application;
+    }
     const requestedAssignmentRows = [
       ...(Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments : []),
       ...inlineCreativeAssignmentRows(pkg.creatives),
@@ -16078,6 +16100,7 @@ async function handleCreateMediaBuyUnlocked(
       creativeAssignmentDetails: requestedAssignmentRows.map(assignment => structuredClone(assignment)),
       targeting: targetingResult.targeting,
       ...(targetingResolution && { targetingResolution }),
+      ...(propertyListApplication && { propertyListApplication }),
       frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
       ...(isRecord(pkg.context) && { context: pkg.context }),
       ...(isRecord(pkg.measurement_terms) && { measurementTerms: structuredClone(pkg.measurement_terms) }),
@@ -16359,6 +16382,9 @@ async function handleCreateMediaBuyUnlocked(
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
       ...(pkg.context && { context: pkg.context }),
+      ...(pkg.propertyListApplication && {
+        ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
+      }),
       ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
       creative_assignments: pkg.creativeAssignmentDetails
         ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -16536,7 +16562,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             ...(pkg.audienceEvidenceRequirements && { audience_evidence_requirements: pkg.audienceEvidenceRequirements }),
             ...(pkg.audienceEvidencePins && { audience_evidence_pins: pkg.audienceEvidencePins }),
             ...(pkg.agencyEstimateNumber && { agency_estimate_number: pkg.agencyEstimateNumber }),
-            ...(pkg.ext && { ext: pkg.ext }),
+            ...((pkg.ext || pkg.propertyListApplication) && {
+              ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
+            }),
             ...(pkg.optimizationGoals && { optimization_goals: pkg.optimizationGoals }),
             ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
             ...(pkg.canceledAt && {
@@ -18759,6 +18787,7 @@ async function handleUpdateMediaBuyUnlocked(
   }
 
   // Update packages
+  const propertyListApplications = new Map<string, PackageState['propertyListApplication']>();
   if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
 
@@ -18771,6 +18800,25 @@ async function handleUpdateMediaBuyUnlocked(
       const pkg = mb.packages.find(candidate => candidate.packageId === pkgId);
       if (!pkg) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}` }] };
+      }
+      // Replacing a package's targeting re-resolves its buyer property lists
+      // against the current list snapshot. Resolving before any mutation keeps
+      // the update atomic: an unresolvable list rejects the whole request.
+      const replacementTargeting = update.targeting_overlay ?? update.targeting;
+      if (replacementTargeting !== undefined) {
+        const listTargetingPath = `packages[${pkgId}].targeting_overlay`;
+        const listTargeting = validateTargeting(replacementTargeting, listTargetingPath);
+        if (listTargeting.errors.length) return { errors: listTargeting.errors };
+        const listOutcome = await applyPropertyListTargeting({
+          product: productMap.get(pkg.productId),
+          targeting: listTargeting.targeting,
+          path: listTargetingPath,
+          session,
+          ctx,
+          account: req.account ?? ctx.resolvedAccount,
+        });
+        if ('error' in listOutcome) return { errors: [listOutcome.error as TaskError] };
+        propertyListApplications.set(pkgId, listOutcome.application);
       }
       const assignments = (update as PackageUpdate & { creative_assignments?: LegacyCreativeAssignmentRow[] }).creative_assignments;
       const traffickingChanged = update.creatives !== undefined
@@ -19097,6 +19145,9 @@ async function handleUpdateMediaBuyUnlocked(
         }
         const before = pkg.targeting;
         pkg.targeting = targetingResult.targeting;
+        const listApplication = propertyListApplications.get(pkgId);
+        if (listApplication) pkg.propertyListApplication = listApplication;
+        else delete pkg.propertyListApplication;
         const changed = JSON.stringify(before ?? null) !== JSON.stringify(pkg.targeting ?? null);
         // A valid exact restatement is still an accepted package operation and
         // belongs in affected_packages even when it is state-idempotent.
@@ -19204,6 +19255,15 @@ async function handleUpdateMediaBuyUnlocked(
       if (targetingResult.errors.length) {
         return { errors: targetingResult.errors };
       }
+      const newPackageListOutcome = await applyPropertyListTargeting({
+        product,
+        targeting: targetingResult.targeting,
+        path: `new_packages[${i}].targeting_overlay`,
+        session,
+        ctx,
+        account: req.account ?? ctx.resolvedAccount,
+      });
+      if ('error' in newPackageListOutcome) return { errors: [newPackageListOutcome.error as TaskError] };
       const identityAbsenceCapError = identityAbsenceFrequencyCapError(
         product,
         targetingResult.targeting ?? {},
@@ -19296,6 +19356,7 @@ async function handleUpdateMediaBuyUnlocked(
         creativeAssignments: assignmentRows.flatMap(row => typeof row.creative_id === 'string' ? [row.creative_id] : []),
         creativeAssignmentDetails: assignmentRows.map(row => structuredClone(row)),
         targeting: targetingResult.targeting,
+        ...(newPackageListOutcome.application && { propertyListApplication: newPackageListOutcome.application }),
         frequencyCapEligibility: packageFrequencyCapEligibilityFor(product),
         context: npkg.context ? structuredClone(npkg.context) : undefined,
       };
@@ -19530,6 +19591,9 @@ async function handleUpdateMediaBuyUnlocked(
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
     ...(pkg.context && { context: pkg.context }),
+    ...(pkg.propertyListApplication && {
+      ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
+    }),
     ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
     creative_assignments: pkg.creativeAssignmentDetails
       ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -19853,6 +19917,14 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
           language: true,
           keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] },
           negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] },
+          // Seller-wide rollups. Product.overlay_support is authoritative:
+          // every product honours exclusion; only products whose property set
+          // a buyer can subdivide honour inclusion. The 3.0 capabilities
+          // schema predates these flags.
+          ...(!isThreeZeroResponse && {
+            property_list: true,
+            property_list_exclude: true,
+          }),
         },
         ...(includeThreeOneFields(ctx) && {
           creative_specs: {
