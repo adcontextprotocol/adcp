@@ -116,7 +116,7 @@
     },
     "pricing_options": {
       "type": "array",
-      "description": "Available pricing models for this product. Fixed prices and auction floors are binding for every later targeting selection permitted by this product's overlay_support; price_guidance remains non-binding. Declaring broad overlay support alongside a binding option is therefore a uniform-price promise, not permission to calculate a different price at create time. A seller with value-dependent rates MUST return a request-specific configured product after rediscovery with concrete targeting, split the inventory into separately priced products, or expose only non-binding guidance until it can issue a binding option. The seller MUST mint a new pricing_option_id whenever a binding price, floor, currency, model, or priced applicability changes. It MUST NOT silently reprice a create request or reuse the selected option ID with different terms.",
+      "description": "Available pricing models for this product. Fixed prices and auction floors are binding for every later targeting selection permitted by this product's overlay_support; price_guidance remains non-binding. Declaring broad overlay support alongside a binding option is therefore a uniform-price promise, not permission to calculate a different price at create time, except for adjustments the selected fixed-price option itself declares in price_adjustments: those rows are part of the option's binding terms, and the resolved rate follows from the buyer's selections by the deterministic rules in price-adjustments.json. A seller with other value-dependent rates MUST return a request-specific configured product after rediscovery with concrete targeting, split the inventory into separately priced products, or expose only non-binding guidance until it can issue a binding option. The seller MUST mint a new pricing_option_id whenever a binding price, floor, currency, model, or priced applicability changes. It MUST NOT silently reprice a create request or reuse the selected option ID with different terms.",
       "items": {
         "$ref": "/schemas/core/pricing-option.json"
       },
@@ -237,7 +237,7 @@
     },
     "overlay_support": {
       "$ref": "/schemas/core/targeting-overlay-support.json",
-      "description": "Binding product-scoped targeting dimensions the buyer may set independently on packages after discovery. Presence guarantees selectable capability subject to disclosed limits, not inventory or a forecast for every possible value. Targeting satisfied only through inherent product scope does not appear here. Returned products MUST cover every field requested through get_products.required_overlay_support. A later supported selection with no available inventory returns PRODUCT_UNAVAILABLE on create; an update outside the original priced envelope may return REQUOTE_REQUIRED."
+      "description": "Binding product-scoped targeting dimensions the buyer may set independently on packages after discovery. Presence guarantees selectable capability subject to disclosed limits, not inventory or a forecast for every possible value. Targeting satisfied only through inherent product scope does not appear here. Returned products MUST cover every field requested through get_products.required_overlay_support. Selecting a value priced by the chosen option's price_adjustments (currently placement_selection and format option selection) changes the resolved rate only as that table declares. A later supported selection with no available inventory returns PRODUCT_UNAVAILABLE on create; an update outside the original priced envelope may return REQUOTE_REQUIRED."
     },
     "media_buy_support": {
       "$ref": "/schemas/core/media-buy-support.json",
@@ -826,6 +826,32 @@
           "property_targeting_allowed": { "const": true }
         },
         "required": ["property_targeting_allowed"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "pricing_options": {
+            "contains": {
+              "properties": {
+                "price_adjustments": {
+                  "contains": {
+                    "properties": { "dimension": { "const": "placement_selection" } },
+                    "required": ["dimension"]
+                  }
+                }
+              },
+              "required": ["price_adjustments"]
+            }
+          }
+        },
+        "required": ["pricing_options"]
+      },
+      "then": {
+        "properties": {
+          "overlay_support": { "required": ["placement_selection"] }
+        },
+        "required": ["overlay_support"]
       }
     },
     {

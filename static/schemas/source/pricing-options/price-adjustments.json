@@ -1,0 +1,274 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/pricing-options/price-adjustments.json",
+  "title": "Price Adjustments",
+  "x-added-in": "3.3.0",
+  "description": "Ordered adjustments on a binding fixed-price option; fixed_price is the base rate. Index rows (factor) compound in declared order; premium rows (fee/discount) add a rate of the indexed price or a fixed amount. Selection rows fire once per dimension (first applicable); always rows each fire; valid_from/valid_until bound a row at the purchase start_time. Changing the table requires a new pricing_option_id. Sellers MUST NOT return a table to callers below adcp_version 3.3. Normative: docs/media-buy/advanced-topics/pricing-models.mdx#selection-dependent-price-adjustments.",
+  "type": "array",
+  "items": {
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "const": "format_option"
+          },
+          "format_option_ref": {
+            "$ref": "/schemas/core/format-option-ref.json",
+            "description": "Matches when the purchase selects it."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "fee",
+              "discount",
+              "index"
+            ],
+            "description": "index multiplies; fee/discount are premiums."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "rate": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1,
+            "description": "Premium proportion of the indexed price."
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Premium amount per pricing unit; not indexed."
+          },
+          "factor": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Index multiplier; requires kind index."
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive window start."
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive window end."
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "required": [
+          "dimension",
+          "format_option_ref",
+          "kind",
+          "name"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rate"
+            ]
+          },
+          {
+            "required": [
+              "amount"
+            ]
+          },
+          {
+            "required": [
+              "factor"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "const": "placement_selection"
+          },
+          "placement_ref": {
+            "description": "Matches when the purchase selects it.",
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "$ref": "/schemas/core/placement-ref.json"
+                  },
+                  {
+                    "required": [
+                      "publisher_domain"
+                    ]
+                  }
+                ]
+              },
+              {
+                "$ref": "/schemas/core/placement-identity.json"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "fee",
+              "discount",
+              "index"
+            ],
+            "description": "index multiplies; fee/discount are premiums."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "rate": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1,
+            "description": "Premium proportion of the indexed price."
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Premium amount per pricing unit; not indexed."
+          },
+          "factor": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Index multiplier; requires kind index."
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive window start."
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive window end."
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "required": [
+          "dimension",
+          "placement_ref",
+          "kind",
+          "name"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rate"
+            ]
+          },
+          {
+            "required": [
+              "amount"
+            ]
+          },
+          {
+            "required": [
+              "factor"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "const": "always"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "fee",
+              "discount",
+              "index"
+            ],
+            "description": "index multiplies; fee/discount are premiums."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "rate": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1,
+            "description": "Premium proportion of the indexed price."
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Premium amount per pricing unit; not indexed."
+          },
+          "factor": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Index multiplier; requires kind index."
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive window start."
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive window end."
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "required": [
+          "dimension",
+          "kind",
+          "name"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rate"
+            ]
+          },
+          {
+            "required": [
+              "amount"
+            ]
+          },
+          {
+            "required": [
+              "factor"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "minItems": 1,
+  "maxItems": 20,
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "kind_fields": "kind index requires factor; fee or discount requires rate or amount.",
+      "price_precision": "Greatest of the currency minor-unit exponent, 4 for cpm/vcpm/cpc/cpcv/cpv/cpp, and the fewest decimals exactly representing fixed_price and each amount, by numeric value.",
+      "flight_windows": "A flight crossing a row's valid_from or valid_until is rejected with INVALID_REQUEST.",
+      "resolved_price_binding": "A buyer-supplied pricing that differs from the resolved result MUST be rejected with INVALID_REQUEST carrying resolved_fixed_price and resolved_price_breakdown."
+    }
+  },
+  "x-status": "experimental"
+}

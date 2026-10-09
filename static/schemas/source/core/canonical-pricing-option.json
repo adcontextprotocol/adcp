@@ -16,6 +16,19 @@
     "price_guidance": { "$ref": "/schemas/pricing-options/price-guidance.json" },
     "min_spend_per_package": { "type": "number", "minimum": 0 },
     "price_breakdown": { "$ref": "/schemas/pricing-options/price-breakdown.json" },
+    "price_adjustments": {
+      "$ref": "/schemas/pricing-options/price-adjustments.json",
+      "x-added-in": "3.3.0",
+      "x-status": "experimental",
+      "description": "Retained adjustment table, covered by terms_digest. See price-adjustments.json."
+    },
+    "base_fixed_price": {
+      "type": "number",
+      "minimum": 0,
+      "x-added-in": "3.3.0",
+      "x-status": "experimental",
+      "description": "Declared fixed_price before any price_adjustments row fired; present in accepted purchase pricing that carries the table."
+    },
     "eligible_adjustments": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/adjustment-kind.json" },
@@ -31,6 +44,11 @@
   "required": ["pricing_option_id", "pricing_model", "currency"],
   "allOf": [
     { "not": { "required": ["fixed_price", "floor_price"] } },
+    {
+      "description": "price_adjustments is defined for per-unit and flat fixed prices only; cpa, time, and revenue_share options do not carry it.",
+      "if": { "required": ["price_adjustments"] },
+      "then": { "properties": { "pricing_model": { "not": { "enum": ["cpa", "time", "revenue_share"] } } } }
+    },
     {
       "if": { "properties": { "pricing_model": { "const": "cpa" } }, "required": ["pricing_model"] },
       "then": { "required": ["event_type", "fixed_price"] }
@@ -48,5 +66,6 @@
       "then": { "required": ["custom_event_name"] }
     }
   ],
+  "dependencies": { "price_adjustments": ["fixed_price"], "base_fixed_price": ["price_adjustments"] },
   "additionalProperties": false
 }

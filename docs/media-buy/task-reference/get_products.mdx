@@ -346,8 +346,9 @@ it does not guarantee inventory or forecast every possible value. Forecasts
 returned when only future support was requested describe the product's
 discovery/default scope. Rediscover with concrete `targeting_overlay` values for
 a value-specific forecast. Fixed prices and floors remain binding uniformly
-for supported selections; price guidance remains non-binding. Sellers with
-value-dependent rates must return a concretely targeted configured product,
+for supported selections, except for adjustments the selected fixed-price option
+declares in `price_adjustments`; price guidance remains non-binding. Sellers with
+other value-dependent rates must return a concretely targeted configured product,
 split the rate tiers into products, or withhold binding pricing until concrete
 rediscovery. They cannot reinterpret a selected `pricing_option_id` at a new
 price. If a supported selection has no current inventory, creation returns

@@ -605,8 +605,10 @@ Support guarantees selectability subject to disclosed limits, not inventory or
 a forecast for every possible value. A forecast returned without concrete metro
 values describes the product's discovery/default scope. Rediscover with the
 values in `targeting_overlay` for a metro-specific forecast. Fixed prices and
-floors remain binding uniformly for supported selections; price guidance is
-non-binding. If rates vary by value, the seller returns a configured product
+floors remain binding uniformly for supported selections, except for adjustments
+the selected fixed-price option declares in
+[`price_adjustments`](/docs/media-buy/advanced-topics/pricing-models#selection-dependent-price-adjustments);
+price guidance is non-binding. If other rates vary by value, the seller returns a configured product
 after concrete rediscovery, splits rate tiers into products, or exposes only
 non-binding guidance until concrete values are known. It never silently
 reinterprets a selected pricing option at a new price.

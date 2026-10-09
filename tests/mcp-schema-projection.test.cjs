@@ -92,9 +92,13 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // minute-resolution dayparts add the start_time/end_time pair, its one-of-two
 // exclusion, and the time_granularity requirement to the shared daypart
 // graph carried by every targeting-bearing task (+2,087 bytes measured,
-// 443.3 → 445.4 KiB), bounded at 446 KiB.
+// 443.3 → 445.4 KiB), bounded at 446 KiB. The experimental price_adjustments
+// table (#7659: index and premium rows, three selector variants, validity
+// windows) adds its row schema once to the canonical pricing option embedded in
+// media-buy tool inputs (~1.9 KiB), measured at 457,997 bytes (447.3 KiB) and
+// bounded at 448 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 446,
+  'media-buy': 448,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

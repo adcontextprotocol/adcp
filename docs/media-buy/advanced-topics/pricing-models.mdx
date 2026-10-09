@@ -646,7 +646,7 @@ For rate-based discounts:   running = running × (1 − rate)
 For amount-based discounts: running = running − amount
 ```
 
-All monetary values are rounded to the precision of the currency (e.g., 2 decimal places for EUR/USD) at each step. The invariant holds after rounding.
+All monetary values are rounded to the precision of the currency (e.g., 2 decimal places for EUR/USD) at each step, or, for an option that declares [`price_adjustments`](#selection-dependent-price-adjustments), to that option's price precision, which can be finer. The invariant holds after rounding.
 
 Example with mixed adjustments:
 
@@ -719,6 +719,92 @@ The `price_breakdown` field also appears on the package response (confirmed line
   }
 }
 ```
+
+---
+
+## Selection-dependent price adjustments
+
+<Note>
+Experimental (`media_buy.price_adjustments`): sellers that implement `price_adjustments` declare the feature id in `experimental_features`, and the shape may change in 3.x with the notice described in [Experimental status](/docs/reference/experimental-status). The rule that a seller MUST NOT return a table to callers below 3.3 applies in addition.
+</Note>
+
+A fixed-price `cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`, `cpp`, or `flat_rate` option can declare an ordered `price_adjustments` table when its rate depends on values the buyer selects or on the date of delivery. `fixed_price` stays the **base rate**: it is what the buyer pays when no row applies, and it is already net of any negotiated discount in the option's own `price_breakdown`. This is distinct from `eligible_adjustments` (which kinds of adjustment are possible) and from `price_breakdown` (how a negotiated price was derived): `price_adjustments` is the seller's declared, binding function from selections and dates to price.
+
+Rows come in two kinds:
+
+- **Index** (`kind: "index"`, `factor`): a multiplier such as `1.15` or `0.85`, compounded with other indices in declared order. Linear TV rate cards work this way: a net base price multiplied by a month index, a spot-length index, a target-audience index, and a monthly market index. A `factor` is greater than 0.
+- **Premium** (`kind: "fee"` or `"discount"`, with `rate` or `amount`): an addition to the indexed price. A `rate` is a percentage of the indexed price; an `amount` is a fixed amount in the option's currency per pricing unit and is not indexed. Premiums never compound with each other.
+
+Each row has a `dimension`. `format_option` and `placement_selection` rows match values the buyer selects; `always` rows need no selection and apply whenever their window allows (month, market, and audience indices).
+
+```json
+{
+  "pricing_option_id": "oranje_grp_eur_2026",
+  "pricing_model": "cpp",
+  "currency": "EUR",
+  "fixed_price": 1000.00,
+  "parameters": { "demographic": "A25-54" },
+  "price_adjustments": [
+    { "dimension": "always", "kind": "index", "name": "month_index_nov", "factor": 1.10,
+      "valid_from": "2026-11-01T00:00:00+01:00", "valid_until": "2026-12-01T00:00:00+01:00" },
+    { "dimension": "always", "kind": "index", "name": "market_index_nov", "factor": 0.95,
+      "valid_from": "2026-11-01T00:00:00+01:00", "valid_until": "2026-12-01T00:00:00+01:00" },
+    { "dimension": "format_option", "format_option_ref": { "scope": "product", "format_option_id": "spot_20s" },
+      "kind": "index", "name": "spot_length_20s", "factor": 0.80 },
+    { "dimension": "always", "kind": "index", "name": "target_audience_a25_54", "factor": 1.25 },
+    { "dimension": "placement_selection",
+      "placement_ref": { "publisher_domain": "oranjetv.example", "placement_id": "first_in_break" },
+      "kind": "fee", "name": "first_in_break_premium", "rate": 0.20 }
+  ]
+}
+```
+
+A buyer booking a 20-second spot in first position for a flight in the second half of November pays: `1000.00 × 1.10 × 0.95 × 0.80 × 1.25 = 1045.00` indexed, plus a first-in-break premium of `20% × 1045.00 = 209.00`, for `1254.00`. The accepted `price_breakdown` lists each index as a fee or discount rate (`0.10`, `0.05` discount, `0.20` discount, `0.25`) and the premium as `{ "kind": "fee", "name": "first_in_break_premium", "amount": 209.00 }`.
+
+Rate-side spot-length indexing is expressible through [`price_adjustments`](#selection-dependent-price-adjustments) (an index keyed to the spot's format option). Impression-side :30 equivalization and demo-bound CPM remain open and are tracked for 3.4 in [#8001](https://github.com/adcontextprotocol/adcp/issues/8001).
+
+### Eligible dimensions
+
+Selection rows price only values that come from a seller-published catalog on the same product, so the seller can enumerate them in advance:
+
+| `dimension` | Row selector | Matches when |
+|---|---|---|
+| `format_option` | `format_option_ref` | The purchase's `format_option_refs` includes the reference. It MUST resolve to a format option the product declares. |
+| `placement_selection` | `placement_ref` | A `mode: "selected"` `placement_selection` includes the placement. It MUST resolve to a targetable placement of the product, and the product MUST declare `overlay_support.placement_selection`. |
+| `always` | none | Always, subject to the row's window. |
+
+Matching is full-identity equality after resolving both sides to the product's declared entry: a legacy placement ref and a placement identity for the same placement match, and the same format option ID under a different `scope` does not. Only values the buyer actually selects match a selection row. Omitting the selection, or choosing the product default, matches no row. Buyer-owned lists (`property_list`, `collection_list`) are not eligible: a seller cannot enumerate a price for a list the buyer controls. Position in break is modelled as a seller-published placement (the example above prices `first_in_break` that way) until the booking half of [#8009](https://github.com/adcontextprotocol/adcp/issues/8009) lands; the reporting side is a separate contract ([Position pricing is outside this reporting contract](/docs/media-buy/media-buys/optimization-reporting)). Activation method, measurement vendor, and reporting tier have no selectable anchor yet; an unknown `dimension` is a schema error and later minor versions add values as anchors appear.
+
+### Validity windows
+
+A row may carry `valid_from` (inclusive) and `valid_until` (exclusive), both date-times with an offset, so a seller whose month and market indices change monthly publishes one row per window. A row without them always applies. The window is evaluated at the purchase's `start_time`.
+
+A purchase resolves to **one** price, so a flight whose `[start_time, end_time)` crosses a `valid_from` or `valid_until` of a row that would otherwise apply is rejected with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming the flight. The buyer splits the flight into one purchase per window. A flight may end exactly on a `valid_until`. Resolving each installment or each day of one purchase at its own rate would need a price per installment in the accepted snapshot, which this version does not define.
+
+### Resolution
+
+Sellers and buyers MUST resolve a purchase's price in this order:
+
+1. **Select rows.** A row applies when its window contains the purchase's `start_time` and its selector matches. Among rows of one selection dimension, only the first applicable row in declared order fires, so a seller can list the same value once per window and the matching window wins. `always` rows each fire. Sellers who want multi-select purchases priced at the highest applicable row list it first; summing the matched values of one dimension is a recorded limit of 3.3, not supported in this version.
+2. **Index.** Starting from `fixed_price`, apply each firing index in declared order. Each step adds or subtracts `round(running × |factor − 1|)`, rounded half away from zero to the option's price precision. The result is the **indexed price**; factors that equal 1 contribute nothing.
+3. **Premiums.** Each firing premium contributes a delta computed from the indexed price, never from another premium: a `rate` row contributes `indexed price × rate`, rounded half away from zero to price precision, and an `amount` row contributes its `amount`. A `fee` delta is added and a `discount` delta is subtracted. The resolved price is the indexed price plus the signed deltas, and does not depend on the order of premium rows. A 10% fee and a 10% fee add 20% of the indexed price.
+4. **Precision.** The option's **price precision** is the greatest of the currency's ISO 4217 minor-unit exponent; 4 for `cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`, and `cpp` options; and the fewest decimal places that exactly represent `fixed_price` and each row `amount`. Precision is a property of the numeric values, not of how they were written: `0.0100` and `0.01` are the same value. Because every delta is already at price precision, the resolved price is the exact sum of its parts and is not rounded again; rounding to currency minor units belongs to later spend and invoice calculation. Implementations MUST use exact decimal or integer arithmetic.
+5. **Never negative.** The total MUST NOT fall below zero. Sellers MUST verify at publication that no permitted selection resolves below zero; a purchase that would is rejected with `INVALID_REQUEST`, never clamped.
+
+The default composition applies premiums to the **indexed** price because position and cover surcharges sit on top of the rate the sales house quotes after indexing. Premiums computed against the base rate instead would give a different result whenever an index and a premium rate both apply; the example above would be `1000.00 × 0.20 = 200.00` and `1245.00`. Which basis the protocol uses is a working-group decision, and the vectors pin the indexed-price basis.
+
+Two consequences follow from one-row-per-dimension. A multi-select purchase pays the first applicable row's rate on all of its volume, so a seller that wants each selected value priced separately sells separate packages or publishes fully resolved per-selection options. And a row that prices a placement already in the product's default set would make choosing it explicitly cost more than the default, so sellers should price only values that add to the default.
+
+### Resolved price and accepted terms
+
+- When `pricing` is omitted from a purchase, the seller computes the resolved price. When the buyer supplies `pricing`, the seller MUST reject any `fixed_price` or `price_breakdown` that differs from the resolved result with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming the pricing field, and SHOULD carry the resolved value and breakdown as [`error-details/price-adjustments-mismatch.json`](https://adcontextprotocol.org/schemas/v3/error-details/price-adjustments-mismatch.json) (`details.resolved_fixed_price`, `details.resolved_price_breakdown`), so the buyer can see which row it disagrees on. It MUST NOT silently reprice the request.
+- In the accepted purchase `pricing`, the seller MUST return `fixed_price` as the resolved rate and `base_fixed_price` as the declared option's `fixed_price`. When any row fired, the seller MUST return `price_breakdown`: its `list_price` is the declared option's (or `base_fixed_price` when none was declared) and its `adjustments` are the declared breakdown's adjustments followed by one entry per fired row, in declared order. An index is recorded as a `fee` rate (`factor − 1`) or a `discount` rate (`1 − factor`) when that proportion is below 1, and as its currency delta in `amount` otherwise (a factor of 2 or more); a premium is always recorded as its currency delta in `amount`; a premium whose delta rounds to zero and an index of exactly 1 contribute nothing and are omitted. `list_price` folded through `adjustments` equals `fixed_price`, so the invariant above covers selection-dependent pricing. A verifier can re-resolve the retained table over the purchase's selections and flight from `base_fixed_price` and compare.
+- The complete `price_adjustments` table is retained in the accepted `pricing` and is covered by `commercial_terms.terms_digest`. Unfired rows, including rows for other windows, are part of the frozen commercial snapshot.
+- A change to the table, or to which selections or dates it matches, is a change to binding price and receives a new `pricing_option_id`. After acceptance, a selection change that alters the resolved price requires a new accepted proposal unless the accepted `change_terms[]` explicitly permit it ([DR-0016](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0016-proposal-bound-buyer-change-rights.md)): an unpermitted change returns `ACTION_NOT_ALLOWED`, and a change that exceeds the accepted commercial envelope returns `REQUOTE_REQUIRED`.
+
+A seller MUST NOT return an option carrying `price_adjustments` to a caller whose `adcp_version` is below 3.3, because an older buyer would read `fixed_price` as the whole price and be repriced at create; for those callers it publishes fully resolved per-selection options or omits the option. A consumer that does not recognize a row's `dimension` treats the option as unpurchasable. A premium `rate` is below 1, so a premium of 100% or more uses an `amount` row; an index `factor` has no upper bound, which covers prime-position indices above 2. The `fixed_price` is net of the option's declared discounts and row `amount` values are not reduced by them. Auction floors (`floor_price`) do not take adjustments, and `price_adjustments` requires `fixed_price`. Availability and forecasts stay seller-computed: the price resolves locally but feasibility does not.
+
+Rather than a table, a seller can instead publish a fully resolved pricing option per selection combination, or split the inventory into separately priced products. Both remain valid; `price_adjustments` is for sellers whose dimensions are orthogonal enough that a combination catalog would explode.
 
 ---
 
