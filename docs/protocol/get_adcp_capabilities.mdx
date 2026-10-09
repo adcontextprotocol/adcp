@@ -105,9 +105,66 @@ Core AdCP protocol information:
 | Field | Type | Description |
 |-------|------|-------------|
 | `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
+| `implementation` | object | Optional since 3.3. Self-reported SDK packages, exact versions, and integrated server components. See [implementation](#implementation). |
 | `idempotency` | object | **Required.** Idempotency semantics. See [idempotency](#idempotency). |
 | `capability_changes` | object | Optional. Freshness metadata and opt-in `capabilities.changed` invalidation webhooks for cached capability documents. See [capability_changes](#capability_changes). |
 | `attestations` | object | Optional. Allowlisted portable-attestation claim types, issuers, resolvers, verifiers, proof formats, and delivery methods this agent evaluates. See [attestations](#attestations). |
+
+#### implementation
+
+Optional since AdCP 3.3. Reports which AdCP SDKs the deployed agent uses and which server components they supply. This helps buyers investigate version-specific behavior and target integration checks. It is separate from the AdCP wire version and the seller's deployment `build_version`.
+
+| Field | Type | Description |
+|---|---|---|
+| `sdks` | object[] | Required when `implementation` is present. An empty array explicitly reports no AdCP SDK use; an omitted `implementation` means SDK use is unknown. Multiple entries support mixed SDK integrations. |
+| `sdks[].name` | string | Required. Package identifier in its ecosystem, including publisher or module scope where applicable, such as `@adcp/sdk`. |
+| `sdks[].version` | string | Required. Exact resolved package version, including any prerelease or build identifier. Use the ecosystem's version syntax, rather than a range or moving tag such as `latest`. Forks and modified builds should identify their own package or build version. |
+| `sdks[].components` | string[] | Required, nonempty, unique list of components actually supplied by this SDK on the server. Installing a package or using its outbound client does not establish server-side coverage. |
+
+Components are independent; lifecycle handling does not imply SDK authentication or transport:
+
+| Component | What the deployed agent uses from the SDK |
+|---|---|
+| `types` | Build-time AdCP type imports. These may be erased before runtime. |
+| `schema_validation` | Runtime validation of AdCP payloads. |
+| `transport` | Inbound protocol framing, dispatch, and response serialization. |
+| `authentication` | Caller authentication. Account authorization remains a separate obligation. |
+| `signing` | Message signing and signature verification. |
+| `lifecycle` | Domain state-transition enforcement and asynchronous task lifecycle handling. |
+| `idempotency` | Mutating-request replay protection. |
+| `webhooks` | Notification envelopes, delivery, and retries. |
+
+Only list components actually integrated across the advertised task paths where each component applies. If an SDK handles a component for only some task paths, omit that component from this agent-wide declaration. An unlisted component has no claimed SDK coverage; it does not imply unsupported behavior or establish that the component is custom.
+
+The following example uses a hypothetical SDK version to show a types-and-validation integration. It makes no SDK coverage claim for authentication, transport, or lifecycle handling.
+
+{/* Using latest because implementation is introduced in 3.3 and is not yet released. */}
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": false },
+    "implementation": {
+      "sdks": [
+        {
+          "name": "@adcp/sdk",
+          "version": "15.3.0",
+          "components": ["types", "schema_validation"]
+        }
+      ]
+    }
+  },
+  "supported_protocols": ["media_buy"]
+}
+```
+
+**Reporting accurately.** SDK server frameworks should generate package identity, resolved version, and integrated components from their own build and active runtime configuration. Build-time type-only imports need a build-time declaration. A framework should not infer coverage merely from a package's presence or from the features that package offers. SDK or integration changes should refresh the capability document and its [freshness metadata](#capability_changes).
+
+**Using the report.** This metadata is self-reported and advisory. Buyers MUST NOT use it for version negotiation. Recognizing an approved package and version in a trusted catalog is useful for triage, but does not prove the deployed server executes that code. Signing this response authenticates the reporting agent; it does not attest code execution. The metadata does not change any [conformance obligations](/docs/building/verification/conformance).
+
+Buyers should reduce check depth only when independently trusted evidence covers the relevant endpoint, SDK version, and integrated components. Such evidence can support reusing results for covered components while deeper checks focus on custom or uncovered behavior; basic endpoint checks still apply. SDK version or integration changes should trigger reassessment of reused evidence. This field does not introduce an SDK approval catalog, certification inheritance policy, or new attestation format.
 
 #### idempotency
 

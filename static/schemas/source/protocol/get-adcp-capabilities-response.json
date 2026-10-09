@@ -486,6 +486,59 @@
             "3.1.0-beta.3+sha.a1b2c3d"
           ]
         },
+        "implementation": {
+          "type": "object",
+          "description": "Optional, self-reported AdCP SDK identity and integration metadata, introduced in 3.3. Omission means SDK use is unknown. An empty sdks array explicitly reports no AdCP SDK use. This metadata is advisory: it does not establish SDK approval, prove deployed code execution, change capability obligations, or justify skipping conformance checks without independently trusted evidence covering this endpoint and integration. Buyers MUST NOT use it for version negotiation.",
+          "properties": {
+            "sdks": {
+              "type": "array",
+              "description": "AdCP SDKs actually used by this deployment, including build-time type imports. Merely installing an SDK or using its outbound client does not establish server-side component coverage. Multiple entries support mixed SDK integrations. Forks and modified builds should identify their own package or build version rather than claiming an unmodified upstream release.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^\\S+$",
+                    "description": "SDK package identifier in its package ecosystem, including publisher or module scope where applicable. Approval is determined by the buyer's trusted catalog, not by the seller.",
+                    "examples": ["@adcp/sdk", "adcp", "github.com/adcontextprotocol/adcp-go"]
+                  },
+                  "version": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^\\S+$",
+                    "description": "Exact resolved SDK package version, including any prerelease or build identifier. Use the package ecosystem's version syntax, not a version range or moving registry tag. Independent of the AdCP wire version and the seller's build_version.",
+                    "examples": ["15.3.0", "15.3.0-beta.1", "4.0.0rc1", "v1.2.0"]
+                  },
+                  "components": {
+                    "type": "array",
+                    "description": "Server-side components supplied by this SDK across the advertised task paths where each component applies. types covers build-time AdCP type imports; schema_validation covers runtime AdCP payload validation; transport covers inbound protocol framing, dispatch, and response serialization; authentication covers caller authentication; signing covers message signing and signature verification; lifecycle covers domain state-transition enforcement and asynchronous task lifecycle handling; idempotency covers mutating-request replay protection; webhooks covers notification envelopes, delivery, and retries. List only components actually integrated, not everything the SDK package offers. Omitted components have no claimed SDK coverage; omission does not mean the feature is unsupported or necessarily custom. If a component uses different implementations on different task paths, omit it from this agent-wide declaration.",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "types",
+                        "schema_validation",
+                        "transport",
+                        "authentication",
+                        "signing",
+                        "lifecycle",
+                        "idempotency",
+                        "webhooks"
+                      ]
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                },
+                "required": ["name", "version", "components"],
+                "additionalProperties": false
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": ["sdks"],
+          "additionalProperties": false
+        },
         "idempotency": {
           "type": "object",
           "description": "Idempotency semantics for mutating requests. Sellers MUST declare whether they honor idempotency_key replay protection so buyers can reason about safe retry behavior. Modeled as a discriminated union on the supported boolean so that code generators produce two named types (IdempotencySupported, IdempotencyUnsupported) with the replay_ttl_seconds invariant enforced at the type level — draft-07 if/then would be dropped by most generators (openapi-typescript, zod-to-json-schema, datamodel-code-generator pre-0.25, quicktype). Clients MUST NOT assume a default — a seller without this declaration is non-compliant and should be treated as unsafe for retry-sensitive operations.",
