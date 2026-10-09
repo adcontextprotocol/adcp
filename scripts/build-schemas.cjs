@@ -2433,10 +2433,21 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
   );
 
   const canonicalManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  const surfaceVersion = [
+  const declaredSurfaceVersion = [
     canonicalManifest.adcp_version,
     ...Object.values(canonicalManifest.tools || {}).map(tool => tool.added_in).filter(Boolean),
   ].filter(version => semver.valid(version)).sort(semver.rcompare)[0];
+  // A tool added for the next minor (for example added_in 3.3.0 while the
+  // package is still 3.2.x) is not part of the active surface until the
+  // package enters that line, so cap the surface at the package's active
+  // version: x.y.0 for an x.y prerelease, otherwise the released version.
+  const packageVersion = JSON.parse(fs.readFileSync(PACKAGE_JSON, 'utf8')).version;
+  const packageSurfaceVersion = semver.prerelease(packageVersion)
+    ? `${semver.major(packageVersion)}.${semver.minor(packageVersion)}.0`
+    : packageVersion;
+  const surfaceVersion = semver.lte(declaredSurfaceVersion, packageSurfaceVersion)
+    ? declaredSurfaceVersion
+    : packageSurfaceVersion;
   const isActiveProductionTool = tool => (
     tool.protocol !== 'compliance'
     && (!tool.added_in || semver.lte(tool.added_in, surfaceVersion))

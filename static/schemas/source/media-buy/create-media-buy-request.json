@@ -87,6 +87,7 @@
         { "$ref": "/schemas/core/opportunity-context.json" },
         {
           "properties": { "status": { "const": "closed" } },
+          "not": { "required": ["later_proposals"] },
           "if": {
             "properties": { "status": { "const": "closed" } },
             "required": ["status"]

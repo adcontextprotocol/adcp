@@ -92,9 +92,14 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // minute-resolution dayparts add the start_time/end_time pair, its one-of-two
 // exclusion, and the time_granularity requirement to the shared daypart
 // graph carried by every targeting-bearing task (+2,087 bytes measured,
-// 443.3 → 445.4 KiB), bounded at 446 KiB.
+// 443.3 → 445.4 KiB), bounded at 446 KiB. Experimental
+// opportunity.later_proposals consent (accepted/until/max_count/min_interval,
+// with the campaign unit excluded) on the shared opportunity context, plus the
+// explicit open status on accept_proposal and buy_products and the rule that
+// consent accompanies only an open status, reaches four proposal and purchase
+// tasks (+1,843 bytes measured, 445.4 → 447.2 KiB), bounded at 448 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 446,
+  'media-buy': 448,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -1446,6 +1451,9 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
   const mediaBuyTools = new Set(MCP_ROLE_PROFILE_TOOLS['media-buy']);
   const activeMediaBuyTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'media-buy')
+    // Tools added for the next minor join the role catalog when the package
+    // enters that line; the build rejects inactive tools in role profiles.
+    .filter(([, tool]) => !tool.added_in || semver.lte(tool.added_in, ACTIVE_SURFACE_VERSION))
     .filter(([, tool]) => !tool.deprecated_in || semver.gt(tool.deprecated_in, ACTIVE_SURFACE_VERSION))
     .map(([toolName]) => toolName)
     .filter(toolName => toolName !== 'build_creative');

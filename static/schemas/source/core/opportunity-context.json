@@ -55,6 +55,35 @@
       "minLength": 1,
       "maxLength": 500,
       "description": "Optional non-sensitive context about closure. MUST NOT identify a competitor or disclose confidential clearing terms."
+    },
+    "later_proposals": {
+      "type": "object",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.open_opportunities). Buyer consent to proposals the seller creates after the creating task completes. Absent at creation means no consent; absent later means unchanged, except that a purchase keeping the opportunity open resets it. accepted false withdraws consent; closure ends it. Never inferred from an absent response_deadline.",
+      "properties": {
+        "accepted": {
+          "type": "boolean",
+          "description": "Whether the seller may create later proposals."
+        },
+        "until": {
+          "type": "string",
+          "format": "date-time",
+          "description": "End of the later-proposal window. response_deadline still governs only the creating task's response."
+        },
+        "max_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Maximum later proposals under this consent. Sellers MUST NOT exceed it."
+        },
+        "min_interval": {
+          "allOf": [{ "$ref": "/schemas/core/duration.json" }, { "not": { "properties": { "unit": { "const": "campaign" } }, "required": ["unit"] } }],
+          "description": "Minimum time between later proposals. Sellers MUST NOT create one sooner."
+        }
+      },
+      "required": ["accepted"],
+      "additionalProperties": false
     }
   },
   "required": ["opportunity_id"],

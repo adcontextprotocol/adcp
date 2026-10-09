@@ -45,6 +45,10 @@ Concrete screens can carry `dooh_placement_attributes.location` (`lat`, `lon`, a
 
 `ext.adcp` is now a registered, AdCP-owned extension namespace. Its first member is an optional `opportunity` binding for cooperating 3.2 `get_products` integrations, declared by listing `adcp` in `extensions_supported`. It reuses the published 3.2 `OpportunityContext` shape and is not the core `opportunity` field. The namespace is reserved for the AdCP working group, so vendors keep their own namespaces. See [AdCP opportunity extension](/docs/building/by-layer/L2/context-sessions#adcp-opportunity-extension).
 
+### Open opportunities and later proposals (experimental)
+
+A buyer can keep an opportunity open after the first response and let sellers send more. `opportunity.later_proposals` gives consent with optional `until`, `max_count`, and `min_interval` limits. Sellers then create draft-only later proposals, announce each with the identifiers-only `proposal.created` notification, and serve them through the new [`list_proposals`](/docs/media-buy/task-reference/list_proposals) read, which returns each snapshot beside its disposition. `accept_proposal` and `buy_products` accept an explicit `opportunity.status: "open"` so a buyer can buy part of a plan and keep sourcing. Everything is experimental under `media_buy.open_opportunities` and advertised in parts. See [Open opportunities and later proposals](/docs/media-buy/product-discovery/proposal-negotiation#open-opportunities-and-later-proposals) and [#8096](https://github.com/adcontextprotocol/adcp/issues/8096).
+
 ### Clarifications and conformance
 
 - `authorized_agents[].url` in `adagents.json` is the agent's full protocol endpoint URL, including its path, and one entry is needed for each agent URL. See [Agent URL matching](/docs/governance/property/adagents#agent-url-matching).
@@ -60,6 +64,7 @@ The account-reference and trust-docs clarifications already shipped in 3.2.2 ([`
 | A seller that provisions accounts lazily | Stop provisioning on discovery tasks; return `ACCOUNT_NOT_FOUND` for an unresolved `account` unless you answer for the account you would create. |
 | A signing or verifying implementation | Resolve agents by canonical URL from `identity.brand_json_url`, and publish every pinned key in the agent's JWKS. |
 | A seller with a catalog intake | Declare `catalog_ingestion` if buyers need your limits, and reject out-of-declaration requests before mutation. |
+| A seller that wants to send proposals after the first response | Opt in to `media_buy.open_opportunities`: advertise `list_proposals` first, then `later_proposals` with a `max_open_duration`, and honor buyer consent and limits. |
 | A DOOH seller | Add `location` and `venue_counts` where you can disclose them; both are optional. |
 | An SDK maintainer | Generate from the signed beta.0 tarball and publish an exact support statement. |
 | A compliance operator | Treat beta.0 as an implementation input. Do not issue a 3.3 badge from beta.0. |

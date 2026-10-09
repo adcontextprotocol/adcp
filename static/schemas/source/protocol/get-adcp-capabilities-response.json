@@ -1326,7 +1326,7 @@
           "description": "Compact product and MediaBuy lifecycle operation names this seller supports. Added in AdCP 3.2 as task-specific contracts that form the 4.0 lifecycle foundation. Sellers may advertise any supported subset while retaining the deprecated get_products/create_media_buy/update_media_buy facades throughout 3.x. Each stateful split task has its own idempotency identity; callers MUST retry with the same tool name.",
           "items": {
             "type": "string",
-            "enum": ["list_products", "request_proposals", "refine_proposals", "decline_proposals", "buy_products", "accept_proposal", "control_media_buy"]
+            "enum": ["list_products", "request_proposals", "refine_proposals", "decline_proposals", "buy_products", "accept_proposal", "control_media_buy", "list_proposals"]
           },
           "minItems": 1,
           "uniqueItems": true
@@ -1363,6 +1363,56 @@
             }
           ],
           "additionalProperties": true
+        },
+        "open_opportunities": {
+          "type": "object",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Open-opportunity support: reading proposals, keeping an opportunity open past a purchase, and creating later proposals under buyer consent. Each part is advertised separately so sellers can adopt them independently. Experimental (media_buy.open_opportunities): sellers declaring this object MUST list the feature id in experimental_features. Buyers MUST NOT send later_proposals consent, opportunity.status open on accept_proposal or buy_products, or an empty decline_proposals declines array to a seller that does not advertise the matching part.",
+          "properties": {
+            "list_proposals": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the seller implements list_proposals. Required true when later_proposals.supported is true, because list_proposals is the repair read for proposal.created."
+            },
+            "keep_open_after_purchase": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether accept_proposal and buy_products accept an explicit opportunity.status open."
+            },
+            "later_proposals": {
+              "type": "object",
+              "description": "Whether the seller creates proposals after the creating task completes, for opportunities whose buyer gave later_proposals consent.",
+              "properties": {
+                "supported": { "type": "boolean" },
+                "max_open_duration": {
+                  "allOf": [{ "$ref": "/schemas/core/duration.json" }, { "not": { "properties": { "unit": { "const": "campaign" } }, "required": ["unit"] } }],
+                  "description": "Longest window the seller keeps an opportunity open for later proposals, measured from the call that last set consent. It always caps the window, which ends at the earliest of this, later_proposals.until, planning_horizon.end, and closure. The campaign unit is invalid here."
+                }
+              },
+              "required": ["supported"],
+              "if": {
+                "properties": { "supported": { "const": true } },
+                "required": ["supported"]
+              },
+              "then": { "required": ["max_open_duration"] },
+              "additionalProperties": false
+            }
+          },
+          "if": {
+            "properties": {
+              "later_proposals": {
+                "properties": { "supported": { "const": true } },
+                "required": ["supported"]
+              }
+            },
+            "required": ["later_proposals"]
+          },
+          "then": {
+            "properties": { "list_proposals": { "const": true } },
+            "required": ["list_proposals"]
+          },
+          "additionalProperties": false
         },
         "reporting_delivery_methods": {
           "type": "array",

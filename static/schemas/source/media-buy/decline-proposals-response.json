@@ -21,7 +21,8 @@
   "properties": {
     "results": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 0,
+      "description": "One result per requested decline, in request order. Empty only when the request carried an empty declines array with an opportunity update.",
       "items": {
         "type": "object",
         "discriminator": { "propertyName": "outcome" },

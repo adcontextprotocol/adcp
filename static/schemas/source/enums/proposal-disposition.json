@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/proposal-disposition.json",
+  "title": "Proposal Disposition",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Seller-tracked lifecycle disposition of one immutable proposal snapshot, returned by list_proposals next to the unchanged snapshot. Distinct from proposal_status (draft, committed, accepted), which is part of the snapshot and never changes after issue. Experimental (media_buy.open_opportunities).",
+  "type": "string",
+  "enum": ["available", "accepted", "declined", "expired", "withdrawn"],
+  "enumDescriptions": {
+    "available": "The snapshot can still be acted on: refined, declined, or, when committed and before expires_at, accepted. A refined source stays available unless the seller withdraws it; refinement creates new snapshots and does not retire the source.",
+    "accepted": "The snapshot was executed through accept_proposal or create_media_buy. proposal_status on the snapshot is unchanged; the acceptance record is on the resulting media buy.",
+    "declined": "The buyer declined the snapshot through decline_proposals. Terminal.",
+    "expired": "expires_at passed before acceptance. For a committed snapshot the inventory hold is released. Terminal.",
+    "withdrawn": "The seller retracted a draft snapshot before expiry, for example because the inventory sold. Terminal. A seller MUST NOT withdraw a committed snapshot before its expires_at."
+  }
+}
