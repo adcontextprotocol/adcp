@@ -410,11 +410,12 @@ describe("matched-v4 provider-authoritative aggregate billing", () => {
       "--certificate-oidc-issuer https://token.actions.githubusercontent.com",
     );
     expect(untrustedBuild).not.toContain("id-token: write");
-    expect(untrustedBuild).toContain("npm ci");
+    expect(untrustedBuild).toContain("node .github/scripts/npm-ci.mjs");
     expect(untrustedBuild).toContain("npm run build");
     expect(protectedAttestation).toContain("id-token: write");
     expect(protectedAttestation).not.toContain("actions/checkout@");
     expect(protectedAttestation).not.toContain("npm ci");
+    expect(protectedAttestation).not.toContain("npm-ci.mjs");
     expect(protectedAttestation).not.toContain("npm run build");
     expect(protectedAttestation).toContain(
       "matched-v4-runtime-attestation.json",

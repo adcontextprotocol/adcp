@@ -34,7 +34,7 @@ jobs:
           node-version: '24'
           cache: npm
 
-      - run: npm ci
+      - run: node .github/scripts/npm-ci.mjs
 
       - name: Build schemas, compliance, and protocol bundle
         env:

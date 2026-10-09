@@ -210,5 +210,7 @@ describe('external smoke CI isolation', () => {
     expect(pkg.scripts['test:external-smoke']).toBe('tsx scripts/external-smoke/run.ts');
     expect(workflow.jobs.smoke.steps.filter((step: { run?: string }) => step.run === 'npm run test:external-smoke')).toHaveLength(1);
     expect(workflow.jobs.smoke['timeout-minutes']).toBe(5);
+    const installs = workflow.jobs.smoke.steps.filter((step: { run?: string }) => /\bnpm ci\b|npm-ci\.mjs/.test(step.run ?? ''));
+    expect(installs).toEqual([{ run: 'node .github/scripts/npm-ci.mjs', env: { PUPPETEER_SKIP_DOWNLOAD: 'true' } }]);
   });
 });
