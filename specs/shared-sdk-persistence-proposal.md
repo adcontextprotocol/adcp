@@ -424,7 +424,7 @@ CREATE TABLE adcp_reporting_revision_chunks (
   segments         JSONB NOT NULL,
   -- location (mutable only through a guarded move, §3.6)
   object_key       TEXT COLLATE "C",          -- NULL for postgres; indexed for sweeps
-  native_version   TEXT,                      -- GCS generation, S3/Azure version id or ETag
+  native_version   TEXT,                      -- write-unique: GCS generation, S3/Azure version id
   physical_sha256  TEXT COLLATE "C",
   physical_byte_count BIGINT,
   PRIMARY KEY (reporting_revision_id, chunk_index),
@@ -540,9 +540,23 @@ bytes are identical.
 | Provider | Create-only write | Conflict | Native version recorded |
 | --- | --- | --- | --- |
 | GCS | `ifGenerationMatch: 0` | 412 | generation |
-| S3 | `If-None-Match: *` on PutObject / CompleteMultipartUpload | 412 (retry on 409) | version id when versioned, else ETag |
-| Azure Blob | `If-None-Match: *` | 409 `BlobAlreadyExists` or 412 | version id or ETag |
+| S3 | `If-None-Match: *` on PutObject / CompleteMultipartUpload | 412 (retry on 409) | version id (bucket versioning required) |
+| Azure Blob | `If-None-Match: *` | 409 `BlobAlreadyExists` or 412 | version id (blob versioning required) |
 | Filesystem | write temp, `fsync`, `link()` to final name (no-replace) | `EEXIST` | inode + mtime (tests only) |
+
+- **Native versions must identify exactly one write.** Every read and delete is pinned
+  to the recorded native version. That fences a delayed delete to the write it was
+  meant for, for example an intent sweep removing an abandoned upload.
+  - An ETag is content-derived, so it does not qualify: an identical upload re-created
+    at the same key has the same ETag, and a delayed delete would remove the
+    replacement.
+  - S3 bucket versioning and Azure blob versioning are therefore required. The probe
+    refuses an unversioned bucket or container (`UNSAFE_BINDING`), and a write that
+    returns no version id is refused.
+  - Deleting a specific version id removes that version permanently (no delete
+    marker), so retention still frees storage.
+  - The filesystem provider's version is not write-unique and is for tests and
+    single-host development only.
 
 - **Keys.** Rendered keys MUST begin `{prefix}/{namespace_key}/`. Templates may add:
   - `{account_key}`
@@ -689,6 +703,11 @@ it cannot break a hash, everything about it is adopter-defined:
 - **Sink retention is the adopter's.** Ledger row retention governs serving copies
   only. Superseded snapshots are the intraday pacing curves analysts want, and a sink
   may keep them indefinitely.
+- **Falling behind retention is an explicit gap, never a silent one.** A sink that stays
+  down past `max_feed_hold_days` releases its hold, and periods it has not loaded may
+  then be retired. When a planned revision no longer exists, the sink reports it as
+  missing rather than skipping it. The warehouse then lacks those revisions; operators
+  either backfill them from another source or record the gap.
 
 **Recommended GCP deployment:** an `object` binding on GCS, plus a BigQuery load-job
 sink into a native table. GCS gives create-only writes, reads in tens of milliseconds and
@@ -747,11 +766,13 @@ serving-grade reads from the ledger, not from the warehouse.
     `CURSOR_EXPIRED`. The consumer then resynchronizes from `listCurrentRevisions` and
     resumes from the cursor returned with that read.
 - **Durable consumers.** A host may register a named consumer, with its position in
-  its own feed order, in
-  `adcp_reporting_feed_consumers(name, cursor, updated_at)`. A registered consumer
-  holds back change-table pruning, up to a cap (`max_feed_hold_days`), so a dead
-  consumer cannot block retention indefinitely. The warehouse sink is a registered
-  consumer.
+  its own feed order, in `adcp_reporting_feed_consumers(name, cursor, updated_at)`.
+  - A live registered consumer holds back **both** change-table pruning and period
+    retirement (§4.2) until it has passed that period's changes. A held change record
+    therefore never points at content that has already been deleted.
+  - Both holds share one cap, `max_feed_hold_days`, measured from the consumer's last
+    update, so a dead consumer cannot block retention indefinitely.
+  - The warehouse sink is a registered consumer.
 - These are host APIs, not buyer surfaces. Buyers keep the protocol's
   `changes_checkpoint` and `changes_after`, which project from the same table.
 
@@ -780,16 +801,17 @@ serving-grade reads from the ledger, not from the warehouse.
 
 - **Retained as a unit.** Every revision's header, manifest and rows are retained for at
   least `status_retention_days`. The window is anchored at the later of publication and
-  obligation completion, and expiry is period-aligned. Rows outlive that window while a
-  receipt, consumer status, adjustment or live materialization still names the
-  revision.
+  obligation completion, and expiry is period-aligned.
+- **Holds keep the whole period.** A live materialization, or a live registered feed
+  consumer that has not passed the period's changes, holds the **entire** period
+  (rows, headers and manifests) until the hold clears or reaches its cap. Rows are
+  never kept while the records that locate them are deleted.
 - **After expiry.** The period's records leave the protocol projection together, and
   `ledger_retained_from` advances. Every retained record has an explicit bound:
 
   | Record | Retained | Then |
   | --- | --- | --- |
-  | Row bytes | The protocol window, plus holds | Pruned (§4.3) |
-  | Headers, chunk manifests, consumer statuses, receipts, issues, transitions and lifecycle state for a period | `ledger_record_retention_days` after the period expires. Default `status_retention_days`; never less | Deleted together, in one period-aligned transaction under the account lock |
+  | Row bytes, headers, chunk manifests, consumer statuses, receipts, issues, transitions and lifecycle state for a period | `max(status_retention_days, ledger_record_retention_days)` after the period expires, plus holds | Retired together by one resumable sequence (§4.3): row bytes first, then records |
   | Per-obligation tombstone: obligation ID, configuration generation, period, final current revision ID, `revision_content_sha256`, `row_manifest_sha256`, revision count, `pruned_at` | Indefinitely, about 200 bytes per obligation | Refuses replays that would resurrect pruned IDs, and preserves the audit conclusion |
   | Change-table rows | `change_retention_days` (default 30; never less than the protocol checkpoint TTL), extended by registered consumers up to `max_feed_hold_days` | Deleted. Older cursors get `CURSOR_EXPIRED` |
   | Idempotency replay rows (consumer-status and receipt batches) | Their 30-day replay window | Deleted. Today's lifetime per-consumer caps become active-window caps |
@@ -816,23 +838,24 @@ serving-grade reads from the ledger, not from the warehouse.
 
 ### 4.3 Pruning and intent sweeps
 
-- **Pruning.**
-  1. In one transaction under the account lock, mark an expired period's revisions
-     `pruning`, after re-checking holds.
-  2. Delete the recorded object versions that no non-pruned chunk row still
-     references. Deletion is idempotent and resumable.
-  3. Mark the revisions `pruned`.
+- **Period retirement.** Row pruning and record deletion are one ordered, resumable
+  sequence per period, so the records that locate row bytes are never deleted while the
+  bytes remain stored:
+  1. **Tombstone.** In one transaction under the account lock, after re-checking every
+     hold, write a `retiring` tombstone and mark the period's row sets `pruning`. Exact
+     reads now answer as expired.
+  2. **External bytes.** Delete the period's recorded object versions. Deletion is
+     idempotent, and a failure leaves the period `retiring` with every locator intact.
+  3. **Records.** Only after step 2 completes, in one transaction under the account
+     lock:
+     - delete the period's PostgreSQL bodies, chunk manifests, headers, statuses,
+       receipts, issues, transitions and lifecycle rows;
+     - mark the tombstone `retired`;
+     - record the retirement in the change table so mirrors can follow.
 
-  External bytes are never deleted first. The `postgres` backend deletes unreferenced
-  bodies in step 1's transaction.
-- **Record deletion.** When `ledger_record_retention_days` elapses, one period-aligned
-  transaction under the account lock does three things:
-  1. writes the obligation tombstone;
-  2. deletes the period's headers, manifests, statuses, receipts, issues, transitions
-     and lifecycle rows;
-  3. records the deletion in the change table so mirrors can follow.
-
-  Batches stay small enough to fit the account-lock timeout.
+  A pass resumes `retiring` tombstones before new candidates. Retirement in PostgreSQL
+  never runs ahead of external deletion. Batches stay small enough to fit the
+  account-lock timeout.
 - **Change-table pruning.** Deletes rows older than `change_retention_days` that every
   registered consumer has passed, or whose consumer has exceeded `max_feed_hold_days`.
 - **Intent sweeps.** Under the account lock, move an expired `open` intent with no
@@ -985,6 +1008,14 @@ reconciling them.
   - decompression limits;
   - key-template and allowlist refusal;
   - an empirical create-only probe on S3-compatible stores;
+  - a delayed exact-version delete after an identical object was re-created at the same
+    key leaves the new object intact; unversioned S3 buckets and Azure containers are
+    refused;
+  - a retirement interrupted between external deletion and record deletion resumes with
+    every locator intact;
+  - a live registered consumer holds an expired period until it passes the period's
+    changes; a consumer stale beyond `max_feed_hold_days` releases it, and the sink
+    reports the lost revisions as missing;
   - the wire mapping for every row-state.
 - **Sink cases:**
   - idempotent load-job retry;
