@@ -874,6 +874,22 @@
           "$ref": "/schemas/core/indicators-changed-webhook.json",
           "description": "Account-level invalidation payload for a semantic indicator snapshot change"
         },
+        "seller-adjustment-allowance": {
+          "$ref": "/schemas/core/seller-adjustment-allowance.json",
+          "description": "A bounded change the buyer pre-authorizes in commercial_terms for the seller to apply unilaterally. Experimental."
+        },
+        "applied-seller-adjustment": {
+          "$ref": "/schemas/core/applied-seller-adjustment.json",
+          "description": "Record of one change the seller applied under an allowance. Experimental."
+        },
+        "allowance-applied-webhook": {
+          "$ref": "/schemas/core/allowance-applied-webhook.json",
+          "description": "Account-level invalidation payload for a seller change applied under an allowance. Experimental."
+        },
+        "proposal-offered-webhook": {
+          "$ref": "/schemas/core/proposal-offered-webhook.json",
+          "description": "Account-level invalidation payload for a seller offer against an accepted media buy. Experimental."
+        },
         "warning": {
           "$ref": "/schemas/core/warning.json",
           "description": "Structured non-blocking receipt returned only on synchronous mutation success"
@@ -1200,6 +1216,22 @@
         "proposal-status": {
           "$ref": "/schemas/enums/proposal-status.json",
           "description": "Lifecycle status of a proposal (draft or committed)"
+        },
+        "seller-adjustment-kind": {
+          "$ref": "/schemas/enums/seller-adjustment-kind.json",
+          "description": "Kind of bounded change a buyer pre-authorizes the seller to apply to a live buy (budget_release, schedule_shift). Experimental."
+        },
+        "change-origin": {
+          "$ref": "/schemas/enums/change-origin.json",
+          "description": "What authorized a change to a media buy (buyer, seller_offer, seller_allowance). Experimental."
+        },
+        "proposal-initiator": {
+          "$ref": "/schemas/enums/proposal-initiator.json",
+          "description": "Which party originated a proposal (buyer or seller). Experimental."
+        },
+        "offer-reason": {
+          "$ref": "/schemas/enums/offer-reason.json",
+          "description": "Why a seller offered a change to an accepted media buy. Experimental."
         },
         "proposal-decline-reason": {
           "$ref": "/schemas/enums/proposal-decline-reason.json",
