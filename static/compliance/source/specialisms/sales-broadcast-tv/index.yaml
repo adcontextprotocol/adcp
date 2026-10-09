@@ -39,7 +39,7 @@ narrative: |
   parts, and the storyboard keeps them in this order.
 
   1. Discovery. Products are linear_tv inventory sold as :15 and :30 hosted-video spots.
-     Each declares CPM pricing, a guaranteed forecast on a named demographic with the
+     Each declares demo-priced pricing (cpm or cpp), a guaranteed forecast on a named demographic with the
      measurement source that produced it, and the measurement windows (Live, C3, C7)
      that mature after airing.
   2. Agreed terms. The buyer proposes billing measurement terms: the currency vendor, the
@@ -259,7 +259,7 @@ phases:
       available inventory to return linear_tv products in :15 and :30 spot lengths.
 
       Each product states what is being sold (a hosted-video spot of a fixed length),
-      how it is priced (CPM), what the seller is prepared to guarantee (a forecast
+      how it is priced (CPM per thousand impressions, or CPP per rating point), what the seller is prepared to guarantee (a forecast
       with method guaranteed on a named demographic, counted by a named measurement
       source), and how that count matures (Live, C3, and C7 measurement windows). The
       buyer uses the windows to decide which one serves as the guarantee basis when
@@ -274,7 +274,7 @@ phases:
           representing available dayparts and programs.
 
           The products carry the commercial facts the rest of the transaction depends
-          on: CPM pricing, :15 and :30 hosted-video format options, a guaranteed
+          on: CPM or CPP pricing, :15 and :30 hosted-video format options, a guaranteed
           forecast naming the demographic system, demographic and measurement source,
           and measurement windows with one marked as the guarantee basis. Live ratings
           arrive within a day. C3 (live + 3 days of DVR) arrives ~4 days after
@@ -291,7 +291,7 @@ phases:
           - name: descriptive name (e.g., "Primetime :30 — M-F 8-11pm")
           - channels: includes linear_tv
           - delivery_type: guaranteed (standard for broadcast upfront and scatter)
-          - pricing_options: CPM pricing on the guaranteed demographic
+          - pricing_options: a cpm or cpp option on the guaranteed demographic
           - forecast: method guaranteed, with demographic_system, demographic and
             measurement_source, and measured_impressions on the forecast points
           - format_options: hosted-video declarations for :15 and :30 spots
@@ -356,7 +356,8 @@ phases:
           - check: field_contains
             path: "products[*].pricing_options[*].pricing_model"
             value: "cpm"
-            description: "Spots are priced per thousand impressions on the agreed demographic"
+            allowed_values: ["cpm", "cpp"]
+            description: "Spots carry a demo-priced option: cpm (per thousand impressions) or cpp (per rating point) on the agreed demographic"
           - check: field_contains
             path: "products[*].forecast.method"
             value: "guaranteed"
@@ -775,7 +776,7 @@ phases:
         requires_tool: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
-        doc_ref: "/building/implementation/comply-test-controller"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
         stateful: true
         expected: |
           The controller records a guaranteed primetime :30 product whose
@@ -830,7 +831,7 @@ phases:
         requires_tool: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
-        doc_ref: "/building/implementation/comply-test-controller"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
         stateful: true
         expected: |
           The controller records a fixed CPM pricing option on the spot-reporting product.
@@ -961,7 +962,7 @@ phases:
         requires_tool: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
-        doc_ref: "/building/implementation/comply-test-controller"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
         stateful: true
         expected: |
           The controller records plays and impressions for the buy, as a sandbox
@@ -1068,7 +1069,7 @@ phases:
         requires_tool: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
-        doc_ref: "/building/implementation/comply-test-controller"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
         stateful: true
         expected: |
           The controller adds Live-window delivery to the buy, as a sandbox
@@ -1189,7 +1190,7 @@ phases:
         requires_tool: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
-        doc_ref: "/building/implementation/comply-test-controller"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
         stateful: true
         expected: |
           The controller adds the remaining delivery (the controller accumulates

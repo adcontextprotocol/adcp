@@ -16,6 +16,14 @@ Every AdCP agent declares its `supported_protocols` and `specialisms` in [`get_a
 
 This page is the human-readable index of that taxonomy. The machine-readable equivalent is `/compliance/{version}/index.json`.
 
+### Storyboard revisions and grace windows
+
+A storyboard revision that fails agents already holding a claim for that specialism carries a grace window. The revision records it here, on the specialism it changes: claims graded against the earlier storyboard version remain valid until the date stated, and re-grading against the new version is required after it. A revision that cannot fail an existing claimant (an optional phase, an advisory check, a new capability-gated scenario) needs no window.
+
+| Specialism | Revision | Grace window |
+|---|---|---|
+| `sales-broadcast-tv` | `sales_broadcast_tv` 1.1.0 replaces the `flat_rate` unit-priced fixtures with demo-priced `cpm` products, a guaranteed forecast, and C7 reconciliation | Claims graded on `sales_broadcast_tv` 1.0.x before `3.3.0-beta.1` is published remain valid until 90 days after that publication. The beta.1 release notes state the dates. |
+
 ## Universal storyboards
 
 Every agent runs every graded storyboard in `/compliance/{version}/universal/` regardless of which protocols or specialisms it claims. A few are *capability-gated* — they only run when the agent advertises the relevant capability — but the storyboard is still universal in scope: any agent claiming the capability is graded by it. Failing a universal storyboard fails overall compliance. Non-executable schemas and support fixtures shipped in the universal bundle are not runner scenarios and do not appear in this table.
@@ -82,7 +90,7 @@ Specialisms are grouped below by parent protocol.
 | `sales-non-guaranteed` | stable | Non-guaranteed auction-based media buys |
 | `sales-proposal-mode` | deprecated | **Deprecated in 3.1.** Drop this claim and replace with `sales-guaranteed` + `media_buy.supports_proposals: true`. See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823). |
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
-| `sales-broadcast-tv` | stable | Broadcast linear TV: a CPM-on-demo guarantee on :15/:30 spots under agreed measurement terms, reconciled on C7 |
+| `sales-broadcast-tv` | stable | Broadcast linear TV: a CPM- or CPP-on-demo guarantee on :15/:30 spots under agreed measurement terms, reconciled on the guarantee-basis window (C7 in the storyboard) |
 | `sales-dooh` | stable | Digital out-of-home, non-guaranteed venue and screen inventory |
 | `sales-social` | stable | Social media advertising platform with self-service flows |
 | `governance-aware-seller` | stable | Seller composes with the buyer's campaign-governance agent after baseline registration — calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) and propagates approvals, conditions, and denials unchanged. Optional claim for the full governance-check loop. |
@@ -166,7 +174,7 @@ Four specialisms apply to specific delivery channels and have their own storyboa
 
 `sales-broadcast-tv` is graded on one intentional, authorized TV transaction under agreed terms, so a passing run is intended to serve as portable onboarding evidence for buyer platforms. The storyboard walks the transaction in five parts:
 
-1. **Discovery.** `linear_tv` products with `video_hosted` :15 and :30 formats, `cpm` pricing, a `guaranteed` forecast that names its demographic, demographic system and `measurement_source`, and Live, C3 and C7 measurement windows.
+1. **Discovery.** `linear_tv` products with `video_hosted` :15 and :30 formats, a demo-priced option (`cpm` or `cpp`), a `guaranteed` forecast that names its demographic, demographic system and `measurement_source`, and Live, C3 and C7 measurement windows.
 2. **Agreed terms.** The buyer proposes `measurement_terms.billing_measurement` (the currency vendor, the guarantee window, a variance tolerance). A seller that cannot honor the proposal returns [`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected).
 3. **Authorized buy.** [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) under the agreed terms. When the seller declares signing for the operation in `request_signing.required_for` or `supported_for`, the runner signs the request and the seller must accept it.
 4. **Plan to as-run (optional).** Sellers that declare the experimental `media_buy.spot_lifecycle` feature are graded on schema-valid `by_spot` rows (`scheduled`, `aired`, `preempted`, `makegood` with `replaces_spot_id`) and on observations of stable `spot_id`s and break position. Sellers that do not declare it skip this phase and are not failed.
