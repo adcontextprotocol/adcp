@@ -9,6 +9,9 @@ import { loadAuthorizationSnapshot, sameAuthorizationSnapshot } from '../db/user
 import { bansDb } from '../db/bans-db.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
 import rateLimit from 'express-rate-limit';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('training-buyer-oauth');
 
 export const TRAINING_BUYER_RESOURCE = 'https://test-agent.adcontextprotocol.org/sales/mcp';
 export const TRAINING_BUYER_METADATA_PATH = '/.well-known/oauth-protected-resource/sales/mcp';
@@ -71,6 +74,7 @@ export function createTrainingBuyerOAuthMiddleware(
     let limited = true;
     await limit(req, res, () => { limited = false; });
     if (limited) return;
+    let dependency: 'jwt_key_service' | 'primary_authorization' | 'platform_ban' | 'workos_membership' = 'jwt_key_service';
     try {
       const { payload } = await jwtVerify(token, keys, { issuer: config.issuer, audience: config.resource,
         algorithms: ['RS256'], maxTokenAge: 3_600, requiredClaims: ['exp', 'sub', 'iat', 'org_id', 'client_id', 'sid'] });
@@ -86,18 +90,22 @@ export function createTrainingBuyerOAuthMiddleware(
       try { selected = selectedOrganizationForAuthentication(req, payload.org_id); }
       catch { throw new BuyerAuthorizationError(403); }
       if (selected !== config.organizationId) throw new BuyerAuthorizationError(403);
+      dependency = 'primary_authorization';
       const before = await loadAuthorizationSnapshot(payload.sub, selected);
       if (!before) throw new BuyerAuthorizationError(401);
       if (before.authenticatedUserId !== payload.sub || before.selectedOrganizationId !== selected
         || before.credentialGrant?.organizationId !== selected
         || !['owner', 'admin'].includes(before.credentialGrant.role)) throw new BuyerAuthorizationError(403);
+      dependency = 'platform_ban';
       const ban = await bansDb.checkPlatformBanForUserAndOrg(payload.sub, selected);
       if (ban.banned) throw new BuyerAuthorizationError(403);
+      dependency = 'workos_membership';
       const memberships = await getPipesWorkos().userManagement.listOrganizationMemberships({ userId: payload.sub, organizationId: selected });
       const direct = memberships.data.filter(m => m.userId === payload.sub && m.organizationId === selected && m.status === 'active');
       const role = resolveUserRole(direct);
       if (role !== 'owner' && role !== 'admin') throw new BuyerAuthorizationError(403);
       // Network checks can outlive a local revocation or identity rebind.
+      dependency = 'primary_authorization';
       const after = await loadAuthorizationSnapshot(payload.sub, selected);
       if (!after || !sameAuthorizationSnapshot(before, after)) throw new BuyerAuthorizationError(403);
       const principal = `workos:${selected}`;
@@ -113,6 +121,8 @@ export function createTrainingBuyerOAuthMiddleware(
     } catch (error) {
       if ((error instanceof BuyerAuthorizationError && error.status === 401) || isInvalidWorkOSJWTError(error)) return unauthorized();
       if (error instanceof BuyerAuthorizationError) { res.status(403).json({ error: 'BUYER_ACCESS_DENIED' }); return; }
+      // Dependency errors can contain credentials; log only fixed classifications.
+      logger.error({ dependency, code: 'BUYER_AUTHORIZATION_UNAVAILABLE' }, 'Private training buyer authorization unavailable');
       res.status(503).json({ error: 'BUYER_AUTHORIZATION_UNAVAILABLE' });
     }
   };

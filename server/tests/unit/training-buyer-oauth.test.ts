@@ -3,12 +3,17 @@ import request from 'supertest';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPair, SignJWT, type JWTVerifyGetKey } from 'jose';
 
-const authority = vi.hoisted(() => ({ snapshot: vi.fn(), ban: vi.fn(), memberships: vi.fn() }));
+const authority = vi.hoisted(() => ({ snapshot: vi.fn(), ban: vi.fn(), memberships: vi.fn(), errorLog: vi.fn() }));
 vi.mock('../../src/db/user-authorization-snapshot-db.js', async importOriginal => ({
   ...await importOriginal<object>(), loadAuthorizationSnapshot: authority.snapshot,
 }));
 vi.mock('../../src/db/bans-db.js', () => ({ bansDb: { checkPlatformBanForUserAndOrg: authority.ban } }));
 vi.mock('../../src/auth/workos-client.js', () => ({ getPipesWorkos: () => ({ userManagement: { listOrganizationMemberships: authority.memberships } }) }));
+vi.mock('../../src/logger.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../src/logger.js')>();
+  return { ...actual, createLogger: (name: string) => name === 'training-buyer-oauth'
+    ? { error: authority.errorLog } : actual.createLogger(name) };
+});
 import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, TRAINING_BUYER_RESOURCE } from '../../src/training-agent/buyer-oauth.js';
 
 const config = { issuer: 'https://auth.example.com', resource: TRAINING_BUYER_RESOURCE,
@@ -89,10 +94,17 @@ describe('private training buyer Connect authorization', () => {
     expect(authority.memberships).not.toHaveBeenCalled();
   });
   it.each(['snapshot', 'ban', 'memberships', 'jwks'])('fails closed on %s outage without exposing credentials', async dependency => {
-    if (dependency === 'jwks') app = buildApp(async () => { throw new Error('secret=not-for-response'); });
-    else authority[dependency as 'snapshot' | 'ban' | 'memberships'].mockRejectedValue(new Error('secret=not-for-response'));
-    const result = await request(app).get('/operation').set('Authorization', `Bearer ${await token()}`);
+    const outage = Object.assign(new Error('secret=not-for-response'), { name: 'secret-error-name', code: 'secret-error-code' });
+    if (dependency === 'jwks') app = buildApp(async () => { throw outage; });
+    else authority[dependency as 'snapshot' | 'ban' | 'memberships'].mockRejectedValue(outage);
+    const signed = await token();
+    const result = await request(app).get('/operation').set('Authorization', `Bearer ${signed}`);
     expect(result.status).toBe(503); expect(JSON.stringify(result.body)).not.toContain('not-for-response'); expect(fallback).not.toHaveBeenCalled();
+    const dependencyLabels = { snapshot: 'primary_authorization', ban: 'platform_ban', memberships: 'workos_membership', jwks: 'jwt_key_service' };
+    expect(authority.errorLog).toHaveBeenCalledExactlyOnceWith({ dependency: dependencyLabels[dependency as keyof typeof dependencyLabels],
+      code: 'BUYER_AUTHORIZATION_UNAVAILABLE' }, 'Private training buyer authorization unavailable');
+    expect(JSON.stringify(authority.errorLog.mock.calls)).not.toContain('secret');
+    expect(JSON.stringify(authority.errorLog.mock.calls)).not.toContain(signed);
   });
   it('rechecks membership after a token has already been accepted', async () => {
     const signed = await token(); expect((await request(app).get('/operation').set('Authorization', `Bearer ${signed}`)).status).toBe(200);
