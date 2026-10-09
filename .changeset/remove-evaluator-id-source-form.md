@@ -6,7 +6,9 @@ Remove the `evaluator_id` source form from the experimental `evaluator` object o
 
 ## Migration
 
-This breaks an experimental surface (`x-status: experimental`, feature id `creative.evaluator`), which the experimental-status contract allows with notice. The 3.3 beta publication is the notice vehicle; 3.3 GA ships no earlier than six weeks after the first beta carrying it. 3.1 and 3.2 keep `evaluator_id`. No alias is offered: the id had no on-wire resolution path, and an unknown id already degraded to seller-default ranking.
+This breaks an experimental surface (`x-status: experimental`, feature id `creative.evaluator`), which the experimental-status contract allows with notice. The 6-week pre-landing notice is waived: beta.0 is the notice vehicle, and GA ships no earlier than 6 weeks after the beta.0 tag. 3.1 and 3.2 keep `evaluator_id`.
+
+The bump is `minor`, not the patch that `versioning.mdx` assigns to experimental-only changes, because the removal changes the `build_creative` request payload and `.agents/playbook.md` ships breaking experimental changes in the next minor. No alias is offered: the id had no on-wire resolution path, and an unknown id already degraded to seller-default ranking.
 
 An `evaluator` carrying only `evaluator_id` no longer validates. A stale `evaluator_id` alongside `exemplars` or `agent_url` still validates and is ignored.
 
