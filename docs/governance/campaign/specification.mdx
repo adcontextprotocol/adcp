@@ -118,6 +118,35 @@ When `allocations` is present, the governance agent validates spend against both
 
 When `allocations` is present but a purchase type is not listed (e.g., `signal_activation` is attempted against a plan that only allocates for `media_buy` and `rights_license`), the governance agent validates the action against the plan's total budget only. Unlisted types are not denied — they draw from the shared pool. To restrict spending to listed types only, set `custom_policies` with explicit constraints.
 
+### Budget periods
+
+`allocations` partitions the budget by purchase type; `budget.periods` partitions it by time. A plan can split its budget across windows such as monthly or quarterly flights, a launch burst followed by a sustain phase, or money that has to be spent before a fiscal quarter closes:
+
+```json
+{
+  "budget": {
+    "total": 100000,
+    "currency": "USD",
+    "reallocation_threshold": 5000,
+    "periods": [
+      { "budget_period_id": "q1", "start": "2027-01-01T00:00:00Z", "end": "2027-04-01T00:00:00Z", "amount": 60000 },
+      { "budget_period_id": "q2", "start": "2027-04-01T00:00:00Z", "end": "2027-07-01T00:00:00Z", "amount": 40000 }
+    ]
+  }
+}
+```
+
+Each period is a half-open window that runs from `start` up to but not including `end`. The governance agent derives the period that contains a dated action's whole flight and enforces that period's `amount` in addition to the plan flight, `budget.total`, and `budget.allocations`. A flight that crosses a boundary, or that sits in budget not yet assigned to any period, is denied; a flight that fits a period but would take it over its `amount` is denied even when the plan total has room. Commitments without dates count against the total and allocation only. The governance agent retains the flight of every dated commitment it settles, so periods can be added to a plan that already has buys.
+
+The encoding rules are normative in the task references, each next to the field it governs:
+
+| Concern | Where |
+|---|---|
+| Windows, money, undated commitments, re-sync rejection | [`sync_plans` — Budget periods](/docs/governance/campaign/tasks/sync_plans#budget-periods) |
+| Which period a buy belongs to, moving a buy, the `budget_period_id` assertion, the response, delivery checks | [`check_governance` — Budget periods](/docs/governance/campaign/tasks/check_governance#budget-periods) |
+
+Periods are optional and additive. A plan without them behaves exactly as before, which is the same as one period covering the whole flight with the whole budget. Seller-facing tasks are unchanged: the seller receives an ordinary media buy whose dates happen to fit one window. Automatic reallocation between periods, splitting a live buy at a boundary, and seller-reported delivery broken out by period are out of scope.
+
 ### Human review required
 
 `human_review_required` is a plan-level boolean (default `false`) that mandates human oversight of every action on the plan, independent of budget reallocation autonomy.

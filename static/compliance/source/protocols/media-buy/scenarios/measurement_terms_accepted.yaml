@@ -4,6 +4,9 @@ title: "Seller accepts supported measurement_terms"
 category: media_buy_seller
 summary: "A seller that advertises measurement-term acceptance accepts a supported configuration and returns the confirmed terms."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy
@@ -40,7 +43,10 @@ prerequisites:
   controller_seeding: true
   description: |
     Seller advertises media_buy.measurement_terms_acceptance and returns a product carrying
-    default measurement_terms for a measurement-specific brief.
+    default measurement_terms for a measurement-specific brief. The storyboard replays those
+    advertised terms verbatim on create_media_buy. A seller MUST NOT advertise a
+    measurement_window (or other term value) it would reject with TERMS_REJECTED, so a
+    rejection of the replayed terms is a seller conformance failure, not a storyboard defect.
   test_kit: "test-kits/acme-outdoor.yaml"
 
 fixtures:

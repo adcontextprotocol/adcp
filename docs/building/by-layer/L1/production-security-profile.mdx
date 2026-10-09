@@ -14,7 +14,6 @@ Advertising the id is a commitment to **enforce** the profile, not to support it
 ## Scope of the claim
 
 - The claim covers the whole endpoint: every tenant and every transport that serves a spend-committing operation. A multi-tenant platform where one tenant still authenticates with a bearer token alone does not meet it. Serve those tenants from another endpoint.
-- Over A2A, `required_for` cannot yet match an AdCP operation ([#7820](https://github.com/adcontextprotocol/adcp/issues/7820)). Until that is resolved, an endpoint that serves spend-committing operations over A2A cannot satisfy P1 on that transport and does not advertise the profile for it.
 - Only an agent that verifies inbound requests and serves `get_adcp_capabilities` can advertise it. A buyer-only agent advertises nothing. A seller judges its conformance by what it verifies on each request, as in [Counterparty rules](#counterparty-rules).
 - The claim is self-asserted until a registry verifies it. Verification is outside this profile.
 - The profile is defined over properties of a signed request, not over one signing profile. See [Signing profiles](#signing-profiles).
@@ -38,6 +37,7 @@ An endpoint advertises the profile only while all of these hold. Each uses an ex
 | A3 | `identity.brand_json_url` is present, so verifiers can resolve the endpoint's own keys. |
 | A4 | `idempotency.supported` is `true`. |
 | A5 | `webhook_signing.supported` is `true` and `legacy_hmac_fallback` is `false` if the endpoint emits webhooks. |
+| A6 | `request_signing.operation_sources` is present and lists every source the endpoint resolves operations from. It includes `a2a_invocation_skill` if the endpoint serves any spend-committing operation over A2A, and `mcp_tools_call` if it does so over MCP. Without the A2A marker, a counterparty cannot infer that `required_for` is enforced over A2A. |
 
 A precondition that stops holding withdraws the claim. The endpoint removes the id from `security_profiles` in the same change.
 
@@ -47,12 +47,12 @@ Each requirement applies to the spend-committing operations above.
 
 | # | Requirement |
 |---|---|
-| P1 | **Signature required.** An unsigned request is rejected with `request_signature_required`. |
+| P1 | **Signature required.** An unsigned request is rejected with `request_signature_required`. Over A2A, the hardening clauses of [Operation resolution over A2A](/docs/building/by-layer/L1/security#operation-resolution-over-a2a) are MUST from 3.3 and apply here: strict parse before classification, Part shape, and task continuation binding. |
 | P2 | **No unsigned fallback.** A bearer token, API key, OAuth token, or mTLS identity is never enough on its own. A seller MAY still use one to select the principal alongside a valid signature. P1 and P2 are the opt-in to the **Strict** posture in [Composition with fallback authenticators](/docs/building/by-layer/L1/security#composition-with-fallback-authenticators), through its "stop accepting" branch. The per-caller flag branch does not meet the profile, because the claim covers every caller on the endpoint. |
 | P3 | **Revocation freshness [WG: 15 minutes].** See [Revocation freshness](#revocation-freshness). |
 | P4 | **Acts-for.** The canonical signed-Agent identity, and nothing asserted in the body or an unsigned header, maps to a seller-side principal. When independent authentication also selects a principal, the two MUST be the same principal. The endpoint then checks that the principal may act for the operator of the request's `account` (the `operator` in a natural-key reference, or the operator bound to an `account_id` at provisioning), using its onboarding record and the House Portfolio `authorized_operators[]` check that already applies. Operator-published grants ([#6033](https://github.com/adcontextprotocol/adcp/issues/6033)) are not part of 3.3. Authority is not transitive and is single-hop: a relay that re-signs a request is the signer, and the endpoint MUST NOT infer authority for an upstream agent named only in the body. A failed check rejects with `PERMISSION_DENIED`, subject to the cross-tenant onboarding-oracle clamp in [error handling](/docs/building/by-layer/L3/error-handling). |
 | P5 | **Governance binding.** If the endpoint accepts `sync_governance`, it treats that operation like a spend-committing one for P1 and P2, and declares non-empty `adcp.governance_enforcement` acceptance criteria that it enforces. A governance agent outside them is rejected with `GOVERNANCE_AGENT_NOT_ACCEPTED`, so a stolen signing key cannot bind the attacker's own governance agent. An empty or accept-all list does not meet P5. |
-| P6 | **Spend-velocity ceiling [WG].** See [Spend-velocity ceiling](#spend-velocity-ceiling). |
+| P6 | **Spend-velocity ceiling [WG: deny by default].** See [Spend-velocity ceiling](#spend-velocity-ceiling). |
 | P7 | **Least privilege.** The endpoint enforces task and field scopes from the account's `authorization` object (`SCOPE_INSUFFICIENT`, `FIELD_NOT_PERMITTED`). |
 | P8 | **Outbound fetch safety.** Every fetch of a buyer-supplied URL (webhook URL, `brand_json_url`, `jwks_uri`, capabilities) follows [Webhook URL validation](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf). The principal-bound allowlist contract for asset and artifact retrieval ([#5669](https://github.com/adcontextprotocol/adcp/issues/5669)) is not part of this profile. |
 
@@ -106,10 +106,10 @@ P1 to P3 and P6 are written over properties, so the profile does not depend on w
 
 - the signature covers a digest of the request body;
 - every signed request carries a per-signer unique nonce and the verifier rejects a repeat within the signature's lifetime;
-- a verified key resolves to exactly one canonical agent identity;
+- a verified key resolves, through the verifier's own records, to exactly one seller-bound principal;
 - the verifier can check that key against a signed revocation list.
 
-The AdCP RFC 9421 profile (`adcp/request-signing/v1`) meets these. Another profile, such as a Web Bot Auth profile ([#7878](https://github.com/adcontextprotocol/adcp/issues/7878)), qualifies once its own text states that it does.
+The AdCP RFC 9421 profile (`adcp/request-signing/v1`) meets these. Another profile, such as a Web Bot Auth profile ([#7878](https://github.com/adcontextprotocol/adcp/issues/7878)), qualifies once its own text states that it does. The Web Bot Auth profile as drafted in #7894 does not yet: its identity is an origin, and it meets the third property only through an explicit seller-side binding of that origin to one principal, which its text would have to adopt.
 
 ## Practices outside the profile id
 

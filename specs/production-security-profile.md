@@ -73,7 +73,7 @@ Departures from the triage memo, all in the conservative direction. R4 is split 
 - **Type.** An open string with a pattern, not a closed enum. A closed enum would make a 3.3 response fail validation in a strict 3.2 client. Consumers ignore ids they do not recognize and never count one as satisfying a requirement. Producers use only ids the profile page registers.
 - **Immutable ids.** New semantics, including a new member of the spend-committing list, ship under a new id. This is what makes an experimental label unnecessary: a profile can change by being superseded.
 - **Scope.** Verifying endpoints only. A buyer-only agent has no capabilities response and advertises nothing. It is judged by what a profile seller can verify on each request.
-- **Admission.** The five preconditions in the docs page all use existing optional fields. Advertising while one is false is a conformance failure.
+- **Admission.** The six preconditions in the docs page all use existing optional fields. Advertising while one is false is a conformance failure.
 
 ## Asymmetric enforcement
 

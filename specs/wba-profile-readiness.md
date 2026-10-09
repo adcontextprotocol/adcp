@@ -1,7 +1,7 @@
 # Web Bot Auth profile: readiness gates for #7878
 
 **Status**: Draft for working-group review
-**Issue**: #7878. Illustration: #7894 (not duplicated here). Related: #7817, #7882, #7819
+**Issue**: #7878. Illustration: #7894 (not duplicated here). Related: #7817, #7882, #7809
 **Purpose**: close the four gaps maintainers named on #7878, so the working group can decide the profile on evidence. This document writes down what the profile needs. It does not change #7894.
 
 The four gates are a deployed-verifier interop matrix, an identity migration from a WBA origin to the existing `agents[].url` principal, an enforceable key-purpose binding, and a provenance contract for historical key evidence. Each section ends with what is still open.
@@ -47,7 +47,7 @@ The four gates are a deployed-verifier interop matrix, an identity migration fro
 
 **Cost, stated honestly.** Agencies and platforms that run many agents on one host cannot use the WBA profile without moving to subdomains. That is acceptable only because the profile is optional and the current one stays. If the WG wants multi-agent origins in the profile, the origin alone cannot select a principal, because every key sits in one directory and a verifier cannot say which agent a newly published key belongs to. That would need a per-key binding at the seller. It is a different design, not a tweak.
 
-**Open.** The mapping assumes the operator's brand record carries the agent list. #7819 moves that list to `trust.json`. The rule is the same, but the record name changes with it.
+**Open.** The mapping assumes the operator's brand record carries the agent list. #7809 moves that list to `trust.json`. The rule is the same, but the record name changes with it.
 
 ## 3. Enforceable key-purpose binding
 
@@ -70,7 +70,7 @@ The gap: a governance document must not verify under a transport key, and #7894 
 | `governance-token-signed-with-transport-key` | `iss` is the governance origin `G`. `kid` is the thumbprint of a key published only in transport identity `T`'s directory. | Rejected at the directory lookup: the key is not in `G`'s directory. |
 | `governance-token-issued-as-transport-identity` | `iss` is `T`. `kid` is `T`'s own key, so the signature verifies and `jku` matches `T`'s directory. | Rejected at the role check: `T` is not listed in the governance role. This is the vector that proves purpose binding. |
 
-**Open.** The role listing needs a home. Today it is the agent's `type` in `brand.json`. If #7819 moves it to `trust.json`, the vector's fixture follows.
+**Open.** The role listing needs a home. Today it is the agent's `type` in `brand.json`. If #7809 moves it to `trust.json`, the vector's fixture follows.
 
 ## 4. Provenance and retention for historical key evidence
 

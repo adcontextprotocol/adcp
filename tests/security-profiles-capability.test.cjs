@@ -78,3 +78,20 @@ test('error codes the profile page cites exist in the published enums', () => {
   for (const code of adcpCodes) assert.ok(errorCodes.includes(code), `${code} is not an AdCP error code`);
   for (const code of signing) assert.ok(signingCodes.includes(code), `${code} is not a request-signing error code`);
 });
+
+test('admission requires the A2A operation-source marker the capabilities schema defines', async () => {
+  const schema = await loadSchema('/schemas/protocol/get-adcp-capabilities-response.json');
+  const sources = schema.properties.request_signing.properties.operation_sources.items.enum;
+  for (const source of ['a2a_invocation_skill', 'mcp_tools_call']) {
+    assert.ok(sources.includes(source), `${source} is not an operation source`);
+    assert.ok(DOC.includes(`\`${source}\``), `profile page does not mention ${source}`);
+  }
+  assert.equal(schema.properties.security_profiles['x-added-in'], '3.3.0');
+});
+
+test('the client-only signer surface is registered as experimental', () => {
+  const registry = fs.readFileSync(path.join(ROOT, 'docs/reference/experimental-status.mdx'), 'utf8');
+  assert.ok(registry.includes('| `security.client_only_signers` |'));
+  const security = fs.readFileSync(path.join(ROOT, 'docs/building/by-layer/L1/security.mdx'), 'utf8');
+  assert.ok(security.includes('`security.client_only_signers` in `experimental_features`'));
+});

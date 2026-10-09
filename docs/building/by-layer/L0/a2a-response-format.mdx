@@ -24,7 +24,7 @@ For v0.3 servers, the same DataPart becomes `{ "kind": "data", "data": {...} }` 
 **AdCP responses over A2A MUST:**
 - Include at least one DataPart (a Part carrying a non-null `data` field) containing the task response payload
 - Use single artifact with multiple parts (not multiple artifacts)
-- Use the last DataPart as authoritative when multiple data parts exist
+- Use the last DataPart as authoritative when multiple data parts exist (responses only; does not apply to inbound invocation messages)
 - NOT wrap AdCP payloads in custom framework objects (no `{ response: {...} }` wrappers)
 
 **Recommended non-streaming `SendMessageResponse` pattern:**
@@ -655,7 +655,7 @@ When implementing A2A responses for AdCP:
 - [ ] **Use `.artifacts` array with at least one DataPart** containing AdCP response payload
 - [ ] **Include TextPart** with human-readable message (recommended for UX)
 - [ ] **Use single artifact with multiple parts** (not multiple artifacts)
-- [ ] **Use last DataPart as authoritative** if multiple exist
+- [ ] **Use last DataPart as authoritative** if multiple exist (responses only, not inbound invocation messages)
 - [ ] **Never nest AdCP data in custom wrappers** (no `{ response: {...} }` objects)
 - [ ] **DataPart content MUST match AdCP schemas** (validate against `[task]-response.json`)
 - [ ] **Map an AdCP `status: "submitted"` response to A2A completed**, keep `task_id` only in the DataPart, and direct clients to the AdCP `get_task_status` task

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Release/deploy fences. Remote failures are errors, never evidence of absence.
 const { execFileSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -36,6 +37,87 @@ function current() {
     );
   }
   return expected;
+}
+
+// Read metadata and bytes through one opened descriptor. O_NOFOLLOW refuses a
+// leaf replaced with a symlink; fstat checks the exact inode read below.
+function readPublicationFile(file, expectedMode) {
+  const descriptor = fs.openSync(
+    file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+  );
+  try {
+    const metadata = fs.fstatSync(descriptor);
+    const mode = metadata.mode & 0o111 ? "100755" : "100644";
+    if (!metadata.isFile() || (expectedMode && (mode !== expectedMode || metadata.mode & 0o7000)))
+      throw new Error(`Uncommitted publication file or mode: ${file}`);
+    return fs.readFileSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+// Publication authority applies to this checkout's committed current version,
+// not to arbitrary historical artifacts that happen to remain in dist/.
+function committed(version) {
+  const tested = current();
+  const source = process.env.RELEASE_SHA;
+  if (!shaPattern.test(source || "") || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version || ""))
+    throw new Error("Committed publication requires an exact original release SHA and version.");
+  if (git("rev-parse", "HEAD") !== tested)
+    throw new Error("Local checkout is not the current tested publication commit.");
+  git("merge-base", "--is-ancestor", source, tested);
+  const localPackage = readPublicationFile("package.json");
+  const testedPackage = execFileSync("git", ["show", `${tested}:package.json`], { stdio: ["ignore", "pipe", "pipe"] });
+  const localVersion = JSON.parse(localPackage).version;
+  const testedVersion = JSON.parse(testedPackage).version;
+  const sourceVersion = JSON.parse(git("show", `${source}:package.json`)).version;
+  if (version !== localVersion || version !== sourceVersion || version !== testedVersion)
+    throw new Error("Publication version must equal the local, current tested and original committed package version; historical recovery is separate.");
+  if (!localPackage.equals(testedPackage))
+    throw new Error("Local package authority differs from the current tested commit.");
+  for (const ancestor of ["dist", "dist/schemas", "dist/compliance", "dist/protocol"]) {
+    const metadata = fs.lstatSync(ancestor);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink())
+      throw new Error(`Symlinked or non-directory publication ancestor: ${ancestor}`);
+  }
+  const surfaces = [
+    `dist/schemas/${version}`,
+    `dist/compliance/${version}`,
+    ...["", ".sha256", ".sig", ".crt"].map(suffix => `dist/protocol/${version}.tgz${suffix}`),
+  ];
+  for (const surface of surfaces) git("cat-file", "-e", `${source}:${surface}`);
+  if (git("diff", "--name-only", source, tested, "--", ...surfaces))
+    throw new Error("Current tested publication artifacts differ from the original release commit.");
+  // One tree read and local raw blob hashing include ignored/untracked files,
+  // executable-mode changes even when core.fileMode=false, and symlinks.
+  const expected = new Map();
+  for (const row of git("ls-tree", "-r", "-z", source, "--", ...surfaces).split("\0").filter(Boolean)) {
+    const separator = row.indexOf("\t");
+    const [mode, type, oid] = row.slice(0, separator).split(" ");
+    const file = row.slice(separator + 1);
+    if (separator < 0 || type !== "blob" || !["100644", "100755"].includes(mode) || !shaPattern.test(oid) || expected.has(file))
+      throw new Error("Committed publication contains an unsupported or ambiguous file.");
+    expected.set(file, { mode, oid });
+  }
+  const actual = new Set();
+  const inspect = file => {
+    const metadata = fs.lstatSync(file);
+    if (metadata.isSymbolicLink()) throw new Error(`Symlinked publication surface: ${file}`);
+    if (metadata.isDirectory()) {
+      for (const child of fs.readdirSync(file)) inspect(path.join(file, child));
+      return;
+    }
+    const entry = expected.get(file);
+    if (!entry)
+      throw new Error(`Uncommitted publication file or mode: ${file}`);
+    const bytes = readPublicationFile(file, entry.mode);
+    const oid = crypto.createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+    if (oid !== entry.oid) throw new Error(`Publication bytes differ from original commit: ${file}`);
+    actual.add(file);
+  };
+  for (const surface of surfaces) inspect(surface);
+  if (actual.size !== expected.size) throw new Error("Publication file set differs from the original committed tree.");
+  current();
 }
 
 function published(
@@ -267,7 +349,9 @@ function approval() {
     (a, b) =>
       Date.parse(a.submitted_at) - Date.parse(b.submitted_at) || a.id - b.id,
   );
-  for (const review of reviews) latest.set(review.user.id, review);
+  for (const review of reviews) {
+    if (review.state !== "COMMENTED") latest.set(review.user.id, review);
+  }
   let trusted = 0;
   for (const review of latest.values()) {
     const user = review.user;
@@ -331,6 +415,7 @@ function approval() {
 try {
   const [mode, argument] = process.argv.slice(2);
   if (mode === "current") current();
+  else if (mode === "committed") committed(argument);
   else if (mode === "published") {
     current();
     published(argument, process.env.RELEASE_SHA);
@@ -356,7 +441,7 @@ try {
     provenance(process.env.RELEASE_SHA, argument);
   } else
     throw new Error(
-      "Expected current, published, pending, recovery, approval, or provenance.",
+      "Expected current, committed, published, pending, recovery, approval, or provenance.",
     );
 } catch (error) {
   console.error(

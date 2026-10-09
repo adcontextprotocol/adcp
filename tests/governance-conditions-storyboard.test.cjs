@@ -38,7 +38,7 @@ test('governance conditions require a later approved intent before mutation', ()
   const ids = orderedSteps.map((step) => step.id);
   const steps = stepsById(doc);
 
-  assert.deepEqual(doc.requires, ['multi_agent']);
+  assert.deepEqual(doc.requires, ['multi_agent', 'controller']);
   assert.equal(doc.default_agent, 'sales');
   assert.deepEqual(doc.requires_capability, {
     path: 'adcp.governance_enforcement.tasks',
@@ -155,7 +155,7 @@ test('governance approved flow grades signed intent and durable state', () => {
   const readback = steps.get('get_media_buys_readback');
   const outcome = steps.get('report_plan_outcome');
 
-  assert.deepEqual(doc.requires, ['multi_agent']);
+  assert.deepEqual(doc.requires, ['multi_agent', 'controller']);
   assert.equal(doc.default_agent, 'sales');
   assert.deepEqual(doc.requires_capability, {
     path: 'adcp.governance_enforcement.tasks',
