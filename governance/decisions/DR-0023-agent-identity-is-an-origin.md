@@ -4,7 +4,7 @@ title: A signing agent's identity is an origin, discovered through Web Bot Auth,
 class: normative
 status: proposed
 date: 2026-10-10
-decided_by: pending WG ratification
+decided_by: pending WG ratification (first WG working session)
 refs: ["#8118", "#7878", "#7817", "#7809", "#7942", "#6105", "PR #8119", "PR #7894"]
 dissent: "The #7878 author prefers deprecating the 3.2 signing profile in 3.3; this record keeps it undeprecated through 3.x."
 ---
@@ -35,7 +35,7 @@ Web Bot Auth is the IETF-adopted mechanism for exactly this header, directory, a
 
 ## Implications
 
-The design spec is `specs/agent-identity-3-3.md`. It defines the rules (R1–R9), the threat-model deltas, and the P1–P9 implementation plan; PR #8119 is the ratification vehicle.
+The design spec is `specs/agent-identity-3-3.md`. It defines the rules (R1–R9), the threat-model deltas, and the P1–P9 implementation plan; The decision is taken at the first WG working session (decision brief on #7878); PR #8119 then records it.
 
 **This record settles:**
 - origin identity;

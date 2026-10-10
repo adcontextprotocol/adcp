@@ -1,6 +1,6 @@
 # Agent identity and buyer self-onboarding (3.3)
 
-**Status**: Proposed. Maintainer-agreed design. D1 and D2 need working-group ratification on [#7878](https://github.com/adcontextprotocol/adcp/issues/7878). Tracking issue: [#8118](https://github.com/adcontextprotocol/adcp/issues/8118).
+**Status**: Proposed. Maintainer-agreed design, for decision at the first WG working session ([decision brief on #7878](https://github.com/adcontextprotocol/adcp/issues/7878#issuecomment-6099382406)). Tracking issue: [#8118](https://github.com/adcontextprotocol/adcp/issues/8118).
 
 **Related**: [#7878](https://github.com/adcontextprotocol/adcp/issues/7878) / [#7894](https://github.com/adcontextprotocol/adcp/pull/7894) (Web Bot Auth profile), [#7817](https://github.com/adcontextprotocol/adcp/issues/7817) (`adcp-agent-url`), [#7814](https://github.com/adcontextprotocol/adcp/issues/7814) (unknown signers), [`brand-identity-trust-split.md`](./brand-identity-trust-split.md) (trust.json, RFC [#7809](https://github.com/adcontextprotocol/adcp/issues/7809)), [#7942](https://github.com/adcontextprotocol/adcp/pull/7942) and [#6105](https://github.com/adcontextprotocol/adcp/issues/6105) (client-only signers), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) (demand-side grants), [#8113](https://github.com/adcontextprotocol/adcp/issues/8113) / [#8114](https://github.com/adcontextprotocol/adcp/issues/8114) (onboarding posture), [#7015](https://github.com/adcontextprotocol/adcp/issues/7015) (principal layer).
 
