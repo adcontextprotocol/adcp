@@ -7,66 +7,62 @@ channels per `.agents/wg/constitution.md` §Information sources and the
 record: never quote or attribute this content in public output; Slack
 informs, GitHub decides.
 
-- Generated: 2026-09-07
+- Generated: 2026-10-10
 - Window: last 14 days
 - Channels: 22 public WG channels swept (4 private excluded)
 
 ---
 
-### 3.2 Release Readiness and Remaining Open Issues
-
+### AdCP 3.3 consent agenda and release scoping
 - **Status:** active
-- **Summary:** The 3.2 milestone is described as feature-complete apart from a few stragglers, including DOOH audio support and a last open issue in the broadcast/syndication track. Experimental tooling for buyer agents as stateful principals is being introduced as a first for the protocol, alongside merged reporting pipeline work marked experimental. A release-candidate build cycle across the spec and SDKs is underway, with cross-version/cross-language checks causing delays; once ready, the training agent and the Interchange environment will be bumped to 3.2 to enable live traffic testing.
-- **Related:** #5878
-- **Thread:** https://agenticads.slack.com/archives/C0ACHCU5210/p1788081427834219, https://agenticads.slack.com/archives/C09BK148CLU/p1788120684328569, https://agenticads.slack.com/archives/C09BK148CLU/p1788268365763459, https://agenticads.slack.com/archives/C09BK148CLU/p1788630892701959
+- **Summary:** A 16-item consent agenda for 3.3 is proceeding under lazy consensus. Items go ahead per their WG decision briefs unless someone objects on the issue by October 13, in which case they move to the next live WG session. Items without a PR by the beta cut slip to 3.4. Proposed contents include new `get_insights` indicator types, removal of `evaluator_id` and withdrawal of `list_evaluators` from the experimental evaluator spec, and carry-forward of compliance constraints to refinements. 3.3 is planned as a short cycle (target mid-November), with the old `get_products` deprecation held for 4.0 after 3.4 and possibly 3.5. Working sessions are being scheduled, and members are asked to weigh in on what belongs in 3.3.
+- **Related:** #4587, #5241, #5375, #7937, #6121
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1791329207085209, https://agenticads.slack.com/archives/C09BK148CLU/p1791495504935399, https://agenticads.slack.com/archives/C09BK148CLU/p1790799095537169, https://agenticads.slack.com/archives/C09BK148CLU/p1790798950952849
 
-### DOOH Schema Support (Broadcast/Syndication and Campaign Lifecycle)
-
+### Buyer/seller agent onboarding posture discovery
 - **Status:** active
-- **Summary:** A pull request adding DOOH-related schema changes is seeking additional review, with outreach underway to bring in more DOOH-focused participants, including contacts at a major DOOH sell-side vendor, to weigh in before the current cycle closes. Separate feedback on DOOH from a working group member has spawned follow-up PRs, one of which is still awaiting review.
-- **Related:** #5623, #7177
-- **Thread:** https://agenticads.slack.com/archives/C0ACHCU5210/p1787582147291599, https://agenticads.slack.com/archives/C0ACHCU5210/p1787687143020649, https://agenticads.slack.com/archives/C09BK148CLU/p1788398512662769
+- **Summary:** A buyer-agent implementer noted that discovery, capabilities, `sync_accounts`, `pending_approval` and billing all work natively, but the first step, becoming known to a seller, remains out of band. The proposal is for sellers to publish their onboarding requirements as a machine-readable posture, so buyers no longer rely on manual human steps. A companion proposal mirrors this for the buyer side, placing the posture on the buyer's `trust.json` agent entry under `profiles.adcp`, sequenced behind `trust.json` consumption in 3.4. The seller half could ship now, while the buyer half depends on a shared schema and lands with the identity/trust split.
+- **Related:** #8114, #8067, #8113
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1791565728200439, https://agenticads.slack.com/archives/C09BK148CLU/p1791565750936479
 
-### Delta Sharing / RFC 6540 and Reporting Pipelines
-
+### brand.json split: identity vs. trust
 - **Status:** active
-- **Summary:** A contributor followed up on the delta-sharing component of RFC 6540, asking whether it remains a 3.2 milestone item and flagging that an associated PR appears unblocked with changes aligned to their recommended solution. Related work on reliable reporting pipelines, including support for delivery via Databricks, Snowflake, and cloud buckets, has an RFC and implementation PR open. A further PR proposes moving property reporting from the 3.3 milestone into 3.2, which is considered necessary and is awaiting working-group review.
-- **Related:** #6857, #6911, #6953, #6915
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1787750898081669, https://agenticads.slack.com/archives/C09BK148CLU/p1787886708854929, https://agenticads.slack.com/archives/C09BK148CLU/p1787828881454989
+- **Summary:** Following a creative working group discussion, a proposal would limit `brand.json` to brand identity (name, logo, colors, voice) and move agents, keys and authorization into `trust.json`. This also removes the duplicated authorization statement currently maintained in both `adagents.json` and `brand.json`. A related thread covers making the builder tooling more usable, and members have expressed support for simplifying `brand.json` in 3.3.
+- **Related:** #7809
+- **Thread:** https://agenticads.slack.com/archives/C09C7PLE5B8/p1791193296914539, https://agenticads.slack.com/archives/C09BK148CLU/p1790839185613249
 
-### FAST Channel Modeling in adagents.json / Property Schema
-
+### Open proposals for sellers (3.3 candidate)
 - **Status:** active
-- **Summary:** A detailed governance-channel proposal distinguishes "property" (the host CTV app), "collection" (the independently owned FAST channel), and "placement" (the ad position), suggesting FAST channel owners declare canonical collection identity (including Gracenote IDs and platform distributions) in their own adagents.json, while hosts attest sales rights by authorizing the owner's agent without declaring placements. A separate detailed question raises gaps in the current schema (3.1.15): there is no property_type value for channels carried inside third-party CTV apps, no way to express industry-standard channel identifiers (e.g., Gracenote/TMS IDs, platform EPG channel IDs), and no concept of carriage to represent this distribution model.
-- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1787692753462379, https://agenticads.slack.com/archives/C09NUQS93DF/p1787665044852579
+- **Summary:** In response to repeated seller requests for a way to tell buyers about inventory they might want, a draft "open proposals" concept has been put forward for 3.3 and is slated for discussion on October 19. It complements the existing flow where buyers send briefs to sellers.
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1791554745371129
 
-### Seller Policy, Change-Right Contracts, and Governance Decision Ratification
-
+### Adding gender targeting parallel to age
 - **Status:** active
-- **Summary:** A governance working group PR adding seller policy and change-right contracts requires that decision memos tied to several linked issues be formally ratified and committed to the governance decisions directory per the RFC process, noting ratification is a human act on the WG memo. Whether linked issues should be marked "Closes" versus "Refs" is left to author discretion pending confirmation that the PR's scope fully resolves each issue. A related issue and implementation PR address giving full visibility into account changes across seller-managed state.
-- **Related:** #6794, #6749, #6750, #6757, #6758, #6810, #6811
-- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1787582062993769
+- **Summary:** A PR proposes adding a gender attribute parallel to the existing age attribute as a 3.2 gap-fill for 3.3. Because gender is a sensitive category, reviewers have been asked to weigh in.
+- **Related:** #7925
+- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1791272462321829
 
-### Contextual Embeddings in segment.ext.aa RTB Field
-
+### Buyer authorization under 3.1 request signing
 - **Status:** active
-- **Summary:** A member raised a question about which models are used or recommended when sending contextual embeddings over the `segment.ext.aa` RTB field, noting prior groundwork but asking whether any consensus or broader interest has formed as they plan to build platform support for buying partners.
-- **Thread:** https://agenticads.slack.com/archives/C09BF378H8A/p1788725186616889
+- **Summary:** A seller-side implementer asked how sellers should determine what an authenticated buyer agent may do, since RFC 9421 request signing (or mTLS) for mutating and financial operations establishes who is calling but not what they are authorized to access. They asked whether other sellers map authenticated agents to internal accounts or users. Related tooling shared by a community member includes a signing debugger, conformance auth probes, and a preview of draft 4.0 expectations for mandatory signing on spend operations.
+- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1790585094027059, https://agenticads.slack.com/archives/C09J28K9K29/p1790648556520419
 
-### AdCP SDK (adcp-go) CI and Review Backlog
-
+### `adagents.json` authorized agent URL semantics
 - **Status:** active
-- **Summary:** A contributor reported a failing GitHub Action affecting all adcp-go pull requests and requested help diagnosing it, along with reviews on a backlog of pending SDK PRs.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788480742718759
+- **Summary:** A question was raised on whether `authorized_agents[].url` should be the full transport endpoint or the agent's base URL, given that spec 3.1.24 calls it the "agent's API endpoint URL" while examples mix bare hosts and paths. Open follow-ups are whether a normative canonicalization rule exists for matching (trailing slash, scheme, path) or whether it is exact string match, and whether an agent exposing both MCP and A2A should list one entry per transport.
+- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1790667727567989
 
-### llms.txt Documentation Structure Change
-
+### A2A authentication gap in the JS SDK
 - **Status:** active
-- **Summary:** A structural change to docs.adcontextprotocol.org/llms.txt was flagged as likely to break tooling that assumes a flat, single-version index. The file is now a multi-version hub whose flat entries are archived 2.5.x docs, with current-release content behind per-version sub-indexes (3-1, 3-2-beta, 3-0) and no "latest" alias; the reliable way to find current docs is via stable paths that redirect to the active build. The message also notes the hub includes OpenAPI YAML links and cross-origin GitHub raw links that consumers should be aware of.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788451422017619
+- **Summary:** An SDK maintainer announced a security advisory stating that the existing JS SDK does not properly authenticate A2A calls. It affects sales agent builders using A2A. The Python SDK and MCP transport are not affected.
+- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1791331536110549
 
-### Docs Site Availability Issue
+### Registry compliance badge and heartbeat recheck paused
+- **Status:** active
+- **Summary:** A seller implementer working toward a core compliance badge on the registry found its heartbeat check had stopped, and the "Recheck & retest" action is paused platform-wide until durable requester-authorization provenance is supported. They asked what this means and what to do in the meantime. A separate report noted the registry listing page appearing empty.
+- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1790849650065659, https://agenticads.slack.com/archives/C09J28K9K29/p1790784613845989
 
-- **Status:** parked
-- **Summary:** A member reported that the docs site (docs.adcontextprotocol.org) appeared to be down, redirecting to an unrelated auto-redirect landing page, though no resolution was recorded in the thread.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788159845297419
+### AdCP 3.2 release
+- **Status:** resolved
+- **Summary:** The final 3.2 release was in CI and expected to be cut within about an hour of the announcement, pending a passing run.
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1790798950952849
