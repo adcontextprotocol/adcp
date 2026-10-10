@@ -35,7 +35,7 @@ Web Bot Auth is the IETF-adopted mechanism for exactly this header, directory, a
 
 ## Implications
 
-The design spec is `specs/agent-identity-3-3.md`. It defines the rules (R1–R9), the threat-model deltas, and the P1–P9 implementation plan; The decision is taken at the first WG working session (decision brief on #7878); PR #8119 then records it.
+The design spec is `specs/agent-identity-3-3.md`. It defines the rules (R1–R9), the threat-model deltas, and the P1–P9 implementation plan. The decision is taken at the first WG working session (decision brief on #7878); PR #8119 then records it.
 
 **This record settles:**
 - origin identity;
