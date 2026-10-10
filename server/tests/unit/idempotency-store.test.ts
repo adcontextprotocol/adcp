@@ -7,11 +7,57 @@ import {
 import {
   adaptOwnedIdempotencyStoreForSdk,
   createHashAwareIdempotencyStore,
+  probeIdempotencyStore,
 } from '../../src/training-agent/idempotency.js';
 
 const PRINCIPAL = 'store-test-principal';
 const KEY = 'store-test-key-0001';
 const SCOPED_KEY = `${PRINCIPAL}\u001F${KEY}`;
+
+describe('idempotency startup probe deadline', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('allows a cold connection near the configured 10s timeout plus query time', async () => {
+    vi.useFakeTimers();
+    const probe = vi.fn(() => new Promise<void>(resolve => setTimeout(resolve, 11_000)));
+    const startup = probeIdempotencyStore({ probe }, 10_000);
+    const result = expect(startup).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(11_000);
+    await result;
+    expect(probe).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    ['default', undefined, 10_000],
+    ['disabled connection timeout', 0, 10_000],
+    ['Fly connection timeout', 10_000, 15_000],
+    ['longer connection timeout', 20_000, 25_000],
+  ])('bounds a hung query with the %s setting', async (_name, connectionTimeout, deadline) => {
+    vi.useFakeTimers();
+    const startup = probeIdempotencyStore({ probe: () => new Promise<void>(() => {}) }, connectionTimeout);
+    const result = expect(startup).rejects.toThrow(`probe timed out after ${deadline}ms`);
+    await vi.advanceTimersByTimeAsync(deadline);
+    await result;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('preserves connection errors and clears the startup deadline', async () => {
+    vi.useFakeTimers();
+    const connectError = new Error('connection timeout');
+    const startup = probeIdempotencyStore({ probe: () => new Promise<void>((_, reject) => setTimeout(() => reject(connectError), 10_000)) }, 10_000);
+    const result = expect(startup).rejects.toBe(connectError);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await result;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not create a timer when no backend probe is available', async () => {
+    vi.useFakeTimers();
+    await expect(probeIdempotencyStore({}, 10_000)).resolves.toBeUndefined();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
 
 describe('hash-aware training-agent idempotency store', () => {
   afterEach(() => {

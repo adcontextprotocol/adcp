@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const shared = vi.hoisted(() => ({ runtime: undefined as unknown, resolve: vi.fn(), commit: vi.fn() }));
-vi.mock('../../src/training-agent/gcs-reporting.js', () => ({ getTrainingGcsReporting: () => shared.runtime }));
+const shared = vi.hoisted(() => ({ runtime: undefined as unknown, getRuntime: vi.fn(), config: vi.fn(), resolve: vi.fn(), commit: vi.fn() }));
+vi.mock('../../src/training-agent/gcs-reporting.js', () => ({ getTrainingGcsReporting: shared.getRuntime }));
+vi.mock('../../src/training-agent/gcs-reporting-config.js', () => ({ trainingGcsReportingConfig: shared.config }));
 vi.mock('../../src/training-agent/reporting-reliability.js', () => ({ resolveReportingAccountDurably: shared.resolve, commitTrainingDailySourcePeriod: shared.commit }));
 vi.mock('../../src/training-agent/task-handlers.js', () => ({ resolveServedAdcpVersion: () => ({ ok: true, servedVersion: '3.2.1' }) }));
 import { dispatchTrainingGcsReporting, publishTrainingGcsSourceDelivery } from '../../src/training-agent/gcs-reporting-tools.js';
+
+beforeEach(() => {
+  shared.getRuntime.mockReset().mockImplementation(() => shared.runtime);
+  shared.config.mockReset();
+});
 
 const actor = 'workos:private';
 const input = { account: { account_id: 'caller-alias' }, delivery_config_ids: ['gcs:daily'], view: 'periods' };
@@ -68,6 +74,7 @@ describe('private GCS source publication from ordinary delivery', () => {
     media_buy_deliveries: [{ media_buy_id: 'buy-b', totals: { impressions: 11 } }, { media_buy_id: 'buy-a', totals: { impressions: 7 } }] };
   beforeEach(() => {
     vi.clearAllMocks();shared.runtime = host;
+    shared.config.mockReturnValue({ canaryPrincipal: actor });
     shared.resolve.mockResolvedValue({ accountId: 'resolved-account' });
     host.owns.mockResolvedValue(true);host.db.query.mockResolvedValue({ rows: [source] });
     shared.commit.mockResolvedValue(true);
@@ -97,9 +104,26 @@ describe('private GCS source publication from ordinary delivery', () => {
     expect(shared.commit).not.toHaveBeenCalled();
   });
   it('preserves disabled teaching behavior', async () => {
-    shared.runtime = undefined;
+    shared.config.mockReturnValue(undefined);
+    shared.getRuntime.mockImplementation(() => { throw new Error('runtime unavailable'); });
     await publishTrainingGcsSourceDelivery(read, response, actor);
+    expect(shared.getRuntime).not.toHaveBeenCalled();
     expect(shared.resolve).not.toHaveBeenCalled();
+  });
+  it.each(['uninitialized', 'draining'])('preserves other callers when the enabled runtime is %s', async state => {
+    shared.getRuntime.mockImplementation(() => { throw new Error(`runtime ${state}`); });
+    await expect(publishTrainingGcsSourceDelivery(read, response, 'workos:foreign')).resolves.toBeUndefined();
+    await expect(publishTrainingGcsSourceDelivery(read, response, undefined)).resolves.toBeUndefined();
+    expect(shared.getRuntime).not.toHaveBeenCalled();
+    expect(shared.resolve).not.toHaveBeenCalled();
+    expect(shared.commit).not.toHaveBeenCalled();
+  });
+  it.each(['uninitialized', 'draining'])('fails closed for the canary when the enabled runtime is %s', async state => {
+    shared.getRuntime.mockImplementation(() => { throw new Error(`runtime ${state}`); });
+    await expect(publishTrainingGcsSourceDelivery(read, response, actor)).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE', message: 'Daily reporting source publication is unavailable.',
+    });
+    expect(shared.commit).not.toHaveBeenCalled();
   });
   it('fails closed with a fixed dependency error if the durable source write fails', async () => {
     shared.commit.mockRejectedValue(new Error('private dependency diagnostic'));

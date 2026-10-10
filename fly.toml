@@ -32,7 +32,7 @@ primary_region = 'iad'
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
   # Let the first connection finish after cold documentation indexing.
-  # The independent startup probe still enforces its ten-second deadline.
+  # The startup probe adds five seconds of query headroom to this timeout.
   DATABASE_CONNECTION_TIMEOUT_MS = "10000"
   # Enable only after the private GCS canary gates in the reporting runbook pass.
   TRAINING_REPORTING_GCS_ENABLED = "false"

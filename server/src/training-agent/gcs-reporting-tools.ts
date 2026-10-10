@@ -1,6 +1,7 @@
 import type { LegacyAdcpToolMap as AdcpToolMap, RequestContext, Account } from '@adcp/sdk/server';
 import { AdcpError } from '@adcp/sdk/server';
 import { getTrainingGcsReporting } from './gcs-reporting.js';
+import { trainingGcsReportingConfig } from './gcs-reporting-config.js';
 import { commitTrainingDailySourcePeriod, resolveReportingAccountDurably } from './reporting-reliability.js';
 import { resolveServedAdcpVersion } from './task-handlers.js';
 import { supportsReliableReporting } from './types.js';
@@ -18,8 +19,10 @@ export async function publishTrainingGcsSourceDelivery(
 async function publishSourceDelivery(
   input: Record<string, unknown>, result: Record<string, unknown>, principal: string | undefined,
 ): Promise<void> {
+  const config = trainingGcsReportingConfig();
+  if (!config || !principal || principal !== config.canaryPrincipal) return;
   const runtime = getTrainingGcsReporting();
-  if (!runtime || !principal || principal !== runtime.config.canaryPrincipal || !input.account
+  if (!runtime || principal !== runtime.config.canaryPrincipal || !input.account
     || input.reporting_revision_id || result.errors || !Array.isArray(input.media_buy_ids)
     || typeof input.start_date !== 'string' || typeof input.end_date !== 'string') return;
   const account = await resolveReportingAccountDurably(principal, input.account as Parameters<typeof resolveReportingAccountDurably>[1]);
