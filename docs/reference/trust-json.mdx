@@ -27,11 +27,11 @@ Because no seller implements a task or capability from this surface, there is no
 
 ## What the schemas describe
 
-The record answers one question: which agents does this organization run, with which keys, who may act for it, and whose grants does it accept. The core is protocol-neutral. Roles and scopes are namespaced tokens such as `adcp:sales`, and AdCP defines the `adcp` namespace as the first profile.
+The record answers one question: which agents does this organization run, who may act for it, and whose grants does it accept. The core is protocol-neutral. Roles and scopes are namespaced tokens such as `adcp:sales`, and AdCP defines the `adcp` namespace as the first profile.
 
 | Field | Purpose |
 |---|---|
-| `agents[]` | Agents the organization runs: `url`, namespaced `roles`, optional `protocols`, `jwks_uri`, `countries`, and per-protocol `profiles` |
+| `agents[]` | Agents the organization runs: `url`, namespaced `roles`, optional `protocols`, `countries`, an optional `key_thumbprints` pin, and per-protocol `profiles` (the `adcp` profile adds `signing_profiles`). One agent per origin |
 | `grants[]` | Authority the organization delegates: `grantee` domain, optional `agents[]` narrowing, namespaced `scopes`, `countries`, `valid_from` and `valid_until`. Grants never carry keys |
 | `exclusive_grants` | When true, `grants[]` is exhaustive for the scopes it names |
 | `acknowledgements[]` or `acknowledgements_url` (not both) | Grants the organization accepts, by reference: `grantor`, `agent_url`, and `via`. Terms stay in the grantor's document |
@@ -54,8 +54,7 @@ A publisher that runs one sales agent. Validated against the schema:
     {
       "url": "https://ads.streamhaus.example/mcp",
       "roles": ["adcp:sales"],
-      "protocols": ["mcp"],
-      "jwks_uri": "https://ads.streamhaus.example/.well-known/jwks.json"
+      "protocols": ["mcp"]
     }
   ]
 }
@@ -79,7 +78,7 @@ A brand house that delegates authority and runs no agents. A grant names a grant
     {
       "grantee": "sentinel-governance.example",
       "scopes": ["adcp:governance"],
-      "agents": [{ "url": "https://gov.sentinel-governance.example/t/7f3a9c" }]
+      "agents": [{ "url": "https://7f3a9c.sentinel-governance.example/mcp" }]
     }
   ]
 }
@@ -93,9 +92,8 @@ An ad network that accepts publisher grants by reference, with the bulk entries 
   "last_updated": "2026-09-30T00:00:00Z",
   "agents": [
     {
-      "url": "https://northwind.example/mcp/streamhaus",
-      "roles": ["adcp:sales"],
-      "jwks_uri": "https://keys.northwind.example/jwks/streamhaus.json"
+      "url": "https://streamhaus.northwind.example/mcp",
+      "roles": ["adcp:sales"]
     }
   ],
   "acknowledgements_url": "https://northwind.example/.well-known/trust-acknowledgements.json"
@@ -109,7 +107,7 @@ An ad network that accepts publisher grants by reference, with the bulk entries 
   "acknowledgements": [
     {
       "grantor": "streamhaus.example",
-      "agent_url": "https://northwind.example/mcp/streamhaus",
+      "agent_url": "https://streamhaus.northwind.example/mcp",
       "via": "adcp:adagents",
       "profiles": { "adcp": { "delegation_type": "delegated" } }
     }
@@ -117,11 +115,17 @@ An ad network that accepts publisher grants by reference, with the bulk entries 
 }
 ```
 
+## Identity and keys
+
+An agent's identity is the canonical origin of its `url`, so a record lists at most one agent per origin. A vendor that runs an agent per tenant gives each tenant its own subdomain, as the examples above do. The schema cannot express the one-agent-per-origin rule, so validators check it separately.
+
+The record carries no keys. An agent publishes its signing keys in the Web Bot Auth key directory at its own origin, `/.well-known/http-message-signatures-directory`. `key_thumbprints` can only narrow the keys an agent may sign with; it never adds one. This follows the design in [`specs/agent-identity-3-3.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) (tracking issue [#8118](https://github.com/adcontextprotocol/adcp/issues/8118)). Until a consumer lands, these rules describe the document shape only.
+
 ## What is not in 3.3
 
 These are planned for a later release and are deliberately absent. The MUST and SHOULD wording in the schema descriptions records the intended design for them and is not enforced by anything today.
 
-- The `identity.trust_url` capability field.
+- Resolution from an agent's origin to its trust record. The planned design derives the record's location from the origin, so there is no `identity.trust_url` back-pointer.
 - Resolver changes, the agent-to-trust-record binding, precedence over `brand.json`, and no-downgrade rules.
 - Storyboard dual-source modes and the seller-setup rewrite.
 - Any requirement to publish `/.well-known/trust.json`.
