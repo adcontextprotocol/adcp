@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/enums/spot-status.json",
+  "title": "Spot Status",
+  "description": "Lifecycle status of a by_spot row. Experimental in AdCP 3.3. A spot_id moves scheduled → aired or scheduled → preempted; a makegood is a separate row, with its own spot_id, that replaces a preempted spot.",
+  "type": "string",
+  "x-status": "experimental",
+  "enum": [
+    "scheduled",
+    "aired",
+    "preempted",
+    "makegood"
+  ],
+  "enumDescriptions": {
+    "scheduled": "Planned but not yet aired. The seller may still move or preempt the spot. The row carries scheduled_at and no aired_at; any delivery metrics are expectations, not actuals.",
+    "aired": "Aired. The row carries aired_at. This is the implied status when spot_status is absent.",
+    "preempted": "Was scheduled and did not air. The row carries scheduled_at (the slot that was lost) and no aired_at.",
+    "makegood": "Aired as a replacement for a preempted spot. The row carries aired_at and replaces_spot_id."
+  }
+}

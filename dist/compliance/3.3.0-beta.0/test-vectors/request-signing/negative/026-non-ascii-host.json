@@ -1,0 +1,33 @@
+{
+  "name": "URL authority contains raw IDN U-label (non-ASCII bytes in host)",
+  "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization: hosts MUST be ASCII A-labels; RFC 5891 §4.4); security.mdx error table: raw non-ASCII host → request_target_uri_malformed",
+  "signing_profile_version": "3.1",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://bücher.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:fYwfZG_HXkIxr0bNLUGRpwl0gSO3-birWx-20-GY9868cMWxtU_gSKOSFWzI6T9q_CII_UQOA0ogwyV3gyp_CA:"
+    },
+    "body": "{\"idempotency_key\":\"vector-negative-026-non-ascii-host\",\"account\":{\"brand\":{\"domain\":\"acmeoutdoor.example\"},\"operator\":\"pinnacle-agency.example\",\"sandbox\":false},\"packages\":[{\"product_id\":\"prod-1\",\"budget\":5000.0,\"pricing_option_id\":\"cpm_usd_fixed\",\"paused\":false}],\"brand\":{\"domain\":\"brand.example\"},\"start_time\":\"2027-01-04T00:00:00Z\",\"end_time\":\"2027-02-01T00:00:00Z\",\"paused\":false,\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_target_uri_malformed",
+    "failed_step": 10
+  },
+  "$comment": "Host label 'bücher' is a Unicode U-label; the AdCP @target-uri algorithm requires A-label (Punycode, 'xn--bcher-kva') form. Accepting a raw U-label on the wire risks a canonicalization-differential: UTS-46 Nontransitional processing produces one A-label, naive lowercase + Punycode produces another (see canonicalization.json case 'idn-mixed-case-to-punycode'), and non-ASCII-aware libraries may round-trip the bytes unchanged. Verifier MUST reject rather than guess, with request_target_uri_malformed (the security.mdx error table lists 'raw non-ASCII host' under that code; the 3.1 corpus originally graded this as request_signature_header_malformed, corrected in 3.3). The Signature is a real Ed25519 signature by test-ed25519-2026 over expected_signature_base, which uses the A-label form 'xn--bcher-kva.example.com': a verifier that silently applies ToASCII to the raw U-label verifies successfully and wrongly accepts, so the host is the only fault. Companion canonicalization.json cases 'idn-to-punycode' and 'idn-mixed-case-to-punycode' exercise the SIGNER side (expect A-label output from U-label input after explicit UTS-46 processing); this vector exercises the VERIFIER side (reject U-label bytes received on the wire inside a signed request).",
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://xn--bcher-kva.example.com/adcp/create_media_buy\n\"@authority\": xn--bcher-kva.example.com\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\""
+}
