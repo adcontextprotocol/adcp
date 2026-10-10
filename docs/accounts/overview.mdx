@@ -82,7 +82,7 @@ In 3.x this is opt-in and non-breaking:
 - Sellers keep accepting the natural key throughout 3.x.
 
 <Note>
-  **Proposed for 4.0.** [#7850](https://github.com/adcontextprotocol/adcp/issues/7850), in working-group review, proposes making `account_id` the only account reference after provisioning in AdCP 4.0. The natural key would remain the way to open an account and to look up its ID. Buyers that adopt `stable_account_id` now need no change if it is accepted.
+  **Deprecated in 3.3: the natural key as the account reference after provisioning.** Sending the natural-key `AccountRef` on account-scoped tasks once an account exists is deprecated and is planned for removal in AdCP 4.0 ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850)), under the standard [deprecation policy](/docs/reference/versioning#deprecation-policy). It keeps working throughout 3.x. The natural key itself is not deprecated: it remains the way to open an account through `sync_accounts` and to look up an account's ID through `list_accounts`. Sellers SHOULD declare `stable_account_id: true` during 3.x so buyers can migrate; buyers that already send the ID to those sellers need no further change.
 </Note>
 
 ## Account Status Lifecycle

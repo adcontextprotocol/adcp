@@ -11,7 +11,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 **3.3 is in its beta cycle.** Keep production traffic pinned to `"3.2"` while validating 3.3 in staging. See the [3.3 beta program](/docs/reference/3-3-beta) for artifact and SDK timing.
 </Warning>
 
-3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
+3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated; one usage is (see [Deprecations](#deprecations)). Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
 Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). One change loosens a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib). Everything else is an optional declaration or a clarification.
 
@@ -149,7 +149,11 @@ Optional. Cooperating `get_products` integrations can carry an opportunity bindi
 
 ## Deprecations
 
-None. 3.3 deprecates no stable field, task, or enum value. Existing 3.2 deprecations keep their published removal windows.
+3.3 deprecates no stable field, task, or enum value. It deprecates one usage:
+
+- **The natural key as the account reference after provisioning.** Sending the natural-key `AccountRef` on account-scoped tasks once the account exists is deprecated and planned for removal in AdCP 4.0 ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850)). It keeps working throughout 3.x. The natural key itself stays: buyers use it to open accounts with `sync_accounts` and as a `list_accounts` filter to look up an account's ID. **Sellers** SHOULD return `account_id` from `sync_accounts` and declare `account.stable_account_id: true` during 3.x. **Buyers** store the returned ID and send it to sellers that declare the capability. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere).
+
+Existing 3.2 deprecations keep their published removal windows.
 
 ## Compliance and grading
 
