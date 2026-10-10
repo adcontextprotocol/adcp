@@ -8,7 +8,8 @@
       "row_currency_consistency": "When media_buy_deliveries[].currency is present, every present by_package[].currency and windows[].by_package[].currency MUST equal it",
       "legacy_currency_consistency": "When deprecated response-wide currency is present, every present media-buy and package currency MUST equal it",
       "package_currency_presence": "When a package has spend or another currency-denominated monetary value and both the media-buy row currency and deprecated response-wide currency are absent, that package MUST include currency",
-      "mixed_currency_row": "When packages in a legacy or externally created media buy use different currencies, the row currency and all monetary or money-derived values at row or window-total grain MUST be omitted; daily_breakdown MUST also be omitted"
+      "mixed_currency_row": "When packages in a legacy or externally created media buy use different currencies, the row currency and all monetary or money-derived values at row or window-total grain MUST be omitted; daily_breakdown MUST also be omitted",
+      "multi_qualifier_totals": "When the buy's by_package[].metric_values carry more than one qualifier set for a metric_id, that metric's flat carrier (the whole nested object) MUST be omitted from per-buy totals and from totals in every window slice of that buy; the identity key is (scope, metric_id, qualifier)"
     }
   },
   "type": "object",
@@ -365,7 +366,7 @@
               },
               {
                 "type": "object",
-                "description": "Aggregate metrics for this media buy across all packages",
+                "description": "Aggregate metrics for this media buy across all packages. When the buy's by_package[].metric_values carry more than one qualifier set for a metric_id, sellers MUST omit that metric's flat carrier (the whole nested object, e.g. viewability, brand_lift) from these totals rather than combine rows; buyers read the package rows. One row is one (scope, metric_id, qualifier) key.",
                 "properties": {
                   "effective_rate": {
                     "type": "number",
@@ -1155,7 +1156,7 @@
                       "$ref": "/schemas/core/delivery-metrics.json"
                     }
                   ],
-                  "description": "Aggregate metrics for this window slice across all packages. Shape-aligned with reporting_webhook fire payloads at the same granularity."
+                  "description": "Aggregate metrics for this window slice across all packages. Shape-aligned with reporting_webhook fire payloads at the same granularity. When the buy's by_package[].metric_values carry more than one qualifier set for a metric_id, sellers MUST omit that metric's flat carrier (the whole nested object, e.g. viewability, brand_lift) from totals in every window slice of that buy rather than combine rows; buyers read the package rows. One row is one (scope, metric_id, qualifier) key."
                 },
                 "by_package": {
                   "type": "array",
