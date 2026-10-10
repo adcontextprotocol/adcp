@@ -693,6 +693,35 @@ function canonicalOpenKey(scope: string, preferred?: string): string {
 
 const trustedSessionPartitionHint = Symbol('trustedSessionPartitionHint');
 
+/**
+ * Maps a seller-assigned account_id to the natural AccountRef of the account
+ * it names, within one principal's accounts. Routes that declare
+ * `account.stable_account_id` run requests inside `runWithAccountIdAliasScope`
+ * so `{ account_id }` and the natural key reach the same stored state.
+ * account-handlers.ts registers the resolver (it owns the account store).
+ * Outside a scope (legacy, strict, and frozen 3.0 routes), or when the
+ * resolver returns undefined, the id keeps its opaque `a:` partition.
+ */
+export type AccountIdAliasResolver = (accountId: string, principal: string) => AccountRef | undefined;
+
+let accountIdAliasResolver: AccountIdAliasResolver | undefined;
+
+export function setAccountIdAliasResolver(resolver: AccountIdAliasResolver | undefined): void {
+  accountIdAliasResolver = resolver;
+}
+
+const accountIdAliasScope = new AsyncLocalStorage<{ principal: string }>();
+
+/** Run `fn` with account_id aliasing enabled for the authenticated principal. */
+export function runWithAccountIdAliasScope<T>(principal: string, fn: () => T): T {
+  return accountIdAliasScope.run({ principal }, fn);
+}
+
+function accountIdAlias(accountId: string): AccountRef | undefined {
+  const scope = accountIdAliasScope.getStore();
+  return scope ? accountIdAliasResolver?.(accountId, scope.principal) : undefined;
+}
+
 /** Attach a framework-derived storage hint without changing the AccountRef the
  * business layer receives. The WeakMap prevents callers from forging the hint
  * through wire input and avoids persisting transport-only partition metadata. */
@@ -751,6 +780,14 @@ export function sessionKeyFromArgs(
   if (account !== undefined) {
     try {
       const canonical = canonicalizeAccountRef(account);
+      if (canonical.kind === 'account_id') {
+        // One account, one partition: key a known account_id exactly as its
+        // natural key. The spread keeps the trusted partition hint symbol.
+        const alias = accountIdAlias(canonical.account_id);
+        if (alias) {
+          return sessionKeyFromArgs({ ...args, account: alias }, mode, userId, moduleId, principal);
+        }
+      }
       const scope = accountScopeFromRef(account);
       // The symbol is framework-owned, cannot be forged by JSON input, and is
       // intentionally enumerable so the ordinary handler argument spreads
