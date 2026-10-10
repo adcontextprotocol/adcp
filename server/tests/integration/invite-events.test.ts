@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import {
@@ -8,6 +8,7 @@ import {
 } from '../../src/db/membership-invites-db.js';
 import { recordInviteEvent } from '../../src/db/person-events-db.js';
 import { resolvePersonId } from '../../src/db/relationship-db.js';
+import * as relationshipDb from '../../src/db/relationship-db.js';
 import { runInviteExpirySweep } from '../../src/addie/jobs/invite-expiry-sweep.js';
 import type { Pool } from 'pg';
 
@@ -255,6 +256,73 @@ describe('invite lifecycle events', () => {
     expect(sweepedAgain.filter((e) => e.event_type === 'invite_expired')).toHaveLength(1);
     expect(second.resolveFailures).toBe(0);
     expect(second.recordFailures).toBe(0);
+  });
+
+  it('concurrent sweeps skip duplicate resolution and can reacquire after completion', async () => {
+    const orgId = `${TEST_ORG_PREFIX}_concurrent_sweep`;
+    await createTestOrg(orgId);
+    const invite = await createMembershipInvite({
+      workos_organization_id: orgId,
+      lookup_key: 'aao_membership_professional',
+      contact_email: `concurrent-sweep@${TEST_EMAIL_DOMAIN}`,
+      invited_by_user_id: TEST_ADMIN_ID,
+    });
+    // Make this the first candidate even if other fixtures have expired invites.
+    await pool.query(
+      `UPDATE membership_invites SET expires_at = '2000-01-01' WHERE id = $1`,
+      [invite.id],
+    );
+
+    const originalResolve = relationshipDb.resolvePersonId;
+    let unblock!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => { unblock = resolve; });
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const resolver = vi.spyOn(relationshipDb, 'resolvePersonId').mockImplementation(async (identifiers) => {
+      entered();
+      await gate;
+      return originalResolve(identifiers);
+    });
+    const first = runInviteExpirySweep();
+    let second: ReturnType<typeof runInviteExpirySweep> | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => reject(new Error('Concurrent sweep did not short-circuit')), 5000);
+    });
+    try {
+      // Wait for actual work, not a timing-dependent sleep. PostgreSQL owns the
+      // lock while the first invocation is paused before resolving a person.
+      await Promise.race([
+        started,
+        deadline,
+        first.then(() => { throw new Error('First sweep finished without resolving a candidate'); }),
+      ]);
+      second = runInviteExpirySweep();
+      expect(await Promise.race([second, deadline])).toEqual({
+        candidates: 0, emitted: 0, resolveFailures: 0, recordFailures: 0,
+      });
+      expect(resolver).toHaveBeenCalledTimes(1);
+    } finally {
+      clearTimeout(timeout);
+      unblock();
+      await Promise.allSettled([first, second]);
+      resolver.mockRestore();
+    }
+    expect((await eventsForInvite(invite.id)).filter((e) => e.event_type === 'invite_expired'))
+      .toHaveLength(1);
+
+    // A newly expired invite proves a later run acquired the lock and did work;
+    // an empty result alone could also mean that the session leaked its lock.
+    const next = await createMembershipInvite({
+      workos_organization_id: orgId,
+      lookup_key: 'aao_membership_professional',
+      contact_email: `next-sweep@${TEST_EMAIL_DOMAIN}`,
+      invited_by_user_id: TEST_ADMIN_ID,
+    });
+    await pool.query(`UPDATE membership_invites SET expires_at = '2000-01-01' WHERE id = $1`, [next.id]);
+    expect((await runInviteExpirySweep()).emitted).toBeGreaterThanOrEqual(1);
+    expect((await eventsForInvite(next.id)).filter((e) => e.event_type === 'invite_expired'))
+      .toHaveLength(1);
   });
 
   it('sweep ignores invites that are revoked or accepted', async () => {
