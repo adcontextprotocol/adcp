@@ -751,7 +751,12 @@ export async function resolveReportingAccountDurably(
   for (const [key, ledger] of ledgers) {
     const [storedPrincipal, accountId] = key.split('\u001f');
     if (storedPrincipal !== principalScope || !accountId) continue;
-    const storedAccount = ledger.accountRefs.find(reference => accountScopeFromRef(reference) === scope);
+    // Mirror the DB lookup below: an account_id reference matches by id.
+    const storedAccount = account.account_id === undefined
+      ? ledger.accountRefs.find(reference => accountScopeFromRef(reference) === scope)
+      : account.account_id === accountId
+        ? ledger.accountRefs.find(reference => reference.account_id === undefined)
+        : undefined;
     if (storedAccount) return { accountId, account: structuredClone(storedAccount) };
   }
   if (!isDatabaseInitialized()) return undefined;

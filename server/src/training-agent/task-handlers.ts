@@ -4047,9 +4047,12 @@ function controllerFixtureSessionKey(
       };
     } else {
       // Resolve first so an opaque ID is usable only by the principal that
-      // owns that sandbox account. Keep the opaque identity for projection:
-      // controller fixture writes are keyed by account_id, and resolving it
-      // to a natural ref here would fork reads into a different partition.
+      // owns that sandbox account. Pass the opaque identity through unchanged:
+      // controller fixture writes for this id derive their key from the same
+      // `{ account_id }`, and sessionKeyFromArgs applies the one id-to-natural
+      // alias (inside runWithAccountIdAliasScope on stable_account_id routes)
+      // to both sides. Rewriting it to the brand-owned natural ref here would
+      // fork reads from those writes.
       if (sandboxAccountRefForId(account.account_id, ctx.principal)) {
         fixtureAccount = { account_id: account.account_id };
       } else {
@@ -19991,6 +19994,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       // validator on the capabilities response accepts.
       supported_billing: [...SUPPORTED_BILLINGS],
       supported_account_currency_modes: ['fixed', 'per_media_buy'],
+      // No stable_account_id here: this v5 monolith serves /mcp and the
+      // /<tenant>/mcp-strict* routes, which neither alias { account_id } to
+      // its natural partition nor rehydrate accounts across machines. Only
+      // the v6 tenant routes declare it (tenants/router.ts).
       sandbox: true,
     },
     ...(wholesaleProfile.signalWholesale && {
