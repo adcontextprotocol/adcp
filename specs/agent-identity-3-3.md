@@ -154,7 +154,9 @@ A role in the agent's own record is the operator's claim about itself. It is suf
 - **No downgrade, keyed by origin.** A verifier refuses the 3.2 profile for any agent URL whose origin is `O`, on every surface that R3 covers, once either of these holds:
   - the verifier has bound `O` (R5);
   - the trust record derived from `O` lists it with `profiles.adcp.signing_profiles: ["wba"]`. The operator sets this to opt out of 3.2 before any seller binds.
-- **No downgrade for grants.** When the grantor's trust.json fetch returns 200, `authorized_operators[]` in its brand.json is ignored. A failed fetch never counts as "no trust.json".
+- **No downgrade for grants.** When the grantor's trust.json fetch returns 200, its `grants[]` is the grantor's only published source of grants, and `authorized_operators[]` in its brand.json is ignored, so a stale brand.json entry cannot outlive its removal from trust.json. A failed fetch never counts as "no trust.json".
+  - This does not change what `exclusive_grants` means. With `exclusive_grants: false`, an acts-for claim no grant covers stays at the relying party's discretion. That discretion is the seller's own onboarding records and policy, never the grantor's brand.json.
+  - Under an `open` mode, R7 removes that discretion for brands outside the buyer's operator domain: a missing grant is a deny.
 - trust.json no longer carries keys (D3). In 3.3 it is consumed for WBA identities (R3), relying-party consent (R3b), and grants on either profile (R6).
 
 ### R5. First contact and principal binding (P4, `L2/accounts-and-agents.mdx`)
@@ -227,7 +229,7 @@ Shape (experimental feature `account.agent_onboarding`):
 
 ### R8. Relationship status (P4, `get_principal.mdx`)
 
-- `get_principal` adds `relationship: { status, expires_at }` on the `unconfigured`, `recognized`, and `current` results. Status values:
+- `get_principal` adds `relationship: { status, expires_at }` on the `unconfigured`, `recognized`, and `current` results. `relationship` is **omitted** when the seller has no relationship with the caller and no application in progress, which is the identity-established state of R5 rule 1. Status values, when present:
   - `pending`: an application or approval is in progress;
   - `active`;
   - `suspended`;
