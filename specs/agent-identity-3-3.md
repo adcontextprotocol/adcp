@@ -153,7 +153,7 @@ A role in the agent's own record is the operator's claim about itself. It is suf
 - Signed messages without `Signature-Agent` or the `web-bot-auth` tag, and JWS artifacts selected for the 3.2 chain (R2), are verified under the 3.2 profile, unchanged.
 - **No downgrade, keyed by origin.** A verifier refuses the 3.2 profile for any agent URL whose origin is `O`, on every surface that R3 covers, once either of these holds:
   - the verifier has bound `O` (R5);
-  - the trust record derived from `O` lists it with `profiles.adcp.signing_profiles: ["wba"]`. The operator sets this to opt out of 3.2 before any seller binds.
+  - the trust record derived from `O` lists it with a `profiles.adcp.signing_profiles` that omits `adcp-rfc9421` (for example `["wba"]`). The operator sets this to opt out of 3.2 before any seller binds.
 - **No downgrade for grants.** When the grantor's trust.json fetch returns 200, its `grants[]` is the grantor's only published source of grants, and `authorized_operators[]` in its brand.json is ignored, so a stale brand.json entry cannot outlive its removal from trust.json. A failed fetch never counts as "no trust.json".
   - This does not change what `exclusive_grants` means. With `exclusive_grants: false`, an acts-for claim no grant covers stays at the relying party's discretion. That discretion is the seller's own onboarding records and policy, never the grantor's brand.json.
   - Under an `open` mode, R7 removes that discretion for brands outside the buyer's operator domain: a missing grant is a deny.
@@ -287,12 +287,12 @@ A seller that issues bearer tokens can accept the same identity with an RFC 7523
 | PR | Scope | Changeset |
 |---|---|---|
 | **P0** | This spec | none |
-| **P1** | trust.json v1 edits:<br>- remove `agents[].jwks_uri`, its default, and the "point back via `identity.trust_url`" text (`trust.json` agent `url` and `jwks_uri` descriptions);<br>- add the one-agent-per-origin rule and validator;<br>- add the `profiles.adcp.onboarding` and `profiles.adcp.signing_profiles` slots and the optional `agents[].key_thumbprints` pin;<br>- define canonical-origin matching for grant `agents[].url`;<br>- reverse "nothing consumes this in 3.3" in the schema, `trust-json.mdx`, `experimental-status.mdx`, and release-docs #8074. | minor |
+| **P1** | trust.json v1 edits:<br>- remove `agents[].jwks_uri`, its default, and the "point back via `identity.trust_url`" text;<br>- one-agent-per-origin rule, with a validator wired into `npm test`;<br>- `profiles.adcp.signing_profiles` and the optional `agents[].key_thumbprints` pin;<br>- canonical-origin matching for grant `agents[].url`;<br>- examples moved to one origin per agent.<br>The "nothing consumes this in 3.3" wording stays until P3 lands a consumer; the onboarding slot moves to P6. | minor |
 | **P2** | WBA signing profile (#7894 rebased onto P1): R1, R2, directory with `adcp_use`, thumbprint `keyid`, nonce, window, request and webhook tags, A2A bindings, revocation at the origin, capability advertisement, vectors including governance 001–003 | minor |
-| **P3** | Agent resolution v2 (R3) and coexistence (R4) in `security.mdx` for request signing and webhooks; R3b and the JWS surfaces stated as 3.4; new codes in `request-signing-error-code.json` | minor |
+| **P3** | Agent resolution v2 (R3) and coexistence (R4) in `security.mdx` for request signing and webhooks; R3b and the JWS surfaces stated as 3.4; new codes in `request-signing-error-code.json`; reverse "nothing consumes this in 3.3" in the trust.json schema, `trust-json.mdx`, `experimental-status.mdx`, and release-docs #8074 | minor |
 | **P4** | First contact and binding (R5); relationship status (R8), including the `get-principal-response.json` and `principal-changed-webhook.json` changes | minor |
 | **P5** | Grants (R6, #6033) | minor |
-| **P6** | Onboarding posture (R7, #8113, #8114) | minor |
+| **P6** | Onboarding posture (R7, #8113), including the `profiles.adcp.onboarding` slot in trust.json for the buyer posture (#8114) | minor |
 | **P7** | Conformance:<br>- dual-source storyboards;<br>- derived-record, relying-party, downgrade, and WBA vectors;<br>- an end-to-end self-onboarding storyboard;<br>- the training agent verifies WBA, serves its own directory and trust record, and opens the sandbox mode. | minor |
 | **P8** | Docs:<br>- a "A buyer agent onboards itself" walkthrough;<br>- rewrites of `request-signing.mdx` and `brand-protocol/seller-setup.mdx`;<br>- updates to `brand-json.mdx`, `trust.mdx`, `security-model.mdx`, `L2/authentication.mdx`, operating guides, learning tracks, glossary, and `known-limitations.mdx` (D10);<br>- the R9 mapping. | patch |
 | **P9** | Migration guide `docs/reference/migration/agent-identity-3-3.mdx`, by role (buyer signer, seller verifier, agency or operator, SaaS platform, governance agent), with an SDK version table and rollback; entries in `3-2-to-3-3.mdx`, `whats-new-in-3-3.mdx`, and release notes | patch |

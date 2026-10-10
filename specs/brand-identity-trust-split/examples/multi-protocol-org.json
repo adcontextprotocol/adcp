@@ -3,16 +3,14 @@
   "last_updated": "2026-09-30T00:00:00Z",
   "agents": [
     {
-      "url": "https://agents.lumen-outfitters.example/brand",
+      "url": "https://brand-agent.lumen-outfitters.example/mcp",
       "roles": ["adcp:brand"],
-      "protocols": ["mcp"],
-      "jwks_uri": "https://agents.lumen-outfitters.example/.well-known/jwks/brand.json"
+      "protocols": ["mcp"]
     },
     {
-      "url": "https://agents.lumen-outfitters.example/support",
+      "url": "https://support-agent.lumen-outfitters.example/mcp",
       "roles": ["acme-commerce:customer_service"],
-      "protocols": ["a2a"],
-      "jwks_uri": "https://agents.lumen-outfitters.example/.well-known/jwks/support.json"
+      "protocols": ["a2a"]
     }
   ],
   "grants": [

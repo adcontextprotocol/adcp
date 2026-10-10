@@ -4,13 +4,13 @@
   "acknowledgements": [
     {
       "grantor": "streamhaus.example",
-      "agent_url": "https://northwind.example/mcp/streamhaus",
+      "agent_url": "https://streamhaus.northwind.example/mcp",
       "via": "adcp:adagents",
       "profiles": { "adcp": { "delegation_type": "delegated" } }
     },
     {
       "grantor": "pinnacle-news.example",
-      "agent_url": "https://northwind.example/mcp/pinnacle-news",
+      "agent_url": "https://pinnacle-news.northwind.example/mcp",
       "via": "adcp:adagents"
     }
   ]
