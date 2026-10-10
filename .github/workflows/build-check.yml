@@ -35,10 +35,6 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
 
       - name: Audit production dependencies
-        # Keep newly published advisories visible without making the live
-        # advisory service an availability dependency for emergency deploys.
-        # Dependency Review separately reports dependency changes on PRs.
-        continue-on-error: true
         run: npm audit --omit=dev --audit-level=high
 
       - name: Check hosted compliance publication manifest
@@ -243,6 +239,8 @@ jobs:
           GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_provisioner_ci WITH GRANT OPTION;
           CREATE ROLE addie_matched_v4_runtime_ci LOGIN INHERIT PASSWORD :'runtime_password';
           GRANT CONNECT, TEMPORARY ON DATABASE adcp_test TO addie_matched_v4_runtime_ci;
+          CREATE SCHEMA training_reporting_gcs AUTHORIZATION addie_matched_v4_runtime_ci;
+          REVOKE ALL ON SCHEMA training_reporting_gcs FROM PUBLIC;
           GRANT USAGE ON SCHEMA public TO addie_matched_v4_runtime;
           GRANT addie_matched_v4_runtime TO addie_matched_v4_runtime_ci WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;
           GRANT addie_matched_v4_operator TO addie_matched_v4_provisioner_ci WITH INHERIT FALSE, SET TRUE, ADMIN FALSE;

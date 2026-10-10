@@ -245,6 +245,14 @@
           "$ref": "/schemas/core/audience-evidence-requirements.json",
           "description": "Buyer-authored audience-evidence admissibility and ranking policy"
         },
+        "definition-pin": {
+          "$ref": "/schemas/core/definition-pin.json",
+          "description": "Seller-authored integrity pin over one third-party-published definition referenced by commercial terms"
+        },
+        "audience-size": {
+          "$ref": "/schemas/core/audience-size.json",
+          "description": "Count of people reported as a range with a stated precision (lower_bound, upper_bound, precision, optional as_of)"
+        },
         "audience-evidence-pin": {
           "$ref": "/schemas/core/audience-evidence-pin.json",
           "description": "Buyer commitment pin for an exact immutable audience-evidence snapshot"
@@ -1021,7 +1029,7 @@
         },
         "daypart-target": {
           "$ref": "/schemas/core/daypart-target.json",
-          "description": "A time window for daypart targeting with days of week and hour range"
+          "description": "A time window for daypart targeting with days of week and a whole-hour or (experimental) HH:MM time-of-day range"
         },
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
@@ -1201,6 +1209,10 @@
           "$ref": "/schemas/enums/seller-policy-decline-reason.json",
           "description": "Machine-readable seller-policy reason for declining a MediaBuy control shape"
         },
+        "definition-pin-ref-kind": {
+          "$ref": "/schemas/enums/definition-pin-ref-kind.json",
+          "description": "Kinds of third-party-published definition a definition pin can cover"
+        },
         "proposal-refinement-reason": {
           "$ref": "/schemas/enums/proposal-refinement-reason.json",
           "description": "Machine-readable partial or unable proposal-refinement outcome"
@@ -1224,6 +1236,14 @@
         "creative-approval-status": {
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
+        },
+        "audience-size-precision": {
+          "$ref": "/schemas/enums/audience-size-precision.json",
+          "description": "How precisely an audience size range is reported (exact, approximate, bucketed)"
+        },
+        "audience-match-rate-basis": {
+          "$ref": "/schemas/enums/audience-match-rate-basis.json",
+          "description": "Where an audience match rate came from (platform_reported, derived)"
         },
         "audience-status": {
           "$ref": "/schemas/enums/audience-status.json",
@@ -1383,7 +1403,7 @@
         },
         "demographic-system": {
           "$ref": "/schemas/enums/demographic-system.json",
-          "description": "Audience measurement systems for demographic notation (nielsen, barb, agf, oztam, mediametrie, custom)"
+          "description": "Audience measurement systems for demographic notation (nielsen, nielsen_audio, barb, agf, oztam, mediametrie, nmo, videoamp, custom)"
         },
         "reach-unit": {
           "$ref": "/schemas/enums/reach-unit.json",
@@ -1472,6 +1492,10 @@
         "sort-metric": {
           "$ref": "/schemas/enums/sort-metric.json",
           "description": "Numeric delivery metrics available for sorting breakdown rows"
+        },
+        "spot-status": {
+          "$ref": "/schemas/enums/spot-status.json",
+          "description": "Lifecycle status of a by_spot row (scheduled, aired, preempted, makegood). Experimental."
         },
         "history-entry-type": {
           "$ref": "/schemas/enums/history-entry-type.json",
@@ -1589,6 +1613,10 @@
         "daypart-timezone-mode": {
           "$ref": "/schemas/enums/daypart-timezone-mode.json",
           "description": "Supported clock mode for daypart targeting"
+        },
+        "daypart-time-granularity": {
+          "$ref": "/schemas/enums/daypart-time-granularity.json",
+          "description": "Finest time-of-day resolution a product honors for daypart targeting (experimental)"
         },
         "distance-unit": {
           "$ref": "/schemas/enums/distance-unit.json",
@@ -2643,6 +2671,18 @@
       "$ref": "/schemas/brand.json",
       "file_location": "/.well-known/brand.json",
       "purpose": "Declares brand identity and agent for a domain, enabling brand discovery and verification"
+    },
+    "trust": {
+      "description": "EXPERIMENTAL (identity.trust_json): agent trust record format specification, schemas only. Nothing in AdCP 3.3 reads, requires, or verifies it, and the document name and path may change before graduation. See RFC #7809.",
+      "$ref": "/schemas/trust/v1/trust.json",
+      "file_location": "/.well-known/trust.json",
+      "purpose": "Declares the agents an organization runs and their keys, the authority it delegates, and the grants it accepts. The file location is provisional and may change before graduation. Protocol-neutral core with namespaced roles and scopes; AdCP is the first profile. Not consumed by any AdCP 3.3 behavior.",
+      "supporting-schemas": {
+        "trust-acknowledgements": {
+          "$ref": "/schemas/trust/v1/trust-acknowledgements.json",
+          "description": "Bulk acknowledgements sub-document referenced from trust.json acknowledgements_url (experimental)"
+        }
+      }
     },
     "trusted-match": {
       "description": "Trusted Match Protocol (TMP) — real-time execution layer for activating pre-negotiated packages across any surface. Conformance invariants are normative in docs/trusted-match/specification.mdx; the cap-fire boundary contract is at docs/trusted-match/identity-match-implementation.mdx; a non-normative impression-tracker implementation reference (multi-identity dedup, fcap_keys labels, log-based data model, SDK primitives) is at docs/trusted-match/impression-tracker-implementation.mdx. Storage backend is an implementation choice; conformant services may use any store that satisfies the invariants.",

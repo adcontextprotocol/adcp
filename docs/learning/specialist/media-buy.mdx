@@ -26,7 +26,7 @@ Agents in the `media_buy` domain declare specific flows they support via the `sp
 | `sales-non-guaranteed` | stable     | Non-guaranteed auction-based media buys                                                        |
 | `sales-proposal-mode`  | deprecated | **Deprecated in 3.1.** Replace with `sales-guaranteed` + `media_buy.supports_proposals: true`. |
 | `sales-catalog-driven` | stable     | Catalog-driven commerce with conversion tracking                                               |
-| `sales-broadcast-tv`   | stable     | Broadcast linear TV with guaranteed inventory and FCC cancellation rules                       |
+| `sales-broadcast-tv`   | stable     | Broadcast linear TV: guaranteed or fixed-price spots, agreed terms, C7 reconciliation          |
 | `sales-dooh`           | stable     | Non-guaranteed digital out-of-home venue and screen inventory                                  |
 | `sales-social`         | stable     | Social media advertising platform with self-service flows                                      |
 
@@ -55,6 +55,7 @@ See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for
 - Use refinement and package requests for complex buying scenarios
 - Use `offer_filters.availability_horizon` only when the seller advertises flexible-window availability, interpret the returned time windows and `incomplete[]` gaps, and distinguish planning availability from a hold
 - Use `criteria.outcome_target` only when advertised, verify `total_budget_guidance` and matching forecast metrics, and explain why reverse-forecast guidance is not a delivery guarantee
+- Plan a vendor-measured outcome (for example store visits) with a `vendor_metric` goal, read the forecast in `vendor_metric_values[]` rather than `metrics`, and explain why a planning-time vendor goal implies no buyer-vendor relationship
 - Send an `outcome_target.cost_per` target to a seller advertising `features.bidding_policy`, read the plannable cost in `commercial_terms.bidding.cost_per`, and explain why the amount is never below the ask and keeps the buyer's `strength` and currency
 - Monitor and optimize campaign delivery using protocol tools
 - Explain the measurement-agent loop: make the orchestrator a buyer-controlled gateway for the fixed `get_media_buy_delivery` and `provide_performance_feedback` tasks, authenticate provider output, and fan normalized assertions out to sellers without granting providers seller access

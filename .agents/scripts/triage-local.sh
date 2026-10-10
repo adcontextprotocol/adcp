@@ -9,7 +9,7 @@
 #
 # Examples:
 #   .agents/scripts/triage-local.sh 3112              # fresh triage
-#   .agents/scripts/triage-local.sh 3112 execute      # authorize first draft PR if safe
+#   .agents/scripts/triage-local.sh 3112 execute      # compatibility alias: brief only, no code/PR work
 #   .agents/scripts/triage-local.sh 3112 clarify      # force clarify
 #
 # Required env vars (or .env file in the cwd):
@@ -74,7 +74,7 @@ if [ -n "$MODIFIER" ]; then
       exit 64
       ;;
   esac
-  nudge="MANUAL NUDGE: triage-local.sh requested triage with /$MODIFIER. Treat as an explicit request; skip already-engaged check. Honor the modifier (execute authorizes a first draft PR only if all Execute safety checks pass; clarify / defer force those outcomes)."
+  nudge="MANUAL NUDGE: triage-local.sh requested triage with /$MODIFIER. Treat as an explicit request; skip already-engaged check. Triage is routing-only: it never creates branches, edits implementation code, or opens/updates PRs or pushes commits. Honor the modifier (execute is a backward-compatible intake alias that yields a Ready-to-implement brief or the relevant defer/flag outcome and grants no code or PR execution; clarify / defer force those outcomes)."
   kind="manual"
   action="triage"
 else

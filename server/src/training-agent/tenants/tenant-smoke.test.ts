@@ -1948,7 +1948,9 @@ describe('tenant routing smoke', () => {
       };
       const capabilities = response.result?.structuredContent;
       expect(capabilities?.specialisms).toContain('sales-dooh');
+      expect(capabilities?.specialisms).toContain('sales-broadcast-tv');
       expect(capabilities?.media_buy?.portfolio?.primary_channels).toContain('dooh');
+      expect(capabilities?.media_buy?.portfolio?.primary_channels).toContain('linear_tv');
     } finally {
       await close();
     }
@@ -2184,6 +2186,7 @@ describe('tenant routing smoke', () => {
               features?: { inline_creative_management?: boolean };
               supported_optimization_metrics?: string[];
               vendor_metric_optimization?: { supported_targets?: string[] };
+              conversion_tracking?: { supported_targets?: string[] };
             };
             creative?: {
               supported_formats?: Array<{ capability_id?: string; operations?: string[] }>;
@@ -2205,6 +2208,7 @@ describe('tenant routing smoke', () => {
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
+      expect(mediaBuy?.conversion_tracking?.supported_targets).toEqual(['cost_per']);
       expect(previewCapabilityIds.length).toBeGreaterThan(0);
       expect(previewRouteIds).toEqual(previewCapabilityIds);
       expect(creative?.preview?.routes?.every(route => (
@@ -3841,6 +3845,7 @@ describe('tenant routing smoke', () => {
       expect(scenarios).not.toContain('seed_product');
       expect(scenarios).not.toContain('seed_measurement_catalog');
       expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-dooh');
+      expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-broadcast-tv');
       expect(scenarios).not.toContain('query_provenance_audit_observations');
 
       const list = await fetch(url, {

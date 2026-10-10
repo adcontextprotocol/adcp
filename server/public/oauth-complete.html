@@ -144,6 +144,15 @@
         return null;
       }
     }
+    // Recovery is an explicit click to a fixed local route. The server checks
+    // current organization membership again; no error text supplies a URL.
+    function ownerRecoveryPath(contextId, rawReturnTo) {
+      if (!contextId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contextId)) return null;
+      const query = new URLSearchParams({ agent_context_id: contextId, fresh: '1' });
+      const localReturn = safeReturnTo(rawReturnTo);
+      if (localReturn) query.set('return_to', localReturn);
+      return '/api/oauth/agent/start?' + query.toString();
+    }
     const returnToPath = success ? safeReturnTo(params.get('return_to')) : null;
     // Build an absolute, provably same-origin URL for navigation.
     const returnToUrl = returnToPath
@@ -199,6 +208,13 @@
           </p>
         </div>
       `;
+      const recoveryPath = ownerRecoveryPath(params.get('agent_context_id'), params.get('return_to'));
+      if (recoveryPath) {
+        const link = document.createElement('a');
+        link.textContent = 'Start a new sign-in';
+        link.href = recoveryPath;
+        content.querySelector('.oauth-complete__instruction').replaceChildren(link);
+      }
     }
   </script>
 </body>

@@ -1,8 +1,8 @@
 /**
  * v6 SalesPlatform for the `/sales` tenant.
  *
- * Sales platform claiming `sales-non-guaranteed`, `sales-guaranteed`, and
- * `sales-dooh`. Implements `SalesPlatform` (5 required methods +
+ * Sales platform claiming `sales-non-guaranteed`, `sales-guaranteed`,
+ * `sales-broadcast-tv`, and `sales-dooh`. Implements `SalesPlatform` (5 required methods +
  * 4 optional read-side methods).
  *
  * Spike-grade port: bodies shim through to existing v5 handlers via
@@ -12,6 +12,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { dispatchTrainingGcsReporting } from './gcs-reporting-tools.js';
 import { createLogger } from '../logger.js';
 import {
   AdcpError,
@@ -83,7 +84,7 @@ import {
   withDurableReportingLedger,
 } from './reporting-reliability.js';
 import { getSession, registerSharedPublicBrandPartition, runWithSessionContext, sessionKeyFromArgs } from './state.js';
-import { supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type ToolArgs, type TrainingContext } from './types.js';
+import { supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
@@ -440,7 +441,7 @@ const TRAINING_SALES_CHANNELS = [
 ] as const;
 
 export const TRAINING_SALES_CAPABILITIES = {
-  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', SALES_DOOH_SPECIALISM] as const,
+  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', SALES_DOOH_SPECIALISM] as const,
   creative_agents: [],
   channels: TRAINING_SALES_CHANNELS,
   overrides: {
@@ -493,6 +494,10 @@ export const TRAINING_SALES_CAPABILITIES = {
     language: true,
     keyword_targets: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
     negative_keywords: { supported_match_types: ['broad', 'phrase', 'exact'] as const },
+    // Seller-wide rollups; Product.overlay_support is authoritative. Mirrors
+    // handleGetAdcpCapabilities.
+    property_list: true,
+    property_list_exclude: true,
   },
   audience_targeting: {
     supported_identifier_types: ['hashed_email' as const],
@@ -502,6 +507,8 @@ export const TRAINING_SALES_CAPABILITIES = {
     supported_event_types: ['purchase' as const, 'add_to_cart' as const, 'lead' as const, 'page_view' as const],
     supported_hashed_identifiers: ['hashed_email' as const],
     supported_action_sources: ['website' as const, 'app' as const],
+    // Event-goal cost targets the outcome_target planner binds to a source.
+    supported_targets: [...TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS],
     // Mirrors TRAINING_ATTRIBUTION_WINDOWS: the one window the outcome_target
     // planner states on event goals it binds to registered sources.
     attribution_windows: [{
@@ -1197,6 +1204,8 @@ export function legacyGetProductsHandler(
  */
 export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHandlers['getReportingStatus']> {
   return async (req, ctx) => {
+    const gcs = await dispatchTrainingGcsReporting('get_reporting_status', req as unknown as Record<string, unknown>, ctx.authInfo?.clientId);
+    if (gcs) return gcs;
     const version = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
     if (!version.ok || !supportsReportingStatus(version.servedVersion)) {
       throw new AdcpError('VERSION_UNSUPPORTED', {
@@ -1293,6 +1302,8 @@ function projectRc0ReportingStatus(response: Record<string, unknown>): Record<st
 
 export function legacySyncReportingReceiptsHandler(): NonNullable<LegacyMediaBuyHandlers['syncReportingReceipts']> {
   return async (req, ctx) => {
+    const gcs = await dispatchTrainingGcsReporting('sync_reporting_receipts', req as unknown as Record<string, unknown>, ctx.authInfo?.clientId);
+    if (gcs) return gcs;
     const version = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
     if (!version.ok || !supportsReliableReporting(version.servedVersion)) {
       throw new AdcpError('VERSION_UNSUPPORTED', {
@@ -1366,6 +1377,8 @@ export async function syncReportingStatusForCustomTool(
   ctx: TrainingContext,
 ): Promise<object> {
   try {
+    const gcs = await dispatchTrainingGcsReporting('sync_reporting_status', args as unknown as Record<string, unknown>, ctx.principal);
+    if (gcs) return gcs;
     const version = resolveServedAdcpVersion(args as unknown as Record<string, unknown>);
     if (!version.ok || !supportsReliableReporting(version.servedVersion)) {
       throw new AdcpError('VERSION_UNSUPPORTED', {
@@ -1557,8 +1570,11 @@ export class TrainingSalesPlatform
     if (this.storyboardCompat?.version === '3.0') {
       const { reporting_delivery: _reportingDelivery, ...mediaBuy } = TRAINING_SALES_CAPABILITIES.overrides.media_buy;
       const { experimental_features: _experimentalFeatures, ...overrides } = TRAINING_SALES_CAPABILITIES.overrides;
+      // conversion_tracking.supported_targets is a 3.1+ field.
+      const { supported_targets: _supportedTargets, ...conversionTracking } = TRAINING_SALES_CAPABILITIES.conversion_tracking;
       return {
         ...TRAINING_SALES_CAPABILITIES,
+        conversion_tracking: conversionTracking,
         specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
         overrides: { ...overrides, media_buy: mediaBuy },
       };

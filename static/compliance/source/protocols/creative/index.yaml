@@ -4,6 +4,9 @@ title: "Creative lifecycle"
 category: creative_lifecycle
 summary: "Baseline creative lifecycle on a stateful platform: sync display creatives, list with filtering, and preview renderings."
 track: creative
+requires:
+  - controller
+
 required_tools:
   - get_adcp_capabilities
 

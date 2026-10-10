@@ -559,6 +559,16 @@
       "pullRequestNo": 7914,
       "comment_id": 5978148032,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7914#issuecomment-5978148032"
+    },
+    {
+      "name": "shixiaoquan",
+      "id": 13824924,
+      "created_at": "2026-10-10T09:47:00Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 8013,
+      "comment_id": 6096263257,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/8013#issuecomment-6096263257"
     }
   ]
 }

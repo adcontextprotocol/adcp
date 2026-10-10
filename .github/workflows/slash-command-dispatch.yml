@@ -13,7 +13,9 @@ name: Slash Command Dispatch
 #                         caller permissions and adds reactions.
 #
 # Current commands:
-#   /triage [modifier]  — fire the triage routine on this issue. Modifiers
+#   /triage [modifier]  — request routing-only triage on this issue. execute
+#                         requests an implementation brief; it grants no PR work.
+#                         Modifiers
 #                         bias the outcome (execute / clarify / defer).
 
 on:

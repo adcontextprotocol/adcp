@@ -1157,7 +1157,49 @@ describe('managed reporting status contract', () => {
       recommended_action: 'wait_for_retry',
     }), true, JSON.stringify(validateStatusIssue.errors));
 
+    // A retained revision that cannot be served names the exact revision and
+    // obligation, and is always the seller's to repair.
+    const unreadableIssue = {
+      issue_id: 'issue_revision_unreadable_20260826',
+      code: 'REVISION_UNREADABLE',
+      severity: 'delayed',
+      responsible_party: 'seller',
+      recommended_action: 'wait_for_retry',
+      reporting_obligation_id: 'obl_daily_share_20260826',
+      reporting_revision_id: 'rev_daily_share_20260826_snapshot_3',
+    };
+    assert.equal(validateStatusIssue(unreadableIssue), true, JSON.stringify(validateStatusIssue.errors));
+    assert.equal(validateStatusIssue({ ...unreadableIssue, severity: 'action_required', recommended_action: 'contact_seller' }), true, JSON.stringify(validateStatusIssue.errors));
+    const { reporting_revision_id: _revisionId, ...unreadableWithoutRevision } = unreadableIssue;
+    assert.equal(validateStatusIssue(unreadableWithoutRevision), false);
+    const { reporting_obligation_id: _obligationId, ...unreadableWithoutObligation } = unreadableIssue;
+    assert.equal(validateStatusIssue(unreadableWithoutObligation), false);
+    assert.equal(validateStatusIssue({ ...unreadableIssue, responsible_party: 'provider' }), false);
+    assert.equal(validateStatusIssue({ ...unreadableIssue, recommended_action: 'repair_access' }), false);
+    // Severity and action move together so buyers stop retrying once repair stops.
+    assert.equal(validateStatusIssue({ ...unreadableIssue, recommended_action: 'contact_seller' }), false);
+    assert.equal(validateStatusIssue({ ...unreadableIssue, severity: 'action_required' }), false);
+
     const issueSchema = readSchema('/schemas/core/reporting-status-issue.json');
+    // Superseded snapshot content may compact, but never content a buyer is
+    // still likely to read.
+    const contentRetention = readSchema('/schemas/core/reporting-revision.json')['x-adcp-validation'].content_retention;
+    assert.match(contentRetention, /Once a later revision names it in supersedes_reporting_revision_id, the window runs from that successor's created_at instead/);
+    assert.match(contentRetention, /An official revision's window runs from the latest created_at among the revision and the reporting adjustments/);
+    assert.match(contentRetention, /\(b\) the revision that the current revision names in supersedes_reporting_revision_id/);
+    assert.match(contentRetention, /\(c\) a superseded snapshot within its recovery grace, which runs from its successor's created_at for automated_recovery_window_seconds or one hour, whichever is longer/);
+    assert.match(contentRetention, /\(d\) named, for the requesting caller, by that caller's own reporting receipt in any status or by its current consumer status statement/);
+    assert.match(contentRetention, /MAY compact any other superseded snapshot revision to metadata only/);
+    assert.match(contentRetention, /is REVISION_UNREADABLE, never REFERENCE_NOT_FOUND/);
+    assert.match(contentRetention, /takes effect only in the next eligible minor release after November 20, 2026/);
+    assert.match(contentRetention, /outside retained coverage \(scope.ledger_retained_from\), never as complete/);
+    assert.match(issueSchema['x-adcp-validation'].revision_unreadable, /MUST return SERVICE_UNAVAILABLE\. It MUST NOT return REFERENCE_NOT_FOUND/);
+    assert.match(issueSchema['x-adcp-validation'].revision_unreadable, /Unauthorized callers still receive the nondisclosing REFERENCE_NOT_FOUND/);
+    assert.match(issueSchema['x-adcp-validation'].revision_unreadable, /obligation whose official revision is lost does not become complete/);
+    assert.match(
+      readSchema('/schemas/core/reporting-obligation.json')['x-adcp-validation'].core_readability,
+      /open REVISION_UNREADABLE issue for any revision of the obligation also blocks healthy and complete/,
+    );
     assert.match(issueSchema['x-adcp-validation'].issue_lifecycle, /MUST NOT advance while the same issue_id is re-emitted/);
     assert.match(issueSchema['x-adcp-validation'].consumer_mismatch_escalation, /recommended_action in the contact_ family/);
     assert.match(issueSchema['x-adcp-validation'].consumer_mismatch_escalation, /wait_for_retry MUST NOT survive the escalation boundary/);
@@ -1353,7 +1395,13 @@ describe('managed reporting status contract', () => {
     );
     const syncRequestSchema = readSchema('/schemas/media-buy/sync-reporting-status-request.json');
     assert.equal(syncRequestSchema.additionalProperties, false);
-    assert.equal(syncRequestSchema.allOf, undefined, 'closed request inlines version properties instead of composing a permissive envelope');
+    assert.ok(
+      (syncRequestSchema.allOf || []).some((arm) => arm.$ref === '/schemas/core/version-envelope.json'),
+      'closed request composes the version envelope via root allOf',
+    );
+    for (const field of ['adcp_version', 'adcp_major_version']) {
+      assert.ok(syncRequestSchema.properties[field], `closed request keeps ${field} declared locally for draft-07 additionalProperties`);
+    }
   });
 
   it('rejects unverified, mutable, and method-mismatched ready materializations while allowing native controls', () => {

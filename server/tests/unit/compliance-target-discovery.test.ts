@@ -185,6 +185,37 @@ describe('hosted compliance target discovery deadline', () => {
     expect(transportSignal?.aborted).toBe(true);
   });
 
+  it('probes with a major-only envelope when no stored versions seed a pin', async () => {
+    mocks.discovery.mockResolvedValue({ profile: { adcp_supported_versions: ['3.1'] }, steps: [] });
+
+    await selectComplianceTargetForAgentSelection(
+      'https://agent.example/mcp',
+      {},
+      mocks.fallbackTarget,
+      'canonical',
+    );
+
+    const options = mocks.discovery.mock.calls[0][1];
+    expect(options).toMatchObject({ versionEnvelope: 'major-only' });
+    expect(options.adcpVersion).toBeUndefined();
+  });
+
+  it('pins to the stored target instead of major-only when versions are seeded', async () => {
+    mocks.discovery.mockResolvedValue({ profile: { adcp_supported_versions: ['3.1'] }, steps: [] });
+
+    await selectComplianceTargetForAgentSelection(
+      'https://agent.example/mcp',
+      {},
+      mocks.fallbackTarget,
+      'canonical',
+      ['3.1'],
+    );
+
+    const options = mocks.discovery.mock.calls[0][1];
+    expect(options.adcpVersion).toBe(mocks.selectedTarget.version);
+    expect(options.versionEnvelope).toBe('auto');
+  });
+
   it('hard-stops even when discovery ignores its signal and never settles', async () => {
     vi.useFakeTimers();
     mocks.discovery.mockImplementation(() => new Promise(() => {}));

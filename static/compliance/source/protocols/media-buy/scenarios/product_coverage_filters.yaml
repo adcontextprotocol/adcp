@@ -4,6 +4,9 @@ title: "Product coverage is preserved across discovery surfaces"
 category: media_buy_seller
 summary: "Checks legacy and compact coverage predicates against independent negative controls without configuring delivery targeting."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.2"
 required_tools: [get_products, list_products, comply_test_controller]
 

@@ -109,6 +109,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `PROVENANCE_VERIFIER_NOT_ACCEPTED` | correctable | replace verify_agent.agent_url with one from the seller's published accepted_verifiers, drop verify_agent if the embedding is self-verifiable, or re-embed with a verifier the seller accepts |
 | `RATE_LIMITED` | transient | wait top-level error.retry_after seconds when present, then retry |
 | `READ_ONLY_SCOPE` | correctable | use a non-mutating alternative, or surface to the operator to request a scope that permits mutation |
+| `REFERENCE_DEFINITION_CHANGED` | correctable | refine the proposal so the seller re-resolves the pinned definitions and issues fresh pins, review the changed definition, then finalize and accept the new proposal |
 | `REFERENCE_NOT_FOUND` | correctable | verify the referenced identifier exists and is accessible to the caller |
 | `REQUOTE_REQUIRED` | correctable | use error.details.decline_reason when present to inform recovery, then refine accepted_proposal_id and apply the amendment through accept_proposal, or keep control_media_buy inside the accepted envelope; some policies require a free-text ask or human negotiation, and 3.1 compatibility callers must adjust or rediscover |
 | `SCOPE_INSUFFICIENT` | correctable | the agent cannot broaden its own scope - surface to the operator rather than auto-retry |
@@ -124,7 +125,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `STALE_RESPONSE` | transient | advisory — emitted alongside a populated payload that was served from cache past the seller's freshness target because an upstream or sub-agent was unreachable. The response is usable; treat as non-fatal. Inspect <code>{"error.details.cache_age_seconds"}</code> to decide whether to immediately retry for fresh data or accept the cached value; the seller's own service is healthy, so retry is safe (it does not amplify the upstream failure) |
 | `TERMS_REJECTED` | correctable | adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults |
 | `UNPRICEABLE_OUTPUT` | correctable | target an output format the transformer prices, or have the seller add a pricing option covering it |
-| `UNSUPPORTED_FEATURE` | correctable | check get_adcp_capabilities and remove unsupported fields |
+| `UNSUPPORTED_FEATURE` | correctable | check get_adcp_capabilities (or the product's overlay_support for a rejected targeting dimension), remove unsupported fields, and use details.replacement_dimension when present |
 | `UNSUPPORTED_GRANULARITY` | correctable | pick a granularity from the product's reporting_capabilities.windowed_pull_granularities (via get_adcp_capabilities) and resubmit, or omit time_granularity to fall back to cumulative date-range pulls |
 | `UNSUPPORTED_PROVISIONING` | correctable | re-issue with the entry shape the seller supports — <code>{"account: {account_id: ...}"}</code> for settings-update sellers with account-id namespaces, or <code>{"brand+operator+billing"}</code> for provisioning sellers; check seller documentation or capability declaration for which modes are implemented |
 | `VALIDATION_ERROR` | correctable | review error details and fix field values |
@@ -1072,6 +1073,15 @@ Request rate exceeded. Sellers SHOULD populate top-level <code>{"error.retry_aft
 The caller's scope is read-only; the invoked task would mutate state and was rejected. Distinct from <code>{"SCOPE_INSUFFICIENT"}</code> (task not in scope at all) — the task is in some scopes this seller supports, just not this caller's. Recovery: correctable but not agent-autonomous — use a non-mutating alternative, or surface to the operator to request a scope that permits mutation.
 
 </Accordion>
+<a id="error-code-reference-definition-changed"></a>
+
+<Accordion title="REFERENCE_DEFINITION_CHANGED — correctable">
+
+**Suggested action:** refine the proposal so the seller re-resolves the pinned definitions and issues fresh pins, review the changed definition, then finalize and accept the new proposal
+
+A third-party-published definition pinned in a proposal's commercial_terms.definition_pins[] (a publisher-catalog format option, publisher-catalog placement, adagents.json collection, or data-provider signal) no longer resolves to the pinned content_digest. Returned by accept_proposal, which re-verifies every pin before mutating any state, so no MediaBuy is created or amended. terms_digest can still verify because it covers the pin, not the definition the pin names. Error details SHOULD conform to error-details/reference-definition-changed.json: error.field names the failing pin (for example commercial_terms.definition_pins[2]) and details.current_content_digest carries the digest the definition resolves to now; one error is returned per drifted pin. Distinct from REFERENCE_NOT_FOUND (an identifier that does not exist or is inaccessible) and PROPOSAL_EXPIRED (the hold lapsed). The same drift found while finalizing is reported as an unable outcome with reason_code definition_changed and drifted_pins[] rather than as an error. A definition withdrawn from a successfully fetched document is drift and omits current_content_digest; a document that cannot be fetched or parsed is not drift and returns SERVICE_UNAVAILABLE instead. Recovery: correctable (re-run request_proposals or refine_proposals so the seller re-resolves the definitions and issues fresh pins, review the changed terms, and finalize again).
+
+</Accordion>
 <a id="error-code-reference-not-found"></a>
 
 <Accordion title="REFERENCE_NOT_FOUND — correctable">
@@ -1219,9 +1229,9 @@ A creative transformer build targets an output capability that no pricing option
 
 <Accordion title="UNSUPPORTED_FEATURE — correctable">
 
-**Suggested action:** check get_adcp_capabilities and remove unsupported fields
+**Suggested action:** check get_adcp_capabilities (or the product's overlay_support for a rejected targeting dimension), remove unsupported fields, and use details.replacement_dimension when present
 
-A requested feature or field is not supported by this seller. When rejecting a <code>{"refine_proposals"}</code> request that uses a typed dimension omitted from an explicit <code>{"proposal_refinement.supported_dimensions"}</code> declaration, the error details SHOULD follow <code>{"error-details/unsupported-refinement-dimension.json"}</code> — <code>{"unsupported_dimension"}</code> names the offending dimension and <code>{"supported_dimensions"}</code> echoes the seller's declaration so the buyer can remove or translate the field without another capability round trip. Recovery: correctable (check get_adcp_capabilities and remove unsupported fields).
+A requested feature or field is not supported by this seller. When rejecting a <code>{"refine_proposals"}</code> request that uses a typed dimension omitted from an explicit <code>{"proposal_refinement.supported_dimensions"}</code> declaration, the error details SHOULD follow <code>{"error-details/unsupported-refinement-dimension.json"}</code> — <code>{"unsupported_dimension"}</code> names the offending dimension and <code>{"supported_dimensions"}</code> echoes the seller's declaration so the buyer can remove or translate the field without another capability round trip. When rejecting a targeting dimension that is unsupported for the product or seller, or has been removed, the error details SHOULD follow <code>{"error-details/unsupported-targeting-dimension.json"}</code> (<code>{"unsupported_dimension"}</code>, optional <code>{"supported_dimensions"}</code>, <code>{"deprecated"}</code>, <code>{"replacement_dimension"}</code>) and <code>{"error.field"}</code> SHOULD point at the targeting path. Recovery: correctable (check get_adcp_capabilities (or the product's overlay_support for a rejected targeting dimension), remove unsupported fields, and use details.replacement_dimension when present).
 
 </Accordion>
 <a id="error-code-unsupported-granularity"></a>

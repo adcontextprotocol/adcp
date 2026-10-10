@@ -7,7 +7,7 @@
   "properties": {
     "impressions": {
       "type": "number",
-      "description": "Impressions delivered",
+      "description": "Impressions delivered. Optional from 3.3 on delivery rows. An absent value means the seller did not measure impressions for the row; it does not mean zero. Receivers MUST NOT treat absence as zero or derive impression-denominated values for the row (cpm, ctr, completion_rate, viewable_rate and similar), and senders MUST omit impression-denominated rates on a row that omits it. Senders MUST NOT put views, plays, downloads or any other count here; use views, completed_views, plays, downloads or vendor_metric_values. When impressions is a committed metric for the package, absence is disclosed through by_package[].missing_metrics. Sellers MUST NOT omit it from daily_breakdown, by_format, by_device_type, by_device_platform, by_audience, by_demographic or the per-dimension delivery-metrics rows toward callers pinned below AdCP 3.3; a caller with no declared pin is treated as pinned below 3.3, and toward those callers a seller with no impression count omits the row. aggregated_totals still requires it.",
       "minimum": 0
     },
     "spend": {
@@ -441,6 +441,37 @@
       },
       "dependencies": {
         "estimated_impressions": ["estimation_basis"]
+      },
+      "additionalProperties": true
+    },
+    "print_metrics": {
+      "type": "object",
+      "x-status": "experimental",
+      "description": "Print-specific metrics (only included for print campaigns). Experimental in AdCP 3.3. Report one object per installment (issue) on `by_installment` rows, which inherit this schema; the object is not meaningful at package, daily, or total grain. It describes one insertion per row and carries the proof the insertion ran and the circulation it ran against. Sellers SHOULD populate `evidence` for guaranteed print products; when a seller cannot, the gap is reported through `by_package[].missing_metrics` rather than by silently omitting the field. Nothing here is schema-required.",
+      "properties": {
+        "page_delivered": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Page number on which the insertion actually ran, as confirmed by the tearsheet or the publisher's own production record."
+        },
+        "position_delivered": {
+          "type": "string",
+          "description": "Position in which the insertion actually ran (e.g., 'right_hand', 'outside_back_cover'). Unconstrained free-form text until a shared print position vocabulary exists; compare against the position the buyer booked."
+        },
+        "circulation_delivered": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Circulation of the issue this row covers, in copies. Absent a per-issue figure, sellers omit this field and buyers rely on the circulation declared on the product (`delivery_measurement`, typically `notes`); audited circulation (e.g., IVW, AAM) is commonly a quarterly figure, so sellers need not remeasure it per issue."
+        },
+        "circulation_basis": {
+          "type": "string",
+          "enum": ["audited", "seller_modeled"],
+          "description": "Methodology tier of circulation_delivered: audited (a third-party circulation audit figure, with the auditor named in the row-level measurement_source) or seller_modeled (the seller's own count or estimate). Tier, not provider, mirroring ooh_metrics.estimation_basis."
+        },
+        "evidence": {
+          "$ref": "/schemas/core/placement-evidence.json",
+          "description": "Tearsheet or equivalent proof of insertion for this installment. Capture time and notes ride the artifact."
+        }
       },
       "additionalProperties": true
     },

@@ -1,0 +1,26 @@
+{
+  "name": "Signature header present but Signature-Input header absent (downgrade loophole)",
+  "spec_reference": "#verifier-checklist-requests pre-check (header pair enforcement)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature": "sig1=:qjngSQ0bgimxQbc6l0aFOmSthQRCdEgD10mOa7OGyUIEMuKwe2h_3l42oxs2Ga5qQCnVpaZHOuwhYu3qJp4HAA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_ref": ["test-ed25519-2026"],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_header_malformed",
+    "failed_step": 1
+  },
+  "$comment": "Signature and Signature-Input are a bound pair — one without the other is malformed. A proxy stripping Signature-Input while preserving Signature could otherwise be misread as 'this request is unsigned,' degrading a signed request to bearer-only auth. Verifier MUST reject; MUST NOT fall back to bearer-only authentication. Mirror case (Signature-Input without Signature) is also a reject condition per the spec pre-check — one vector is sufficient to exercise the rule."
+}

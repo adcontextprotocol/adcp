@@ -187,6 +187,12 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
   }));
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
+    // Cold schema compilation can leave the loopback connection idle longer
+    // than Node's default keep-alive window. Keep the fixture-owned socket
+    // available for the next MCP request; request/storyboard deadlines remain
+    // unchanged, and close() below destroys every owned connection.
+    srv.keepAliveTimeout = 90_000;
+    srv.headersTimeout = 95_000;
     const connections = new Set<Socket>();
     srv.on('connection', socket => {
       connections.add(socket);
@@ -265,6 +271,10 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([]);
  * when an active tracker exists.
  */
 const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
+  [
+    'sales_broadcast_tv/expect_window_update_webhook',
+    'The training seller emits no delivery window_update webhooks: on AdCP 3.2 its synchronous create_media_buy completion is silent and it does not push delivery reports on simulated delivery. Every other step of the broadcast transaction is graded. Remove when the training agent emits C3 and C7 window_update webhooks to the registered push_notification_config.',
+  ],
   [
     'media_buy_seller/inline_creatives_without_sync/get_products_legacy_format',
     'The optional legacy-format branch has no capability gate and therefore executes against the current training seller even though it publishes canonical format_options only. The canonical inline-creative branch remains graded. Remove when the runner gates this branch on an observed format_ids representation.',
@@ -479,6 +489,7 @@ function patchStoryboardForLocalRunner(sb: Storyboard): Storyboard {
     || sb.id === 'governance_spend_authority/denied'
     || sb.id === 'governance_delivery_monitor'
     || sb.id === 'governance/failed_outcome_audit_persistence'
+    || sb.id === 'governance/budget_periods'
     || sb.requires?.includes('multi_agent')
   ) {
     patched = structuredClone(patched) as Storyboard;

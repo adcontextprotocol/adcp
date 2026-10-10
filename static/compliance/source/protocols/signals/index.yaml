@@ -5,6 +5,9 @@ protocol: signals
 category: signals_baseline
 summary: "Baseline domain storyboard — every signals agent must declare signals support and return discoverable signals."
 track: signals
+requires:
+  - controller
+
 required_tools:
   - get_signals
 

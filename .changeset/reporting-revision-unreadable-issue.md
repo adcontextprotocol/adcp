@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add the `REVISION_UNREADABLE` reporting status issue code for a published revision that the seller still owes within `status_retention_days` but cannot currently serve or verify, for example because its stored rows are missing or fail the revision binding. The issue always belongs to the seller and carries the affected `reporting_obligation_id` plus a new `reporting_revision_id` field. It is `delayed` with `wait_for_retry` while automatic repair runs, and `action_required` with `contact_seller` once that repair can't restore the content. While the issue is open, the obligation is neither `healthy` nor `complete`, and an authorized exact read through `get_media_buy_delivery` returns `SERVICE_UNAVAILABLE` rather than `REFERENCE_NOT_FOUND`. The issue is retired when the committed content is readable again or the revision's retention window ends. An obligation whose official revision is lost never becomes `complete`. Readers that strictly validate the closed issue-code enum must accept the new value. Closes #8082.

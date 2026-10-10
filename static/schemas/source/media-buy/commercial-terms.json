@@ -73,7 +73,7 @@
     "pacing": { "$ref": "/schemas/enums/pacing.json" },
     "bidding": {
       "$ref": "/schemas/core/bidding-policy.json",
-      "description": "Media-buy bidding policy. A proposal answering criteria.outcome_target.cost_per states here the cost the seller can plan to, which the buyer adopts on acceptance: the requested strength, and an amount greater than or equal to the ask (the ask when the seller can forecast goal volume under it within the buyer's budget, otherwise the lowest such amount), denominated in the purchases' pricing currency, which equals cost_per.currency. It is an execution control, not an expected price; when the planned spend at that amount is below total_budget, forecast points carry metrics.spend. See outcome-target.json for goal binding."
+      "description": "Media-buy bidding policy. A proposal answering criteria.outcome_target.cost_per states here the cost the seller can plan to, which the buyer adopts on acceptance: the requested strength, and an amount greater than or equal to the ask (the ask when the seller can forecast goal volume under it within the buyer's budget, otherwise the lowest such amount), denominated in the purchases' pricing currency, which equals cost_per.currency. It is an execution control, not an expected price; when the planned spend at that amount is below total_budget (always, for a vendor_metric goal), forecast points carry metrics.spend. See outcome-target.json for goal binding, including vendor_metric goals, which bind by vendor and metric_id."
     },
     "invoice_recipient": { "$ref": "/schemas/core/business-entity.json" },
     "purchase_order_ref": { "type": "string", "minLength": 1, "maxLength": 255 },
@@ -121,6 +121,19 @@
       "description": "Binding buyer change rights included in the commercial envelope and therefore covered by terms_digest. Entries are uniquely keyed by action. When this field is present, an omitted action is not a negotiated change right. Omission of the entire field means legacy-unspecified rights, not a prohibition.",
       "x-adcp-validation": {
         "unique_by": "action"
+      }
+    },
+    "definition_pins": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/definition-pin.json" },
+      "minItems": 1,
+      "description": "Seller-authored integrity pins over the third-party-published definitions these terms reference (publisher-catalog format options, publisher-catalog placements, adagents.json collections, data-provider signals). Present on new_media_buy and media_buy_update proposals whenever any purchase carries a covered reference, for callers negotiating AdCP 3.3 or later; omitted otherwise and on media_buy_cancellation proposals, which commit no new reference. Part of commercial_terms and therefore covered by terms_digest, which does not detect later changes to the published definitions themselves. Entries are unique by (ref_kind, reference) and ordered by ref_kind then by the JCS bytes of reference, so equal terms always serialize to equal digests. Requests never author pins: request_proposals, refine_proposals, accept_proposal, and buy_products inputs carrying definition_pins are rejected with INVALID_REQUEST (check_governance carries the seller-authored proposal and is exempt). Cancellation proposals commit no new reference and carry none. Verified against the current published entries at finalize and before accept_proposal mutates state; accepted terms retain them as the historical record.",
+      "x-adcp-validation": {
+        "unique_by": ["ref_kind", "reference"],
+        "verifier_constraints": {
+          "pin_coverage": "for_new_media_buy_and_media_buy_update_every_covered_reference_in_purchases_has_exactly_one_pin",
+          "pin_authority": "seller_authored_only"
+        }
       }
     }
   },

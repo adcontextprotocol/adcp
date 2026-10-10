@@ -186,6 +186,11 @@
       "variants": 2,
       "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
     },
+    "core/daypart-target.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[start_hour,end_hour] | 1:[start_time,end_time]"
+    },
     "core/evaluator-spec.json##/oneOf": {
       "kind": "narrowable",
       "variants": 3,
@@ -365,6 +370,11 @@
       "kind": "dangerous",
       "variants": 2,
       "note": "shared-required=[∅]; 0:boolean | 1:req=[∅]"
+    },
+    "trust/v1/trust.json##/oneOf": {
+      "kind": "dangerous",
+      "variants": 2,
+      "note": "shared-required=[∅]; 0:req=[authoritative_location] | 1:req=[∅]"
     }
   }
 }

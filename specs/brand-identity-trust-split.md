@@ -4,7 +4,7 @@
 
 **Related**: [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) (demand-side acts-for grants), [`capabilities-brand-url.md`](./capabilities-brand-url.md) (the `brand_json_url` bootstrap this supersedes)
 
-**Draft schemas**: [`trust.json`](./brand-identity-trust-split/trust.json), [`trust-acknowledgements.json`](./brand-identity-trust-split/trust-acknowledgements.json), and [examples](./brand-identity-trust-split/examples/). Validate with `node specs/brand-identity-trust-split/validate.cjs`. These live under `specs/` on purpose, so none of this is published protocol surface until the implementation PRs below land.
+**Schemas**: [`trust.json`](../static/schemas/source/trust/v1/trust.json) and [`trust-acknowledgements.json`](../static/schemas/source/trust/v1/trust-acknowledgements.json) ship in AdCP 3.3 as **experimental, schemas only** (feature id `identity.trust_json`; nothing consumes them yet). The [examples](./brand-identity-trust-split/examples/) stay here; validate them with `node specs/brand-identity-trust-split/validate.cjs`. The capability field, resolver rules and everything else in this document remain planned for a later release.
 
 **Decided**:
 - A separate well-known trust record. brand.json becomes identity-only, with the trust fields removed in 4.0.
@@ -77,7 +77,7 @@ The reference implementation barely enforces any of this. Nothing compares `rela
 |---|---|
 | Extend `adagents.json` | adagents.json is the grantor's file: publishers, plus data providers for `signals[]`. Governance vendors, agencies, buyers and SSPs have nothing to grant and don't publish one, and crawlers treat its presence as "this is a publisher". |
 | Put the record on `get_adcp_capabilities` or an A2A agent card | Self-attested. `security.mdx` forbids an agent attesting its own keys, and a per-agent card can't hold org-level grants. |
-| Keep one file with `identity` / `trust` sections | The key-resolution fetch has a 256 KiB body cap and a cache TTL bounded by JWKS revocation polling (`security.mdx` brand_json_url step 4). Rich identity data (`visual_guidelines`, assets) shouldn't live under either. Different teams own the two halves, and tooling can clobber one while editing the other. |
+| Keep one file with `identity` / `trust` sections | The key-resolution fetch has a cache TTL bounded by JWKS revocation polling and a hard body cap (`security.mdx` brand_json_url step 4), and every verifier re-parses the whole file under it. Rich identity data (`visual_guidelines`, assets) shouldn't live under either. Different teams own the two halves, and tooling can clobber one while editing the other. |
 | Rename fields so both files match | Still stores the agreement twice. |
 | OpenID Federation (`/.well-known/openid-federation`) | The closest general-purpose precedent: an organization-level document with keys, metadata and a trust hierarchy. But it is built on signed JWT entity statements and trust anchors, while the ad ecosystem runs on unsigned JSON served over TLS from well-known URLs (ads.txt, sellers.json). trust.json keeps that deployment model and leaves room for signed statements later. |
 
