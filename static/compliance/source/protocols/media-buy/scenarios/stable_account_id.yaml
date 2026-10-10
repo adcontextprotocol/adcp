@@ -1,0 +1,252 @@
+id: media_buy_seller/stable_account_id
+version: "1.0.0"
+introduced_in: "3.3"
+title: "Seller-assigned account_id is a durable AccountRef for a buyer-declared account"
+category: media_buy_seller
+summary: "Provisions a fresh buyer-declared account, then verifies the returned account_id resolves the same account as its natural key, is accepted as an AccountRef on an account-scoped task, and survives a re-sync unchanged."
+track: media_buy
+
+# Gate: sellers that declare account.stable_account_id: true for buyer-declared
+# accounts. `require_operator_auth` defaults to false; the runner applies the
+# schema default when the seller declares `account` without the field. Explicit
+# account sellers (require_operator_auth: true) already address accounts by
+# account_id and need not accept natural-key provisioning, so this scenario
+# does not grade them.
+#
+# `required_tools` is a lenient any-of, so it lists only sync_accounts to make
+# provisioning a strict gate. list_accounts steps skip with missing_tool when
+# the agent does not advertise it.
+requires_all_capabilities:
+  - path: account.stable_account_id
+    equals: true
+  - path: account.require_operator_auth
+    equals: false
+
+required_tools:
+  - sync_accounts
+
+narrative: |
+  A seller that declares account.stable_account_id: true returns account_id on
+  every non-failed sync_accounts provisioning result. It accepts
+  { "account_id": ... } wherever an AccountRef is accepted, including for
+  buyer-declared accounts, and never changes an account's account_id for the
+  life of the account. The natural key keeps working throughout 3.x.
+
+  The buyer provisions a fresh natural key, qualified by a per-run
+  operator_unit so no earlier run or fixture can have created it. It captures
+  the returned account_id and checks that the id and the complete natural key
+  resolve the same account on list_accounts. An account-scoped task that names
+  the account only by account_id must succeed instead of returning
+  ACCOUNT_NOT_FOUND. Re-syncing the same natural key returns the same
+  account_id.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - buyer_declared_accounts
+    - stable_account_id
+  examples:
+    - "Sellers that provision buyer-declared accounts and accept their account_id"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller declares account.stable_account_id: true with buyer-declared
+    accounts and exposes sync_accounts. The provisioned key uses a per-run
+    operator_unit id; do not seed it.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discover_and_provision
+    title: "Provision a fresh buyer-declared account"
+    steps:
+      - id: discover_stable_account_id
+        title: "Read the account capability"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        context_outputs:
+          - name: stable_account_billing
+            path: "account.supported_billing[0]"
+          - name: stable_account_operator_unit_id
+            generate: uuid_v4
+        validations:
+          - check: response_schema
+            description: "Capability response matches the canonical schema"
+          - check: field_value
+            path: "account.stable_account_id"
+            value: true
+            description: "Seller declares account_id a durable AccountRef"
+          - check: field_present
+            path: "account.supported_billing[0]"
+            description: "Seller advertises at least one billing model to provision with"
+
+      - id: provision_account
+        title: "Provision the per-run natural key"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "$context.stable_account_operator_unit_id"
+                name: "Stable account_id test"
+              billing: "$context.stable_account_billing"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#stable_account_id_provision"
+        context_outputs:
+          - name: stable_account_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: response_schema
+            description: "Provisioning response matches the canonical schema"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "created"
+            description: "The per-run natural key creates a fresh account"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "A non-failed provisioning result carries account_id"
+
+  - id: resolve_by_account_id
+    title: "The account_id and the natural key name the same account"
+    depends_on: [discover_and_provision]
+    steps:
+      - id: list_by_account_id
+        title: "Resolve the account by account_id"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.stable_account_id"
+        validations:
+          - check: response_schema
+            description: "account_id read matches the canonical schema"
+          - check: array_length
+            path: "accounts"
+            value: 1
+            description: "The account_id filter returns exactly the provisioned account"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "stable_account_id"
+            description: "The returned account carries the same account_id"
+          - check: field_value
+            path: "accounts[0].brand.domain"
+            value: "acmeoutdoor.example"
+            description: "The account_id resolves the provisioned brand"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-agency.example"
+            description: "The account_id resolves the provisioned operator"
+          - check: field_equals_context
+            path: "accounts[0].operator_unit.id"
+            context_key: "stable_account_operator_unit_id"
+            description: "The account_id resolves the per-run operator unit"
+
+      - id: list_by_natural_key
+        title: "Resolve the account by its complete natural key"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "$context.stable_account_operator_unit_id"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Natural-key read matches the canonical schema"
+          - check: array_length
+            path: "accounts"
+            value: 1
+            description: "The complete natural key returns exactly the provisioned account"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "stable_account_id"
+            description: "The natural key resolves the same account_id"
+
+  - id: account_scoped_read_by_account_id
+    title: "An account-scoped read addressed only by account_id"
+    depends_on: [discover_and_provision]
+    # get_products, get_media_buys, and get_media_buy_delivery would be the
+    # natural probes, but the @adcp/sdk 15.0.0 runner replaces an authored
+    # account on those tasks with the natural key it auto-captures from the
+    # earlier sync_accounts response, so none of them can put { account_id }
+    # on the wire here. list_creatives is sent as authored, so this phase uses
+    # it and runs only for sellers with a creative library (where
+    # list_creatives is required). Switch to get_media_buys once the runner
+    # keeps an authored account_id on account-scoped tasks.
+    requires_capability:
+      path: creative.has_creative_library
+      equals: true
+    steps:
+      - id: list_creatives_by_account_id
+        title: "List creatives for the account by account_id"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        stateful: false
+        expected: |
+          Resolve the account from its account_id and return its creative
+          library, which may be empty. Do not return ACCOUNT_NOT_FOUND for an
+          account_id this seller returned from sync_accounts.
+        sample_request:
+          account:
+            account_id: "$context.stable_account_id"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_present
+            path: "creatives"
+            description: "The seller answered for the account_id instead of rejecting it"
+
+  - id: account_id_survives_resync
+    title: "Re-sync keeps the account_id"
+    depends_on: [resolve_by_account_id]
+    steps:
+      - id: resync_natural_key
+        title: "Re-sync the same natural key"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              operator_unit:
+                id: "$context.stable_account_operator_unit_id"
+                name: "Stable account_id test"
+              billing: "$context.stable_account_billing"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#stable_account_id_resync"
+        validations:
+          - check: response_schema
+            description: "Re-sync response matches the canonical schema"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "stable_account_id"
+            description: "Re-syncing the natural key returns the unchanged account_id"
