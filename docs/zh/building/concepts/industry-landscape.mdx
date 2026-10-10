@@ -1,0 +1,143 @@
+---
+title: AI 广告标准版图
+sidebarTitle: 行业版图
+description: "AI 广告标准版图：AdCP、OpenRTB、MCP 和 A2A 如何分工。协议、标准组织和它们在代理式广告里的角色。"
+"og:title": "AdCP — AI 广告标准版图"
+---
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[AI advertising standards landscape](/docs/building/concepts/industry-landscape)。没有中文译本的链接会打开英文规范页面。
+</Info>
+
+塑造 AI 广告的关键标准是 AdCP（代理工作流协调）、OpenRTB（曝光竞价）、MCP（AI 工具调用）和 A2A（代理对代理通信）。广告正在从程序化（机器执行的竞价）走向代理式（AI 代理管理完整的投放生命周期）。这些协议定义各块如何接上。
+
+本页画出这张版图：已经有什么、谁在维护、它们如何拼在一起。
+
+## 正在使用的协议
+
+### Ad Context Protocol（AdCP）
+
+AdCP 定义 AI 代理如何与广告平台交互。它覆盖完整的投放生命周期：产品发现、媒体购买、创意生成、受众激活、品牌治理和投放报告。
+
+| | |
+|---|---|
+| **范围** | 代理级广告工作流 |
+| **传输** | MCP（工具调用）或 A2A（代理对代理） |
+| **维护方** | [AgenticAdvertising.org](https://agenticadvertising.org) |
+| **许可** | Apache 2.0（开源） |
+| **当前版本** | 3.0（GA，2026 年 4 月） |
+| **关键任务** | `get_products`、`create_media_buy`、`build_creative`、`activate_signal` |
+
+AdCP 与传输无关：同一组任务定义在 MCP 和 A2A 上都能工作。平台实现一次；代理用任一传输连接。
+
+### OpenRTB
+
+OpenRTB 处理实时曝光竞价，也就是驱动大部分程序化展示和视频广告的竞价请求 / 竞价响应循环。
+
+| | |
+|---|---|
+| **范围** | 曝光级交易 |
+| **传输** | HTTP POST |
+| **维护方** | [IAB Tech Lab](https://iabtechlab.com) |
+| **当前版本** | 2.6 / 3.0 |
+| **关键对象** | 竞价请求、竞价响应、胜出通知、计费通知 |
+
+OpenRTB 和 AdCP 互补。OpenRTB 处理「我要不要对这次曝光出价？」；AdCP 处理「用这个预算和定向创建一次投放。」详见 [AdCP 与 OpenRTB](/zh/dist/docs/3.2.3/building/concepts/adcp-vs-openrtb)。
+
+### Model Context Protocol（MCP）
+
+MCP 定义 AI 模型如何调用外部工具。由 Anthropic 开发，是把 AI 助手接到 API、数据库和服务的标准。
+
+| | |
+|---|---|
+| **范围** | AI 工具调用 |
+| **传输** | 基于 stdio 或 SSE 的 JSON-RPC |
+| **维护方** | [Anthropic](https://modelcontextprotocol.io) |
+| **使用者** | Claude、Cursor、Windsurf 及其他 AI 助手 |
+
+AdCP 把 MCP 用作传输层之一。AdCP 的 MCP 服务器把广告任务（例如 `get_products` 或 `create_media_buy`）暴露成工具，任何兼容 MCP 的 AI 助手都能调用。
+
+### Agent-to-Agent Protocol（A2A）
+
+A2A 定义自治代理如何彼此通信。由 Google 开发，让专门的代理在多代理工作流里协作。
+
+| | |
+|---|---|
+| **范围** | 代理对代理协作 |
+| **传输** | HTTP + JSON-RPC，带 SSE 流 |
+| **维护方** | [Google](https://google.github.io/A2A/) |
+| **使用者** | 多代理编排框架 |
+
+AdCP 把 A2A 用作另一条传输层。在 A2A 设置里，买方代理把 AdCP 任务作为结构化消息发给卖方代理，并支持通过流处理长时间运行的操作。
+
+## 标准组织
+
+| 组织 | 焦点 | 主要产出 |
+|---|---|---|
+| **[AgenticAdvertising.org](https://agenticadvertising.org)** | AI 代理广告标准 | AdCP 规范、JSON 模式、客户端 SDK |
+| **[IAB Tech Lab](https://iabtechlab.com)** | 数字广告标准 | OpenRTB、VAST、ads.txt、sellers.json、内容分类、AAMP |
+| **[Anthropic](https://anthropic.com)** | AI 安全与研究 | MCP 规范 |
+| **[Google](https://google.github.io/A2A/)** | AI 与云 | A2A 规范 |
+| **[W3C](https://www.w3.org)** | Web 标准 | Privacy Sandbox API、Topics API |
+
+AgenticAdvertising.org 是独立的成员组织。它不是 IAB Tech Lab、Anthropic、Google 或任何其他公司的子公司或工作组。成员包括平台提供方、广告主、代理商和开发者。
+
+## 生态里的其他标准
+
+| 标准 | 用途 | 维护方 |
+|---|---|---|
+| **AAMP** | 代理式广告框架。组件包括 ARTF（Agentic Real Time Framework）、Agentic Direct、Agentic Audiences 和 Agent Registry。和 AdCP 范围重叠，但原语不同（见 [FAQ 对照](/docs/faq#how-adcp-relates-to-other-standards)，英文） | IAB Tech Lab |
+| **VAST** / **VPAID** | 视频广告投放和互动视频 | IAB Tech Lab |
+| **ads.txt** / **sellers.json** | 供应链透明 | IAB Tech Lab |
+| **Open Measurement SDK** | 可见性和注意力测量 | IAB Tech Lab |
+| **Unified ID 2.0** | 保护隐私的身份 | The Trade Desk / Prebid |
+| **Privacy Sandbox** | 无 Cookie 的定向 API | Google / W3C |
+
+## 各层如何叠在一起
+
+这些协议工作在栈的不同层：
+
+```
+┌──────────────────────────────────────────────┐
+│  战略层（AdCP）                              │
+│  投放规划、预算配置、跨平台协调              │
+├──────────────────────────────────────────────┤
+│  传输层（MCP / A2A）                         │
+│  代理如何调用工具、交换数据                  │
+├──────────────────────────────────────────────┤
+│  执行层（OpenRTB / 平台 API）                │
+│  曝光级竞价、广告投放、创意渲染              │
+├──────────────────────────────────────────────┤
+│  测量层（OMSDK / UID2 / Privacy）            │
+│  可见性、归因、身份                          │
+└──────────────────────────────────────────────┘
+```
+
+典型工作流：AI 代理用 **MCP** 在媒体方平台上调用 **AdCP** 任务，创建一次投放。媒体方的广告服务器用 **OpenRTB** 执行曝光级投放。**OMSDK** 测量可见性。**ads.txt** 核验供应链。
+
+## 正在变化的事
+
+三股趋势正在重塑这些标准如何互动：
+
+**由代理中介的购买。** AI 代理将跨平台管理投放，而不是人在仪表盘里点选。这产生了对标准化代理接口的需求，AdCP 提供的就是这个。
+
+**协议汇合。** MCP 和 A2A 正在成为代理通信的传输层。像 AdCP 这样的领域协议建在它们上面。这和 HTTP 成为传输层、领域 API 建在上面是同一模式。
+
+**垂直专业化。** 通用代理协议（MCP、A2A）处理通信。垂直协议处理领域逻辑。AdCP 处理广告。随着代理被采用，同样的「传输加领域」模式可能出现在其他垂直领域。
+
+## 如何参与
+
+<CardGroup cols={2}>
+  <Card title="AdCP 简介" icon="book" href="/zh/dist/docs/3.2.3/intro">
+    了解协议架构和核心概念。
+  </Card>
+  <Card title="加入 AgenticAdvertising.org" icon="users" href="https://agenticadvertising.org/membership">
+    参加塑造协议方向的工作组。
+  </Card>
+  <Card title="AdCP 与 OpenRTB" icon="arrows-left-right" href="/zh/dist/docs/3.2.3/building/concepts/adcp-vs-openrtb">
+    AdCP 和 OpenRTB 如何互补。
+  </Card>
+  <Card title="协议对照" icon="code-compare" href="/zh/dist/docs/3.2.3/building/concepts/protocol-comparison">
+    MCP 和 A2A 作为 AdCP 传输层的技术对照。
+  </Card>
+</CardGroup>

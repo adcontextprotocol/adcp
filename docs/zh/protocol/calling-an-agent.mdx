@@ -1,0 +1,199 @@
+---
+title: 调用代理
+sidebarTitle: 调用代理
+description: "买方每次变更调用都要遵守的线路约定：幂等重放、account 的 oneOf、异步 status submitted，以及从 adcp_error.issues 恢复。"
+"og:title": "AdCP — 调用代理"
+---
+
+# 调用 AdCP 代理
+
+<Info>
+这是阅读辅助。英文原文 [Calling an AdCP agent](/docs/protocol/calling-an-agent) 是这条线路契约的规范文本。本页与英文不一致时，以英文为准。任务参考和 JSON 模式没有中文译本。译名见[术语表](/zh/dist/docs/3.2.3/glossary)。
+</Info>
+
+本页是买方一侧的线路契约：这些规则并不干净地落在任何一个任务模式里，但适用于你发出的每笔会改变状态的调用。如果你在建买方（DSP、规划工具、代理式客户端），并调用 AdCP 的销售、创意、信号、治理、赞助智能或品牌代理，读一遍。
+
+面向代理实现者的同一内容在 [`skills/call-adcp-agent/SKILL.md`](https://github.com/adcontextprotocol/adcp/blob/main/skills/call-adcp-agent/SKILL.md)，并打进[协议包](/docs/building/by-layer/L0/schemas#one-shot-protocol-bundle)（英文），以便 SDK 把它交给编程代理。
+
+按构建顺序走一遍的指南是[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)。
+
+<a id="discovery-chain"></a>
+
+## 发现链
+
+第一次接触任何新代理时，按这个顺序走：
+
+1. **代理卡片**（A2A）或 **`tools/list`**（MCP）：返回为这个端点或会话选出的工具。AdCP 3.2 的 MCP 服务器为每个选出的工具带上自包含的 `inputSchema`；它不会把完整的 AdCP 目录或响应模式装进模型上下文。能调用什么，以线上的名字为准。
+2. **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)**（英文参考）：返回支持的协议、AdCP 主版本和特性标志。它告诉你这个代理支持*哪些*工具，而不是怎么调用。见 [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)。
+3. **[`sync_principal`](/docs/protocol/sync_principal)**（*当代理公布了它时*，英文参考）：声明这个已认证调用方的持久连接资源，例如代理级 webhook 和可复用的报告目的地。这是调用方状态，不是能力发现，也不是广告主账户授权。
+4. **`get_schema(tool_name)`**（*当代理暴露它时；标准化仍在进行，见 [#3057](https://github.com/adcontextprotocol/adcp/issues/3057)*）：返回某个工具请求/响应的 JSON Schema。
+5. **内嵌模式**（离线，具有权威性）：每个已发布的 AdCP 版本都为每个工具提供经 Sigstore 签名的 JSON Schema。路径因 SDK 而异。规范仓库的源用 `dist/schemas/<version>/bundled/`；`@adcp/sdk` 在 `npm run sync-schemas` 之后放在 `schemas/cache/<version>/bundled/`；Python 和 Go SDK 用各自的约定。不要写死路径，让 SDK 的加载器去找。找到之后，每份模式在 `<protocol>/<tool>-{request,response}.json`。
+
+<a id="idempotency-replay-vs-new-operation"></a>
+
+## 幂等：重放还是新操作
+
+请求模式要求键的每个会改变状态的工具，都需要 `idempotency_key`（UUID）。已发布的 3.x [`get_products`](/docs/media-buy/task-reference/get_products) 兼容门面是例外：它的每一条臂上键仍然可选。纯读包装必须容忍可选的键，但卖方可以忽略它并执行一次新的读取；除非卖方写明更强的行为，调用方不能依赖读响应的重放。
+
+对要求键的变更，或卖方写明受重放保护的可选键操作：
+
+- **重试时用同一把键** → 服务器**逐字节重放同一份响应**。用于传输层重试（超时、5xx、连接断开）。
+- **新的键** → **新操作**，与正文无关。上一次失败就生成新 UUID，是粗心的调用方制造重复媒体购买的最常见方式。
+- **同一把键，规范正文不同** → [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict)（英文）。卖方必须拒绝（[安全指南里的幂等规则 5](/docs/building/by-layer/L1/security#idempotency)，英文）。不要默默应用第二份正文，也不要默默重放第一份响应。
+- **同一把键，而第一次请求仍在运行** → [`IDEMPOTENCY_IN_FLIGHT`](/docs/building/verification/compliance-catalog#error-code-idempotency-in-flight)（英文，[规则 9](/docs/building/by-layer/L1/security#idempotency)）。卖方可以用顶层 `error.retry_after` 返回这个代码，而不必阻塞。等待后用**同一把键**重试。在这个代码上铸造新键，会把安全重试变成双重执行的竞态。
+
+异步流程里，重放的响应携带**同一个 `task_id`**，这样轮询继续对着同一个任务，而不是分叉。
+
+紧凑的 3.2 生命周期在这些任务上要求 `idempotency_key`：[`request_proposals`](/docs/media-buy/task-reference/request_proposals)、[`refine_proposals`](/docs/media-buy/task-reference/refine_proposals)、[`decline_proposals`](/docs/media-buy/task-reference/decline_proposals)、[`buy_products`](/docs/media-buy/task-reference/buy_products)、[`accept_proposal`](/docs/media-buy/task-reference/accept_proposal)、[`control_media_buy`](/docs/media-buy/task-reference/control_media_buy)。[`list_products`](/docs/media-buy/task-reference/list_products) 仍是同步的、键可选的读取。旧的 3.x [`get_products`](/docs/media-buy/task-reference/get_products) 门面为了线路兼容，在每一条臂上保持键可选。对保证式、无副作用的同步读取，卖方可以忽略它。请求可能分配任务或改变可观察状态时，买方应当提供它。提供了键，并且卖方声明 `adcp.idempotency.supported: true` 时，卖方必须在产生效果之前建立重放保护。如果省略键，或卖方声明 `adcp.idempotency.supported: false`，买方无法用可移植的至多一次保证去安全重试一个结果不明的调用。
+
+这些任务要求 `idempotency_key`。链接都是英文任务参考：[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)、[`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)、[`sync_creatives`](/docs/creative/task-reference/sync_creatives)、[`sync_audiences`](/docs/media-buy/task-reference/sync_audiences)、[`sync_accounts`](/docs/accounts/tasks/sync_accounts)、[`sync_principal`](/docs/protocol/sync_principal)、[`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs)、[`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs)、[`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources)、[`sync_plans`](/docs/governance/campaign/tasks/sync_plans)、[`sync_governance`](/docs/accounts/tasks/sync_governance)、[`activate_signal`](/docs/signals/tasks/activate_signal)、[`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights)、[`log_event`](/docs/media-buy/task-reference/log_event)、[`report_usage`](/docs/accounts/tasks/report_usage)、[`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)、[`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome)、[`create_property_list`](/docs/governance/property/tasks/property_lists#create_property_list)、[`update_property_list`](/docs/governance/property/tasks/property_lists#update_property_list)、[`delete_property_list`](/docs/governance/property/tasks/property_lists#delete_property_list)、[`create_collection_list`](/docs/governance/collection/tasks/collection_lists#create_collection_list)、[`update_collection_list`](/docs/governance/collection/tasks/collection_lists#update_collection_list)、[`delete_collection_list`](/docs/governance/collection/tasks/collection_lists#delete_collection_list)、[`create_content_standards`](/docs/governance/content-standards/tasks/create_content_standards)、[`update_content_standards`](/docs/governance/content-standards/tasks/update_content_standards)、[`calibrate_content`](/docs/governance/content-standards/tasks/calibrate_content)、[`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session)、[`si_send_message`](/docs/sponsored-intelligence/tasks/si_send_message)。
+
+[`get_creative_features`](/docs/governance/creative/get_creative_features) 的名字像读取，但可能分配提供方的工作，并产生消耗或成本记录。为了线路兼容，它的键在 3.x 仍可选，但客户端应当为每一次逻辑评估提供一把键；公布了重放支持的提供方必须至少在 24 小时内遵守所提供的键。该键在 AdCP 4.0 变为必填。
+
+对上面列出的要求键的操作，缺少键会产生 `adcp_error.code: 'VALIDATION_ERROR'`，并且 `issues` 里有 `/idempotency_key`。
+
+<a id="account-is-oneof--pick-exactly-one-variant"></a>
+
+## `account` 是 `oneOf`：只选一个变体
+
+`account` 是可区分联合。在 [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) 和 [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) 上有两个变体（任务页为英文）：
+
+```json
+// 变体 0：按卖方分配的 id（来自 list_accounts 或带外开通；
+// 由买方声明的卖方也可以把 sync_accounts 回显的 account_id 当作内部句柄）
+"account": { "account_id": "seller_assigned_id" }
+
+// 变体 1：按广告主自然键
+// （brand + operator，可选 operator_unit/currency/timezone/sandbox；
+// brand 可以包含商业身份的 countries[]）
+//   brand.domain — 买方的品牌域（例如广告主网站）
+//   operator     — 代表品牌操作的买方实体
+"account": { "brand": { "domain": "acme.com" }, "operator": "pinnacle-media.com" }
+```
+
+**不要把各变体的必填字段合并到一起。** 每个变体上的 `additionalProperties: false` 意味着 `{account_id, brand}` **两边都失败**。
+
+当任务模式要求 `account` 时，即使 SDK 自动选中了已认证凭据唯一可用的账户，也要发送显式的 `AccountRef`。凭据隐含的隐藏默认值不是协议模型。当任务把 `account` 标为可选时，省略的语义只以该任务文档为准。
+
+其他工具（例如 [`sync_creatives`](/docs/creative/task-reference/sync_creatives)，英文）可能接受超集。始终核对具体工具的模式。
+
+<a id="async-responses-status-submitted-means-queued"></a>
+
+## 异步响应：`status: 'submitted'` 表示已入队
+
+会改变状态的工具可以返回三种形状之一：
+
+```json
+// 成功（同步）：工作已经完成
+{ "media_buy_id": "mb_123", "packages": [...], "confirmed_at": "..." }
+
+// 已提交（异步）：工作已入队
+{ "status": "submitted", "task_id": "tk_abc", "message": "Awaiting IO signature" }
+
+// 错误：不要不改就重试
+{ "errors": [{ "code": "PRODUCT_NOT_FOUND", "message": "..." }] }
+```
+
+AdCP 任务状态是**应用层**契约。MCP 和 A2A 可以包装、流式传输或运送一份 AdCP 响应，但它们原生的任务机制并不取代 AdCP 的 `task_id`、状态值、webhook 载荷或轮询/对账表面。传输任务可以在投递了一份载荷仍写着 `status: 'submitted'` 的 AdCP 响应之后就完成。
+
+看到 `status: 'submitted'` 时，工作**还没有**完成。在 [AdCP A2A Profile Extension v3](/docs/building/by-layer/L0/a2a-profile-extension)（英文）下，调用方必须用返回的 AdCP `task_id` 重新发起 [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) 的结构化调用。包在外面的 A2A Task 已经完成，绝不能把它当作 AdCP 操作的代理去轮询。MCP 实现可以继续暴露旧的 AdCP `tasks/get` 表面；两个 AdCP 轮询名字使用同一套蛇形字段载荷，包括多账户凭据可选的 `account` 范围。
+
+轮询时传入 `include_result: true`，这样状态转到 `completed` 之后，卖方会带上完成载荷：
+
+```json
+// get_task_status 请求
+{
+  "task_id": "task_456",
+  "include_result": true,
+  "account": {
+    "brand": { "domain": "acmeoutdoor.example" },
+    "operator": "pinnacle-agency.example",
+    "sandbox": true
+  }
+}
+
+// get_task_status 响应 — 已完成
+{
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "protocol": "media-buy",
+  "status": "completed",
+  "completed_at": "2025-01-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "packages": [{ "package_id": "pkg_001" }]
+  }
+}
+```
+
+`result` 字段与已完成任务的推送通知 webhook 的 `result` 字段使用同一套载荷结构。同时配置了轮询和 webhook 的买方，两条路收到的数据形状相同。
+
+<a id="error-recovery--read-issues"></a>
+
+## 错误恢复：读 `issues[]`
+
+每次校验失败都产生这样形状的封套：
+
+```json
+{
+  "adcp_error": {
+    "code": "VALIDATION_ERROR",
+    "recovery": "correctable",
+    "field": "/first/offending/pointer",
+    "issues": [
+      {
+        "pointer": "/account",
+        "keyword": "oneOf",
+        "message": "must match exactly one schema in oneOf",
+        "variants": [
+          { "index": 0, "required": ["account_id"],        "properties": ["account_id"] },
+          { "index": 1, "required": ["brand", "operator"], "properties": ["brand", "operator", "sandbox"] }
+        ]
+      },
+      { "pointer": "/brand/domain", "keyword": "required", "message": "must have required property 'domain'" }
+    ]
+  }
+}
+```
+
+- `issues[].pointer`：指向出错字段的 RFC 6901 JSON 指针
+- `issues[].keyword`：Ajv 关键字（`required`、`type`、`oneOf`、`anyOf`、`additionalProperties`、`format`、`enum`）
+- `issues[].variants`：当 `keyword` 是 `oneOf` 或 `anyOf` 时，每一条列出一个变体的 `required` 和声明的 `properties`
+
+**`oneOf` 失败时，从 `variants[]` 里选一个变体，只发送它的 `required` 字段。** 当你事先不知道该字段是联合类型时，这是最快的恢复路径。
+
+`recovery` 的取值：
+
+- `correctable`：买方修正；读 `issues[]`，修补指针，重发
+- `transient`：用**同一把** `idempotency_key` 重试
+- `terminal`：需要人来处理（账户暂停、需要付款）；不要重试
+
+## 常见形状陷阱
+
+| 现象 | 含义 | 修正 |
+| --- | --- | --- |
+| `keyword: 'oneOf'` 且带 `variants[]` | 可区分联合：你发送了多个变体的字段，或一个都没发对 | 从 `variants[]` 里选一个变体。只发送它的 `required` 字段。 |
+| 同一指针上有 2–3 个 `additionalProperties` 错误 | 你合并了 `oneOf` 变体 | 收到一个变体。不要为了「完整」留下多余字段。 |
+| `keyword: 'required'`，`pointer: '/idempotency_key'` | 会改变状态的工具，没有 UUID | 每个逻辑操作生成新的 UUID。重试时复用。 |
+| `/budget` 上的 `keyword: 'type'` 或 `additionalProperties` | 发送了 `{amount, currency}` | `budget` 是数字。货币由 `pricing_option_id` 隐含。 |
+| `/format_kind` 上的 `enum` | 发送了非规范的格式种类 | 选择已注册的规范种类，或使用有效的 `custom` 声明。 |
+| `/destinations/*/type` 上的 `keyword: 'enum'` | 自造的目的地类型 | 使用 `'platform'`（带 `platform`）或 `'agent'`（带 `agent_url`）。 |
+| 响应带 `status: 'submitted'` 和 `task_id` | 异步：工作已入队，还没有完成 | 在 AdCP v3 A2A 剖面上调用 [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json)。在 MCP 上使用代理公布的 AdCP 轮询任务。 |
+
+## 传输说明
+
+- **MCP**：`tools/call`，参数为 `{ name: 'tool_name', arguments: {...} }`。类型化响应读 `structuredContent`。
+- **A2A 1.0**：公布并激活 `https://adcontextprotocol.org/extensions/adcp/v3`，然后 Send Message，并且恰好一个调用 DataPart，形状为 `{ skill: 'tool_name', input: {...} }`；可选的 TextPart 只是建议。权威响应 DataPart 从已完成 Task 的产物里读。
+
+两种传输共享幂等、错误形状、模式强制执行和处理语义。一次调用在一种传输上能工作，等价调用在另一种上也能工作。
+
+一个常见陷阱：**A2A 的 `Task.status.state: 'completed'` 不是 AdCP 完成。** A2A 任务状态描述的是传输调用；AdCP 层的完成在产物 DataPart 里。一个 `completed` 的 A2A 任务可以携带 `submitted` 的 AdCP 响应，其 `task_id` 只在那个 DataPart 里，并通过 [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) 轮询。它也可以携带不是传输失败的结构化业务结果，例如 `GetProductsRejected`：A2A 仍是 `completed`，而产物载荷包含 `status: "rejected"`、`reason`，以及可选的 `suggestions[]`。
+
+## 相关
+
+- 各任务的请求/响应形状：见对应协议的参考（`/docs/media-buy/`、`/docs/creative/`、`/docs/signals/` 等，英文）。
+- [协议架构](/zh/dist/docs/3.2.3/protocol/architecture)：各协议领域如何拼在一起。
+- [必需任务](/docs/protocol/required-tasks)（英文）：代理要声明某个专业方向必须实现哪些任务。
+- [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)（英文）：对任何新代理的第一次调用。
+- [模式](/docs/building/by-layer/L0/schemas)（英文）：SDK 如何消费现在也打包了 `skills/` 的协议包。
+- [编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)：调用方的构建指南，包括安装、调用、处理响应和读入报告。

@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { execFileSync } = require('child_process');
+const { docsNavigationVersions } = require('../scripts/docs-navigation.cjs');
 
 const DOCS_JSON = path.join(__dirname, '../docs.json');
 
@@ -124,6 +125,7 @@ function snapshotMatchesVersionLabel(label, snapshotVersion) {
  */
 const NAV_COVERAGE_ALLOWLIST = new Map([
   ['contributing/', 'Contributor and repository-maintenance guides, not protocol documentation'],
+  ['zh/', 'Simplified Chinese sources. They are published from navigation.languages at zh/dist/docs/<snapshot>/, not from the English version picker.'],
   ['runbooks/', 'Internal AgenticAdvertising.org operations runbooks'],
   ['snippets/', 'Mintlify snippet sources imported into other pages, not standalone pages'],
   ['aao/aao-admins', 'Internal staff reference; the page sets noindex: true'],
@@ -235,13 +237,34 @@ log('====================================\n');
 
 const docsConfig = JSON.parse(fs.readFileSync(DOCS_JSON, 'utf8'));
 const { navigation } = docsConfig;
+const resolvedVersions = docsNavigationVersions(docsConfig);
 
-if (!navigation || !navigation.versions) {
+if (!navigation || !resolvedVersions) {
   log('No navigation.versions found in docs.json', 'error');
   process.exit(1);
 }
 
+// The version picker may live under the English language entry. Expose it
+// here so the rest of this file keeps validating the English snapshots.
+navigation.versions = resolvedVersions;
+
 const rootDir = path.join(__dirname, '..');
+
+// One read per candidate. An existence check followed by a later read is a
+// TOCTOU race (js/file-system-race); ENOENT just means that extension is absent.
+function readPublishedDoc(page) {
+  let missing = null;
+  for (const ext of ['.mdx', '.md']) {
+    try {
+      return fs.readFileSync(path.join(rootDir, `${page}${ext}`), 'utf8');
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      missing = error;
+    }
+  }
+  throw missing;
+}
+
 const defaultVersion = (navigation.versions.find(v => v.default) || navigation.versions[0]).version;
 const pageOwners = new Map();
 const crossVersionDuplicates = [];
@@ -583,6 +606,78 @@ for (const versionEntry of navigation.versions) {
   log('');
 }
 
+test('simplified chinese navigation publishes translated pages without reusing english paths', () => {
+  const languages = navigation.languages;
+  if (!Array.isArray(languages)) {
+    throw new Error('docs.json navigation.languages is required');
+  }
+  const english = languages.find((entry) => entry.language === 'en');
+  const chinese = languages.find((entry) => entry.language === 'zh');
+  if (!english || english.default !== true || languages[0] !== english) {
+    throw new Error('English must stay the default language and the first language entry');
+  }
+  if (!chinese) throw new Error('Missing zh language');
+  const zhPages = collectPages(chinese.groups || []);
+  const defaultEnglish = english.versions.find((entry) => entry.default) || english.versions[0];
+  const snapshot = collectPages(defaultEnglish.groups)
+    .map((page) => /^dist\/docs\/([^/]+)\//.exec(page)?.[1])
+    .find(Boolean);
+  if (!snapshot) throw new Error('default English navigation has no dist/docs snapshot');
+  for (const page of [
+    'intro',
+    'quickstart',
+    'glossary',
+    'protocol/architecture',
+    'building/concepts/index',
+    'building/concepts/protocol-comparison',
+    'building/concepts/adcp-vs-openrtb',
+    'building/concepts/how-agents-communicate',
+    'building/concepts/security-model',
+    'building/concepts/industry-landscape',
+    'building/concepts/managing-response-size',
+    'building/index',
+    'building/schemas-and-sdks',
+    'building/by-layer/L4/index',
+    'building/by-layer/L4/choose-your-sdk',
+    'building/by-layer/L4/build-a-caller',
+    'building/by-layer/L4/build-an-agent',
+    'building/by-layer/L4/migrate-from-hand-rolled',
+    'protocol/calling-an-agent',
+    'building/operating/operating-an-agent',
+    'accounts/overview',
+  ]) {
+    const published = `zh/dist/docs/${snapshot}/${page}`;
+    if (!zhPages.includes(published)) throw new Error(`zh navigation missing ${published}`);
+    const authored = path.join(rootDir, 'docs/zh', `${page}.mdx`);
+    const mirror = path.join(rootDir, `${published}.mdx`);
+    // readlink fails for non-links; verify the intended source without a
+    // separate metadata check followed by reading through a mutable link.
+    const linkTarget = fs.readlinkSync(mirror);
+    if (path.resolve(path.dirname(mirror), linkTarget) !== authored) {
+      throw new Error(`${published}.mdx must be a symlink to docs/zh/${page}.mdx`);
+    }
+    const target = fs.readFileSync(authored, 'utf8');
+    if (!target.startsWith('---')) throw new Error(`${published}.mdx does not resolve to MDX frontmatter`);
+  }
+  const englishPages = new Set(collectPages(navigation.versions));
+  const overlap = zhPages.filter((page) => englishPages.has(page));
+  if (overlap.length > 0) {
+    throw new Error(`page paths reused across languages: ${overlap.join(', ')}`);
+  }
+  const missing = zhPages.filter((page) => {
+    try {
+      readPublishedDoc(page);
+      return false;
+    } catch (error) {
+      if (error?.code === 'ENOENT') return true;
+      throw error;
+    }
+  });
+  if (missing.length > 0) {
+    throw new Error(`Missing zh files:\n      ${missing.join('\n      ')}`);
+  }
+});
+
 log('Nav coverage');
 
 const liveSource = findLiveSourceVersion(navigation.versions);
@@ -733,10 +828,7 @@ test('docs entry points route Slack invitations through the joining guide', () =
 
   for (const page of collectPages(defaultVersionEntry.groups).filter(page => page.startsWith('docs/'))) {
     if (page === 'docs/community/joining-slack') continue;
-    const filePath = fs.existsSync(path.join(rootDir, `${page}.mdx`))
-      ? path.join(rootDir, `${page}.mdx`)
-      : path.join(rootDir, `${page}.md`);
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = readPublishedDoc(page);
     if (containsDirectSlackInvite(content)) directInvitePages.push(page);
   }
 

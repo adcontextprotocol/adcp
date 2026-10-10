@@ -84,7 +84,7 @@ jobs:
     - name: Fetch stable docs release surface
       id: stable-docs-ref
       run: |
-        LINE=$(node -e 'const v = require("./docs.json").navigation.versions; process.stdout.write(String((v.find((e) => e.default) || v[0]).version))')
+        LINE=$(node -e 'const {docsNavigationVersions}=require("./scripts/docs-navigation.cjs"); const v=docsNavigationVersions(require("./docs.json")); if (!v) process.exit(1); process.stdout.write(String((v.find((e) => e.default) || v[0]).version))')
         if ! [[ "$LINE" =~ ^[0-9]+\.[0-9]+$ ]]; then
           echo "::error::docs.json default version must be a stable X.Y line"
           exit 1

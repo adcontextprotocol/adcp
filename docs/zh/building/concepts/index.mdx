@@ -1,0 +1,121 @@
+---
+title: 为什么是 AdCP
+sidebarTitle: 为什么是 AdCP
+description: "AdCP 为什么存在：RTB、平台 API 和直接订单之间的碎片化，以及一套面向广告的通用代理协议如何把它们收拢。"
+"og:title": "AdCP — 为什么是 AdCP"
+---
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[Why AdCP](/docs/building/concepts)。没有中文译本的链接会打开英文规范页面。
+</Info>
+
+## 配置，不是日内交易
+
+RTB 把广告当成日内交易：*「这次曝光值多少钱？」* 对可互换的库存这能工作，但会把一切都商品化。
+
+AdCP 支持投资组合层面的配置：*「我该怎么把广告预算投出去？」* 这更接近广告主真正的想法：他们买的是结果，不是单次曝光。
+
+<Card title="代理式广告是为了配置" icon="book-open" href="https://bokonads.com/p/agentic-advertising-is-for-allocation">
+  为什么 RTB 的心智模型对不上广告主实际做决定的方式。
+</Card>
+
+## 结构问题
+
+程序化广告默认只问一个问题：*「这次曝光现在值多少钱？」* 这个问法把按 CPM、以竞价为中心的假设嵌进了交易层。对全球大部分广告支出，这些假设并不成立。直接交易、赞助、广播、户外和零售媒体用的是不同的定价模型、不同的时间尺度、不同的成功指标。它们不是边缘情况，它们是多数。
+
+AdCP 站在**投放工作流层**，在竞价之上。它不替换 OpenRTB，也不和投放时的决策竞争。它协调的是竞价发生之前和之后的规划、协商、提案和交易创建。[协议对照](/zh/dist/docs/3.2.3/building/concepts/adcp-vs-openrtb)说明 AdCP 和 OpenRTB 如何并存。
+
+把这些工作流步骤做成协议级任务之后，代理可以在决策时应用[品牌身份](/docs/brand-protocol/brand-json)（英文）、[内容标准](/docs/governance/content-standards/)（英文）和治理检查，而不是事后补上。使用这些任务的代理可以把品牌适宜性、创意匹配和合规放进购买过程，而不是执行完再外挂。协议让这件事成为可能；每个代理自己决定用到哪一步。
+
+## 碎片化问题
+
+今天，广告主面对三套完全不同的购买系统：
+
+| 范式 | 时代 | 怎么工作 |
+|----------|-----|--------------|
+| **RTB / 可竞价** | 旧网页 | 通过 OpenRTB 实时竞价 |
+| **基于 API** | 现代社交、AI | 各平台自己的 API（Meta、TikTok） |
+| **直接订单** | 传统 | 插入订单、人工交易 |
+
+每一套都要不同的集成、工具、工作流和专长。90% 的广告支出从不接触 RTB，它在围墙花园、直接交易和优质库存里。
+
+AdCP 建立一套**通用 API 标准**，把这三套收进同一把伞下。
+
+## 全渠道是设计出来的
+
+买广告牌和买社交链接根本不是一回事：
+
+- **定价不同**：固定价、CPM、按互动
+- **创意不同**：静态图、动态视频、对话式 AI
+- **衡量不同**：曝光、互动、到店
+
+AdCP 建一层概念，把这些差异抽象掉，同时保留每个渠道自己的特点。一套协议，任何渠道。
+
+## 为什么是代理？
+
+智能代理降低管理复杂、需要协商的交易的成本：
+
+- **适应细微差别**，不必把一切都写死在代码里
+- **处理差异**，跨平台、跨渠道
+- **自然语言**让买方描述意图，而不是配置参数
+- **扩展关系**，从 3 到 5 个平台扩到 20 个以上，不必按同样比例加人
+
+## AI 的协议层
+
+AdCP 不只是把旧系统统一起来，它也是新兴 AI 表面的协议层。
+
+### 赞助式智能
+
+就像 VAST 定义了视频广告投放，赞助式智能定义 AI 助手里的对话式品牌体验。当 AI 说 *「Delta 有飞往波士顿的航班，要我帮你接通他们的助手吗？」*，赞助式智能定义接下来发生什么。
+
+<Card title="赞助式智能和万亿句子" icon="book-open" href="https://bokonads.com/p/sponsored-intelligence-and-the-trillion">
+  对话式 AI 如何改变广告的经济结构。
+</Card>
+
+### 品牌身份
+
+给 AI 创意生成用的标准化品牌身份。品牌表达自己是谁：颜色、语气、素材，用 AI 系统能消费的格式。
+
+合在一起，它们支撑像 Performance Max 这样完全由 AI 驱动的系统。这些系统需要结构化的品牌输入，而不是人工配置投放。
+
+<CardGroup cols={2}>
+  <Card title="赞助式智能" icon="message-bot" href="/docs/sponsored-intelligence/overview">
+    在 AI 表面上变现。数据流反过来、产品谱系，以及 SI Chat Protocol。此页为英文规范。
+  </Card>
+  <Card title="品牌身份" icon="palette" href="/docs/brand-protocol/brand-json">
+    给 AI 创意生成用的标准化品牌身份。此页为英文规范。
+  </Card>
+</CardGroup>
+
+## 对设计的影响
+
+这些目标决定了 AdCP 的技术设计：
+
+- **异步**：交易需要时间。这不是实时协议，操作可能要几分钟到几天。
+- **人工介入**：有些决定需要人批准。媒体方可以要求人工签字。
+- **多种传输**：MCP 和 A2A 用不同协议提供同一组任务。
+
+## 协议家族
+
+| 协议 | 用途 | 关键任务 |
+|----------|---------|-----------|
+| **媒体购买** | 投放执行 | `get_products`、`create_media_buy` |
+| **信号** | 受众定向 | `get_signals`、`activate_signal` |
+| **创意** | 广告创意管理 | `build_creative`、`sync_creatives` |
+| **治理** | 品牌适宜性、质量、合规 | 媒体资产列表、内容标准 |
+| **赞助式智能** | 对话式品牌体验 | `si_initiate_session` |
+| **策展** | 库存打包 | 即将推出 |
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="协议对照" icon="code-compare" href="/zh/dist/docs/3.2.3/building/concepts/protocol-comparison">
+    MCP 和 A2A：什么时候用哪一个，哪些是一样的。
+  </Card>
+  <Card title="安全模型" icon="shield-halved" href="/zh/dist/docs/3.2.3/building/concepts/security-model">
+    代理式广告为什么把风险抬高，AdCP 防什么，以及给品牌 IT 和 CISO 的检查清单。
+  </Card>
+  <Card title="客户端 SDK" icon="rocket" href="/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk">
+    AdCP 的 JavaScript 和 Python 库。
+  </Card>
+</CardGroup>

@@ -1,0 +1,266 @@
+---
+title: 协议对照
+sidebarTitle: 协议对照
+description: "AdCP 里的 MCP 与 A2A：传输格式、异步处理、状态系统的对照，以及广告代理集成该选哪一种。"
+"og:title": "AdCP — 协议对照"
+---
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[Protocol Comparison](/docs/building/concepts/protocol-comparison)。没有中文译本的链接会打开英文规范页面。线路示例保持英文。
+</Info>
+
+MCP 和 A2A 用同一套统一状态系统提供相同的 AdCP 能力。它们只在传输格式和异步处理上不同。
+
+## 快速对照
+
+| 方面 | MCP | A2A |
+|--------|-----|-----|
+| **请求风格** | 工具调用 | 任务消息 |
+| **响应风格** | 直接 JSON | Artifacts |
+| **状态系统** | 统一的 status 字段 | 统一的 status 字段 |
+| **异步处理** | 工具调用上的 AdCP 状态载荷；可选的 MCP Tasks 包装 | A2A artifacts 里的 AdCP 状态载荷；可选的 SSE 流 |
+| **Webhook** | 工具参数里的 `push_notification_config` | 原生 PushNotificationConfig |
+| **任务管理** | 通过 webhook 或 AdCP 轮询（`get_task_status`，旧的 `tasks/get`）使用 AdCP `task_id` | 通过 webhook 或 AdCP 轮询使用 AdCP `task_id` |
+| **上下文** | 已认证的传输会话；没有 AdCP 会话参数 | 原生 `contextId` |
+| **适合** | Claude、AI 助手 | 代理工作流 |
+
+## 统一状态系统
+
+两种协议使用同一个 status 字段，取值一致。
+
+### 状态处理（两种协议）
+
+每个响应都带一个 status 字段，告诉你下一步做什么：
+
+```json
+{
+  "status": "input-required",
+  "message": "Need your budget"
+}
+```
+
+| 状态 | 含义 | 你的动作 |
+|--------|---------------|-------------|
+| `completed` | 任务完成 | 处理数据，显示成功 |
+| `input-required` | 需要用户输入 | 读 message，提示用户，再继续 |
+| `working` | 处理中（少于 120 秒） | 等待这次打开的调用或流的结果；显示进度 |
+| `submitted` | 长时间运行（几小时到几天） | 提供 webhook，或降低轮询频率 |
+| `failed` | 出错 | 显示错误，妥善处理 |
+| `auth-required` | 需要认证 | 提示提供凭据 |
+
+完整的状态处理见[任务生命周期](/docs/building/by-layer/L3/task-lifecycle)（英文规范）。
+
+## 传输格式的差别
+
+状态和数据相同，包装不同。
+
+### MCP 响应格式
+```json
+{
+  "status": "input-required",
+  "message": "I need your budget and target audience",
+  "task_id": "task-123",
+  "context_id": "ctx-123",
+  "products": [],
+  "suggestions": ["budget", "audience"]
+}
+```
+
+`context_id` 是可选的兼容元数据，不是 MCP 会话状态。
+
+### A2A 响应格式
+```json
+{
+  "status": "input-required",
+  "contextId": "ctx-123",
+  "artifacts": [{
+    "artifactId": "artifact-product-discovery-xyz",
+    "name": "product_discovery",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "I need your budget and target audience"
+      },
+      {
+        "kind": "data",
+        "data": {
+          "products": [],
+          "suggestions": ["budget", "audience"]
+        }
+      }
+    ]
+  }]
+}
+```
+
+## 异步操作的差别
+
+两种协议携带同一条 AdCP 状态进展：
+`submitted` → `working` → `completed` / `failed`
+
+上面这条进展是 AdCP 的应用状态。MCP Tasks 和 A2A 的任务状态是传输机制，可以运送一份 AdCP 载荷，但不能代替 AdCP 的任务轮询或对账。
+
+### MCP 的任务增强调用（传输包装）
+```javascript
+// Task-augmented tool call — returns CreateTaskResult immediately
+const createResult = await mcp.callTool({
+  name: "create_media_buy",
+  arguments: {
+    buyer_ref: "acme_q1",
+    packages: [...],
+    push_notification_config: {
+      url: "https://buyer.com/webhooks/adcp/create_media_buy/op_123",
+      authentication: { schemes: ["HMAC-SHA256"], credentials: "secret" }
+    }
+  },
+  task: { ttl: 86400000 }
+});
+// createResult.task = { taskId: "task-456", status: "working", pollInterval: 5000 }
+
+const status = await mcp.getTask({ taskId: "task-456" });
+// status = { taskId: "task-456", status: "completed", ... }
+
+const result = await mcp.getTaskResult({ taskId: "task-456" });
+// result = { content: [...], isError: false }
+
+const adcpResponse = result.structuredContent;
+if (adcpResponse.status === "submitted") {
+  await adcp.call("get_task_status", {
+    task_id: adcpResponse.task_id,
+    include_result: true
+  });
+}
+```
+
+任务增强的工具调用会立刻返回 `CreateTaskResult`。`push_notification_config` 是可选的，给活得比会话更久的操作发 webhook。客户端通过 MCP Tasks 协议轮询，这在 LLM 循环之外。取回真正的 `CallToolResult` 之后，再看里面的 AdCP 载荷。如果 `adcpResponse.status` 是 `submitted`，MCP 任务已经把 AdCP 响应送到了，媒体购买工作流仍然开着。
+
+### A2A 异步模式
+
+AdCP v3 配置把一份 AdCP Submitted 结果放进一个已完成的 A2A Task。两个 ID 保持独立：
+
+```json
+{
+  "task": {
+    "id": "a2a-task-456",
+    "contextId": "ctx-123",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{
+      "artifactId": "adcp-result",
+      "parts": [{
+        "data": {
+          "status": "submitted",
+          "task_id": "adcp-task-456"
+        }
+      }]
+    }]
+  }
+}
+```
+
+用一次新的、已激活的 `{ skill: "get_task_status", input: { task_id: "adcp-task-456" } }` 调用来轮询这笔持久操作。不要轮询 `a2a-task-456`。处理程序还在执行时如果要传输进度，使用官方的 A2A `SendStreamingMessage` 或 `SubscribeToTask`，并消费它们的 `StreamResponse` SSE 帧。持久的 AdCP webhook 登记在类型化任务输入里的 `push_notification_config`；A2A 的 `configuration.taskPushNotificationConfig` 只跟踪传输层的 Task。
+
+## 上下文管理
+
+### MCP：传输会话上下文
+```javascript
+async function callAdcp(request) {
+  // Reuse the authenticated MCP connection when the host offers continuity.
+  // Do not add a request-body context_id.
+  return mcp.call('get_products', request);
+}
+```
+
+宿主提供连续性时，复用已认证的 MCP 连接。不要在请求体里加 `context_id`。
+
+如果所选请求模式为了 3.x 兼容而接受 `context_id`，MCP 服务器会忽略它。它不能用来选择会话状态、身份、账户、授权、任务延续或幂等范围。
+
+### A2A：消息上下文
+```javascript
+const response1 = await a2a.send({
+  message: {
+    messageId: crypto.randomUUID(),
+    role: "ROLE_USER",
+    parts: [{ data: {
+      skill: "get_products",
+      input: { buying_mode: "brief", brief: "Find video products" }
+    } }]
+  }
+});
+
+const response2 = await a2a.send({
+  message: {
+    messageId: crypto.randomUUID(),
+    contextId: response1.contextId,
+    role: "ROLE_USER",
+    parts: [{ data: {
+      skill: "get_products",
+      input: { buying_mode: "brief", brief: "Focus on premium video inventory" }
+    } }]
+  }
+});
+```
+
+服务器在第一次类型化调用时分配 `contextId`。下一条 Message 显式带上返回的 `contextId`。
+
+## 澄清处理
+
+两种协议都使用 `status: "input-required"`：
+
+```javascript
+function handleResponse(response) {
+  if (response.status === 'input-required') {
+    const info = promptUser(response.message);
+    const continuation = verifiedContinuationFor(response);
+    if (!continuation) return requireReconciliation(response);
+    return resumeContinuation(continuation, info);
+  }
+
+  if (response.status === 'completed') {
+    return processResults(response);
+  }
+}
+```
+
+这段对 MCP 和 A2A 都适用。
+
+## 错误处理
+
+两者都用 `status: "failed"`，错误结构相同：
+
+```json
+{
+  "status": "failed",
+  "message": "Insufficient inventory for your targeting criteria",
+  "context_id": "ctx-123",
+  "error_code": "insufficient_inventory",
+  "suggestions": ["Expand targeting", "Increase CPM"]
+}
+```
+
+## 选哪一种
+
+### 选 MCP，如果你在用：
+- Claude Desktop 或 Claude Code
+- 兼容 MCP 的 AI 助手
+- 简单的、基于工具的集成
+- 直接的 JSON 响应
+
+### 选 A2A，如果你在用：
+- Google AI 代理或 Agent Engine
+- 多模态工作流（文本加文件）
+- 实时流式更新
+- 基于 artifact 的数据处理
+
+### 两种协议都提供：
+- 相同的 AdCP 任务和能力
+- 统一的状态系统，客户端逻辑清晰
+- 传输原生的对话处理
+- 异步操作支持
+- 人工介入工作流
+- 错误处理与恢复
+
+## 下一步
+
+- **MCP 指南**：工具调用和传输会话见 [MCP 指南](/docs/building/by-layer/L0/mcp-guide)（英文规范）
+- **A2A 指南**：artifact 和流见 [A2A 指南](/docs/building/by-layer/L0/a2a-guide)（英文规范）
+- **两种协议**：用统一的状态处理提供相同的能力

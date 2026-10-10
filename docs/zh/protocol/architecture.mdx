@@ -1,0 +1,126 @@
+---
+title: 协议架构
+sidebarTitle: 架构
+"og:image": /images/concepts/protocol-domain-map.png
+description: "AdCP 协议架构：身份层（品牌、注册表、账户）、交易域（媒体购买、创意、信号、赞助式智能），以及横切的治理。"
+"og:title": "AdCP — 协议架构"
+---
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[Protocol architecture](/docs/protocol/architecture)。没有中文译本的链接会打开英文规范页面。
+</Info>
+
+# 协议架构
+
+AdCP 分成多层，把商业角色、编排和技术执行分开。
+
+## 协议域地图
+
+<img src="/images/concepts/protocol-domain-map.png" alt="三层架构图：顶层是身份层（品牌、注册表、账户），中层是交易域（媒体购买、创意、信号、赞助式智能），治理作为横切层连到所有交易域" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+### 身份层
+
+三个协议域在任何交易发生之前，先确定各方是谁。
+
+**品牌协议**用托管在 `/.well-known/brand.json` 的 `brand.json` 定义组织身份。买方用它表达广告主身份和已授权的运营方；卖方用它表达运营方身份、销售代理发现、签名密钥发现，以及媒体资产关系声明。任意域名都可以解析成一份规范的品牌身份。见[品牌协议](/docs/brand-protocol)（英文）。
+
+**注册表**提供公开的 REST API，用来解析实体、发现代理。可以解析品牌域、找出哪些代理被授权出售某媒体方的库存，或按能力发现代理。见[注册表 API](/docs/registry)（英文）。
+
+**账户**建立买方和卖方之间的商业关系。每一笔 AdCP 交易都发生在一个账户里，账户规定计费条款、运营方授权和用量报告。账户以品牌协议里的品牌身份为根基。见[账户协议](/zh/dist/docs/3.2.3/accounts/overview)。
+
+### 交易域
+
+四个协议域处理核心广告操作。[可信匹配协议（TMP）](/docs/trusted-match)（英文）是执行层，用四段生命周期把规划时的决定接到实时激活：
+
+1. **规划** — [`get_products`](/docs/media-buy/task-reference/get_products) 和 [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) 确定套餐、预算和定向条件。
+2. **执行** — TMP Context Match 判断内容是否合适；TMP Identity Match 检查用户是否符合资格。两步都在投放时运行，并且在结构上把隐私隔开。
+3. **互动** — 赞助式智能会话交付对话式的品牌体验。
+4. **报告** — [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) 汇总各卖方的投放数据。
+
+**媒体购买**覆盖库存发现（`get_products`）、投放创建（`create_media_buy`）和投放报告（`get_media_buy_delivery`）。媒体方返回带定价、定向选项和投放预测的结构化媒体产品。买方可以请求提案，也就是把媒体方的专业判断编成可审计方案的结构化媒体计划。见[媒体购买](/docs/media-buy)（英文）。
+
+**创意**处理规范的能力发现（[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)）、由 AI 驱动的创意生成（[`build_creative`](/docs/creative/task-reference/build_creative)）、目录同步（[`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs)），以及创意投放追踪。创意代理从品牌协议解析品牌身份，用来生成符合品牌的素材。见[创意](/docs/creative)（英文）。
+
+**信号**支持受众和定向数据的发现（[`get_signals`](/docs/signals/tasks/get_signals)）与激活（[`activate_signal`](/docs/signals/tasks/activate_signal)）。数据提供方发布信号定义，买方可以用自然语言查询来发现，再在决策平台上激活。见[信号](/docs/signals/overview)（英文）。
+
+**赞助式智能**定义 AI 助手里的对话式品牌体验。当用户对某个品牌表现出兴趣，宿主会发起一次先征得同意的会话，品牌代理再用文本、语音、界面组件或商务交接来对话。见[赞助式智能](/docs/sponsored-intelligence/overview)（英文）。
+
+### 治理（横切）
+
+**治理**横跨所有交易域。治理代理管理媒体资产列表（用于定向或排除的精选资产集合）、内容标准（品牌适宜性政策）和创意治理（安全扫描、内容分类）。治理数据流入媒体购买决策、创意校验和信号激活。见[治理协议](/docs/governance/overview)（英文）。
+
+人工介入通过两种机制进入协议：任何会改变状态的操作都可以经任务生命周期转成异步，等待人工复核；投放治理则通过 [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) 和 [`check_governance`](/docs/governance/campaign/tasks/check_governance) 提供声明式的买方复核通道。见[人工介入如何进入协议](/docs/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol)（英文）。这不是实时协议：需要人工批准时，操作可能要几分钟到几天。
+
+### 各域的隐私姿态
+
+AdCP 的隐私姿态并不统一。TMP 是唯一在**结构上**强制隐私的域：代码路径分开，模式层面禁止把身份和上下文合在一起，而且去关联可以独立核验。其他每个域都依赖**合同保密或按会话同意**：交换数据的各方受账户条款或用户同意约束，而不是受协议层的隔离约束。治理门控（通过投放治理）是另一条轴：它可以因预算、政策或品牌安全要求人工批准，但不会改变底层域的隐私机制。
+
+| 域 | 隐私机制 | 说明 |
+|---|---|---|
+| 可信匹配协议 | **结构隔离** | Context Match 和 Identity Match 走分开的代码路径；模式禁止交叉。见 [TMP 隐私架构](/docs/trusted-match/privacy-architecture)（英文）。 |
+| 媒体购买 | 合同 | 买方和卖方在账户条款下交换完整的计划上下文。 |
+| 创意 | 合同 | 创意素材和定向信号在账户条款下经过创意代理。 |
+| 信号 | 合同 | 受众和信号数据在账户条款和信号提供方协议下交换。 |
+| 品牌 / 注册表 / 账户 | 公开或合同 | 品牌身份是公开的（`brand.json`）；商业条款限定在账户范围内。 |
+| 赞助式智能 | 先同意 | 用户按会话同意；品牌代理能看到对话内容，只有用户分享时才能看到身份。转发会话的网络可能看到路由元数据，见[网络](/docs/sponsored-intelligence/networks)（英文）。 |
+| 治理 | 合同 | 治理代理在账户条款下收到评估政策所需的上下文。 |
+
+「结构上」的意思是：协议本身，而不是运营方的政策，阻止敏感数据被拼在一起。如果要在 TMP 之外得到这个性质，就得自己实现，或者和 TMP 组合。
+
+---
+
+## 生态分层
+
+上面的协议域地图说明 AdCP 任务彼此怎么关联。下面这张图说明它们怎么对应到真实世界的角色和系统。
+
+<img src="/images/concepts/ecosystem-layers.png" alt="四层生态图：顶层是商业各方，中层是带专门代理的编排层，下层是技术执行，治理和人工监督横跨所有层" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+### 商业各方
+
+**买方** — 广告主、代理商、零售媒体网络，以及为特定用途打包库存和数据的策展方。
+
+**媒体卖方** — 媒体方、销售公司、代理公司、SSP 和广告网络。
+
+这些方通过编排层交换曝光和资金。
+
+### 编排层
+
+**媒体编排平台** — 评估卖方和受众，执行购买策略。通过 MCP 和专门代理通信。
+
+**信号代理** — 暴露受众和定向数据发现与激活的 MCP 服务器。
+
+**销售代理** — 暴露媒体产品发现和投放执行的 MCP 服务器。
+
+**创意代理** — 暴露格式发现和 AI 创意生成的 MCP 服务器。
+
+### 技术执行
+
+**可信匹配协议（TMP）** — 实时执行层，决定哪些已经谈妥的套餐应该为某次曝光激活。两项在结构上分开的操作——Context Match（内容是否合适）和 Identity Match（用户是否符合资格）——把规划时的媒体购买接到网页、移动端、CTV、AI 助手和零售媒体上的投放决策。见 [TMP 文档](/docs/trusted-match)（英文）。
+
+**代理执行引擎（AXE）** — TMP 已弃用的前身。见 [AXE 文档](/docs/media-buy/advanced-topics/agentic-execution-engine)（英文）。
+
+**决策平台** — 选择投放哪条广告的基础设施，可以走直接投放，也可以走程序化（RTB）。例子包括 DSP、SSP 和广告服务器。
+
+### 治理和人工监督
+
+**治理代理**在所有层提供合规和质量控制：媒体资产列表、品牌适宜性评分、质量测量（MFA 分数、广告密度），以及隐私合规（COPPA、TCF、GDPR）。它们在设置时、实时和竞价后工作。
+
+**人工介入** — 在决策点做人工批准。见[人工介入如何进入协议](/docs/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol)（英文）。
+
+---
+
+## 状态持久化与水平扩展
+
+AdCP 是多实例协议。同一个买方和某个代理的工作流可能被路由到多个后端副本——[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) 可能落在一个副本上，随后的 `get_media_buy` 落在另一个副本上——两次调用都必须看到同一份状态。
+
+### 规范要求
+
+以 `(brand, account)` 元组为键的状态必须在代理进程实例之间存活。这包括但不限于：账户、目录、创意、受众、事件源、治理配置、进行中的投放、提案、插入订单批准记录、信号激活、赞助式智能会话、异步任务记录，以及幂等键缓存。实现不得把进程内内存当作任何 `(brand, account)` 范围状态的主存储，只要后续调用还要读回这些状态。进程内存储不满足这条要求。状态域的规范（非穷尽）目录见[账户状态](/docs/building/by-layer/L2/account-state)（英文）。
+
+**可以接受的存储：** Postgres、Redis、DynamoDB，或任何在进程重启后仍然存在、并且每个副本都能访问的共享存储。**不能接受：** 模块级变量、每个进程一份的 Map 或 dict、单节点文件存储，或者用粘性会话把「没有共享状态」掩盖过去。
+
+在同一个 `(brand, account)` 上下文里，实现必须支持跨副本的「写后读」：一次成功的非异步响应之后，路由到任意副本的后续请求都必须观察到这次写入。异步或待处理的任务状态（状态转换、任务记录、推送通知订阅）本身也受这条规则约束——任务记录一旦创建，就必须能从任意副本读到。最终一致性可以接受，但陈旧窗口必须有界并且公开：要么不超过该实现写明的异步轮询间隔，要么在 [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) 里明确声明。
+
+**沙盒豁免。** 沙盒账户可以携带不跨进程重启持久化的临时状态（见[沙盒模式](/docs/media-buy/advanced-topics/sandbox)，英文）。在同一次沙盒会话里，跨副本的写后读仍然适用。
+
+实现可以用架构来证明这条不变量（托管的无服务器加上共享数据存储），也可以用多实例合规测试，或用自己的核验；协议关心的是不变量，不是方法。见[验证你的代理——核验跨实例状态](/docs/building/verification/validate-your-agent#verifying-cross-instance-state)（英文）。
