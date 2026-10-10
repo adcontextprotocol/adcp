@@ -11,9 +11,11 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ## Version 3.3.0
 
-**Status:** Beta cycle. 3.3 is a minor release targeting the 3.3.0 milestone. Beta.0 is the protocol-first cut used as the canonical input for SDK work; beta.1 incorporates integration feedback and becomes SDK-backed only after SDKs ingest the exact beta.1 bundle. No stable field, enum value, or task is removed, renamed, or deprecated. Two normative changes narrow conformant behavior and are listed under [Behavior changes to review](#behavior-changes-to-review). This section is the cumulative 3.3 narrative and is refreshed at each beta cut; `CHANGELOG.md` records what each individual cut consumed.
+**Status:** Beta cycle. 3.3 is a minor release targeting the 3.3.0 milestone. Beta.0 is the protocol-first cut used as the canonical input for SDK work; beta.1 incorporates integration feedback and becomes SDK-backed only after SDKs ingest the exact beta.1 bundle. No stable field, enum value, or task is removed, renamed, or deprecated. Several normative changes narrow conformant behavior and two guarantees loosen; they are listed under [Behavior changes to review](#behavior-changes-to-review). This section is the cumulative 3.3 narrative and is refreshed at each beta cut; `CHANGELOG.md` records what each individual cut consumed.
 
-**Where to start:** [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3) is the adopter overview. [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3) has the role-based checklist. The [3.3 beta program](/docs/reference/3-3-beta) covers artifacts, SDK timing, and the proposals still in working-group review.
+**Where to start:** [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3) is the adopter overview. [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3) has the role-based checklist. The [3.3 beta program](/docs/reference/3-3-beta) covers artifacts, SDK timing, and the proposals still in review.
+
+AdCP 3.3 lets scheduled, human-gated, and offline media run through the same buy as programmatic. Bookings can say when they will be confirmed, proposal terms pin the third-party definitions they reference, proposal requests can target vendor-measured outcomes, governance plans can budget by period, and delivery reports carry what linear TV, print, and DOOH sellers actually know. The release also tightens the places where two conformant 3.2 implementations could still disagree, and keeps new single-adopter surfaces experimental.
 
 ### Beta checkpoints
 
@@ -26,29 +28,63 @@ Each beta is immutable. The `3.3-beta` documentation selector advances to the la
 
 ### 3.3 feature index
 
-- **Accounts:** discovery and negotiation tasks never provision an account; unresolved `account` references return `ACCOUNT_NOT_FOUND` with one recovery path (#7848, #7871).
-- **Trust and signing:** one agent-resolution algorithm for every signing surface, canonical URL matching, publisher key pins that only narrow, and `adagents.json` agent URLs that include the endpoint path (#7882, #7827, #7881).
-- **Media buy:** optional `media_buy.features.catalog_ingestion` declarations for catalog types, modes, feed formats, identifiers, batch limits, and item status reporting (#7927).
-- **Channels:** structured DOOH `location` on placements and `dooh_inventory_summary.venue_counts[]` on products (#7416).
-- **Extensions:** the AdCP-owned `ext.adcp` namespace with an optional `opportunity` binding for 3.2 `get_products` integrations (#7904).
-- **Conformance:** a new advisory unprovisioned-account storyboard, capability-gated wholesale and replay checks, and a polling-based `sales-guaranteed` path (#7848, #7893, #7854, #7931).
+- **Scheduled and human-gated buying:** `expected_confirmation_at` on `submitted` envelopes (#8016) and on `refine_proposals` finalize (#8104); definition pins in `commercial_terms.definition_pins[]` with `definition_changed` and `REFERENCE_DEFINITION_CHANGED` (#7960); vendor-metric `outcome_target` goals (#7966); experimental governance `budget.periods[]` and `governance.supports_budget_periods` (#7965); `change_cutoff` on installment deadlines (#8054).
+- **Delivery reporting:** `impressions` optional on delivery rows, version-gated (#8108); experimental spot lifecycle, makegood linkage, and break position (#8017); experimental print proof of insertion and circulation (#7936); property-grain rollup capabilities (#7982); `reporting_webhook.operation_id` (#7895); receivers ignore `aggregated_totals` in delivery webhooks (#8053).
+- **Channels:** structured DOOH `location` and `dooh_inventory_summary.venue_counts[]` (#7416); experimental minute-level dayparts (#8025); `nmo` and `videoamp` demographic systems, `mxf` and broadcast mezzanine codecs, and experimental `loudness` (#8019); the expanded broadcast TV guide (#8006); product channel-declaration guidance (#8028).
+- **Accounts and audiences:** discovery and negotiation tasks never provision an account (#7848); audience sizes as ranges and `match_rate_basis` (#8024); the `uids[].value` wire form per type (#8059); the principal-layer buyer walkthrough (#7974).
+- **Trust and signing:** one agent-resolution algorithm for every signing surface (#7882); A2A operation-resolution hardening becomes MUST (#7945) and the `request_signing.operation_sources` capability (#7979); invocation messages with more than one DataPart are rejected (#8050); the brand.json cap rises to 2 MiB (#8057).
+- **Media buy:** optional `media_buy.features.catalog_ingestion` declarations (#7927); advertise only the `measurement_terms` you accept (#8062); `unsupported-targeting-dimension` details for `UNSUPPORTED_FEATURE` (#8052).
+- **Capabilities:** optional `adcp.implementation.sdks[]` SDK identity and integration metadata (#8079).
+- **Reliable Reporting (experimental):** the `REVISION_UNREADABLE` issue code (#8099) and a breaking-change notice for superseded snapshot compaction (#8100).
+- **Identity (experimental):** `trust.json` v1 schemas for review, with no consumer in 3.3 (#8067).
+- **Extensions:** the AdCP-owned `ext.adcp` namespace with an optional `opportunity` binding (#7904).
+- **Schemas and bundles:** envelope composition in compact schemas with tightened `compact-task-submitted.json` response validation (#7946); provenance hoisted into bundled `$defs` (#7950).
+- **Conformance:** `sales-broadcast-tv` 1.1.0 certifies a guaranteed or non-guaranteed fixed-price TV transaction (#8046); `requires: [controller]` on every controller-seeded storyboard (#7986); the advisory unprovisioned-account storyboard (#7848); new capability-gated scenarios for definition pins, budget periods, property delivery, and vendor-metric and event-cost outcome targets (#7960, #7965, #7982, #7966); repaired `typed_proposal_negotiation` and `advanced_delivery_reporting` (#7949, #8021); the `seller_optimized_budget` minimum-spend fixture moved to the second package (#7961); request-signing step-1 vectors and the `negative/026` re-code (#8066), complete `profile-3.2` signing-vector mirrors (#8068), and step-5 canonicalization vectors (#8076); the non-guaranteed storyboard accepts `active` buys (#8027). Training agent: CreatorLoop creator-marketplace seller and proposal fixtures (#8106), `property_list` targeting (#8078), and private GCS reporting (#8012). Hosted service and artifacts: restored 3.0.27 hosted artifacts (#7972) and synchronized runtime compiler helpers (#7968). Hosted service: grading of governance-aware sellers (#7808).
 
 ### Behavior changes to review
 
-- **Discovery never provisions (#7848).** Discovery and negotiation tasks, including `get_products`, `list_products`, `get_signals`, `request_proposals`, `refine_proposals`, and `decline_proposals`, MUST NOT create or activate an account or accept default terms. A lazily provisioning seller provisions only on a provisioning task (`create_media_buy`, `buy_products`, `accept_proposal`, `sync_accounts`, `sync_creatives`, `sync_catalogs`, `sync_event_sources`, `activate_signal`), and every unresolved `account` returns `ACCOUNT_NOT_FOUND` unless a seller that provisions lazily instead of exposing `sync_accounts` answers for the account it would create without creating it. This narrows the 3.2 wording "first account-scoped request", so a seller that provisioned on `get_products` is no longer conformant. The request and response schemas are unchanged, but the required side effect is not: such a seller may still answer, and must not create the account while doing so.
-- **One agent-resolution algorithm (#7882).** Pinned keys must be published in the agent's JWKS, a `kid`-only pin matches nothing, `key_origins` is checked for every webhook signer that publishes `brand_json_url`, and agent URLs match by canonical URL. Signatures that verified under 3.2 can fail; the list is in the [migration guide](/docs/reference/migration/3-2-to-3-3#signature-verification-tightens).
+- **Discovery never provisions (#7848).** Discovery and negotiation tasks MUST NOT create or activate an account or accept default terms. A lazily provisioning seller provisions only on a task that commits spend or creates account-owned resources. This narrows the 3.2 wording "first account-scoped request". Schemas are unchanged.
+- **One agent-resolution algorithm (#7882).** Pinned keys must be published in the agent's JWKS, a `kid`-only pin matches nothing, `key_origins` is checked for every webhook signer that publishes `brand_json_url`, and agent URLs match by canonical URL. Signatures that verified under 3.2 can fail.
+- **A2A hardening becomes MUST (#7945).** Strict parsing of unsigned bodies, A2A Part shape, and task-continuation binding were SHOULD in 3.2.3 and are MUST from 3.3.
+- **`reporting_webhook.operation_id` fails closed (#7895).** A seller MUST NOT emit `media_buy_delivery` webhooks to a registration that omits it.
+- **Definition pins are required for 3.3 callers (#7960).** A seller MUST pin every covered third-party definition its proposal terms reference and re-verify the pins at finalize and acceptance.
+- **Audience identifier wire form (#8059).** `uids[].value` for `uid2` and `euid` is the raw identifier, never the encrypted token, and MUST NOT be case-folded or re-encoded.
+- **brand.json fetch limits (#8057).** Verifiers MUST enforce the cap while streaming, reject nesting deeper than 32, run cheap checks first, and bound concurrent trust-root fetches.
+- **Advertised measurement terms are accepted terms (#8062).** A seller MUST NOT advertise a `measurement_terms` value it would reject with `TERMS_REJECTED` on unchanged replay.
+- **Delivery rows may omit `impressions` (#8108).** The schema loosens, but sellers MUST NOT omit it toward callers pinned below 3.3 (or with no pin), and receivers MUST NOT read absence as zero or derive impression-denominated values.
+- **Receivers ignore `aggregated_totals` (#8053).** Delivery-webhook receivers MUST NOT treat it as authoritative and MUST NOT reject a payload for carrying it.
+- **Loosened: brand.json cap 2 MiB (#8057).** A verifier still enforcing 256 KiB rejects a brand.json a 3.3 verifier accepts.
+- **Loosened: audience match counts (#8024).** A `ready` audience no longer promises `matched_count` and `effective_match_rate`.
 
-### Additive surfaces and conformance
+Each is detailed in the [migration guide](/docs/reference/migration/3-2-to-3-3#required-to-claim-3-3-behavior) and recorded in [3.3 exceptions to 3.x compatibility](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta). Fields that a 3.2 validator rejects, and so are sent only on a negotiated 3.3 version, are listed in [Send only to 3.3 peers](/docs/reference/migration/3-2-to-3-3#send-only-to-3-3-peers). Schema-shape changes for SDK generators are in [SDK and code-generator maintainers](/docs/reference/migration/3-2-to-3-3#sdk-and-code-generator-maintainers). 3.3 deprecates no stable field, task, or enum value.
 
-Catalog ingestion declarations, DOOH location, `ext.adcp`, and the 3.3 grading changes are described in [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3) and [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3). 3.3 deprecates no stable field, task, or enum value.
+### Experimental surfaces in 3.3
 
-### Already shipped in 3.2.2
+Per the [experimental status contract](/docs/reference/experimental-status#graduation-cadence). No experimental surface graduates in 3.3, and no breaking change to an existing experimental surface takes effect in 3.3 so far; the active notices are listed below.
 
-The account-reference clarification (#7871) and the trust-docs consistency fixes (#7881) were published as documentation-only changes in [3.2.2](https://github.com/adcontextprotocol/adcp/releases/tag/v3.2.2). They appear again in the 3.3.0 changelog but are not new to 3.2.2 adopters.
+| Feature id | Surface | Status | Expected next |
+|---|---|---|---|
+| `media_buy.spot_lifecycle` | `spot_status`, `scheduled_at`, `replaces_spot_id`, `break_position` on `by_spot[]`; `available_statuses` and `supports_break_position` (#8017) | New in 3.3; experimental | Contract-time preemption criteria and a replacement-offer flow ([#5683](https://github.com/adcontextprotocol/adcp/issues/5683)) are planned for 3.4 and may reshape the status vocabulary and makegood linkage. |
+| `media_buy.daypart_granularity` | `start_time` / `end_time` on daypart entries and `time_granularity` (#8025) | New in 3.3; experimental | May be reshaped by network and station targeting ([#5679](https://github.com/adcontextprotocol/adcp/issues/5679)) and the targeting-dimension error codes ([#6978](https://github.com/adcontextprotocol/adcp/issues/6978)). |
+| `creative.broadcast_loudness` | `loudness` on `video_hosted` params (#8019) | New in 3.3; experimental | The `standard` enum may grow, and the object may be reconciled with the flat `loudness_*` fields on `audio_hosted`. |
+| None registered | `print_metrics` on delivery metrics (#7936) | New in 3.3; `x-status: experimental` only, like `ooh_metrics` | `position_delivered` stays free-form until a position vocabulary is agreed. A feature id may be registered before graduation. |
+| `governance.campaign` | Adds `budget.periods[]` and `governance.supports_budget_periods` (#7965) | Still experimental; additive change | No graduation planned for 3.3. |
+| `identity.trust_json` | `trust/v1/trust.json` and `trust/v1/trust-acknowledgements.json` schemas (#8067) | New in 3.3; experimental, schemas only | Nothing consumes it in 3.3 and there is nothing to declare. The document name and `/.well-known` path may change; resolver precedence and a capability pointer are planned for a later release. |
+| `media_buy.reporting_delivery` | Reliable Reporting 1.0; adds `REVISION_UNREADABLE` (#8099) | Still experimental; two active breaking-change notices | The [consumer-status requirement](/docs/reference/migration/reliable-reporting-status-loop) has not merged; it may land no earlier than the first minor after October 24, 2026. [Superseded snapshot compaction](/docs/reference/migration/3-2-to-3-3#superseded-reporting-snapshots-may-be-compacted) (#8100) takes effect no earlier than the first minor after November 20, 2026, so not in 3.3 if 3.3 ships before then. |
+| `protocol.principal`, `account.change_feed`, `brand.rights_lifecycle`, `measurement.core`, `measurement.gateway`, `trusted_match.core`, `trusted_match.verified_identity`, `sponsored_intelligence.core`, `creative.evaluator`, `creative.signal_fanout`, `media_buy.audience_activation`, `media_buy.execution_requirements`, `media_buy.product_identity` | Unchanged in 3.3 | Still experimental | None merged. Open proposals that touch them are in the [3.3 beta program](/docs/reference/3-3-beta#in-review-for-3-3). |
 
-### In working-group review
+The [canonical list](/docs/reference/experimental-status#current-experimental-surfaces) is authoritative.
 
-Proposals still in review, and not part of any beta until they merge, are listed in the [3.3 beta program](/docs/reference/3-3-beta#in-working-group-review-for-3-3).
+### Already shipped in 3.2.2 and 3.2.3
+
+These merged on `main` during the 3.3 cycle and were also released on the 3.2 line. Their changesets appear again in the 3.3.0 changelog but are not new to 3.2.3 adopters.
+
+- **[3.2.2](https://github.com/adcontextprotocol/adcp/releases/tag/v3.2.2):** account references before provisioning (#7871) and the trust-docs consistency fixes (#7881).
+- **[3.2.3](https://github.com/adcontextprotocol/adcp/releases/tag/v3.2.3):** the A2A operation-resolution security errata ([GHSA-2pm6-6mc8-8xcm](https://github.com/adcontextprotocol/adcp/security/advisories/GHSA-2pm6-6mc8-8xcm)) with hardening at SHOULD (#7945), the `adagents.json` agent-URL clarification (#7827), the evaluator feature-membership fix (#7939), wholesale-discovery and finalize-replay storyboard gates (#7893), the polling `sales-guaranteed` path (#7854), the `validate_input` gates (#7541), and the acceptance-policy sandbox account (#7931).
+
+### In review for 3.3
+
+Proposals still in review, and not part of any beta until they merge, are listed in the [3.3 beta program](/docs/reference/3-3-beta#in-review-for-3-3).
 
 ---
 

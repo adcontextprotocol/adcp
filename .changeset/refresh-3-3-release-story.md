@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": patch
+---
+
+Refresh the AdCP 3.3 release story to match the work merged on `main`: What's new, the 3.2-to-3.3 migration guide, the 3.3 beta program, the 3.3.0 release notes, and the versioning page's 3.3 exceptions. The pages now cover the 3.3 features merged since the story was first written (expected confirmation time, definition pins, vendor-metric outcome goals, governance budget periods, spot lifecycle, print proof of insertion, property-grain rollups, audience size ranges, minute dayparts, broadcast formats, `reporting_webhook.operation_id`, and `request_signing.operation_sources`). They list every normative narrowing, including the A2A hardening MUST and the `operation_id` fail-closed rule, and add a "Send only to 3.3 peers" table plus SDK-maintainer notes. They also add the per-surface experimental status table, move items already released in 3.2.2 and 3.2.3 into their own section, and regenerate the "In review for 3.3" table from the open milestone and pull requests. Documentation only; no schema change.
