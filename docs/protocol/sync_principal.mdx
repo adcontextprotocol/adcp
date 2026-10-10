@@ -16,6 +16,12 @@ A **principal** is the durable party behind an authenticated caller — a buyer 
 
 The task does not register a buyer agent and does not accept a buyer-agent URL or identity in its body. Who the principal is comes only from authenticated transport.
 
+Three consequences that are easy to get wrong:
+
+- **It is optional.** The principal exists as soon as a stable credential authenticates. A buyer that never calls `sync_principal` can still use `sync_accounts`, [`list_accounts`](/docs/accounts/tasks/list_accounts), and every domain task; it only forgoes principal-wide webhooks, reusable reporting destinations, and declared async versions.
+- **There is one principal per credential, not one per operator.** An agent that authenticates as itself is one `buyer_agent` principal however many operators it acts for; those operators are fields on its accounts. Operators are principals only when they authenticate themselves, which is the `require_operator_auth: true` model.
+- **It grants no account authority.** Accounts are authorized through [`sync_accounts`](/docs/accounts/tasks/sync_accounts), `list_accounts`, and the seller's own access controls, never by principal configuration.
+
 For an end-to-end buyer-side example, see [Set up your buyer agent with a seller](/docs/accounts/principal-registration-walkthrough).
 
 {/* Using latest because this experimental schema is not yet released. Update after release. */}
@@ -51,7 +57,7 @@ The principal layer begins **after authentication**. AdCP defines no credential-
 
 1. **Authenticate.** Autonomous software presents its workload identity; a person presents their delegated user identity. No `register_buyer_agent` step exists or is needed.
 2. **Read [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).** Discover `adcp.principal`, its supported sections, event and delivery offerings, and limits.
-3. **Verify the resolved identity.** Call [`get_principal`](/docs/protocol/get_principal). A `recognized` result returns the existing durable `principal_id` and seller-resolved `principal_kind` without standing configuration. `unconfigured` means stable authentication succeeded but no durable record exists. The read creates neither records nor identifiers.
+3. **Verify the resolved identity.** Call [`get_principal`](/docs/protocol/get_principal). A `recognized` result returns the existing durable `principal_id` and seller-resolved `principal_kind` without standing configuration. `unconfigured` means stable authentication succeeded but no durable record exists. The read creates neither records nor identifiers. When the result carries `principal_kind` (`current` or `recognized`), buyers MAY use it as a preflight before account calls: `buyer_agent` matches `account.require_operator_auth: false`, and `operator` matches `true`. A mismatch means the buyer presented the wrong credential for this seller's account model.
 4. **Call `sync_principal`.** Declare consumption facts (`declarations`), register webhook subscribers (including `principal.changed` and, with explicit scope, account-anchored events), and register reusable reporting destinations.
 5. **Authorize advertiser accounts separately** through [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and account-level tasks. Nothing in steps 1–4 grants account authority.
 6. **Bind each account's feeds** to the reusable `destination_ref`s.

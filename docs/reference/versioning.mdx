@@ -108,7 +108,7 @@ When only major-precision is provided:
 
 ### Migration timeline
 
-The spec stays at SHOULD on both sides through all of 3.x — consistent with the 3.x stability guarantee that fields don't graduate optional → required within a major. The AdCP compliance grader carries the adoption pressure within 3.x: sellers that want certification at 3.2 ship the response echo.
+The spec stays at SHOULD on both sides through all of 3.x. The [3.x stability guarantees](#3-x-stability-guarantees) would allow optional → required after a prior deprecation release, but this migration deliberately does not use that path. The AdCP compliance grader carries the adoption pressure within 3.x: sellers that want certification at 3.2 ship the response echo.
 
 | Phase | Spec — buyer | Spec — seller | Compliance grader |
 |---|---|---|---|
@@ -234,7 +234,7 @@ Experimental surfaces changed under their own notice contract and are not except
 
 ### 3.3 exceptions to 3.x compatibility (beta)
 
-AdCP 3.3 adds no stable field, removes none, and deprecates none. Three merged changes alter what a conformant implementation may do: two narrow it and one loosens a required field. They are recorded here under the rule above for core-security and normative behavior. This list is refreshed at each beta cut.
+AdCP 3.3 adds only optional fields, removes none, and deprecates no field; it deprecates one usage, the natural key as the account reference after provisioning ([migration guide](/docs/reference/migration/3-2-to-3-3#deprecations)). Three merged changes alter what a conformant implementation may do: two narrow it and one loosens a required field. They are recorded here under the rule above for core-security and normative behavior. This list is refreshed at each beta cut.
 
 | Change | What narrows | Basis |
 |---|---|---|

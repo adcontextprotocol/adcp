@@ -1036,6 +1036,11 @@
           "format": "uri",
           "description": "OAuth authorization endpoint for obtaining operator-level credentials. Present when the seller supports OAuth for operator authentication. The agent directs the operator to this URL to authenticate and obtain a bearer token. If absent and require_operator_auth is true, operators obtain credentials out-of-band (e.g., seller portal, API key)."
         },
+        "stable_account_id": {
+          "type": "boolean",
+          "description": "Whether the seller-assigned account_id is a durable AccountRef for every account the caller can operate, including buyer-declared accounts. When true, the seller MUST return account_id on every non-failed sync_accounts provisioning result, MUST accept { account_id } wherever an AccountRef is accepted, and MUST NOT change an account's account_id for the life of the account, including across identity reconciliation. A buyer-declared seller that declares true still accepts the account's current natural key throughout 3.x. Buyers holding an account_id from a seller that declares true SHOULD send it in place of the natural key. When false or absent, buyers follow the account model declared by require_operator_auth and MUST NOT assume a buyer-declared seller accepts its returned account_id. Sellers whose accounts already use account_id references (require_operator_auth: true) SHOULD declare true when their ids meet these rules. Using the natural key as the reference after provisioning is deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare true during 3.x to give buyers a migration path.",
+          "default": false
+        },
         "supported_billing": {
           "type": "array",
           "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. When the buyer calls sync_accounts, it must pass one of these values. A lazy-provisioning seller may omit sync_accounts only when billing can be resolved unambiguously from this capability or the authenticated agent's onboarding defaults.",
