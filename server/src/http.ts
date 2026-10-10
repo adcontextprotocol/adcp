@@ -10222,22 +10222,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // rather than silently passing every mutating call to a broken backend.
     // No-ops when the store falls back to memoryBackend.
     //
-    // Bounded with a 10s deadline because the pg pool has connectionTimeoutMillis=5000
-    // but no statement_timeout — without this race, a hung query (e.g., DB starting
-    // up, replica failover) would stall boot indefinitely and starve Fly's TCP healthcheck.
-    const { getIdempotencyStore } = await import("./training-agent/idempotency.js");
-    const probe = getIdempotencyStore().probe?.();
-    if (probe) {
-      await Promise.race([
-        probe,
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Idempotency backend probe timed out after 10s — check DATABASE_URL and pool reachability")),
-            10_000,
-          ),
-        ),
-      ]);
-    }
+    // Allow the configured connection timeout plus 5s query headroom (at least
+    // 10s overall). The pool has no statement_timeout, so a hung query must
+    // still fail boot rather than starve Fly's TCP healthcheck indefinitely.
+    const { getIdempotencyStore, probeIdempotencyStore } = await import("./training-agent/idempotency.js");
+    await probeIdempotencyStore(getIdempotencyStore(), dbConfig.connectionTimeoutMillis);
 
     // Sync Stripe customer IDs and seed dev data. Organizations are created
     // lazily via ensureOrganizationExists at first login and via the

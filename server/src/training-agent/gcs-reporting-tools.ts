@@ -1,11 +1,51 @@
 import type { LegacyAdcpToolMap as AdcpToolMap, RequestContext, Account } from '@adcp/sdk/server';
 import { AdcpError } from '@adcp/sdk/server';
 import { getTrainingGcsReporting } from './gcs-reporting.js';
-import { resolveReportingAccountDurably } from './reporting-reliability.js';
+import { trainingGcsReportingConfig } from './gcs-reporting-config.js';
+import { commitTrainingDailySourcePeriod, resolveReportingAccountDurably } from './reporting-reliability.js';
 import { resolveServedAdcpVersion } from './task-handlers.js';
 import { supportsReliableReporting } from './types.js';
 
 type Operation = 'get_reporting_status' | 'get_media_buy_delivery' | 'sync_reporting_status' | 'sync_reporting_receipts';
+
+/** Uses server-generated ordinary delivery metrics; callers never submit source rows. */
+export async function publishTrainingGcsSourceDelivery(
+  input: Record<string, unknown>, result: Record<string, unknown>, principal: string | undefined,
+): Promise<void> {
+  try { await publishSourceDelivery(input, result, principal); }
+  catch { throw new AdcpError('SERVICE_UNAVAILABLE', { recovery: 'transient', message: 'Daily reporting source publication is unavailable.' }); }
+}
+
+async function publishSourceDelivery(
+  input: Record<string, unknown>, result: Record<string, unknown>, principal: string | undefined,
+): Promise<void> {
+  const config = trainingGcsReportingConfig();
+  if (!config || !principal || principal !== config.canaryPrincipal) return;
+  const runtime = getTrainingGcsReporting();
+  if (!runtime || principal !== runtime.config.canaryPrincipal || !input.account
+    || input.reporting_revision_id || result.errors || !Array.isArray(input.media_buy_ids)
+    || typeof input.start_date !== 'string' || typeof input.end_date !== 'string') return;
+  const account = await resolveReportingAccountDurably(principal, input.account as Parameters<typeof resolveReportingAccountDurably>[1]);
+  if (!account || !await runtime.owns(principal, account.accountId)) return;
+  const { rows } = await runtime.db.query<{ source_config_id: string; source_config_version: number; media_buy_ids: string[] }>(
+    'SELECT source_config_id,source_config_version,media_buy_ids FROM host_accounts WHERE principal_id=$1 AND account_id=$2',
+    [principal, account.accountId],
+  );
+  const saved = rows[0];
+  if (!saved || rows.length !== 1 || JSON.stringify([...saved.media_buy_ids].sort()) !== JSON.stringify([...input.media_buy_ids].sort())) return;
+  const period = result.reporting_period as { start?: unknown; end?: unknown } | undefined;
+  const start = `${input.start_date}T00:00:00.000Z`;
+  const end = `${input.end_date}T00:00:00.000Z`;
+  if (period?.start !== start || period.end !== end || !Array.isArray(result.media_buy_deliveries)) return;
+  const deliveries = result.media_buy_deliveries as Array<{ media_buy_id?: unknown; totals?: { impressions?: unknown } }>;
+  if (deliveries.length !== saved.media_buy_ids.length
+    || JSON.stringify(deliveries.map(item => item.media_buy_id).sort()) !== JSON.stringify([...saved.media_buy_ids].sort())
+    || deliveries.some(item => typeof item.totals?.impressions !== 'number' || !Number.isSafeInteger(item.totals.impressions) || item.totals.impressions < 0)) return;
+  const impressions = deliveries.reduce((total, item) => total + (item.totals!.impressions as number), 0);
+  await commitTrainingDailySourcePeriod({ principal, accountId: account.accountId, sourceConfigId: saved.source_config_id,
+    sourceConfigVersion: saved.source_config_version, mediaBuyIds: saved.media_buy_ids, period: { start, end }, impressions });
+}
+
 /** Existing tools retain their fixture behavior unless this caller provisioned a GCS account. */
 export async function dispatchTrainingGcsReporting<T extends Operation>(operation: T, input: Record<string, unknown>, principal: string | undefined): Promise<AdcpToolMap[T]['result'] | undefined> {
   const configIds = operation === 'sync_reporting_status' && Array.isArray(input.statuses)

@@ -35,8 +35,15 @@ The new offering, `training-gcs-daily-v1`, publishes provisional daily UTC
 analytics snapshots from **already committed** private training ledger revisions.
 Create an ordinary private training account and its media buys through the
 existing tools. Install an active `analytics-daily-managed` configuration with
-an explicit scope of one to ten media buys. Continue publishing that source
-configuration through the existing training flow. The GCS worker queries its
+an explicit scope of one to ten media buys. After an eligible UTC day closes,
+read the ordinary source configuration's status, then call
+`get_media_buy_delivery` for its exact media-buy scope and that full day.
+For this provisioned private canary, the server commits the returned aggregate
+impressions as the daily training source's immutable revision. Partial scopes,
+open days, periods before activation and conformance clock fixtures cannot
+publish a source revision. Subsequent reads preserve its first committed bytes.
+The existing teaching offering's finality stays separate from the GCS offering's
+provisional snapshot contract. The GCS worker queries its
 saved principal/account/configuration/version and exact closed period; it does
 not generate reporting rows. Missing or incomplete source coverage returns
 `NOT_READY`. An explicitly committed empty revision is eligible.

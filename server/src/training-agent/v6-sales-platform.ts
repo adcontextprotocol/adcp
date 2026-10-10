@@ -1694,6 +1694,8 @@ export class TrainingSalesPlatform
         )
         : withCurrentAccountScope(currentArgs as Record<string, unknown>, ctx.account);
       const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      const { publishTrainingGcsSourceDelivery } = await import('./gcs-reporting-tools.js');
+      await publishTrainingGcsSourceDelivery(args as Record<string, unknown>, result, ctx.authInfo?.clientId);
       return translateV5Result(result);
     },
     // Optional read-side methods.
