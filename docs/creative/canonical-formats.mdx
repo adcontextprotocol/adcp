@@ -1556,7 +1556,7 @@ For the case where brand.json is missing or stale, the BrandRef itself carries a
 }
 ```
 
-Override fields take precedence over `brand.json` for the call carrying this BrandRef. The pattern matches BrandRef's existing inline overrides (`industries`, `data_subject_contestation`) — brand.json is canonical; inline overrides are per-call. Adopters needing to override brand-kit fields outside this subset (`voice_attributes`, `prohibited_terms`) MUST publish a different brand.json and reference it via a different `domain`.
+Override fields take precedence over `brand.json` for the call carrying this BrandRef. The pattern matches BrandRef's existing inline overrides (`industries`, `data_subject_contestation`) — brand.json is canonical; inline overrides are per-call. Adopters needing to override brand-kit fields outside this subset (for example the brand-wide `prohibited_terms` list) MUST publish a different brand.json and reference it via a different `domain`.
 
 ## Platform extensions — distribution
 

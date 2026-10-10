@@ -566,6 +566,11 @@
             }
           ]
         },
+        "prohibited_terms": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Words or phrases the brand never uses in copy, across all formats and sellers (e.g., 'binge', a competitor's name). Plain strings that apply regardless of copy language; case-insensitive whole-term matching is the receiver's choice, and enforcement is advisory. For a text slot the effective list is the union of this list and the slot's `text-asset-requirements.prohibited_terms`; neither weakens the other. Distinct from a creative brief's `compliance.prohibited_claims`, which restricts statements judged by meaning. Not overridable per call through `brand_kit_override`."
+        },
         "tagline": {
           "oneOf": [
             {
