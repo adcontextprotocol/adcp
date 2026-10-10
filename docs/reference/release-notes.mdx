@@ -11,7 +11,7 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ## Version 3.3.0
 
-**Status:** Beta cycle. 3.3 is a minor release targeting the 3.3.0 milestone. Beta.0 is the protocol-first cut used as the canonical input for SDK work; beta.1 incorporates integration feedback and becomes SDK-backed only after SDKs ingest the exact beta.1 bundle. No stable field, enum value, or task is removed, renamed, or deprecated. Two normative changes narrow conformant behavior and are listed under [Behavior changes to review](#behavior-changes-to-review). This section is the cumulative 3.3 narrative and is refreshed at each beta cut; `CHANGELOG.md` records what each individual cut consumed.
+**Status:** Beta cycle. 3.3 is a minor release targeting the 3.3.0 milestone. Beta.0 is the protocol-first cut used as the canonical input for SDK work; beta.1 incorporates integration feedback and becomes SDK-backed only after SDKs ingest the exact beta.1 bundle. No stable field, enum value, or task is removed, renamed, or deprecated; one usage is (natural-key account references after provisioning). Two normative changes narrow conformant behavior and are listed under [Behavior changes to review](#behavior-changes-to-review). This section is the cumulative 3.3 narrative and is refreshed at each beta cut; `CHANGELOG.md` records what each individual cut consumed.
 
 **Where to start:** [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3) is the adopter overview. [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3) has the role-based checklist. The [3.3 beta program](/docs/reference/3-3-beta) covers artifacts, SDK timing, and the proposals still in working-group review.
 
@@ -40,7 +40,7 @@ Each beta is immutable. The `3.3-beta` documentation selector advances to the la
 
 ### Additive surfaces and conformance
 
-Catalog ingestion declarations, DOOH location, `ext.adcp`, and the 3.3 grading changes are described in [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3) and [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3). 3.3 deprecates no stable field, task, or enum value.
+Catalog ingestion declarations, DOOH location, `ext.adcp`, and the 3.3 grading changes are described in [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3) and [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3). 3.3 deprecates no stable field, task, or enum value; it deprecates using the natural key as the account reference after provisioning, planned for removal in 4.0 (see [Deprecations](/docs/reference/migration/3-2-to-3-3#deprecations)).
 
 ### Already shipped in 3.2.2
 
