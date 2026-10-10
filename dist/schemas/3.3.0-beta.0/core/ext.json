@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/ext.json",
+  "title": "Extension Object",
+  "description": "Extension object for optional parameters under an owner-controlled namespace (e.g., ext.gam, ext.roku). The reserved ext.adcp namespace is maintained by the AdCP Working Group and is limited to its documented bindings. Used for custom capabilities, partner-specific configuration, and features being proposed for standardization. Namespace support does not imply support for undocumented future bindings.",
+  "type": "object",
+  "additionalProperties": true
+}

@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/audience-size.json",
+  "title": "Audience Size",
+  "description": "A count of people reported as a range with a stated precision, so a seller never has to invent a point value for a size its platform only reports as an interval, an approximation, or a bucket. lower_bound MUST be less than or equal to upper_bound, and MUST equal upper_bound when precision is 'exact' (JSON Schema cannot express this cross-field rule; it is enforced by conformance, not validation). A seller MUST NOT use this object to disclose a size below its minimum audience size; follow the audience's too_small status and minimum_size instead. Defined once so every surface that reports an audience size uses the same shape.",
+  "type": "object",
+  "properties": {
+    "lower_bound": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Lowest number of people the size can be. Equals upper_bound when precision is 'exact'."
+    },
+    "upper_bound": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Highest number of people the size can be. MUST be greater than or equal to lower_bound."
+    },
+    "precision": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/enums/audience-size-precision.json",
+      "description": "How precisely lower_bound and upper_bound are reported."
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of when the seller or its platform computed this size. Omitted when the seller does not know. Sizes drift as membership and matching change, so buyers comparing two reads should compare as_of first."
+    }
+  },
+  "required": [
+    "lower_bound",
+    "upper_bound",
+    "precision"
+  ],
+  "additionalProperties": true
+}

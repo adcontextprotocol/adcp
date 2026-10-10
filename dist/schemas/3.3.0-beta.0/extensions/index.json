@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/extensions/index.json",
+  "title": "AdCP Extension Registry",
+  "description": "Auto-generated registry of formal AdCP extensions. Extensions provide typed schemas for vendor-specific or domain-specific data within the ext field. Agents declare which extensions they support in their agent card.",
+  "_generated": true,
+  "_generatedAt": "2026-10-10T17:49:15.776Z",
+  "extensions": {
+    "adcp": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/extensions/adcp.json",
+      "title": "AdCP-owned extensions",
+      "description": "AdCP Working Group-owned extension namespace. The opportunity binding carries the published 3.2 planning-cycle object on get_products. Sellers opt in through extensions_supported; support applies to documented bindings, not arbitrary future features. Core fields take precedence where the selected task defines them.",
+      "valid_from": "3.2",
+      "docs_url": "https://github.com/adcontextprotocol/adcp/blob/main/docs/building/by-layer/L2/context-sessions.mdx#adcp-opportunity-extension"
+    }
+  }
+}
