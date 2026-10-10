@@ -337,6 +337,7 @@ Buyers receive the intersection of both. `spend`, and `impressions` where the se
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
 - **`ooh_metrics`**: Classic (static) OOH metrics — panels, posting period, posting records with photo evidence, and modeled `estimated_impressions` with a declared `estimation_basis`; the channel has no play events
 - **`print_metrics`**: Print-specific metrics (experimental) — per-issue proof of insertion (tearsheet evidence, page, position) and circulation, reported on `by_installment` rows; see [Print creative](/docs/creative/channels/print#delivery-evidence-and-circulation)
+- **`publication`**: Proof that a digital installment was published (`published_at`, `posts[]`, optional `evidence` and `verified_by`), reported on `by_installment` rows (experimental); see [Installment lifecycle and proof of publication](#installment-lifecycle-and-proof-of-publication)
 - **`cost_per_click`**: Cost per click (`spend / clicks`)
 - **`cost_per_completed_view`**: Cost per completed view (`spend / completed_views`); CPCV pricing scalar for video/audio inventory
 - **`cpm`**: Cost per thousand impressions (`(spend / impressions) × 1000`); universal pricing scalar across CTV, display, mobile/web video, native, audio, and DOOH
@@ -1597,6 +1598,118 @@ A seller that reports these rows declares them in the product's reporting capabi
     "available_statuses": ["scheduled", "preempted", "makegood"],
     "supports_break_position": true
   }
+}
+```
+
+#### Installment lifecycle and proof of publication
+
+<Note>
+Experimental in AdCP 3.3 (`media_buy.installment_lifecycle` in `experimental_features`). `installment_status`, `publication`, and `available_installment_statuses` can change within 3.x with the notice described in [experimental status](/docs/reference/experimental-status). Notifying the buyer when an installment publishes is not part of 3.3.
+</Note>
+
+A `by_installment` row can follow one installment from plan to proof. `installment_status` reuses the [installment status](https://adcontextprotocol.org/schemas/v3/enums/installment-status.json) vocabulary, and `publication` is the buyer's evidence that a digital installment (creator post, newsletter edition, podcast episode) went out.
+
+- **Absent status.** A row with no `installment_status` is a delivery row, as in AdCP 3.2. A seller that reports a digital installment as published SHOULD set `installment_status: published` and populate `publication`.
+- **Postponed.** A `postponed` installment keeps its `installment_ref` and gets a new `scheduled_at`.
+- **Cancelled.** A `cancelled` row carries no delivery metrics. It omits `impressions`, and `spend` reflects only what the accepted terms bill. A seller that declares `cancelled` MUST report a sold installment that will not run as `cancelled` rather than drop the row.
+- **Expected versus actual.** Metrics on a `scheduled` or `tentative` row are expectations, not delivery, and buyers MUST NOT add them to actuals or to package totals. The no-delivery-metrics rule for `cancelled` rows is a prose rule; the schema does not enforce it.
+- **Publication.** `publication` has a required `published_at` and a `posts[]` array with at least one entry. Each entry is a [`published_post`](https://adcontextprotocol.org/schemas/v3/core/assets/published-post-asset.json) reference, one per place the installment was published, so cross-posts are separate entries and a buyer can pass an entry to [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for paid amplification. Optional `evidence` is a capture or archive of the live post. Optional `verified_by` names an independent verifier; when it is absent the record is seller-reported. `publication` MUST be absent on `scheduled`, `tentative`, `postponed`, `cancelled`, and `live` rows. Sellers SHOULD populate it on each `by_installment` row for a digital installment they report as `published`.
+- **Not a billing event.** `publication` is seller-reported evidence. Billing follows the accepted terms, and invoices surface through [`get_account_financials`](/docs/accounts/tasks/get_account_financials).
+- **No notification.** There is no new notification type. A buyer reads publication from the next reporting fire or from `get_media_buy_delivery`, and a change-feed seller records a `delivery_report` change.
+- **Not reported versus not delivered.** `reporting_capabilities.available_installment_statuses` lists the statuses a seller reports and is meaningful only with `supports_installment_breakdown: true`. A status that is not listed is not reported, so the absence of such rows proves nothing. `published`, `aired`, and `live` are delivery statuses and need not be listed. A seller that has committed to `publication` and cannot yet produce it reports `{ "scope": "standard", "metric_id": "publication" }` in `by_package[].missing_metrics`.
+- **Compatibility.** Rows with no `installment_status` stay valid. Sellers MUST NOT send rows with `installment_status` `scheduled`, `tentative`, `postponed`, or `cancelled` to callers pinned below AdCP 3.3, because AdCP 3.2 validators require `impressions` on every installment row. A caller with no declared pin is treated as pinned below 3.3, and reporting webhooks follow the pin of the registration that receives them. Sellers also MUST NOT send `available_installment_statuses` to those callers, so their view of the capability is unchanged. 3.2 validators ignore `publication` and `installment_status` on delivery rows. A `published` row that reports views and omits `impressions`, as in the example below, is subject to the general rule for optional `impressions`: a seller MUST NOT omit it toward a caller pinned below AdCP 3.3 and instead omits the row.
+- **Registry.** A seller that returns `installment_status`, `publication`, or `available_installment_statuses` MUST list `media_buy.installment_lifecycle` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). These fields apply to `by_installment` only, not to `by_installment_property`.
+
+**Creator video with two cross-posts.** The installment is reported with views rather than impressions, and each place it was published is a separate `posts[]` entry:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json",
+  "status": "completed",
+  "reporting_period": { "start": "2026-10-12T00:00:00Z", "end": "2026-10-19T00:00:00Z" },
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_nova_creators",
+      "status": "active",
+      "totals": { "impressions": 0, "spend": 8000 },
+      "by_package": [
+        {
+          "package_id": "pkg_creator_video",
+          "spend": 8000,
+          "pricing_model": "flat_rate",
+          "rate": 8000,
+          "currency": "USD",
+          "by_installment": [
+            {
+              "installment_ref": {
+                "collection_ref": { "publisher_domain": "pinnacle-creators.example.com", "collection_id": "pinnacle_unboxed" },
+                "installment_id": "ep_2026_10_12"
+              },
+              "installment_name": "Unboxed: the autumn drop",
+              "installment_status": "published",
+              "scheduled_at": "2026-10-12T15:00:00Z",
+              "views": 52000,
+              "spend": 8000,
+              "publication": {
+                "published_at": "2026-10-12T15:04:00Z",
+                "posts": [
+                  {
+                    "asset_type": "published_post",
+                    "post_url": "https://video.example.com/watch/abc123",
+                    "platform": "example_video",
+                    "published_at": "2026-10-12T15:04:00Z"
+                  },
+                  {
+                    "asset_type": "published_post",
+                    "post_url": "https://shorts.example.com/p/xyz789",
+                    "platform": "example_shorts",
+                    "published_at": "2026-10-12T15:10:00Z"
+                  },
+                  {
+                    "asset_type": "published_post",
+                    "platform": "example_social",
+                    "platform_post_id": "9876543210"
+                  }
+                ],
+                "evidence": {
+                  "url": "https://archive.example.com/captures/abc123.png",
+                  "captured_at": "2026-10-12T16:00:00Z"
+                }
+              }
+            },
+            {
+              "installment_ref": {
+                "collection_ref": { "publisher_domain": "pinnacle-creators.example.com", "collection_id": "pinnacle_unboxed" },
+                "installment_id": "ep_2026_10_19"
+              },
+              "installment_status": "scheduled",
+              "scheduled_at": "2026-10-19T15:00:00Z",
+              "spend": 0
+            }
+          ],
+          "by_installment_truncated": false,
+          "by_installment_sorted_by": "spend",
+          "by_installment_sort_direction": "desc"
+        }
+      ]
+    }
+  ]
+}
+```
+
+A seller that reports these rows declares them in the product's reporting capabilities:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/reporting-capabilities.json",
+  "available_reporting_frequencies": ["daily"],
+  "expected_delay_minutes": 240,
+  "timezone": "America/New_York",
+  "supports_webhooks": false,
+  "available_metrics": ["views", "spend", "publication"],
+  "date_range_support": "date_range",
+  "supports_installment_breakdown": true,
+  "available_installment_statuses": ["scheduled", "postponed", "cancelled"]
 }
 ```
 

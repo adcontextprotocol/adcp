@@ -43,6 +43,7 @@
     "dooh_metrics",
     "ooh_metrics",
     "print_metrics",
+    "publication",
     "cost_per_click",
     "cost_per_completed_view",
     "cpm",

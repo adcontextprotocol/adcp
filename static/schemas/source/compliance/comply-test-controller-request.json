@@ -1180,6 +1180,23 @@
           },
           "description": "Installment x property rows for simulate_delivery on single-package buys; each MUST be a complete core/installment-property-delivery-metrics.json row, where installment_ref.collection_ref.publisher_domain is the collection owner and publisher_domain namespaces the host property. Same replace, undated, suppression-exempt, and rejection rules as property_delivery; sandbox sellers MUST build by_installment_property from exactly these rows."
         },
+        "installment_delivery": {
+          "type": "array",
+          "minItems": 1,
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "items": {
+            "type": "object",
+            "required": ["installment_ref", "spend"],
+            "properties": {
+              "installment_ref": { "type": "object", "required": ["collection_ref", "installment_id"] },
+              "impressions": { "type": "number", "minimum": 0 },
+              "spend": { "type": "number", "minimum": 0 }
+            },
+            "additionalProperties": true
+          },
+          "description": "Installment rows for simulate_delivery on single-package buys; each MUST be a complete core/installment-delivery-metrics.json row, including installment_status and publication when set; this item schema is loose, so sellers SHOULD validate each row against the full row schema. Same replace, undated, and rejection rules as installment_property_delivery; sandbox sellers MUST build by_installment from exactly these rows."
+        },
         "conversions": {
           "type": "integer",
           "minimum": 0,

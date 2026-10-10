@@ -91,6 +91,8 @@ const ALLOWED = new Set([
   // Delivery status is a superset of media-buy-status (includes failed, pending, etc.)
   'media-buy/get-media-buy-delivery-response.json|*',
   'media-buy/media-buy-delivery-webhook-result.json|*',
+  // Installment lifecycle: the publication conditional intentionally names the not-yet-published statuses
+  'core/installment-delivery-metrics.json|/allOf/1/if',
   // GOP type open/closed overlaps but is distinct concept
   'core/opportunity-context.json|*',
 ]);
