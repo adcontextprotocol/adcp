@@ -45,7 +45,7 @@
             "type": "array",
             "items": { "$ref": "/schemas/core/canonical-proposal.json" },
             "minItems": 1,
-            "description": "Draft successors produced for a revision. Without alternatives this contains one proposal. With alternatives.count, revised contains exactly that many proposals with unique terms_digest values; fewer or commercially duplicate proposals require partial."
+            "description": "Draft successors produced for a revision. Without alternatives this contains one proposal. With alternatives.count, revised contains exactly that many proposals with unique terms_digest values; fewer or commercially duplicate proposals require partial. When more than one draft is returned, the seller SHOULD list them best-first by its own assessment of fit to the revised request. Order is a seller-relative preference, not a score: positions are not comparable across sellers, and buyers MUST NOT treat position as a commitment."
           },
           "reason_code": {
             "$ref": "/schemas/enums/proposal-refinement-reason.json",
@@ -211,7 +211,7 @@
     },
     "products": {
       "type": "array",
-      "description": "Canonical products needed to evaluate the resulting terms. For revised or partial results whose effective criteria contain property or collection lists, each affected product MUST carry fresh list_applications receipts from the revision's product reevaluation. Finalization changes no terms and MAY repeat the receipts already bound to the source proposal rather than reevaluating them.",
+      "description": "Canonical products needed to evaluate the resulting terms. For revised or partial results whose effective criteria contain property or collection lists, each affected product MUST carry fresh list_applications receipts from the revision's product reevaluation. Finalization changes no terms and MAY repeat the receipts already bound to the source proposal rather than reevaluating them. The seller SHOULD list them in order of first reference, walking results[] in request order and each result's proposals[] in order. Buyers resolve products by product_id, not position.",
       "items": { "$ref": "/schemas/core/canonical-product.json" }
     },
     "status": { "type": "string", "enum": ["completed", "submitted"] },

@@ -15,6 +15,7 @@
     },
     "products": {
       "type": "array",
+      "description": "Product offers for this page. The feed has no brief and so no relevance basis: the seller SHOULD keep a stable order across the pages of one cursor walk, and position is not a ranking or a preference signal.",
       "items": { "$ref": "/schemas/core/canonical-product.json" }
     },
     "next_cursor": {
