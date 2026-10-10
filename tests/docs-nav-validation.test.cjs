@@ -249,6 +249,22 @@ if (!navigation || !resolvedVersions) {
 navigation.versions = resolvedVersions;
 
 const rootDir = path.join(__dirname, '..');
+
+// One read per candidate. An existence check followed by a later read is a
+// TOCTOU race (js/file-system-race); ENOENT just means that extension is absent.
+function readPublishedDoc(page) {
+  let missing = null;
+  for (const ext of ['.mdx', '.md']) {
+    try {
+      return fs.readFileSync(path.join(rootDir, `${page}${ext}`), 'utf8');
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      missing = error;
+    }
+  }
+  throw missing;
+}
+
 const defaultVersion = (navigation.versions.find(v => v.default) || navigation.versions[0]).version;
 const pageOwners = new Map();
 const crossVersionDuplicates = [];
@@ -649,9 +665,13 @@ test('simplified chinese navigation publishes translated pages without reusing e
     throw new Error(`page paths reused across languages: ${overlap.join(', ')}`);
   }
   const missing = zhPages.filter((page) => {
-    const mdx = path.join(rootDir, `${page}.mdx`);
-    const md = path.join(rootDir, `${page}.md`);
-    return !fs.existsSync(mdx) && !fs.existsSync(md);
+    try {
+      readPublishedDoc(page);
+      return false;
+    } catch (error) {
+      if (error?.code === 'ENOENT') return true;
+      throw error;
+    }
   });
   if (missing.length > 0) {
     throw new Error(`Missing zh files:\n      ${missing.join('\n      ')}`);
@@ -808,10 +828,7 @@ test('docs entry points route Slack invitations through the joining guide', () =
 
   for (const page of collectPages(defaultVersionEntry.groups).filter(page => page.startsWith('docs/'))) {
     if (page === 'docs/community/joining-slack') continue;
-    const filePath = fs.existsSync(path.join(rootDir, `${page}.mdx`))
-      ? path.join(rootDir, `${page}.mdx`)
-      : path.join(rootDir, `${page}.md`);
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = readPublishedDoc(page);
     if (containsDirectSlackInvite(content)) directInvitePages.push(page);
   }
 
