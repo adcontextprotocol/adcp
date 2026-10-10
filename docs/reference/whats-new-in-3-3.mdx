@@ -33,6 +33,10 @@ Request signing, webhook signing, governance JWS `iss`, designated-task response
 
 This is a verification change: some signatures that verified under 3.2 can fail, mostly webhook and request signing. The list is in the [migration guide](/docs/reference/migration/3-2-to-3-3#signature-verification-tightens).
 
+### Account IDs you can rely on
+
+Sellers SHOULD return `account_id` from `sync_accounts`, and a seller that accepts it on every account-scoped task, for every account, and never changes it declares the optional `account.stable_account_id` capability. Buyers send the ID to those sellers instead of the natural key, so calls after onboarding look the same whichever account model the seller uses. Natural keys keep working throughout 3.x. The accounts docs also now describe `require_operator_auth` as who holds the credential, and separate principals (who is calling) from accounts (which advertiser relationship). See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere).
+
 ### Catalog ingestion declarations
 
 Sellers can declare what their catalog intake accepts in an optional `media_buy.features.catalog_ingestion` object: accepted catalog types, ingestion modes (`feed_url`, `inline_items`), feed formats, content identifier types, an inline batch limit, and whether item status is reported `per_item` or at the `feed_level`. A seller that declares it must also declare `catalog_management: true`, and must reject an unlisted catalog type, ingestion mode, or feed format, and an explicitly supplied `content_id_type` outside a declared `supported_content_id_types` list, with `UNSUPPORTED_FEATURE` before changing state, including on dry runs. Inline items beyond `max_inline_items_per_request` fail with `INVALID_REQUEST`. A buyer that finds no declaration should treat ingestion limits as unknown, not unlimited. See [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs#ingestion-compatibility) and [capabilities](/docs/protocol/get_adcp_capabilities#catalog_ingestion).
@@ -59,6 +63,7 @@ The account-reference and trust-docs clarifications already shipped in 3.2.2 ([`
 |---|---|
 | A seller that provisions accounts lazily | Stop provisioning on discovery tasks; return `ACCOUNT_NOT_FOUND` for an unresolved `account` unless you answer for the account you would create. |
 | A signing or verifying implementation | Resolve agents by canonical URL from `identity.brand_json_url`, and publish every pinned key in the agent's JWKS. |
+| A seller that returns account IDs | Return `account_id` from `sync_accounts`; declare `account.stable_account_id` once it is accepted on every account-scoped task and never changes. |
 | A seller with a catalog intake | Declare `catalog_ingestion` if buyers need your limits, and reject out-of-declaration requests before mutation. |
 | A DOOH seller | Add `location` and `venue_counts` where you can disclose them; both are optional. |
 | An SDK maintainer | Generate from the signed beta.0 tarball and publish an exact support statement. |

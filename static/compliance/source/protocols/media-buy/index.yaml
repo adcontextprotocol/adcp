@@ -60,6 +60,7 @@ requires_scenarios:
   - media_buy_seller/account_timezone_seller_fixed
   - media_buy_seller/account_timezone_buyer_selected
   - media_buy_seller/account_timezone_seller_assigned
+  - media_buy_seller/stable_account_id
   - media_buy_seller/budget_cap_timezone_account
   - media_buy_seller/budget_cap_timezone_fixed
   - media_buy_seller/budget_cap_timezone_override

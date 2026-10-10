@@ -22,7 +22,14 @@ Seven questions underlie every AdCP transaction:
 | Which calendar timezone applies?          | Account capabilities | `account.timezone` declares seller-fixed versus account-fixed behavior. `Account.timezone` is the operational default; reporting, billing, or budget capabilities explicitly declare when they use another clock.                                                                                                                             |
 | What was consumed?                       | Usage reporting     | `report_usage` informs vendor agents how their services were used after delivery                                                                                                                                                                                                                                                           |
 
-The seller declares the account model in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) via `require_operator_auth`. That field declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported.
+Every account-scoped task names an account. The seller's [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) response tells the buyer how to get one, and `require_operator_auth` is the field that decides it. Read it as **who holds the credential the seller authorizes**:
+
+| `require_operator_auth` | Who authenticates | Where accounts come from | Reference on later calls |
+| --- | --- | --- | --- |
+| `false` (default) | The buyer agent, once | The buyer opens them with `sync_accounts`, or a lazy-provisioning seller creates them on first use | The natural key, or the returned `account_id` when the seller declares `stable_account_id: true` |
+| `true` | Each operator, separately | They already exist on the seller; the buyer finds them with `list_accounts` or receives them out-of-band | `account_id` |
+
+The operator in a natural key is a property of the account: the agency or brand the account is for, and whom the seller checks against `brand.json` and may invoice. It is not an authenticated party. With `require_operator_auth: false`, no operator authenticates; the agent does, and names the operator in the payload. `require_operator_auth` does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported.
 
 When `require_operator_auth` is `true` (**account-id namespaces**), operators authenticate independently and buyers pass seller-assigned `account_id` values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose [`list_accounts`](/docs/accounts/tasks/list_accounts) and buyers MUST resolve an explicit `account_id` before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose `list_accounts` returning that singleton, and MAY omit it only when the same explicit `account_id` is supplied through another declared path or out-of-band onboarding.
 
@@ -57,11 +64,26 @@ A buyer-declared natural key names an advertiser account. It does not create one
 
 **An unresolved account is an error, not a fallback.** When a request carries an `account` that does not resolve, the seller MUST return `ACCOUNT_NOT_FOUND`, including on tasks where `account` is optional. It MUST NOT drop the reference and answer with public results: `cache_scope: "public"` on an account request says that this account prices off the rate card, which is a claim about an account that does not exist. One exception: a seller that lazily provisions instead of exposing `sync_accounts` MAY answer a discovery task for a complete natural key it would provision on the next provisioning task. It answers as if that account existed with the settings it would get, `cache_scope` follows the usual rule for that account, and the account is not created. `list_accounts` is different: its `account` field is a filter, so a key that matches nothing returns an empty list.
 
-**Buyers omit unprovisioned keys.** Until an account is provisioned and its status allows the task, buyers SHOULD omit `account` on discovery tasks and send top-level `brand` where the task accepts it. The seller answers with its public view (`cache_scope: "public"`). When the seller declares `account.required_for_products: true`, the buyer provisions the account before calling `get_products`. A buyer that intends to accept a proposal provisions the account before `request_proposals` and sends it there, so the proposal is bound to that account. Buyer SDKs SHOULD track, per seller agent, which natural keys the seller has provisioned and apply these rules by default, so each implementer doesn't have to.
+**Buyers omit unprovisioned keys.** Until an account is provisioned and its status allows the task, buyers SHOULD omit `account` on discovery tasks and send top-level `brand` where the task accepts it. The seller answers with its public view (`cache_scope: "public"`). When the seller declares `account.required_for_products: true`, the buyer provisions the account before calling `get_products`. A buyer that intends to accept a proposal provisions the account before `request_proposals` and sends it there, so the proposal is bound to that account. Buyer SDKs SHOULD track, per seller agent, which natural keys the seller has provisioned and the `account_id` returned for each, apply these rules by default, and send the `account_id` when the seller declares `stable_account_id: true`, so each implementer doesn't have to.
 
 **Account errors describe setup, not seller health.** `ACCOUNT_NOT_FOUND`, `ACCOUNT_SETUP_REQUIRED`, and `ACCOUNT_PAYMENT_REQUIRED` describe the relationship between one buyer and one seller. Buyers SHOULD NOT count them toward a seller's availability or health. To recover from `ACCOUNT_NOT_FOUND` on a natural key, provision through `sync_accounts` (or omit `account` for public discovery). For an `account_id`, verify it through `list_accounts`.
 
-**The natural key stays the reference.** For buyer-declared accounts, buyers send the natural key on every call. An `account_id` returned by `sync_accounts` is the seller's handle for correlation and support. A seller MAY also accept it as an `AccountRef`, but it is not required to, and buyers MUST NOT assume it does.
+**The natural key stays valid; the account ID is preferred when the seller guarantees it.** Sellers SHOULD return `account_id` from `sync_accounts`. When the seller declares `account.stable_account_id: true`, that ID is accepted on every account-scoped task and never changes, so buyers SHOULD store it and send `{ "account_id": "..." }` instead of the natural key. Without that capability, buyers of buyer-declared accounts send the natural key on every call: a seller MAY also accept its returned `account_id`, but buyers MUST NOT assume it does. Either way, the seller keeps accepting the current natural key throughout 3.x. See [Toward account IDs everywhere](#toward-account-ids-everywhere).
+
+## Toward account IDs everywhere
+
+Two reference shapes on every call is the main source of account confusion, and it forces rules such as tombstoned natural keys after an identity change. AdCP is converging on one rule: **every path ends in an `account_id`, and every call after onboarding uses it.** The models then differ only in how the buyer gets the ID. Buyer-declared sellers return it from `sync_accounts`; account-id namespaces return it from `list_accounts` or supply it out-of-band.
+
+In 3.x this is opt-in and non-breaking:
+
+- Sellers SHOULD return `account_id` on every non-failed `sync_accounts` provisioning result. `list_accounts` already returns it for every account.
+- Sellers that can honor it everywhere declare `account.stable_account_id: true`: the ID is returned, accepted on every account-scoped task, and stable for the life of the account, including across [identity reconciliation](/docs/accounts/tasks/sync_accounts#reconciling-operator-identity).
+- Buyers and buyer SDKs send the ID to those sellers and keep the natural key as a lookup key: to open the account, and to find its ID again through `list_accounts` after a cold start.
+- Sellers keep accepting the natural key throughout 3.x.
+
+<Note>
+  **Proposed for 4.0.** [#7850](https://github.com/adcontextprotocol/adcp/issues/7850), in working-group review, proposes making `account_id` the only account reference after provisioning in AdCP 4.0. The natural key would remain the way to open an account and to look up its ID. Buyers that adopt `stable_account_id` now need no change if it is accepted.
+</Note>
 
 ## Account Status Lifecycle
 
@@ -288,12 +310,13 @@ The introspection model — "the caller asks the authorization-enforcing party w
      list_accounts() → find existing account_id for this brand/operator (upstream-managed)
      or receive account_id out-of-band (seller-defined)
    Buyer-declared account (require_operator_auth: false):
-     sync_accounts({ accounts: [{ brand, operator, billing, billing_entity? }] }) → status, billing terms
+     sync_accounts({ accounts: [{ brand, operator, billing, billing_entity? }] }) → account_id, status, billing terms
      or, when all required settings are unambiguous, send the natural key on the first account-scoped task
      list_accounts() → recover acknowledged brand/operator accounts after a cold start (required for lazy provisioning; otherwise SHOULD be exposed)
 
 6. Execute
    Protocol tasks use the account reference to apply correct rates and terms
+   Send { account_id } when the seller declares stable_account_id: true or uses account-id namespaces; otherwise the natural key
    Examples: get_products(account: {...}), create_media_buy(account: {...})
 
 7. Report usage
