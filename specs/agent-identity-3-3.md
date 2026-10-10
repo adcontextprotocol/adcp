@@ -11,17 +11,19 @@
 
 It also supersedes the client-only bootstrap in #7942 and option B (`adcp-agent-url`) in #7817.
 
+**Scope of 3.3**: the WBA profile covers signed **HTTP requests and webhooks**. JWS artifacts (governance context `iss`, designated-task response signing, rights attestations) stay on the 3.2 chain in 3.3. They move in 3.4, together with R3b and a provenance contract for governance keys, because a retained directory response proves key possession, not publication at a point in time (#7878 gates 3 and 4).
+
 **Not in scope**: TMP, whose match-time signatures use publisher keys from the property registry, as `security.mdx` §Agent resolution already says.
 
 New names in this document are **proposed**: the `Signature-Agent` profile in AdCP, `request_signature_agent_not_in_trust_record`, `signing_profiles`, `key_thumbprints`, `agent_onboarding`, `relationship`, and the new `principal.changed` reasons. The trust.json roles and scopes used here are already defined in `static/schemas/source/trust/v1/trust.json`.
 
 ## TL;DR
 
-A buyer agent publishes two static files and then onboards itself with any AdCP seller. It does not serve `get_adcp_capabilities` and receives no seller-issued credential. The signature is the credential.
+A buyer agent publishes two files and then onboards itself with any AdCP seller. It does not serve `get_adcp_capabilities` and receives no seller-issued credential. The signature is the credential.
 
 | File | Where | Says |
 |---|---|---|
-| Key directory | `https://{agent origin}/.well-known/http-message-signatures-directory` | This origin's signing keys, one purpose each (Web Bot Auth) |
+| Key directory | `https://{agent origin}/.well-known/http-message-signatures-directory` | This origin's signing keys, one purpose each (Web Bot Auth). The response is signed per key with `created` and `expires` (WBA Appendix B.1), so it is regenerated on a schedule; it is not a write-once file. |
 | Trust record | `https://{registrable domain}/.well-known/trust.json` | This origin is my agent, with these roles; these organizations may act for me |
 
 Four invariants:
@@ -91,13 +93,15 @@ Rules here are proposals. Each lands in the PR named, in the page named, and now
 - Requests use the `web-bot-auth` tag. Webhooks keep their existing AdCP webhook tag and also cover `Signature-Agent`, so a captured request signature cannot be replayed as a webhook or the reverse.
 - The header is covered the same way on every A2A binding that carries HTTP headers (JSON-RPC, HTTP+JSON, and gRPC metadata). P2 lists the binding-specific component names.
 
-**JWS artifacts** (governance context, designated-task response signing, rights attestations).
-- `O` is the canonical origin of `iss` (or of `agent_url` where the surface uses it).
+**JWS artifacts** (governance context, designated-task response signing, rights attestations), **3.4**.
+- `O` is the canonical origin of `iss` (or of `agent_url` where the surface uses it). In 3.3, these surfaces use the 3.2 chain only.
 
 **Profile selection.**
 - A signed HTTP message that carries `Signature-Agent` or the `web-bot-auth` tag is verified under R3 only, never under the 3.2 profile. A present but uncovered `Signature-Agent` is rejected, not ignored.
-- For a JWS, the verifier uses R3 when the trust record derived from `O` lists `O`. Otherwise it uses the 3.2 chain, unless R4 forbids that. Profile selection never reads an unsigned field.
+- For a JWS (from 3.4), the verifier uses R3 when the trust record derived from `O` lists `O`. Otherwise it uses the 3.2 chain, unless R4 forbids that. Profile selection never reads an unsigned field.
 - A request MAY carry two signatures, one per profile, only to bind a WBA identity onto an existing 3.2 principal (R5 rule 4). Both MUST verify.
+
+**Draft revision.** The capability advertisement names the WBA draft revision the profile implements. A later revision with wire changes is a new profile identifier, advertised alongside the old one, so draft churn never silently changes what a verifier accepts.
 
 **Untrusted until verified.** The header is an untrusted claim until the signature verifies. A verifier MUST NOT log it, use it as a metric label, or fetch with it before the checks that need no network have passed.
 
@@ -132,7 +136,7 @@ There is no capabilities fetch. An `identity.brand_json_url` on the agent's capa
 
 **Cross-organization hosting.** A platform that runs an agent for a brand lists the agent in its own trust record; the brand grants the platform's domain (R6). There is no hosting-delegation fallback, matching `brand-identity-trust-split.md` §Agent resolution step 3.
 
-### R3b. Relying-party authorization (P3)
+### R3b. Relying-party authorization (3.4, with the JWS surfaces)
 
 A role in the agent's own record is the operator's claim about itself. It is sufficient only where the surface needs no one else's consent: buyer requests (`adcp:buying`), and sell-side signatures (`adcp:sales`) together with the publisher's `adagents.json`. On every other surface the relying party consents:
 
@@ -256,6 +260,17 @@ A seller that issues bearer tokens can accept the same identity with an RFC 7523
 | Posture used as an onboarding oracle | Seller-wide, unauthenticated, uniform block. Per-agent state only in authenticated `get_principal` (R7, R8). |
 | PSL drift between verifiers | Pinned, dated snapshot, as `security.mdx` already requires. |
 
+## Known risks and dissent
+
+| Risk | Position |
+|---|---|
+| **Draft maturity.** WBA is an adopted IETF draft (-00), and the `Signature-Agent` format already changed once (directory-03 to the dictionary form). | Experimental and capability-advertised; the profile identifier pins the draft revision (R2); the 3.2 profile is untouched. |
+| **Deployed edge verifiers.** Cloudflare's documented verifier rejects the dictionary form and does not enforce nonces; AWS WAF, Vercel, and Akamai publish nothing (#7878 gate 1). | AdCP sellers verify at their origin with the SDKs, and replay enforcement stays with the AdCP deployment. An edge verifier is an optimization, not a dependency. The interop matrix is tracked, not a blocker. |
+| **One identity per origin.** Path-hosted agents must move to subdomains. Multi-tenant sales platforms whose path-based URLs appear in many publishers' `adagents.json` files cannot move without those files changing. | The problem being solved is buyer to seller, and buyers can add subdomains cheaply. Path-hosted sellers keep 3.2 webhook signing until they migrate; nothing forces them. |
+| **Directory upkeep.** Signed directory responses expire, so publishing keys is a scheduled job, not a static upload. | SDK CLIs provide a regenerate command (P2, SDK workstream); the walkthrough (P8) shows a scheduled job. |
+| **Two profiles through 3.x.** SDKs and verifiers maintain both. | Accepted. Recorded dissent: the #7878 author prefers deprecating the 3.2 profile in 3.3. This design keeps it undeprecated until the interop matrix exists (joint brief Q2). |
+| **Document signing.** Governance and rights JWS need key-purpose isolation and historical provenance. | Deferred to 3.4 (Scope of 3.3, above). |
+
 ## Compatibility and migration
 
 - **Additive in 3.3.** The WBA profile, derived trust records, relying-party consent, grants, posture, and relationship status are experimental and capability-advertised. The 3.2 profile is unchanged.
@@ -272,7 +287,7 @@ A seller that issues bearer tokens can accept the same identity with an RFC 7523
 | **P0** | This spec | none |
 | **P1** | trust.json v1 edits:<br>- remove `agents[].jwks_uri`, its default, and the "point back via `identity.trust_url`" text (`trust.json` agent `url` and `jwks_uri` descriptions);<br>- add the one-agent-per-origin rule and validator;<br>- add the `profiles.adcp.onboarding` and `profiles.adcp.signing_profiles` slots and the optional `agents[].key_thumbprints` pin;<br>- define canonical-origin matching for grant `agents[].url`;<br>- reverse "nothing consumes this in 3.3" in the schema, `trust-json.mdx`, `experimental-status.mdx`, and release-docs #8074. | minor |
 | **P2** | WBA signing profile (#7894 rebased onto P1): R1, R2, directory with `adcp_use`, thumbprint `keyid`, nonce, window, request and webhook tags, A2A bindings, revocation at the origin, capability advertisement, vectors including governance 001–003 | minor |
-| **P3** | Agent resolution v2 (R3), relying-party consent (R3b), coexistence (R4) in `security.mdx`, across request signing, webhooks, governance `iss`, response signing, and rights attestations; new codes in `request-signing-error-code.json` | minor |
+| **P3** | Agent resolution v2 (R3) and coexistence (R4) in `security.mdx` for request signing and webhooks; R3b and the JWS surfaces stated as 3.4; new codes in `request-signing-error-code.json` | minor |
 | **P4** | First contact and binding (R5); relationship status (R8), including the `get-principal-response.json` and `principal-changed-webhook.json` changes | minor |
 | **P5** | Grants (R6, #6033) | minor |
 | **P6** | Onboarding posture (R7, #8113, #8114) | minor |
@@ -286,7 +301,7 @@ A seller that issues bearer tokens can accept the same identity with an RFC 7523
 | Change | JS | Python | Go |
 |---|---|---|---|
 | Accept extra covered headers (ship first) | — | — | S |
-| WBA signer: `Signature-Agent`, nonce, thumbprint `kid`, tags (opt-in) | S | S | S |
+| WBA signer: `Signature-Agent`, nonce, thumbprint `kid`, tags (opt-in); CLI to generate and re-sign the key directory | S | S | S |
 | WBA verifier with a resolver for many signers, keyed by the header or `iss` | M | M (fixes adcp-client-python#1214) | S–M |
 | Derived trust-record resolver, relying-party consent, capabilities optional, 3.2 fallback with no downgrade | M–L | M–L | L |
 | Grant verification, posture and relationship types | S–M | S–M | S–M |
