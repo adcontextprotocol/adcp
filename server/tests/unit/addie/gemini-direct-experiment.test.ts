@@ -204,7 +204,7 @@ describe('Gemini Direct production integration', () => {
         tools: [{ name: 'save_agent', description: 'Register', input_schema: { type: 'object', properties: {} } }],
         handlers: new Map([['save_agent', save]]),
       },
-    }, { reserveSideEffect: reserve });
+    }, { reserveSideEffect: reserve, revalidateSideEffectAuthority: async () => ({ allowed: true as const }) });
     expect(JSON.stringify(f.dispatch.mock.calls[0][0].config?.tools)).toContain('save_agent');
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ configure_auth_in_dashboard: true }));
     expect(reserve).toHaveBeenCalledWith(expect.objectContaining({ toolName: 'save_agent' }));
@@ -226,7 +226,7 @@ describe('Gemini Direct production integration', () => {
       tools: ['list_escalations', 'resolve_escalation'].map(name => ({ name, description: name, input_schema: { type: 'object', properties: {} } })),
       handlers: new Map([['list_escalations', list], ['resolve_escalation', resolve]]),
     };
-    const result = await run({ ...f.input, requestTools, modelPreference: 'gemini' }, { reserveSideEffect: reserve });
+    const result = await run({ ...f.input, requestTools, modelPreference: 'gemini' }, { reserveSideEffect: reserve, revalidateSideEffectAuthority: async () => ({ allowed: true as const }) });
     expect(result.response?.model_execution).toMatchObject({ provider: 'google', fallback_reason: null });
     expect(list).toHaveBeenCalledExactlyOnceWith({ status: 'open' });
     expect(resolve).toHaveBeenCalledExactlyOnceWith({ escalation_id: 583 });
@@ -649,6 +649,8 @@ describe('Gemini Direct production integration', () => {
       tools: [{ name: 'resolve_escalation', description: 'Resolve', input_schema: { type: 'object' } }],
       handlers: new Map([['resolve_escalation', handler]]),
     } }, {
+      // Keep authority valid so each case isolates its reservation/policy gate.
+      revalidateSideEffectAuthority: async () => ({ allowed: true }),
       ...(failure !== 'no_reservation' && { reserveSideEffect: reserve }),
       ...(failure === 'policy_denied' && { toolExecutionPolicy: async () => ({ allowed: false }) }),
     });
@@ -664,7 +666,7 @@ describe('Gemini Direct production integration', () => {
     const result = await run({ ...f.input, requestTools: {
       tools: [{ name: 'resolve_escalation', description: 'Resolve', input_schema: { type: 'object' } }],
       handlers: new Map([['resolve_escalation', handler]]),
-    } }, { reserveSideEffect: vi.fn() });
+    } }, { reserveSideEffect: vi.fn(), revalidateSideEffectAuthority: async () => ({ allowed: true }) });
     expect(handler).toHaveBeenCalledOnce();
     expect(f.control).not.toHaveBeenCalled();
     expect(f.getControlTools).not.toHaveBeenCalled();
@@ -688,7 +690,7 @@ describe('Gemini Direct production integration', () => {
     const result = await run({ ...f.input, requestTools: {
       tools: [{ name: 'resolve_escalation', description: 'Resolve', input_schema: { type: 'object' } }],
       handlers: new Map([['resolve_escalation', handler]]),
-    } }, { reserveSideEffect: reserve });
+    } }, { reserveSideEffect: reserve, revalidateSideEffectAuthority: async () => ({ allowed: true as const }) });
     expect(handler).toHaveBeenCalledOnce();
     expect(reserve).toHaveBeenCalledOnce();
     expect(result.response?.tool_executions[1]).toMatchObject({ blocked_by_policy: true, is_error: true });
@@ -708,6 +710,7 @@ describe('Gemini Direct production integration', () => {
     await expect((async () => {
       for await (const event of turn.client.processMessageStream('Resolve the duplicates.', [], turn.selection?.requestTools, {
         ...options, allowedToolNames: turn.selection?.allowedToolNames, reserveSideEffect: vi.fn(),
+        revalidateSideEffectAuthority: async () => ({ allowed: true }),
       })) {
         if (event.type === 'tool_end') throw new Error('Delivery checkpoint failed');
       }

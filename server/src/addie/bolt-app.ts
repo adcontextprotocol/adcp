@@ -80,7 +80,12 @@ import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
   isSlackUserAAOAdmin,
+  resolveSlackUserAAOAdminAccess,
 } from './mcp/admin-tools.js';
+import {
+  captureSlackMutationAuthority,
+  type SlackCredentialAuthorityDecision,
+} from './slack-mutation-authority.js';
 import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
@@ -285,6 +290,51 @@ import {
   type SponsoredIntelligenceContextKind,
   type SystemChannelRole,
 } from './slack-tool-selection.js';
+import { organizationMutationAuthorityFromMemberContext } from './mutation-authority.js';
+
+const PLATFORM_ADMIN_TOOL_NAMES = new Set(ADMIN_TOOLS.map((tool) => tool.name));
+const COMMITTEE_MUTATION_TOOL_NAMES = new Set([...EVENT_ADMIN_TOOLS, ...MEETING_TOOLS, ...COMMITTEE_LEADER_TOOLS].map(tool => tool.name));
+const slackAuthorityDb = new SlackDatabase();
+
+/** Capture the WorkOS credential mapped to this exact Slack principal. */
+export function slackMutationAuthorityOptions(
+  slackUserId: string,
+  memberContext: MemberContext | null,
+  assembledAsAdmin = false,
+): Pick<ProcessMessageOptions, 'captureSideEffectAuthority'> {
+  return {
+    captureSideEffectAuthority: async ({ mutationToolNames }) => {
+      const platformAdminMutationTools = mutationToolNames
+        .filter((name) => PLATFORM_ADMIN_TOOL_NAMES.has(name) || (assembledAsAdmin && COMMITTEE_MUTATION_TOOL_NAMES.has(name)));
+      const lookupCredential = async (): Promise<SlackCredentialAuthorityDecision> => {
+        try {
+          const mapping = await slackAuthorityDb.getBySlackUserId(slackUserId);
+          return mapping?.workos_user_id
+            ? { status: 'authorized', credentialId: mapping.workos_user_id }
+            : { status: 'forbidden' };
+        } catch (cause) {
+          return { status: 'unavailable', cause };
+        }
+      };
+      return captureSlackMutationAuthority({
+        assembledCredentialId: memberContext?.workos_user?.workos_user_id,
+        credentialEmail: memberContext?.workos_user?.email,
+        platformAdminMutationTools,
+        committeeMutationTools: assembledAsAdmin ? [] : mutationToolNames.filter(name => COMMITTEE_MUTATION_TOOL_NAMES.has(name)),
+        organizationAuthority: organizationMutationAuthorityFromMemberContext(memberContext),
+        lookupCredential,
+        revalidatePlatformAdmin: async (capturedCredentialId) => {
+          const decision = await resolveSlackUserAAOAdminAccess(slackUserId);
+          if (decision.status === 'unavailable') return 'unavailable';
+          return decision.status === 'authorized'
+            && decision.workosUserId === capturedCredentialId
+            ? 'authorized'
+            : 'forbidden';
+        },
+      });
+    },
+  };
+}
 
 /**
  * Slack's built-in system bot user ID.
@@ -2026,6 +2076,7 @@ async function handleUserMessage({
         ? { modelOverride: ModelConfig.depth }
         : {}),
     slackUserId: userId,
+    ...slackMutationAuthorityOptions(userId, memberContext, routedTools.isAAOAdmin),
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, userId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
@@ -2082,7 +2133,7 @@ async function handleUserMessage({
       for await (const event of responseClient(claudeClient, 'slack').processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, {
         ...processOptions,
         reserveSideEffect: async ({ toolName, parameters }) => {
-          await reserveToolIntentCheckpoint(threadService, {
+          return reserveToolIntentCheckpoint(threadService, {
             threadId: thread.thread_id,
             toolName,
             parameters,
@@ -2292,7 +2343,7 @@ async function handleUserMessage({
       response = await responseClient(claudeClient, 'slack').processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
         ...processOptions,
         reserveSideEffect: async ({ toolName, parameters }) => {
-          await reserveToolIntentCheckpoint(threadService, {
+          return reserveToolIntentCheckpoint(threadService, {
             threadId: thread.thread_id,
             toolName,
             parameters,
@@ -2848,6 +2899,7 @@ export async function handleAppMention({
     selectedToolSetNames: routedTools.selectedToolSets,
     allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
+    ...slackMutationAuthorityOptions(userId, memberContext, routedTools.isAAOAdmin),
     threadId: thread.thread_id,
     ...(await (dependencies?.buildCurrentChannelCostOptions ?? buildCurrentChannelCostOptions)(memberContext, userId, channelId)),
     currentSpeakerName: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
@@ -2859,7 +2911,7 @@ export async function handleAppMention({
     response = await responseClient(activeClaudeClient, 'slack').processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
-        await reserveToolIntentCheckpoint(threadService, {
+        return reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,
@@ -3752,6 +3804,7 @@ export async function buildChannelResponseInvocation(input: {
             channelContext?.viewing_channel_is_private === false,
           ),
       slackUserId: userId,
+      ...slackMutationAuthorityOptions(userId, memberContext, userIsAdmin),
       threadId,
       currentSpeakerName: resolveSpeakerDisplayName(memberContext),
       ...(officialDocsProfile
@@ -4204,6 +4257,7 @@ async function handleDirectMessage(
     selectedToolSetNames: routedTools.selectedToolSets,
     allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
+    ...slackMutationAuthorityOptions(userId, memberContext, routedTools.isAAOAdmin),
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, userId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
@@ -4215,7 +4269,7 @@ async function handleDirectMessage(
     response = await responseClient(claudeClient, 'slack').processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
-        await reserveToolIntentCheckpoint(threadService, {
+        return reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,
@@ -4620,6 +4674,7 @@ async function handleActiveThreadReply({
     selectedToolSetNames: routedTools.selectedToolSets,
     allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
+    ...slackMutationAuthorityOptions(userId, memberContext, routedTools.isAAOAdmin),
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
@@ -4631,7 +4686,7 @@ async function handleActiveThreadReply({
     response = await responseClient(claudeClient, 'slack').processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
-        await reserveToolIntentCheckpoint(threadService, {
+        return reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,
@@ -5257,7 +5312,7 @@ async function handleChannelMessage({
       {
         ...processOptions,
         reserveSideEffect: async ({ toolName, parameters }) => {
-          await reserveToolIntentCheckpoint(threadService, {
+          return reserveToolIntentCheckpoint(threadService, {
             threadId: thread.thread_id,
             toolName,
             parameters,
@@ -6219,6 +6274,7 @@ async function handleReactionAdded({
     selectedToolSetNames: reactionSelection.selectedToolSets,
     allowedToolNames: reactionSelection.allowedToolNames,
     slackUserId: reactingUserId,
+    ...slackMutationAuthorityOptions(reactingUserId, memberContext, userIsAdmin),
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, reactingUserId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
@@ -6230,7 +6286,7 @@ async function handleReactionAdded({
     response = await responseClient(reactionClient, 'slack').processMessage(userInput, conversationHistory, reactionTools, undefined, {
       ...processOptions,
       reserveSideEffect: async ({ toolName, parameters }) => {
-        await reserveToolIntentCheckpoint(threadService, {
+        return reserveToolIntentCheckpoint(threadService, {
           threadId: thread.thread_id,
           toolName,
           parameters,

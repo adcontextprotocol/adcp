@@ -1,5 +1,5 @@
 import type { ModelProviderId } from './model-providers/model-provider.js';
-import type { CreateMessageInput, ThreadService } from './thread-service.js';
+import type { CreateMessageInput, ThreadMessage, ThreadService } from './thread-service.js';
 import type {
   ToolExecution,
   ToolExecutionPolicy,
@@ -21,6 +21,10 @@ export interface StoredToolCall {
   attempts?: number;
   recovered_by_later_success?: boolean;
   durable_outcome?: 'known';
+  dispatch_status?: 'not_dispatched';
+  not_dispatched_reservation_id?: string;
+  /** Trusted row identity attached while loading interrupted intent messages. */
+  mutation_reservation_id?: string;
   github_issue_receipt?: unknown;
 }
 
@@ -35,6 +39,17 @@ function canonicalJson(value: unknown): string {
 
 function replayKey(toolName: string, input: unknown): string {
   return `${toolName}\0${canonicalJson(input)}`;
+}
+
+/** Preserve row ownership when reconstructing interrupted-turn replay policy. */
+export function toolCallsForCheckpointReplay(
+  messages: readonly Pick<ThreadMessage, 'message_id' | 'tool_calls'>[],
+): StoredToolCall[] {
+  return messages.flatMap(message => (message.tool_calls ?? []).map(call => (
+    call.result === 'External action dispatch reserved; outcome unknown.' && call.is_error === true
+      ? { ...call, mutation_reservation_id: message.message_id }
+      : call
+  )));
 }
 
 export function storedToolCall(execution: ToolExecution): StoredToolCall {
@@ -56,6 +71,10 @@ export function storedToolCall(execution: ToolExecution): StoredToolCall {
       recovered_by_later_success: telemetry.recovered_by_later_success,
     }),
     ...(execution.durable_outcome && { durable_outcome: execution.durable_outcome }),
+    ...(execution.dispatch_status && { dispatch_status: execution.dispatch_status }),
+    ...(execution.not_dispatched_reservation_id && {
+      not_dispatched_reservation_id: execution.not_dispatched_reservation_id,
+    }),
     ...(execution.github_issue_receipt && { github_issue_receipt: execution.github_issue_receipt }),
   };
 }
@@ -142,11 +161,12 @@ export async function reserveToolIntentCheckpoint(
     requestedProvider?: ModelProviderId;
     clientRequestId?: string;
   },
-): Promise<void> {
-  await threadService.addMessage({
+): Promise<{ reservationId: string }> {
+  const reservation = await threadService.addMessage({
     ...buildToolIntentCheckpoint(input),
     mutation_reservation: { tool_name: input.toolName, input: input.parameters },
   });
+  return { reservationId: reservation.message_id };
 }
 
 /**
@@ -159,14 +179,32 @@ export function blockCheckpointedToolReplays(
   delegate?: ToolExecutionPolicy,
 ): ToolExecutionPolicy | undefined {
   if (checkpoints.length === 0) return delegate;
+  const noDispatchProofs = new Map<string, number>();
+  checkpoints.forEach((call, index) => {
+    if (call.dispatch_status === 'not_dispatched' && call.not_dispatched_reservation_id) {
+      noDispatchProofs.set(
+        `${call.not_dispatched_reservation_id}\0${replayKey(call.name, call.input)}`, index,
+      );
+    }
+  });
   // A failed tool result is useful model context, but it is not generally an
   // irreversible action receipt. An allowlisted local handler can explicitly
   // prove a known negative outcome; that exact failure is safe to retry after
   // the learner fixes prerequisite state.
   const completed = new Set(
     checkpoints
+      .filter((call, index) => {
+        if (!call.mutation_reservation_id
+          || call.result !== 'External action dispatch reserved; outcome unknown.'
+          || call.is_error !== true) return true;
+        const proofIndex = noDispatchProofs.get(
+          `${call.mutation_reservation_id}\0${replayKey(call.name, call.input)}`,
+        );
+        return proofIndex === undefined || proofIndex <= index;
+      })
       // Failed reads and known negative local mutation outcomes may be
       // retried. An unmarked mutation error remains ambiguous and blocked.
+      .filter((call) => call.dispatch_status !== 'not_dispatched')
       .filter((call) => call.is_error !== true
         || (isSideEffectToolCall(call.name, call.input) && call.durable_outcome !== 'known'))
       .map((call) => isSideEffectToolCall(call.name, call.input)

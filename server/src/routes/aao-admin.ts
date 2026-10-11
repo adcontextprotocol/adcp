@@ -11,6 +11,7 @@ import { invalidateAllAdminStatusCaches } from '../addie/admin-status-cache.js';
 import type { AAOAdminAccessMechanism } from '../auth/admin-access.js';
 import {
   WorkingGroupDatabase,
+  InactiveSiteAdminTargetError,
   type AAOAdminMembershipAuditMechanism,
 } from '../db/working-group-db.js';
 import { createLogger } from '../logger.js';
@@ -65,6 +66,7 @@ export function createAAOAdminRouter(): Router {
       const membership = await workingGroupDb.grantAAOAdminMembership({
         targetUserId: input.targetUserId,
         actorUserId: req.user!.authWorkosUserId ?? req.user!.id,
+        actorCanonicalUserId: req.user!.id,
         actorAuthorizationMechanism,
         reason: input.reason,
       });
@@ -87,6 +89,7 @@ export function createAAOAdminRouter(): Router {
       const revokedUserId = await workingGroupDb.revokeAAOAdminMembership({
         targetUserId: input.targetUserId,
         actorUserId: req.user!.authWorkosUserId ?? req.user!.id,
+        actorCanonicalUserId: req.user!.id,
         actorAuthorizationMechanism,
         reason: input.reason,
       });
@@ -94,6 +97,9 @@ export function createAAOAdminRouter(): Router {
       invalidateAllAdminStatusCaches();
       return res.json({ success: true });
     } catch (error) {
+      if (error instanceof InactiveSiteAdminTargetError) {
+        return res.status(409).json({ error: 'site_admin_target_inactive', message: 'Target credential is inactive; reconcile its retained site-admin membership' });
+      }
       logger.error({ err: error, actorUserId: req.user?.id }, 'AAO site-admin revoke failed');
       return res.status(500).json({ error: 'aao_admin_revoke_failed', message: 'Failed to revoke site-admin access' });
     }

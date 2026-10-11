@@ -10,6 +10,7 @@ import type { PoolClient } from 'pg';
 import { getPool, getClient } from './client.js';
 import { createLogger } from '../logger.js';
 import { withActiveCredentialEventMutation } from './identity-db.js';
+import { bumpAuthorizationEpochs } from './authorization-epoch-db.js';
 
 const logger = createLogger('membership-db');
 
@@ -182,6 +183,7 @@ export async function deleteOrganizationMembership(
        WHERE workos_user_id = $1 AND primary_organization_id = $2`,
       [userId, organizationId],
     );
+    if (result.rowCount === 1) await bumpAuthorizationEpochs(client, [userId]);
     if (ownsTransaction) await client.query('COMMIT');
     return result.rows[0]?.role ?? null;
   } catch (err) {
@@ -294,6 +296,39 @@ export async function setMembershipRole(
   if (!guarded.applied) {
     throw new Error('Cannot update organization authority for an inactive credential');
   }
+}
+
+/** Update the provider role and membership route in the same guarded transaction. */
+export async function syncMembershipAuthority(
+  userId: string,
+  organizationId: string,
+  changes: { role?: string; membershipId?: string },
+): Promise<boolean> {
+  // A periodic provider refresh must not revoke every unchanged user's turn.
+  // Changed rows still pass through the credential guard and its atomic epoch.
+  const current = await getPool().query<{ role: string; workos_membership_id: string | null }>(
+    `SELECT role, workos_membership_id FROM organization_memberships
+      WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+    [userId, organizationId],
+  );
+  const membership = current.rows[0];
+  if (!membership) return false;
+  if ((changes.role === undefined || membership.role === changes.role)
+    && (changes.membershipId === undefined || membership.workos_membership_id === changes.membershipId)) {
+    return true;
+  }
+  const guarded = await withActiveCredentialEventMutation(userId, async (client) => {
+    await client.query(
+      `UPDATE organization_memberships
+          SET role = COALESCE($3, role),
+              workos_membership_id = COALESCE($4, workos_membership_id), updated_at = NOW()
+        WHERE workos_user_id = $1 AND workos_organization_id = $2
+          AND (role IS DISTINCT FROM COALESCE($3, role)
+            OR workos_membership_id IS DISTINCT FROM COALESCE($4, workos_membership_id))`,
+      [userId, organizationId, changes.role ?? null, changes.membershipId ?? null],
+    );
+  });
+  return guarded.applied;
 }
 
 // ── Auto-link by verified domain ────────────────────────────────────

@@ -4,6 +4,7 @@ import {
   buildToolIntentCheckpoint,
   buildToolResultCheckpoint,
   reserveToolIntentCheckpoint,
+  toolCallsForCheckpointReplay,
 } from '../../../src/addie/stream-tool-checkpoints.js';
 
 const execution = {
@@ -16,6 +17,40 @@ const execution = {
 } as const;
 
 describe('stream tool checkpoints', () => {
+  it('releases only the exact earlier intent row proven not dispatched after a restart', async () => {
+    const intent = { name: execution.tool_name, input: execution.parameters,
+      result: 'External action dispatch reserved; outcome unknown.', is_error: true };
+    const denial = { ...intent, result: 'Authority unavailable; not dispatched', dispatch_status: 'not_dispatched' as const,
+      not_dispatched_reservation_id: 'owned-row' };
+    const checkpoints = toolCallsForCheckpointReplay([
+      { message_id: 'owned-row', tool_calls: [intent] },
+      { message_id: 'result-row', tool_calls: [denial] },
+    ]);
+    expect(checkpoints[0].mutation_reservation_id).toBe('owned-row');
+    expect(blockCheckpointedToolReplays(checkpoints)).toBeUndefined();
+    const withOlderUnknown = toolCallsForCheckpointReplay([
+      { message_id: 'older-row', tool_calls: [intent] },
+      { message_id: 'owned-row', tool_calls: [intent] },
+      { message_id: 'result-row', tool_calls: [denial] },
+    ]);
+    const policy = blockCheckpointedToolReplays(withOlderUnknown)!;
+    expect(await policy({ toolName: execution.tool_name, toolCallId: 'retry', input: execution.parameters, executionMode: 'production' })).toEqual({ allowed: false });
+  });
+
+  it.each(['before_intent', 'wrong_input', 'wrong_tool', 'pre_reservation'])('keeps an intent blocked for an invalid settlement proof: %s', async kind => {
+    const intent = { name: execution.tool_name, input: execution.parameters,
+      result: 'External action dispatch reserved; outcome unknown.', is_error: true };
+    const denial = { ...intent, result: 'Not dispatched', dispatch_status: 'not_dispatched' as const,
+      ...(kind !== 'pre_reservation' && { not_dispatched_reservation_id: 'owned-row' }),
+      ...(kind === 'wrong_input' && { input: { title: 'Another meeting' } }),
+      ...(kind === 'wrong_tool' && { name: 'create_github_issue' }),
+    };
+    const messages = [{ message_id: 'owned-row', tool_calls: [intent] }, { message_id: 'result-row', tool_calls: [denial] }];
+    if (kind === 'before_intent') messages.reverse();
+    const policy = blockCheckpointedToolReplays(toolCallsForCheckpointReplay(messages))!;
+    expect(await policy({ toolName: execution.tool_name, toolCallId: 'retry', input: execution.parameters, executionMode: 'production' })).toEqual({ allowed: false });
+  });
+
   it('retains the requested Google identity through read checkpoints and control-handoff reservations', () => {
     const identity = { threadId: 'thread-1', requestedModel: 'gemini-3.7-flash', requestedProvider: 'google' as const };
     for (const checkpoint of [
@@ -171,7 +206,7 @@ describe('stream tool checkpoints', () => {
   });
 
   it('asks the durable store to atomically fence and write a new reservation', async () => {
-    const addMessage = vi.fn().mockResolvedValue(undefined);
+    const addMessage = vi.fn().mockResolvedValue({ message_id: 'intent-1' });
     const threadService = { getThreadMessages: vi.fn().mockResolvedValue([]), addMessage };
 
     await reserveToolIntentCheckpoint(threadService as never, {

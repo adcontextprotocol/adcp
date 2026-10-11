@@ -16,6 +16,7 @@ import { buildAdminPanel } from './builders/admin.js';
 import { pickPrompts } from './builders/suggested-prompts.js';
 import { recordPromptsShown } from '../../db/addie-prompt-telemetry-db.js';
 import { createLogger } from '../../logger.js';
+import { getOrganizationAuthorizationUserId } from '../../auth/organization-principal.js';
 
 const logger = createLogger('addie-web-home-service');
 
@@ -25,7 +26,7 @@ const logger = createLogger('addie-web-home-service');
 export async function getWebHomeContent(user: AAOAdminPrincipal | string, selectedOrganizationId?: string | null): Promise<HomeContent> {
   // Legacy internal previews pass an explicitly selected WorkOS credential.
   const principal = typeof user === 'string' ? { id: user } : user;
-  const workosUserId = principal.id;
+  const workosUserId = getOrganizationAuthorizationUserId(principal);
   logger.debug({ workosUserId, selectedOrganizationId }, 'Addie Web Home: Building content');
 
   // Get member context for web user

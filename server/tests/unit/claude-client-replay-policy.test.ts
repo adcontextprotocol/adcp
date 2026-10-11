@@ -1405,7 +1405,7 @@ describe('persisted outcome delivery guard', () => {
       textResponse('B2 is concluded. How would you use those products in a plan?'),
     ];
     queue.push(...replies);
-    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true, reserveSideEffect: async () => {} };
+    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true, reserveSideEffect: async () => {}, revalidateSideEffectAuthority: async () => ({ allowed: true }) };
     if (delivery === 'streaming') {
       const first = [];
       for await (const event of client.processMessageStream('Finish B2', undefined, scoped, options)) first.push(event);
@@ -1458,7 +1458,7 @@ describe('persisted outcome delivery guard', () => {
     );
     const result = await new AddieClaudeClient('unused').processMessage('Finish B2', undefined,
       requestTools([tool('complete_certification_module', 'mutation')], [['complete_certification_module', handler]]),
-      { systemPrompt: 'system' }, { uncapped: true, disableServerTools: true, reserveSideEffect: async () => {} });
+      { systemPrompt: 'system' }, { uncapped: true, disableServerTools: true, reserveSideEffect: async () => {}, revalidateSideEffectAuthority: async () => ({ allowed: true }) });
     expect(handler).toHaveBeenCalledTimes(1);
     expect(result.text).toBe('B2 is recorded as complete.');
     expect(result.flagged).toBe(false);
@@ -1473,7 +1473,7 @@ describe('persisted outcome delivery guard', () => {
       toolUseResponse([{ id: 'award-b2', name: 'complete_certification_module', input: { module_id: 'B2' } }]),
       textResponse('Congratulations, you earned your certificate!'),
     );
-    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true, reserveSideEffect: async () => {} };
+    const options: ProcessMessageOptions = { uncapped: true, disableServerTools: true, reserveSideEffect: async () => {}, revalidateSideEffectAuthority: async () => ({ allowed: true }) };
     const client = new AddieClaudeClient('unused');
     let text: string;
     if (delivery === 'streaming') {

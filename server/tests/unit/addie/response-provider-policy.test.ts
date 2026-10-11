@@ -158,11 +158,12 @@ describe('Global response provider policy', () => {
     vi.stubEnv('ADDIE_RESPONSE_AUTOMATIC_FALLBACK', 'true');
     const f = fixture([receipt('send_invoice'), new Error('Unavailable')]);
     if (reservationFails) f.options.reserveSideEffect = vi.fn().mockRejectedValue(new Error('Ambiguous durable write'));
+    const authorizedOptions = { ...f.options, revalidateSideEffectAuthority: async () => ({ allowed: true as const }) };
     const selected = responseClient(f.client, 'slack');
     if (delivery === 'json') {
-      await expect(selected.processMessage('Send the invoice', [], undefined, undefined, f.options)).rejects.toThrow('reservation');
+      await expect(selected.processMessage('Send the invoice', [], undefined, undefined, authorizedOptions)).rejects.toThrow('reservation');
     } else {
-      const events = await collect(selected.processMessageStream('Send the invoice', [], undefined, f.options));
+      const events = await collect(selected.processMessageStream('Send the invoice', [], undefined, authorizedOptions));
       expect(events.at(-1)).toMatchObject({ type: 'stream_error', reason: expect.stringContaining('not automatically repeated') });
     }
     expect(f.options.reserveSideEffect).toHaveBeenCalledOnce();

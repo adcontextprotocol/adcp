@@ -195,7 +195,10 @@ vi.mock('../../src/utils/anthropic-retry.js', () => ({
 }));
 
 vi.mock('../../src/addie/member-context.js', () => ({
-  getWebMemberContext: vi.fn(() => Promise.resolve(mocks.memberContext)),
+  getWebMemberContext: vi.fn((credentialId: string) => Promise.resolve({
+    ...mocks.memberContext,
+    workos_user: mocks.memberContext.workos_user ?? { workos_user_id: credentialId },
+  })),
   formatMemberContextForPrompt: vi.fn().mockReturnValue(null),
 }));
 

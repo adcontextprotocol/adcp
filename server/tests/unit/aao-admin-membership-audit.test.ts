@@ -48,6 +48,7 @@ describe('AAO site-admin membership audit transaction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.poolQuery.mockImplementation((sql: string) => {
+      if (sql.includes('SELECT identity_id FROM identity_workos_users')) return Promise.resolve(queryResult([{ identity_id: 'actor-identity' }]));
       if (sql.includes('FROM slack_user_mappings')) {
         return Promise.resolve(queryResult([{ workos_user_id: 'user_canonical' }]));
       }
@@ -56,12 +57,13 @@ describe('AAO site-admin membership audit transaction', () => {
     mocks.clientQuery.mockImplementation((sql: string) => {
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return Promise.resolve(queryResult());
       if (sql.includes('SELECT id FROM working_groups')) return Promise.resolve(queryResult([{ id: 'wg_aao_admin' }]));
+      if (sql.includes('SELECT identity_id FROM identity_workos_users')) return Promise.resolve(queryResult([{ identity_id: 'actor-identity' }]));
       if (sql.includes('FROM slack_user_mappings')) return Promise.resolve(queryResult([{ workos_user_id: 'user_canonical' }]));
       if (sql.includes('INSERT INTO working_group_memberships')) {
         return Promise.resolve(queryResult([{ workos_user_id: 'user_canonical', working_group_id: 'wg_aao_admin' }]));
       }
       if (sql.includes('DELETE FROM working_group_memberships')) return Promise.resolve(queryResult([{ workos_user_id: 'user_canonical' }]));
-      if (sql.includes('INSERT INTO aao_admin_access_events')) return Promise.resolve(queryResult());
+      if (sql.includes('INSERT INTO aao_admin_access_events')) return Promise.resolve(queryResult([{ id: 'audit-1' }]));
       throw new Error(`Unexpected SQL: ${sql}`);
     });
   });
@@ -70,6 +72,7 @@ describe('AAO site-admin membership audit transaction', () => {
     const membership = await new WorkingGroupDatabase().grantAAOAdminMembership({
       targetUserId: 'slack_alias',
       actorUserId: 'admin_1',
+      actorCanonicalUserId: 'canonical_admin',
       actorAuthorizationMechanism: 'break_glass_admin_email',
       reason: 'Temporary incident coverage',
     });
@@ -80,7 +83,7 @@ describe('AAO site-admin membership audit transaction', () => {
       'admin_1',
       'user_canonical',
       'break_glass_admin_email',
-      'Temporary incident coverage',
+      JSON.stringify({ reason: 'Temporary incident coverage', authenticated_credential_id: 'admin_1', canonical_user_id: 'canonical_admin', resolved_identity_id: 'actor-identity' }),
     ]);
     expect(mocks.clientQuery.mock.calls.map(([sql]) => sql)).toContain('COMMIT');
     expect(mocks.release).toHaveBeenCalledOnce();
@@ -90,6 +93,7 @@ describe('AAO site-admin membership audit transaction', () => {
     const revokedUserId = await new WorkingGroupDatabase().revokeAAOAdminMembership({
       targetUserId: 'slack_alias',
       actorUserId: 'admin_1',
+      actorCanonicalUserId: 'canonical_admin',
       actorAuthorizationMechanism: 'aao_admin_working_group',
       reason: 'Offboarding',
     });
@@ -101,12 +105,29 @@ describe('AAO site-admin membership audit transaction', () => {
     expect(calls[calls.length - 1]).toBe('COMMIT');
   });
 
+  it.each(['grant', 'revoke'] as const)('rolls back %s when a trigger suppresses the audit row', async operation => {
+    const original = mocks.clientQuery.getMockImplementation()!;
+    mocks.clientQuery.mockImplementation((sql: string, ...rest: unknown[]) => sql.includes('INSERT INTO aao_admin_access_events')
+      ? Promise.resolve(queryResult()) : original(sql, ...rest));
+    const db = new WorkingGroupDatabase();
+    await expect(operation === 'grant' ? db.grantAAOAdminMembership({
+      targetUserId: 'slack_alias', actorUserId: 'admin_1', actorCanonicalUserId: 'canonical_admin',
+      actorAuthorizationMechanism: 'aao_admin_working_group', reason: 'Coverage',
+    }) : db.revokeAAOAdminMembership({
+      targetUserId: 'slack_alias', actorUserId: 'admin_1', actorCanonicalUserId: 'canonical_admin',
+      actorAuthorizationMechanism: 'aao_admin_working_group', reason: 'Offboarding',
+    })).rejects.toThrow('audit did not persist exactly one row');
+    expect(mocks.clientQuery.mock.calls.map(([sql]) => sql)).toContain('ROLLBACK');
+    expect(mocks.clientQuery.mock.calls.map(([sql]) => sql)).not.toContain('COMMIT');
+  });
+
   it('rolls the membership write back when the audit insert fails', async () => {
     mocks.poolQuery.mockResolvedValue(queryResult());
     mocks.clientQuery.mockImplementation((sql: string) => {
       if (sql.includes('INSERT INTO aao_admin_access_events')) return Promise.reject(new Error('audit storage unavailable'));
       if (sql === 'BEGIN' || sql === 'ROLLBACK') return Promise.resolve(queryResult());
       if (sql.includes('SELECT id FROM working_groups')) return Promise.resolve(queryResult([{ id: 'wg_aao_admin' }]));
+      if (sql.includes('SELECT identity_id FROM identity_workos_users')) return Promise.resolve(queryResult([{ identity_id: 'actor-identity' }]));
       if (sql.includes('FROM slack_user_mappings')) return Promise.resolve(queryResult());
       if (sql.includes('INSERT INTO working_group_memberships')) return Promise.resolve(queryResult([{ workos_user_id: 'user_target' }]));
       throw new Error(`Unexpected SQL: ${sql}`);
@@ -115,6 +136,7 @@ describe('AAO site-admin membership audit transaction', () => {
     await expect(new WorkingGroupDatabase().grantAAOAdminMembership({
       targetUserId: 'user_target',
       actorUserId: 'admin_1',
+      actorCanonicalUserId: 'canonical_admin',
       actorAuthorizationMechanism: 'aao_admin_working_group',
       reason: 'Coverage rotation',
     })).rejects.toThrow('audit storage unavailable');
@@ -129,6 +151,7 @@ describe('AAO site-admin membership audit transaction', () => {
       if (sql.includes('INSERT INTO aao_admin_access_events')) return Promise.reject(new Error('audit storage unavailable'));
       if (sql === 'BEGIN' || sql === 'ROLLBACK') return Promise.resolve(queryResult());
       if (sql.includes('SELECT id FROM working_groups')) return Promise.resolve(queryResult([{ id: 'wg_aao_admin' }]));
+      if (sql.includes('SELECT identity_id FROM identity_workos_users')) return Promise.resolve(queryResult([{ identity_id: 'actor-identity' }]));
       if (sql.includes('FROM slack_user_mappings')) return Promise.resolve(queryResult());
       if (sql.includes('DELETE FROM working_group_memberships')) return Promise.resolve(queryResult([{ workos_user_id: 'user_target' }]));
       throw new Error(`Unexpected SQL: ${sql}`);
@@ -137,6 +160,7 @@ describe('AAO site-admin membership audit transaction', () => {
     await expect(new WorkingGroupDatabase().revokeAAOAdminMembership({
       targetUserId: 'user_target',
       actorUserId: 'admin_1',
+      actorCanonicalUserId: 'canonical_admin',
       actorAuthorizationMechanism: 'aao_admin_working_group',
       reason: 'Offboarding',
     })).rejects.toThrow('audit storage unavailable');

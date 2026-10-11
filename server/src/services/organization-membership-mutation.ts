@@ -10,6 +10,7 @@ import { DEV_USERS, isDevModeEnabled, invalidateSessionsForUsers } from '../midd
 import { getSeatLimits, resolveMembershipTier, type SeatType, type MembershipTierRow } from '../db/organization-db.js';
 import { createLogger } from '../logger.js';
 import { lockExactCredentialAuthorizationRows } from './exact-credential-authorization-lock.js';
+import { bumpAuthorizationEpochs } from '../db/authorization-epoch-db.js';
 
 const logger = createLogger('organization-membership-mutation');
 export type Role = 'owner' | 'admin' | 'member';
@@ -261,7 +262,12 @@ export class OrganizationMembershipMutation {
     await this.checkProviderAuthority();
     await this.checkTargets();
     this.localPhase = true;
-    return work();
+    const result = await work();
+    await bumpAuthorizationEpochs(this.db, targets);
+    // A permitted self-update may bump the actor. The exact authorization
+    // rows remain locked, so this incorporates only our own local changes.
+    this.snapshot = await this.readSnapshot();
+    return result;
   }
 
   async write<T extends QueryResultRow = QueryResultRow>(sql: string, values: unknown[], expectedRows = 1): Promise<T[]> {
