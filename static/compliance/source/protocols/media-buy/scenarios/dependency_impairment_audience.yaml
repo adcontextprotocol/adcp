@@ -4,6 +4,8 @@ title: "Audience dependency impairment — suspension propagates to media buy he
 category: media_buy_seller
 summary: "Syncs an audience, targets it from a package, forces ready → suspended, verifies an audience impairment, then restores ready and verifies recovery."
 track: media_buy
+requires:
+  - controller
 
 required_tools:
   - sync_audiences

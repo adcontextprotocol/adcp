@@ -5,6 +5,9 @@ title: "Property-list change webhook signing"
 category: governance
 summary: "Property-list change notifications use the RFC 9421 webhook profile and match the published payload contract."
 track: governance
+requires:
+  - controller
+
 required_tools:
   - create_property_list
   - update_property_list

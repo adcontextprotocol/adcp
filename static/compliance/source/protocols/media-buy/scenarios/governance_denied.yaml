@@ -6,6 +6,7 @@ summary: "Verifies that the seller's own execution check blocks an intent-approv
 track: media_buy
 requires:
   - multi_agent
+  - controller
 default_agent: sales
 required_tools:
   - sync_plans

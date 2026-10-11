@@ -4,6 +4,9 @@ title: "Seller refutes a buyer's provenance claim via on-list verifier"
 category: media_buy_seller
 summary: "Buyer attaches a digital_source_type claim. Seller invokes get_creative_features against an on-list verifier (creative_policy.accepted_verifiers); when the verifier contradicts the claim, seller rejects with PROVENANCE_CLAIM_CONTRADICTED carrying audit-safe error.details."
 track: creative
+requires:
+  - controller
+
 required_tools:
   - get_products
   - sync_creatives

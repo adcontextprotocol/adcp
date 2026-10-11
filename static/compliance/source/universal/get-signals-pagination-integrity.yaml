@@ -4,6 +4,9 @@ title: "get_signals pagination cursor integrity"
 category: schema_validation
 summary: "Validates the cursor↔has_more invariant on a paginated get_signals response by walking from a continuation page to the next page under a broad query."
 track: signals
+requires:
+  - controller
+
 required_tools:
   - get_signals
 

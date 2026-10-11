@@ -4,6 +4,9 @@ title: 'Deterministic testing'
 category: core
 summary: 'Uses comply_test_controller to force state transitions and simulate delivery/budget, verifying state machines and reporting.'
 track: core
+requires:
+  - controller
+
 required_tools:
   - comply_test_controller
 platform_types:

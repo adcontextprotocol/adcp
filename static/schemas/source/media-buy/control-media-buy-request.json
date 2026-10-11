@@ -146,6 +146,7 @@
     { "required": ["reporting_webhook"] }
   ],
   "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
     {
       "if": { "required": ["cancellation_reason"] },
       "then": { "required": ["canceled"] }

@@ -4,6 +4,9 @@ title: "Account-scoped creative transformer agent"
 protocol: creative
 category: creative_transformers
 summary: "Agent that exposes account-scoped transformers (voices, models, render configs) via list_transformers, then builds and refines creatives by transformer_id + typed config — with variant fan-out and strict config validation."
+requires:
+  - controller
+
 required_tools:
   - list_transformers
   - build_creative

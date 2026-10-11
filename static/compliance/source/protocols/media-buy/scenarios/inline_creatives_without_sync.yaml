@@ -4,6 +4,8 @@ title: "Inline media-buy creatives without sync_creatives"
 category: media_buy_seller
 summary: "Verifies that a seller advertising inline_creative_management accepts package creatives on create_media_buy and update_media_buy without requiring the Creative Protocol or sync_creatives."
 track: media_buy
+requires:
+  - controller
 
 # Gate: scenario runs only when the seller declares inline creative handling on
 # the media-buy feature surface. Sellers that do not advertise the flag grade

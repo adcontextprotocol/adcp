@@ -4,6 +4,9 @@ title: "Schema compliance and temporal validation"
 category: schema_validation
 summary: "Validates that agent responses conform to AdCP schemas and that temporal constraints are enforced."
 track: core
+requires:
+  - controller
+
 required_tools:
   - get_products
 

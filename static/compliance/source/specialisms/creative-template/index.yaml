@@ -5,6 +5,9 @@ protocol: creative
 category: creative_template
 summary: "Stateless creative agent that takes assets in, applies templates, and produces tags or rendered output."
 track: creative
+requires:
+  - controller
+
 required_tools:
   - build_creative
 

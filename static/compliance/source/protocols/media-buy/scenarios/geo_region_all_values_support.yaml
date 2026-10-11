@@ -4,6 +4,8 @@ title: "Seller proves exhaustive country-level ISO subdivision support"
 category: media_buy_seller
 summary: "Verifies that all_values is an exhaustive country claim that contains finite future region requirements."
 track: media_buy
+requires:
+  - controller
 
 requires_capability:
   path: media_buy.execution.targeting.geo_regions.countries.FR.all_values

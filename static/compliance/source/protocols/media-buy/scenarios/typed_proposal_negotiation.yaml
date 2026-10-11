@@ -5,12 +5,20 @@ category: media_buy_seller
 summary: "Verifies the AdCP 3.2 typed negotiation lifecycle: capability-gated constraint satisfaction, product changes, digest-verified alternatives, partial invariant, immutable lineage, finalize atomicity, and idempotent replay through refine_proposals."
 track: media_buy
 required_tools:
+  - request_proposals
   - refine_proposals
   - accept_proposal
 
-requires_capability:
-  path: media_buy.proposal_refinement.supported_dimensions
-  contains: "alternatives"
+requires:
+  - controller
+
+# Proposals are seeded through request_proposals (the 3.2 lifecycle tool), so a
+# seller that declares typed refinement without it is not applicable here.
+requires_all_capabilities:
+  - path: media_buy.proposal_refinement.supported_dimensions
+    contains: "alternatives"
+  - path: media_buy.lifecycle_tools
+    contains: "request_proposals"
 
 narrative: |
   AdCP 3.2 introduces typed proposal negotiation through refine_proposals.
@@ -39,7 +47,17 @@ narrative: |
 
   Legacy sellers that do not declare proposal_refinement are not tested by
   this storyboard; their unstructured proposal path is covered by
-  proposal_finalize.yaml.
+  proposal_finalize.yaml. Proposals are seeded with request_proposals, so
+  sellers that declare proposal_refinement but expose proposals only through
+  the legacy get_products facade are not applicable either: that facade cannot
+  represent typed constraints losslessly. The fixture products are seeded
+  through comply_test_controller.
+
+  Each phase after seeding names its upstream phases with depends_on. A
+  capability-gated phase the seller does not support (for example the
+  unsupported-dimension rejection when the seller declares flight) is skipped
+  alone and does not cascade-skip the finalize, accept, amendment, cancellation,
+  or batch phases.
 
 agent:
   interaction_model: media_buy_seller
@@ -60,6 +78,7 @@ prerequisites:
     The caller needs a brand identity and operator credentials. The seller
     must declare proposal_refinement.supported_dimensions in capabilities.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
 
 fixtures:
   products:
@@ -175,21 +194,22 @@ phases:
       The buyer needs at least one proposal_id to target with refine_proposals.
 
     steps:
-      - id: get_products_brief
-        title: "Send a brief and receive proposals"
-        task: get_products
-        schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
-        doc_ref: "/media-buy/task-reference/get_products"
-        comply_scenario: full_sales_flow
-        stateful: false
+      - id: request_seed_proposals
+        title: "Request seed proposals for the fixture products"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
         expected: |
-          Return products and proposals matching the brief. At least one
-          proposal with proposal_id is required for the typed revision phases.
+          Return outcome proposed with at least one draft proposal covering
+          the seeded fixture products. The proposal_id is required for the
+          typed revision phases.
         sample_request:
-          idempotency_key: "$generate:uuid_v4#typed_negotiation_seed_get_products_brief"
-          buying_mode: "brief"
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_seed_request_proposals"
           brief: "Premium video and display across sports and outdoor lifestyle. Q4 flight, $75K budget. Adults 25-54, US."
+          criteria:
+            product_ids: ["premium_video_q4", "display_standard_q4", "native_feed_q4"]
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -203,7 +223,7 @@ phases:
 
         validations:
           - check: response_schema
-            description: "Response matches get-products-response.json schema"
+            description: "Response matches request-proposals-response.json schema"
           - check: field_present
             path: "proposals"
             description: "Response contains proposals"
@@ -329,7 +349,7 @@ phases:
             value: "constraint_unsatisfiable"
             description: "reason_code is constraint_unsatisfiable for a typed failure"
           - check: field_contains
-            path: "results[0].unsatisfied_constraints"
+            path: "results[0].unsatisfied_constraints[*]"
             value: "total_budget"
             description: "unsatisfied_constraints echoes the failing constraint key"
 
@@ -485,6 +505,7 @@ phases:
 
   - id: finalize_proposal
     title: "Finalize draft into committed snapshot"
+    depends_on: [account_setup, seed_proposals]
     narrative: |
       Finalize the initial seed draft. The seller creates a committed
       successor with firm pricing and an inventory hold. The committed
@@ -542,6 +563,7 @@ phases:
 
   - id: finalize_idempotent_replay
     title: "Idempotent finalize replay"
+    depends_on: [finalize_proposal]
     narrative: |
       Replay the exact finalize request with the same idempotency_key. The
       seller must return the cached committed proposal with replayed: true.
@@ -579,6 +601,7 @@ phases:
 
   - id: accept_committed
     title: "Accept committed proposal to create MediaBuy"
+    depends_on: [finalize_proposal]
     narrative: |
       The buyer accepts the committed proposal by passing the proposal_id
       and proposal_terms_digest. The seller atomically verifies both before
@@ -618,6 +641,7 @@ phases:
 
   - id: amendment_from_accepted
     title: "Amendment proposal from accepted source"
+    depends_on: [accept_committed]
     narrative: |
       The buyer creates an amendment proposal against the accepted source.
       This exercises the change_kind: amendment path. The source remains
@@ -659,6 +683,7 @@ phases:
 
   - id: cancellation_from_accepted
     title: "Cancellation proposal from accepted source"
+    depends_on: [accept_committed]
     narrative: |
       The buyer creates a cancellation proposal against the accepted source.
       The source remains accepted and unchanged; the result is a new draft
@@ -698,6 +723,7 @@ phases:
 
   - id: double_finalize_rejected
     title: "Double-finalize of committed proposal"
+    depends_on: [finalize_proposal]
     narrative: |
       Attempt to finalize a proposal that is already committed (not a draft).
       The seller must reject with INVALID_STATE at task level because
@@ -729,6 +755,7 @@ phases:
 
   - id: multi_source_batch
     title: "Multi-source batch with mixed outcomes"
+    depends_on: [seed_proposals, amendment_from_accepted]
     narrative: |
       Send a batch revise request targeting two sources in one call. Each
       entry gets its own outcome — one may be revised while another is

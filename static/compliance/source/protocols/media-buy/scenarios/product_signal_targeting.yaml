@@ -4,6 +4,8 @@ title: "Seller exposes wholesale signal options and honors package-level signal_
 category: media_buy_seller
 summary: "Verifies that a seller with wholesale products and wholesale get_signals can expose signal targeting eligibility, accept package-level signal_targeting_groups with pricing, reject unknown signals, and echo the applied grouped expression on readback."
 track: media_buy
+requires:
+  - controller
 
 # Gate: this scenario is for sellers that expose the selectable signal menu
 # through the wholesale signals feed. Product-specific inline menus are covered

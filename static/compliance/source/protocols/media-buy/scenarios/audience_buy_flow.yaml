@@ -4,6 +4,8 @@ title: "Seller fulfills a media buy with audience targeting from a synced CRM au
 category: media_buy_seller
 summary: "Verifies that a seller advertising audience_targeting can ingest a CRM audience via sync_audiences, accept a media buy whose targeting_overlay references the bound audience_id, reject malformed audience references, and report delivery for the audience-targeted buy. Sibling to media_buy_seller/performance_buy_flow on the audience side: the unbound-id rejection is the discriminating assertion."
 track: media_buy
+requires:
+  - controller
 
 # Gate: scenario runs only when the seller declares audience_targeting.
 # Sellers without it (broadcast TV, signal-only, pure brand-suitability) grade

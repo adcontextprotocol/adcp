@@ -133,6 +133,20 @@ When products are returned from `get_products`, each product's `channels` array 
 }
 ```
 
+## Preparing product channels for 4.0
+
+[`Product.channels` is proposed to become required in 4.0](https://github.com/adcontextprotocol/adcp/issues/7869), with at least one value from the existing `MediaChannel` enum. The 3.x schemas still accept omitted or empty arrays, and the existing property-based inheritance remains unchanged. Sellers SHOULD populate an explicit nonempty declaration on every product now.
+
+For each product, declare the channels in which that inventory is sold. Use `ctv` for connected TV, `olv` for online video, and the relevant audio channels such as `radio`, `streaming_audio`, or `podcast`. A product sold in multiple buying contexts declares all applicable values. Product channels SHOULD be a subset of the union of their properties' `supported_channels`.
+
+Do not derive the declaration from creative format alone: a VAST video format can serve both `ctv` and `olv`. Do not copy a seller-wide channel list onto every product; a seller can sell different channels on different products.
+
+Format options keep optional `applies_to_channels` as a narrowing of the product declaration. Every listed value must belong to the product's `channels`. When the narrowing is omitted, the format option applies to all channels declared on that product. It does not independently declare the product's channels.
+
+Buyers reading 3.x products should request `channels` in any `fields` projection before classifying products. Omission from a projection that did not request the field does not establish that the seller omitted its declaration. Existing 3.x property-based inheritance remains supported; this preparation does not replace it with automatic exclusion from discovery or proposal routing. Omission is not a wildcard for every channel in the taxonomy. Declared channels describe buying contexts, not independent evidence of actual delivery or per-channel totals.
+
+The proposed 4.0 change would require an explicit nonempty declaration on the product, removing reliance on omission-based inheritance. Its treatment of missing channel details and sparse projections needs to be specified as part of that change. Buyers that also read 3.x responses still need to preserve the 3.x compatibility behavior.
+
 ## Declaring channel support in capabilities
 
 Buyers should call `get_adcp_capabilities` before filtering `get_products`

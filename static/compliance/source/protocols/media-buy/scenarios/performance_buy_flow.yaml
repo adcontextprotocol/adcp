@@ -4,6 +4,8 @@ title: "Seller fulfills a performance (event-kind goal) media buy with a CPA tar
 category: media_buy_seller
 summary: "Verifies that a seller advertising conversion_tracking can bind an event source, accept a media buy with an event-kind optimization_goal targeting CPA, reject malformed performance briefs, ingest conversion events, and report conversion-attributed delivery including per-creative breakdown. ROAS / maximize_value goals are out of scope — see media_buy_seller/performance_buy_flow_roas (separate scenario, gated on the supported_target_kinds capability bit from #4639)."
 track: media_buy
+requires:
+  - controller
 
 # Gate: scenario runs only when the seller declares conversion_tracking.
 # Sellers without it (pure brand/audience sellers — broadcast TV, signal-only)

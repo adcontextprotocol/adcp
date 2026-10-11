@@ -4,6 +4,9 @@ title: "Campaign governance — denied"
 category: governance_spend_authority
 summary: "Governance agent denies a media buy that exceeds the agent's spending authority. No human escalation — the buy is blocked."
 track: campaign_governance
+requires:
+  - controller
+
 required_tools:
   - sync_plans
   - check_governance

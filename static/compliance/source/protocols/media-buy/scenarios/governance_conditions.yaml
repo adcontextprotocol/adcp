@@ -6,6 +6,7 @@ summary: "Verifies that conditions are a non-authorizing intent counterproposal 
 track: media_buy
 requires:
   - multi_agent
+  - controller
 default_agent: sales
 required_tools:
   - sync_plans

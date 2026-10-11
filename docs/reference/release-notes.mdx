@@ -9,6 +9,19 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ---
 
+## Version 3.2.4
+
+Maintenance patch for the stable 3.2 line. The release artifact and Git tag are `3.2.4` / `v3.2.4`. The wire version remains `"3.2"`; patch versions identify bundles and are never sent as `adcp_version`.
+
+- **Reliable Reporting (experimental):** `REVISION_UNREADABLE` identifies a published revision whose retained content the seller cannot serve or verify. The issue carries its obligation and revision IDs, names the seller as responsible, and pairs retry or escalation with the repair state. Authorized exact reads use the existing `SERVICE_UNAVAILABLE` error; unknown or unauthorized revisions retain `REFERENCE_NOT_FOUND`. An affected obligation is neither healthy nor complete. Strict readers must update their reporting schema definitions before accepting the new issue.
+- **Conformance corrections:** required billing capability discovery, active non-guaranteed lifecycle acceptance, the advanced-reporting fixture account join, typed proposal seeding and phase dependencies, and minimum-spend fixture placement. Existing controller-seeded storyboards declare their controller requirement so agents without a controller skip the whole storyboard rather than receive misleading fixture failures.
+- **Signing and canonicalization coverage:** additional vectors and 3.2-profile mirrors test existing header, authority, and URL canonicalization rules. The raw non-ASCII host vector uses the malformed-target error already specified by the 3.2 profile; no signing format or covered component changes.
+- **Schemas and guidance:** compose existing version/protocol envelopes in compact schemas, deduplicate provenance in bundled schemas without changing the wire contract, and clarify product channel declarations and experimental principal setup.
+
+This patch does not advance the scheduled mandatory consumer-status task or superseded-snapshot compaction changes. SDKs must synchronize from the published 3.2.4 bundle before claiming support for its new reporting issue.
+
+---
+
 ## Version 3.2.1
 
 **Status:** General availability, published 2026-09-30. AdCP 3.2 is a minor release. The release artifact and Git tag are `3.2.1` / `v3.2.1`, and the stable wire value is `"3.2"`. The number `3.2.0` was never released, so `3.2.1` is the first stable 3.2 artifact. 3.1 stays supported for integrations pinned to `"3.1"`. Send `"3.2"` only after a peer lists it in `get_adcp_capabilities.adcp.supported_versions`.

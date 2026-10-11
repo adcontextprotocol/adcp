@@ -55,6 +55,7 @@
     "if_pricing_version": ["if_feed_version"]
   },
   "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
     {
       "if": {
         "properties": { "criteria": { "required": ["catalog"] } },

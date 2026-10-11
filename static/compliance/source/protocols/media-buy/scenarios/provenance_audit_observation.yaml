@@ -4,6 +4,9 @@ title: "Seller accepts a provenance carve-out claim surfaced as an audit observa
 category: media_buy_seller
 summary: "Buyer submits AI-assisted creatives with human_oversight directed/edited and disclosure.required false. Seller invokes an on-list verifier, records OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED audit observations, and accepts the creatives rather than treating the observations as rejections."
 track: creative
+requires:
+  - controller
+
 required_tools:
   - get_products
   - sync_creatives

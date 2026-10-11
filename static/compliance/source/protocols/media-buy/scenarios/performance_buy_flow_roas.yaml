@@ -4,6 +4,8 @@ title: "Seller fulfills a performance (event-kind goal) media buy with a ROAS ta
 category: media_buy_seller
 summary: "Verifies that a seller advertising conversion_tracking with per_ad_spend in supported_targets can accept a media buy whose event-kind optimization_goal carries a ROAS (per_ad_spend) target bound to an event source with value_field, reject ROAS goals that omit value_field on every event-source entry, ingest valued purchase events, and report conversion_value + roas alongside conversions and cost_per_acquisition. Sibling to media_buy_seller/performance_buy_flow gated on the supported_targets sub-capability: sellers that don't advertise per_ad_spend (most broadcast TV, upper-funnel video, signal-only) grade not_applicable."
 track: media_buy
+requires:
+  - controller
 
 # Gate: scenario runs only when the seller declares per_ad_spend in
 # conversion_tracking.supported_targets. Sellers that compute conversions

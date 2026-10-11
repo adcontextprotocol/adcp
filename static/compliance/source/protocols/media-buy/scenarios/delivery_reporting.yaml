@@ -4,6 +4,9 @@ title: "Seller returns valid delivery reporting"
 category: media_buy_seller
 summary: "Verifies that get_media_buy_delivery returns schema-compliant delivery data after simulated delivery via the test controller."
 track: reporting
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy

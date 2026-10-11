@@ -4,6 +4,9 @@ title: "Creative materialized localization"
 category: creative
 summary: "Verifies capability discovery, materialized localized sync, explicit default/unmatched behavior, and exact list readback."
 track: creative
+requires:
+  - controller
+
 introduced_in: "3.2"
 required_tools:
   - sync_creatives

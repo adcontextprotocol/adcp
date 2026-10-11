@@ -5,6 +5,9 @@ title: "Seller returns and completes async get_products discovery tasks"
 category: media_buy_seller
 summary: "Forces curated get_products discovery into the submitted arm, verifies idempotent replay and conflict handling, confirms the task through task APIs, completes it deterministically, and observes the terminal webhook result."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - get_task_status

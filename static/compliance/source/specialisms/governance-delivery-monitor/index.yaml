@@ -5,6 +5,9 @@ protocol: governance
 category: governance_delivery_monitor
 summary: "Governance agent monitors delivery, detects budget drift past thresholds, and triggers re-evaluation."
 track: campaign_governance
+requires:
+  - controller
+
 required_tools:
   - check_governance
 

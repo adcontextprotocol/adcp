@@ -4,6 +4,8 @@ title: "Seller fulfills a media buy with a clicks optimization goal (target CPC)
 category: media_buy_seller
 summary: "Verifies that a seller advertising clicks in supported_optimization_metrics can accept a media buy whose metric-kind optimization_goal targets cost-per-click and reports clicks + cost_per_click on delivery. Lightweight sibling to the performance scenarios on the click-optimization side: sellers that don't advertise clicks as an optimization metric (rare — most do; pure brand sellers like broadcast TV upper-funnel video are the not_applicable population) grade not_applicable."
 track: media_buy
+requires:
+  - controller
 
 # Gate: scenario runs only when the seller declares clicks in
 # media_buy.supported_optimization_metrics (proposed in #4669). Most

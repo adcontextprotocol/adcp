@@ -4,6 +4,9 @@ title: "Media buy seller agent"
 category: media_buy_seller
 summary: "Seller agent that receives briefs, returns products, accepts media buys, and reports delivery."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy

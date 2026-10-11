@@ -123,6 +123,9 @@ async function runTriggers(source, products, tools = ['get_adcp_capabilities', '
   const storyboard = {
     ...source,
     prerequisites: undefined,
+    // This slice drops controller seeding, so the controller load gate (the
+    // fake agent exposes no comply_test_controller) would skip the whole run.
+    requires: source.requires.filter(value => value !== 'controller'),
     phases: source.phases.map(phase => ({
       ...phase,
       steps: phase.steps.filter(step => step.task === 'get_adcp_capabilities' ||

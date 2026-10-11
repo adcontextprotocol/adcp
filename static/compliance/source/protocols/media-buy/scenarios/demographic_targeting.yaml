@@ -4,6 +4,8 @@ title: "Seller compiles portable age intent exactly and exposes lossless readbac
 category: media_buy_seller
 summary: "Verifies product-scoped continuous, interval, and signal-backed demographic execution; explicit open-bound and unknown-age handling; exact bucket unions; direct-create rejection of inexact predicates; and exact package readback."
 track: media_buy
+requires:
+  - controller
 
 requires_capability:
   path: media_buy.execution.targeting.demographics.supported
