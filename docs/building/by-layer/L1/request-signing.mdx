@@ -72,7 +72,7 @@ Your agent URL (e.g., https://agent.example.com/mcp)
 
 The verifier calls your agent, not your domain's `/.well-known/brand.json`. Many brand.json files can list the same agent URL, so only the one your agent points to counts. The domain-derived `/.well-known/brand.json` lookup is a 3.x fallback for webhooks from older sellers, never for request signatures. The full algorithm and its error codes are in [Discovering an agent's signing keys via `brand_json_url`](/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url).
 
-The `@adcp/sdk` resolvers `ResolvedAgentJwksResolver` and `BrandJsonJwksResolver` run this chain with caching and refresh. Both call `get_adcp_capabilities` on the agent URL, including when the seller already holds an onboarding record for the agent.
+The TypeScript SDK's `BrandJsonJwksResolver` (see [JWKS resolver options](#jwks-resolver-options)) runs this chain with caching and refresh. It calls `get_adcp_capabilities` on the agent URL, including when the seller already holds an onboarding record for the agent.
 
 ## Step 1: Generate a signing key
 
