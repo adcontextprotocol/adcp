@@ -352,7 +352,7 @@ export async function initializeTrainingGcsReporting(): Promise<void> {
   const database = getDatabaseConfig();
   if (!database) throw new Error('Reporting requires the application PostgreSQL primary.');
   const db = new Pool({ connectionString: database.connectionString, ssl: database.ssl, max: 4,
-    connectionTimeoutMillis: 5000, idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: database.connectionTimeoutMillis || 5000, idleTimeoutMillis: 30_000,
     options: `-c search_path=${TRAINING_REPORTING_SCHEMA},pg_catalog -c statement_timeout=30000 -c lock_timeout=5000` });
   db.on('error', () => logger.error('Reporting PostgreSQL pool failed'));
   try {
