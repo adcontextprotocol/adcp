@@ -1,0 +1,98 @@
+name: Default runtime image footprint
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/runtime-default-image.yml'
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact reviewed source commit to measure
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  footprint:
+    name: Default image with repository cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      IMAGE: adcp-default-runtime-footprint
+      OUTPUT_DIR: ${{ runner.temp }}/default-runtime-footprint
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Verify the exact source commit
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$EXPECTED_SHA" = "$SOURCE_SHA"
+          fi
+          mkdir -p "$OUTPUT_DIR"
+          printf '%s\n' "$SOURCE_SHA" > "$OUTPUT_DIR/source-sha.txt"
+
+      - name: Build with default repository cloning and size ceiling
+        run: |
+          set -euo pipefail
+          # No build-argument overrides: the production cache and 7424 MiB
+          # application ceiling are enforced by the unchanged Dockerfile.
+          docker build --progress=plain --tag "$IMAGE" . 2>&1 | tee "$OUTPUT_DIR/build.log"
+
+      - name: Measure the image and verify every configured repository cache
+        run: |
+          set -euo pipefail
+          docker image inspect "$IMAGE" > "$OUTPUT_DIR/image.json"
+          docker run --rm --interactive --user 0 --entrypoint node "$IMAGE" --input-type=module > "$OUTPUT_DIR/runtime.json" <<'JS'
+          import fs from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const mib = path => Number(execFileSync('du', ['-smx', path], { encoding: 'utf8' }).split(/\s+/)[0]);
+          const root = '/app/.addie-repos';
+          const repositories = fs.readdirSync(root).filter(name => fs.statSync(`${root}/${name}`).isDirectory()).sort();
+          console.log(JSON.stringify({ rootFilesystemMiB: mib('/'), applicationMiB: mib('/app'), cacheMiB: mib(root), repositories }, null, 2));
+          JS
+          python3 - <<'PY'
+          import json, os, pathlib, re
+          output = pathlib.Path(os.environ['OUTPUT_DIR'])
+          runtime = json.loads((output / 'runtime.json').read_text())
+          dockerfile = pathlib.Path('Dockerfile').read_text()
+          clone_lines = re.findall(r'^run_clone\s+.*$', dockerfile, re.M)
+          configured = set(re.findall(r'^run_clone\s+\S+\s+\S+\s+([\w-]+)\s*$', dockerfile, re.M))
+          assert configured, 'No configured repository clones found'
+          assert len(configured) == len(clone_lines), 'Repository clone parser did not match every configured clone'
+          assert configured <= set(runtime['repositories']), sorted(configured - set(runtime['repositories']))
+          assert runtime['cacheMiB'] > 0
+          assert runtime['applicationMiB'] <= 7424
+          runtime.update(sourceSha=os.environ['SOURCE_SHA'], defaultBuildArguments=True, configuredRepositories=sorted(configured))
+          (output / 'runtime.json').write_text(json.dumps(runtime, indent=2) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f"Source `{runtime['sourceSha']}`: visible unpacked root {runtime['rootFilesystemMiB']} MiB; application {runtime['applicationMiB']} MiB / 7424 MiB; repository cache {runtime['cacheMiB']} MiB, {len(configured)} configured repositories.\n")
+          PY
+
+      - name: Initialize every configured docs snapshot
+        run: |
+          set -euo pipefail
+          docker run --rm --interactive --entrypoint node "$IMAGE" --input-type=module < scripts/smoke-docs-index-runtime.mjs 2>&1 | tee "$OUTPUT_DIR/docs-smoke.log"
+
+      - name: Load every hosted bundle with the production SDK
+        run: |
+          set -euo pipefail
+          docker run --rm --interactive --entrypoint node "$IMAGE" --input-type=module < scripts/smoke-hosted-compliance-runtime.mjs 2>&1 | tee "$OUTPUT_DIR/sdk-smoke.log"
+
+      - name: Retain footprint and smoke receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: default-runtime-footprint-${{ github.run_id }}
+          path: ${{ runner.temp }}/default-runtime-footprint
+          if-no-files-found: warn
+          retention-days: 7
