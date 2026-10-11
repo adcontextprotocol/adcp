@@ -4,6 +4,9 @@ title: "list_products ignores criteria.outcome_target for every seller"
 category: media_buy_seller
 summary: "Verifies that a list_products request carrying criteria.outcome_target is answered with a product page rather than rejected, whether or not the seller declares media_buy.outcome_target."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.2"
 
 required_tools:

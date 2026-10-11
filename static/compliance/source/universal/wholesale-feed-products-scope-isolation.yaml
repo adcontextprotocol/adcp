@@ -4,6 +4,9 @@ title: "Wholesale product feed cache-scope isolation"
 category: marketplace_catalog
 summary: "Validates that get_products conditional-fetch is keyed by cache_scope: a wholesale_feed_version minted under one cache_scope must not short-circuit (unchanged: true) a request the seller resolves to a different cache_scope."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.2"
 
 requires_capability:

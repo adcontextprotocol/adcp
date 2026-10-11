@@ -4,6 +4,9 @@ title: "Seller-optimized proposal carries subordinate package pacing into the bu
 category: media_buy_seller
 summary: "Verifies that a seller advertising seller-optimized budgets, package pacing, and proposals can express subordinate allocation pacing on a seller-optimized proposal and translate it into package pacing on execution and readback."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.2"
 
 # Proposal-derived package pacing needs three independent declarations: the

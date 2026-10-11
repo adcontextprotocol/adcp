@@ -5,6 +5,8 @@ title: "Container-subsumption evaluation for metric set operations"
 category: media_buy_seller
 summary: "Verifies a container token (e.g. viewability) subsumes its leaf identities (e.g. viewable_rate) for required_metrics filtering and requested_metrics carrier selection, and that a leaf never subsumes a sibling leaf."
 track: reporting
+requires:
+  - controller
 
 required_tools:
   - get_products

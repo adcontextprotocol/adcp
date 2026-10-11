@@ -5,6 +5,9 @@ title: "Creative feature evaluations are retry-safe and reconcilable"
 category: creative
 summary: "Proves exact sync and async replay, payload conflicts, concurrent deduplication, submitted acknowledgement validity, and stable provider evaluation economics through polling."
 track: creative
+requires:
+  - controller
+
 # Applicability gate: required_tools is any-of, so it lists only the tool
 # that makes this scenario apply. get_adcp_capabilities, get_task_status, and
 # comply_test_controller are advertised by nearly every agent; listing them

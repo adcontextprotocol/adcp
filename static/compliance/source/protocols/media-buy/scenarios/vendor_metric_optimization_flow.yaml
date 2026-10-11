@@ -4,6 +4,9 @@ title: "Vendor-metric optimization-goal: acceptance and rejection"
 category: media_buy_seller
 summary: "Verifies that a seller supporting vendor_metric_optimization accepts a media buy whose optimization_goal has kind 'vendor_metric' when all preconditions are met, and rejects goals that fail either the capability check or the reporting-coherence check."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.1"
 
 # Gate: scenario runs only when the seller declares vendor-metric

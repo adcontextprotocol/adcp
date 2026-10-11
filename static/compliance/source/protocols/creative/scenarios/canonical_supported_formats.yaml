@@ -4,6 +4,9 @@ title: "Creative canonical supported formats"
 category: creative
 summary: "Verifies the 3.2 creative-agent canonical path: targetable supported_formats capability IDs, build_creative routing, and unsupported target rejection."
 track: creative
+requires:
+  - controller
+
 introduced_in: "3.1"
 required_tools:
   - build_creative

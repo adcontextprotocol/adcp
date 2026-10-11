@@ -5,6 +5,9 @@ protocol: brand
 category: brand_rights
 summary: "Brand agent that serves identity assets and licenses rights for AI-generated content."
 track: core
+requires:
+  - controller
+
 required_tools:
   - get_brand_identity
 requires_scenarios:

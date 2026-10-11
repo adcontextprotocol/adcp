@@ -70,6 +70,7 @@
     }
   ],
   "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
     {
       "not": {
         "properties": {

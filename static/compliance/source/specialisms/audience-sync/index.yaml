@@ -5,6 +5,9 @@ protocol: media-buy
 category: audience_sync
 summary: "Full audience lifecycle: account discovery, audience creation with hashed identifiers, and audience deletion."
 track: audiences
+requires:
+  - controller
+
 required_tools:
   - list_accounts
   - sync_audiences

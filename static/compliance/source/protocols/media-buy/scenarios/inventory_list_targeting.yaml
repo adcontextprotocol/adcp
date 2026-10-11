@@ -4,6 +4,9 @@ title: "Seller honors property_list targeting on create and update"
 category: media_buy_seller
 summary: "Verifies that a seller accepts PropertyListReference in package targeting on create_media_buy AND update_media_buy, with parity between both paths."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy

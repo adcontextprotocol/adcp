@@ -4,6 +4,8 @@ title: "Seller honors a package-level frequency cap and reports observed frequen
 category: media_buy_seller
 summary: "Verifies that a seller advertising frequency_capping accepts a package-level frequency_cap (max_impressions + per + window form) on create_media_buy and, after simulated delivery, reports observed reach and frequency on get_media_buy_delivery with the observed frequency at-or-below the requested cap. Runtime-enforcement scenario — no rejection arm. Sellers without frequency_capping grade not_applicable."
 track: media_buy
+requires:
+  - controller
 
 # Gate: scenario runs only when the seller declares frequency_capping (object
 # presence indicates the seller honors targeting.frequency_cap and rejects

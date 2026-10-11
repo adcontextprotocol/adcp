@@ -15,10 +15,15 @@
  * This lint enforces the invariant so future contributors don't reintroduce
  * the regression.
  *
+ * A strict root is allowed when it also redeclares `adcp_version` and
+ * `adcp_major_version` in its own `properties` as `$ref`s to the envelope
+ * (the compact 3.2 requests do this), because draft-07 then sees both fields
+ * locally.
+ *
  * Scope: this lint inspects only the schema's root `allOf` array. Schemas
- * that need strict-mode (e.g. trusted-match/identity-match-request.json's privacy
- * boundary) intentionally don't compose the envelope via allOf — they
- * inline `adcp_version` / `adcp_major_version` in `properties`. The lint
+ * that need strict-mode without redeclaring the fields (e.g.
+ * trusted-match/identity-match-request.json's privacy boundary)
+ * intentionally don't compose the envelope via allOf — they inline `adcp_version` / `adcp_major_version` in `properties`. The lint
  * does not (and should not) detect indirect composition through `oneOf`
  * branches, `definitions`/`$defs`, or nested allOf — those patterns are
  * not used in AdCP today and adding them would rightly trigger this lint
@@ -55,7 +60,7 @@ function usesVersionEnvelope(schema) {
   );
 }
 
-test('every schema that allOfs the version envelope has permissive additionalProperties at root', () => {
+test('every schema that allOfs the version envelope is permissive or redeclares the envelope fields', () => {
   const violations = [];
   for (const file of listJsonFiles(SOURCE_DIR)) {
     let schema;
@@ -66,8 +71,13 @@ test('every schema that allOfs the version envelope has permissive additionalPro
     }
     if (!usesVersionEnvelope(schema)) continue;
 
-    const ap = schema.additionalProperties;
-    if (ap === false) {
+    // A strict root is safe only when it redeclares both envelope fields in
+    // its own properties as $refs to the envelope (draft-07 does not evaluate
+    // properties across allOf).
+    const declaresEnvelopeFields = ['adcp_version', 'adcp_major_version'].every(
+      (field) => schema.properties?.[field]?.$ref === `${ENVELOPE_REF}#/properties/${field}`,
+    );
+    if (schema.additionalProperties === false && !declaresEnvelopeFields) {
       violations.push({
         file: path.relative(path.resolve(__dirname, '..'), file),
         reason: 'additionalProperties: false at root rejects envelope fields',
@@ -79,7 +89,7 @@ test('every schema that allOfs the version envelope has permissive additionalPro
     violations,
     [],
     'Schemas with allOf $ref to version-envelope.json MUST have ' +
-      'additionalProperties: true (or absent) at root. draft-07 allOf does ' +
+      'additionalProperties: true (or absent) at root, or redeclare adcp_version and adcp_major_version in properties. draft-07 allOf does ' +
       'not bypass parent strict-mode. Violations:\n' +
       violations.map((v) => `  ${v.file} — ${v.reason}`).join('\n'),
   );

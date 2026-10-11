@@ -4,6 +4,8 @@ title: "Media buy state machine lifecycle"
 category: media_buy_state_machine
 summary: "Validates media buy state transitions: create, pause, resume, cancel, and terminal state enforcement."
 track: media_buy
+requires:
+  - controller
 
 # This storyboard drives pause/resume immediately after create_media_buy. That
 # only works for sellers that explicitly declare auto-approval; manual-review

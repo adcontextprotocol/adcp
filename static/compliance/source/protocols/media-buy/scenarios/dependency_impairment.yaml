@@ -4,6 +4,9 @@ title: "Dependency impairment end-to-end — resource transition propagates to m
 category: media_buy_seller
 summary: "Forces a creative from approved → rejected on a non-terminal media buy, verifies the buy reflects health: impaired with a matching impairments[] entry, and recovers via assignment swap to a different creative (canonical recovery vector — re-approval of the same creative_id is uncommon in production)."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - get_products
   - create_media_buy

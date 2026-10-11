@@ -4,6 +4,8 @@ title: "Package frequency-cap capability and update boundaries"
 category: media_buy_seller
 summary: "Verifies constrained discovery with seller-wide unit inheritance, create-only rejection, out-of-range rejection, mutable update, package-qualified actions, and exact readback."
 track: media_buy
+requires:
+  - controller
 
 requires_capability:
   path: media_buy.frequency_capping

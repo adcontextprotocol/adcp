@@ -4,6 +4,9 @@ title: "Seller solves for budget from a structured outcome target"
 category: media_buy_seller
 summary: "Verifies criteria.outcome_target reverse forecasting: a metric or event goal plus desired volume answered with total_budget_guidance and a forecast whose points carry the goal's key in metrics, and a cost_per target answered in commercial_terms.bidding.cost_per with the buyer's strength and currency, or rejected when the products are not priced in that currency."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - request_proposals
 

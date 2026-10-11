@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const YAML = require('yaml');
 
-const { runStoryboard } = require('@adcp/sdk/testing');
+const { parseStoryboard, runStoryboard } = require('@adcp/sdk/testing');
 
 const mediaBuyScenariosPath = path.join(
   __dirname,
@@ -55,7 +55,7 @@ test('evaluator capability contract grades individual experimental feature decla
       })),
     }],
   };
-  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
 
   for (const features of [[], ['other.feature'], ['creative.evaluator'], ['other.feature', 'creative.evaluator']]) {
     const capabilities = {
@@ -230,7 +230,7 @@ test('inventory-list storyboards skip sellers that declare property-list support
       equals: true,
     });
 
-    const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
     const result = await runStoryboard('https://agent.example/mcp', storyboard, {
       _profile: {
         tools,
@@ -274,7 +274,7 @@ test('inventory-list no-match requires canonical rejection and fails accepted bu
       })),
     })),
   };
-  const tools = ['get_adcp_capabilities', 'create_media_buy'];
+  const tools = ['get_adcp_capabilities', 'create_media_buy', 'comply_test_controller'];
   const baseOptions = {
     agentTools: tools,
     context: {
@@ -493,30 +493,19 @@ test('online media-buy governance proofs do not apply to signed-context-only sel
   assert.equal(signedOnly.phases[0].steps[0].skip_reason, 'capability_unsupported');
 });
 
+function loadBillingGateStoryboard() {
+  return YAML.parse(fs.readFileSync(path.join(
+    __dirname, '..', 'static', 'compliance', 'source', 'universal', 'billing-gate-dispatch.yaml'
+  ), 'utf8'));
+}
+
 test('billing gate skips phases when account capabilities are absent', async () => {
-  const storyboardPath = path.join(
-    __dirname,
-    '..',
-    'static',
-    'compliance',
-    'source',
-    'universal',
-    'billing-gate-dispatch.yaml'
-  );
-  const storyboard = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
+  const storyboard = loadBillingGateStoryboard();
   const perAgentPhases = storyboard.phases.filter(phase => phase.id.startsWith('per_agent_gate_'));
   const capabilityDiscovery = storyboard.phases.find(phase => phase.id === 'capability_discovery');
 
-  assert.deepEqual(
-    {
-      optional: capabilityDiscovery.optional,
-      requires_capability: capabilityDiscovery.requires_capability,
-    },
-    {
-      optional: true,
-      requires_capability: { path: 'account', present: true },
-    }
-  );
+  assert.equal(capabilityDiscovery.optional, undefined);
+  assert.deepEqual(capabilityDiscovery.requires_capability, { path: 'account', present: true });
 
   assert.deepEqual(
     perAgentPhases.map(phase => [phase.id, phase.requires_capability]),
@@ -533,7 +522,7 @@ test('billing gate skips phases when account capabilities are absent', async () 
   );
 
   const dispatchedTasks = [];
-  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
   const result = await runStoryboard('https://agent.example/mcp', storyboard, {
     _profile: {
       tools,
@@ -555,6 +544,8 @@ test('billing gate skips phases when account capabilities are absent', async () 
   });
 
   assert.deepEqual(dispatchedTasks, []);
+  assert.equal(result.overall_passed, true);
+  assert.equal(result.failed_count, 0);
   const phases = Object.fromEntries(result.phases.map(phase => [phase.phase_id, phase]));
   assert.equal(phases.capability_discovery.steps[0].skip_reason, 'not_applicable');
   for (const phaseId of [
@@ -566,6 +557,86 @@ test('billing gate skips phases when account capabilities are absent', async () 
     assert.equal(phases[phaseId].steps[0].skip.reason, 'not_applicable');
   }
 });
+
+for (const { name, supportedBilling, missingDeclaration } of [
+  { name: 'operator billing with omitted-value rejection probes', supportedBilling: ['operator'] },
+  { name: 'all billing values with no rejection probes', supportedBilling: ['operator', 'agent', 'advertiser'] },
+  { name: 'a missing supported_billing declaration', supportedBilling: ['operator'], missingDeclaration: true },
+]) {
+  test(`billing gate grades ${name}`, async () => {
+    const storyboard = loadBillingGateStoryboard();
+    // Exercise all source phases and field validations with the real SDK verdict;
+    // schema fetching is independent of this required-phase regression.
+    const executable = {
+      ...storyboard,
+      phases: storyboard.phases.map(phase => ({
+        ...phase,
+        steps: phase.steps.map(step => ({
+          ...step,
+          validations: step.validations.filter(validation => validation.check !== 'response_schema'),
+        })),
+      })),
+    };
+    const account = {
+      supported_billing: supportedBilling,
+      supported_account_currency_modes: ['fixed'],
+    };
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
+    const capabilityRequests = [];
+    const rejectedBilling = [];
+    const result = await runStoryboard('https://agent.example/mcp', executable, {
+      _profile: { tools, raw_capabilities: { account } },
+      agentTools: tools,
+      test_kit: { commercial_relationship: 'direct' },
+      skip_controller_seeding: true,
+      _client: {
+        resetContext() {},
+        async getAdcpCapabilities(request) {
+          capabilityRequests.push(request);
+          return {
+            success: true,
+            data: {
+              account: missingDeclaration ? { supported_account_currency_modes: ['fixed'] } : account,
+              context: request.context,
+            },
+          };
+        },
+        async syncAccounts(request) {
+          rejectedBilling.push(request.accounts[0].billing);
+          return {
+            success: true,
+            data: {
+              accounts: [{
+                action: 'failed',
+                status: 'rejected',
+                errors: [{ code: 'BILLING_NOT_SUPPORTED', recovery: 'correctable', details: { scope: 'capability' } }],
+              }],
+              context: request.context,
+            },
+          };
+        },
+      },
+    });
+
+    assert.equal(capabilityRequests.length, 1);
+    const discovery = result.phases.find(phase => phase.phase_id === 'capability_discovery');
+    assert.equal(discovery.passed, !missingDeclaration);
+    assert.equal(discovery.steps.some(step => !step.skipped && step.passed), !missingDeclaration);
+    assert.equal(result.overall_passed, !missingDeclaration);
+    if (!missingDeclaration) {
+      assert.equal(result.failed_count, 0);
+      assert.deepEqual(rejectedBilling.sort(), ['operator', 'agent', 'advertiser'].filter(value => !supportedBilling.includes(value)).sort());
+      for (const billing of supportedBilling) {
+        const gate = result.phases.find(phase => phase.phase_id === `capability_gate_${billing}`);
+        assert.ok(gate.steps.every(step => step.skipped && step.skip_reason === 'not_applicable'));
+      }
+      for (const phaseId of ['per_agent_gate_reject', 'per_agent_gate_recover']) {
+        const gate = result.phases.find(phase => phase.phase_id === phaseId);
+        assert.ok(gate.steps.every(step => step.skipped), 'direct billing must skip the per-agent passthrough probes');
+      }
+    }
+  });
+}
 
 test('create_media_buy async storyboard requires its advertised controller scenario', async () => {
   const storyboardPath = path.join(
@@ -732,7 +803,7 @@ test('creative-library storyboards fail closed before tool execution', async () 
       assert.deepEqual(storyboard.requires_all_capabilities, item.gates);
     }
 
-    const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
     const librarylessCapabilities = structuredClone(item.capabilities);
     librarylessCapabilities.creative = { has_creative_library: false };
     const libraryless = await runStoryboard('https://agent.example/mcp', storyboard, {
@@ -854,7 +925,7 @@ test('product refinement requires the advertised refine buying mode', async () =
     contains: 'refine',
   });
 
-  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
   const unsupported = await runStoryboard('https://agent.example/mcp', storyboard, {
     _profile: {
       tools,
@@ -893,7 +964,7 @@ test('advanced delivery reporting dispatches wholesale discovery only to opted-i
       steps: [{ ...discovery, context_outputs: [], validations: [] }],
     }],
   };
-  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
 
   for (const buyingModes of [undefined, ['brief'], ['brief', 'wholesale']]) {
     const requests = [];
@@ -944,7 +1015,7 @@ test('proposal finalize skips unsupported replay while still executing the commi
         })),
       })),
   };
-  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
 
   for (const [supported, brokenReplay] of [[false, false], [true, false], [true, true]]) {
     const finalizedRequests = [];
@@ -1068,7 +1139,7 @@ test('measurement acceptance is split from the universal rejection scenario', as
   assert.equal(capability['x-added-in'], '3.2.0');
   assert.match(capability.description, /TERMS_REJECTED/);
 
-  const tools = ['get_adcp_capabilities', ...accepted.required_tools];
+  const tools = ['get_adcp_capabilities', ...accepted.required_tools, 'comply_test_controller'];
   const unsupported = await runStoryboard('https://agent.example/mcp', accepted, {
     _profile: {
       tools,
@@ -1201,4 +1272,105 @@ test('storyboard capability gates use the schema shape the runner evaluates', ()
   };
   walk(sourceRoot);
   assert.deepEqual(problems, []);
+});
+
+// Execute the source baseline through the installed runner, including its response
+// schemas and upstream checks. Capability differences must not strand the buy ID.
+async function runNonGuaranteedLifecycle({ status, hasCreativeLibrary, pacingStatus = status, upstream = true, badContext = false }) {
+  const storyboard = parseStoryboard(fs.readFileSync(path.join(
+    __dirname, '..', 'static', 'compliance', 'source', 'specialisms', 'sales-non-guaranteed', 'index.yaml'
+  ), 'utf8'));
+  const phases = storyboard.phases.filter(phase => ['create_buy', 'monitor_pacing', 'adjust_bids'].includes(phase.id));
+  const tools = ['get_adcp_capabilities', 'get_products', 'create_media_buy', 'get_media_buys', 'update_media_buy', 'comply_test_controller'];
+  const requests = [];
+  const packages = [
+    { package_id: 'package-first', product_id: 'product-first', pricing_option_id: 'pricing-first', bid_price: 2, budget: 10000 },
+    { package_id: 'package-second', product_id: 'product-second', pricing_option_id: 'pricing-second', bid_price: 3, budget: 15000 },
+  ];
+  const confirmedAt = '2026-01-01T00:00:00Z';
+  const result = await runStoryboard('https://seller.example/mcp', {
+    ...storyboard, prerequisites: undefined, fixtures: undefined, fixture_resolution: undefined, phases,
+  }, {
+    _profile: { tools, raw_capabilities: { creative: { has_creative_library: hasCreativeLibrary } } },
+    _controllerCapabilities: { detected: true, scenarios: ['query_upstream_traffic'] },
+    agentTools: tools,
+    context: {
+      first_product_id: 'product-first', second_product_id: 'product-second',
+      first_pricing_option_id: 'pricing-first', second_pricing_option_id: 'pricing-second',
+      first_bid_price: 2, second_bid_price: 3,
+      first_updated_bid_price: 4, second_updated_bid_price: 5,
+    },
+    _client: {
+      resetContext() {},
+      async createMediaBuy(request) {
+        requests.push({ task: 'create_media_buy', request });
+        return { success: true, data: {
+          media_buy_id: 'buy-lifecycle', media_buy_status: status, confirmed_at: confirmedAt,
+          revision: 1, packages, context: badContext ? { correlation_id: 'wrong' } : request.context,
+        } };
+      },
+      async getMediaBuys(request) {
+        requests.push({ task: 'get_media_buys', request });
+        return { success: true, data: {
+          media_buys: [{ media_buy_id: 'buy-lifecycle', status: pacingStatus, confirmed_at: confirmedAt,
+            revision: 1, currency: 'USD', total_budget: 25000, packages }], context: request.context,
+        } };
+      },
+      async updateMediaBuy(request) {
+        requests.push({ task: 'update_media_buy', request });
+        return { success: true, data: {
+          media_buy_id: request.media_buy_id, media_buy_status: status, revision: 2,
+          affected_packages: packages.map((pkg, index) => ({ ...pkg, ...request.packages[index] })),
+          context: request.context,
+        } };
+      },
+      async executeTask(task, request) {
+        assert.equal(task, 'comply_test_controller');
+        assert.equal(request.scenario, 'query_upstream_traffic');
+        return { success: true, data: { success: true, recorded_calls: upstream ? [{
+          timestamp: new Date().toISOString(), endpoint: 'POST https://auction.example/campaigns',
+        }] : [] } };
+      },
+    },
+  });
+  return { result, requests, steps: result.phases.flatMap(phase => phase.steps) };
+}
+
+for (const [status, hasCreativeLibrary] of [['active', false], ['pending_creatives', true]]) {
+  test(`non-guaranteed ${status} buy reaches pacing and bid updates`, async () => {
+    const { result, requests, steps } = await runNonGuaranteedLifecycle({ status, hasCreativeLibrary });
+    assert.equal(result.overall_passed, true, JSON.stringify(steps));
+    assert.equal(steps.length, 3);
+    assert.ok(steps.every(step => step.passed && !step.skipped), JSON.stringify(steps));
+    assert.deepEqual(requests.map(entry => entry.task), ['create_media_buy', 'get_media_buys', 'update_media_buy']);
+    assert.deepEqual(requests[1].request.media_buy_ids, ['buy-lifecycle']);
+    assert.equal(requests[2].request.media_buy_id, 'buy-lifecycle');
+    assert.deepEqual(requests[2].request.packages.map(pkg => pkg.package_id), ['package-first', 'package-second']);
+    const upstreamChecks = steps.flatMap(step => step.validations).filter(check => check.check === 'upstream_traffic');
+    assert.equal(upstreamChecks.length, 2);
+    assert.ok(upstreamChecks.every(check => check.passed && !check.not_applicable));
+  });
+}
+
+test('non-guaranteed lifecycle checks reject other states at creation and pacing', async () => {
+  for (const status of ['pending_approval', 'rejected', 'canceled', 'completed']) {
+    const created = await runNonGuaranteedLifecycle({ status, hasCreativeLibrary: false });
+    assert.equal(created.steps[0].passed, false, status);
+    assert.ok(created.steps[0].validations.some(check => check.path === 'media_buy_status' && !check.passed), status);
+    const paced = await runNonGuaranteedLifecycle({ status: 'active', pacingStatus: status, hasCreativeLibrary: false });
+    const pacing = paced.steps.find(step => step.step_id === 'get_media_buys_pacing');
+    assert.equal(pacing.passed, false, status);
+    assert.ok(pacing.validations.some(check => check.path === 'media_buys[0].status' && !check.passed), status);
+  }
+});
+
+test('accepting active does not bypass context echoes or upstream side effects', async () => {
+  for (const override of [{ upstream: false }, { badContext: true }]) {
+    const { result, steps } = await runNonGuaranteedLifecycle({ status: 'active', hasCreativeLibrary: false, ...override });
+    assert.equal(result.overall_passed, false);
+    assert.equal(steps[0].passed, false);
+    assert.ok(steps[0].validations.some(check => !check.passed && (
+      override.badContext ? check.path === 'context.correlation_id' : check.check === 'upstream_traffic'
+    )), JSON.stringify(steps[0].validations));
+  }
 });

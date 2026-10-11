@@ -2,7 +2,7 @@ id: signed_requests
 version: "1.0.0"
 title: "Signed requests — RFC 9421 transport-layer verification"
 category: signed_requests
-summary: "Agent verifies RFC 9421 HTTP Signatures on incoming AdCP requests per the 3.1-compatible transport-layer profile. Universal capability-gated storyboard — runs for any agent advertising `request_signing.supported: true` regardless of `supported_protocols`. Graded against the legacy wire suite covering every 3.1 checklist step and canonicalization-edge rule."
+summary: "Agent verifies RFC 9421 HTTP Signatures on incoming AdCP requests per the 3.1-compatible transport-layer profile. Universal capability-gated storyboard — runs for any agent advertising `request_signing.supported: true` regardless of `supported_protocols`. Graded against the legacy wire suite covering every 3.1 checklist step and canonicalization-edge rule; a verifier advertising `covers_content_digest: \"required\"` (every 3.2+ verifier) is graded against the `profile-3.2/` mirror, which carries a counterpart of every legacy vector (positive `001` and `002` collapse into `positive/001-post-with-content-digest`) except `negative/018` (`forbidden` is illegal in 3.2)."
 track: security_transport
 required_tools:
   - get_adcp_capabilities
@@ -188,6 +188,9 @@ phases:
         019 Signature without Signature-Input → request_signature_header_malformed
         020 per-keyid replay cache cap        → request_signature_rate_abuse
         028 unsigned tasks/cancel + protocol_methods_required_for → request_signature_required
+        029 duplicate label on Signature      → request_signature_header_malformed
+        030 Content-Digest SHA-256 + sha-256  → request_signature_header_malformed
+        031 unbracketed IPv6 in Host header   → request_target_uri_malformed
 
       Vector 028 is gated on `request_signing.protocol_methods_required_for`
       being non-empty: the runner skips when the agent does not declare the

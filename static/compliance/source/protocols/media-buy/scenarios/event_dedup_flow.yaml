@@ -4,6 +4,8 @@ title: "Seller deduplicates the same event across multiple registered event sour
 category: media_buy_seller
 summary: "Verifies that a seller advertising conversion_tracking.multi_source_event_dedup can register multiple event sources for the same buy and deduplicate inbound events by event_id so the same conversion from a pixel and a CAPI source counts once, not twice. Sibling to media_buy_seller/performance_buy_flow gated on the dedup sub-capability bit: sellers that don't advertise multi-source dedup grade not_applicable."
 track: media_buy
+requires:
+  - controller
 
 # Gate: scenario runs only when the seller declares
 # conversion_tracking.multi_source_event_dedup equals true. Sellers that

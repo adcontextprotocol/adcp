@@ -4,6 +4,9 @@ title: "Buyer-managed catalog items support immediate availability updates"
 category: media_buy_seller
 summary: "Verifies capability-gated, atomic, synchronous suppression and restoration of buyer-managed catalog items."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.2"
 
 requires_capability:

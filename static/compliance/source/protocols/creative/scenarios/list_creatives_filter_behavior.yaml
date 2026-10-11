@@ -5,6 +5,8 @@ title: "Sales agent applies deterministic creative filters"
 category: media_buy_seller
 summary: "Verifies a sales agent applies creative-status and media-buy-assignment filters conjunctively."
 track: creative
+requires:
+  - controller
 
 required_tools:
   - list_creatives

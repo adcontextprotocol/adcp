@@ -4,6 +4,8 @@ title: "Update a seeded rights grant and reject unknown references"
 category: brand_rights
 summary: "Verifies that update_rights atomically updates an acquired grant and rejects an unknown rights_id with REFERENCE_NOT_FOUND."
 track: brand
+requires:
+  - controller
 
 narrative: |
   `update_rights` operates on a grant, not on a catalog offering. The controller

@@ -4,6 +4,9 @@ title: "Creative report_usage rejects out-of-band billing"
 category: creative
 summary: "Verifies that a creative agent declaring bills_through_adcp: false rejects report_usage records with accepted: 0 and BILLING_OUT_OF_BAND."
 track: creative
+requires:
+  - controller
+
 introduced_in: "3.1"
 required_tools:
   - report_usage

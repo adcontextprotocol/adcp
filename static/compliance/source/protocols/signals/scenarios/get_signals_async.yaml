@@ -5,6 +5,9 @@ title: "Signals agent returns and completes async get_signals discovery tasks"
 category: signals_baseline
 summary: "Forces semantic get_signals discovery into the submitted arm, verifies task visibility, completes it deterministically, and observes the terminal webhook result."
 track: signals
+requires:
+  - controller
+
 required_tools:
   - get_signals
   - get_task_status

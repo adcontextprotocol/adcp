@@ -4,6 +4,8 @@ title: "Seller accepts and reads back a MediaBuy frequency cap"
 category: media_buy_seller
 summary: "Verifies participation-gated discovery, incompatible-mix rejection, exact acceptance, and readback of a root cap across a two-product buy."
 track: media_buy
+requires:
+  - controller
 
 requires_capability:
   path: media_buy.aggregate_frequency_capping

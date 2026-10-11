@@ -4,6 +4,9 @@ title: "Seller rejects a minimum-spend target above its own package cap"
 category: media_buy_seller
 summary: "Verifies that a seller advertising seller-optimized budgets, package budget caps, and minimum-spend targets rejects a package min_spend_target above that package's budget with INVALID_REQUEST before mutation."
 track: media_buy
+requires:
+  - controller
+
 introduced_in: "3.2"
 
 # The cap-versus-minimum check is over-subscription validation across two

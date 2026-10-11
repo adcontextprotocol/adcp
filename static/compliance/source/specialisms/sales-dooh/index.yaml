@@ -5,6 +5,9 @@ protocol: media-buy
 category: sales_dooh
 summary: "DOOH seller for non-guaranteed venue and screen inventory with canonical screen formats and substantive play reporting."
 track: media_buy
+requires:
+  - controller
+
 required_tools:
   - sync_creatives
   - list_products

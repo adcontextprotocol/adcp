@@ -6,6 +6,7 @@
   "x-tool-summary": "Tell a seller whether expected reporting was received, omitted, missing, unreadable, or contradictory.",
   "description": "Submit the authenticated consumer's operational reporting status for expected configuration periods. This is a batched idempotent append-only sync over seller-hosted task transport, not a webhook registration, measurement-data feed, or billing receipt. Identity comes from authenticated transport; the request MUST NOT assert a buyer or consumer principal.",
   "type": "object",
+  "allOf": [{ "$ref": "/schemas/core/version-envelope.json" }],
   "x-mutates-state": true,
   "properties": {
     "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },

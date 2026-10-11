@@ -4,6 +4,8 @@ title: "Seller fulfills a media buy with a reach optimization goal"
 category: media_buy_seller
 summary: "Verifies that a seller advertising reach in supported_optimization_metrics can accept a media buy whose metric-kind optimization_goal targets unique reach with a buyer-supplied reach_unit, reject reach_unit values not in the product's metric_optimization.supported_reach_units, and report reach + frequency on delivery. Sibling to the performance buy scenarios on the brand-reach side: sellers that don't advertise reach as an optimization metric (most pure performance DSPs, retail-media networks) grade not_applicable."
 track: media_buy
+requires:
+  - controller
 
 # Gate: scenario runs only when the seller declares reach in
 # media_buy.supported_optimization_metrics (proposed in #4669). Sellers
