@@ -11887,7 +11887,13 @@ async function handleGetProductsUnlocked(
       const requestedProducts = products.filter(product => (
         exactProductIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
       ));
-      if (requestedProducts.length === exactProductIds.size) {
+      // One proposal carries one budget currency; explicitly selected products
+      // priced in different currencies cannot share it, so build nothing and
+      // let the existing rejection path answer.
+      const requestedCurrencies = new Set(
+        requestedProducts.map(product => product.pricing_options[0]?.currency ?? 'USD'),
+      );
+      if (requestedProducts.length === exactProductIds.size && requestedCurrencies.size === 1) {
         const allocationPercentage = 100 / requestedProducts.length;
         const firstPricing = requestedProducts[0].pricing_options[0];
         proposals = [{
@@ -11970,7 +11976,14 @@ async function handleGetProductsUnlocked(
         const selectedProducts = products.filter(product => (
           exactProductIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
         ));
-        if (selectedProducts.length === exactProductIds.size && selectedProducts.length > 0) {
+        const selectedCurrencies = new Set(
+          selectedProducts.map(product => product.pricing_options[0]?.currency ?? 'USD'),
+        );
+        if (
+          selectedProducts.length === exactProductIds.size
+          && selectedProducts.length > 0
+          && selectedCurrencies.size === 1
+        ) {
           const allocationPercentage = 100 / selectedProducts.length;
           proposals = [{
             proposal_id: 'selected_product_plan',
