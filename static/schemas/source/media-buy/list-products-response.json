@@ -17,6 +17,14 @@
       "type": "array",
       "items": { "$ref": "/schemas/core/canonical-product.json" }
     },
+    "collections": {
+      "type": "array",
+      "description": "Experimental (media_buy.collection_cards). Full collection objects for collections referenced by the collections selectors of products on this page, de-duplicated across those products: at most one entry per (publisher_domain, collection_id). Sellers MUST NOT include a collection that no product on the page references and SHOULD include every referenced collection; buyers resolve an omitted one from the publisher's adagents.json. These are convenience copies: adagents.json remains the root of authorization, and a copy is never authorization evidence. Present only alongside products, so never on an unchanged outcome.",
+      "minItems": 1,
+      "items": { "$ref": "/schemas/core/response-collection.json" },
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
     "next_cursor": {
       "type": "string",
       "minLength": 1,
@@ -43,6 +51,9 @@
     "replayed": { "type": "boolean", "const": true },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "dependencies": {
+    "collections": ["products"]
   },
   "oneOf": [
     {

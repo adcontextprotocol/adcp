@@ -59,6 +59,7 @@ Every response has an explicit `outcome`:
 |-------|------|-------------|
 | `outcome` | string | `listed` when the response contains a product page; `unchanged` when a conditional request matches the current feed. |
 | `products` | Product[] | Product offers for this page. Required for `listed`, even when the array is empty; omitted for `unchanged`. |
+| `collections` | ResponseCollection[] | Optional, experimental (`media_buy.collection_cards`). Full collection objects for collections referenced by products on this page, one entry per `(publisher_domain, collection_id)`. Omitted with `products`, and when `fields` omits `collections`. Not authorization evidence; see [Collections in responses](/docs/media-buy/product-discovery/collections-and-installments#collections-in-responses). |
 | `next_cursor` | string | Cursor for the next page. Omitted on the final page. Pass it as `cursor` in the next request. |
 | `feed_version` | string | Opaque version of the selected offer feed. Pass it as `if_feed_version` on a later request to avoid downloading an unchanged feed. |
 | `pricing_version` | string | Opaque version of the selected pricing layer. Pass it as `if_pricing_version` together with `if_feed_version` when checking both versions. |

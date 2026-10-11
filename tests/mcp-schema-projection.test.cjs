@@ -109,8 +109,12 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // covers the additive 3.3 Product fields still in review. The 3.3 broadcast
 // TV, daypart and execution-readiness additions bring it to ~1_282_300 bytes.
 // Further growth should be met by hoisting shared definitions out of the
-// seeded Product (#8041), not by another bump.
-const PARITY_COMPILE_LIMIT = 1_300_000;
+// seeded Product (#8041), not by another bump. The exception is the response
+// collections array (#8137): it reaches the controller through the
+// task-completion get_products response, not the seeded Product, and adds the
+// whole core/collection.json closure once (~1_312_700 bytes). Hoisting the
+// seeded Product would not remove it.
+const PARITY_COMPILE_LIMIT = 1_320_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

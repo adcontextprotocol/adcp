@@ -65,6 +65,16 @@
         "$ref": "/schemas/core/product.json"
       }
     },
+    "collections": {
+      "type": "array",
+      "description": "Experimental (media_buy.collection_cards). Full collection objects for collections referenced by the returned products' collections selectors, de-duplicated across products: at most one entry per (publisher_domain, collection_id). Sellers MUST NOT include a collection that no returned product references and SHOULD include every referenced collection; buyers resolve an omitted one from the publisher's adagents.json. These are convenience copies: adagents.json remains the root of authorization, and a copy is never authorization evidence. Present only alongside products.",
+      "minItems": 1,
+      "items": {
+        "$ref": "/schemas/core/response-collection.json"
+      },
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
     "targeting_resolution": {
       "$ref": "/schemas/media-buy/get-products-targeting-resolution.json",
       "description": "Request-level confirmation of structured hard targeting inferred from the brief. Sellers MUST include this when their structured interpretation of hard prose materially affects product eligibility, pricing, or forecasting; otherwise inclusion is a best practice. Omitted when no hard targeting was inferred from the brief."
@@ -408,6 +418,9 @@
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
+  },
+  "dependencies": {
+    "collections": ["products"]
   },
   "if": {
     "properties": {

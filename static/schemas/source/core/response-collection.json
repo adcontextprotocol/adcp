@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/response-collection.json",
+  "title": "Response Collection",
+  "description": "Experimental (media_buy.collection_cards). Full collection object returned in a product or proposal response for a collection that a returned product's collections selector references. publisher_domain is required because collection_id is unique only within its publisher. Keyed by (publisher_domain, collection_id). This is a convenience copy from the selling agent: the publisher's adagents.json remains the root of authorization and the source for definition pins, and a response copy is never authorization evidence. When the two disagree, adagents.json wins on which agent may sell the collection and the response wins on freshness of descriptive facts such as images, sample_content, status and talent.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/collection.json" },
+    { "required": ["publisher_domain"] }
+  ],
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}

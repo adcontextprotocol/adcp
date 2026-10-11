@@ -226,3 +226,150 @@ test('collection card fields reject malformed entries and the registry lists the
   const registry = fs.readFileSync(path.join(__dirname, '../docs/reference/experimental-status.mdx'), 'utf8');
   assert.ok(registry.includes('`media_buy.collection_cards`'));
 });
+
+// #8137: full collection objects in product and proposal responses.
+const responseCollection = {
+  publisher_domain: 'acmestreaming.example.com',
+  collection_id: 'pinnacle_challenge',
+  name: 'The Pinnacle Challenge',
+  url: 'https://acmestreaming.example.com/shows/pinnacle-challenge',
+  images: [{ asset_type: 'image', url: 'https://cdn.acmestreaming.example.com/pinnacle.jpg', width: 1200, height: 675 }],
+  talent: [{ role: 'host', name: 'Jordan Vega', brand_ref: { domain: 'jordanvega.example.com' } }],
+};
+const selector = [{ publisher_domain: 'acmestreaming.example.com', collection_ids: ['pinnacle_challenge'] }];
+const canonicalProduct = { product_id: 'pinnacle_video', name: 'Pinnacle Challenge video', collections: selector };
+const legacyProduct = {
+  product_id: 'pinnacle_video',
+  name: 'Pinnacle Challenge video',
+  description: 'Pre-roll on The Pinnacle Challenge',
+  publisher_properties: [{ publisher_domain: 'acmestreaming.example.com', selection_type: 'all' }],
+  format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+  delivery_type: 'guaranteed',
+  delivery_measurement: { provider: 'Test' },
+  pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+  reporting_capabilities: {
+    available_reporting_frequencies: ['daily'],
+    expected_delay_minutes: 240,
+    timezone: 'UTC',
+    supports_webhooks: false,
+    available_metrics: ['impressions'],
+    date_range_support: 'date_range',
+  },
+  collections: selector,
+};
+const draftProposal = {
+  proposal_id: 'proposal-1',
+  name: 'Draft Pinnacle Challenge plan',
+  proposal_kind: 'new_media_buy',
+  proposal_status: 'draft',
+  expires_at: '2027-06-30T23:59:59Z',
+  commercial_terms: {
+    brand: { domain: 'nova-brands.example' },
+    purchases: [{
+      product_id: 'pinnacle_video',
+      pricing_option_id: 'fixed-cpm',
+      pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 28 },
+      start_time: '2027-06-01T12:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+    }],
+    start_time: 'asap',
+    end_time: '2027-07-01T00:00:00Z',
+  },
+  terms_digest: `sha256:${'A'.repeat(43)}`,
+};
+const responseCases = [
+  ['/schemas/media-buy/get-products-response.json', { status: 'completed', products: [legacyProduct], cache_scope: 'public' }],
+  ['/schemas/media-buy/list-products-response.json', { outcome: 'listed', products: [canonicalProduct], feed_version: 'feed-v1', cache_scope: 'public' }],
+  ['/schemas/media-buy/request-proposals-response.json', { outcome: 'proposed', proposals: [draftProposal], products: [canonicalProduct] }],
+  ['/schemas/media-buy/refine-proposals-response.json', {
+    status: 'completed',
+    results: [{ source_proposal_id: 'proposal-1', outcome: 'unable', reason_code: 'commercially_declined', reason: 'Declined.' }],
+    products: [canonicalProduct],
+  }],
+];
+
+for (const [schemaId, base] of responseCases) {
+  test(`${schemaId} accepts full collection objects alongside products`, async () => {
+    const validate = await compile(schemaId);
+    assert.equal(validate(base), true, JSON.stringify(validate.errors, null, 2));
+    assert.equal(validate({ ...base, collections: [responseCollection] }), true, JSON.stringify(validate.errors, null, 2));
+    assert.equal(validate({ ...base, collections: [] }), false, 'collections needs at least one entry');
+    const { publisher_domain: _domain, ...unscoped } = responseCollection;
+    assert.equal(validate({ ...base, collections: [unscoped] }), false, 'publisher_domain is required on response collections');
+    const { products: _products, ...withoutProducts } = base;
+    assert.equal(validate({ ...withoutProducts, collections: [responseCollection] }), false, 'collections only travel with products');
+  });
+}
+
+test('collections are forbidden on rejected and unchanged outcomes', async () => {
+  const proposals = await compile('/schemas/media-buy/request-proposals-response.json');
+  const rejected = { outcome: 'rejected', reason: 'No available offer satisfies the campaign constraints.' };
+  assert.equal(proposals(rejected), true, JSON.stringify(proposals.errors, null, 2));
+  assert.equal(proposals({ ...rejected, collections: [responseCollection] }), false);
+  const products = await compile('/schemas/media-buy/get-products-response.json');
+  const declined = { status: 'rejected', reason: 'Budget is below the minimum for this inventory.' };
+  assert.equal(products(declined), true, JSON.stringify(products.errors, null, 2));
+  assert.equal(products({ ...declined, collections: [responseCollection] }), false);
+  const listed = await compile('/schemas/media-buy/list-products-response.json');
+  const unchanged = { outcome: 'unchanged', feed_version: 'feed-v1', cache_scope: 'public' };
+  assert.equal(listed(unchanged), true, JSON.stringify(listed.errors, null, 2));
+  assert.equal(listed({ ...unchanged, collections: [responseCollection] }), false);
+  const refine = await compile('/schemas/media-buy/refine-proposals-response.json');
+  const submitted = { status: 'submitted', task_id: 'task-1' };
+  assert.equal(refine(submitted), true, JSON.stringify(refine.errors, null, 2));
+  assert.equal(refine({ ...submitted, collections: [responseCollection] }), false);
+});
+
+test('collection url is a uri', async () => {
+  const validate = await compile('/schemas/core/collection.json');
+  const base = { collection_id: 'pinnacle_challenge', name: 'The Pinnacle Challenge' };
+  assert.equal(validate({ ...base, url: 'https://acmestreaming.example.com/shows/pinnacle-challenge' }), true, JSON.stringify(validate.errors, null, 2));
+  assert.equal(validate({ ...base, url: 'not a uri' }), false);
+});
+
+test('get_brand_identity links a person to their collections', async () => {
+  const response = await compile('/schemas/brand/get-brand-identity-response.json');
+  const identity = {
+    status: 'completed',
+    brand_id: 'jordan_vega',
+    house: { domain: 'jordanvega.example.com', name: 'Jordan Vega Media' },
+    names: [{ en: 'Jordan Vega' }],
+    collections: [{
+      publisher_domain: 'acmestreaming.example.com',
+      collection_id: 'pinnacle_challenge',
+      name: 'The Pinnacle Challenge',
+      role: 'host',
+      seller_agent_url: 'https://sales.acmestreaming.example.com/adcp',
+    }],
+    available_fields: ['collections'],
+  };
+  assert.equal(response(identity), true, JSON.stringify(response.errors, null, 2));
+  assert.equal(response({ ...identity, collections: [{ ...identity.collections[0], publisher_domain: 'Not A Domain' }] }), false);
+  assert.equal(response({ ...identity, available_fields: ['avatar'] }), false, 'avatar is not a get_brand_identity field');
+  const request = await compile('/schemas/brand/get-brand-identity-request.json');
+  assert.equal(request({ brand_id: 'jordan_vega', fields: ['logos', 'collections'] }), true, JSON.stringify(request.errors, null, 2));
+  assert.equal(request({ brand_id: 'jordan_vega', fields: ['avatar'] }), false);
+});
+
+test('response collection fields are experimental and added in 3.3.0', () => {
+  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
+  const fields = [
+    read('core/collection.json').properties.url,
+    read('core/response-collection.json'),
+    read('media-buy/get-products-response.json').properties.collections,
+    read('media-buy/list-products-response.json').properties.collections,
+    read('media-buy/request-proposals-response.json').properties.collections,
+    read('media-buy/refine-proposals-response.json').properties.collections,
+    read('brand/get-brand-identity-response.json').oneOf[0].properties.collections,
+    read('brand.json').definitions.brand.properties.collections.items.properties.publisher_domain,
+  ];
+  for (const field of fields) {
+    assert.equal(field['x-status'], 'experimental');
+    assert.equal(field['x-added-in'], '3.3.0');
+  }
+  for (const file of ['get-products', 'list-products', 'request-proposals', 'refine-proposals']) {
+    const schema = read(`media-buy/${file}-response.json`);
+    assert.equal(schema.properties.collections.items.$ref, '/schemas/core/response-collection.json');
+    assert.deepEqual(schema.dependencies.collections, ['products']);
+  }
+});

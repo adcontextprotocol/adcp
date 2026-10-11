@@ -34,6 +34,14 @@
       "minItems": 1,
       "items": { "$ref": "/schemas/core/canonical-product.json" }
     },
+    "collections": {
+      "type": "array",
+      "description": "Experimental (media_buy.collection_cards). Full collection objects for collections referenced by the returned products' collections selectors, de-duplicated across products: at most one entry per (publisher_domain, collection_id). Sellers MUST NOT include a collection that no returned product references and SHOULD include every referenced collection; buyers resolve an omitted one from the publisher's adagents.json. These are convenience copies: adagents.json remains the root of authorization and the source for definition pins, and a copy is never authorization evidence. Present only alongside products, so never on a rejected outcome.",
+      "minItems": 1,
+      "items": { "$ref": "/schemas/core/response-collection.json" },
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
     "incomplete": {
       "type": "array",
       "description": "Usable partial discovery result retained from the established get_products response. Absence means the source response did not declare an incomplete scope; it does not authorize an adapter to infer missing proposal terms.",
@@ -159,6 +167,9 @@
     "ext": { "$ref": "/schemas/core/ext.json" },
     "replayed": { "type": "boolean", "const": true }
   },
+  "dependencies": {
+    "collections": ["products"]
+  },
   "anyOf": [
     {
       "properties": {
@@ -229,6 +240,7 @@
         "anyOf": [
           { "required": ["proposals"] },
           { "required": ["products"] },
+          { "required": ["collections"] },
           { "required": ["incomplete"] },
           { "required": ["purchase_continuation"] },
           { "required": ["task_id"] }

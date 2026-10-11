@@ -211,6 +211,14 @@
       "description": "Canonical products needed to evaluate the resulting terms. For revised or partial results whose effective criteria contain property or collection lists, each affected product MUST carry fresh list_applications receipts from the revision's product reevaluation. Finalization changes no terms and MAY repeat the receipts already bound to the source proposal rather than reevaluating them.",
       "items": { "$ref": "/schemas/core/canonical-product.json" }
     },
+    "collections": {
+      "type": "array",
+      "description": "Experimental (media_buy.collection_cards). Full collection objects for collections referenced by the returned products' collections selectors, de-duplicated across products: at most one entry per (publisher_domain, collection_id). Sellers MUST NOT include a collection that no returned product references and SHOULD include every referenced collection; buyers resolve an omitted one from the publisher's adagents.json. These are convenience copies: adagents.json remains the root of authorization and the source for definition pins, and a copy is never authorization evidence. Present only alongside products.",
+      "minItems": 1,
+      "items": { "$ref": "/schemas/core/response-collection.json" },
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
     "status": { "type": "string", "enum": ["completed", "submitted"] },
     "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
     "message": { "type": "string", "maxLength": 2000 },
@@ -218,6 +226,9 @@
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" },
     "replayed": { "type": "boolean", "const": true }
+  },
+  "dependencies": {
+    "collections": ["products"]
   },
   "not": {
     "anyOf": [
