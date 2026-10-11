@@ -92,6 +92,44 @@ describe('buyer login through official OAuth and MCP clients', () => {
     expect((await stat(join(directory, 'oauth.json'))).mode & 0o777).toBe(0o600);
     await expect(session.fetch('https://foreign.example.com/reporting/destinations/a/b')).rejects.toThrow();
   });
+  it('reopens the SDK-refreshed WorkOS session for REST and MCP without another sign-in', async () => {
+    const callback = await start();
+    await finishBuyerLogin(file!, callback, { trustedFetchFn: providerPort });
+    file!.state.agent.oauth_tokens.expires_at = '2000-01-01T00:00:00Z'; await file!.save();
+    await createBuyerOAuthSession(file!, DEFAULT_BUYER_AGENT, { trustedFetchFn: providerPort })
+      .fetch(`${DEFAULT_BUYER_AGENT}/reporting/destinations/a/b`);
+    expect(file!.state.issuer).toBe(`${issuer}/`);
+    expect(file!.state.agent.oauth_tokens.issuer).toBe(issuer);
+    await file!.close(); file = undefined;
+    file = await openBuyerAuthFile(join(directory, 'oauth.json'));
+    const resumed = createBuyerOAuthSession(file, DEFAULT_BUYER_AGENT, { trustedFetchFn: providerPort });
+    expect((await resumed.fetch(`${DEFAULT_BUYER_AGENT}/reporting/destinations/a/b`)).status).toBe(200);
+    expect(await resumed.call('get_reporting_status', {})).toEqual({ accepted: true });
+    expect(tokenExchanges).toBe(2);
+    expect(requests.filter(r => r.url.includes('/reporting/') || r.url === resource)
+      .every(r => r.authorization === 'Bearer access-2')).toBe(true);
+    expect(file.state.agent.oauth_tokens.refresh_token).toBe('refresh-2');
+  });
+  it.each([
+    ['tokens', 'https://foreign.example.com'],
+    ['client', 'https://foreign.example.com/'],
+    ['tokens', `${issuer}/alternate/`],
+    ['client', `${issuer}/alternate`],
+    ['tokens', `${issuer}/?query=1`],
+    ['client', `${issuer}/#fragment`],
+    ['tokens', 'https://actor@auth.example.com/'],
+    ['client', 'http://auth.example.com/'],
+    ['tokens', undefined],
+    ['client', undefined],
+  ])('rejects a changed %s issuer %s before spending saved credentials', async (binding, changedIssuer) => {
+    const callback = await start();
+    await finishBuyerLogin(file!, callback, { trustedFetchFn: providerPort });
+    if (binding === 'tokens') file!.state.agent.oauth_tokens.issuer = changedIssuer;
+    else file!.state.agent.oauth_client.issuer = changedIssuer;
+    const before = requests.length;
+    expect(() => createBuyerOAuthSession(file!, DEFAULT_BUYER_AGENT, { trustedFetchFn: providerPort })).toThrow();
+    expect(requests.length).toBe(before); expect(tokenExchanges).toBe(1);
+  });
   it.each(['state', 'origin', 'duplicate-code', 'error'])('rejects a %s callback before spending the code', async mutation => {
     const callback = new URL(await start());
     if (mutation === 'state') callback.searchParams.set('state', 'foreign');
