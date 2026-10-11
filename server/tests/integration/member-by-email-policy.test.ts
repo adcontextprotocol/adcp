@@ -229,7 +229,8 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   createBillingPortalSession: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
+vi.mock('../../src/addie/mcp/admin-tools.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/addie/mcp/admin-tools.js')>(),
   isWebUserAAOAdmin: vi.fn().mockImplementation(() => Promise.resolve(mockState.isCallerAAOAdmin)),
 }));
 
