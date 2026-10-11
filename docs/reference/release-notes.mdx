@@ -9,9 +9,9 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ---
 
-## Planned maintenance release 3.2.4
+## Version 3.2.4
 
-**Status:** Pending release review and publication. Until its signed bundle is published, 3.2.3 remains the latest stable 3.2 artifact. The wire version remains `"3.2"`; patch versions identify bundles and are never sent as `adcp_version`.
+Maintenance patch for the stable 3.2 line. The release artifact and Git tag are `3.2.4` / `v3.2.4`. The wire version remains `"3.2"`; patch versions identify bundles and are never sent as `adcp_version`.
 
 - **Reliable Reporting (experimental):** `REVISION_UNREADABLE` identifies a published revision whose retained content the seller cannot serve or verify. The issue carries its obligation and revision IDs, names the seller as responsible, and pairs retry or escalation with the repair state. Authorized exact reads use the existing `SERVICE_UNAVAILABLE` error; unknown or unauthorized revisions retain `REFERENCE_NOT_FOUND`. An affected obligation is neither healthy nor complete. Strict readers must update their reporting schema definitions before accepting the new issue.
 - **Conformance corrections:** required billing capability discovery, active non-guaranteed lifecycle acceptance, the advanced-reporting fixture account join, typed proposal seeding and phase dependencies, and minimum-spend fixture placement. Existing controller-seeded storyboards declare their controller requirement so agents without a controller skip the whole storyboard rather than receive misleading fixture failures.
