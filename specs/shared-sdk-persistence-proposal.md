@@ -221,6 +221,12 @@ contracts/<component>/
   - Transaction-level locks survive transaction-pooling proxies; session locks do not.
   - The contract lists every lock key and its order. Lock keys are part of the
     persistence contract version.
+  - **Object lock (shipped in Stages 1 and 2).** Every external row-object delete and
+    every commit that adopts an existing object takes
+    `pg_advisory_xact_lock(hashtextextended('adcp-reporting-object:' || binding_id || ':' || object_key, 0))`.
+    Under that lock, it deletes only when no chunk of a `live` or `unavailable` row set,
+    and no other open write intent, references the same binding, key and native
+    version. Both SDKs hash in SQL, so one database derives one lock ID.
   - **Rolling upgrades.** A transitional contract version takes the SDK's legacy key,
     then the shared key, in that order. It does so until the manifest records that no
     legacy-key writer remains, so old and new workers of one SDK keep excluding each
@@ -924,6 +930,13 @@ without doing the work twice.
 | 3. Canonical Core layout | Shared Core DDL, immutable migrations, catalog manifests; runners in both languages; migrations from both legacy layouts; transitional dual-key locks; cutover runbook | JS and Python write, read and hand off against one database. Concurrent mixed writers pass contention tests. Legacy evidence keeps its original digests. |
 | 4. Idempotency | Shared state machine, PostgreSQL operations, Redis format and scripts | Mixed-language replay, contention, stale-owner and crash-recovery cases pass for each backend. |
 | 5. Operational extensions | Managed delivery, receipts, notifications and outboxes, replay protection, scheduling | Each qualifies separately behind installed-feature checks. |
+
+**Stage 2 (Python).** Implemented in adcontextprotocol/adcp-client-python #1458, #1459,
+#1464, #1466, #1467, #1468, #1469, #1470, #1471, #1472, #1473, #1474 and #1476. It
+includes a live interop test: JS-written and Python-written chunks verify in both SDKs
+against one database and one bucket. Each SDK's account lock still uses its legacy key,
+so the shared account key waits for Stage 3. Python retirement leaves records that its
+append-only guards protect, and marks such periods `protected`.
 
 **Stage 1 PR sequence (JS).** Each PR is small and carries a changeset. Implemented in
 adcontextprotocol/adcp-client #3145, #3146, #3152, #3155, #3157, #3159, #3160, #3163,
