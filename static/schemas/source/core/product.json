@@ -170,6 +170,12 @@
       "$ref": "/schemas/core/cancellation-policy.json",
       "description": "Cancellation terms for this product. Declares the minimum notice period required before cancellation takes effect and any penalties for insufficient notice. Relevant for guaranteed delivery products. Buyers accept these terms by creating a media buy against the product."
     },
+    "hold_policy": {
+      "$ref": "/schemas/core/hold-policy.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.hold_policy). Inventory-hold policy for finalizing a proposal that allocates this product, so buyers can plan before requesting one. Not a reservation and no guarantee of availability. If this product declares available false, any proposal allocating it finalizes terms only. When absent, get_adcp_capabilities media_buy.proposal_refinement.hold_semantics applies (inventory_hold when that is also absent)."
+    },
     "allowed_actions": {
       "type": "array",
       "description": "Actions buyers may perform on buys created against this product, scoped to statuses and modes. Advisory template — the authoritative per-buy capability is `available_actions[]` on the buy response, which resolves modes against current buy state, account tier, and negotiated terms. Buyers SHOULD use this for pre-flight product selection (\"which products let me self-serve cancel within 72hr?\") and read `available_actions[]` for runtime decisions. The array is uniquely keyed by `action` — sellers MUST NOT emit two entries with the same `action` value. Absence means the seller has not declared a structured action surface for this product — buyers fall back to `valid_actions[]` on buy responses for the flat string vocabulary.",

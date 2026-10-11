@@ -127,6 +127,12 @@
       "items": { "$ref": "/schemas/core/canonical-product-action.json" },
       "uniqueItems": true
     },
+    "hold_policy": {
+      "$ref": "/schemas/core/hold-policy.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.hold_policy). Inventory-hold policy for finalizing a proposal that allocates this product, so buyers can plan before requesting one. Not a reservation and no guarantee of availability. If this product declares available false, any proposal allocating it finalizes terms only. When absent, get_adcp_capabilities media_buy.proposal_refinement.hold_semantics applies (inventory_hold when that is also absent)."
+    },
     "acceptance_policy_profile_ids": {
       "$ref": "/schemas/core/acceptance-policy-profile-ids.json"
     },
