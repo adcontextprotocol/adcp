@@ -43,6 +43,7 @@ import {
   replaceReportingConfigurationsDurably,
   resolveReportingAccountDurably,
   reportingConfigurationStatesForAccountDurably,
+  reportingMediaBuyCandidatesForAccountDurably,
   validateReportingConfigurationReplacementDurably,
   validateReportingConfigurationScopes,
   validateReportingConfigurations,
@@ -473,7 +474,7 @@ async function reportingMediaBuyCandidates(
   ));
   const products = new Map(buildCatalog().map(entry => [entry.product.product_id, entry.product]));
   for (const [productId, product] of session.configuredProducts) products.set(productId, product);
-  return [...session.mediaBuys.values()].map(mediaBuy => ({
+  const live = [...session.mediaBuys.values()].map(mediaBuy => ({
     mediaBuyId: mediaBuy.mediaBuyId,
     startTime: mediaBuy.startTime,
     endTime: mediaBuy.canceledAt && mediaBuy.canceledAt < mediaBuy.endTime
@@ -494,6 +495,11 @@ async function reportingMediaBuyCandidates(
       };
     }),
   }));
+  // Accepted purchases are captured under the authenticated reporting account,
+  // independently of legacy task-session partitions. Preserve those immutable
+  // facts after a restart and when the live catalog/session has changed.
+  const accepted = await reportingMediaBuyCandidatesForAccountDurably(ctx.principal, account.accountId);
+  return [...new Map([...live, ...accepted].map(candidate => [candidate.mediaBuyId, candidate])).values()];
 }
 
 /** Resolve a principal-owned sandbox account id to its trusted brand domain. */

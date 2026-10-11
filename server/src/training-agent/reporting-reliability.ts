@@ -4006,6 +4006,36 @@ export async function captureReportingMediaBuyCandidateDurably(
   }, existingBinding?.account ?? account);
 }
 
+/** Read accepted-buy facts in the exact caller/account scope without a task-session dependency. */
+export async function reportingMediaBuyCandidatesForAccountDurably(
+  principal: string | undefined,
+  accountId: string,
+): Promise<ReportingMediaBuyCandidate[]> {
+  let ledger = ledgers.get(callerScope(principal, accountId));
+  if (isDatabaseInitialized()) {
+    const { rows } = await getPool().query<{ ledger: SerializedReportingLedger | string }>(
+      `SELECT ledger FROM training_reporting_ledgers WHERE principal_scope = $1 AND account_id = $2`,
+      [principal && principal.length > 0 ? principal : 'anonymous', accountId],
+    );
+    const stored = rows[0]?.ledger;
+    ledger = stored === undefined ? undefined : deserializeLedger(
+      typeof stored === 'string' ? JSON.parse(stored) as SerializedReportingLedger : stored,
+    );
+  }
+  const nowMs = Date.now();
+  return [...(ledger?.mediaBuyCandidates ?? [])].flatMap(([mediaBuyId, history]) => {
+    const accepted = candidateAt(history, nowMs);
+    return accepted ? [{
+      mediaBuyId,
+      startTime: accepted.start,
+      endTime: accepted.end,
+      knownAt: accepted.knownAt,
+      effectiveAt: accepted.effectiveAt,
+      packages: structuredClone(accepted.packages),
+    }] : [];
+  });
+}
+
 export async function validateReportingConfigurationReplacementDurably(
   principal: string | undefined,
   accountId: string,
