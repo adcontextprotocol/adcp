@@ -24,7 +24,6 @@ jobs:
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       IMAGE: adcp-default-runtime-footprint
-      OUTPUT_DIR: ${{ runner.temp }}/default-runtime-footprint
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -38,6 +37,8 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             test "$EXPECTED_SHA" = "$SOURCE_SHA"
           fi
+          OUTPUT_DIR="$RUNNER_TEMP/default-runtime-footprint"
+          printf 'OUTPUT_DIR=%s\n' "$OUTPUT_DIR" >> "$GITHUB_ENV"
           mkdir -p "$OUTPUT_DIR"
           printf '%s\n' "$SOURCE_SHA" > "$OUTPUT_DIR/source-sha.txt"
 
