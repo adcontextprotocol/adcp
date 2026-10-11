@@ -834,6 +834,8 @@ A product can also disclose included, non-selectable signals without opening a p
 
 Here the buyer can inspect or verify the Pinnacle Data signal definition through the referenced provider's adagents.json `signals[]`, but cannot add or remove that signal in `create_media_buy`.
 
+An age-defined included signal can also disclose how its ages were established with `age_determination_bases`. A buyer whose request names `accepted_bases` treats a signal listing as passing the basis test only when its age range is within the request and every listed basis is in `accepted_bases`; absent means no basis claim. See [Age determination basis on included signals](/docs/media-buy/advanced-topics/targeting#age-determination-basis-on-included-signals).
+
 A wholesale product with a large or account-specific signal menu can point buyers to `get_signals` instead of inlining every option:
 
 ```json
