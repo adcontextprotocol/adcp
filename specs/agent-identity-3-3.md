@@ -17,7 +17,7 @@ It also supersedes the client-only bootstrap in #7942 and option B (`adcp-agent-
 
 **Principle**: use what Web Bot Auth, RFC 9421, and existing AdCP text already define, and add nothing to the WBA layer. A signer built with any conforming WBA library must verify against an AdCP verifier. Where a rule here would restate the draft, it cites the draft instead.
 
-New names in this document are **proposed**: the WBA profile in AdCP, `key_thumbprints`, `agent_onboarding`, `relationship`, the new `principal.changed` reasons, and the "canonical origin" definition. The trust.json roles and scopes used here are already defined in `static/schemas/source/trust/v1/trust.json`.
+New names in this document are **proposed**: the WBA profile in AdCP, `agent_onboarding`, `relationship`, the new `principal.changed` reasons, and the "canonical origin" definition. The trust.json roles and scopes used here are already defined in `static/schemas/source/trust/v1/trust.json`.
 
 ## TL;DR
 
@@ -127,7 +127,6 @@ Evaluated when something is gated on it: binding a principal (R5), evaluating a 
    - Follow at most one `authoritative_location` hop. The target MUST NOT itself carry `authoritative_location`.
    - The **operator is `eTLD+1(host(O))`**, never a value inside the document.
 2. **Match.** Exactly one `agents[]` entry has a canonical origin equal to `O` (R0) and carries the role the gate requires (`adcp:buying` for buyer binding and grants).
-   - When the entry carries `key_thumbprints`, the key that verified the signature MUST be one of them for the binding or grant to succeed. The pin narrows keys and never adds any.
    - A failed match is an authorization outcome and returns the existing authorization error, one external code. The cause goes to logs only.
 
 **Freshness and operator revocation.**
@@ -241,7 +240,7 @@ Shape (experimental feature `account.agent_onboarding`):
 | Stripping header coverage to force the 3.2 profile | A present `Signature-Agent` or `web-bot-auth` tag means WBA only; an uncovered member is not attributed (WBA §5.2.2). |
 | Attacker lists a victim origin in the attacker's own trust record | Only the record at the origin's registrable domain counts (R3a). |
 | Request signature replayed as a webhook, or the reverse | Covered `@authority` and `@target-uri` plus the nonce (R2). |
-| Subdomain takeover (dangling CNAME) of a listed origin | The origin inherits its operator's grants unless they narrow with `agents[]` (R6). Operators MAY pin with `key_thumbprints`, which is checked at binding and grant evaluation (R3a). Delisting revokes within one cache lifetime. Sellers SHOULD alarm on key-set changes for bound identities. |
+| Subdomain takeover (dangling CNAME) of a listed origin | The same exposure 3.2 has when the host behind `jwks_uri` is taken over. Detect and respond: sellers SHOULD alarm when a bound identity's key set changes, and the operator delists the origin, which revokes within one cache lifetime (R3a, freshness). The origin inherits its operator's grants unless they narrow with `agents[]` (R6). Operator guidance (P8): list only origins whose DNS you control, and remove DNS records for retired agents. Preventive detection comes with key transparency logs in 3.4. No key pin in trust.json: a second, hand-maintained key list breaks WBA rotation (a new key is published alongside the old one) and contradicts D3. |
 | Compromised origin serves an empty revocation list | Verifiers retain seen revocations; the operator delists (R3a, freshness). |
 | Origin control used to take over a 3.2 principal | Binding onto a 3.2 principal needs out-of-band seller approval (R5 rule 4). |
 | Downgrade to a stale 3.2 key | No downgrade after binding; before binding, the operator removes the 3.2 keys from brand.json (R4). |
@@ -278,7 +277,7 @@ Shape (experimental feature `account.agent_onboarding`):
 | PR | Scope | Changeset |
 |---|---|---|
 | **P0** | This spec and DR-0023 | none |
-| **P1** | trust.json v1 edits:<br>- remove `agents[].jwks_uri`, its default, and the back-pointer text;<br>- one agent per origin, and agent URLs anywhere in the record match by canonical origin;<br>- optional `agents[].key_thumbprints`;<br>- the canonical-origin definition in `url-canonicalization.mdx` (R0), with vectors;<br>- the validator, using the SDK's canonicalization;<br>- examples moved to one origin per agent. | minor |
+| **P1** | trust.json v1 edits:<br>- remove `agents[].jwks_uri`, its default, and the back-pointer text;<br>- one agent per origin, and agent URLs anywhere in the record match by canonical origin;<br>- the canonical-origin definition in `url-canonicalization.mdx` (R0), with vectors;<br>- the validator, using the SDK's canonicalization;<br>- examples moved to one origin per agent. | minor |
 | **P2** | WBA signing profile: #7894 rebased onto P1 by its author (R1, R2), with revocation at the origin and capability advertisement | minor |
 | **P3** | Identity verification (R3), trust-record evaluation (R3a), and coexistence and the 3.2 deprecation notice (R4) in `security.mdx`; reverse "nothing consumes this in 3.3" in the trust.json schema, `trust-json.mdx`, `experimental-status.mdx`, and release-docs #8074 | minor |
 | **P4** | First contact and binding (R5); relationship status (R8), including the `get-principal-response.json` and `principal-changed-webhook.json` changes | minor |
