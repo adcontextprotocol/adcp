@@ -312,6 +312,7 @@ describe('wrapper contract', () => {
     ['3.2.1', /\/dist\/compliance\/3\.2\.1$/, /\/dist\/schemas\/3\.2\.1$/],
     ['3.2.2', /\/dist\/compliance\/3\.2\.2$/, /\/dist\/schemas\/3\.2\.2$/],
     ['3.2.3', /\/dist\/compliance\/3\.2\.3$/, /\/dist\/schemas\/3\.2\.3$/],
+    ['3.2.4', /\/dist\/compliance\/3\.2\.4$/, /\/dist\/schemas\/3\.2\.4$/],
   ] as const)('loads the explicitly pinned %s bundle with the hosted SDK', (version, complianceDir, schemaRoot) => {
     const target = hostedComplianceTarget(version);
     const options = hostedComplianceOptions(target);
