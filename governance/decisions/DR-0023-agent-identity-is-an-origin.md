@@ -2,9 +2,10 @@
 id: DR-0023
 title: A signing agent's identity is an origin, discovered through Web Bot Auth, with a derived trust record
 class: normative
-status: proposed
+status: ratified
 date: 2026-10-10
-decided_by: pending WG ratification (WG working session 2026-10-12)
+decided: 2026-10-12
+decided_by: WG working session 2026-10-12 (all seven items of the decision brief on #7878)
 refs: ["#8118", "#7878", "#7817", "#7809", "#7942", "#6105", "PR #8119", "PR #7894"]
 dissent: none recorded
 ---
@@ -39,7 +40,7 @@ The 3.2 profile is deprecated now because `versioning.mdx` requires 6 months' no
 
 ## Implications
 
-The design spec is `specs/agent-identity-3-3.md`. It defines the rules (R0–R8), the threat-model deltas, and the P1–P9 implementation plan. The decision is taken at the WG working session on 2026-10-12 (decision brief on #7878); PR #8119 then records it.
+The design spec is `specs/agent-identity-3-3.md`. It defines the rules (R0–R8), the threat-model deltas, and the P1–P9 implementation plan. The WG approved it at the working session on 2026-10-12 (decision brief on #7878); PR #8119 records it.
 
 **This record settles:**
 - origin identity;
