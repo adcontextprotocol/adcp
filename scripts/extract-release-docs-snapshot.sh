@@ -12,6 +12,10 @@
 # contained. This script extracts into an empty directory and fails closed if
 # the result differs from the tag's file list.
 #
+# It also refuses to run when dist/docs/<version> is already tracked in the
+# checkout (HEAD tree or index), so a rerun can never rewrite a published
+# snapshot.
+#
 # One deliberate exception: the stable 3.2 navigation lists a "3.3 preview"
 # group (the whats-new, beta-program, and 3.2-to-3.3 migration pages), wired
 # in by the 3.2.3 snapshot and its maintenance navigation sync. Those three
@@ -51,7 +55,16 @@ fi
 DEST="dist/docs/$VERSION"
 SOURCE_DOCS="$(pwd)/docs"
 
-# Remove existing version if present (allows re-running).
+# A snapshot already committed to this checkout is a published, immutable
+# release record. Refuse before touching it; only untracked scratch output from
+# an interrupted run is replaced below.
+if [ -n "$(git ls-tree -r --name-only HEAD -- "$DEST" | head -n 1)" ] \
+  || [ -n "$(git ls-files -- "$DEST" | head -n 1)" ]; then
+  echo "Error: $DEST is already tracked in this checkout; published docs snapshots are immutable and are not regenerated" >&2
+  exit 1
+fi
+
+# Replace leftover untracked output from an interrupted run (allows re-running).
 rm -rf "$DEST"
 mkdir -p "$DEST"
 
