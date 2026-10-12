@@ -90,6 +90,12 @@ phases:
             path: "context.correlation_id"
             value: "capability_discovery--get_capabilities"
             description: "Context correlation_id returned unchanged"
+          - check: undefined_properties
+            id: capabilities_undefined_properties
+            description: "No properties outside the served release's schema except under ext; a misnamed capability field silently falls back to its default meaning"
+            severity: advisory
+            permanent_advisory:
+              reason: "Undefined properties are reported, never failed: AdCP schemas stay open so older readers tolerate newer fields (versioning.mdx, Undefined properties)."
       - id: get_capabilities_filtered
         title: "Discover capabilities filtered by protocol"
         narrative: |
