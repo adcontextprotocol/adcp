@@ -1,6 +1,6 @@
 # Agent identity and buyer self-onboarding (3.3)
 
-**Status**: Accepted. The WG approved D1–D6 and the WBA error contract at the working session on 2026-10-12 ([decision brief on #7878](https://github.com/adcontextprotocol/adcp/issues/7878#issuecomment-6099382406)); recorded as [DR-0023](../governance/decisions/DR-0023-agent-identity-is-an-origin.md). The WG also approved D7 (demand-side grants) at the same session, recorded as [DR-0025](../governance/decisions/DR-0025-demand-side-grants-in-trust-json.md) (#6033). D8 and D9 are decided on their issues. Tracking issue: [#8118](https://github.com/adcontextprotocol/adcp/issues/8118).
+**Status**: Accepted. The WG approved D1–D6 and the WBA error contract at the working session on 2026-10-12 ([decision brief on #7878](https://github.com/adcontextprotocol/adcp/issues/7878#issuecomment-6099382406)); recorded as [DR-0023](../governance/decisions/DR-0023-agent-identity-is-an-origin.md). The WG also approved D7 (demand-side grants) at the same session; its rules (R6) and record (DR-0025) are in their own PR. D8 and D9 are decided on their issues. Tracking issue: [#8118](https://github.com/adcontextprotocol/adcp/issues/8118).
 
 **Related**: [#7878](https://github.com/adcontextprotocol/adcp/issues/7878) / [#7894](https://github.com/adcontextprotocol/adcp/pull/7894) (Web Bot Auth profile), [#7817](https://github.com/adcontextprotocol/adcp/issues/7817) (`adcp-agent-url`), [#7814](https://github.com/adcontextprotocol/adcp/issues/7814) (unknown signers), [`brand-identity-trust-split.md`](./brand-identity-trust-split.md) (trust.json, RFC [#7809](https://github.com/adcontextprotocol/adcp/issues/7809)), [#7942](https://github.com/adcontextprotocol/adcp/pull/7942) and [#6105](https://github.com/adcontextprotocol/adcp/issues/6105) (client-only signers), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) (demand-side grants), [#8113](https://github.com/adcontextprotocol/adcp/issues/8113) / [#8114](https://github.com/adcontextprotocol/adcp/issues/8114) (onboarding posture), [#7015](https://github.com/adcontextprotocol/adcp/issues/7015) (principal layer).
 
@@ -17,7 +17,7 @@ It also supersedes the client-only bootstrap in #7942 and option B (`adcp-agent-
 
 **Principle**: use what Web Bot Auth, RFC 9421, and existing AdCP text already define, and add nothing to the WBA layer. A signer built with any conforming WBA library must verify against an AdCP verifier. Where a rule here would restate the draft, it cites the draft instead.
 
-New names in this document are new to AdCP: the WBA profile in AdCP, the revocation list's `compromised` marker, the `signer_key_revoked` indicator type, `control_media_buy.reaffirm_signer`, `agent_onboarding`, `relationship`, the new `principal.changed` reasons, and the "canonical origin" definition. The trust.json roles and scopes used here are already defined in `static/schemas/source/trust/v1/trust.json`.
+New names in this document are new to AdCP: the WBA profile in AdCP, the revocation list's `revocation_details` (RFC 5280 reason codes and invalidity dates), `agent_onboarding`, `relationship`, the new `principal.changed` reasons, and the "canonical origin" definition. The trust.json roles and scopes used here are already defined in `static/schemas/source/trust/v1/trust.json`.
 
 ## TL;DR
 
@@ -157,17 +157,7 @@ These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md`
 
 ### R6. Authority: grants (P5)
 
-- **Which record authorizes.** At `sync_accounts`, the authorizing record is the **brand's** trust record, or its house record when the brand has one.
-- **When the operator is the brand.** When `account.operator`, the brand, and the signer's operator (R3a) share a registrable domain, authority is implicit and no grant is needed. This matches today's "Self-authorization is implicit" rule in `L2/accounts-and-agents.mdx`.
-- **Otherwise, a grant chain must reach the signer's operator** with a scope covering the operation (`adcp:media_buying` for buys). Either of these satisfies it:
-  - the brand grants the signer's operator directly, and `account.operator` is the signer's operator;
-  - the brand grants `account.operator`, and `account.operator` grants the signer's operator (an agency using an intermediary or a platform-hosted agent, the #6033 case).
-
-  `account.operator` MUST be on the chain. A grant to the signer's operator never authorizes an account that names an operator outside the chain.
-- **Matching.** `grantee` values compare exactly as registrable domains. A grant's `agents[].url` narrowing matches by canonical origin (R0). Grants for `adcp:media_buying` SHOULD narrow with `agents[]`, because a grant to a platform's domain otherwise covers every agent it lists.
-- **Effective authority** is the intersection of brands, countries, scopes, and the earliest `valid_until` along the chain. A grantee never extends a grant it received; the second link is the grantee's own grant to an intermediary.
-- **What a grant isn't.** Grants never carry keys and are read from the grantor's document only.
-- **brand.json fallback.** Through 3.x, brand.json `authorized_operators[]` is a valid source when the grantor has no trust.json, subject to R4.
+Specified in its own PR, together with its decision record, DR-0025 (#6033, tracked in #8118). R7 relies on it for the `grant` requirement kind.
 
 ### R7. Onboarding posture (P6, `get_adcp_capabilities.mdx`)
 
@@ -232,24 +222,19 @@ Shape (experimental feature `account.agent_onboarding`):
 - It is returned only to the authenticated caller. P4 opens the closed `unconfigured` schema (`get-principal-response.json`) for this one field.
 - `principal.changed` adds the reasons `relationship_changed` and `relationship_expiring`. The second fires at a seller-declared lead time before `expires_at`, following `setup_expiring`.
 
-### R9. Revocation and committed work (P3 and P4)
+### R9. Revocation and committed work (P3)
 
-Applies to both signing profiles.
+Applies to both signing profiles. The revocation list stays as it is (signed by its issuer, with `updated`, `next_update`, and `revoked_kids`), and borrows the per-entry detail X.509 already defines for this case.
 
 1. **Revocation stops new verification.** From the moment a verifier's view of a revocation list includes a key, every request signed with that key is rejected, whatever its `created` time. This restates what `revoked_kids` already means for verification.
-2. **Committed work stands.** A media buy the seller accepted while the key verified stays in force. A revocation carries no reason (routine rotation looks the same as compromise), and under WBA a compromised origin could publish revocations to stop a buyer's campaigns. So a seller MUST NOT pause, cancel, or otherwise unwind a buy on revocation alone.
-3. **Compromise is declared explicitly.** A revocation list MAY carry `compromised`, an object keyed by `kid`. Each value is either an RFC 3339 timestamp (compromised since that time) or `true` (compromised, time unknown). Every `kid` in it MUST also appear in `revoked_kids`. Verification is unchanged: a revoked key is rejected whether or not it is marked. The marker only decides exposure (item 4):
-   - **A key revoked without a marker is a routine rotation.** No buys are flagged.
-   - **A timestamp** flags requests the seller **received** at or after that time, never compared with the signature's `created`, which the signer controls.
-   - **`true`** flags every request ever verified under the key.
+2. **Committed work stands.** A media buy the seller accepted while the key verified stays in force. A seller MUST NOT pause, cancel, or otherwise unwind a buy on revocation alone. Under WBA a compromised origin could otherwise publish revocations to stop a buyer's campaigns.
+3. **Revocation details follow RFC 5280.** A list MAY carry `revocation_details`, an object keyed by `kid`, for keys that appear in `revoked_kids`. Each entry MAY carry:
+   - `reason`: a reason code from RFC 5280 §5.3.1, as RFC 8555 §7.6 writes them in JSON, such as `keyCompromise`, `superseded`, or `cessationOfOperation`;
+   - `invalidity_date`: the date on which the private key is known or suspected to have been compromised (RFC 5280 §5.3.2). It may be earlier than the revocation.
 
-   Unlike the revocation itself, which verifiers retain permanently, the marker may change. Narrowing or removing it clears the matching flags on the seller's next poll. That single change is how a buyer's operator says "false alarm" for every account and every seller at once.
-4. **The seller surfaces exposure with an indicator.** A seller that supports it adds the media-buy indicator type `signer_key_revoked` (`enums/indicator-type.json`) to every buy whose creation, or any accepted change, was verified under a key the list marks compromised, within the marked window. The buyer finds these buys through `get_media_buys` with `indicator_types: ["signer_key_revoked"]`, and through the existing `indicators.changed` webhook. Sellers already log the `keyid` for each verified request (`security.mdx` §Required log events), so this is a lookup, not new tracking. Sellers advertise support in `media_buy.supported_indicator_types`.
-5. **The buyer resolves flagged buys:**
-   - **For a buy it did not intend:** `control_media_buy` with `paused` or `canceled` (existing fields), signed with a current key. Disputes go through the commercial relationship.
-   - **For a buy it did intend:** either `control_media_buy` with `reaffirm_signer: true` (a new optional field), or, once every unintended buy is handled, narrowing or removing the key's `compromised` marker. The marker change clears the remaining flags across accounts and sellers without any per-buy call.
-   - A reaffirmation is accepted only when the request verifies under a key that is not revoked. It changes nothing else on the buy and clears the indicator. A seller lists the `reaffirm_signer` action in the buy's `available_actions[]` while the indicator is present.
-   - Bulk resolution deliberately does not go through `sync_accounts` or `sync_principal`. Both are desired-state calls, and a reaffirmation is a one-time attestation; the revocation list already has the right scope, since it covers the buyer's key everywhere.
+   Verification is unchanged: a revoked key is rejected whatever its detail. As in X.509, an entry is not withdrawn or weakened once published, and verifiers keep the most severe detail they have seen for a key (a `keyCompromise` entry, and the earliest `invalidity_date`). A signer that revoked a key by mistake publishes a new key.
+4. **Exposure.** A request verified under a key revoked with `reason: keyCompromise` is suspect if the seller **received** it at or after the `invalidity_date`, or at any time when there is no date. The comparison uses the seller's receipt time, never the signature's `created`, which the signer controls. A key revoked for any other reason, or with no detail, exposes nothing.
+5. **The seller SHOULD show the buyer the buys it accepted under suspect requests,** by a means of its choice. The buyer resolves each with the existing `control_media_buy` actions (`paused`, `canceled`), signed with a current key; disputes go through the commercial relationship. A standard signal for this, and a bulk resolution path, are a separate proposal (tracked in #8118).
 6. **Governed buys** keep today's rule: a revoked governance key stops new delivery-phase tokens until the governance agent issues a fresh one.
 
 The window of exposure is the time between compromise and the revocation reaching the seller. The revocation freshness ceiling bounds it, and so does the recommended spend ceiling in the production security profile (#7066).
@@ -265,8 +250,8 @@ The window of exposure is the time between compromise and the revocation reachin
 | Subdomain takeover (dangling CNAME) of a listed origin | The same exposure 3.2 has when the host behind `jwks_uri` is taken over. Detect and respond: sellers SHOULD alarm when a bound identity's key set changes, and the operator delists the origin, which revokes within one cache lifetime (R3a, freshness). The origin inherits its operator's grants unless they narrow with `agents[]` (R6). Operator guidance (P8): list only origins whose DNS you control, and remove DNS records for retired agents. Preventive detection comes with key transparency logs in 3.4. No key pin in trust.json: a second, hand-maintained key list breaks WBA rotation (a new key is published alongside the old one) and contradicts D3. |
 | Compromised origin serves an empty revocation list | Verifiers retain seen revocations; the operator delists (R3a, freshness). |
 | Compromised origin publishes revocations to stop a buyer's live campaigns | Committed work stands; revocation only flags buys for buyer review (R9). |
-| Attacker backdates `created` to dodge the `compromised` window | Exposure is scoped by the seller's receipt time, not the signer's `created` (R9). |
-| Attacker controlling the origin clears the `compromised` marker to hide exposure | The flag is a review aid, not a security gate: verification still rejects the revoked key, and the operator's lever is delisting the origin (R3a, R9). |
+| Attacker backdates `created` to land before the invalidity date | Exposure uses the seller's receipt time, not the signer's `created` (R9). |
+| Attacker controlling the origin weakens a published compromise entry | Entries are not withdrawn or weakened once published; verifiers keep the most severe detail they have seen for a key (R9). |
 | Origin control used to take over a 3.2 principal | Binding onto a 3.2 principal needs out-of-band seller approval (R5 rule 4). |
 | Downgrade to a stale 3.2 key | No downgrade after binding; before binding, the operator removes the 3.2 keys from brand.json (R4). |
 | Stale brand.json grants override trust.json | A 200 from trust.json disables `authorized_operators[]` (R4). |
@@ -304,8 +289,8 @@ The window of exposure is the time between compromise and the revocation reachin
 | **P0** | This spec and DR-0023 | none |
 | **P1** | trust.json v1 edits:<br>- remove `agents[].jwks_uri`, its default, and the back-pointer text;<br>- one agent per origin, and agent URLs anywhere in the record match by canonical origin;<br>- the canonical-origin definition in `url-canonicalization.mdx` (R0), with vectors;<br>- the validator, using the SDK's canonicalization;<br>- examples moved to one origin per agent. | minor |
 | **P2** | WBA signing profile: #7894 rebased onto P1 by its author (R1, R2), with revocation at the origin and capability advertisement | minor |
-| **P3** | Identity verification (R3), trust-record evaluation (R3a), coexistence and the 3.2 deprecation notice (R4), and revocation semantics with the `compromised` marker (R9 items 1–3) in `security.mdx`; reverse "nothing consumes this in 3.3" in the trust.json schema, `trust-json.mdx`, `experimental-status.mdx`, and release-docs #8074 | minor |
-| **P4** | First contact and binding (R5); relationship status (R8), including the `get-principal-response.json` and `principal-changed-webhook.json` changes; the `signer_key_revoked` indicator and `control_media_buy.reaffirm_signer` (R9 items 4–5) | minor |
+| **P3** | Identity verification (R3), trust-record evaluation (R3a), coexistence and the 3.2 deprecation notice (R4), and revocation semantics with RFC 5280 reason codes and invalidity dates (R9) in `security.mdx`; reverse "nothing consumes this in 3.3" in the trust.json schema, `trust-json.mdx`, `experimental-status.mdx`, and release-docs #8074 | minor |
+| **P4** | First contact and binding (R5); relationship status (R8), including the `get-principal-response.json` and `principal-changed-webhook.json` changes | minor |
 | **P5** | Grants (R6, #6033) | minor |
 | **P6** | Onboarding posture (R7, #8113), including the `profiles.adcp.onboarding` slot for the buyer posture (#8114). Lands independently; only `open` and `grant` wait for P2–P5. | minor |
 | **P7** | Conformance:<br>- dual-source storyboards;<br>- trust-record, grant-chain, downgrade, and WBA vectors;<br>- an end-to-end self-onboarding storyboard;<br>- the training agent verifies WBA, serves its own directory and trust record, and opens the sandbox mode. | minor |
