@@ -115,6 +115,39 @@ test('a preview page already in the tag is not overwritten from the checkout', (
   );
 });
 
+test('refuses to regenerate a snapshot that is already committed, leaving its bytes unchanged', () => {
+  const root = releaseRepo();
+  const first = extract(root, '3.2.9', 'v3.2.9');
+  assert.equal(first.status, 0, first.stderr);
+  git(root, 'add', '-A');
+  git(root, 'commit', '-q', '-m', 'publish snapshot');
+  const snapshot = path.join(root, 'dist/docs/3.2.9');
+  const before = Object.fromEntries(
+    listFiles(snapshot).map((file) => [file, fs.readFileSync(path.join(snapshot, file), 'utf8')])
+  );
+
+  // Even a rerun against a different ref must fail before any mutation.
+  for (const ref of ['v3.2.9', 'main']) {
+    const rerun = extract(root, '3.2.9', ref);
+    assert.notEqual(rerun.status, 0);
+    assert.match(rerun.stderr, /already tracked in this checkout/);
+  }
+  const after = Object.fromEntries(
+    listFiles(snapshot).map((file) => [file, fs.readFileSync(path.join(snapshot, file), 'utf8')])
+  );
+  assert.deepEqual(after, before);
+  assert.equal(git(root, 'status', '--porcelain').trim(), '');
+});
+
+test('refuses a snapshot that is staged but not yet committed', () => {
+  const root = releaseRepo();
+  assert.equal(extract(root, '3.2.9', 'v3.2.9').status, 0);
+  git(root, 'add', '-A');
+  const rerun = extract(root, '3.2.9', 'v3.2.9');
+  assert.notEqual(rerun.status, 0);
+  assert.match(rerun.stderr, /already tracked in this checkout/);
+});
+
 test('re-running replaces a stale snapshot instead of merging into it', () => {
   const root = releaseRepo();
   write(root, 'dist/docs/3.2.9/stale.mdx', 'stale\n');
