@@ -188,37 +188,27 @@ phases:
   - id: account_scoped_read_by_account_id
     title: "An account-scoped read addressed only by account_id"
     depends_on: [discover_and_provision]
-    # get_products, get_media_buys, and get_media_buy_delivery would be the
-    # natural probes, but the @adcp/sdk 15.0.0 runner replaces an authored
-    # account on those tasks with the natural key it auto-captures from the
-    # earlier sync_accounts response, so none of them can put { account_id }
-    # on the wire here. list_creatives is sent as authored, so this phase uses
-    # it and runs only for sellers with a creative library (where
-    # list_creatives is required). Switch to get_media_buys once the runner
-    # keeps an authored account_id on account-scoped tasks.
-    requires_capability:
-      path: creative.has_creative_library
-      equals: true
     steps:
-      - id: list_creatives_by_account_id
-        title: "List creatives for the account by account_id"
-        task: list_creatives
-        schema_ref: "creative/list-creatives-request.json"
-        response_schema_ref: "creative/list-creatives-response.json"
-        doc_ref: "/creative/task-reference/list_creatives"
+      - id: get_media_buys_by_account_id
+        title: "Read the account's media buys by account_id"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
         stateful: false
         expected: |
-          Resolve the account from its account_id and return its creative
-          library, which may be empty. Do not return ACCOUNT_NOT_FOUND for an
-          account_id this seller returned from sync_accounts.
+          Resolve the account from its account_id and return its media buys,
+          which is an empty list for this fresh account. Do not return
+          ACCOUNT_NOT_FOUND for an account_id this seller returned from
+          sync_accounts.
         sample_request:
           account:
             account_id: "$context.stable_account_id"
         validations:
           - check: response_schema
-            description: "Response matches list-creatives-response.json schema"
+            description: "Response matches get-media-buys-response.json schema"
           - check: field_present
-            path: "creatives"
+            path: "media_buys"
             description: "The seller answered for the account_id instead of rejecting it"
 
   - id: account_id_survives_resync

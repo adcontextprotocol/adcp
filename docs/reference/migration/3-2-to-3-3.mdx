@@ -158,7 +158,7 @@ Existing 3.2 deprecations keep their published removal windows.
 ## Compliance and grading
 
 - `media_buy_seller/unprovisioned_account_reference` is new and advisory until runner capability `14.1.0`.
-- `media_buy_seller/stable_account_id` is new and runs only for buyer-declared sellers that declare `account.stable_account_id: true`. Its `account_id`-on-a-domain-task check uses `list_creatives`, so it runs only for sellers with a creative library, until the storyboard runner sends an authored `account_id` on `get_products` and `get_media_buys`.
+- `media_buy_seller/stable_account_id` is new and runs only for buyer-declared sellers that declare `account.stable_account_id: true`. It addresses the account by `account_id` on `get_media_buys` and requires `@adcp/sdk` 15.8.0 or later, whose storyboard runner sends an authored `account_id` as written.
 - Advanced delivery reporting runs only for sellers that advertise wholesale discovery, and proposal-finalization replay only for sellers that advertise idempotency support.
 - Hosted grading of governance-aware sellers is covered in [AAO Verified](/docs/building/verification/aao-verified).
 - `sales-guaranteed` exercises the documented polling path and no longer requires an optional task webhook.
