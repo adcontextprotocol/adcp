@@ -5,33 +5,37 @@
 **Related**: [#7878](https://github.com/adcontextprotocol/adcp/issues/7878) / [#7894](https://github.com/adcontextprotocol/adcp/pull/7894) (Web Bot Auth profile), [#7817](https://github.com/adcontextprotocol/adcp/issues/7817) (`adcp-agent-url`), [#7814](https://github.com/adcontextprotocol/adcp/issues/7814) (unknown signers), [`brand-identity-trust-split.md`](./brand-identity-trust-split.md) (trust.json, RFC [#7809](https://github.com/adcontextprotocol/adcp/issues/7809)), [#7942](https://github.com/adcontextprotocol/adcp/pull/7942) and [#6105](https://github.com/adcontextprotocol/adcp/issues/6105) (client-only signers), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) (demand-side grants), [#8113](https://github.com/adcontextprotocol/adcp/issues/8113) / [#8114](https://github.com/adcontextprotocol/adcp/issues/8114) (onboarding posture), [#7015](https://github.com/adcontextprotocol/adcp/issues/7015) (principal layer).
 
 **Supersedes**, for Web Bot Auth identities, these parts of `brand-identity-trust-split.md`:
-- the `identity.trust_url` back-pointer and "Every discovery path is bound both ways" (§Agent resolution);
-- the acknowledgement "point back" rule (§Acknowledgements);
-- the per-host no-downgrade probe (§No downgrade during AdCP 3.x), which R4 replaces.
+- the `identity.trust_url` back-pointer;
+- "Every discovery path is bound both ways" (§Agent resolution);
+- the acknowledgement "point back" rule (§Acknowledgements).
 
 It also supersedes the client-only bootstrap in #7942 and option B (`adcp-agent-url`) in #7817.
 
-**Scope of 3.3**: the WBA profile covers signed **HTTP requests and webhooks**. JWS artifacts (governance context `iss`, designated-task response signing, rights attestations) stay on the 3.2 chain in 3.3. They move in 3.4, together with R3b and a provenance contract for governance keys, because a retained directory response proves key possession, not publication at a point in time (#7878 gates 3 and 4).
+**Scope of 3.3**: the WBA profile covers signed **HTTP requests and webhooks**. JWS artifacts (governance context `iss`, designated-task response signing, rights attestations) stay on the 3.2 chain in 3.3. They move in 3.4 with a provenance contract for governance keys, because a retained directory response proves key possession, not publication at a point in time (#7878 gates 3 and 4). The [appendix](#appendix-34-direction-for-jws-surfaces-non-normative) records the intended direction, non-normatively.
 
 **Not in scope**: TMP, whose match-time signatures use publisher keys from the property registry, as `security.mdx` §Agent resolution already says.
 
-New names in this document are **proposed**: the `Signature-Agent` profile in AdCP, `request_signature_agent_not_in_trust_record`, `signing_profiles`, `key_thumbprints`, `agent_onboarding`, `relationship`, and the new `principal.changed` reasons. The trust.json roles and scopes used here are already defined in `static/schemas/source/trust/v1/trust.json`.
+**Principle**: use what Web Bot Auth, RFC 9421, and existing AdCP text already define, and add nothing to the WBA layer. A signer built with any conforming WBA library must verify against an AdCP verifier. Where a rule here would restate the draft, it cites the draft instead.
+
+New names in this document are **proposed**: the WBA profile in AdCP, `key_thumbprints`, `agent_onboarding`, `relationship`, the new `principal.changed` reasons, and the "canonical origin" definition. The trust.json roles and scopes used here are already defined in `static/schemas/source/trust/v1/trust.json`.
 
 ## TL;DR
 
-A buyer agent publishes two files and then onboards itself with any AdCP seller. It does not serve `get_adcp_capabilities` and receives no seller-issued credential. The signature is the credential.
+A buyer agent publishes its keys and a trust record. It can then make itself known to any AdCP seller that supports the profile. It does not serve `get_adcp_capabilities` and receives no seller-issued credential. The signature is the credential.
 
 | File | Where | Says |
 |---|---|---|
-| Key directory | `https://{agent origin}/.well-known/http-message-signatures-directory` | This origin's signing keys, one purpose each (Web Bot Auth). The response is signed per key with `created` and `expires` (WBA Appendix B.1), so it is regenerated on a schedule; it is not a write-once file. |
+| Key directory | `https://{agent origin}/.well-known/http-message-signatures-directory` | This origin's signing keys (Web Bot Auth). The response is signed per key with `created` and `expires` (WBA Appendix B.1), so it is regenerated on a schedule. |
 | Trust record | `https://{registrable domain}/.well-known/trust.json` | This origin is my agent, with these roles; these organizations may act for me |
+
+**What `open` onboarding delivers.** A verified identity, sandbox access, and joining a billing relationship that already exists (operator- or advertiser-billed). It does not let an unknown agent start spending: agent-billed accounts and new commercial relationships still go through the seller's application (R7). Self-onboarding automates becoming known, and a human stays involved wherever the seller takes on new risk.
 
 Four invariants:
 
 - **An identity is an origin.** One agent per origin. The origin's key directory is the only source of its keys.
 - **The trust record is derived, never pointed to.** A verifier computes its location from the origin. Nothing on the wire, and nothing the agent says, chooses which record counts.
 - **First contact grants identity, never authority.** A verified signer that the seller has never seen is *identity-established*: it gets what an anonymous caller gets. Authority comes from grants and seller onboarding.
-- **The 3.2 profile keeps working.** brand.json, `identity.brand_json_url`, and `jwks_uri` remain valid through 3.x. Removal is 4.0.
+- **The 3.2 profile keeps working through 3.x.** brand.json, `identity.brand_json_url`, and `jwks_uri` remain valid. The profile is deprecated in 3.3 and removed in 4.0.
 
 ## Problem
 
@@ -54,135 +58,117 @@ Characters follow the [character bible](./character-bible.md): Sam's buyer agent
 | 1. Discover | Registry or `adagents.json` | — | existing |
 | 2. Read posture | Unsigned `get_adcp_capabilities`, reads `account.agent_onboarding` | Publishes a mode per billing party, a sandbox mode, and requirements | P6 |
 | 3. Self-qualify | Checks each requirement against its own trust record, badges, and billing | — | P6 |
-| 4. First contact | Signed `get_principal` with a covered `Signature-Agent` naming its origin | Verifies through the directory and derives the trust record. Returns `unconfigured` with `relationship` (R8). For an `open` mode, creates a principal limited to that mode (R5). | P2, P3, P4 |
-| 5. Configure | `sync_principal` once a principal exists | Principal record keyed by the origin | existing, P4 |
-| 6. Accounts | `sync_accounts` per advertiser | Checks the advertiser's grant (R6). Open and in limits: `active`. Otherwise `pending_approval` with `setup.url`. | P5, P6 |
+| 4. First contact | Signed `get_principal` with a covered `Signature-Agent` naming its origin | Verifies the signature against the origin's directory: identity-established. Returns `unconfigured`, with `relationship` when one exists (R8). | P2, P3, P4 |
+| 5. Configure | `sync_principal` | Where an `open` mode applies, evaluates the trust record (R3a) and creates a principal limited to the open modes (R5). Otherwise the seller's approval is required. | existing, P4 |
+| 6. Accounts | `sync_accounts` per advertiser | Checks the grant (R6). Open and within limits: `active`. Otherwise `pending_approval` with `setup.url`. | P5, P6 |
 | 7. Stay current | `get_principal`, `principal.changed` | Relationship status and `expires_at` | P4 |
 
 ## Decisions
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | **First-contact signer identity uses the Web Bot Auth `Signature-Agent` header** (#7878 option A), as an optional, capability-advertised, experimental profile in 3.3. #7817 closes as superseded. | The IETF `webbotauth` working group adopted the protocol draft. It defines the header, directory, caching, and fetch rules. The #7878 joint brief preferred A over B; `adcp-agent-url` would polish a surface 4.0 retires. |
-| D2 | **One identity per origin, one key purpose per origin.** An origin that hosts more than one agent is ineligible for the profile; those agents move to subdomains or stay on the 3.2 profile. A governance agent is its own origin (#7878 gate 3, mechanism A). | Keys, revocation, and the trust record all derive from the origin. Refusing shared origins avoids merging principals. One purpose per origin replaces `identity.key_origins`. |
+| D1 | **First-contact signer identity uses the Web Bot Auth `Signature-Agent` header** (#7878 option A), as an optional, capability-advertised, experimental profile in 3.3. #7817 closes as superseded. | The IETF `webbotauth` working group adopted the protocol draft. It defines the header, directory, caching, and fetch rules. `adcp-agent-url` would polish a surface 4.0 retires. |
+| D2 | **One agent per origin; a governance agent is its own agent.** An origin that hosts more than one agent is ineligible for the profile; those agents move to subdomains or stay on the 3.2 profile. | Keys, revocation, and the trust record all derive from the origin. Refusing shared origins avoids merging principals. `security.mdx` already requires governance keys on a separate origin; with origin identity, that rule is the whole key-purpose mechanism (WBA §6.5). |
 | D3 | **Keys live only in the identity origin's directory.** Remove `agents[].jwks_uri`, the `/.well-known/jwks.json` default, and the "MUST point back via `identity.trust_url`" text from trust.json v1 before 3.3 beta.0. | Agreed on #7819. #8067 shipped them in the experimental schema, but nothing has released it, so no notice period applies. |
-| D4 | **The trust record is derived:** `https://{eTLD+1(origin)}/.well-known/trust.json`, with at most one `authoritative_location` hop. No `identity.trust_url`, no capabilities back-pointer. | Under D2 and D3 the record only attests role and operator. The registrable-domain owner already controls every origin under it. Probing exactly one location avoids the "several records list A" ambiguity. |
-| D5 | **The 3.2 profile stays through 3.x** and is not deprecated in 3.3. **#7942's client-only bootstrap does not ship.** | Client-only buyers use the WBA profile with static files only, and get first contact too. A third bootstrap adds cost without a case it alone covers. |
-| D6 | **Key revocation for WBA identities is published at the identity origin; agent revocation is the operator delisting the origin.** The 3.2 profile is unchanged. | Key facts live at one origin; the operator keeps a lever when that origin is compromised (R3, freshness). |
+| D4 | **The trust record is derived:** `https://{eTLD+1(origin)}/.well-known/trust.json`, with at most one `authoritative_location` hop. No `identity.trust_url`, no capabilities back-pointer. It is evaluated where it gates something (binding, grants, `open` onboarding), not on the signature path. | Under D2 and D3 the record only attests role and operator. The registrable-domain owner already controls every origin under it. In WBA, identity is complete once the directory key verifies (WBA §4.1). |
+| D5 | **The 3.2 profile is deprecated in 3.3, stays fully functional through 3.x, and is removed in 4.0. #7942's client-only bootstrap does not ship.** | `versioning.mdx` requires a deprecation notice at least 6 months before removal, and `brand-identity-trust-split.md` already plans to remove the 3.2 key chain in 4.0. The notice tells the next implementer to build WBA. A client-only bootstrap would be a second first-contact mechanism. |
+| D6 | **Key revocation for WBA identities is published at the identity origin; agent revocation is the operator delisting the origin.** The 3.2 profile is unchanged. | Key facts live at one origin; the operator keeps a lever when that origin is compromised (R3a, freshness). |
 | D7 | **Demand-side grants (#6033) move into 3.3.** | Without public grants, a seller cannot verify acts-for without an onboarding record, and self-onboarding stops at identity. |
-| D8 | **Onboarding posture by billing party.** Seller: `account.agent_onboarding` with a mode per `billing-party` value plus a sandbox mode. Buyer: an `onboarding` slot in the trust.json agent profile, with its own enum. | Sandbox carries no spend, and operator-billed spend can be bounded by an existing billing relationship and a grant (R7), so both can be open. Keying by billing party answers #8113 open question 1 with the existing enum. |
+| D8 | **Onboarding posture by billing party.** Seller: `account.agent_onboarding` with a mode per `billing-party` value plus a sandbox mode. Buyer: an `onboarding` slot in the trust.json agent profile, with its own modes. **P6 ships on its own**: only `open` and the `grant` kind wait for the identity PRs. | Sandbox carries no spend, and spend under `open` is bounded by an existing billing relationship and a grant (R7). Keying by billing party matches the first question onboarding teams ask (#8113). |
 | D9 | **`get_principal` reports relationship status and `expires_at`**, including before a principal exists, and `principal.changed` fires before a lapse. | The caller is authenticated, so per-agent state is safe to return. |
 | D10 | **Out of scope: agents accepting contracts** on an operator's behalf. Recorded as a known limitation. | A legal question first. See #6520 and #7064. |
-| D11 | **auth.md and OAuth sellers get an informative mapping only.** | Same identity everywhere, without a normative dependency on a young single-vendor spec. |
-| D12 | **A 3.3 scope-freeze date is published.** | The #7878 gates and this program depend on it. |
+| D11 | **OAuth and auth.md sellers get an informative mapping in the docs (P8), not a rule.** | Same identity everywhere, without a normative dependency on a young single-vendor spec. |
+| D12 | **The 3.3 scope freeze is 2026-10-26.** | The identity PRs and the #7894 rebase land before it. |
+
+D7, D8, and D9 are features of their own (#6033, #8113, #8114, #8118). The self-onboarding flow needs them; the identity decision (D1–D6) does not.
 
 ## Proposed normative rules
 
 Rules here are proposals. Each lands in the PR named, in the page named, and nowhere else.
 
+### R0. Canonical origin (P1, `url-canonicalization.mdx`)
+
+The canonical origin of a URL is its scheme and authority after steps 1 to 4 of the [URL canonicalization algorithm](../docs/reference/url-canonicalization.mdx), with no path, query, or fragment. That page defines it once, with vectors, and its "Where it applies" table states which form each comparison uses:
+- WBA identity and trust.json agent URLs compare canonical origins.
+- `format-id.agent_url` stays a canonical URL. A WBA signer matches it when the canonical origin of `agent_url` equals `O`.
+- `adagents.json` `authorized_agents[].url` stays a canonical URL under the 3.2 profile, and matches a WBA signer by canonical origin.
+
+No other rule restates the definition.
+
 ### R1. Identity and keys (P2, WBA profile page)
 
-- A WBA identity is an HTTPS origin `O`, canonicalized with the shared [URL canonicalization algorithm](../docs/reference/url-canonicalization.mdx): lowercase A-label host, default port elided, no path.
-- An origin hosts at most one agent. `agents[].url` values in a trust record that share an origin are invalid, and the validator rejects them. The agent's endpoint URL (`agents[].url`, which may carry a path) is the address to call; the origin is the identity.
-- Every key in the directory carries `adcp_use`. Verifiers enforce it per surface, as `security.mdx` §Key separation does for JWKS today. An origin publishes keys for one purpose: request signing (which also signs its webhooks), or governance signing. This replaces the `identity.key_origins` consistency check for WBA identities.
+- A WBA identity is a canonical origin `O` (R0).
+- An origin hosts at most one agent, and a trust record listing two agents with the same canonical origin is invalid. The agent's endpoint URL (`agents[].url`, which may carry a path) is the address to call; the origin is the identity.
+- The origin's key directory is the only source of its keys (WBA §5.5). Keys carry no AdCP-specific members. Purpose separation is by origin (D2).
 
-### R2. Signer identity on signed artifacts (P2)
+### R2. Signer identity on requests and webhooks (P2)
 
-**HTTP requests and webhooks.**
-- The signer sends `Signature-Agent` as a dictionary member keyed by its signature label, `sig1="https://buyer.pinnacle-agency.example"`, and covers it as `"signature-agent";key="sig1"`.
-- Requests use the `web-bot-auth` tag. Webhooks keep their existing AdCP webhook tag and also cover `Signature-Agent`, so a captured request signature cannot be replayed as a webhook or the reverse.
-- The header is covered the same way on every A2A binding that carries HTTP headers (JSON-RPC, HTTP+JSON, and gRPC metadata). P2 lists the binding-specific component names.
+- **Requests and webhooks** follow the WBA draft as written: a covered `Signature-Agent` member naming `O` (§5.2.1, §5.2.2), `tag="web-bot-auth"` (§5.2), and a `nonce`. A webhook is an ordinary WBA request from the seller's identity. Its covered `@method`, `@target-uri`, and `@authority`, plus the nonce, keep a request signature from verifying as a webhook or the reverse.
+- **Profile selection.** A signed message that carries `Signature-Agent` or the `web-bot-auth` tag is verified under the WBA profile only, never under the 3.2 profile.
+- **A2A.** RFC 9421 component names apply to every HTTP message, and `security.mdx` §Operation resolution over A2A already covers the bindings. There are no binding-specific component names.
+- **Advertisement.** Capabilities advertise the profile with the identifiers #7894 uses in `request_signing.profiles` and `webhook_signing.profiles`: `web-bot-auth` and `adcp/request-signing/v1`. The WBA draft revision is a separate field next to `profiles`, so a later revision with wire changes is advertised alongside the old one.
+- **Errors.** WBA defines the verifier's answer: `403` with `Accept-Signature`, `400` for headers that do not parse, and `429` for a reused signature or nonce. An AdCP error body, when sent, is the generic authentication error with no signature-specific detail. Conformance grades the status and headers only. The signature-specific `request_signature_*` codes remain for the 3.2 profile.
 
-**JWS artifacts** (governance context, designated-task response signing, rights attestations), **3.4**.
-- `O` is the canonical origin of `iss` (or of `agent_url` where the surface uses it). In 3.3, these surfaces use the 3.2 chain only.
+Everything else on the signature path is the draft's: attaching no policy until verification (§4.1), the `(O, key)` lookup (§5.4), fetch limits (§6.7), coalescing (Appendix C.3), and negative caching (Appendix C.5). AdCP chooses only its numbers, such as a negative cache of at most 60 s.
 
-**Profile selection.**
-- A signed HTTP message that carries `Signature-Agent` or the `web-bot-auth` tag is verified under R3 only, never under the 3.2 profile. A present but uncovered `Signature-Agent` is rejected, not ignored.
-- For a JWS (from 3.4), the verifier uses R3 when the trust record derived from `O` lists `O`. Otherwise it uses the 3.2 chain, unless R4 forbids that. Profile selection never reads an unsigned field.
-- A request MAY carry two signatures, one per profile, only to bind a WBA identity onto an existing 3.2 principal (R5 rule 4). Both MUST verify.
+### R3. Identity verification (P3, `security.mdx`)
 
-**Draft revision.** The capability advertisement names the WBA draft revision the profile implements. A later revision with wire changes is a new profile identifier, advertised alongside the old one, so draft churn never silently changes what a verifier accepts.
+Identity is the signature verifying under a key from `O`'s directory, as the WBA draft defines it, plus a check of the identity's revocation list. That list is at `O`, at the existing `/.well-known/governance-revocations.json` path with the `adcp-gov-revocation+jws` type, and covers all of the identity's keys. Fail closed for spend-committing operations.
 
-**Untrusted until verified.** The header is an untrusted claim until the signature verifies. A verifier MUST NOT log it, use it as a metric label, or fetch with it before the checks that need no network have passed.
+The result is the verified identity `O`. A signer whose trust record does not list it is still identity-established (R5 rule 1). There is no capabilities fetch, and no new request-signing error code.
 
-### R3. Agent resolution v2 (P3, `security.mdx`)
+### R3a. Trust record evaluation (P3, `security.mdx`)
 
-Given origin `O` from R2:
+Evaluated when something is gated on it: binding a principal (R5), evaluating a grant (R6), and `open` onboarding (R7). It is never evaluated on the signature path.
 
-1. **Directory.** Fetch `https://O/.well-known/http-message-signatures-directory` under the WBA fetch rules: zero redirects, body cap, budgets, negative cache at most 60 s. Look up the key by `(O, kid)`, where `kid` is the RFC 7638 thumbprint, and check its `adcp_use` for the surface. Verify the signature, the nonce, and the window.
-2. **Key revocation.** Check the identity's revocation list at `O` (path defined in P2). Fail closed for spend-committing operations.
-3. **Derive the trust record.** `R = https://{eTLD+1(host(O))}/.well-known/trust.json`, using a pinned, dated Public Suffix List snapshot that includes the ICANN and PRIVATE sections.
-   - Reject `O` before any fetch if its host is an IP literal, is itself a public suffix, or has no defined eTLD+1.
-   - Fetch `R`, and any hop, under the `security.mdx` Webhook URL validation SSRF rules: zero redirects, a 2 MiB streaming body cap, strict parsing with duplicate keys rejected, nesting depth 32.
-   - Follow at most one `authoritative_location` hop. The target document MUST NOT itself carry `authoritative_location`.
-   - The **operator is `eTLD+1(host(O))`**: never a value inside the document, and never the host of an `authoritative_location` target.
-4. **Match.** Exactly one `agents[]` entry has a canonical origin equal to `O` and carries the role the surface requires. No match: reject with `request_signature_agent_not_in_trust_record`. More than one: reject as ambiguous. If the entry carries `key_thumbprints`, the key from step 1 MUST be one of them. The pin narrows keys and never adds any.
-5. **Result.** The verified identity is `O`, and the operator is `eTLD+1(host(O))`. Authority is evaluated separately (R3b, R6).
+1. **Derive.** `R = https://{eTLD+1(host(O))}/.well-known/trust.json`, using a pinned, dated Public Suffix List snapshot that includes the ICANN and PRIVATE sections.
+   - An `O` whose host is an IP literal or a public suffix, or has no defined eTLD+1, has no trust record.
+   - Fetch `R` and any hop under the `security.mdx` Webhook URL validation SSRF rules, with the trust-record body cap and strict parsing.
+   - Follow at most one `authoritative_location` hop. The target MUST NOT itself carry `authoritative_location`.
+   - The **operator is `eTLD+1(host(O))`**, never a value inside the document.
+2. **Match.** Exactly one `agents[]` entry has a canonical origin equal to `O` (R0) and carries the role the gate requires (`adcp:buying` for buyer binding and grants).
+   - When the entry carries `key_thumbprints`, the key that verified the signature MUST be one of them for the binding or grant to succeed. The pin narrows keys and never adds any.
+   - A failed match is an authorization outcome and returns the existing authorization error, one external code. The cause goes to logs only.
 
-There is no capabilities fetch. An `identity.brand_json_url` on the agent's capabilities plays no part in WBA-profile resolution.
-
-**One external code.** Every failure in steps 3 and 4 returns one externally visible code. The cause (unreachable, malformed, unlisted, hop rejected) goes to logs only, so resolution cannot be used to probe what the verifier's network reaches.
-
-**Freshness and operator revocation.** A binding (R5) is a cache of steps 3 and 4, not a standing grant.
-- Verifiers MUST re-derive the trust record at least as often as the revocation polling interval in `security.mdx`, and before a spend-committing call when the cached record is older than that interval.
-- A fetch failure is not absence. Fail closed for spend-committing operations.
-- An operator revokes an agent by delisting its origin. Delisting ends the agent's identity, and every grant that reaches it through the operator, within one cache lifetime. This is the operator's lever when the origin itself is compromised, since a compromised origin also serves its own revocation list.
+**Freshness and operator revocation.**
+- A binding is a cache of R3a, not a standing grant. Verifiers MUST re-evaluate it at least as often as the revocation polling interval in `security.mdx`, and before a spend-committing call when the cached result is older than that.
+- A fetch failure is not absence: fail closed for spend-committing operations (`brand-identity-trust-split.md` §Grants: "A fetch failure is never equivalent to absence").
+- An operator revokes an agent by delisting its origin. That ends every binding and grant that reaches the agent through the operator within one cache lifetime. This is the operator's lever when the origin itself is compromised.
 - Verifiers MUST retain every key revocation they have seen for `O`. An origin cannot un-revoke a key.
 
-**Abuse limits.**
-- Rate-limit and negative-cache resolution by canonical host, by eTLD+1, and by `authoritative_location` target host, not by URL. Single-flight concurrent fetches.
-- Cap concurrent and per-window resolutions of new origins.
-- Reject before any fetch if the header is not covered.
-
-**Cross-organization hosting.** A platform that runs an agent for a brand lists the agent in its own trust record; the brand grants the platform's domain (R6). There is no hosting-delegation fallback, matching `brand-identity-trust-split.md` §Agent resolution step 3.
-
-### R3b. Relying-party authorization (3.4, with the JWS surfaces)
-
-A role in the agent's own record is the operator's claim about itself. It is sufficient only where the surface needs no one else's consent: buyer requests (`adcp:buying`), and sell-side signatures (`adcp:sales`) together with the publisher's `adagents.json`. On every other surface the relying party consents:
-
-| Surface | Relying-party record | Required |
-|---|---|---|
-| Governance context `iss` | the buyer's | the buyer's operator is `eTLD+1(host(O))`, or holds a grant to it with `adcp:governance` |
-| Designated-task response signing (`brand_domain` cross-check) | the brand's | the brand's operator is `eTLD+1(host(O))`, or holds a grant to it with `adcp:brand_identity` |
-| Rights attestations | the rights holder's | the rights holder's operator is `eTLD+1(host(O))`, or holds a grant to it with `adcp:rights_clearance` |
-
-**Publisher pins.** `adagents.json` `signing_keys` pins match by RFC 7638 thumbprint, so they apply to directory keys unchanged and narrow only. `authorized_agents[].url` is matched against `O` by canonical origin.
+**Cross-organization hosting.** A platform that runs an agent for a brand lists the agent in its own trust record, and the brand grants the platform's domain (R6). There is no hosting-delegation fallback, matching `brand-identity-trust-split.md` §Agent resolution step 3.
 
 ### R4. Coexistence with the 3.2 profile (P3)
 
-- Signed messages without `Signature-Agent` or the `web-bot-auth` tag, and JWS artifacts selected for the 3.2 chain (R2), are verified under the 3.2 profile, unchanged.
-- **No downgrade, keyed by origin.** A verifier refuses the 3.2 profile for any agent URL whose origin is `O`, on every surface that R3 covers, once either of these holds:
-  - the verifier has bound `O` (R5);
-  - the trust record derived from `O` lists it with `profiles.adcp.signing_profiles: ["wba"]`. The operator sets this to opt out of 3.2 before any seller binds.
-- **No downgrade for grants.** When the grantor's trust.json fetch returns 200, its `grants[]` is the grantor's only published source of grants, and `authorized_operators[]` in its brand.json is ignored, so a stale brand.json entry cannot outlive its removal from trust.json. A failed fetch never counts as "no trust.json".
-  - This does not change what `exclusive_grants` means. With `exclusive_grants: false`, an acts-for claim no grant covers stays at the relying party's discretion. That discretion is the seller's own onboarding records and policy, never the grantor's brand.json.
-  - Under an `open` mode, R7 removes that discretion for brands outside the buyer's operator domain: a missing grant is a deny.
-- trust.json no longer carries keys (D3). In 3.3 it is consumed for WBA identities (R3), relying-party consent (R3b), and grants on either profile (R6).
+- Signed messages without `Signature-Agent` or the `web-bot-auth` tag, and every JWS artifact in 3.3, are verified under the 3.2 profile.
+- **The 3.2 profile is deprecated in 3.3**, with a notice in `security.mdx` and the release notes. It remains fully functional through 3.x and is removed in 4.0, together with the brand.json trust fields and `identity.brand_json_url` (`brand-identity-trust-split.md` §Migration).
+- **No downgrade, keyed by origin.** Once a verifier has bound `O` (R5), it refuses the 3.2 profile for any agent URL whose origin is `O`. Before binding, an operator ends 3.2 use for an agent by removing its brand.json entry and keys, which reaches every verifier within the JWKS cache bound.
+- **Grants** follow `brand-identity-trust-split.md` §No downgrade and §Grants. A 200 from the grantor's trust.json makes it the only source of grants, and brand.json `authorized_operators[]` is ignored. `exclusive_grants` keeps its schema meaning: with `false`, an uncovered claim stays at the relying party's discretion, which is its own onboarding records and never the grantor's brand.json.
 
 ### R5. First contact and principal binding (P4, `L2/accounts-and-agents.mdx`)
 
-These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md` (on the [#7942](https://github.com/adcontextprotocol/adcp/pull/7942) branch). Rule 1 carries the rewording from [#7942 comment 6087434878](https://github.com/adcontextprotocol/adcp/pull/7942#issuecomment-6087434878), and rule 4 is tightened.
+These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md` (on the [#7942](https://github.com/adcontextprotocol/adcp/pull/7942) branch), with the rule 1 rewording from [#7942 comment 6087434878](https://github.com/adcontextprotocol/adcp/pull/7942#issuecomment-6087434878):
 
-1. **Verification alone never creates a principal.** A verified origin with no binding is *identity-established*: it gets what an anonymous caller gets, reads included, plus `get_principal` (R8). A principal comes only from a binding under rule 2. That includes the binding a seller creates when it approves a new identity.
-2. A binding is an explicit, audited seller record from origin to principal.
+1. **Verification alone never creates a principal.** A verified origin with no binding is *identity-established*: it gets what an anonymous caller gets, reads included, plus `get_principal` (R8). A principal comes only from a binding under rule 2, including the binding a seller creates when it approves a new identity.
+2. A binding is an explicit, audited seller record from origin to principal, made only after R3a succeeds.
 3. An origin maps to at most one principal.
-4. A seller binds onto an existing 3.2 `agents[].url` principal only when the origin is unambiguous, **and** only through one of:
-   - a request carrying both a valid 3.2 signature and a valid WBA signature (R2);
-   - explicit out-of-band seller approval.
+4. A seller binds onto an existing 3.2 `agents[].url` principal only when the origin is unambiguous, and only with explicit out-of-band seller approval. In 3.2, controlling the agent's host was not enough to obtain its keys; this rule keeps origin control alone from inheriting an existing principal. This binding is never automatic.
 
-   In 3.2, controlling the agent's host was not enough to obtain its keys, and this rule keeps origin control alone from inheriting an existing principal. This binding is never automatic.
-
-**Automatic binding.** Where the seller declares an `open` mode (R7), it MAY create a **new** principal on first contact. That principal is limited to the open modes. Anything else stays `pending_approval` until a seller approves it.
+**Automatic binding.** Where the seller declares an `open` mode (R7), `sync_principal` from an identity-established caller MAY create a **new** principal, limited to the open modes. `get_principal` never creates one. Anything else waits for seller approval.
 
 ### R6. Authority: grants (P5)
 
-- **Which record authorizes.** At `sync_accounts`, the authorizing record is the **brand's** trust record, or its house record when the brand has one. The buyer's operator record never authorizes a brand outside the operator's registrable domain.
-- **Matching a grant.** The seller looks for a grant whose `grantee` exactly equals the buyer's operator domain (R3 step 5), compared as a registrable domain, with a scope covering the operation (`adcp:media_buying` for buys).
-  - A grant's `agents[].url` narrowing matches the buyer by canonical origin.
-  - Grants for `adcp:media_buying` SHOULD narrow with `agents[]`, because a grant to a platform's domain otherwise covers every agent that platform lists.
-- **Chain length.** The chain is at most brand → grantee, or brand → grantee → the grantee's single onward grant where `brand-identity-trust-split.md` §Grants permits one. Effective authority is the intersection of brands, countries, scopes, and the earliest `valid_until` along the chain. Nothing extends further.
-- **What a grant isn't.** Grants never carry keys and are evaluated at the grantor's document only.
-- **brand.json fallback.** Through 3.x, brand.json `authorized_operators[]` remains a valid source when the grantor has no trust.json, subject to R4.
+- **Which record authorizes.** At `sync_accounts`, the authorizing record is the **brand's** trust record, or its house record when the brand has one.
+- **When the operator is the brand.** When `account.operator`, the brand, and the signer's operator (R3a) share a registrable domain, authority is implicit and no grant is needed. This matches today's "Self-authorization is implicit" rule in `L2/accounts-and-agents.mdx`.
+- **Otherwise, a grant chain must reach the signer's operator** with a scope covering the operation (`adcp:media_buying` for buys). Either of these satisfies it:
+  - the brand grants the signer's operator directly, and `account.operator` is the signer's operator;
+  - the brand grants `account.operator`, and `account.operator` grants the signer's operator (an agency using an intermediary or a platform-hosted agent, the #6033 case).
+
+  `account.operator` MUST be on the chain. A grant to the signer's operator never authorizes an account that names an operator outside the chain.
+- **Matching.** `grantee` values compare exactly as registrable domains. A grant's `agents[].url` narrowing matches by canonical origin (R0). Grants for `adcp:media_buying` SHOULD narrow with `agents[]`, because a grant to a platform's domain otherwise covers every agent it lists.
+- **Effective authority** is the intersection of brands, countries, scopes, and the earliest `valid_until` along the chain. A grantee never extends a grant it received; the second link is the grantee's own grant to an intermediary.
+- **What a grant isn't.** Grants never carry keys and are read from the grantor's document only.
+- **brand.json fallback.** Through 3.x, brand.json `authorized_operators[]` is a valid source when the grantor has no trust.json, subject to R4.
 
 ### R7. Onboarding posture (P6, `get_adcp_capabilities.mdx`)
 
@@ -194,11 +180,12 @@ Shape (experimental feature `account.agent_onboarding`):
     "supported_billing": ["operator", "agent"],
     "sandbox": true,
     "agent_onboarding": {
-      "sandbox": { "mode": "open" },
+      "sandbox": { "mode": "open", "url": "https://streamhaus.example/sandbox" },
       "billing": {
         "operator": { "mode": "open", "requirements": [{ "kind": "grant" }] },
         "agent": {
           "mode": "application",
+          "url": "https://streamhaus.example/partners/agent-billing",
           "requirements": [{ "kind": "billing_entity" }, { "kind": "contract" }]
         }
       },
@@ -211,91 +198,95 @@ Shape (experimental feature `account.agent_onboarding`):
 ```
 
 **Shape.**
-- `billing` is keyed by `enums/billing-party.json` values (`operator`, `agent`, `advertiser`). Its keys MUST be a subset of `supported_billing`. `sandbox` is valid only when `account.sandbox` is true.
-- Modes: `open`, `application`, `invite_only`. An absent key means undeclared, not `invite_only`. Prepaid funding is not a mode; `payment_required` already covers it.
-- Requirement kinds are closed, `x-extensible`, and named in trust.json terms: `agent_identity` (a trust record entry with the required role), `grant` (R6), `billing_entity`, `contract`, `credit_application`. An unknown kind falls back to `message` and `url`.
+- `billing` is keyed by `enums/billing-party.json` values (`operator`, `agent`, `advertiser`), and its keys MUST be a subset of `supported_billing`. `sandbox` is valid only when `account.sandbox` is true.
+- Each mode MAY carry its own `url`, which defaults to the top-level `url`.
+- Modes: `open`, `application`, `invite_only`. An absent key means undeclared, not `invite_only`.
+- Requirement kinds are closed, `x-extensible`, and each kind states the direction it applies to:
+  - seller gating a buyer: `agent_identity` (a trust record entry with the required role), `grant` (R6), `billing_entity`, `contract`, `credit_application`;
+  - buyer gating a seller (#8114): `aao_verified` and `storyboard` (seller badges and storyboards exist today), `sandbox`, `experimental_feature`;
+  - a kind used in the wrong direction is ignored;
+  - an unknown kind falls back to `message` and `url`.
 
-**What `open` means.**
-- `open` requires identity established from the agent's published keys (R3), whether by request signature or the R9 assertion. A seller that only maps opaque, seller-issued credentials cannot declare it.
-- `open` binds identity, not spend. Under any `open` mode:
-  - when the account's brand is outside the buyer's operator domain, a missing grant (R6) MUST be treated as deny;
-  - spend-committing operations billed to `operator` require an existing seller-side billing relationship with the billed operator domain;
-  - quotas and rate limits for automatic binding are counted per operator domain, not per origin;
-  - an origin whose registrable domain comes from the PSL PRIVATE section, such as a tenant subdomain of a hosting platform, is eligible for `sandbox` only.
+**Ships on its own.** `application`, `invite_only`, and every requirement kind except `grant` work on the 3.2 profile with existing credentials. Only `open` and the `grant` kind depend on P2–P5. A seller cannot declare `open` until a first-contact mechanism exists.
+
+**What `open` means.** `open` requires an identity established from the agent's published keys (R3). A seller that only maps opaque, seller-issued credentials cannot declare it. `open` binds identity, not spend. Under any `open` mode:
+- the `grant` requirement is satisfied by R6, including the implicit case when the operator is the brand;
+- when the account's brand is outside the buyer's operator domain and no grant covers it, the request is denied;
+- spend-committing operations need an existing seller-side billing relationship with the billed party: the operator domain under `operator`, or the brand's domain under `advertiser`;
+- quotas and rate limits for automatic binding are counted per operator domain, not per origin;
+- an origin whose registrable domain comes from the PSL PRIVATE section, such as a tenant subdomain of a hosting platform, is eligible for `sandbox` only.
 
 **Uniformity.** The block is seller-wide, identical for every caller, served on the unauthenticated fetch, and absent from error payloads. The oracle clamps in `error-handling.mdx` are unchanged.
 
-**Buyer posture (#8114)** goes in `agents[].profiles.adcp.onboarding` in the buyer's trust record. Its modes are distinct from the seller's: `considers_unsolicited`, `application`, `invite_only`.
+**Buyer posture (#8114)** goes in `agents[].profiles.adcp.onboarding` in the buyer's trust record, with record-level `record_profiles.adcp` as an optional default. Its modes are distinct from the seller's: `considers_unsolicited`, `application`, `invite_only`. An agent that serves `get_adcp_capabilities` is authoritative there.
 
 ### R8. Relationship status (P4, `get_principal.mdx`)
 
-- `get_principal` adds `relationship: { status, expires_at }` on the `unconfigured`, `recognized`, and `current` results. `relationship` is **omitted** when the seller has no relationship with the caller and no application in progress, which is the identity-established state of R5 rule 1. Status values, when present:
+- `get_principal` adds `relationship: { status, expires_at, setup }` on the `unconfigured`, `recognized`, and `current` results.
+- `relationship` is **omitted** when the seller has no relationship with the caller and no application in progress (the identity-established state of R5 rule 1).
+- Status values, when present:
   - `pending`: an application or approval is in progress;
   - `active`;
   - `suspended`;
   - `blocked`.
-- It is returned only to the authenticated caller, so an identity-established agent can see that its application is pending. P4 opens the closed `unconfigured` schema (`get-principal-response.json`) for this one field.
-- `principal.changed` adds the reasons `relationship_changed` and `relationship_expiring`. The second fires at a seller-declared lead time before `expires_at`; `setup_expiring` is the precedent.
-
-### R9. OAuth and auth.md sellers (P8, informative)
-
-A seller that issues bearer tokens can accept the same identity with an RFC 7523 JWT-bearer assertion. The assertion is signed by a request-signing key in the agent's directory and resolved under R3, with `O` taken from the assertion's `iss`. `agent_onboarding.url` MAY point to the seller's `auth.md`.
+- While `pending`, an optional `setup { url, message, expires_at }` carries an applicant-specific next step, in the same shape as `sync_accounts` `setup`.
+- It is returned only to the authenticated caller. P4 opens the closed `unconfigured` schema (`get-principal-response.json`) for this one field.
+- `principal.changed` adds the reasons `relationship_changed` and `relationship_expiring`. The second fires at a seller-declared lead time before `expires_at`, following `setup_expiring`.
 
 ## Threat model deltas
 
 | Threat | Control |
 |---|---|
-| Header names a victim's origin | The signature must verify under that origin's directory key. The header is untrusted until then (R2). |
-| Stripping header coverage to force the 3.2 profile | A present `Signature-Agent` or `web-bot-auth` tag means WBA only. Uncovered is rejected (R2). |
-| Attacker lists a victim origin in the attacker's own trust record | Only the record at the origin's registrable domain counts (R3 step 3). |
-| Attacker lists its own agent as `adcp:governance` | A role is identity only. The relying party must consent (R3b). |
-| Request signature replayed as a webhook | Distinct tags, each covering `Signature-Agent` (R2). |
-| Subdomain takeover (dangling CNAME) of a listed origin | The origin inherits its operator's grants unless they narrow with `agents[]` (R6). Operators SHOULD pin with `key_thumbprints` (R3 step 4). Delisting revokes within one cache lifetime (R3, freshness). Sellers SHOULD alarm on key-set changes for bound identities. |
-| Compromised origin serves an empty revocation list | Verifiers retain seen revocations; the operator delists (R3, freshness). |
-| Origin control used to take over a 3.2 principal | Binding onto a 3.2 principal needs a dual-signed request or out-of-band approval (R5 rule 4). |
-| Downgrade to a stale 3.2 key | No downgrade keyed by origin, with an operator opt-out before binding (R4). |
+| Header names a victim's origin | The signature must verify under that origin's directory key (WBA §4.1, §5.4). |
+| Stripping header coverage to force the 3.2 profile | A present `Signature-Agent` or `web-bot-auth` tag means WBA only; an uncovered member is not attributed (WBA §5.2.2). |
+| Attacker lists a victim origin in the attacker's own trust record | Only the record at the origin's registrable domain counts (R3a). |
+| Request signature replayed as a webhook, or the reverse | Covered `@authority` and `@target-uri` plus the nonce (R2). |
+| Subdomain takeover (dangling CNAME) of a listed origin | The origin inherits its operator's grants unless they narrow with `agents[]` (R6). Operators MAY pin with `key_thumbprints`, which is checked at binding and grant evaluation (R3a). Delisting revokes within one cache lifetime. Sellers SHOULD alarm on key-set changes for bound identities. |
+| Compromised origin serves an empty revocation list | Verifiers retain seen revocations; the operator delists (R3a, freshness). |
+| Origin control used to take over a 3.2 principal | Binding onto a 3.2 principal needs out-of-band seller approval (R5 rule 4). |
+| Downgrade to a stale 3.2 key | No downgrade after binding; before binding, the operator removes the 3.2 keys from brand.json (R4). |
 | Stale brand.json grants override trust.json | A 200 from trust.json disables `authorized_operators[]` (R4). |
-| Anonymous party opens operator-billed accounts | `open` binds identity only; spend needs an existing billing relationship, and an out-of-domain brand needs a grant (R7). |
+| Anonymous party opens billed accounts | `open` binds identity only. Spend needs an existing billing relationship, and an out-of-domain brand needs a grant whose chain includes `account.operator` (R6, R7). |
 | Free registrable domains on hosting platforms defeat quotas | PRIVATE-section domains are `sandbox` only; quotas per operator domain (R7). |
-| Resolution as a fetch amplifier, including many domains pointing at one `authoritative_location` target | Limits by host, eTLD+1, and target host; single-flight; one hop; checks before fetch (R3). |
-| Resolution failures used as a network probe | One external code for step 3 and 4 failures (R3). |
+| Trust-record fetches used as an amplifier or network probe | Evaluated only at gates, never on the signature path. One hop, fetch limits, and one external authorization code (R3a). |
+| Signature errors used to probe which check failed | WBA status and headers only; no signature-specific body detail (R2). |
 | Posture used as an onboarding oracle | Seller-wide, unauthenticated, uniform block. Per-agent state only in authenticated `get_principal` (R7, R8). |
 | PSL drift between verifiers | Pinned, dated snapshot, as `security.mdx` already requires. |
 
-## Known risks and dissent
+## Known risks
 
 | Risk | Position |
 |---|---|
-| **Draft maturity.** WBA is an adopted IETF draft (-00), and the `Signature-Agent` format already changed once (directory-03 to the dictionary form). | Experimental and capability-advertised; the profile identifier pins the draft revision (R2); the 3.2 profile is untouched. |
-| **Deployed edge verifiers.** Cloudflare's documented verifier rejects the dictionary form and does not enforce nonces; AWS WAF, Vercel, and Akamai publish nothing (#7878 gate 1). | AdCP sellers verify at their origin with the SDKs, and replay enforcement stays with the AdCP deployment. An edge verifier is an optimization, not a dependency. The interop matrix is tracked, not a blocker. |
-| **One identity per origin.** Path-hosted agents must move to subdomains. Multi-tenant sales platforms whose path-based URLs appear in many publishers' `adagents.json` files cannot move without those files changing. | The problem being solved is buyer to seller, and buyers can add subdomains cheaply. Path-hosted sellers keep 3.2 webhook signing until they migrate; nothing forces them. |
-| **Directory upkeep.** Signed directory responses expire, so publishing keys is a scheduled job, not a static upload. | SDK CLIs provide a regenerate command (P2, SDK workstream); the walkthrough (P8) shows a scheduled job. |
-| **Two profiles through 3.x.** SDKs and verifiers maintain both. | Accepted. Recorded dissent: the #7878 author prefers deprecating the 3.2 profile in 3.3. This design keeps it undeprecated until the interop matrix exists (joint brief Q2). |
+| **Draft maturity.** WBA is an adopted IETF draft (-00). | Experimental and capability-advertised; the draft revision is advertised (R2); the 3.2 profile keeps working through 3.x. |
+| **Edge verifiers.** Deployed CDN verifiers lag the draft. | Sellers verify at their origin with the SDKs (WBA Appendix C.10). The interop matrix is tracked separately. |
+| **One agent per origin.** Path-hosted agents must move to subdomains. Multi-tenant sales platforms whose path-based URLs appear in many publishers' `adagents.json` files cannot move without those files changing. | The problem being solved is buyer to seller, and buyers can add subdomains cheaply. Path-hosted sellers keep 3.2 webhook signing until they migrate. |
+| **Directory upkeep.** Signed directory responses expire, so publishing keys is a scheduled job. | SDK CLIs provide a regenerate command; the walkthrough (P8) shows a scheduled job. |
 | **Document signing.** Governance and rights JWS need key-purpose isolation and historical provenance. | Deferred to 3.4 (Scope of 3.3, above). |
 
 ## Compatibility and migration
 
-- **Additive in 3.3.** The WBA profile, derived trust records, relying-party consent, grants, posture, and relationship status are experimental and capability-advertised. The 3.2 profile is unchanged.
+- **Additive in 3.3.** The WBA profile, trust-record evaluation, grants, posture, and relationship status are experimental and capability-advertised.
 - **One breaking change to an experimental surface:** the trust.json v1 edits in D3. They must merge before 3.3 beta.0.
-- **Buyers** may publish a directory and trust record now. Dual-signing is needed only to carry an existing 3.2 principal over (R5 rule 4). A seller that does not advertise the WBA profile keeps verifying 3.2 signatures.
+- **One deprecation:** the 3.2 profile, with the 6-month notice `versioning.mdx` requires. It is not removed in 3.x.
+- **Buyers** may publish a directory and trust record now. A seller that does not advertise the WBA profile keeps verifying 3.2 signatures.
 - **Sellers** advertise the WBA profile per operation, as with `request_signing` today.
 - **Agencies hosting several agents on one origin** move each agent to its own subdomain before adopting the profile.
-- **4.0** removes the 3.2 profile, the brand.json trust fields, and `identity.brand_json_url` (`brand-identity-trust-split.md` §Migration).
+- **4.0** removes the 3.2 profile, the brand.json trust fields, and `identity.brand_json_url`.
 
 ## Plan
 
 | PR | Scope | Changeset |
 |---|---|---|
-| **P0** | This spec | none |
-| **P1** | trust.json v1 edits:<br>- remove `agents[].jwks_uri`, its default, and the "point back via `identity.trust_url`" text (`trust.json` agent `url` and `jwks_uri` descriptions);<br>- add the one-agent-per-origin rule and validator;<br>- add the `profiles.adcp.onboarding` and `profiles.adcp.signing_profiles` slots and the optional `agents[].key_thumbprints` pin;<br>- define canonical-origin matching for grant `agents[].url`;<br>- reverse "nothing consumes this in 3.3" in the schema, `trust-json.mdx`, `experimental-status.mdx`, and release-docs #8074. | minor |
-| **P2** | WBA signing profile (#7894 rebased onto P1): R1, R2, directory with `adcp_use`, thumbprint `keyid`, nonce, window, request and webhook tags, A2A bindings, revocation at the origin, capability advertisement, vectors including governance 001–003 | minor |
-| **P3** | Agent resolution v2 (R3) and coexistence (R4) in `security.mdx` for request signing and webhooks; R3b and the JWS surfaces stated as 3.4; new codes in `request-signing-error-code.json` | minor |
+| **P0** | This spec and DR-0023 | none |
+| **P1** | trust.json v1 edits:<br>- remove `agents[].jwks_uri`, its default, and the back-pointer text;<br>- one agent per origin, and agent URLs anywhere in the record match by canonical origin;<br>- optional `agents[].key_thumbprints`;<br>- the canonical-origin definition in `url-canonicalization.mdx` (R0), with vectors;<br>- the validator, using the SDK's canonicalization;<br>- examples moved to one origin per agent. | minor |
+| **P2** | WBA signing profile: #7894 rebased onto P1 by its author (R1, R2), with revocation at the origin and capability advertisement | minor |
+| **P3** | Identity verification (R3), trust-record evaluation (R3a), and coexistence and the 3.2 deprecation notice (R4) in `security.mdx`; reverse "nothing consumes this in 3.3" in the trust.json schema, `trust-json.mdx`, `experimental-status.mdx`, and release-docs #8074 | minor |
 | **P4** | First contact and binding (R5); relationship status (R8), including the `get-principal-response.json` and `principal-changed-webhook.json` changes | minor |
 | **P5** | Grants (R6, #6033) | minor |
-| **P6** | Onboarding posture (R7, #8113, #8114) | minor |
-| **P7** | Conformance:<br>- dual-source storyboards;<br>- derived-record, relying-party, downgrade, and WBA vectors;<br>- an end-to-end self-onboarding storyboard;<br>- the training agent verifies WBA, serves its own directory and trust record, and opens the sandbox mode. | minor |
-| **P8** | Docs:<br>- a "A buyer agent onboards itself" walkthrough;<br>- rewrites of `request-signing.mdx` and `brand-protocol/seller-setup.mdx`;<br>- updates to `brand-json.mdx`, `trust.mdx`, `security-model.mdx`, `L2/authentication.mdx`, operating guides, learning tracks, glossary, and `known-limitations.mdx` (D10);<br>- the R9 mapping. | patch |
-| **P9** | Migration guide `docs/reference/migration/agent-identity-3-3.mdx`, by role (buyer signer, seller verifier, agency or operator, SaaS platform, governance agent), with an SDK version table and rollback; entries in `3-2-to-3-3.mdx`, `whats-new-in-3-3.mdx`, and release notes | patch |
+| **P6** | Onboarding posture (R7, #8113), including the `profiles.adcp.onboarding` slot for the buyer posture (#8114). Lands independently; only `open` and `grant` wait for P2–P5. | minor |
+| **P7** | Conformance:<br>- dual-source storyboards;<br>- trust-record, grant-chain, downgrade, and WBA vectors;<br>- an end-to-end self-onboarding storyboard;<br>- the training agent verifies WBA, serves its own directory and trust record, and opens the sandbox mode. | minor |
+| **P8** | Docs:<br>- an "A buyer agent onboards itself" walkthrough, which sets the TL;DR expectation for `open`;<br>- rewrites of `request-signing.mdx` and `brand-protocol/seller-setup.mdx`;<br>- updates to `brand-json.mdx`, `trust.mdx`, `security-model.mdx`, `L2/authentication.mdx`, operating guides, learning tracks, glossary, and `known-limitations.mdx` (D10);<br>- the OAuth/auth.md mapping (D11). | patch |
+| **P9** | Migration guide `docs/reference/migration/agent-identity-3-3.mdx`, by role (buyer signer, seller verifier, agency or operator, SaaS platform, governance agent), with an SDK version table, the 3.2 deprecation, and rollback; entries in `3-2-to-3-3.mdx`, `whats-new-in-3-3.mdx`, and release notes | patch |
 | R1 (follow-on) | Registry crawl of trust records and posture; requirement-match filter | — |
 
 ### SDK workstream
@@ -303,16 +294,31 @@ A seller that issues bearer tokens can accept the same identity with an RFC 7523
 | Change | JS | Python | Go |
 |---|---|---|---|
 | Accept extra covered headers (ship first) | — | — | S |
-| WBA signer: `Signature-Agent`, nonce, thumbprint `kid`, tags (opt-in); CLI to generate and re-sign the key directory | S | S | S |
-| WBA verifier with a resolver for many signers, keyed by the header or `iss` | M | M (fixes adcp-client-python#1214) | S–M |
-| Derived trust-record resolver, relying-party consent, capabilities optional, 3.2 fallback with no downgrade | M–L | M–L | L |
+| WBA signer: `Signature-Agent`, nonce, thumbprint `kid` (opt-in); CLI to generate and re-sign the key directory | S | S | S |
+| WBA verifier with a resolver for many signers, keyed by the header | M | M (fixes adcp-client-python#1214) | S–M |
+| Trust-record evaluation at binding and grants; 3.2 profile kept with a deprecation warning | M | M | M–L |
 | Grant verification, posture and relationship types | S–M | S–M | S–M |
 | Hook for identity-established signers | S–M | S–M | S–M |
 
 Tracking: adcp-client#3098, adcp-client-python#1283, adcp-go#548 and #109. Each SDK publishes a migration note linked from P9.
 
-## Open questions
+## Resolved questions
 
-1. **Revocation path name.** #7894 uses `/.well-known/governance-revocations.json` at the identity origin. Should request-signing and governance identities use one neutral name?
-2. **Lead time for `relationship_expiring`.** Seller-declared, or a protocol minimum?
-3. **`authoritative_location` binding.** Should the hop target be required to name the pointing registrable domain, so many domains cannot share one hosted document? It would cost multi-domain operators a document per domain.
+1. **Revocation path.** One list per origin, at the existing `/.well-known/governance-revocations.json` path and `adcp-gov-revocation+jws` type, covering all of the identity's keys (#7878 §Revocation).
+2. **Lead time for `relationship_expiring`.** Seller-declared, following `setup_expiring`. A protocol minimum can wait for adoption data.
+3. **`authoritative_location` binding.** None added. The operator is derived from `O` and the match is on `O`, so a shared hosted document cannot make one domain's agents another's. `brand-identity-trust-split.md` §Hosting covers grants.
+
+## Appendix: 3.4 direction for JWS surfaces (non-normative)
+
+Recorded so the 3.4 work starts from the reviewed design. Nothing here applies in 3.3.
+
+- For a JWS (governance context, designated-task response signing, rights attestations), `O` would be the canonical origin of `iss`, or of `agent_url` where the surface uses it. The verifier would use the WBA path when the trust record derived from `O` lists `O`, and profile selection would never read an unsigned field.
+- A role in the agent's own record is the operator's claim about itself. On these surfaces the relying party would also consent:
+
+| Surface | Relying-party record | Required |
+|---|---|---|
+| Governance context `iss` | the buyer's | the buyer's operator is `eTLD+1(host(O))`, or holds a grant to it with `adcp:governance` |
+| Designated-task response signing | the brand's | the brand's operator is `eTLD+1(host(O))`, or holds a grant to it with `adcp:brand_identity` |
+| Rights attestations | the rights holder's | the rights holder's operator is `eTLD+1(host(O))`, or holds a grant to it with `adcp:rights_clearance` |
+
+- Historical verification needs a provenance contract: the existing governance key archive until transparency logs are required.
