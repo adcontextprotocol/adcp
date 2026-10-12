@@ -1,6 +1,6 @@
 # Agent identity and buyer self-onboarding (3.3)
 
-**Status**: Accepted. The WG approved D1–D6 and the WBA error contract at the working session on 2026-10-12 ([decision brief on #7878](https://github.com/adcontextprotocol/adcp/issues/7878#issuecomment-6099382406)); recorded as [DR-0023](../governance/decisions/DR-0023-agent-identity-is-an-origin.md). The WG also approved D7 (demand-side grants) at the same session; its rules (R6) and record (DR-0025) are in their own PR. D8 and D9 are decided on their issues. Tracking issue: [#8118](https://github.com/adcontextprotocol/adcp/issues/8118).
+**Status**: Accepted. The WG approved D1–D6 and the WBA error contract at the working session on 2026-10-12 ([decision brief on #7878](https://github.com/adcontextprotocol/adcp/issues/7878#issuecomment-6099382406)); recorded as [DR-0023](../governance/decisions/DR-0023-agent-identity-is-an-origin.md). The WG also approved D7 (demand-side grants) at the same session; its rules (R6) and record (DR-0025) are in #8157. D8 and D9 are decided on their issues. Tracking issue: [#8118](https://github.com/adcontextprotocol/adcp/issues/8118).
 
 **Related**: [#7878](https://github.com/adcontextprotocol/adcp/issues/7878) / [#7894](https://github.com/adcontextprotocol/adcp/pull/7894) (Web Bot Auth profile), [#7817](https://github.com/adcontextprotocol/adcp/issues/7817) (`adcp-agent-url`), [#7814](https://github.com/adcontextprotocol/adcp/issues/7814) (unknown signers), [`brand-identity-trust-split.md`](./brand-identity-trust-split.md) (trust.json, RFC [#7809](https://github.com/adcontextprotocol/adcp/issues/7809)), [#7942](https://github.com/adcontextprotocol/adcp/pull/7942) and [#6105](https://github.com/adcontextprotocol/adcp/issues/6105) (client-only signers), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) (demand-side grants), [#8113](https://github.com/adcontextprotocol/adcp/issues/8113) / [#8114](https://github.com/adcontextprotocol/adcp/issues/8114) (onboarding posture), [#7015](https://github.com/adcontextprotocol/adcp/issues/7015) (principal layer).
 
@@ -157,7 +157,7 @@ These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md`
 
 ### R6. Authority: grants (P5)
 
-Specified in its own PR, together with its decision record, DR-0025 (#6033, tracked in #8118). R7 relies on it for the `grant` requirement kind.
+Specified in [#8157](https://github.com/adcontextprotocol/adcp/pull/8157), together with its decision record, DR-0025 (#6033). R7 relies on it for the `grant` requirement kind.
 
 ### R7. Onboarding posture (P6, `get_adcp_capabilities.mdx`)
 
