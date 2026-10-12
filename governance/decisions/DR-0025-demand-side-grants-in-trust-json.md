@@ -5,7 +5,7 @@ class: normative
 status: ratified
 date: 2026-10-12
 decided: 2026-10-12
-decided_by: maintainer approval (Brian O'Kelley), with an objection window on #6033 through 2026-10-15
+decided_by: WG working session 2026-10-12
 refs: ["#6033", "#8118", "PR #8119", "#7809"]
 dissent: none recorded
 ---
