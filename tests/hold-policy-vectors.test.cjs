@@ -6,7 +6,7 @@
  *
  * The grader below is the reference: implementers port it, not the prose.
  * It is deliberately small and reads only canonical proposals, canonical
- * products, and the grader-side observation record.
+ * products, and the grader-side request/response times.
  */
 
 const assert = require('node:assert/strict');
@@ -83,22 +83,50 @@ function effectivePolicy(holder, seller) {
   return { available: seller.hold_semantics !== 'terms_only' };
 }
 
+const listsFeature = seller => (seller.experimental_features || []).includes(FEATURE);
+
 const sameJson = (a, b) => (a === undefined || b === undefined ? a === b : jcs(a) === jcs(b));
 
 function undeclaredExperimental(seller, holders) {
-  return holders.some(h => h && h.hold_policy) && !(seller.experimental_features || []).includes(FEATURE);
+  return holders.some(h => h && (h.hold_policy || h.hold_placed_at)) && !listsFeature(seller);
+}
+
+/** min <= max <= total after normalizing; the schema cannot compare durations. */
+function durationsUnordered(policy) {
+  const order = ['min_duration', 'max_duration', 'max_total_duration'].filter(k => policy[k]).map(k => durationMs(policy[k]));
+  return order.some((value, i) => i > 0 && order[i - 1] > value);
+}
+
+/** A holdable draft promises no more than any allocated product's effective policy. */
+function exceedsProducts(draftPolicy, productPolicies) {
+  return productPolicies.some(p => {
+    if (p.max_duration) {
+      const max = durationMs(p.max_duration);
+      if (['min_duration', 'max_duration'].some(k => draftPolicy[k] && durationMs(draftPolicy[k]) > max)) return true;
+    }
+    if (p.max_total_duration && draftPolicy.max_total_duration) {
+      if (durationMs(draftPolicy.max_total_duration) > durationMs(p.max_total_duration)) return true;
+    }
+    return draftPolicy.extendable === true && p.extendable !== true;
+  });
 }
 
 /**
- * Check a placed hold against its policy. Placement is exact when the grader
- * recorded hold_placed_at; otherwise it is anywhere in the request/response
- * window and only bounds that fail for every placement are violations.
+ * Check a placed hold against its policy. Placement is exact when the
+ * committed proposal carries hold_placed_at (which must lie in the observed
+ * request/response window). Without it (callers below 3.3), placement is
+ * anywhere in that window and only bounds that fail for every placement are
+ * violations.
  */
-function checkBounds(policy, expiresAt, observation, violations, indeterminate) {
-  const expires = instant(expiresAt);
-  const [earliest, latest] = observation.hold_placed_at
-    ? [instant(observation.hold_placed_at), instant(observation.hold_placed_at)]
-    : [instant(observation.request_received_at), instant(observation.response_at)];
+function checkBounds(policy, committed, observation, violations, indeterminate) {
+  const expires = instant(committed.expires_at);
+  const [received, responded] = [instant(observation.request_received_at), instant(observation.response_at)];
+  let [earliest, latest] = [received, responded];
+  if (committed.hold_placed_at) {
+    const placed = instant(committed.hold_placed_at);
+    if (placed < received || placed > responded) violations.add('hold_placed_at_outside_window');
+    [earliest, latest] = [placed, placed];
+  }
   if (policy.min_duration) {
     const min = durationMs(policy.min_duration);
     if (expires < earliest + min) violations.add('min_duration_not_honored');
@@ -126,12 +154,21 @@ function gradeFinalize(vector) {
   const entries = request.refinements.map(r => byId.get(r.proposal_id));
   const pre33 = belowVersion(request.adcp_version, '3.3');
 
-  const holders = [...drafts];
+  const served = [];
   if (response) {
-    holders.push(...(response.products || []));
-    for (const r of response.results) if (r.proposal) holders.push(r.proposal);
+    served.push(...(response.products || []));
+    for (const r of response.results) if (r.proposal) served.push(r.proposal);
   }
-  if (undeclaredExperimental(seller, holders)) violations.add('experimental_feature_undeclared');
+  if (undeclaredExperimental(seller, [...drafts, ...served])) violations.add('experimental_feature_undeclared');
+  if ([...drafts, ...served].some(h => h.hold_policy && durationsUnordered(h.hold_policy))) {
+    violations.add('hold_policy_durations_unordered');
+  }
+  if (pre33) {
+    if (served.some(h => h.hold_policy || h.hold_placed_at)) violations.add('hold_policy_sent_below_3_3');
+  } else if (listsFeature(seller)) {
+    const proposals = [...drafts, ...served.filter(h => h.proposal_status)];
+    if (proposals.some(h => !h.hold_policy)) violations.add('hold_policy_missing');
+  }
 
   if (taskError) {
     const gateApplies = pre33 && entries.some(d => !effectivePolicy(d, seller).available);
@@ -144,10 +181,10 @@ function gradeFinalize(vector) {
         const committed = result.proposal;
         if (termsDigest(committed.commercial_terms) !== committed.terms_digest) violations.add('terms_digest_mismatch');
         if (!sameJson(committed.commercial_terms, draft.commercial_terms)) violations.add('commercial_terms_changed');
-        if (!sameJson(committed.hold_policy, draft.hold_policy)) violations.add('hold_policy_not_carried_forward');
+        if (!pre33 && !sameJson(committed.hold_policy, draft.hold_policy)) violations.add('hold_policy_not_carried_forward');
         if (!policy.available && pre33) violations.add('terms_only_committed_below_3_3');
         if (policy.available && draft.hold_policy) {
-          checkBounds(draft.hold_policy, committed.expires_at, observation, violations, indeterminate);
+          checkBounds(draft.hold_policy, committed, observation, violations, indeterminate);
         }
       } else if (result.outcome === 'unable') {
         if (result.reason_code === 'hold_unavailable' && !policy.available) {
@@ -175,9 +212,14 @@ function gradeDraft(vector) {
   const allocated = [...new Set(draft.commercial_terms.purchases.map(p => p.product_id))].map(id => byId.get(id));
 
   if (undeclaredExperimental(seller, [draft, ...products])) violations.add('experimental_feature_undeclared');
-  if (allocated.some(p => p.hold_policy) && !draft.hold_policy) violations.add('draft_hold_policy_missing');
-  if (draft.hold_policy && draft.hold_policy.available && allocated.some(p => !effectivePolicy(p, seller).available)) {
-    violations.add('draft_available_inconsistent');
+  if (listsFeature(seller) && !draft.hold_policy) violations.add('hold_policy_missing');
+  if ([draft, ...products].some(h => h.hold_policy && durationsUnordered(h.hold_policy))) {
+    violations.add('hold_policy_durations_unordered');
+  }
+  if (draft.hold_policy && draft.hold_policy.available) {
+    const policies = allocated.map(p => effectivePolicy(p, seller));
+    if (policies.some(p => !p.available)) violations.add('draft_available_inconsistent');
+    else if (exceedsProducts(draft.hold_policy, policies)) violations.add('draft_exceeds_product_policy');
   }
   return { violations: [...violations].sort() };
 }
@@ -260,19 +302,31 @@ test('source drafts are well-formed canonical drafts with recomputable digests',
   }
 });
 
-test('observations are ordered and hold_placed_at lies inside the request window', () => {
+test('observations are ordered and carry only the request window', () => {
   for (const v of vectors.finalize_vectors) {
-    const { request_received_at: received, response_at: responded, hold_placed_at: placed } = v.observation;
-    assert.ok(instant(received) <= instant(responded), v.id);
-    if (placed) assert.ok(instant(received) <= instant(placed) && instant(placed) <= instant(responded), v.id);
+    assert.deepEqual(Object.keys(v.observation).sort(), ['request_received_at', 'response_at'], v.id);
+    assert.ok(instant(v.observation.request_received_at) <= instant(v.observation.response_at), v.id);
+  }
+});
+
+test('hold_placed_at is on the wire only for 3.3 callers, and only on committed proposals that hold', () => {
+  for (const v of vectors.finalize_vectors) {
+    if (!v.response) continue;
+    const pre33 = belowVersion(v.request.adcp_version, '3.3');
+    for (const r of v.response.results) {
+      const c = r.proposal;
+      if (!c || !c.hold_placed_at) continue;
+      assert.ok(c.hold_policy && c.hold_policy.available, `${v.id}: hold_placed_at without a hold`);
+      if (pre33) assert.deepEqual(v.expected.violations, ['hold_policy_sent_below_3_3'], v.id);
+    }
   }
 });
 
 test('every hold_policy in the vectors is coherent: ordered durations, max_total_duration only when extendable', () => {
-  const policies = collectPolicies(allVectors);
+  const deliberate = new Set(['schema_invalid', 'hold_policy_durations_unordered']);
+  const policies = collectPolicies(allVectors.filter(v => !v.expected.violations.some(c => deliberate.has(c))));
   assert.ok(policies.length > 0);
   for (const p of policies) {
-    if (p.available === false && Object.keys(p).length > 1) continue; // the deliberate schema_invalid vector
     assert.ok(validate.policy(p), JSON.stringify(validate.policy.errors));
     if ('max_total_duration' in p) assert.equal(p.extendable, true, JSON.stringify(p));
     if (p.min_duration && p.max_duration) assert.ok(durationMs(p.min_duration) <= durationMs(p.max_duration));

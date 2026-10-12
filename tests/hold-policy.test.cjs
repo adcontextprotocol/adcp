@@ -28,6 +28,7 @@ function compile(schemaId) {
 }
 
 const errors = (validate) => JSON.stringify(validate.errors, null, 2);
+const omit = (object, key) => Object.fromEntries(Object.entries(object).filter(([name]) => name !== key));
 
 const HOLDABLE = {
   available: true,
@@ -58,14 +59,6 @@ const LEGACY_PRODUCT = {
 };
 
 const CANONICAL_PRODUCT = { product_id: 'availnet_creator_slot_0412', name: 'Pinnacle Creator upcoming video slot' };
-
-const LEGACY_PROPOSAL = {
-  proposal_id: 'availnet_plan_01',
-  name: 'Creator launch plan',
-  proposal_status: 'draft',
-  expires_at: '2027-01-16T17:00:00Z',
-  allocations: [{ product_id: 'availnet_creator_slot_0412', allocation_percentage: 100 }],
-};
 
 const DRAFT = {
   proposal_id: 'availnet_draft_01',
@@ -124,6 +117,19 @@ test('available false forbids every duration', async () => {
   }
 });
 
+test('max_total_duration requires extendable true, and extendable defaults to false', async () => {
+  const validate = await compile('/schemas/core/hold-policy.json');
+  assert.equal(validate({ available: true, max_duration: 'P5D', max_total_duration: 'P14D' }), false, 'no extendable');
+  assert.equal(
+    validate({ available: true, max_duration: 'P5D', extendable: false, max_total_duration: 'P14D' }),
+    false,
+    'extendable false',
+  );
+  assert.equal(validate({ available: true, max_duration: 'P5D', extendable: true, max_total_duration: 'P14D' }), true, errors(validate));
+  assert.equal(validate({ available: true, extendable: false }), true, errors(validate));
+  assert.equal(readSchema('core/hold-policy.json').properties.extendable.default, false);
+});
+
 test('legacy and canonical products carry hold_policy', async () => {
   const validateProduct = await compile('/schemas/core/product.json');
   assert.equal(validateProduct(LEGACY_PRODUCT), true, errors(validateProduct));
@@ -136,16 +142,42 @@ test('legacy and canonical products carry hold_policy', async () => {
   assert.equal(validateCanonical({ ...CANONICAL_PRODUCT, hold_policy: { ...HOLDABLE, undeclared: 1 } }), false);
 });
 
-test('legacy and canonical proposals carry hold_policy', async () => {
-  const validateLegacy = await compile('/schemas/core/proposal.json');
-  assert.equal(validateLegacy({ ...LEGACY_PROPOSAL, hold_policy: { available: true, min_duration: 'PT36H' } }), true, errors(validateLegacy));
-  assert.equal(validateLegacy({ ...LEGACY_PROPOSAL, hold_policy: { available: true, min_duration: 'P1M' } }), false);
+test('only canonical proposals carry hold_policy; the legacy proposal does not', async () => {
+  assert.equal(readSchema('core/proposal.json').properties.hold_policy, undefined, 'legacy proposal has no hold_policy');
+  assert.equal(readSchema('core/proposal.json').properties.hold_placed_at, undefined, 'legacy proposal has no hold_placed_at');
 
   const validateCanonical = await compile('/schemas/core/canonical-proposal.json');
-  const committed = { ...DRAFT, proposal_id: 'availnet_committed_01', parent_proposal_id: DRAFT.proposal_id, proposal_status: 'committed', hold_policy: HOLDABLE };
-  assert.equal(validateCanonical(committed), true, errors(validateCanonical));
   assert.equal(validateCanonical({ ...DRAFT, hold_policy: { available: false } }), true, errors(validateCanonical));
+  assert.equal(validateCanonical({ ...DRAFT, hold_policy: HOLDABLE }), true, errors(validateCanonical));
   assert.equal(validateCanonical({ ...DRAFT, hold_policy: { available: false, max_total_duration: 'P14D' } }), false);
+});
+
+test('a committed proposal that holds inventory carries hold_placed_at', async () => {
+  const validate = await compile('/schemas/core/canonical-proposal.json');
+  const committed = {
+    ...DRAFT,
+    proposal_id: 'availnet_committed_01',
+    parent_proposal_id: DRAFT.proposal_id,
+    proposal_status: 'committed',
+    hold_policy: HOLDABLE,
+    hold_placed_at: '2027-01-14T17:00:00Z',
+  };
+  assert.equal(validate(committed), true, errors(validate));
+
+  const unplaced = omit(committed, 'hold_placed_at');
+  assert.equal(validate(unplaced), false, 'required when committed with available true');
+  assert.equal(validate({ ...committed, hold_placed_at: 'yesterday' }), false, 'date-time');
+
+  const termsOnly = { ...unplaced, hold_policy: { available: false } };
+  assert.equal(validate(termsOnly), true, errors(validate));
+  assert.equal(validate({ ...termsOnly, hold_placed_at: committed.hold_placed_at }), false, 'forbidden without a hold');
+
+  assert.equal(validate(omit(committed, 'hold_policy')), false, 'hold_placed_at needs hold_policy');
+  assert.equal(
+    validate({ ...DRAFT, hold_policy: HOLDABLE, hold_placed_at: committed.hold_placed_at }),
+    false,
+    'forbidden on a draft',
+  );
 });
 
 test('a request_proposals response carries a draft hold_policy beside product policies', async () => {
@@ -173,7 +205,7 @@ test('hold_policy surfaces are experimental 3.3 additions', () => {
   assert.match(holdPolicy.description, /media_buy\.hold_policy/);
   assert.match(holdPolicy.description, /rank/i, 'leaves room for hold ranking');
 
-  for (const file of ['core/product.json', 'core/canonical-product.json', 'core/proposal.json', 'core/canonical-proposal.json']) {
+  for (const file of ['core/product.json', 'core/canonical-product.json', 'core/canonical-proposal.json']) {
     const field = readSchema(file).properties.hold_policy;
     assert.ok(field, `${file} declares hold_policy`);
     assert.equal(field.$ref, '/schemas/core/hold-policy.json', `${file} references the shared schema`);
@@ -181,10 +213,17 @@ test('hold_policy surfaces are experimental 3.3 additions', () => {
     assert.equal(field['x-added-in'], '3.3.0', `${file} x-added-in`);
   }
 
+  const placedAt = readSchema('core/canonical-proposal.json').properties.hold_placed_at;
+  assert.equal(placedAt.format, 'date-time');
+  assert.equal(placedAt['x-status'], 'experimental');
+  assert.equal(placedAt['x-added-in'], '3.3.0');
+  assert.match(placedAt.description, /media_buy\.hold_policy/);
+
   const capabilities = readSchema('protocol/get-adcp-capabilities-response.json');
   const holdSemantics = JSON.stringify(capabilities).match(/"hold_semantics":\{[^}]*\}/);
   assert.ok(holdSemantics, 'hold_semantics capability exists');
-  assert.match(holdSemantics[0], /products that do not declare hold_policy/, 'hold_semantics is the per-product default');
+  assert.match(holdSemantics[0], /products and drafts that do not declare hold_policy/, 'hold_semantics is the per-product default');
+  assert.match(holdSemantics[0], /per finalize entry/, 'terms_only rules apply per entry');
 });
 
 test('experimental-status registry lists media_buy.hold_policy', () => {

@@ -174,7 +174,7 @@
       "$ref": "/schemas/core/hold-policy.json",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.hold_policy). Inventory-hold policy for finalizing a proposal that allocates this product, so buyers can plan before requesting one. Not a reservation and no guarantee of availability. If this product declares available false, any proposal allocating it finalizes terms only. When absent, get_adcp_capabilities media_buy.proposal_refinement.hold_semantics applies (inventory_hold when that is also absent)."
+      "description": "Experimental (media_buy.hold_policy). Planning hint: the inventory-hold policy the seller generally offers when finalizing a proposal that allocates this product, so buyers can plan before requesting one. It binds nothing. Proposal-level hold policy exists only in the compact lifecycle (request_proposals and refine_proposals), where the seller derives the binding draft policy from the allocated products; legacy get_products proposals carry none. Not a reservation and no guarantee of availability. When absent, get_adcp_capabilities media_buy.proposal_refinement.hold_semantics applies (inventory_hold when that is also absent). Omitted for callers below 3.3."
     },
     "allowed_actions": {
       "type": "array",

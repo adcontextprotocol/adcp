@@ -51,13 +51,7 @@
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When this proposal expires and can no longer be executed. For draft proposals, indicates when indicative pricing becomes stale. For committed proposals, indicates when the inventory hold lapses (inventory_hold semantics) or when the acceptance window closes (terms_only semantics or hold_policy.available false, where no hold exists) — the buyer must call create_media_buy before this time."
-    },
-    "hold_policy": {
-      "$ref": "/schemas/core/hold-policy.json",
-      "x-status": "experimental",
-      "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.hold_policy). On a draft, what a successful finalize of this draft will get, resolved by the seller from the allocated products: available is false if any allocated product's effective policy is non-holdable, and min_duration does not exceed any allocated product's max_duration. A seller that declares hold_policy on any allocated product MUST include it here. On a committed proposal, the seller carries the draft's policy forward unchanged; it governs the hold finalize placed, including extension limits. When absent, get_adcp_capabilities media_buy.proposal_refinement.hold_semantics applies."
+      "description": "When this proposal expires and can no longer be executed. For draft proposals, indicates when indicative pricing becomes stale. For committed proposals, indicates when the inventory hold lapses (inventory_hold semantics) or when the acceptance window closes (terms_only semantics, where no hold exists) — the buyer must call create_media_buy before this time."
     },
     "insertion_order": {
       "$ref": "/schemas/core/insertion-order.json",

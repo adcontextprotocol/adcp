@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/hold-policy.json",
   "title": "Hold Policy",
-  "description": "Experimental (media_buy.hold_policy). Inventory-hold policy for a finalize. On a product it is what the product supports, so buyers can plan before requesting a proposal. On a draft proposal it is what a successful finalize of that draft will get, resolved by the seller from the allocated products; on a committed proposal it is carried forward unchanged and governs the hold finalize placed. It reserves nothing and does not guarantee availability or finalize success. When a successful finalize places a hold, expires_at MUST be no earlier than the moment the hold is placed plus min_duration; if the seller cannot honor that, the entry returns unable with hold_unavailable. When min_duration, max_duration, and max_total_duration are present, min_duration MUST NOT exceed max_duration and max_duration MUST NOT exceed max_total_duration. Absent hold_policy, the agent-level hold_semantics default applies. Sellers emitting this object MUST list media_buy.hold_policy in experimental_features. Hold ranking is reserved for a later field (#8086).",
+  "description": "Experimental (media_buy.hold_policy). Inventory-hold policy for a finalize. On a product it is a planning hint: what the seller generally offers for proposals that allocate the product, binding nothing. On a draft proposal it binds: it is what a successful finalize of that draft will get, derived by the seller from the allocated products when it created the draft, and it governs finalize even if a product's policy changes before then. On a committed proposal it is carried forward unchanged and governs the hold finalize placed. Proposal-level policy exists only in the compact proposal lifecycle (canonical proposals). It reserves nothing and does not guarantee availability or finalize success. When a successful finalize places a hold, the committed proposal's hold_placed_at plus min_duration MUST NOT be later than expires_at, and expires_at MUST NOT be later than hold_placed_at plus max_duration; if the seller cannot honor the minimum, the entry returns unable with hold_unavailable. Durations measure elapsed time: a day is exactly 24 hours (86400 seconds) added to the UTC instant, never a calendar day, so time zones and daylight-saving changes do not affect them. Compare durations after normalizing to elapsed time (P1D equals PT24H). When present, min_duration MUST NOT exceed max_duration and max_duration MUST NOT exceed max_total_duration; the schema cannot compare durations, so test runners check this ordering after normalizing. Absent hold_policy, the agent-level hold_semantics default applies. Sellers emitting this object MUST list media_buy.hold_policy in experimental_features and MUST omit it for callers whose adcp_version is below 3.3. Hold ranking is reserved for a later field (#8086).",
   "type": "object",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
@@ -11,31 +11,32 @@
       "type": "boolean",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Whether a successful finalize places an inventory hold. false means finalize commits terms only (terms_only semantics): no hold, expires_at is the acceptance window, and the seller MUST NOT return hold_unavailable. A proposal whose allocated products include any product with available false MUST itself declare available false; the whole atomic finalize then resolves to terms_only. There are no partial holds. As for hold_semantics terms_only, the seller MUST NOT return such a committed proposal to a caller whose adcp_version is below 3.3; it fails the request at task level with UNSUPPORTED_FEATURE."
+      "description": "Whether a successful finalize places an inventory hold. true means an exclusive, first-position hold: until expires_at, no other buyer's hold or booking takes the held inventory. Ranked holds will be a separate field (#8086); available is not reinterpreted to cover them. false means finalize commits terms only for this entry (terms_only semantics): no hold, expires_at is the acceptance window, and the seller MUST NOT return hold_unavailable for the entry. A draft whose allocated products include any product whose effective policy is non-holdable MUST itself declare available false; there are no partial holds within a proposal. Declaring available false does not require listing media_buy.delegated_composition. As for hold_semantics terms_only, the seller MUST NOT return such a committed proposal to a caller whose adcp_version is below 3.3; it fails the request at task level with UNSUPPORTED_FEATURE."
     },
     "min_duration": {
       "$ref": "#/definitions/positive_duration",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Minimum hold the seller promises. A successful finalize MUST set expires_at no earlier than the moment the hold is placed (the committed proposal is created) plus this duration. A draft's min_duration MUST NOT exceed the max_duration of any allocated product."
+      "description": "Minimum hold the seller promises. A successful finalize MUST set expires_at no earlier than the committed proposal's hold_placed_at plus this duration. A draft's min_duration MUST NOT exceed the max_duration of any allocated product that declares one."
     },
     "max_duration": {
       "$ref": "#/definitions/positive_duration",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Longest initial hold the seller will place at finalize, measured from when the hold is placed."
+      "description": "Longest initial hold the seller will place at finalize: expires_at MUST NOT be later than the committed proposal's hold_placed_at plus this duration. A draft's max_duration MUST NOT exceed the max_duration of any allocated product that declares one."
     },
     "extendable": {
       "type": "boolean",
+      "default": false,
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Whether the seller accepts requests to extend a hold placed under this policy. Hold extension is specified separately; when supported, its limits come from this object."
+      "description": "Whether the seller accepts requests to extend a hold placed under this policy. Defaults to false. A draft is extendable only if every allocated product's effective policy is extendable. Hold extension is specified separately (#8097); when supported, its limits come from this object."
     },
     "max_total_duration": {
       "$ref": "#/definitions/positive_duration",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Ceiling on the total length of a hold placed under this policy, including every extension, measured from when the hold was placed. Meaningful only when extendable is true."
+      "description": "Ceiling on the total length of a hold placed under this policy, across the whole extension chain, measured from the original hold_placed_at (extended successors carry hold_placed_at forward). Allowed only when extendable is true. A draft's max_total_duration MUST NOT exceed the max_total_duration of any allocated product that declares one."
     }
   },
   "required": ["available"],
@@ -48,13 +49,18 @@
           "anyOf": [{ "required": ["min_duration"] }, { "required": ["max_duration"] }, { "required": ["max_total_duration"] }, { "required": ["extendable"] }]
         }
       }
+    },
+    {
+      "description": "A total ceiling only bounds extensions, so it requires extendable true.",
+      "if": { "not": { "properties": { "extendable": { "const": true } }, "required": ["extendable"] } },
+      "then": { "not": { "required": ["max_total_duration"] } }
     }
   ],
   "definitions": {
     "positive_duration": {
       "type": "string",
       "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$",
-      "description": "Strictly positive ISO 8601 duration using only days, hours, minutes, and seconds, such as P2D or PT36H. Year, month, and week parts are excluded so a duration never depends on calendar month length."
+      "description": "Strictly positive ISO 8601 duration using only days, hours, minutes, and seconds, such as P2D or PT36H. A day is exactly 24 hours of elapsed time on the UTC instant. Year, month, and week parts are excluded so a duration never depends on calendar length."
     }
   },
   "additionalProperties": false
