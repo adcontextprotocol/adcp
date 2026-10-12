@@ -1,6 +1,6 @@
 # Agent identity and buyer self-onboarding (3.3)
 
-**Status**: Accepted. The WG approved D1–D6 and the WBA error contract at the working session on 2026-10-12 ([decision brief on #7878](https://github.com/adcontextprotocol/adcp/issues/7878#issuecomment-6099382406)); recorded as [DR-0023](../governance/decisions/DR-0023-agent-identity-is-an-origin.md). The WG also approved D7 (demand-side grants) at the same session; its rules (R6) and record (DR-0025) are in #8157. D8 and D9 are decided on their issues. Tracking issue: [#8118](https://github.com/adcontextprotocol/adcp/issues/8118).
+**Status**: Accepted. The WG approved D1–D6 and the WBA error contract at the working session on 2026-10-12 ([decision brief on #7878](https://github.com/adcontextprotocol/adcp/issues/7878#issuecomment-6099382406)); recorded as [DR-0023](../governance/decisions/DR-0023-agent-identity-is-an-origin.md). The WG also approved D7 (demand-side grants) at the same session, recorded as [DR-0025](../governance/decisions/DR-0025-demand-side-grants-in-trust-json.md) (#6033). D8 and D9 are decided on their issues. Tracking issue: [#8118](https://github.com/adcontextprotocol/adcp/issues/8118).
 
 **Related**: [#7878](https://github.com/adcontextprotocol/adcp/issues/7878) / [#7894](https://github.com/adcontextprotocol/adcp/pull/7894) (Web Bot Auth profile), [#7817](https://github.com/adcontextprotocol/adcp/issues/7817) (`adcp-agent-url`), [#7814](https://github.com/adcontextprotocol/adcp/issues/7814) (unknown signers), [`brand-identity-trust-split.md`](./brand-identity-trust-split.md) (trust.json, RFC [#7809](https://github.com/adcontextprotocol/adcp/issues/7809)), [#7942](https://github.com/adcontextprotocol/adcp/pull/7942) and [#6105](https://github.com/adcontextprotocol/adcp/issues/6105) (client-only signers), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) (demand-side grants), [#8113](https://github.com/adcontextprotocol/adcp/issues/8113) / [#8114](https://github.com/adcontextprotocol/adcp/issues/8114) (onboarding posture), [#7015](https://github.com/adcontextprotocol/adcp/issues/7015) (principal layer).
 
@@ -157,7 +157,17 @@ These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md`
 
 ### R6. Authority: grants (P5)
 
-Specified in [#8157](https://github.com/adcontextprotocol/adcp/pull/8157), together with its decision record, DR-0025 (#6033). R7 relies on it for the `grant` requirement kind.
+- **Which record authorizes.** At `sync_accounts`, the authorizing record is the **brand's** trust record, or its house record when the brand has one.
+- **When the operator is the brand.** When `account.operator`, the brand, and the signer's operator (R3a) share a registrable domain, authority is implicit and no grant is needed. This matches today's "Self-authorization is implicit" rule in `L2/accounts-and-agents.mdx`.
+- **Otherwise, a grant chain must reach the signer's operator** with a scope covering the operation (`adcp:media_buying` for buys). Either of these satisfies it:
+  - the brand grants the signer's operator directly, and `account.operator` is the signer's operator;
+  - the brand grants `account.operator`, and `account.operator` grants the signer's operator (an agency using an intermediary or a platform-hosted agent, the #6033 case).
+
+  `account.operator` MUST be on the chain. A grant to the signer's operator never authorizes an account that names an operator outside the chain.
+- **Matching.** `grantee` values compare exactly as registrable domains. A grant's `agents[].url` narrowing matches by canonical origin (R0). Grants for `adcp:media_buying` SHOULD narrow with `agents[]`, because a grant to a platform's domain otherwise covers every agent it lists.
+- **Effective authority** is the intersection of brands, countries, scopes, and the earliest `valid_until` along the chain. A grantee never extends a grant it received; the second link is the grantee's own grant to an intermediary.
+- **What a grant isn't.** Grants never carry keys and are read from the grantor's document only.
+- **brand.json fallback.** Through 3.x, brand.json `authorized_operators[]` is a valid source when the grantor has no trust.json, subject to R4.
 
 ### R7. Onboarding posture (P6, `get_adcp_capabilities.mdx`)
 
