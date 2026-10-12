@@ -70,7 +70,7 @@ The end-to-end bound is the signer's publication delay plus T. The endpoint can 
 
 ### Revocation and committed work
 
-Revocation stops new verification. It does not unwind work already accepted. A media buy accepted while the key verified stays in force, and the seller does not pause or cancel it on revocation alone: a revocation carries no reason, and a compromised origin could otherwise stop a buyer's campaigns. The seller flags the buys created or changed under the revoked key with the `signer_key_revoked` indicator, scoped by the optional `compromised_since` when the list carries it. The buyer reviews them and pauses, cancels, or reaffirms each one with `control_media_buy`. Design: `specs/agent-identity-3-3.md` R9 ([#8118](https://github.com/adcontextprotocol/adcp/issues/8118)).
+Revocation stops new verification. It does not unwind work already accepted. A media buy accepted while the key verified stays in force, and the seller does not pause or cancel it on revocation alone: a revocation carries no reason, and a compromised origin could otherwise stop a buyer's campaigns. The seller flags the buys created or changed under the revoked key with the `signer_key_revoked` indicator, when the buyer's revocation list marks the key compromised (a routine rotation flags nothing). The buyer reviews them and pauses, cancels, or reaffirms each one with `control_media_buy`. Design: `specs/agent-identity-3-3.md` R9 ([#8118](https://github.com/adcontextprotocol/adcp/issues/8118)).
 
 ## Counterparty rules
 
