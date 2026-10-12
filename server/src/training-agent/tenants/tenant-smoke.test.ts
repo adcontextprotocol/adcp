@@ -2185,7 +2185,7 @@ describe('tenant routing smoke', () => {
             media_buy?: {
               features?: { inline_creative_management?: boolean };
               supported_optimization_metrics?: string[];
-              vendor_metric_optimization?: { supported_targets?: string[] };
+              vendor_metric_optimization?: { supported_targets?: string[]; supported_metrics?: Array<{ vendor: { domain: string }; metric_id: string }> };
               conversion_tracking?: { supported_targets?: string[] };
             };
             creative?: {
@@ -2208,6 +2208,9 @@ describe('tenant routing smoke', () => {
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
+      expect(mediaBuy?.vendor_metric_optimization?.supported_metrics).toContainEqual(
+        expect.objectContaining({ vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_score' }),
+      );
       expect(mediaBuy?.conversion_tracking?.supported_targets).toEqual(['cost_per']);
       expect(previewCapabilityIds.length).toBeGreaterThan(0);
       expect(previewRouteIds).toEqual(previewCapabilityIds);
