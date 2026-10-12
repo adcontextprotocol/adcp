@@ -39,6 +39,7 @@ import {
 } from './webhook-challenge.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { clearSharedAccountResources } from './shared-account-resources.js';
+import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname } from '../utils/url-security.js';
 import {
   UnsupportedReportingFeatureError,
@@ -55,6 +56,8 @@ import {
   validateReportingConfigurations,
   type ReportingMediaBuyCandidate,
 } from './reporting-reliability.js';
+
+const logger = createLogger('training-agent-accounts');
 
 // One account may legitimately use the protocol's full 16-subscriber fan-out.
 // Larger multi-account activations must be split by account so a single call
@@ -592,8 +595,11 @@ export async function rehydrateAccountById(
   let binding: Awaited<ReturnType<typeof resolveReportingAccountDurably>>;
   try {
     binding = await resolveReportingAccountDurably(principal, { account_id: accountId });
-  } catch {
-    // Best effort: without the binding the id keeps its opaque partition.
+  } catch (err) {
+    // Best effort: without the binding the id keeps its opaque partition, so
+    // this request reads a different partition than the natural key. Log it so
+    // a transient durable-read failure is visible rather than a silent split.
+    logger.warn({ err, accountId }, 'Failed to rehydrate account by account_id; reference keeps its opaque partition');
     return;
   }
   if (!binding || binding.accountId !== accountId) return;
