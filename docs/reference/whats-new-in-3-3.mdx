@@ -37,6 +37,10 @@ This is a verification change: some signatures that verified under 3.2 can fail,
 
 Sellers can declare what their catalog intake accepts in an optional `media_buy.features.catalog_ingestion` object: accepted catalog types, ingestion modes (`feed_url`, `inline_items`), feed formats, content identifier types, an inline batch limit, and whether item status is reported `per_item` or at the `feed_level`. A seller that declares it must also declare `catalog_management: true`, and must reject an unlisted catalog type, ingestion mode, or feed format, and an explicitly supplied `content_id_type` outside a declared `supported_content_id_types` list, with `UNSUPPORTED_FEATURE` before changing state, including on dry runs. Inline items beyond `max_inline_items_per_request` fail with `INVALID_REQUEST`. A buyer that finds no declaration should treat ingestion limits as unknown, not unlimited. See [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs#ingestion-compatibility) and [capabilities](/docs/protocol/get_adcp_capabilities#catalog_ingestion).
 
+### Playback events for hosted video and audio trackers
+
+The `pixel_tracker` `event` enum adds `start`, `first_quartile`, `midpoint`, `third_quartile` and `complete`, so a buyer can attach quartile measurement to `video_hosted` and `audio_hosted` files instead of sending `event: custom` names no seller is obliged to recognize. Downgrades to 3.0.x sellers drop these trackers with an advisory, and 3.2 buyers send them as `custom` events named for the 3.3 value until they move. See the [migration guide](/docs/reference/migration/3-2-to-3-3#hosted-video-and-audio-playback-trackers).
+
 ### Structured DOOH location
 
 Concrete screens can carry `dooh_placement_attributes.location` (`lat`, `lon`, and a structured `address`) on placements. Network products can carry `dooh_inventory_summary.venue_counts[]` to describe aggregate geography by `geo_level` and `geo_code`. Both are optional disclosure metadata, and `location` never changes placement identity. See [DOOH](/docs/creative/channels/dooh#structured-location-for-planning-and-mapping).
