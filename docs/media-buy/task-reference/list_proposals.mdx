@@ -1,0 +1,83 @@
+---
+title: list_proposals
+description: "Read a seller's current proposals and their lifecycle state for an account or opportunity."
+"og:title": "AdCP list_proposals Task"
+testable: false
+---
+
+<Warning>
+`list_proposals` is **experimental** (feature id `media_buy.open_opportunities`). Sellers that implement it list the feature id in `experimental_features` and set `media_buy.open_opportunities.list_proposals: true` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). See [Experimental status](/docs/reference/experimental-status).
+</Warning>
+
+`list_proposals` returns the seller's current proposals for one account, narrowed to opportunities or proposal IDs when the buyer supplies them. It is a synchronous read that never changes proposal or opportunity state. It is the repair read for [`proposal.created`](/docs/media-buy/product-discovery/proposal-negotiation#open-opportunities-and-later-proposals) notifications and for `proposal` records in [`list_account_changes`](/docs/accounts/tasks/list_account_changes). Buyers learn that something changed from those signals and use `list_proposals` for current state, not for routine polling.
+
+{/* Using latest because this schema is not yet released in any version.
+    Update to the correct version alias after the next release. */}
+**Request schema:** [`/schemas/latest/media-buy/list-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-proposals-request.json)
+
+```json
+{
+  "account": { "account_id": "acc_nova_za" },
+  "opportunity_ids": ["opp_nova_za_q4"],
+  "dispositions": ["available"]
+}
+```
+
+| Field | Notes |
+| --- | --- |
+| `account` | Required. Results never cross accounts. |
+| `opportunity_ids` | Optional. Proposals created without an opportunity appear only when this filter is absent. |
+| `proposal_ids` | Optional. Unknown or inaccessible IDs are omitted, not errors. |
+| `dispositions` | Optional. Defaults to every disposition the seller still retains. |
+| `cursor`, `max_results` | Paging, as on [`list_products`](/docs/media-buy/task-reference/list_products). |
+
+**Response schema:** [`/schemas/latest/media-buy/list-proposals-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-proposals-response.json)
+
+```json
+{
+  "outcome": "listed",
+  "proposals": [
+    {
+      "proposal": { "proposal_id": "prop_nova_za_evt_07", "proposal_status": "draft", "opportunity_id": "opp_nova_za_q4", "...": "unchanged snapshot" },
+      "disposition": "available",
+      "disposition_changed_at": "2026-10-23T09:14:04Z",
+      "origin": "later",
+      "later_reason": "event_package"
+    }
+  ],
+  "opportunities": [
+    {
+      "opportunity_id": "opp_nova_za_q4",
+      "status": "open",
+      "later_proposals": {
+        "accepted": true,
+        "window_ends_at": "2026-12-31T23:59:59Z",
+        "max_count": 5,
+        "min_interval": { "interval": 1, "unit": "days" },
+        "created_count": 1,
+        "updated_at": "2026-10-09T15:02:11Z"
+      }
+    }
+  ]
+}
+```
+
+## Snapshot and disposition
+
+Each `proposal` is the snapshot exactly as the seller issued it, so its `terms_digest` still verifies. Lifecycle state sits beside it in `disposition`, because a snapshot's `proposal_status` (`draft`, `committed`, `accepted`) never changes after issue.
+
+| Disposition | Meaning |
+| --- | --- |
+| `available` | Can still be refined, declined, or, when committed and before `expires_at`, accepted. A refined source stays `available`; refinement creates new snapshots and does not retire the source. |
+| `accepted` | Executed through [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) or [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). |
+| `declined` | Declined through [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals). Terminal. |
+| `expired` | `expires_at` passed before acceptance. Terminal. |
+| `withdrawn` | The seller retracted a draft before expiry. Terminal. A seller must not withdraw a committed proposal before its `expires_at`. |
+
+Sellers keep a snapshot readable while it is `available` and for at least 30 days after it becomes `accepted`, `declined`, `expired`, or `withdrawn`. After that the snapshot may be gone; [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) remains the record of accepted terms, and an older change-feed record repairs as unavailable. Refining or accepting a `withdrawn` snapshot fails with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state), as for a declined one. There is no withdrawal notification.
+
+`origin` says how the snapshot was created: `request`, `refinement`, or `later`. Later proposals also carry `later_reason`.
+
+## Opportunities
+
+`opportunities[]` has one entry for each opportunity referenced by a returned proposal or named in `opportunity_ids`; unknown or inaccessible opportunity IDs are omitted. `later_proposals` is the consent the seller recorded and will enforce, including the computed `window_ends_at` and `created_count`. If `updated_at` shows a change the buyer did not make, another principal on the same account updated the opportunity.

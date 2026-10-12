@@ -151,6 +151,10 @@
       "$ref": "/schemas/media-buy/get-products-targeting-resolution.json",
       "description": "Response-level confirmation of structured targeting interpreted from explicit hard requirements in the brief. Sellers MUST emit this when that interpretation materially affects eligibility, pricing, or forecasting; otherwise it remains a best practice. Product-specific changes to explicit criteria.targeting_overlay values remain on Product.targeting_resolution."
     },
+    "later_proposals": {
+      "$ref": "/schemas/core/later-proposals-state.json",
+      "description": "Experimental (media_buy.open_opportunities). Effective later-proposal consent for the request's opportunity, as the seller recorded it. Sellers that advertise media_buy.open_opportunities.later_proposals.supported MUST return it whenever the request carried opportunity.later_proposals. accepted false here means the seller will not send later proposals, whatever the request asked for."
+    },
     "status": { "type": "string", "enum": ["completed", "submitted"] },
     "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
     "message": { "type": "string", "maxLength": 2000 },

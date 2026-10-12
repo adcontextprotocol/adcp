@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/list-proposals-response.json",
+  "title": "List Proposals Response",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "One page of proposals for the requested account with their seller-tracked dispositions, plus the current state of every opportunity those proposals belong to. Each snapshot is returned byte-for-byte as issued, so terms_digest still verifies; lifecycle state lives beside it, never inside it. Experimental (media_buy.open_opportunities).",
+  "type": "object",
+  "properties": {
+    "outcome": { "type": "string", "const": "listed" },
+    "proposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "proposal": {
+            "$ref": "/schemas/core/canonical-proposal.json",
+            "description": "The immutable snapshot exactly as the seller issued it."
+          },
+          "disposition": { "$ref": "/schemas/enums/proposal-disposition.json" },
+          "disposition_changed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the seller recorded the current disposition. Equals the issue time for an available snapshot."
+          },
+          "origin": {
+            "type": "string",
+            "enum": ["request", "refinement", "later"],
+            "description": "How the snapshot was created: in a request_proposals response, by refine_proposals, or by the seller after the creating task completed under later_proposals consent."
+          },
+          "later_reason": { "$ref": "/schemas/enums/later-proposal-reason.json" }
+        },
+        "required": ["proposal", "disposition", "disposition_changed_at", "origin"],
+        "if": {
+          "properties": { "origin": { "const": "later" } },
+          "required": ["origin"]
+        },
+        "then": {
+          "required": ["later_reason"],
+          "properties": {
+            "proposal": {
+              "properties": {
+                "proposal_status": { "const": "draft" },
+                "proposal_kind": { "const": "new_media_buy" }
+              },
+              "required": ["opportunity_id", "expires_at"]
+            }
+          }
+        },
+        "else": { "not": { "required": ["later_reason"] } },
+        "additionalProperties": false
+      }
+    },
+    "opportunities": {
+      "type": "array",
+      "description": "Current state of each opportunity referenced by a returned proposal or named in opportunity_ids. One entry per opportunity_id; unknown or inaccessible opportunity IDs are omitted, not errors.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "opportunity_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+            "x-entity": "opportunity"
+          },
+          "status": { "type": "string", "enum": ["open", "closed"] },
+          "close_reason": {
+            "type": "string",
+            "enum": [
+              "accepted_with_seller",
+              "purchased_elsewhere",
+              "selected_alternative",
+              "not_pursued",
+              "budget_changed",
+              "timing_changed",
+              "other"
+            ]
+          },
+          "later_proposals": { "$ref": "/schemas/core/later-proposals-state.json" }
+        },
+        "required": ["opportunity_id", "status"],
+        "if": {
+          "properties": { "status": { "const": "closed" } },
+          "required": ["status"]
+        },
+        "then": { "required": ["close_reason"] },
+        "else": { "not": { "required": ["close_reason"] } },
+        "additionalProperties": false
+      }
+    },
+    "next_cursor": { "type": "string", "minLength": 1 },
+    "replayed": { "type": "boolean", "const": true },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["outcome", "proposals", "opportunities"],
+  "additionalProperties": false
+}

@@ -402,6 +402,10 @@
           "$ref": "/schemas/core/opportunity-context.json",
           "description": "Buyer planning-cycle context shared across proposal request, decline, and purchase"
         },
+        "later-proposals-state": {
+          "$ref": "/schemas/core/later-proposals-state.json",
+          "description": "Seller-recorded later-proposal consent and window for one opportunity (experimental)"
+        },
         "datetime-range": {
           "$ref": "/schemas/core/datetime-range.json",
           "description": "Datetime range with inclusive start and end timestamps"
@@ -854,6 +858,10 @@
           "$ref": "/schemas/core/account-change-recorded-webhook.json",
           "description": "Account-level invalidation indicating that a durable account change is available"
         },
+        "proposal-created-webhook": {
+          "$ref": "/schemas/core/proposal-created-webhook.json",
+          "description": "Account-level invalidation indicating that the seller created a later proposal (experimental)"
+        },
         "indicator": {
           "$ref": "/schemas/core/indicator.json",
           "description": "Compact durable seller interpretation attached to an authoritative resource snapshot"
@@ -1200,6 +1208,14 @@
         "proposal-status": {
           "$ref": "/schemas/enums/proposal-status.json",
           "description": "Lifecycle status of a proposal (draft or committed)"
+        },
+        "proposal-disposition": {
+          "$ref": "/schemas/enums/proposal-disposition.json",
+          "description": "Seller-tracked disposition of a proposal snapshot (experimental)"
+        },
+        "later-proposal-reason": {
+          "$ref": "/schemas/enums/later-proposal-reason.json",
+          "description": "Why the seller created a later proposal (experimental)"
         },
         "proposal-decline-reason": {
           "$ref": "/schemas/enums/proposal-decline-reason.json",
@@ -1887,6 +1903,16 @@
           "response": {
             "$ref": "/schemas/media-buy/list-products-response.json",
             "description": "Response payload for list_products"
+          }
+        },
+        "list-proposals": {
+          "request": {
+            "$ref": "/schemas/media-buy/list-proposals-request.json",
+            "description": "Request parameters for reading proposals and their dispositions (experimental)"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/list-proposals-response.json",
+            "description": "Response payload for list_proposals"
           }
         },
         "request-proposals": {

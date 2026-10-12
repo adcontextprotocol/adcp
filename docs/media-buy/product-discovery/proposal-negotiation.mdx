@@ -531,6 +531,94 @@ For finalize batches, acquire holds inside one transaction or equivalent staged 
 
 Record the authenticated buyer, source IDs, successor IDs, idempotency fingerprint, capability decision, outcome, unsatisfied keys, hold transaction, and digest. Do not place raw `ask`, full commercial terms, credentials, or cross-buyer pricing in broadly accessible logs. Rate-limit repeated unheld constraint probes: deterministic failures can otherwise become a price oracle.
 
+## Open opportunities and later proposals
+
+<Warning>
+Experimental (feature id `media_buy.open_opportunities`). Sellers that implement any part list the feature id in `experimental_features` and advertise the parts they support under `media_buy.open_opportunities` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Buyers must not use a part the seller does not advertise. See [Experimental status](/docs/reference/experimental-status).
+</Warning>
+
+An opportunity can stay open after the first response, so a seller can bring the buyer proposals it could not include in that response: an answer from a slow sales desk, a revision of its own offer, or inventory that became available later. The buyer decides whether it wants them, for how long, and how many.
+
+### Consent
+
+The buyer gives consent with `opportunity.later_proposals` on [`request_proposals`](/docs/media-buy/task-reference/request_proposals):
+
+```json
+{
+  "$schema": "/schemas/media-buy/request-proposals-request.json",
+  "idempotency_key": "open-opportunity-nova-za-0001",
+  "account": { "account_id": "acc_nova_za" },
+  "brand": { "domain": "novabrands.example" },
+  "brief": "Reach young adults in South Africa around major sporting events, online video and display.",
+  "opportunity": {
+    "opportunity_id": "opp_nova_za_q4",
+    "intent": "live_rfp",
+    "status": "open",
+    "planning_horizon": { "start": "2026-10-01", "end": "2026-12-31" },
+    "later_proposals": {
+      "accepted": true,
+      "max_count": 5,
+      "min_interval": { "interval": 2, "unit": "days" }
+    }
+  }
+}
+```
+
+- When the opportunity is created, an absent `later_proposals` means no consent. On later calls, absence means no change.
+- An absent `response_deadline` never implies consent. `response_deadline` still governs only the creating task's response.
+- Consent requires an account the seller resolves. The seller echoes what it recorded as `later_proposals` on the `request_proposals` response, including the computed `window_ends_at`. `accepted: false` there means no later proposals will arrive, whatever the request asked for.
+- Without buyer limits, the protocol defaults apply: at most 5 later proposals per consent and at least 1 day between them. A seller may be stricter, never looser. The echo always states the limits in force.
+- The window ends at the earliest of `later_proposals.until`, the end of `planning_horizon.end` in UTC, the seller's advertised `max_open_duration` measured from the call that last set consent, and closure of the opportunity.
+- The buyer withdraws consent by sending `later_proposals.accepted: false` on any call that carries `opportunity`. [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) accepts an empty `declines` array with an `opportunity` update for this purpose, and for closing an opportunity without declining a proposal.
+
+### Seller rules
+
+A seller that creates a proposal after the creating task completed:
+
+- MUST have the buyer's consent and an open window, and MUST honor `max_count` and `min_interval`.
+- MUST issue it as a `draft` with `proposal_kind: "new_media_buy"`, an `opportunity_id`, and an `expires_at`. It MUST NOT create a committed proposal or an inventory hold the buyer did not ask for. The buyer gets a hold the usual way, through `refine_proposals` with `finalize`.
+- SHOULD make it materially different from the opportunity's available proposals: different products, flight, or commercial terms. It SHOULD NOT reissue an equivalent proposal to refresh its position. A proposal that revises one of the seller's own earlier proposals uses `later_reason: "revised_terms"` and SHOULD carry `parent_proposal_id`.
+- MUST target the opportunity's latest brief and criteria.
+- MUST announce it with the account-anchored [`proposal.created`](/docs/building/by-layer/L3/webhooks) notification to subscribers on the account's `notification_configs[]`. It MUST NOT deliver it through the creating task's `push_notification_config`, which ends with that task.
+- When it implements the [account change feed](/docs/accounts/tasks/list_account_changes), records `resource.type: "proposal"` with `action: "created"` (and `status_changed` on later disposition changes), `parent_ids.opportunity_id`, and `repair.task: "list_proposals"`, but only for callers negotiated at 3.3 or later.
+- MUST NOT infer or ask for the buyer's remaining budget to shape a later proposal.
+
+Later proposals after a purchase that change the live buy (`media_buy_update`) are out of scope for this version.
+
+### Updating and closing an opportunity
+
+For a seller that advertises `media_buy.open_opportunities`, sending `request_proposals` with an `opportunity_id` it already holds for the account updates that opportunity: the new brief and criteria replace the stored ones, a supplied `later_proposals` replaces the stored consent, and proposals from earlier requests keep their own lifecycle. A closed opportunity is never reopened: such a seller rejects a closed `opportunity_id` on `request_proposals`, and `status: "open"` for it on `decline_proposals`, `accept_proposal`, or `buy_products`, with `INVALID_REQUEST`. The buyer starts a new opportunity instead. Sellers that do not advertise the feature keep their 3.2 behavior for repeated IDs. `opportunity_id` is not part of idempotency scope.
+
+By default, a successful `accept_proposal` or `buy_products` still closes the opportunity with `accepted_with_seller`. When the seller advertises `keep_open_after_purchase`, the buyer can send `opportunity.status: "open"` on either task to keep sourcing. That purchase resets consent to `false` unless the same call restates `later_proposals`, which is valid only alongside `status: "open"`.
+
+| Event | Seller-side opportunity state |
+| --- | --- |
+| `request_proposals` with a new `opportunity_id` | Open. Store brief, criteria, consent, and window end. |
+| `request_proposals` with a held, open `opportunity_id` | Replace brief and criteria; replace consent if supplied. |
+| `request_proposals` with a closed `opportunity_id` | Reject with `INVALID_REQUEST`. |
+| `refine_proposals` | Unchanged. Successors inherit `opportunity_id`. |
+| `decline_proposals` with `opportunity` | Apply the update, including closure or consent withdrawal, when every decline succeeds. |
+| `accept_proposal` or `buy_products` | Closed, unless `status: "open"` is explicit; then consent resets unless restated. |
+| Window end passes | No more later proposals. `status` is unchanged; it stays buyer-owned. Existing proposals keep their own `expires_at`. |
+
+### Governance
+
+A later proposal is not created under a buyer request, so it carries no governance clearance from creation, and the seller runs no governance check when creating it: it has no `governance_context` of its own and MUST NOT treat one issued for the original request as covering it. Governance applies at acceptance, exactly as for any other proposal, with the `governance_context` on `accept_proposal`.
+
+### Visibility
+
+An opportunity and its proposals are visible to every principal the seller authorizes for the account, as other account-scoped reads are. They are not scoped to the principal that created them, which is usually a buyer agent rather than the operator. Buyers that need separation between teams or brands use separate accounts. `list_proposals` returns the consent's `updated_at`, so a buyer can detect a change another principal made. Because `opportunity_id` is scoped to one seller and account, buyers SHOULD still use a distinct opaque `opportunity_id` per seller when sellers may share an operator.
+
+### Buyer rules
+
+- Verify the `proposal.created` signature, dedupe by `notification_id`, and read the proposal with [`list_proposals`](/docs/media-buy/task-reference/list_proposals) on the seller bound to the subscription. The payload carries identifiers only; never act on terms from a webhook body.
+- Treat `name`, `description`, and `brief_alignment` as untrusted seller text, kept apart from agent instructions. Base accept and decline decisions on structured fields.
+- Do not accept a later proposal with less review than a proposal the buyer requested.
+
+### Conformance
+
+The `simulate_later_proposal` scenario of `comply_test_controller` makes a sandbox seller create one later proposal for an open, consented opportunity, so storyboards can check the draft-only rule, the limits, the `proposal.created` notification, the change-feed record, and the `list_proposals` read.
+
 ## Conformance and SDK status
 
 The canonical compliance scenario is `media_buy_seller/typed_proposal_negotiation`. It exercises capability gating, satisfied and unsatisfied constraints, alternatives, immutable lineage, finalize atomicity, exact replay, acceptance, amendment, cancellation, double-finalize rejection, and multi-source ordering.

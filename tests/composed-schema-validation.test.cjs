@@ -4751,6 +4751,256 @@ async function runTests() {
     },
     'decline_proposals returns one explicit outcome per proposal'
   );
+  // Open opportunities and later proposals (experimental, media_buy.open_opportunities)
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-later-0001',
+      account: { account_id: 'acc_nova_za' },
+      brand: { domain: 'novabrands.example' },
+      brief: 'Reach young adults in South Africa around major sporting events',
+      opportunity: {
+        opportunity_id: 'opp_nova_za_q4',
+        intent: 'live_rfp',
+        status: 'open',
+        planning_horizon: { start: '2026-10-01', end: '2026-12-31' },
+        later_proposals: { accepted: true, max_count: 5, min_interval: { interval: 2, unit: 'days' } }
+      }
+    },
+    'request_proposals accepts later-proposal consent with buyer limits'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-later-0002',
+      account: { account_id: 'acc_nova_za' },
+      brand: { domain: 'novabrands.example' },
+      brief: 'Reach young adults in South Africa',
+      opportunity: { opportunity_id: 'opp_nova_za_q4', later_proposals: { max_count: 5 } }
+    },
+    'later_proposals requires an explicit accepted flag'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/decline-proposals-request.json',
+    {
+      idempotency_key: 'decline-proposals-later-0001',
+      declines: [],
+      opportunity: { opportunity_id: 'opp_nova_za_q4', later_proposals: { accepted: false } }
+    },
+    'decline_proposals withdraws later-proposal consent without declining a proposal'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/decline-proposals-request.json',
+    { idempotency_key: 'decline-proposals-later-0002', declines: [] },
+    'decline_proposals rejects an empty declines array without an opportunity update'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/decline-proposals-response.json',
+    { results: [] },
+    'decline_proposals returns no results for an opportunity-only update'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/accept-proposal-request.json',
+    {
+      idempotency_key: 'accept-proposal-open-0001',
+      account: { account_id: 'acc_nova_za' },
+      proposal_id: 'proposal-committed-1',
+      proposal_terms_digest: `sha256:${'A'.repeat(43)}`,
+      opportunity: { opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: true } }
+    },
+    'accept_proposal can keep the opportunity open and restate consent'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/accept-proposal-request.json',
+    {
+      idempotency_key: 'accept-proposal-open-0002',
+      account: { account_id: 'acc_nova_za' },
+      proposal_id: 'proposal-committed-1',
+      proposal_terms_digest: `sha256:${'A'.repeat(43)}`,
+      opportunity: { opportunity_id: 'opp_nova_za_q4', status: 'closed', close_reason: 'not_pursued' }
+    },
+    'accept_proposal still rejects non-winning explicit closure'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/buy-products-request.json',
+    { ...cleanPurchase, opportunity: { opportunity_id: 'opp_nova_za_q4', status: 'open' } },
+    'buy_products can keep the opportunity open'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/buy-products-request.json',
+    { ...cleanPurchase, opportunity: { opportunity_id: 'opp_nova_za_q4', status: 'open', close_reason: 'accepted_with_seller' } },
+    'buy_products rejects a close reason on an open opportunity'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-later-0003',
+      account: { account_id: 'acc_nova_za' },
+      brand: { domain: 'novabrands.example' },
+      brief: 'Reach young adults in South Africa',
+      opportunity: { opportunity_id: 'opp_nova_za_q4', later_proposals: { accepted: true, min_interval: { interval: 1, unit: 'campaign' } } }
+    },
+    'later_proposals.min_interval rejects the campaign unit'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/accept-proposal-request.json',
+    {
+      idempotency_key: 'accept-proposal-open-0003',
+      account: { account_id: 'acc_nova_za' },
+      proposal_id: 'proposal-committed-1',
+      proposal_terms_digest: `sha256:${'A'.repeat(43)}`,
+      opportunity: { opportunity_id: 'opp_nova_za_q4', later_proposals: { accepted: true } }
+    },
+    'accept_proposal rejects consent on an acceptance that closes the opportunity'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'create-proposal-later-0001',
+      account: { account_id: 'acc_nova_za' },
+      brand: { domain: 'novabrands.example' },
+      proposal_id: 'proposal-1',
+      total_budget: { amount: 50000, currency: 'USD' },
+      start_time: 'asap',
+      end_time: '2027-07-01T00:00:00Z',
+      opportunity: { opportunity_id: 'opp_nova_za_q4', later_proposals: { accepted: true } }
+    },
+    'create_media_buy rejects later-proposal consent'
+  );
+  const laterDraft = {
+    proposal_id: 'prop_nova_za_evt_07',
+    name: 'Cup final weekend package',
+    proposal_kind: 'new_media_buy',
+    proposal_status: 'draft',
+    opportunity_id: 'opp_nova_za_q4',
+    expires_at: '2026-10-30T23:59:59Z',
+    commercial_terms: {
+      source_feed_version: 'feed-version-1',
+      source_pricing_version: 'pricing-version-1',
+      brand: { domain: 'buyer.example' },
+      purchases: [{
+        product_id: 'display-standard',
+        pricing_option_id: 'fixed-cpm',
+        pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+        budget: 50000,
+        start_time: '2026-11-01T00:00:00Z',
+        end_time: '2026-11-08T00:00:00Z'
+      }],
+      start_time: '2026-11-01T00:00:00Z',
+      end_time: '2026-11-08T00:00:00Z'
+    },
+    terms_digest: `sha256:${'A'.repeat(43)}`
+  };
+  const laterState = {
+    accepted: true,
+    window_ends_at: '2026-12-31T23:59:59Z',
+    max_count: 5,
+    min_interval: { interval: 1, unit: 'days' },
+    created_count: 1,
+    updated_at: '2026-10-09T15:02:11Z'
+  };
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-response.json',
+    { outcome: 'proposed', status: 'completed', proposals: [{ ...laterDraft, proposal_id: 'prop_nova_za_01' }], products: [{ product_id: 'display-standard', name: 'Display standard' }], later_proposals: { ...laterState, created_count: 0 } },
+    'request_proposals echoes the later-proposal consent the seller recorded'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-proposals-request.json',
+    { account: { account_id: 'acc_nova_za' }, opportunity_ids: ['opp_nova_za_q4'], dispositions: ['available'] },
+    'list_proposals filters by account, opportunity, and disposition'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-request.json',
+    { opportunity_ids: ['opp_nova_za_q4'] },
+    'list_proposals requires an account'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-proposals-response.json',
+    {
+      outcome: 'listed',
+      proposals: [{ proposal: laterDraft, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later', later_reason: 'event_package' }],
+      opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: laterState }]
+    },
+    'list_proposals returns the unchanged snapshot beside its disposition and the opportunity consent'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-response.json',
+    {
+      outcome: 'listed',
+      proposals: [{ proposal: laterDraft, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later' }],
+      opportunities: []
+    },
+    'list_proposals requires later_reason on later proposals'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-response.json',
+    {
+      outcome: 'listed',
+      proposals: [{ proposal: { ...laterDraft, proposal_status: 'committed' }, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later', later_reason: 'new_inventory' }],
+      opportunities: []
+    },
+    'list_proposals rejects a committed later proposal'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-response.json',
+    {
+      outcome: 'listed',
+      proposals: [],
+      opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: true, max_count: 5, min_interval: { interval: 1, unit: 'days' }, updated_at: '2026-10-09T15:02:11Z' } }]
+    },
+    'recorded consent must state its window end'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-response.json',
+    {
+      outcome: 'listed',
+      proposals: [],
+      opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: true, window_ends_at: '2026-12-31T23:59:59Z', updated_at: '2026-10-09T15:02:11Z' } }]
+    },
+    'recorded consent must state the effective limits, defaults included'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-proposals-response.json',
+    {
+      outcome: 'listed',
+      proposals: [],
+      opportunities: [{ opportunity_id: 'opp_nova_za_q4', status: 'open', later_proposals: { accepted: false, updated_at: '2026-10-09T15:02:11Z' } }]
+    },
+    'withdrawn consent needs no window or limits'
+  );
+  await testSchemaValidation(
+    '/schemas/core/proposal-created-webhook.json',
+    {
+      idempotency_key: 'whk_01K9P2M7RX4D8B6T3N0Q5V1C9Z',
+      notification_id: 'prop_nova_za_evt_07',
+      notification_type: 'proposal.created',
+      fired_at: '2026-10-23T09:14:05Z',
+      subscriber_id: 'buyer-proposals',
+      account_id: 'acc_nova_za',
+      proposal_id: 'prop_nova_za_evt_07',
+      opportunity_id: 'opp_nova_za_q4',
+      later_reason: 'event_package',
+      expires_at: '2026-10-30T23:59:59Z'
+    },
+    'proposal.created carries identifiers only'
+  );
+  await testSchemaRejection(
+    '/schemas/core/proposal-created-webhook.json',
+    {
+      idempotency_key: 'whk_01K9P2M7RX4D8B6T3N0Q5V1C9Z',
+      notification_id: 'prop_nova_za_evt_07',
+      notification_type: 'proposal.created',
+      fired_at: '2026-10-23T09:14:05Z',
+      subscriber_id: 'buyer-proposals',
+      account_id: 'acc_nova_za',
+      proposal_id: 'prop_nova_za_evt_07',
+      opportunity_id: 'opp_nova_za_q4',
+      later_reason: 'event_package',
+      expires_at: '2026-10-30T23:59:59Z',
+      proposal: laterDraft
+    },
+    'proposal.created rejects an embedded proposal body'
+  );
   const proposalExecution = {
     idempotency_key: 'create-proposal-opportunity-0001',
     account: { account_id: 'account-opportunity-test' },

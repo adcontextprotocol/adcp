@@ -108,7 +108,8 @@
             "signal.updated",
             "signal.priced",
             "signal.removed",
-            "wholesale_feed.bulk_change"
+            "wholesale_feed.bulk_change",
+            "proposal.created"
           ]
         }
       }
