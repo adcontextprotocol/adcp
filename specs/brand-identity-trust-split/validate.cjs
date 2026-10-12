@@ -10,21 +10,29 @@ const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDi
 for (const f of walk(src)) { try { const s = JSON.parse(fs.readFileSync(f)); if (s.$id) ajv.addSchema(s); } catch {} }
 const dir = __dirname;
 let fail = 0;
-// One agent per origin (specs/agent-identity-3-3.md R1): the canonical origin of agents[].url is the identity.
-const sharedOrigins = doc => {
-  const seen = new Map(); const dupes = [];
+// Rules JSON Schema cannot express (specs/agent-identity-3-3.md R0, R1). Canonical origin is defined in
+// docs/reference/url-canonicalization.mdx: scheme and authority after steps 1-4, using the SDK's implementation.
+const { canonicalAuthority } = require('@adcp/sdk/signing');
+const canonicalOrigin = url => { try { return `${new URL(url).protocol.toLowerCase()}//${canonicalAuthority(url, '3.2')}`; } catch { return null; } };
+const ruleViolations = doc => {
+  const out = []; const origins = new Set();
   for (const a of doc.agents || []) {
-    let origin; try { origin = new URL(a.url).origin; } catch { continue; }
-    if (seen.has(origin)) dupes.push(origin); else seen.set(origin, a.url);
+    const o = canonicalOrigin(a.url);
+    if (!o) out.push(`agent url has no canonical origin: ${a.url}`);
+    else if (origins.has(o)) out.push(`two agents share the origin ${o}`);
+    else origins.add(o);
   }
-  return dupes;
+  for (const ack of doc.acknowledgements || []) {
+    if (!origins.has(canonicalOrigin(ack.agent_url))) out.push(`acknowledgement agent_url matches no agents[] entry: ${ack.agent_url}`);
+  }
+  return out;
 };
-const valid = (id, doc) => ajv.validate(id, doc) && sharedOrigins(doc).length === 0;
+const valid = (id, doc) => ajv.validate(id, doc) && (id.endsWith('trust-acknowledgements.json') || ruleViolations(doc).length === 0);
 for (const f of fs.readdirSync(path.join(dir, 'examples'))) {
   const doc = JSON.parse(fs.readFileSync(path.join(dir, 'examples', f)));
   const id = f.includes('acknowledgements') ? '/schemas/trust/v1/trust-acknowledgements.json' : '/schemas/trust/v1/trust.json';
   const ok = valid(id, doc);
-  console.log(ok ? 'PASS' : 'FAIL', f); if (!ok) { fail++; console.log(JSON.stringify(ajv.errors || { shared_origins: sharedOrigins(doc) }, null, 1)); }
+  console.log(ok ? 'PASS' : 'FAIL', f); if (!ok) { fail++; console.log(JSON.stringify(ajv.errors || ruleViolations(doc), null, 1)); }
 }
 // negative cases
 const neg = [
@@ -39,14 +47,20 @@ const neg = [
   ['acknowledgement without via', { acknowledgements: [{ grantor: 'p.example', agent_url: 'https://a.example/mcp' }] }],
   ['agent carrying jwks_uri', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:sales'], jwks_uri: 'https://a.example/.well-known/jwks.json' }] }],
   ['two agents sharing an origin', { agents: [{ url: 'https://a.example/one', roles: ['adcp:sales'] }, { url: 'https://a.example/two', roles: ['adcp:buying'] }] }],
+  ['two agents sharing an origin through a root dot', { agents: [{ url: 'https://a.example./one', roles: ['adcp:sales'] }, { url: 'https://a.example/two', roles: ['adcp:buying'] }] }],
+  ['agent url with an empty DNS label', { agents: [{ url: 'https://a.example../x', roles: ['adcp:buying'] }] }],
   ['malformed key thumbprint', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:buying'], key_thumbprints: ['not-a-thumbprint'] }] }],
-  ['unknown signing profile', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:buying'], profiles: { adcp: { signing_profiles: ['adcp-agent-url'] } } }] }],
+  ['signing_profiles is not part of the schema', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:buying'], profiles: { adcp: { signing_profiles: ['web-bot-auth'] } } }] }],
+  ['acknowledgement for an agent the record does not list', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:sales'] }], acknowledgements: [{ grantor: 'p.example', agent_url: 'https://b.example/mcp', via: 'adcp:adagents' }] }],
 ];
 for (const [name, doc] of neg) { const ok = valid('/schemas/trust/v1/trust.json', doc); console.log(ok ? 'UNEXPECTED PASS' : 'rejects', name); if (ok) fail++; }
-// positive: pins and signing profiles are accepted on distinct origins
-const pos = { agents: [
-  { url: 'https://buyer.a.example/mcp', roles: ['adcp:buying'], key_thumbprints: ['NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs'], profiles: { adcp: { signing_profiles: ['wba'] } } },
-  { url: 'https://gov.a.example/mcp', roles: ['adcp:governance'] },
-] };
-{ const ok = valid('/schemas/trust/v1/trust.json', pos); console.log(ok ? 'PASS' : 'FAIL', 'pins and signing profiles on distinct origins'); if (!ok) { fail++; console.log(JSON.stringify(ajv.errors, null, 1)); } }
+// positive: a key pin on one origin, an agent on another, and an acknowledgement matched by origin
+const pos = {
+  agents: [
+    { url: 'https://buyer.a.example/mcp', roles: ['adcp:buying'], key_thumbprints: ['NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs'] },
+    { url: 'https://Gov.A.Example:443/mcp', roles: ['adcp:governance'] },
+  ],
+  acknowledgements: [{ grantor: 'p.example', agent_url: 'https://gov.a.example/other-path', via: 'adcp:adagents' }],
+};
+{ const ok = valid('/schemas/trust/v1/trust.json', pos); console.log(ok ? 'PASS' : 'FAIL', 'pin, distinct origins, acknowledgement matched by origin'); if (!ok) { fail++; console.log(JSON.stringify(ajv.errors, null, 1)); } }
 process.exit(fail ? 1 : 0);
