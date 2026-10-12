@@ -13,7 +13,7 @@
     "action": {
       "type": "string",
       "enum": ["revise", "finalize", "extend_hold"],
-      "description": "revise creates a new draft snapshot with changed commercial terms. finalize MUST target a draft; it creates a new committed snapshot without changing terms and reserves inventory until its expires_at. extend_hold (experimental, media_buy.hold_extension) MUST target a committed, unexpired proposal; it creates a new committed successor with the same commercial_terms and terms_digest and a later expires_at, and the hold transfers to it. Buyers MUST NOT send extend_hold unless the seller declares media_buy.proposal_refinement.hold_extension."
+      "description": "revise creates a new draft snapshot with changed commercial terms. finalize MUST target a draft; it creates a new committed snapshot without changing terms and reserves inventory until its expires_at. extend_hold (experimental, media_buy.hold_extension) MUST target a committed, unexpired proposal that holds inventory (one with no hold fails with INVALID_STATE); it creates a new committed successor with the same commercial_terms and terms_digest and a later expires_at, and the hold transfers to it with the source's hold_policy and hold_placed_at carried forward unchanged. Buyers MUST NOT send extend_hold unless the seller declares media_buy.proposal_refinement.hold_extension."
     },
     "change_kind": {
       "type": "string",

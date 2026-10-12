@@ -92,9 +92,12 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // minute-resolution dayparts add the start_time/end_time pair, its one-of-two
 // exclusion, and the time_granularity requirement to the shared daypart
 // graph carried by every targeting-bearing task (+2,087 bytes measured,
-// 443.3 → 445.4 KiB), bounded at 446 KiB.
+// 443.3 → 445.4 KiB), bounded at 446 KiB. The experimental extend_hold action
+// adds one action enum value and one revise-field-forbidding refinement arm to
+// refine_proposals (+501 bytes measured on top of hold_policy, 445.7 → 446.2
+// KiB), bounded at 447 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 446,
+  'media-buy': 447,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

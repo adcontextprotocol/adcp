@@ -1333,7 +1333,7 @@
               "type": "boolean",
               "x-status": "experimental",
               "x-added-in": "3.3.0",
-              "description": "Whether the seller accepts action extend_hold on refine_proposals (feature id media_buy.hold_extension). Buyers MUST NOT send extend_hold unless this is true. A seller that does not declare it fails the unknown action with VALIDATION_ERROR. Counts and maximum hold durations are seller policy, expressed through hold_unavailable.",
+              "description": "Whether the seller accepts action extend_hold on refine_proposals (feature id media_buy.hold_extension). This is the agent-level gate for the action: buyers MUST NOT send extend_hold unless this is true, and a seller that does not declare it fails the unknown action with VALIDATION_ERROR. extend_hold applies only to committed proposals that hold inventory; against a committed proposal with no hold (an entry whose effective policy is terms-only: hold_policy.available false, or no hold_policy at a seller declaring hold_semantics terms_only) the seller fails the request at task level with INVALID_STATE. When the committed proposal carries hold_policy, extendable false or absent (it defaults to false) means the seller declines with hold_unavailable and buyers SHOULD NOT send extend_hold; the successor's expires_at MUST NOT exceed the original hold_placed_at plus max_total_duration, which successors carry forward unchanged across the whole extension chain; a request the seller cannot extend at all returns hold_unavailable. Absent hold_policy (a seller that does not list media_buy.hold_policy), limits remain seller policy expressed through hold_unavailable.",
               "default": false
             }
           },
