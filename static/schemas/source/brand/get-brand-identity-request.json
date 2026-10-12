@@ -17,7 +17,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "Optional identity sections to include in the response. When omitted, all sections the caller is authorized to see are returned. Core fields (brand_id, house, names) are always returned and do not need to be requested. The collections value is experimental (media_buy.collection_cards).",
+      "description": "Optional identity sections to include in the response. When omitted, all sections the caller is authorized to see are returned. Core fields (brand_id, house, names) are always returned and do not need to be requested. The collections value is experimental (brand.collection_links).",
       "minItems": 1,
       "items": {
         "type": "string",

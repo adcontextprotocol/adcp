@@ -218,6 +218,13 @@
         ]
       }
     },
+    "include_collections": {
+      "type": "boolean",
+      "default": false,
+      "description": "Experimental (media_buy.collection_cards). When true, asks the seller to return the response-level collections array: the full object for each collection the returned products' collections selectors reference. Sellers MUST NOT return collections unless this is true, and when it is true they SHOULD include every referenced collection. This request accepts unknown fields, so a seller that does not implement the feature ignores the flag; buyers detect omitted collections by comparing product selectors with the returned array and resolve those from the publisher's adagents.json.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
     "time_budget": {
       "allOf": [
         {

@@ -40,6 +40,13 @@
     "brand": { "$ref": "/schemas/core/brand-key.json" },
     "criteria": { "$ref": "/schemas/media-buy/product-discovery-criteria.json" },
     "fields": { "$ref": "/schemas/media-buy/product-fields.json" },
+    "include_collections": {
+      "type": "boolean",
+      "default": false,
+      "description": "Experimental (media_buy.collection_cards). When true, asks the seller to return the response-level collections array: the full object for each collection referenced by the collections selectors of products on the page. Sellers MUST NOT return collections unless this is true, and when it is true they SHOULD include every referenced collection. This request rejects unknown fields, so a seller validating against an earlier schema may reject the flag; send it only to a seller that lists media_buy.collection_cards in experimental_features. Buyers detect omitted collections by comparing product selectors with the returned array and resolve those from the publisher's adagents.json.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
     "cursor": { "type": "string", "minLength": 1 },
     "max_results": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 },
     "if_feed_version": {

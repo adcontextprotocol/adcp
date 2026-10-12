@@ -666,14 +666,14 @@
         },
         "collections": {
           "type": "array",
-          "description": "Collections this person or brand is associated with. Enables bidirectional linking: a collection's talent references this brand via brand_ref (or the older brand_url), and brand.json links back to collections. A brand agent can serve the same links through get_brand_identity.",
+          "description": "Collections this person or brand is associated with. Enables bidirectional linking: a collection's talent references this brand via brand_ref (or the older brand_url), and brand.json links back to collections. A brand agent can serve the same links through get_brand_identity. The links are the brand's own claims, and seller_agent_url is a routing hint, not authorization evidence: which agent may sell the collection is answered only by the publisher's adagents.json.",
           "items": {
             "type": "object",
             "properties": {
               "publisher_domain": {
                 "type": "string",
                 "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
-                "description": "Experimental (media_buy.collection_cards). Publisher namespace that declares the collection in its adagents.json. collection_id is unique only within this namespace, so together they form the {publisher_domain, collection_ids} selector that products use.",
+                "description": "Experimental (brand.collection_links). Publisher namespace that declares the collection in its adagents.json. collection_id is unique only within this namespace, so together they form the {publisher_domain, collection_ids} selector that products use.",
                 "x-status": "experimental",
                 "x-added-in": "3.3.0"
               },
@@ -692,7 +692,7 @@
               "seller_agent_url": {
                 "type": "string",
                 "format": "uri",
-                "description": "URL of the sales agent that sells inventory for this collection. Buyer agents can query this agent for collection products."
+                "description": "URL of the sales agent that sells inventory for this collection. Buyer agents can query this agent for collection products. A routing hint, not authorization evidence: which agent may sell the collection is answered only by the publisher's adagents.json."
               }
             },
             "required": ["name"],

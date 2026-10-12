@@ -373,3 +373,117 @@ test('response collection fields are experimental and added in 3.3.0', () => {
     assert.deepEqual(schema.dependencies.collections, ['products']);
   }
 });
+
+// Review fixes on #8141: opt-in flag, https url, brand link keys, feature ids, pin exclusion.
+const requestCases = [
+  ['/schemas/media-buy/get-products-request.json', { buying_mode: 'brief', brief: 'Creator video for a running shoe launch' }, true],
+  ['/schemas/media-buy/list-products-request.json', { brand: { domain: 'nova-brands.example' } }, false],
+  ['/schemas/media-buy/request-proposals-request.json', {
+    idempotency_key: 'req-proposals-0001',
+    brief: 'Creator video for a running shoe launch',
+    brand: { domain: 'nova-brands.example' },
+  }, false],
+  ['/schemas/media-buy/refine-proposals-request.json', {
+    idempotency_key: 'refine-proposals-0001',
+    refinements: [{ proposal_id: 'proposal-1', action: 'finalize' }],
+  }, false],
+];
+
+for (const [schemaId, base, open] of requestCases) {
+  test(`${schemaId} takes an optional experimental include_collections flag`, async () => {
+    const validate = await compile(schemaId);
+    assert.equal(validate(base), true, JSON.stringify(validate.errors, null, 2));
+    assert.equal(validate({ ...base, include_collections: true }), true, JSON.stringify(validate.errors, null, 2));
+    assert.equal(validate({ ...base, include_collections: 'yes' }), false, 'include_collections is a boolean');
+    const schema = JSON.parse(fs.readFileSync(schemaPathFromId(schemaId), 'utf8'));
+    const flag = schema.properties.include_collections;
+    assert.equal(flag.type, 'boolean');
+    assert.equal(flag.default, false);
+    assert.equal(flag['x-status'], 'experimental');
+    assert.equal(flag['x-added-in'], '3.3.0');
+    assert.match(flag.description, /MUST NOT return collections unless this is true/);
+    // The unknown-field phrasing must match how the request treats unknown properties.
+    assert.equal(schema.additionalProperties !== false, open);
+    assert.match(flag.description, open ? /accepts unknown fields/ : /rejects unknown fields/);
+  });
+}
+
+test('response collections descriptions carry the opt-in and the closed freshness list', () => {
+  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
+  for (const file of ['get-products', 'list-products', 'request-proposals', 'refine-proposals']) {
+    const desc = read(`media-buy/${file}-response.json`).properties.collections.description;
+    assert.match(desc, /unless the request set include_collections to true/, file);
+    assert.match(desc, /only on images, sample_content, url and description/, file);
+    assert.match(desc, /appears more than once, that collection is unresolvable/, file);
+  }
+  const item = read('core/response-collection.json').description;
+  assert.match(item, /only on images, sample_content, url and description/);
+  assert.doesNotMatch(item, /such as images, sample_content, status and talent/);
+  assert.match(item, /unverified display data/);
+});
+
+test('collection url must be https', async () => {
+  const validate = await compile('/schemas/core/collection.json');
+  const base = { collection_id: 'pinnacle_challenge', name: 'The Pinnacle Challenge' };
+  assert.equal(validate({ ...base, url: 'https://acmestreaming.example.com/shows/pinnacle-challenge' }), true);
+  assert.equal(validate({ ...base, url: 'http://acmestreaming.example.com/shows/pinnacle-challenge' }), false);
+  assert.equal(validate({ ...base, url: 'javascript:alert(1)' }), false);
+});
+
+test('get_brand_identity collection links require publisher_domain and collection_id', async () => {
+  const response = await compile('/schemas/brand/get-brand-identity-response.json');
+  const link = { publisher_domain: 'acmestreaming.example.com', collection_id: 'pinnacle_challenge', name: 'The Pinnacle Challenge' };
+  const identity = {
+    status: 'completed',
+    brand_id: 'jordan_vega',
+    house: { domain: 'jordanvega.example.com', name: 'Jordan Vega Media' },
+    names: [{ en: 'Jordan Vega' }],
+    collections: [link],
+  };
+  assert.equal(response(identity), true, JSON.stringify(response.errors, null, 2));
+  for (const key of ['publisher_domain', 'collection_id', 'name']) {
+    const { [key]: _omitted, ...rest } = link;
+    assert.equal(response({ ...identity, collections: [rest] }), false, `${key} is required`);
+  }
+  const schema = JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, 'brand/get-brand-identity-response.json'), 'utf8'));
+  const items = schema.oneOf[0].properties.collections.items;
+  assert.equal(items.properties.collection_id['x-entity'], 'collection');
+  assert.match(items.properties.seller_agent_url.description, /not authorization evidence/);
+  // brand.json stays lenient: only name is required on its links.
+  const brand = JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, 'brand.json'), 'utf8'));
+  const brandLinks = brand.definitions.brand.properties.collections.items;
+  assert.deepEqual(brandLinks.required, ['name']);
+  assert.match(brandLinks.properties.seller_agent_url.description, /not authorization evidence/);
+});
+
+test('brand-side collection links use their own experimental feature id', () => {
+  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
+  const brandSide = [
+    read('brand/get-brand-identity-response.json').oneOf[0].properties.collections.description,
+    read('brand/get-brand-identity-request.json').properties.fields.description,
+    read('brand.json').definitions.brand.properties.collections.items.properties.publisher_domain.description,
+  ];
+  for (const desc of brandSide) {
+    assert.match(desc, /brand\.collection_links/);
+    assert.doesNotMatch(desc, /media_buy\.collection_cards/);
+  }
+  const registry = fs.readFileSync(path.join(__dirname, '../docs/reference/experimental-status.mdx'), 'utf8');
+  const row = (id) => registry.split('\n').find((line) => line.startsWith(`| \`${id}\` |`));
+  assert.ok(row('media_buy.collection_cards'), 'media_buy.collection_cards registry row');
+  assert.ok(row('brand.collection_links'), 'brand.collection_links registry row');
+  assert.match(row('media_buy.collection_cards'), /include_collections/);
+  assert.doesNotMatch(row('media_buy.collection_cards'), /get_brand_identity/);
+  assert.match(row('brand.collection_links'), /get_brand_identity/);
+});
+
+test('collection card fields are excluded from publisher_collection definition pins', () => {
+  const vectors = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '../static/compliance/source/test-vectors/definition-pins/vectors.json'), 'utf8'));
+  const exclude = vectors.projection_rules.publisher_collection.exclude;
+  for (const key of ['images', 'sample_content', 'url']) assert.ok(exclude.includes(key), `${key} is excluded`);
+  const vector = vectors.equivalence_vectors.find((v) => v.id === 'collection-card-fields-are-not-drift');
+  assert.ok(vector, 'an image-only change has an equivalence vector');
+  assert.equal(vector.expected.same_content_digest, true);
+  const spec = fs.readFileSync(path.join(__dirname, '../docs/media-buy/specification.mdx'), 'utf8');
+  assert.ok(spec.includes('| `publisher_collection` | `description`, `ext`, `images`, `name`, `publisher_domain`, `related_collections`, `sample_content`, `season`, `talent`, `url` |'));
+});
