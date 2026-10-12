@@ -1225,10 +1225,6 @@
           "$ref": "/schemas/enums/seller-adjustment-kind.json",
           "description": "Kind of bounded change a buyer pre-authorizes the seller to apply to a live buy (budget_release, schedule_shift). Experimental."
         },
-        "change-origin": {
-          "$ref": "/schemas/enums/change-origin.json",
-          "description": "What authorized a change to a media buy (buyer, seller_offer, seller_allowance). Experimental."
-        },
         "proposal-initiator": {
           "$ref": "/schemas/enums/proposal-initiator.json",
           "description": "Which party originated a proposal (buyer or seller). Experimental."

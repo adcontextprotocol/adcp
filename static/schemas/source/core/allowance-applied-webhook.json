@@ -21,16 +21,29 @@
       "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
       "description": "Logical notification identifier. Always equals adjustment_id; re-emissions retain it."
     },
-    "notification_type": { "type": "string", "const": "media_buy.allowance_applied" },
-    "fired_at": { "type": "string", "format": "date-time" },
+    "notification_type": {
+      "type": "string",
+      "const": "media_buy.allowance_applied"
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "subscriber_id": {
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
       "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
     },
-    "account_id": { "type": "string", "x-entity": "account" },
-    "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" },
+    "account_id": {
+      "type": "string",
+      "x-entity": "account"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "media_buy"
+    },
     "adjustment_id": {
       "type": "string",
       "minLength": 1,
@@ -39,15 +52,29 @@
       "x-entity": "applied_seller_adjustment",
       "description": "The applied adjustment. notification_id equals it."
     },
-    "allowance_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "seller_adjustment_allowance" },
-    "kind": { "$ref": "/schemas/enums/seller-adjustment-kind.json" },
+    "allowance_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "seller_adjustment_allowance"
+    },
+    "kind": {
+      "$ref": "/schemas/enums/seller-adjustment-kind.json"
+    },
     "revision": {
       "type": "integer",
       "minimum": 1,
       "description": "The media buy revision the adjustment created."
     },
-    "reason": { "type": "string", "minLength": 1, "maxLength": 500 },
-    "ext": { "$ref": "/schemas/core/ext.json" }
+    "reason": {
+      "type": "string",
+      "maxLength": 100,
+      "pattern": "^[a-z][a-z0-9_.-]{0,99}$",
+      "description": "Short machine-readable reason code, the same shape as the reason on an account change record."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
   },
   "required": [
     "idempotency_key",
@@ -79,7 +106,7 @@
         "allowance_id": "allow_release_1",
         "kind": "budget_release",
         "revision": 6,
-        "reason": "Forecast delivery is 82% of the committed budget"
+        "reason": "forecast_shortfall"
       }
     }
   ]

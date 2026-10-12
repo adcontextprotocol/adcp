@@ -265,12 +265,6 @@
                   "description": "Package affected, when the change targeted a specific package.",
                   "x-entity": "package"
                 },
-                "change_origin": {
-                  "$ref": "/schemas/enums/change-origin.json",
-                  "x-status": "experimental",
-                  "x-added-in": "3.3.0",
-                  "description": "Experimental (media_buy.seller_adjustment_allowances). What authorized this change. seller_allowance means the seller applied it unilaterally under an accepted allowance; allowance_id and reason are then present."
-                },
                 "allowance_id": {
                   "type": "string",
                   "minLength": 1,
@@ -278,15 +272,15 @@
                   "x-entity": "seller_adjustment_allowance",
                   "x-status": "experimental",
                   "x-added-in": "3.3.0",
-                  "description": "The allowance that authorized this change. Present when change_origin is seller_allowance."
+                  "description": "The allowance that authorized this change. When present, actor is seller_system or seller_operator and reason is required. The account change feed record for the same change carries the same allowance_id."
                 },
                 "reason": {
                   "type": "string",
-                  "minLength": 1,
-                  "maxLength": 500,
+                  "maxLength": 100,
+                  "pattern": "^[a-z][a-z0-9_.-]{0,99}$",
                   "x-status": "experimental",
                   "x-added-in": "3.3.0",
-                  "description": "Why the seller made this change. Present when change_origin is seller_allowance."
+                  "description": "Short machine-readable reason code, the same shape as the reason on an account change record. Human-readable text goes in summary. Required with allowance_id."
                 },
                 "ext": {
                   "$ref": "/schemas/core/ext.json"
@@ -294,8 +288,11 @@
               },
               "allOf": [
                 {
-                  "if": { "properties": { "change_origin": { "const": "seller_allowance" } }, "required": ["change_origin"] },
-                  "then": { "required": ["allowance_id", "reason"] }
+                  "if": { "required": ["allowance_id"] },
+                  "then": {
+                    "required": ["actor", "reason"],
+                    "properties": { "actor": { "enum": ["seller_system", "seller_operator"] } }
+                  }
                 }
               ],
               "required": [

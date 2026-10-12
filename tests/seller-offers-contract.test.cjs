@@ -345,7 +345,7 @@ describe("seller offers (media_buy.seller_offers)", () => {
       kind: "budget_release",
       revision: 6,
       applied_at: "2026-11-12T09:30:00Z",
-      reason: "Forecast delivery is 82% of the committed budget",
+      reason: "forecast_shortfall",
       released_amount: 400,
       ...extra,
     });
@@ -445,7 +445,7 @@ describe("seller offers (media_buy.seller_offers)", () => {
         kind: "schedule_shift",
         revision: 7,
         applied_at: "2026-11-13T09:30:00Z",
-        reason: "Preempted by a live event",
+        reason: "live_event_preemption",
         scheduled_at: "2026-11-20T01:00:00Z",
         alternate_index: 1,
         skipped_alternates: [{ alternate_index: 0, reason: "Preempted" }],
@@ -483,9 +483,10 @@ describe("seller offers (media_buy.seller_offers)", () => {
         revision: 6,
         timestamp: "2026-11-12T09:30:00Z",
         action: "updated_budget",
-        change_origin: "seller_allowance",
+        actor: "seller_system",
         allowance_id: "allow_release_1",
-        reason: "Forecast shortfall",
+        reason: "forecast_shortfall",
+        summary: "Released 400 USD that the forecast says cannot be delivered",
       };
       assert.ok(
         validateMediaBuys(response(buy({ applied_adjustments: [applied()] }, [entry]))),
@@ -494,10 +495,32 @@ describe("seller offers (media_buy.seller_offers)", () => {
       const noReason = { ...entry };
       delete noReason.reason;
       assert.equal(validateMediaBuys(response(buy({}, [noReason]))), false);
-      assert.equal(validateMediaBuys(response(buy({}, [{ ...entry, change_origin: "unilateral" }]))), false);
-      const origins = readSchema("/schemas/enums/change-origin.json");
-      assert.deepEqual(origins.enum, ["buyer", "seller_offer", "seller_allowance"]);
-      assert.deepEqual(Object.keys(origins.enumDescriptions), origins.enum);
+      const noActor = { ...entry };
+      delete noActor.actor;
+      assert.equal(validateMediaBuys(response(buy({}, [noActor]))), false);
+      assert.ok(validateMediaBuys(response(buy({}, [{ ...entry, actor: "seller_operator" }]))));
+      for (const actor of ["adcp", "connected_platform", "buyer", "ops@seller.example"]) {
+        assert.equal(validateMediaBuys(response(buy({}, [{ ...entry, actor }]))), false, actor);
+      }
+      assert.equal(validateMediaBuys(response(buy({}, [{ ...entry, reason: "Forecast shortfall" }]))), false);
+    });
+
+    it("reuses the account change feed origin vocabulary instead of a separate one", () => {
+      const origin = readSchema("/schemas/core/account-change.json").properties.origin.properties.kind.enum;
+      assert.ok(origin.includes("seller_system") && origin.includes("seller_operator"));
+      assert.ok(!fs.existsSync(path.join(SCHEMA_ROOT, "enums", "change-origin.json")));
+      for (const doc of ["proposal-negotiation.mdx"]) {
+        const text = fs.readFileSync(
+          path.join(__dirname, "..", "docs", "media-buy", "product-discovery", doc),
+          "utf8"
+        );
+        assert.ok(!text.includes("change_origin"));
+        assert.match(text, /`origin\.kind` values of the account change feed/);
+      }
+      const change = readSchema("/schemas/core/account-change.json").properties.allowance_id;
+      assert.equal(change["x-status"], "experimental");
+      assert.equal(change["x-added-in"], "3.3.0");
+      assert.equal(change["x-entity"], "seller_adjustment_allowance");
     });
 
     it("announces an applied adjustment through media_buy.allowance_applied", () => {
@@ -526,7 +549,6 @@ describe("seller offers (media_buy.seller_offers)", () => {
     it("marks every new surface experimental and added in 3.3.0, with a registry row", () => {
       for (const uri of [
         "/schemas/enums/seller-adjustment-kind.json",
-        "/schemas/enums/change-origin.json",
         "/schemas/core/seller-adjustment-allowance.json",
         "/schemas/core/applied-seller-adjustment.json",
         "/schemas/core/allowance-applied-webhook.json",
