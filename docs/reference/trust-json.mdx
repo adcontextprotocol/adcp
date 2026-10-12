@@ -31,7 +31,7 @@ The record answers one question: which agents does this organization run, who ma
 
 | Field | Purpose |
 |---|---|
-| `agents[]` | Agents the organization runs: `url`, namespaced `roles`, optional `protocols`, `countries`, an optional `key_thumbprints` pin, and per-protocol `profiles`. One agent per origin |
+| `agents[]` | Agents the organization runs: `url`, namespaced `roles`, optional `protocols`, `countries`, and per-protocol `profiles`. One agent per origin, and no keys |
 | `grants[]` | Authority the organization delegates: `grantee` domain, optional `agents[]` narrowing, namespaced `scopes`, `countries`, `valid_from` and `valid_until`. Grants never carry keys |
 | `exclusive_grants` | When true, `grants[]` is exhaustive for the scopes it names |
 | `acknowledgements[]` or `acknowledgements_url` (not both) | Grants the organization accepts, by reference: `grantor`, `agent_url`, and `via`. Terms stay in the grantor's document |
@@ -119,7 +119,7 @@ An ad network that accepts publisher grants by reference, with the bulk entries 
 
 An agent is identified by the [canonical origin](/docs/reference/url-canonicalization#canonical-origin) of its `url`, and every agent URL in the record (agents, grant narrowing, acknowledgements) matches by origin. A record lists at most one agent per origin. A vendor that runs an agent per tenant gives each tenant its own subdomain, as the examples above do. The schema cannot express the one-agent-per-origin rule, so validators check it separately.
 
-The record carries no keys. An agent publishes its signing keys in the Web Bot Auth key directory at its own origin, `/.well-known/http-message-signatures-directory`. The optional `key_thumbprints` pin is checked when a seller binds the agent or evaluates a grant through its entry, not on the signature path, and it can only narrow the agent's keys. This follows the design in [`specs/agent-identity-3-3.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) (tracking issue [#8118](https://github.com/adcontextprotocol/adcp/issues/8118)). Until a consumer lands, these rules describe the document shape only.
+The record carries no keys. An agent publishes its signing keys in the Web Bot Auth key directory at its own origin, `/.well-known/http-message-signatures-directory`. The record also carries no key pin: a second list of keys would break Web Bot Auth key rotation, where a new key is published alongside the old one. This follows the design in [`specs/agent-identity-3-3.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) (tracking issue [#8118](https://github.com/adcontextprotocol/adcp/issues/8118)). Until a consumer lands, these rules describe the document shape only.
 
 ## What is not in 3.3
 

@@ -155,16 +155,6 @@
         "description": {
           "type": "string"
         },
-        "key_thumbprints": {
-          "type": "array",
-          "description": "Optional key pin: RFC 7638 JWK SHA-256 thumbprints (base64url, no padding). When present, the key that verified a request must be listed for a binding or grant through this entry to succeed; it is checked there, not on the signature path. It narrows the directory's keys and never adds one. (Planned, specs/agent-identity-3-3.md R3a, not enforced until a consumer lands.)",
-          "items": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9_-]{43}$"
-          },
-          "minItems": 1,
-          "uniqueItems": true
-        },
         "countries": {
           "type": "array",
           "description": "ISO 3166-1 alpha-2 country codes where this agent operates. Omit for global.",

@@ -49,18 +49,18 @@ const neg = [
   ['two agents sharing an origin', { agents: [{ url: 'https://a.example/one', roles: ['adcp:sales'] }, { url: 'https://a.example/two', roles: ['adcp:buying'] }] }],
   ['two agents sharing an origin through a root dot', { agents: [{ url: 'https://a.example./one', roles: ['adcp:sales'] }, { url: 'https://a.example/two', roles: ['adcp:buying'] }] }],
   ['agent url with an empty DNS label', { agents: [{ url: 'https://a.example../x', roles: ['adcp:buying'] }] }],
-  ['malformed key thumbprint', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:buying'], key_thumbprints: ['not-a-thumbprint'] }] }],
+  ['agent carrying a key pin', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:buying'], key_thumbprints: ['NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs'] }] }],
   ['signing_profiles is not part of the schema', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:buying'], profiles: { adcp: { signing_profiles: ['web-bot-auth'] } } }] }],
   ['acknowledgement for an agent the record does not list', { agents: [{ url: 'https://a.example/mcp', roles: ['adcp:sales'] }], acknowledgements: [{ grantor: 'p.example', agent_url: 'https://b.example/mcp', via: 'adcp:adagents' }] }],
 ];
 for (const [name, doc] of neg) { const ok = valid('/schemas/trust/v1/trust.json', doc); console.log(ok ? 'UNEXPECTED PASS' : 'rejects', name); if (ok) fail++; }
-// positive: a key pin on one origin, an agent on another, and an acknowledgement matched by origin
+// positive: two agents on distinct origins, and an acknowledgement matched by origin
 const pos = {
   agents: [
-    { url: 'https://buyer.a.example/mcp', roles: ['adcp:buying'], key_thumbprints: ['NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs'] },
+    { url: 'https://buyer.a.example/mcp', roles: ['adcp:buying'] },
     { url: 'https://Gov.A.Example:443/mcp', roles: ['adcp:governance'] },
   ],
   acknowledgements: [{ grantor: 'p.example', agent_url: 'https://gov.a.example/other-path', via: 'adcp:adagents' }],
 };
-{ const ok = valid('/schemas/trust/v1/trust.json', pos); console.log(ok ? 'PASS' : 'FAIL', 'pin, distinct origins, acknowledgement matched by origin'); if (!ok) { fail++; console.log(JSON.stringify(ajv.errors, null, 1)); } }
+{ const ok = valid('/schemas/trust/v1/trust.json', pos); console.log(ok ? 'PASS' : 'FAIL', 'distinct origins, acknowledgement matched by origin'); if (!ok) { fail++; console.log(JSON.stringify(ajv.errors, null, 1)); } }
 process.exit(fail ? 1 : 0);
