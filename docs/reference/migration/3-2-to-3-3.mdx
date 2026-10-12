@@ -150,10 +150,9 @@ The field is stable in 3.3, not experimental. It completes the basis vocabulary 
 
 **Interim on 3.2.** Until you claim 3.3, carry the value as `ext.adcp.age_determination_bases` on the signal-listing entry. This is the AdCP-owned `ext.adcp` namespace, the same precedent as `ext.adcp.opportunity`, not a vendor extension, so migrating is a rename: move the value from `ext.adcp.age_determination_bases` to a top-level `age_determination_bases` and drop the `ext` copy. Apply the same matching rule on 3.2. If a listing carries both, the top-level field wins. Buyers cannot infer 3.2 support from absence, and an absent value already means no basis claim, so the interim is safe to omit.
 
-{/* Using latest because this listing shape is not in a released artifact; the ext carrier is valid against the 3.2 open ext. */}
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/signal-listing.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/signal-listing.json",
   "signal_ref": { "scope": "product", "signal_id": "verified_adults_25_34" },
   "name": "Verified adults 25–34",
   "value_type": "binary",

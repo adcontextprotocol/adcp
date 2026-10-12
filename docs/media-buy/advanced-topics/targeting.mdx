@@ -386,10 +386,9 @@ A signal's `demographic_predicate.age` says which ages it covers, not how those 
 
 **Matching.** A signal listing (an `included_signals` entry, a `signal_targeting_options` entry, or a `get_signals` result) satisfies a requested age predicate that carries `accepted_bases` only when both hold: its `demographic_predicate.age` is within the requested range, and every value in its `age_determination_bases` is in the request's `accepted_bases`. This is a condition on each signal, not on the union: `supported_bases` is an any-of set of ways a product can resolve an impression, while a signal's bases describe every member, so a mixed `["verified", "inferred"]` signal fails a buyer that accepts only `verified`. Coverage of the requested interval still follows the exact-union rule above: the signals together must cover the request with no gap and no extra age, and each one must pass the basis test. The accepted set is the effective one after `age_restriction` narrowing, so a signal declaring only `declared` fails when `verification_required` is true. When the request has no `accepted_bases` and no `verification_required`, the basis does not affect matching. `age_determination_bases` is disclosure on the signal; it does not change how `supported_bases` or `applied_bases` are computed.
 
-{/* Using latest because age_determination_bases is not yet in any released schema; update to the v3 alias after the 3.3 release. */}
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/signal-listing.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/signal-listing.json",
   "signal_ref": { "scope": "product", "signal_id": "verified_adults_25_34" },
   "name": "Verified adults 25–34",
   "value_type": "binary",
