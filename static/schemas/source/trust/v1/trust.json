@@ -373,7 +373,7 @@
                   "type": "array",
                   "description": "Verified-identity relying parties this organization operates (TMP Identity Match attestation provenance). Intended to move here from brand.json in a future release; brand.json is unchanged in 3.3. Experimental.",
                   "items": {
-                    "$ref": "/schemas/brand.json#/definitions/identity_relying_party"
+                    "$ref": "/schemas/core/identity-relying-party.json"
                   }
                 }
               },
