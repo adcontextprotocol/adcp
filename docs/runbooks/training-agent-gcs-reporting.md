@@ -69,7 +69,9 @@ it makes no official advertising finality claim.
 
 Migration 620 installs the published production composer's Core, finality
 writer fence, Managed Delivery, notification/outbox/activity, object inventory
-and installation-authority SQL in `training_reporting_gcs`. Core and Managed
+and installation-authority SQL in `training_reporting_gcs`. Migration 621 adds
+the obligation tombstone table that the SDK 15.8.1 Core ledger reads before
+planning any period; it has the same namespace prerequisite. Core and Managed
 use the **same** pool on the application primary. Host tables freeze source
 facts, the destination, principal, bucket, namespace and trusted reader grants.
 The SDK's installation UUID survives migration replay and process reconstruction.
