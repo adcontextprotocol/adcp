@@ -172,16 +172,16 @@ changing it increments the MediaBuy revision without changing the accepted
 terms or creating an accepted-proposal successor.
 
 Use `sync_creatives.assignment_operations` for creative changes. Creative
-assignment is independent from commercial control and does not increment the
-MediaBuy revision merely because an assignment changed. There is no shared
-optimistic-concurrency fence between `sync_creatives` and
-`control_media_buy`: a successful sync can change assignment state while the
-MediaBuy `revision` remains unchanged. By contrast, a creative-assignment or
-inline-creative mutation performed inside the `update_media_buy` compatibility
-facade is part of that atomic MediaBuy update and MUST increment `revision`.
-Clients mixing the two surfaces must re-read both package assignments and the
-MediaBuy before computing a replacement; the revision alone cannot prove that
-assignment state is unchanged.
+assignment is independent from commercial control: it does not create an
+accepted-proposal successor or change the accepted terms. It does advance the
+MediaBuy `revision`, because assignment state is reported on `get_media_buys`.
+`sync_creatives` accepts no media-buy `revision` precondition, so it cannot be
+fenced by `control_media_buy`'s token, but a successful sync invalidates it: a
+stale `control_media_buy` `revision` fails with `CONFLICT`. A creative-assignment or inline-creative
+mutation performed inside the `update_media_buy` compatibility facade is part
+of that atomic MediaBuy update and MUST increment `revision` as well. Clients
+mixing the two surfaces re-read the MediaBuy after a `CONFLICT` before
+computing a replacement.
 
 ## Guaranteed / PG deal variation
 

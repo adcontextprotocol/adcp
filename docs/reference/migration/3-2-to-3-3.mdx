@@ -13,7 +13,7 @@ description: "Adopt AdCP 3.3 while preserving 3.2 compatibility: behavior change
 
 3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed. `seller_id` on event source and audience results is deprecated in favor of the new `platform_id` field; natural-key account references after provisioning are also deprecated (see [Deprecations](#deprecations)). Schema-valid 3.2 messages stay schema-valid except for the [domain identifier constraints](#property-domain-identifiers-have-an-enforceable-format) and names 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
-Read the required behavior changes first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account), [signature verification tightens](#signature-verification-tightens), [counterparty-asserted domain lists are bounded](#counterparty-asserted-domain-lists-are-bounded), [domain identifiers have an enforceable format](#property-domain-identifiers-have-an-enforceable-format), and [property list references resolve through AdCP tasks](#property-list-references-resolve-through-adcp-tasks). Sellers reporting event source or audience platform IDs also emit [both identifier aliases](#deprecations). Two changes loosen a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib) and the [client response-size default rises to 4 MiB](#client-response-size-default-rises-to-4-mib). One new recommendation tightens a limit in the other direction, so a 3.3 buyer can reject what a 3.2 buyer accepted: [clients bound agent response size](#recommended-bound-agent-response-size).
+Read the required behavior changes first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account), [signature verification tightens](#signature-verification-tightens), [counterparty-asserted domain lists are bounded](#counterparty-asserted-domain-lists-are-bounded), [domain identifiers have an enforceable format](#property-domain-identifiers-have-an-enforceable-format), and [property list references resolve through AdCP tasks](#property-list-references-resolve-through-adcp-tasks), and [seller revisions advance on every committed change](#seller-revisions-advance-on-every-committed-change). Sellers reporting event source or audience platform IDs also emit [both identifier aliases](#deprecations). Two changes loosen a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib) and the [client response-size default rises to 4 MiB](#client-response-size-default-rises-to-4-mib). One new recommendation tightens a limit in the other direction, so a 3.3 buyer can reject what a 3.2 buyer accepted: [clients bound agent response size](#recommended-bound-agent-response-size).
 
 For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3). For prerelease artifacts and SDK timing, use the [3.3 beta program](/docs/reference/3-3-beta).
 
@@ -35,6 +35,8 @@ For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/w
 | 12 | Buyers, SDK maintainers, and every agent operator | Adopt the client response-size bound (4 MiB default); keep `tools/list`, `get_adcp_capabilities`, and the agent card small, and paginate rather than asking buyers to raise their limits. |
 | 13 | Media-buy sellers and signals resellers | Stop mirroring counterparty `adagents.json` into `publisher_domains` / `data_provider_domains`; truncate and flag incomplete rather than exceed the new bounds. Buyers: never deny on absence from either list. |
 | 14 | Property list issuers, receivers, and SDK maintainers | Validate domain identifiers, support MCP reference resolution with list-scoped bearer credentials, and fetch every page before applying a list. |
+| 15 | Sellers with a media-buy, account or creative revision | Advance it on every committed change from any origin, including `sync_creatives` assignments and ingested connected-platform changes; add `origin` to `history` entries; optionally return `seller_revision` on `list_creatives`. |
+| 16 | Buyers that update media buys | Pass the latest `revision`, and expect `CONFLICT` after a seller or connected-platform change; re-read and retry. |
 
 ## Required to claim 3.3 behavior
 
@@ -122,6 +124,19 @@ contracts. Compliance checks follow the normative resolution requirements under
 [DR-0001](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0001-conformance-assertions-normative-basis.md).
 See [reference resolution](/docs/governance/property/tasks/property_lists#resolving-a-property-list-reference)
 for the complete credential and caching requirements.
+
+### Seller revisions advance on every committed change
+
+3.2 text said the media-buy `revision` "MUST increment on every mutating state change or update" but listed only `update_media_buy`, and exempted assignment changes made through `sync_creatives` and seller-optimized allocation. 3.3 states the rule once: for every resource that carries a seller-maintained revision, the seller MUST advance it on every committed change to state that resource's authoritative read reports, whatever the origin: an AdCP task, a seller operator, seller automation, another authorized principal, or a connected platform. An externally observed change advances it when the seller ingests it, within the source's declared freshness bound. Reads, validation-only calls and exact idempotency replays do not advance it.
+
+**Sellers.**
+
+- Advance the media-buy `revision` on operator and ad-server edits, on connected-platform changes you ingest, on seller automation such as a review decision that changes a package's creative approval, and on every applied `sync_creatives` assignment change (once per affected buy, in the same atomic write as that buy's assignment change). A platform report that merely echoes a change you already committed is not a new change. Delivery measurements (`snapshot`, `get_media_buy_delivery`), `indicators`, `health`, `impairments` and `webhook_activity` carry their own freshness fields and are not revisioned state. An ingestion pass that observes no change advances nothing, and one atomic ingestion transaction may coalesce its changes into one revision step.
+- Append a `history` entry for each such change. For a change that did not arrive through an AdCP task, set the entry's `origin.kind` to `seller_operator`, `seller_system`, `connected_platform` or `unknown`, the same vocabulary as `account.change.origin`. The existing `actor` string is unchanged.
+- Seller-optimized allocation: changing a reported cap, target, pacing or lifecycle value advances the revision with `origin.kind: "seller_system"`. Spreading spend between packages inside the accepted caps remains delivery behavior and advances nothing, so for allocation this restates 3.2 rather than tightening it.
+- When you maintain a creative `seller_revision`, `account.change.resource_revision` carries its value immediately after the change, in the same JSON type.
+
+**Buyers.** An update that carries a stale `revision` was already rejected with `CONFLICT`; a buyer that omits `revision` is not fenced and sees nothing new. The rejection now also happens after a change you did not make, including a `sync_creatives` assignment from another caller or your own earlier call. Re-read with `get_media_buys` (the `sync_creatives` response does not return the new revision in 3.3), reconcile, and retry with the new `revision` and a fresh `idempotency_key`; never retry the same stale `revision`. Do not treat an unchanged `revision` as proof that package assignments are unchanged on a 3.2 seller.
 
 ### Brand JSON size cap rises to 2 MiB
 
@@ -258,6 +273,10 @@ These restate existing rules and need no wire change.
 
 ## Adopt by capability
 
+### Creative `seller_revision`
+
+Optional. `list_creatives` may return `seller_revision` on each creative: a seller-maintained, monotonic, opaque token (integer or string) distinct from the buyer-assigned `revision_id`. Compare values for equality; integers also order numerically. Buyers that see it on a drained `account.change` record's `resource_revision` can tell whether a read already reflects the change. Package, creative assignment, audience, catalog, event source, property list, product and signal revisions are deferred to 3.4. See [Seller revision](/docs/creative/task-reference/list_creatives#seller-revision).
+
 ### SDK implementation metadata
 
 Optional. Agents can report `adcp.implementation.sdks[]` with a package `name`, exact resolved `version`, and a `components` list. `components: []` reports SDK use without claiming agent-wide component coverage, such as an SDK signing helper used on only some routes. Existing agents may omit the block; buyers treat omission as unknown SDK use, while `sdks: []` explicitly reports no AdCP SDK use. Components describe the deployed server integration, including build-time type imports, rather than the package's available features. Buyers keep using AdCP version declarations for negotiation and retain all conformance obligations. Approval comes from a trusted catalog, and reducing check depth requires independently trusted evidence covering the endpoint and integration. See [implementation metadata](/docs/protocol/get_adcp_capabilities#implementation). If a 3.2 agent already uses `adcp.implementation` as an extension point, migrate it to this shape or a vendor-owned `ext` namespace.
@@ -326,7 +345,7 @@ These change grading results, not the wire.
 
 ## Rollback
 
-Stay on, or return to, `"3.2"`: every 3.3 declaration is optional, so removing it restores 3.2 behavior. The two tightenings above are the exception: they apply as soon as you claim 3.3 behavior, so keep a 3.2-pinned route until your discovery and verification paths pass against the beta.
+Stay on, or return to, `"3.2"`: every 3.3 declaration is optional, so removing it restores 3.2 behavior. The three tightenings above are the exception: they apply as soon as you claim 3.3 behavior, so keep a 3.2-pinned route until your discovery, verification and revision-advancing paths pass against the beta. A seller that advances revisions from every origin while serving 3.2 callers only makes stale-`revision` updates fail sooner, which 3.2 already allowed.
 
 ## Related
 
