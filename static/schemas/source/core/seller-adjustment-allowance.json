@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/seller-adjustment-allowance.json",
+  "title": "Seller Adjustment Allowance",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "A bounded change the buyer pre-authorizes in commercial_terms, bound by terms_digest, that the seller may apply unilaterally to one purchase as a new revision. Outside the bounds the seller sends an offer. Experimental in AdCP 3.3 (media_buy.seller_adjustment_allowances).",
+  "type": "object",
+  "properties": {
+    "allowance_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "seller_adjustment_allowance",
+      "description": "Identifier unique within the commercial terms. Applied adjustments and change records cite it."
+    },
+    "kind": { "$ref": "/schemas/enums/seller-adjustment-kind.json" },
+    "purchase_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Position in commercial_terms.purchases that this allowance covers."
+    },
+    "min_notice": {
+      "$ref": "/schemas/core/duration.json",
+      "description": "Minimum lead time before the end of the purchase flight (budget_release) or before the scheduled time of the item moved (schedule_shift)."
+    },
+    "max_release_fraction": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1,
+      "description": "budget_release only. Ceiling on the cumulative release, as a fraction of the purchase budget in the terms that introduced this allowance."
+    },
+    "max_shift": {
+      "$ref": "/schemas/core/duration.json",
+      "description": "schedule_shift only. Largest move, earlier or later, from the agreed time."
+    },
+    "alternates": {
+      "type": "array",
+      "minItems": 1,
+      "description": "schedule_shift only. Ordered pre-approved alternates (broadcast line alternates). The seller MUST use the first available one.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Display name, such as the program title." },
+          "collection": { "$ref": "/schemas/core/collection-ref.json" },
+          "placement": { "$ref": "/schemas/core/placement-ref.json" },
+          "daypart_targets": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "/schemas/core/daypart-target.json" }
+          }
+        },
+        "anyOf": [
+          { "required": ["collection"] },
+          { "required": ["placement"] },
+          { "required": ["daypart_targets"] }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["allowance_id", "kind", "purchase_index"],
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "budget_release" } }, "required": ["kind"] },
+      "then": { "not": { "anyOf": [{ "required": ["max_shift"] }, { "required": ["alternates"] }] } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "schedule_shift" } }, "required": ["kind"] },
+      "then": {
+        "not": { "required": ["max_release_fraction"] },
+        "anyOf": [{ "required": ["max_shift"] }, { "required": ["alternates"] }]
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Release up to 20% of the purchase budget when under-delivering, with 7 days' notice",
+      "data": {
+        "allowance_id": "allow_release_1",
+        "kind": "budget_release",
+        "purchase_index": 0,
+        "max_release_fraction": 0.2,
+        "min_notice": { "interval": 7, "unit": "days" }
+      }
+    },
+    {
+      "description": "Broadcast line alternates for a primary program",
+      "data": {
+        "allowance_id": "allow_alt_1",
+        "kind": "schedule_shift",
+        "purchase_index": 1,
+        "min_notice": { "interval": 24, "unit": "hours" },
+        "alternates": [
+          { "label": "Quiz Night", "collection": { "publisher_domain": "network.example", "collection_id": "quiz_night" } },
+          { "label": "Evening News 6P", "collection": { "publisher_domain": "network.example", "collection_id": "evening_news_6p" } }
+        ]
+      }
+    }
+  ]
+}

@@ -56,6 +56,13 @@
             ],
             "description": "Current accepted compact proposal, including the complete digested commercial envelope. Required whenever accepted_proposal_id is present so restarted SDKs can recover control-versus-refinement routing without reconstructing historical offers."
           },
+          "applied_adjustments": {
+            "type": "array",
+            "items": { "$ref": "/schemas/core/applied-seller-adjustment.json" },
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
+            "description": "Experimental (media_buy.seller_adjustment_allowances). Changes the seller applied under the buy's accepted seller_adjustment_allowances, oldest first. This is the repair read for media_buy.allowance_applied. Omit when empty. Sellers MUST NOT include the field for callers pinned below AdCP 3.3; a caller with no declared pin is treated as pinned below 3.3."
+          },
           "account": {
             "$ref": "/schemas/core/account.json",
             "description": "Account billed for this media buy"
@@ -258,10 +265,36 @@
                   "description": "Package affected, when the change targeted a specific package.",
                   "x-entity": "package"
                 },
+                "allowance_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "x-entity": "seller_adjustment_allowance",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0",
+                  "description": "The allowance that authorized this change. When present, actor is seller_system or seller_operator and reason is required. The account change feed record for the same change carries the same allowance_id."
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "pattern": "^[a-z][a-z0-9_.-]{0,99}$",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0",
+                  "description": "Short machine-readable reason code, the same shape as the reason on an account change record. Human-readable text goes in summary. Required with allowance_id."
+                },
                 "ext": {
                   "$ref": "/schemas/core/ext.json"
                 }
               },
+              "allOf": [
+                {
+                  "if": { "required": ["allowance_id"] },
+                  "then": {
+                    "required": ["actor", "reason"],
+                    "properties": { "actor": { "enum": ["seller_system", "seller_operator"] } }
+                  }
+                }
+              ],
               "required": [
                 "revision",
                 "timestamp",
