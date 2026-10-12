@@ -7,7 +7,7 @@
 
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { canonicalTargetUri } from '@adcp/sdk/signing';
-import type { WebhookAuthentication } from '@adcp/sdk/server';
+import { AdcpError, type WebhookAuthentication } from '@adcp/sdk/server';
 import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 import {
@@ -596,11 +596,15 @@ export async function rehydrateAccountById(
   try {
     binding = await resolveReportingAccountDurably(principal, { account_id: accountId });
   } catch (err) {
-    // Best effort: without the binding the id keeps its opaque partition, so
-    // this request reads a different partition than the natural key. Log it so
-    // a transient durable-read failure is visible rather than a silent split.
-    logger.warn({ err, accountId }, 'Failed to rehydrate account by account_id; reference keeps its opaque partition');
-    return;
+    // Fail closed. Without the binding the id would key its opaque partition:
+    // a read would miss the account's state, and a write would be stranded
+    // where later natural-partition reads never see it. A transient error lets
+    // the buyer retry once the durable store recovers.
+    logger.warn({ err, accountId }, 'Failed to rehydrate account by account_id');
+    throw new AdcpError('SERVICE_UNAVAILABLE', {
+      recovery: 'transient',
+      message: 'Account state is temporarily unavailable. Retry the request.',
+    });
   }
   if (!binding || binding.accountId !== accountId) return;
   const state = accountStateFromReportingBinding(binding, principal, new Date().toISOString());
