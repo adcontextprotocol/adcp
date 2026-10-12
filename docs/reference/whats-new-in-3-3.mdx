@@ -85,6 +85,10 @@ Both lists are explicitly non-exhaustive, so a buyer must resolve the publisher 
 on a product through that publisher's own `adagents.json` and must never read absence
 from the list as a denial.
 
+### Account change feed: recognize your own changes
+
+The experimental account change feed (`account.change_feed`) gains two changes ahead of graduation. A record whose `origin.kind` is `adcp` can echo the originating request's `idempotency_key`, so a buyer recognizes its own changes on a shared account; the seller includes it only on records served to the principal that sent the request, and every other reader sees the same record without it. And `changed_paths` is now required when `origin.kind` is `adcp` or `seller_operator`, staying best-effort for `seller_system` and `connected_platform`. See [`list_account_changes`](/docs/accounts/tasks/list_account_changes#recognizing-your-own-changes).
+
 ### Clarifications and conformance
 
 - `authorized_agents[].url` in `adagents.json` is the agent's full protocol endpoint URL, including its path, and one entry is needed for each agent URL. See [Agent URL matching](/docs/governance/property/adagents#agent-url-matching).
@@ -104,6 +108,7 @@ The account-reference and trust-docs clarifications already shipped in 3.2.2 ([`
 | A seller reporting event source or audience platform IDs | Emit `platform_id` and the deprecated `seller_id` alias with identical values, including discovery responses. |
 | A buyer consuming event source or audience platform IDs | Prefer `platform_id`, fall back to `seller_id` when absent, and keep using buyer object IDs in AdCP requests. |
 | A seller with a catalog intake | Declare `catalog_ingestion` if buyers need your limits, and reject out-of-declaration requests before mutation. |
+| A seller advertising `account.change_feed` | Include `changed_paths` on every `adcp` and `seller_operator` record; optionally echo `idempotency_key` on `adcp` records, to the sending principal only. |
 | A DOOH seller | Add `location` and `venue_counts` where you can disclose them; both are optional. |
 | An SDK maintainer | Generate from the signed beta.0 tarball and publish an exact support statement. |
 | A buyer or SDK maintainer | Adopt the 4 MiB response-size default; size your aggregate budget, not just the per-call one, if you fan out across agents. |
