@@ -4709,6 +4709,66 @@ async function runTests() {
     'request_proposals rejects a closed opportunity'
   );
   await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'brief',
+      brief: 'Reach streaming audio listeners in Rome',
+      account: { account_id: 'acc_rome_audio' },
+      opportunity: { opportunity_id: 'opp-rome-audio-2027', phase: 'planning' }
+    },
+    'get_products accepts opportunity context on brief'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'refine',
+      refine: [{ scope: 'request', ask: 'Shift budget toward evenings' }],
+      opportunity: { opportunity_id: 'opp-rome-audio-2027' }
+    },
+    'get_products accepts opportunity context on refine'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'brief',
+      brief: 'Reach streaming audio listeners in Rome',
+      opportunity: { opportunity_id: 'opp-rome-audio-closed', status: 'closed', close_reason: 'not_pursued' }
+    },
+    'get_products rejects a closed opportunity'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'brief',
+      brief: 'Reach streaming audio listeners in Rome',
+      opportunity: { opportunity_id: 'not valid!' }
+    },
+    'get_products rejects a malformed opportunity_id'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    { buying_mode: 'wholesale' },
+    'get_products accepts a wholesale feed read without opportunity'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'brief',
+      brief: 'Reach streaming audio listeners in Rome',
+      opportunity: { opportunity_id: 'opp-rome-audio-2027', status: 'open' },
+      ext: { adcp: { opportunity: { opportunity_id: 'opp-rome-audio-2027' } } }
+    },
+    'get_products accepts core opportunity alongside the ext.adcp bridge'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/get-products-request.json',
+    {
+      buying_mode: 'wholesale',
+      opportunity: { opportunity_id: 'opp-rome-audio-2027' }
+    },
+    'get_products rejects opportunity on a wholesale feed read'
+  );
+  await testSchemaValidation(
     '/schemas/media-buy/decline-proposals-request.json',
     {
       idempotency_key: 'decline-proposals-0001',

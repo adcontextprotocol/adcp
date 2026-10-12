@@ -43,7 +43,11 @@ Concrete screens can carry `dooh_placement_attributes.location` (`lat`, `lon`, a
 
 ### The `ext.adcp` namespace
 
-`ext.adcp` is now a registered, AdCP-owned extension namespace. Its first member is an optional `opportunity` binding for cooperating 3.2 `get_products` integrations, declared by listing `adcp` in `extensions_supported`. It reuses the published 3.2 `OpportunityContext` shape and is not the core `opportunity` field. The namespace is reserved for the AdCP working group, so vendors keep their own namespaces. See [AdCP opportunity extension](/docs/building/by-layer/L2/context-sessions#adcp-opportunity-extension).
+`ext.adcp` is now a registered, AdCP-owned extension namespace. Its first member is an optional `opportunity` binding for cooperating 3.2 `get_products` integrations, declared by listing `adcp` in `extensions_supported`. It reuses the published 3.2 `OpportunityContext` shape and is not the core `opportunity` field, which is defined separately for `get_products` (see below). The namespace is reserved for the AdCP working group, so vendors keep their own namespaces. See [AdCP opportunity extension](/docs/building/by-layer/L2/context-sessions#adcp-opportunity-extension).
+
+### `opportunity` on `get_products`
+
+`get_products` gains the optional `opportunity` object that `request_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `create_media_buy` already carry in 3.2, so callers still on the deprecated task during the 3.x transition can join a planning cycle without the `ext.adcp.opportunity` bridge. It is valid with `buying_mode` `brief` and `refine`, must have `status: "open"` when supplied, and takes precedence over the extension. See [Opportunity context](/docs/media-buy/task-reference/get_products#opportunity-context).
 
 ### Clarifications and conformance
 
