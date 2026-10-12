@@ -610,7 +610,7 @@ validation_result:
       same tokens after splitting on "_"; for example supported_buying_modes
       suggests buying_modes). Runners SHOULD set defined_in to the earliest
       later release whose schema defines the property, when one does. A
-      property defined in a later release is not a typo, but under DR-0024 a
+      property defined in a later release is not a typo, but under the served-release rule (#7718) a
       new oneOf arm or widened type must be projected for the served release,
       and response_schema grades that. Remediation text points vendor-specific
       data at ext.{namespace}. Normative basis: versioning.mdx §Extensibility,
