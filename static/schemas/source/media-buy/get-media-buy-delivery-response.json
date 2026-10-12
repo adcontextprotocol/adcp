@@ -840,7 +840,7 @@
                     },
                     "by_installment": {
                       "type": "array",
-                      "description": "Delivery by canonically identified installment within this package.",
+                      "description": "Delivery by canonically identified installment within this package. Experimental in AdCP 3.3: rows may carry installment_status and publication (proof of publication). Rows without installment_status are delivery rows, as in AdCP 3.2. Sellers MUST NOT send scheduled, tentative, postponed, or cancelled rows to callers pinned below AdCP 3.3, and a caller with no declared pin counts as below 3.3. A seller that declares cancelled in available_installment_statuses MUST report a sold installment that will not run as cancelled rather than drop the row.",
                       "items": { "$ref": "/schemas/core/installment-delivery-metrics.json" }
                     },
                     "by_installment_truncated": {
