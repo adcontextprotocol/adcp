@@ -31,6 +31,7 @@ Each beta is immutable. The `3.3-beta` documentation selector advances to the la
 - **Media buy:** optional `media_buy.features.catalog_ingestion` declarations for catalog types, modes, feed formats, identifiers, batch limits, and item status reporting (#7927).
 - **Channels:** structured DOOH `location` on placements and `dooh_inventory_summary.venue_counts[]` on products (#7416).
 - **Extensions:** the AdCP-owned `ext.adcp` namespace with an optional `opportunity` binding for 3.2 `get_products` integrations (#7904).
+- **Signals:** optional `age_determination_bases` on signal listings, definitions, and enrichment, so a signal can say whether its members' ages are `verified`, `declared`, or `inferred` (#8145). Stable in 3.3; 3.2 integrations carry it as `ext.adcp.age_determination_bases`.
 - **Conformance:** a new advisory unprovisioned-account storyboard, capability-gated wholesale and replay checks, and a polling-based `sales-guaranteed` path (#7848, #7893, #7854, #7931).
 
 ### Behavior changes to review
