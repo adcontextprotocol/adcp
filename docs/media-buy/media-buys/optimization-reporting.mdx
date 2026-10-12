@@ -201,6 +201,30 @@ The seller's bidding stack steered toward higher Adelaide attention scores; the 
 
 If Adelaide's coverage on the inventory dropped below the seller's confidence threshold and they couldn't populate `vendor_metric_values` for this period, the same `(vendor, metric_id)` shows up in `missing_metrics` — same key across the entire lifecycle, so buyer reconciliation is a row-level join.
 
+## Where did this number come from
+
+A delivery or audience figure can carry several independent provenance fields. Each answers a different question, and none substitutes for another: the provider that produced a row is not the demographic notation it is written in, and neither says how the figure was derived. Read them together.
+
+| Field | Question it answers | Value | Where it rides | Scope |
+|---|---|---|---|---|
+| `measurement_source` | Which audience-measurement **provider's data** produced this row? | Lowercase provider slug (`nielsen`, `geopath`, `barb`) | Row-level on [`delivery-metrics.json`](https://adcontextprotocol.org/schemas/v3/core/delivery-metrics.json), mirroring `delivery-forecast.json` so a forecast and its delivery reconcile on the same declaration | One delivery row (measured channels: radio, broadcast, OOH) |
+| `vendor` | Which **vendor defined and computed** this vendor-defined metric? | BrandRef resolving to the vendor's `brand.json` and its `measurement` agent catalog | `reporting_capabilities.vendor_metrics[]` (declaration), `committed_metrics[]`, and `vendor_metric_values[]` (delivery) | One `(vendor, metric_id)` metric |
+| `vendor_relationship` | How is that vendor related to the **seller**? | `first_party`, `affiliated`, or `third_party`; absence means undeclared, never `third_party` | Declared on `reporting_capabilities.vendor_metrics[]`; optionally echoed on `vendor_metric_values[]` | One `(seller, vendor)` pair |
+| `completion_source` | Who **attested to the completion event** behind `completion_rate`? | `seller_attested` or `vendor_attested` | `qualifier.completion_source` on commitments, missing metrics, and delivery values | The `completion_rate` metric only |
+| `demographic_system` | What **notation** is the demographic code written in? | Notation enum (for example `nielsen`, `barb`, `nmo`, `videoamp`, `custom`) | `by_demographic` rows, demographic reporting capability, forecasts, and `cpp` pricing | One demographic code. Notation only: it does not say whose panel produced the number. |
+| `estimation_basis` | How was `estimated_impressions` **derived** (static OOH)? | `currency_measured` or `seller_modeled` | `ooh_metrics.estimated_impressions` (experimental) | One OOH delivery row |
+| `circulation_basis` | How was `circulation_delivered` **derived** (print)? | `audited` or `seller_modeled` | `print_metrics.circulation_basis` on `by_installment` rows (experimental) | One print installment |
+| `match_rate_basis` | Did the platform **report** `effective_match_rate`, or did the seller compute it? | `platform_reported` or `derived` | Each audience in a [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) result, beside `audience_size` and `targetable_size` | One audience match result |
+
+How the fields combine:
+
+- **Provider versus vendor.** `measurement_source` names a provider as a slug on a measured-channel row. `vendor` names a vendor as a BrandRef on a vendor-defined metric, and `vendor_relationship` says how that vendor stands relative to the seller. Neither is a quality ranking, and neither implies the other.
+- **Tier, not provider.** `estimation_basis` and `circulation_basis` record how a figure was derived. The provider rides `measurement_source`, so an `audited` circulation figure still names its auditor there. Currencies change over time, so tier values stay stable while provider slugs vary.
+- **Notation, not provenance.** `demographic_system` only fixes how `P25-54` or `M25-54` is written. Report the provider that measured the audience in `measurement_source`.
+- **Attestation.** `completion_source` and `vendor_relationship` both distinguish seller-produced from independent figures. `completion_source` applies to `completion_rate` only. `vendor_relationship` applies to every vendor-defined metric.
+- **Basis of a rate.** `match_rate_basis` qualifies a rate, not a count: a `derived` rate computed from approximate or bucketed `audience_size` values is itself approximate.
+- **Different provenance, different measurement.** Rows that differ on `measurement_source`, `vendor`, `completion_source`, or a `*_basis` value are different measurements. Compare them with care rather than summing them into one figure.
+
 ## Performance Monitoring
 
 ### Real-Time Metrics

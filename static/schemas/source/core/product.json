@@ -183,6 +183,7 @@
       "$ref": "/schemas/core/reporting-capabilities.json"
     },
     "dooh_inventory_summary": {
+      "x-added-in": "3.3.0",
       "$ref": "/schemas/core/dooh-inventory-summary.json",
       "description": "Aggregate DOOH/OOH geographic footprint for network/regional products where per-placement dooh_placement_attributes.location is not practical. See dooh-inventory-summary.json for the full description."
     },
