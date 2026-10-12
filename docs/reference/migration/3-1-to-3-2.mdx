@@ -282,9 +282,10 @@ tolerantly. The six known divergences:
    `account` without them fails a 3.1 validator. This is the sharpest
    failure, a required-field flip. 3.2 also makes `status` optional on
    `action: "failed"` rows.
-2. `get_adcp_capabilities` (a SHOULD, not a MUST, for this call): `media_buy.execution.targeting.geo_regions` and
-   `.language` can be objects instead of booleans. This is the discovery call
-   itself, so parse it tolerantly.
+2. `get_adcp_capabilities`: `media_buy.execution.targeting.geo_regions` and
+   `.language` can be objects instead of booleans. From 3.3 a seller MUST
+   project them to booleans for a `"3.1"` pin. This is the discovery call
+   itself, so parse it tolerantly when talking to sellers that predate the rule.
 3. `core/pricing-option.json`: new `revenue_share` arm.
 4. `get_products`: terminal `status: "rejected"` response without `products`.
 5. `get_media_buys` `available_actions[]` canonical action objects.

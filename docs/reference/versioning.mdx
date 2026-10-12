@@ -57,7 +57,11 @@ This lets buyers and sellers upgrade independently — sellers can declare multi
 
 **Server shapes to the served release.** A response to a request negotiated at release R MUST validate against R's published schema, where R is the release the response echoes in `adcp_version` (the downshifted release, or the seller's default when the pin is omitted). Shapes introduced after R (new `oneOf`/`anyOf` arms, widened types, alternative required fields) MUST be projected to R's shape or omitted. A seller that cannot project for a release MUST NOT list it in `supported_versions`. New enum values remain governed by the unknown-value tolerance rule.
 
-`get_adcp_capabilities` is the one exception to the MUST, and it is a SHOULD instead. When that request carries an `adcp_version` below the seller's maximum, the seller SHOULD emit capability shapes valid at that release. The call runs before the buyer has read `supported_versions`, so a strictly typed older client can otherwise fail before negotiation finishes.
+The rule covers `get_adcp_capabilities` like every other response. A capabilities request that pins a release resolves to a served release or to `VERSION_UNSUPPORTED` under the steps above, so the seller always knows what to project to, even though the buyer has not yet read `supported_versions`.
+
+**Negotiation fields are stable within a major.** `adcp.supported_versions`, `adcp.major_versions`, and the `adcp_version` echo MUST keep the same shape across every release of a major. A client of any 3.x release can then read enough of a discovery response to pin, even when the rest of it is newer than the client understands.
+
+**Unpinned requests.** A request with no `adcp_version`, or with only `adcp_major_version`, is served at the seller's default release or the highest supported release in that major, as in step 3. That response is shaped to the release it echoes, and the client parses tolerantly. A client that needs older shapes pins a release.
 
 Examples when serving `"3.1"` from a 3.2 seller:
 

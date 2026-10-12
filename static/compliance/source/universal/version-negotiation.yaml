@@ -169,7 +169,7 @@ phases:
           - check: field_value_or_absent
             path: "media_buy.execution.targeting.geo_regions"
             allowed_values: [true, false]
-            description: "3.1 capability shape: geo_regions is a boolean, not the 3.2 object form"
+            description: "3.1 capability shape: geo_regions is a boolean, not the 3.2 object form (the projection MUST covers get_adcp_capabilities, DR-0024)"
             severity: advisory
             permanent_advisory:
               reason: "Runner cannot yet validate responses against the served release's schema bundle; stays advisory until that runner capability ships."
