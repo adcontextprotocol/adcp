@@ -159,8 +159,9 @@ These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md`
 
 - **Which record authorizes.** At `sync_accounts`, the authorizing record is the **brand's** trust record, or its house record when the brand has one.
 - **When the operator is the brand.** When `account.operator`, the brand, and the signer's operator (R3a) share a registrable domain, authority is implicit and no grant is needed. This matches today's "Self-authorization is implicit" rule in `L2/accounts-and-agents.mdx`.
-- **Otherwise, a grant chain must reach the signer's operator** with a scope covering the operation (`adcp:media_buying` for buys). Either of these satisfies it:
+- **Otherwise, a grant chain must reach the signer's operator** with a scope covering the operation (`adcp:media_buying` for buys). Any of these satisfies it:
   - the brand grants the signer's operator directly, and `account.operator` is the signer's operator;
+  - the brand is `account.operator` and grants the signer's operator directly (a brand running its own account through a platform-hosted agent, the cross-organization hosting case in R3a);
   - the brand grants `account.operator`, and `account.operator` grants the signer's operator (an agency using an intermediary or a platform-hosted agent, the #6033 case).
 
   `account.operator` MUST be on the chain. A grant to the signer's operator never authorizes an account that names an operator outside the chain.
