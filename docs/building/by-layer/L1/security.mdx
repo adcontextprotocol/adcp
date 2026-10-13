@@ -1518,9 +1518,19 @@ There is no capabilities fetch and no brand.json lookup, and verification create
 
 **Freshness and operator revocation.**
 - A binding is a cache of the trust-record evaluation, not a standing grant. Verifiers MUST re-evaluate it at least as often as the revocation polling interval, and before a spend-committing call when the cached result is older than that.
-- A fetch failure is not absence: fail closed for spend-committing operations.
-- An operator revokes an agent by removing its origin from the trust record. That ends every binding and grant that reaches the agent through the operator within one cache lifetime.
+- A fetch failure is not absence. A spend-committing operation fails closed with `SERVICE_UNAVAILABLE`, which is retryable. Other operations continue under the cached binding.
+- An operator revokes an agent by removing its origin from the trust record. That ends every binding and grant that reaches the agent through the operator within one cache lifetime. The origin falls back to identity-established: it gets what an anonymous caller gets, as at first contact. While it is unlisted, `open` onboarding cannot bind it again, and the verifier still refuses RFC 9421 signatures for it (no downgrade).
 - Rate-limit, single-flight, and negative-cache trust-record fetches by host, by eTLD+1, and by hop target host. Cache negatives for at most 60 seconds.
+
+**Errors.** Signature failures use the Web Bot Auth status and headers: `403` with `Accept-Signature` for a missing or failed signature, `400` for headers that do not parse, and `429` for a reused nonce. An AdCP error body, when sent, is the generic authentication error with no signature-specific detail.
+
+Once identity is established, every authorization outcome uses the standard AdCP error envelope with existing codes, under the cross-tenant oracle clamp:
+- An operation outside what an identity-established caller may do gets the error an anonymous caller would get.
+- A failed binding or trust-record match gets the gate's authorization error (step 3 above).
+- A grant that does not cover the claim gets `PERMISSION_DENIED`.
+- A trust-record fetch failure on a spend-committing operation gets `SERVICE_UNAVAILABLE`.
+
+A correctly signed request never gets `403` with `Accept-Signature`, which tells the signer to sign again.
 
 **Cross-organization hosting.** A platform that runs an agent for a brand lists the agent in its own trust record, and the brand grants the platform's domain. There is no hosting-delegation fallback.
 

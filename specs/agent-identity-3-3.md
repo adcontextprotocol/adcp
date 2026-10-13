@@ -107,7 +107,7 @@ No other rule restates the definition.
 - **Profile selection.** A signed message that carries `Signature-Agent` or the `web-bot-auth` tag is verified under the WBA profile only, never under the 3.2 profile.
 - **A2A.** RFC 9421 component names apply to every HTTP message, and `security.mdx` §Operation resolution over A2A already covers the bindings. There are no binding-specific component names.
 - **Advertisement.** Capabilities advertise the profile with the identifiers #7894 uses in `request_signing.profiles` and `webhook_signing.profiles`: `web-bot-auth` and `adcp/request-signing/v1`. The WBA draft revision is a separate field next to `profiles`, so a later revision with wire changes is advertised alongside the old one.
-- **Errors.** WBA defines the verifier's answer: `403` with `Accept-Signature`, `400` for headers that do not parse, and `429` for a reused signature or nonce. An AdCP error body, when sent, is the generic authentication error with no signature-specific detail. Conformance grades the status and headers only. The signature-specific `request_signature_*` codes remain for the 3.2 profile.
+- **Errors.** WBA defines the verifier's answer: `403` with `Accept-Signature`, `400` for headers that do not parse, and `429` for a reused signature or nonce. An AdCP error body, when sent, is the generic authentication error with no signature-specific detail. Conformance grades the status and headers only. The signature-specific `request_signature_*` codes remain for the 3.2 profile. Once identity is established, authorization outcomes (scope, binding, trust-record match, grants) use the standard AdCP error envelope with existing codes, never a WBA status: a correctly signed request never gets `403` with `Accept-Signature`.
 
 Everything else on the signature path is the draft's: attaching no policy until verification (§4.1), the `(O, key)` lookup (§5.4), fetch limits (§6.7), coalescing (Appendix C.3), and negative caching (Appendix C.5). AdCP chooses only its numbers, such as a negative cache of at most 60 s.
 
@@ -131,8 +131,8 @@ Evaluated when something is gated on it: binding a principal (R5), evaluating a 
 
 **Freshness and operator revocation.**
 - A binding is a cache of R3a, not a standing grant. Verifiers MUST re-evaluate it at least as often as the revocation polling interval in `security.mdx`, and before a spend-committing call when the cached result is older than that.
-- A fetch failure is not absence: fail closed for spend-committing operations (`brand-identity-trust-split.md` §Grants: "A fetch failure is never equivalent to absence").
-- An operator revokes an agent by delisting its origin. That ends every binding and grant that reaches the agent through the operator within one cache lifetime. This is the operator's lever when the origin itself is compromised.
+- A fetch failure is not absence: fail closed for spend-committing operations with the retryable `SERVICE_UNAVAILABLE` (`brand-identity-trust-split.md` §Grants: "A fetch failure is never equivalent to absence"). Other operations continue under the cached binding.
+- An operator revokes an agent by delisting its origin. That ends every binding and grant that reaches the agent through the operator within one cache lifetime. This is the operator's lever when the origin itself is compromised. The delisted origin falls back to identity-established (R5 rule 1); `open` onboarding cannot bind it again while it is unlisted, and no-downgrade (R4) still applies.
 - Verifiers MUST retain every key revocation they have seen for `O`. An origin cannot un-revoke a key.
 
 **Cross-organization hosting.** A platform that runs an agent for a brand lists the agent in its own trust record, and the brand grants the platform's domain (R6). There is no hosting-delegation fallback, matching `brand-identity-trust-split.md` §Agent resolution step 3.
