@@ -487,3 +487,18 @@ test('collection card fields are excluded from publisher_collection definition p
   const spec = fs.readFileSync(path.join(__dirname, '../docs/media-buy/specification.mdx'), 'utf8');
   assert.ok(spec.includes('| `publisher_collection` | `description`, `ext`, `images`, `name`, `publisher_domain`, `related_collections`, `sample_content`, `season`, `talent`, `url` |'));
 });
+
+test('include_collections is part of the feed version scope', () => {
+  const read = (file) => JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, file), 'utf8'));
+  const tuple = /deprecated property_list, catalog, include_collections\) for cache_scope: 'public'/;
+  assert.match(read('media-buy/get-products-request.json').properties.if_wholesale_feed_version.description, tuple);
+  assert.match(read('media-buy/get-products-response.json').properties.wholesale_feed_version.description, tuple);
+  assert.match(read('media-buy/list-products-request.json').properties.if_feed_version.description, /include_collections is part of the selection/);
+  assert.match(read('media-buy/list-products-response.json').properties.feed_version.description, /including include_collections/);
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/media-buy/task-reference/get_products.mdx'), 'utf8');
+  assert.ok(doc.includes('| Public | `(agent, buying_mode, filters, targeting_overlay, media_buy_frequency_cap, required_overlay_support, required_media_buy_support, deprecated property_list, catalog, include_collections)` |'));
+  assert.ok(doc.includes('deprecated property_list, catalog, include_collections, account_id)` |'));
+  const guide = fs.readFileSync(path.join(__dirname, '../docs/media-buy/product-discovery/collections-and-installments.mdx'), 'utf8');
+  assert.doesNotMatch(guide, /does not grow a new key/);
+  assert.match(guide, /`include_collections` is part of the version scope/);
+});
