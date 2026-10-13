@@ -375,8 +375,9 @@ From 3.3, a brand can publish demand-side grants in its `/.well-known/trust.json
 **How a seller evaluates it at `sync_accounts`:**
 - **The brand's record authorizes.** The seller reads the brand's own trust.json, or its house record when it has one. The buyer's operator record never authorizes a brand outside the operator's registrable domain.
 - **Implicit authority.** When `account.operator`, the brand, and the signer's operator share a registrable domain, authority is implicit. This matches self-authorization above.
-- **Otherwise a grant chain must reach the signer's operator** with a scope covering the operation (`adcp:media_buying` for buys). Either of these satisfies it:
+- **Otherwise a grant chain must reach the signer's operator** with a scope covering the operation (`adcp:media_buying` for buys). Any of these satisfies it:
   - the brand grants the signer's operator, and `account.operator` is the signer's operator;
+  - the brand is `account.operator` and grants the signer's operator (a brand that runs its own account through an agent a platform hosts);
   - the brand grants `account.operator`, and `account.operator`'s own trust.json grants the signer's operator (an agency using an intermediary, or a platform hosting the agency's agent).
 
   `account.operator` MUST be on the chain.
@@ -386,7 +387,7 @@ From 3.3, a brand can publish demand-side grants in its `/.well-known/trust.json
 - **No downgrade.** When the brand's trust.json fetch returns 200, `authorized_operators[]` in its brand.json is ignored. Through 3.x, `authorized_operators` stays a valid source when the brand publishes no trust.json.
 - **Freshness.** Grants are checked at `sync_accounts`, re-derived at least as often as the revocation polling interval, and re-checked before a spend-committing call when the cached result is older than that.
 
-**When no grant covers the claim,** the request fails with `PERMISSION_DENIED` and `error.details` `{ "scope": "agent", "reason": "grant_absent" }`. It is emitted only once the signer's identity is established, under the cross-tenant oracle clamp in [Per-Agent Authorization Gate](/docs/building/by-layer/L3/error-handling#per-agent-authorization-gate). It is a request-level authorization failure: no account is created, and no account changes status. Grants are public, so the reason discloses nothing the buyer can't already read.
+**When no grant covers the claim,** the request fails with `PERMISSION_DENIED` and `error.details` `{ "scope": "agent", "reason": "grant_absent" }`. It is emitted only once the signer's identity is established, under the cross-tenant oracle clamp in [Per-Agent Authorization Gate](/docs/building/by-layer/L3/error-handling#per-agent-authorization-gate). It is a request-level authorization failure: no account is created, and no account changes status. Grants are public, so the reason discloses nothing the buyer can't already read. Like every authorization outcome for a signer whose identity is established, it uses the AdCP error envelope, never a Web Bot Auth status ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). A grantor's trust record that can't be fetched is not `grant_absent`: a spend-committing call fails with the retryable `SERVICE_UNAVAILABLE`.
 
 **When a grant is withdrawn,** the agent loses access, not the account. Later calls from that agent fail with `grant_absent`. The account keeps its status and its live buys, and the operator can authorize a different agent for it. `suspended` stays a seller-initiated pause of the account itself.
 
