@@ -15,6 +15,11 @@ COPY . .
 # Build the TypeScript server (increase heap for large tsc compilation)
 RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 
+# Preserve every immutable release path and byte while storing identical files
+# only once. COPY carries these hard links into the final image. Mutable latest
+# output is excluded so rebuilding it cannot change a released artifact.
+RUN node scripts/deduplicate-runtime-artifacts.cjs
+
 # Historical releases remain immutable in git and in the public R2 artifact
 # CDN. Fly still carries every compliance, docs, and protocol artifact, but its
 # local schema tree only needs hosted-compliance pairs, current docs, aliases,
