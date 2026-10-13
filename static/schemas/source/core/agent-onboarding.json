@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/agent-onboarding.json",
+  "title": "Agent Onboarding Posture",
+  "x-status": "experimental",
+  "description": "How a seller onboards buyer agents: a mode per billing party and for sandbox, with requirements, and where a human starts. Seller-wide and identical for every caller, served on the unauthenticated get_adcp_capabilities fetch, and absent from error payloads, so it cannot act as a per-agent onboarding oracle. Its content is advisory; it changes no error code and no oracle clamp. An absent key means undeclared, never invite_only. See specs/agent-identity-3-3.md R7 (#8113).",
+  "type": "object",
+  "properties": {
+    "sandbox": {
+      "$ref": "/schemas/core/agent-onboarding-tier.json",
+      "description": "Onboarding for sandbox accounts. Valid only when account.sandbox is true. Sandbox carries no spend, so open here grants identity and sandbox access only."
+    },
+    "billing": {
+      "type": "object",
+      "description": "Onboarding per billing party, keyed by billing-party values. Keys MUST be a subset of account.supported_billing. Under open, spend needs an existing seller-side billing relationship with the billed party: the operator domain under operator, the brand's domain under advertiser.",
+      "propertyNames": { "$ref": "/schemas/enums/billing-party.json" },
+      "additionalProperties": { "$ref": "/schemas/core/agent-onboarding-tier.json" }
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Where a human at the buyer starts when a mode has no url of its own. Untrusted: surface it, never fetch or execute it."
+    },
+    "documentation_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "The seller's onboarding and integration documentation. Untrusted, like url."
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable summary of the process and what to have ready. The fallback whenever a reader does not understand a requirement."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

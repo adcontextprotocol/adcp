@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/agent-onboarding-requirement-kind.json",
+  "title": "Agent Onboarding Requirement Kind",
+  "x-status": "experimental",
+  "description": "What a counterparty must satisfy before an onboarding mode applies. Each kind states the direction it applies to; a kind used in the other direction is ignored. Readers MUST treat an unknown kind as unsatisfiable by machine and fall back to the posture's message and url.",
+  "type": "string",
+  "x-extensible": true,
+  "enum": [
+    "agent_identity",
+    "grant",
+    "billing_entity",
+    "contract",
+    "credit_application",
+    "aao_verified",
+    "storyboard",
+    "sandbox",
+    "experimental_feature"
+  ],
+  "enumDescriptions": {
+    "agent_identity": "Seller gating a buyer. The buyer agent's origin is listed in its operator's trust.json with the role the seller needs (adcp:buying).",
+    "grant": "Seller gating a buyer. A demand-side grant authorizes the buyer's operator for the account's brand (DR-0025); implicit when the operator is the brand.",
+    "billing_entity": "Seller gating a buyer. The buyer supplies a billing entity (core/business-entity.json) on sync_accounts.",
+    "contract": "Seller gating a buyer. A signed agreement exists; details at url.",
+    "credit_application": "Seller gating a buyer. A credit application is completed at url, or later through sync_accounts setup.url.",
+    "aao_verified": "Buyer gating a seller. The seller holds an AgenticAdvertising.org Verified badge; role is required, and verification_modes, specialisms, and adcp_version narrow it.",
+    "storyboard": "Buyer gating a seller. The seller passes the named storyboard or specialism (id).",
+    "sandbox": "Buyer gating a seller. The seller declares account.sandbox: true.",
+    "experimental_feature": "Buyer gating a seller. The seller lists the named feature id (id) in experimental_features."
+  }
+}

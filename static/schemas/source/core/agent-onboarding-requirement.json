@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/agent-onboarding-requirement.json",
+  "title": "Agent Onboarding Requirement",
+  "x-status": "experimental",
+  "description": "One requirement an onboarding mode imposes, discriminated by kind. Only aao_verified, storyboard, and experimental_feature carry fields; other kinds are the kind alone. The requirement describes the gate the publishing party applies on its own side; it creates no conformance obligation on the counterparty.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "$ref": "/schemas/enums/agent-onboarding-requirement-kind.json"
+    },
+    "role": {
+      "type": "string",
+      "description": "aao_verified: the badge role required, such as media-buy."
+    },
+    "verification_modes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "aao_verified: accepted verification modes, as the badge token names them."
+    },
+    "specialisms": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "aao_verified: specialisms the badge must include."
+    },
+    "adcp_version": {
+      "type": "string",
+      "description": "aao_verified: the AdCP release the badge must cover."
+    },
+    "id": {
+      "type": "string",
+      "description": "storyboard: the storyboard or specialism id. experimental_feature: the feature id."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["kind"],
+  "additionalProperties": true
+}

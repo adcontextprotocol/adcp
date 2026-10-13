@@ -127,6 +127,10 @@ These restate existing rules and need no wire change.
 
 ## Adopt by capability
 
+### Seller onboarding posture (experimental)
+
+Optional. A seller can publish `account.agent_onboarding` on `get_adcp_capabilities`, listing `account.agent_onboarding` in `experimental_features`. It gives a mode (`open`, `application`, `invite_only`) per billing party and for sandbox, the requirements for each, and where a human starts. Buyers read it on the unauthenticated capability fetch to tell which sellers take them now, which need a human, and which are not available. The block is seller-wide and identical for every caller, so it changes no error code or oracle clamp. `open` binds identity, not spend, and needs the Web Bot Auth profile. See [account.agent_onboarding](/docs/protocol/get_adcp_capabilities#accountagent_onboarding).
+
 ### SDK implementation metadata
 
 Optional. Agents can report `adcp.implementation.sdks[]` with a package `name`, exact resolved `version`, and a `components` list. `components: []` reports SDK use without claiming agent-wide component coverage, such as an SDK signing helper used on only some routes. Existing agents may omit the block; buyers treat omission as unknown SDK use, while `sdks: []` explicitly reports no AdCP SDK use. Components describe the deployed server integration, including build-time type imports, rather than the package's available features. Buyers keep using AdCP version declarations for negotiation and retain all conformance obligations. Approval comes from a trusted catalog, and reducing check depth requires independently trusted evidence covering the endpoint and integration. See [implementation metadata](/docs/protocol/get_adcp_capabilities#implementation). If a 3.2 agent already uses `adcp.implementation` as an extension point, migrate it to this shape or a vendor-owned `ext` namespace.

@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/agent-onboarding-tier.json",
+  "title": "Agent Onboarding Tier",
+  "x-status": "experimental",
+  "description": "The onboarding mode for one billing party, or for sandbox access, with its requirements and an optional page of its own.",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "$ref": "/schemas/enums/agent-onboarding-mode.json"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Where a human starts for this mode. Defaults to the posture's top-level url. Untrusted: surface it, never fetch or execute it."
+    },
+    "requirements": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/agent-onboarding-requirement.json" },
+      "description": "What the counterparty must satisfy for this mode."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["mode"],
+  "additionalProperties": true
+}

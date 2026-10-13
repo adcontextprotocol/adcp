@@ -814,6 +814,18 @@
           "$ref": "/schemas/core/principal-declarations-state.json",
           "description": "Declared consumption facts with the seller-computed accepted intersection"
         },
+        "agent-onboarding": {
+          "$ref": "/schemas/core/agent-onboarding.json",
+          "description": "Seller onboarding posture for buyer agents, per billing party and sandbox"
+        },
+        "agent-onboarding-tier": {
+          "$ref": "/schemas/core/agent-onboarding-tier.json",
+          "description": "One onboarding mode with its requirements"
+        },
+        "agent-onboarding-requirement": {
+          "$ref": "/schemas/core/agent-onboarding-requirement.json",
+          "description": "One onboarding requirement, discriminated by kind"
+        },
         "principal-changed-webhook": {
           "$ref": "/schemas/core/principal-changed-webhook.json",
           "description": "Caller-anchored invalidation payload for seller-driven connection-state transitions"
@@ -1189,6 +1201,14 @@
     "enums": {
       "description": "Enumerated types and constants",
       "schemas": {
+        "agent-onboarding-mode": {
+          "$ref": "/schemas/enums/agent-onboarding-mode.json",
+          "description": "Seller onboarding mode for buyer agents: open, application, or invite_only"
+        },
+        "agent-onboarding-requirement-kind": {
+          "$ref": "/schemas/enums/agent-onboarding-requirement-kind.json",
+          "description": "Extensible onboarding requirement kinds, each scoped to a direction"
+        },
         "pricing-model": {
           "$ref": "/schemas/enums/pricing-model.json",
           "description": "Supported pricing models for advertising products"
