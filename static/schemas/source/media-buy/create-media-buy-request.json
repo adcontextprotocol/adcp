@@ -257,7 +257,7 @@
         "authentication": {
           "type": "object",
           "deprecated": true,
-          "description": "Legacy authentication configuration for webhook delivery (A2A-compatible). Opts the receiver into Bearer or HMAC-SHA256 signing. Both schemes are deprecated; the preferred signing profile for new integrations is RFC 9421, where the seller signs with a key published at its brand.json agents[] entry and the buyer verifies against the seller's JWKS — no shared secret crosses the wire (see docs/building/by-layer/L1/security.mdx#webhook-callbacks). This field is required in AdCP 3.x; the requirement is removed in AdCP 4.0 when the default RFC 9421 path becomes the only path.",
+          "description": "Legacy authentication configuration for webhook delivery (A2A-compatible). Opts the receiver into Bearer or HMAC-SHA256 signing. Both schemes are deprecated. **Precedence is a switch, not a fallback:** presence of this block selects the legacy scheme; absence selects the seller's advertised webhook signing profile (the RFC 9421 profile adcp/webhook-signing/v1, or the experimental Web Bot Auth profile), verified against the seller's published keys with no shared secret on the wire. A seller MUST NOT sign the same webhook both ways, and a buyer MUST apply webhook_mode_mismatch when a delivery's signing mode does not match the registered mode (docs/building/by-layer/L1/security.mdx#webhook-callbacks). **Version gate:** required for a request served at a release below 3.3. From 3.3, a buyer MAY omit it only when the seller's supported_versions includes 3.3 (so the request is served at 3.3 or later) and the seller declares webhook_signing.supported: true. A seller that does not sign webhooks MUST reject a request that omits it with INVALID_REQUEST naming this field, and MUST NOT accept it and deliver unsigned or unverifiable webhooks. The block is removed in AdCP 4.0 (#4288).",
           "properties": {
             "schemes": {
               "type": "array",
@@ -303,11 +303,7 @@
           "description": "Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10% sample. Default: 1.0"
         }
       },
-      "required": [
-        "url",
-        "authentication",
-        "delivery_mode"
-      ],
+      "required": ["url", "delivery_mode"],
       "additionalProperties": true
     },
     "context": {
