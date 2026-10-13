@@ -139,7 +139,7 @@ Returns an array of media buys with current status, creative approval state, and
 |-------|-------------|
 | `creative_id` | Creative identifier |
 | `creative_id_source` | `buyer` or `seller`: who assigned `creative_id`. Sellers on 3.3 or later MUST include it on every row; absent means unknown. See [Creatives created outside AdCP](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp). |
-| `assignment_platform_id` | The seller's identifier for the per-package object, when its source of truth keeps a separate object for this creative in this package (a per-package copy, ad, or association). Omitted when the creative-level `platform_id` on `list_creatives` applies. |
+| `assignment_platform_id` | The seller's identifier for the per-package object, when its source of truth keeps a separate object for this creative in this package (a per-package copy, ad, or association). Omitted when the creative-level `platform_id` on [`list_creatives`](/docs/creative/task-reference/list_creatives) applies. |
 | `approval_status` | `pending_review`, `approved`, `partially_approved`, or `rejected` |
 | `rejection_reason` | Explanation of rejection (when `approval_status` is `rejected`) |
 | `approval_scopes` | Complete publisher/placement outcomes when `approval_status` is `partially_approved` |
