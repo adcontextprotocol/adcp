@@ -19,6 +19,12 @@ on:
       - 'server/src/addie/rules/**'
       - 'scripts/check-owned-links.js'
       - 'scripts/smoke-docs-index-runtime.mjs'
+      - 'scripts/smoke-hosted-compliance-runtime.mjs'
+      - 'scripts/prune-runtime-artifacts.cjs'
+      - 'static/compliance/published-versions.json'
+      - 'server/src/training-agent/schema-compat.ts'
+      - 'server/src/services/hosted-compliance-version.ts'
+      - 'tests/runtime-artifact-pruning.test.cjs'
       - 'scripts/update-release-docs-nav.mjs'
       - 'tests/docs-nav-validation.test.cjs'
       - '.markdown-link-check.json'
@@ -41,6 +47,12 @@ on:
       - 'server/src/addie/rules/**'
       - 'scripts/check-owned-links.js'
       - 'scripts/smoke-docs-index-runtime.mjs'
+      - 'scripts/smoke-hosted-compliance-runtime.mjs'
+      - 'scripts/prune-runtime-artifacts.cjs'
+      - 'static/compliance/published-versions.json'
+      - 'server/src/training-agent/schema-compat.ts'
+      - 'server/src/services/hosted-compliance-version.ts'
+      - 'tests/runtime-artifact-pruning.test.cjs'
       - 'scripts/update-release-docs-nav.mjs'
       - 'tests/docs-nav-validation.test.cjs'
       - '.markdown-link-check.json'
@@ -141,3 +153,11 @@ jobs:
         adcp-docs-index-smoke
         --input-type=module
         < scripts/smoke-docs-index-runtime.mjs
+
+    - name: Load every hosted bundle with the production SDK
+      run: >-
+        docker run --rm --interactive
+        --entrypoint node
+        adcp-docs-index-smoke
+        --input-type=module
+        < scripts/smoke-hosted-compliance-runtime.mjs
