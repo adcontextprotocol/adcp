@@ -344,12 +344,20 @@
                   "required_capability": "creative.supports_assignment_merge",
                   "without_capability": "UNSUPPORTED_FEATURE"
                 },
-                "check_order": [
-                  "merged_creative_id_not_in_account: CREATIVE_NOT_FOUND",
-                  "merged_creative_id_not_seller_assigned_or_not_assigned_to_package: INVALID_STATE",
-                  "seller_judges_not_same_creative: CREATIVE_MERGE_REJECTED"
-                ],
+                "on_rejection": {
+                  "evaluation": "evaluate_every_merge_in_request; any_rejection_fails_whole_request_and_changes_no_assignment",
+                  "error_code": "CREATIVE_MERGE_REJECTED",
+                  "details": "error-details/creative-merge-rejected.json rejections[] one entry per rejected merge",
+                  "reasons": {
+                    "not_on_package": "merged_creative_id_unknown_or_not_seller_assigned_or_not_assigned_to_package_in_account; reported_uniformly",
+                    "not_supported": "seller_cannot_merge_this_pairing_on_this_package",
+                    "format_mismatch": "creative_id_cannot_take_over_merged_creative_serving_object",
+                    "content_mismatch": "seller_judges_not_same_creative"
+                  }
+                },
+                "on_pending_confirmation": "submitted_task; completion_artifact_carries_merges_or_CREATIVE_MERGE_REJECTED",
                 "on_success": {
+                  "readback": "response_merges_one_entry_per_applied_merge",
                   "approval": "inherit_merged_creative_approval_on_package_and_must_not_re_review_unless_content_differs",
                   "merged_creative": "remove_assignment_on_package_only; not_purged",
                   "delivery_attribution": "report_under_creative_id_from_merge_time; prior_delivery_stays_under_merged_creative_id_and_must_not_be_restated"

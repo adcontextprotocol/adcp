@@ -4614,6 +4614,46 @@ async function runTests() {
     },
     'sync_creatives merge carries no weight; a later assign op changes it'
   );
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-response.json',
+    {
+      status: 'completed',
+      creatives: [],
+      merges: [
+        { creative_id: 'creative-buyer', package_id: 'package-1', merged_creative_id: 'slr_1234', assignment_platform_id: 'obj_1', approval_status: 'approved' }
+      ]
+    },
+    'sync_creatives success reports each applied merge'
+  );
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-response.json',
+    {
+      status: 'completed',
+      creatives: [],
+      merges: [{ creative_id: 'creative-buyer', package_id: 'package-1', merged_creative_id: 'slr_1234', approval_status: 'approved' }],
+      errors: [{ code: 'CREATIVE_MERGE_REJECTED', message: 'Not a match' }]
+    },
+    'sync_creatives merges[] cannot accompany operation-level errors'
+  );
+  await testSchemaValidation(
+    '/schemas/error-details/creative-merge-rejected.json',
+    {
+      rejections: [
+        { operation_index: 0, creative_id: 'creative-buyer', package_id: 'package-1', merged_creative_id: 'slr_1234', reason: 'content_mismatch' },
+        { operation_index: 2, creative_id: 'creative-buyer-2', package_id: 'package-2', merged_creative_id: 'slr_9999', reason: 'not_on_package' }
+      ]
+    },
+    'CREATIVE_MERGE_REJECTED details list every rejected merge with a reason'
+  );
+  await testSchemaRejection(
+    '/schemas/error-details/creative-merge-rejected.json',
+    {
+      rejections: [
+        { operation_index: 0, creative_id: 'creative-buyer', package_id: 'package-1', merged_creative_id: 'slr_1234', reason: 'looks_different' }
+      ]
+    },
+    'CREATIVE_MERGE_REJECTED reasons are a closed set'
+  );
   await testSchemaRejection(
     '/schemas/creative/sync-creatives-request.json',
     {

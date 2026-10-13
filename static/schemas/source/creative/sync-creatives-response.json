@@ -191,6 +191,44 @@
             ]
           }
         },
+        "merges": {
+          "type": "array",
+          "x-added-in": "3.3.0",
+          "description": "One entry per merge assignment operation the seller applied, in request order (under dry_run, one per merge that would be applied). Present exactly when the request contained merge operations and succeeded. A merge that fails verification fails the whole request with CREATIVE_MERGE_REJECTED, whose details list every rejected merge and its reason; a merge awaiting a person's confirmation is reported on the submitted task's completion artifact, never as a partial result here.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "creative_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Buyer's creative that now holds the assignment.",
+                "x-entity": "creative"
+              },
+              "package_id": {
+                "type": "string",
+                "minLength": 1,
+                "x-entity": "package"
+              },
+              "merged_creative_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Seller-assigned creative whose assignment on package_id was merged into creative_id.",
+                "x-entity": "creative"
+              },
+              "assignment_platform_id": {
+                "type": "string",
+                "description": "The seller's identifier for the per-package object that now serves creative_id on package_id, when the seller keeps one. Same value list_creatives and get_media_buys return for the relationship.",
+                "$comment": "x-entity deliberately omitted: seller-opaque identifier that buyers never send back."
+              },
+              "approval_status": {
+                "$ref": "/schemas/enums/creative-approval-status.json",
+                "description": "Approval state the merged assignment inherited from merged_creative_id."
+              }
+            },
+            "required": ["creative_id", "package_id", "merged_creative_id", "approval_status"],
+            "additionalProperties": true
+          }
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
@@ -269,6 +307,11 @@
           },
           {
             "required": [
+              "merges"
+            ]
+          },
+          {
+            "required": [
               "dry_run"
             ]
           },
@@ -343,6 +386,9 @@
         "anyOf": [
           {
             "required": ["creatives"]
+          },
+          {
+            "required": ["merges"]
           },
           {
             "required": ["warnings"]

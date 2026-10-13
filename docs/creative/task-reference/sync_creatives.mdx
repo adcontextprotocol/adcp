@@ -1064,13 +1064,35 @@ A seller's operator or system can create its own copy of a creative the buyer al
 
 Buyers MUST NOT send `merge` unless the seller declares [`creative.supports_assignment_merge`](/docs/protocol/get_adcp_capabilities#creative); a seller that does not declare it rejects `merge` with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). `creative_id` need not already be assigned to the package. If it is, the seller retires that assignment's own per-package object. The merged assignment keeps the weight and placement routing of `merged_creative_id`'s assignment; a later `assign` operation in the same request can change them, because operations apply in order.
 
-**Verification.** The seller checks, in order, and fails the whole request at the first failure:
+**Verification.** The seller verifies every `merge` in the request. Assignment operations are atomic, so if any merge fails, the seller applies no operation and returns one [`CREATIVE_MERGE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-merge-rejected) error. `error.field` points at the first rejected operation, and `error.details` SHOULD conform to [`error-details/creative-merge-rejected.json`](https://adcontextprotocol.org/schemas/latest/error-details/creative-merge-rejected.json), listing every rejected merge with its `operation_index` and a `reason`:
 
-1. `merged_creative_id` is not in the account: [`CREATIVE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-creative-not-found), the same uniform response as for any unknown creative.
-2. `merged_creative_id` is not `creative_id_source: "seller"`, or is not currently assigned to `package_id`: [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state), with `error.field` pointing at the operation (for example, `assignment_operations[0]`).
-3. The seller judges whether the two are the same creative (format and content). If not: [`CREATIVE_MERGE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-merge-rejected). A buyer that wants its creative trafficked as a new object uses `replace`.
+| `reason` | Meaning | Who acts |
+|---|---|---|
+| `content_mismatch` | The seller judges that `merged_creative_id` is a different creative. | Nobody: the seller's copy is not this creative. To run `creative_id` on the package, use `replace`. |
+| `format_mismatch` | `creative_id` can't take over the copy's serving object because its format differs. | The buyer: sync a matching format of the creative and retry. |
+| `not_on_package` | `merged_creative_id` is not a seller-assigned creative currently assigned to `package_id` in this account. Reported the same way for unknown IDs, so the response doesn't reveal whether an ID exists elsewhere. | The buyer: reread [`list_creatives`](/docs/creative/task-reference/list_creatives) or [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) and correct the pairing. |
+| `not_supported` | The seller supports `merge` but can't merge this pairing on this package. | The buyer: use `replace`. |
 
-If the seller needs a person to confirm the match, it returns the [`submitted` envelope](#async-approval-workflow). Because the operations in a request are atomic, the rest of the batch waits on that confirmation, so buyers SHOULD send a `merge` in its own request. With `dry_run: true`, the seller runs the same verification and applies nothing.
+The buyer can drop or fix the rejected merges and resubmit the rest in one request.
+
+If the seller needs a person to confirm a match, it returns the [`submitted` envelope](#async-approval-workflow), and the task's completion artifact carries either the success response with `merges[]` or `CREATIVE_MERGE_REJECTED`. Because the operations in a request are atomic, the rest of the batch waits on that confirmation, so buyers SHOULD send a `merge` that may need confirmation in its own request. With `dry_run: true`, the seller runs the same verification, applies nothing, and reports the merges it would apply.
+
+**Response.** A successful response carries `merges[]`, one entry per applied merge in request order: `creative_id`, `package_id`, `merged_creative_id`, the inherited `approval_status`, and `assignment_platform_id` when the seller keeps a per-package object. The buyer learns each merge's outcome from the response itself, without a follow-up read. A merge-only request returns an empty `creatives` array.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json",
+  "status": "completed",
+  "creatives": [],
+  "merges": [{
+    "creative_id": "acme_video_001",
+    "package_id": "pkg_premium_video",
+    "merged_creative_id": "slr_88412",
+    "assignment_platform_id": "obj_55120",
+    "approval_status": "approved"
+  }]
+}
+```
 
 **On success:**
 
@@ -1099,7 +1121,7 @@ If the seller needs a person to confirm the match, it returns the [`submitted` e
 | [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected)       | Creative failed content-policy, brand-safety, or accessibility review | Revise according to the applicable policy or validated accessibility criteria |
 | [`CREATIVE_LOCALE_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-creative-locale-not-accepted) | Assigned creative has no materialized variant accepted by the package's effective format `locale_policy`, lacks locale topology, or uses an ineligible `serve_default` | Supply a matching source/target variant, choose a compatible format option, or change the default policy |
 | [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state)           | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
-| [`CREATIVE_MERGE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-merge-rejected) | A `merge` assignment operation named a seller-assigned creative the seller judges is not the same creative | Confirm the pairing via [`list_creatives`](/docs/creative/task-reference/list_creatives), or use `replace` to traffic the creative as a new serving object |
+| [`CREATIVE_MERGE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-merge-rejected) | One or more `merge` assignment operations failed verification; `error.details.rejections[]` gives each one's `reason` (`content_mismatch`, `format_mismatch`, `not_on_package`, `not_supported`) | Act on each reason (see [Merging a seller-created copy](#merging-a-seller-created-copy)), then resubmit the remaining merges |
 
 Sellers that declare `creative_specs.vast_validation` of `document` or `wrapper` additionally validate `vast` assets at sync time (including `dry_run`) and can return [`VAST_PARSE_FAILED`](/docs/building/verification/compliance-catalog#error-code-vast-parse-failed), [`VAST_VERSION_MISMATCH`](/docs/building/verification/compliance-catalog#error-code-vast-version-mismatch), or [`VAST_WRAPPER_DEPTH_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-vast-wrapper-depth-exceeded). See [VAST Validation](/docs/creative/channels/video#vast-validation).
 
