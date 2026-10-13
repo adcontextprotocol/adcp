@@ -251,7 +251,7 @@ transcode version. Older creatives without revision identity may omit it.
 
 Creative-library sellers that advertise `list_creatives` in `media_buy.relationship_notifications.projection_tasks` attach evaluated indicator state to `assignments.assigned_packages[]` and include `media_buy_id` plus `approval_status` on every row, including unknown rows. These fields mirror [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for the same relationship. A mixed publisher/placement outcome uses `approval_status: "partially_approved"` plus complete `approval_scopes[]`; the assignment webhook remains a compact invalidation and buyers reread these scopes. Each evaluated row includes `indicator_types_evaluated`, `indicators_as_of`, and `indicators[]`; omitted types remain unknown.
 
-An assignment row MAY carry `approval_status_as_of`: when the seller last refreshed `approval_status`, `rejection_reason`, and `approval_scopes` for that relationship from its source of truth. It follows the same rules as `creative_approvals[].approval_status_as_of` on `get_media_buys`. Each read reports its own observation, so the two values may differ; reconcile toward the newer one. See [creative state freshness](/docs/media-buy/specification#creative-state-freshness).
+An assignment row MAY carry `approval_status_as_of`: when the seller last refreshed `approval_status`, `rejection_reason`, and `approval_scopes` for that relationship from its source of truth. It follows the same rules as `creative_approvals[].approval_status_as_of` on `get_media_buys`. When both reads carry it for the same relationship, the values agree. See [creative state freshness](/docs/media-buy/specification#creative-state-freshness).
 
 ```json
 {
