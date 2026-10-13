@@ -30,6 +30,7 @@ import {
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { REPLAY_TTL_SECONDS } from './idempotency.js';
+import { TRAINING_REPORTING_SCHEMA } from './gcs-reporting-config.js';
 
 const logger = createLogger('training-agent-state');
 
@@ -890,18 +891,58 @@ export function sessionRetentionCutoff(nowMs = Date.now()): Date {
   return new Date(nowMs - SESSION_RETENTION_MS);
 }
 
+/** Preserve accepted business state while its private reporting destination is
+ * authorized. The replay TTL alone is shorter than a full post-install UTC
+ * day plus its delivery SLA. Revocation releases the session to normal GC;
+ * read-only requests still never extend updated_at. */
+export async function cleanupExpiredSessions(): Promise<number> {
+  // Authorization remains authoritative when delivery is paused or the
+  // configured canary principal changes. Older stores can lack this schema.
+  const { rows } = await getPool().query<{ reporting_grants: string | null }>(
+    'SELECT to_regclass($1)::text AS reporting_grants',
+    [`${TRAINING_REPORTING_SCHEMA}.host_grants`],
+  );
+  if (rows.length !== 1 || (rows[0].reporting_grants !== null && typeof rows[0].reporting_grants !== 'string')) {
+    throw new Error(SESSION_STORE_UNAVAILABLE_MESSAGE);
+  }
+  const reportingProtection = rows[0]?.reporting_grants ? `
+    AND NOT EXISTS (
+      SELECT 1
+        FROM ${TRAINING_REPORTING_SCHEMA}.host_accounts binding
+        JOIN ${TRAINING_REPORTING_SCHEMA}.host_grants destination_grant
+          ON destination_grant.account_id = binding.account_id
+         AND destination_grant.destination_ref = binding.destination_ref
+        JOIN ${TRAINING_REPORTING_SCHEMA}.adcp_reporting_destination_authorizations auth
+          ON auth.account_id = destination_grant.account_id
+         AND auth.destination_ref = destination_grant.destination_ref
+         AND auth.generation = destination_grant.generation
+       WHERE auth.revoked_at IS NULL
+         AND stored_session.data->'mediaBuys'->>'__adcpType' = 'Map'
+         AND EXISTS (
+           SELECT 1 FROM jsonb_array_elements(
+             CASE WHEN jsonb_typeof(stored_session.data->'mediaBuys'->'entries') = 'array'
+               THEN stored_session.data->'mediaBuys'->'entries' ELSE '[]'::jsonb END
+           ) AS buy_entry(value)
+           WHERE binding.media_buy_ids ? (buy_entry.value->>0)
+             AND buy_entry.value->>0 = buy_entry.value->1->>'mediaBuyId'
+         )
+    )` : '';
+  const { rowCount } = await getPool().query(
+    `DELETE FROM adcp_state stored_session WHERE collection = $1 AND updated_at < $2${reportingProtection}`,
+    [SESSIONS_COLLECTION, sessionRetentionCutoff()],
+  );
+  return rowCount ?? 0;
+}
+
 /** Start the TTL cleanup interval. Deletes stale sessions from the store. */
 export function startSessionCleanup(): void {
   if (cleanupTimer) return;
   cleanupTimer = setInterval(async () => {
     try {
       if (isDatabaseInitialized()) {
-        const { rowCount } = await getPool().query(
-          `DELETE FROM adcp_state WHERE collection = $1 AND updated_at < $2`,
-          [SESSIONS_COLLECTION, sessionRetentionCutoff()],
-        );
-        if ((rowCount ?? 0) > 0) {
-          logger.info({ deleted: rowCount }, 'Cleaned up expired training-agent sessions');
+        const deleted = await cleanupExpiredSessions();
+        if (deleted > 0) {
+          logger.info({ deleted }, 'Cleaned up expired training-agent sessions');
         }
         const taskDeleted = await cleanupExpiredTasks(getPool());
         if (taskDeleted > 0) {
