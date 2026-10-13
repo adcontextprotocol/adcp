@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,6 +22,7 @@ function fixture() {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
 });
 
@@ -82,5 +83,28 @@ describe('runtime artifact storage', () => {
     expect(fs.readFileSync(first, 'utf8')).toBe('frozen published bytes');
     expect(fs.readFileSync(second, 'utf8')).toBe('frozen published bytes');
     expect(fs.statSync(first).ino).not.toBe(fs.statSync(second).ino);
+  });
+
+  it('rejects a substituted link with different bytes before replacing the published path', () => {
+    const { root, write } = fixture();
+    const first = write('compliance/3.2.3/manifest.json');
+    const second = write('compliance/3.2.4/manifest.json');
+    const substituted = write('outside/manifest.json', 'different bytes');
+    const link = fs.linkSync;
+    vi.spyOn(fs, 'linkSync').mockImplementation((_source, destination) => link(substituted, destination));
+    expect(() => deduplicateRuntimeArtifacts(root)).toThrow('Artifact changed before link verification');
+    expect(fs.readFileSync(first, 'utf8')).toBe('frozen published bytes');
+    expect(fs.readFileSync(second, 'utf8')).toBe('frozen published bytes');
+    expect(fs.existsSync(`${second}.dedup-${process.pid}`)).toBe(false);
+  });
+
+  it('rejects a symlink substituted during link creation', () => {
+    const { root, write } = fixture();
+    const first = write('compliance/3.2.3/manifest.json');
+    const second = write('compliance/3.2.4/manifest.json');
+    vi.spyOn(fs, 'linkSync').mockImplementation((_source, destination) => fs.symlinkSync(first, destination));
+    expect(() => deduplicateRuntimeArtifacts(root)).toThrow();
+    expect(fs.readFileSync(second, 'utf8')).toBe('frozen published bytes');
+    expect(fs.existsSync(`${second}.dedup-${process.pid}`)).toBe(false);
   });
 });

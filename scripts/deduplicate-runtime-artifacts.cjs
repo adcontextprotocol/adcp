@@ -15,6 +15,19 @@ function collectFiles(directory, files) {
   }
 }
 
+function snapshot(filename) {
+  // Open first: metadata and content must describe the same inode, even if a
+  // path changes after directory enumeration. Never follow a substituted link.
+  const fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) throw new Error(`Artifact is not a regular file: ${filename}`);
+    return { stat, content: fs.readFileSync(fd) };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 // Image assembly only: never regenerate, rewrite, or remove release content.
 // Only immutable snapshots participate; latest and symlinks are left alone.
 function deduplicateRuntimeArtifacts(distDirectory) {
@@ -29,48 +42,41 @@ function deduplicateRuntimeArtifacts(distDirectory) {
     }
   }
 
-  // Different lengths or permission bits cannot share storage. Hash only the
-  // groups with potential duplicates, and confirm bytes before linking them.
-  const candidates = new Map();
-  for (const filename of files.sort()) {
-    const stat = fs.statSync(filename);
-    const key = `${stat.size}:${stat.mode}:${stat.uid}:${stat.gid}`;
-    if (!candidates.has(key)) candidates.set(key, []);
-    candidates.get(key).push(filename);
-  }
-
+  const originals = new Map();
   let linkedFiles = 0;
   let savedBytes = 0;
-  for (const group of candidates.values()) {
-    if (group.length < 2) continue;
-    const originals = new Map();
-    for (const filename of group) {
-      const content = fs.readFileSync(filename);
-      const hash = createHash('sha256').update(content).digest('hex');
-      const original = originals.get(hash);
-      if (!original) {
-        originals.set(hash, filename);
-        continue;
-      }
-      const stat = fs.statSync(filename);
-      const originalStat = fs.statSync(original);
-      if (stat.dev === originalStat.dev && stat.ino === originalStat.ino) continue;
-      if (!content.equals(fs.readFileSync(original))) {
-        throw new Error(`Artifact hash collision: ${filename}`);
-      }
-
-      // Create the replacement before an atomic rename. A failed link leaves
-      // the published path intact and makes the image build fail closed.
-      const temporary = `${filename}.dedup-${process.pid}`;
-      fs.linkSync(original, temporary);
-      try {
-        fs.renameSync(temporary, filename);
-      } finally {
-        if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
-      }
-      linkedFiles += 1;
-      savedBytes += stat.size;
+  for (const filename of files.sort()) {
+    const { stat, content } = snapshot(filename);
+    const hash = createHash('sha256').update(content).digest('hex');
+    // Permission bits and ownership must also match before storage is shared.
+    const key = `${content.length}:${stat.mode}:${stat.uid}:${stat.gid}:${hash}`;
+    const original = originals.get(key);
+    if (!original) {
+      originals.set(key, { filename, stat });
+      continue;
     }
+    if (stat.dev === original.stat.dev && stat.ino === original.stat.ino) continue;
+
+    // Validate the actual newly created link, not the original pathname before
+    // link creation. A substitution or hash collision must fail before rename.
+    const temporary = `${filename}.dedup-${process.pid}`;
+    fs.linkSync(original.filename, temporary);
+    try {
+      const linked = snapshot(temporary);
+      if (!content.equals(linked.content) || linked.stat.mode !== stat.mode ||
+          linked.stat.uid !== stat.uid || linked.stat.gid !== stat.gid) {
+        throw new Error(`Artifact changed before link verification: ${filename}`);
+      }
+      fs.renameSync(temporary, filename);
+    } finally {
+      try {
+        fs.unlinkSync(temporary);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
+    linkedFiles += 1;
+    savedBytes += content.length;
   }
   return { scannedFiles: files.length, linkedFiles, savedBytes };
 }
