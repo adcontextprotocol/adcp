@@ -24,6 +24,10 @@
               "type": "string",
               "const": "current"
             },
+            "relationship": {
+              "$ref": "/schemas/core/principal-relationship.json",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
+            },
             "principal_id": {
               "type": "string",
               "minLength": 1,
@@ -55,6 +59,10 @@
               "type": "string",
               "const": "recognized"
             },
+            "relationship": {
+              "$ref": "/schemas/core/principal-relationship.json",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
+            },
             "principal_id": {
               "type": "string",
               "minLength": 1,
@@ -76,6 +84,10 @@
             "kind": {
               "type": "string",
               "const": "unconfigured"
+            },
+            "relationship": {
+              "$ref": "/schemas/core/principal-relationship.json",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
             }
           },
           "required": ["kind"],

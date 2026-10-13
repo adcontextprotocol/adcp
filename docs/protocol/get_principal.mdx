@@ -35,6 +35,8 @@ Identity resolution is identical to [`sync_principal`](/docs/protocol/sync_princ
 
 For RFC 9421 signed callers, that stable identity is the canonical URL of the exactly matched operator `brand.json` `agents[]` entry after publication and key verification. Rotation to another key authorized for the same canonical Agent URL preserves the principal; a domain, JWKS URI, or key never replaces the Agent URL as the subject.
 
+For Web Bot Auth signed callers (experimental), the stable identity is the signer's [canonical origin](/docs/reference/url-canonicalization#canonical-origin), verified as [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) describes. A verified origin the seller has not bound is *identity-established*: `get_principal` returns `unconfigured` to it, and it gets nothing else an anonymous caller would not. Key rotation within the origin's directory preserves the identity.
+
 `principal_kind` is resolved from authorization state, but the response exposes it only with a durable principal record: in `current` and `recognized` results. `principal_id` identifies that same record in both arms. A read never creates the record or mints the identifier; stable authentication without a materialized durable record remains the exact kind-only `unconfigured` result.
 
 ## Results
@@ -43,10 +45,42 @@ For RFC 9421 signed callers, that stable identity is the canonical URL of the ex
 |---|---|
 | `current` | The caller has standing configuration. Returns `principal_id`, the seller-resolved `principal_kind` (`buyer_agent` or `operator`), `configuration_version`, and complete credential-free configuration state. |
 | `recognized` | The caller maps to an existing durable principal record but has no standing configuration. Returns `principal_id` and seller-resolved `principal_kind`, with no configuration or version. |
-| `unconfigured` | Stable authentication succeeded, but the caller has no durable principal record. Carries only `kind`. |
+| `unconfigured` | Stable authentication succeeded, but the caller has no durable principal record. Carries `kind`, and `relationship` when an application is in progress. |
 | `failed` | The read could not be served. Carries only structured errors, never identifiers or state. |
 
 The response reveals only the authenticated caller's identity and state. It never exposes whether another principal exists or has configuration, and `failed` results carry no identity facts.
+
+### Relationship status
+
+`current`, `recognized`, and `unconfigured` results MAY carry `relationship` (`core/principal-relationship.json`, experimental): the seller's commercial relationship with the caller, returned only to that caller.
+
+| Field | Meaning |
+|---|---|
+| `status` | `pending` (an application or approval is in progress), `active`, `suspended`, or `blocked`. Calls that need a suspended or blocked relationship fail with [`AGENT_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-agent-suspended) or [`AGENT_BLOCKED`](/docs/building/verification/compliance-catalog#error-code-agent-blocked). |
+| `expires_at` | When the relationship lapses unless renewed. Absent means no scheduled expiry. |
+| `setup` | While `pending`, the caller's next step: `{ url, message, expires_at }`, the same shape as [`sync_accounts`](/docs/accounts/tasks/sync_accounts) `setup`. Treat `url` as untrusted: surface it, never fetch it. |
+
+`relationship` is **omitted** when the seller has no relationship with the caller and no application in progress. That is the identity-established state of a verified signer the seller has not bound. Because the field is returned only to the authenticated caller, it is not an onboarding oracle: it says nothing about any other agent.
+
+`principal.changed` fires with reason `relationship_changed` when `status` changes, and with `relationship_expiring` at a seller-declared lead time before `expires_at`, following `setup_expiring`. Receivers re-read `get_principal`.
+
+An identity-established buyer agent whose application is under review receives:
+
+```json
+{
+  "status": "completed",
+  "result": {
+    "kind": "unconfigured",
+    "relationship": {
+      "status": "pending",
+      "setup": {
+        "url": "https://streamhaus.example/partners/applications/7k3q",
+        "message": "Upload your billing entity details to finish the agent-billing application."
+      }
+    }
+  }
+}
+```
 
 Before configuration, a registered buyer agent with a durable principal record receives:
 

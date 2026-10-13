@@ -55,6 +55,8 @@
         "setup_expired",
         "proof_invalidated",
         "declarations_intersection_changed",
+        "relationship_changed",
+        "relationship_expiring",
         "other"
       ],
       "description": "Coarse reason for the invalidation. Advisory routing/debug metadata; receivers MUST re-read get_principal rather than inferring the new state from the reason."

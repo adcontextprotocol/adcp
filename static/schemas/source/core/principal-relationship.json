@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/principal-relationship.json",
+  "title": "Principal Relationship",
+  "x-status": "experimental",
+  "description": "The seller's commercial relationship with the authenticated caller, returned by get_principal only to that caller. Present when a relationship or an application exists; omitted when the seller has no relationship with the caller and no application in progress, which is the identity-established state of a verified signer the seller has not bound. Because it is returned only to the authenticated caller, it never acts as an onboarding oracle. See specs/agent-identity-3-3.md R8.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["pending", "active", "suspended", "blocked"],
+      "enumDescriptions": {
+        "pending": "An application or approval is in progress. setup, when present, carries the caller's next step.",
+        "active": "The relationship is in good standing.",
+        "suspended": "The relationship is temporarily paused; calls that need it fail with AGENT_SUSPENDED.",
+        "blocked": "The relationship is permanently denied; calls that need it fail with AGENT_BLOCKED."
+      },
+      "description": "Current state of the relationship."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship lapses unless renewed. Absent means no scheduled expiry. principal.changed fires with reason relationship_expiring at a seller-declared lead time before this instant."
+    },
+    "setup": {
+      "type": "object",
+      "description": "The caller's next step while status is pending, in the same shape as sync_accounts setup. Specific to the authenticated caller, never seller-wide.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL where a human at the buyer completes the step. Untrusted: surface it, never fetch or execute it."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable description of what is needed."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this step expires."
+        }
+      },
+      "required": ["message"],
+      "additionalProperties": true
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["status"],
+  "additionalProperties": true
+}

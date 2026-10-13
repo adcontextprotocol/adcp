@@ -814,6 +814,10 @@
           "$ref": "/schemas/core/principal-declarations-state.json",
           "description": "Declared consumption facts with the seller-computed accepted intersection"
         },
+        "principal-relationship": {
+          "$ref": "/schemas/core/principal-relationship.json",
+          "description": "The seller's commercial relationship with the authenticated caller, returned by get_principal"
+        },
         "principal-changed-webhook": {
           "$ref": "/schemas/core/principal-changed-webhook.json",
           "description": "Caller-anchored invalidation payload for seller-driven connection-state transitions"
