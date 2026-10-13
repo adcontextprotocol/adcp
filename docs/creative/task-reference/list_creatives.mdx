@@ -229,6 +229,7 @@ transcode version. Older creatives without revision identity may omit it.
 | `format_option_ref` | object | Optional exact publisher/product option reference |
 | `format_id` | object | Deprecated 3.x named-format compatibility field |
 | `status` | string | Approval status |
+| `status_as_of` | string | When the seller last refreshed `status` from its source of truth. Optional; omission makes no freshness assertion. A value earlier than your last accepted write for this creative means the seller has not yet confirmed that write. See [creative state freshness](/docs/media-buy/specification#creative-state-freshness). |
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
 | `assets` | object | Creative assets (images, text, URLs, etc.) |
@@ -249,6 +250,8 @@ transcode version. Older creatives without revision identity may omit it.
 ### Assignment indicators
 
 Creative-library sellers that advertise `list_creatives` in `media_buy.relationship_notifications.projection_tasks` attach evaluated indicator state to `assignments.assigned_packages[]` and include `media_buy_id` plus `approval_status` on every row, including unknown rows. These fields mirror [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for the same relationship. A mixed publisher/placement outcome uses `approval_status: "partially_approved"` plus complete `approval_scopes[]`; the assignment webhook remains a compact invalidation and buyers reread these scopes. Each evaluated row includes `indicator_types_evaluated`, `indicators_as_of`, and `indicators[]`; omitted types remain unknown.
+
+An assignment row MAY carry `approval_status_as_of`: when the seller last refreshed `approval_status`, `rejection_reason`, and `approval_scopes` for that relationship from its source of truth. It follows the same rules as `creative_approvals[].approval_status_as_of` on `get_media_buys`. Each read reports its own observation, so the two values may differ; reconcile toward the newer one. See [creative state freshness](/docs/media-buy/specification#creative-state-freshness).
 
 ```json
 {
