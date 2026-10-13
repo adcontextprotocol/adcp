@@ -86,6 +86,14 @@ The credential MUST be carried in the `Authorization` request header. Sellers MU
 
 Signed requests bind `@method`, `@target-uri`, `@authority`, `content-type`, and `content-digest` under an `Ed25519`, `ecdsa-p256-sha256`, or `rsa-pss-sha512` signature with a ±60 s timestamp window and ≥128-bit nonce. The full verifier checklist, key-discovery rules (`brand.json` → `agents[]` → `jwks_uri`), and rotation semantics are defined in the [implementation security reference](/docs/building/by-layer/L1/security#request-signing). Capability discovery via `get_adcp_capabilities.request_signing` (`supported`, `required_for`, `covers_content_digest`) lets clients detect whether a seller verifies or requires signing before sending a mutating call. On an endpoint that advertises a 3.2 release, signatures use the 3.2 profile (RFC 8941 padded Base64 with mandatory `content-digest` coverage) regardless of the request's `adcp_version`; see [mixed-version request signing](/docs/reference/migration/3-1-to-3-2#mixed-version-request-signing).
 
+### Web Bot Auth request signing (experimental, 3.3)
+
+The Web Bot Auth profile identifies the signer by its origin, through a covered `Signature-Agent` header, and verifies against that origin's key directory. A seller can therefore identify a buyer agent it has never onboarded, without a seller-issued credential and without the buyer serving `get_adcp_capabilities`. A verified identity grants no authority until the seller binds it. The RFC 9421 profile above is deprecated in 3.3 in favor of it. See [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) and [A buyer agent onboards itself](/docs/accounts/buyer-agent-self-onboarding).
+
+### OAuth sellers and auth.md (informative)
+
+A seller that issues bearer tokens can accept the same agent identity without a separate registration. The agent presents an RFC 7523 JWT-bearer assertion signed with a request-signing key from its origin's key directory, with the origin as `iss`, and the seller verifies it the way it verifies a Web Bot Auth signature. A seller that publishes an [auth.md](https://workos.com/auth-md) agent-registration file can point to it from `account.agent_onboarding.url`. Either way, one published identity works across AdCP and non-AdCP services.
+
 ### mTLS
 
 Operators terminating mTLS at the edge MAY use the peer certificate as the primary identity mechanism for AdCP operations. When mTLS is used, operators MUST pin identity to the certificate subject / SAN rather than any header field.
@@ -244,7 +252,7 @@ For OAuth handshake failures and RFC 9421 signing issues, use the [CLI auth grad
 To access authenticated operations, you must establish an account with each sales agent:
 
 1. **Identify Sales Agents**: Discover sales agents via publisher `adagents.json` files
-2. **Contact Sales Team**: Reach out to the agent's sales or partnerships team
+2. **Read the seller's onboarding posture**: `account.agent_onboarding` on `get_adcp_capabilities` (experimental) says whether the seller takes unsolicited buyer agents, what it requires, and where to apply. Under the Web Bot Auth profile, an `open` seller needs no credential exchange; see [A buyer agent onboards itself](/docs/accounts/buyer-agent-self-onboarding). Otherwise, contact the agent's sales or partnerships team
 3. **Complete Onboarding**: Provide business information, sign agreements, configure billing
 4. **Receive Credentials**: Get API keys or OAuth client credentials
 

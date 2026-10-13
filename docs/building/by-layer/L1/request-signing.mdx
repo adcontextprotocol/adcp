@@ -8,6 +8,10 @@ AdCP supports [HTTP Message Signatures (RFC 9421)](https://www.rfc-editor.org/rf
 
 Signing remains **optional through AdCP 3.2** and becomes **mandatory in AdCP 4.0** for all spend-committing operations. Starting in 3.2, however, every accepted signature on a request with a body must cover `Content-Digest`. Agents that don't support signing may continue using their existing authentication path.
 
+<Warning>
+**Two signing profiles in AdCP 3.3.** This guide's steps cover the **AdCP RFC 9421 profile** (`adcp/request-signing/v1`, keys published through brand.json). That profile is **deprecated in 3.3**: it keeps working through 3.x and is removed in 4.0. The experimental **Web Bot Auth profile** (`web-bot-auth`) replaces it. New implementations should plan for Web Bot Auth; see [Web Bot Auth profile](#web-bot-auth-profile-33-experimental) below. Its SDK helpers are in progress.
+</Warning>
+
 <Note>
 This is the practical implementation guide. For the normative specification — covered components, canonicalization rules, the full verifier checklist, replay dedup sizing, and the complete error taxonomy — see [Security: Signed Requests](/docs/building/by-layer/L1/security#signed-requests-transport-layer).
 </Note>
@@ -830,6 +834,31 @@ return adcp.CapabilitiesResponse(adcp.CapabilitiesData{
 </Tabs>
 
 Buyers call `get_adcp_capabilities` and read `request_signing.required_for` and `supported_for` to know which operations you expect them to sign.
+
+## Web Bot Auth profile (3.3, experimental)
+
+The Web Bot Auth profile follows the IETF Web Bot Auth draft as written, so any conforming Web Bot Auth library can sign for AdCP. It differs from the RFC 9421 profile above in four ways:
+
+| | RFC 9421 profile (deprecated) | Web Bot Auth profile |
+|---|---|---|
+| Identity | The canonical agent URL in the operator's brand.json | The agent's [canonical origin](/docs/reference/url-canonicalization#canonical-origin), one agent per origin |
+| Where keys live | brand.json `agents[].jwks_uri` | The origin's key directory, `/.well-known/http-message-signatures-directory` |
+| How a verifier finds them | Calls the agent's `get_adcp_capabilities` for `identity.brand_json_url` | Reads the covered `Signature-Agent` header; no capabilities call |
+| Key IDs | Chosen by the operator | The key's RFC 7638 thumbprint |
+
+**Signer setup:**
+1. Give each agent its own origin. An agency hosting several agents on one host moves each to a subdomain.
+2. Serve the key directory at that origin: a JWK Set with thumbprint `kid` values, signed per key (WBA Appendix B.1). Regenerate it before its signatures expire.
+3. List the origin in `https://{registrable domain}/.well-known/trust.json` with its role (`adcp:buying` for a buyer). The record carries no keys.
+4. Sign each request and webhook with a covered `Signature-Agent` member naming the origin, `tag="web-bot-auth"`, and a nonce.
+
+**Verifier setup:**
+1. Verify against the directory at the origin the covered `Signature-Agent` names. Check the origin's revocation list.
+2. Treat a verified origin you have not bound as identity-established: no account access. Evaluate the operator's trust record only when you bind a principal, check a grant, or apply an `open` onboarding mode.
+3. Report failures with the profile's HTTP status and headers: `403` with `Accept-Signature`, `400`, or `429`.
+4. Once you have bound an origin, refuse RFC 9421 signatures for it.
+
+The normative rules are in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities). For the end-to-end buyer flow, see [A buyer agent onboards itself](/docs/accounts/buyer-agent-self-onboarding). For moving from the RFC 9421 profile, see the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
 
 ## Key rotation
 

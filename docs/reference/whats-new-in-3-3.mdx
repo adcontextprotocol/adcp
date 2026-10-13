@@ -33,6 +33,10 @@ Request signing, webhook signing, governance JWS `iss`, designated-task response
 
 This is a verification change: some signatures that verified under 3.2 can fail, mostly webhook and request signing. The list is in the [migration guide](/docs/reference/migration/3-2-to-3-3#signature-verification-tightens).
 
+### Agent identity and buyer self-onboarding (experimental)
+
+A buyer agent can now make itself known to a seller it has never spoken to. The new Web Bot Auth signing profile identifies the signer by its origin and verifies against that origin's key directory, with no capabilities call and no seller-issued credential. The operator's trust.json lists its agents and grants, and sellers publish their onboarding posture in `account.agent_onboarding`. `get_principal` reports relationship status and expiry. The RFC 9421 profile is deprecated in 3.3 and works through 3.x. See [A buyer agent onboards itself](/docs/accounts/buyer-agent-self-onboarding) and the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
+
 ### Account IDs you can rely on
 
 Sellers SHOULD return `account_id` from `sync_accounts`, and a seller that accepts it on every account-scoped task, for every account, and never changes it declares the optional `account.stable_account_id` capability. Buyers send the ID to those sellers instead of the natural key, so calls after onboarding look the same whichever account model the seller uses. Natural keys keep working throughout 3.x, but using them as the reference after provisioning is now deprecated and planned for removal in 4.0. They remain the way to open an account and to look up its ID. The accounts docs also now describe `require_operator_auth` as who holds the credential, and separate principals (who is calling) from accounts (which advertiser relationship). See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere).
