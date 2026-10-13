@@ -1453,14 +1453,17 @@ describe('preview renderer', () => {
     expect(meta.renderer_id).toBe('adcp-reference-image');
   });
 
-  it('html display formats report renderHtmlDisplay metadata', () => {
+  it('html display formats report renderHtmlDisplay metadata with tracking_suppressed false', () => {
+    // The submitted HTML may contain anchor hrefs and img srcs that represent
+    // navigation or impression effects, so tracking_suppressed must be false
+    // (submitted content is rendered; effects are not suppressed by the renderer).
     const manifest = {
       format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_html' },
-      assets: { html_creative: { content: '<p>ad</p>' } },
+      assets: { html_creative: { content: '<a href="https://example.com/">link</a>' } },
     };
     const meta = getPreviewRendererMetadata(manifest, findFormat('display_300x250_html'));
     expect(meta.export).toBe('renderHtmlDisplay');
-    expect(meta.tracking_suppressed).toBe(true);
+    expect(meta.tracking_suppressed).toBe(false);
   });
 
   it('canonical html5_bundle (zip) shape shows honest unsupported placeholder, not "No html_creative"', () => {

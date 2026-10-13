@@ -396,7 +396,13 @@ export function renderHtmlDisplay(manifest: ManifestInput, dims: RenderDimension
     body = `<div class="preview"><iframe srcdoc="${encodedHtml}" sandbox width="${dims.width}" height="${dims.height}" style="border:none;width:${dims.width}px;height:${dims.height}px;display:block;" referrerpolicy="no-referrer" title="HTML creative preview (scripts disabled)"></iframe></div>`;
   }
 
-  return wrapInPage(body, dims, manifest.name || 'HTML Display Preview', false, previewAssetOrigins(manifest));
+  // Pass empty origins: the HTML creative content is NOT rewritten to proxy URLs,
+  // so there are no pre-approved remote origins that should load inside this frame.
+  // This also ensures tracking_suppressed is evaluated accurately by callers —
+  // the submitted HTML may contain anchor hrefs and img srcs that represent
+  // navigation or impression effects, so tracking_suppressed must be false when
+  // content is present (the genericResult default).
+  return wrapInPage(body, dims, manifest.name || 'HTML Display Preview', false, []);
 }
 
 /**
@@ -407,7 +413,7 @@ export function renderHtmlDisplay(manifest: ManifestInput, dims: RenderDimension
  */
 function renderJsDisplay(manifest: ManifestInput, dims: RenderDimensions): string {
   const body = `<div class="preview"><div class="placeholder"><div class="icon">📝</div><div class="label">JS display tag</div><div class="sub">Script execution not supported in reference preview</div></div></div>`;
-  return wrapInPage(body, dims, manifest.name || 'JS display preview', false, previewAssetOrigins(manifest));
+  return wrapInPage(body, dims, manifest.name || 'JS display preview', false, []);
 }
 
 function renderPlaceholder(manifest: ManifestInput, dims: RenderDimensions, icon: string, label: string): string {
@@ -802,13 +808,15 @@ function resolvedRenderer(
 
   // HTML display formats (html5 canonical kind: display_html, display_300x250_html, etc.).
   // Must be checked before the generic display_ catch-all.
+  // tracking_suppressed uses genericResult's default (false): submitted HTML may contain
+  // anchor hrefs or img srcs that represent navigation/impression effects, so we cannot
+  // claim suppression even though scripts are blocked.
   if (formatKind === 'html5' || formatId.endsWith('_html')) {
-    const result = genericResult('renderHtmlDisplay', () => renderHtmlDisplay(manifest, dims));
-    result.renderer.tracking_suppressed = true; // sandbox blocks tracker calls in srcdoc frame
-    return result;
+    return genericResult('renderHtmlDisplay', () => renderHtmlDisplay(manifest, dims));
   }
   // JS display tag (display_tag canonical kind). Script execution is blocked by sandbox +
   // inherited CSP; return an explicit unsupported placeholder instead of a misleading tile.
+  // Pure placeholder (no submitted content rendered): tracking_suppressed = true.
   if (formatKind === 'display_tag' || formatId === 'display_js') {
     const result = genericResult('renderJsDisplay', () => renderJsDisplay(manifest, dims));
     result.renderer.tracking_suppressed = true;
