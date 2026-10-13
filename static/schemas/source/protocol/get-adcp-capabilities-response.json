@@ -95,18 +95,6 @@
     },
     {
       "if": {
-        "required": ["account"],
-        "properties": { "account": { "required": ["agent_onboarding"] } }
-      },
-      "then": {
-        "properties": {
-          "experimental_features": { "contains": { "const": "account.agent_onboarding" } }
-        },
-        "required": ["experimental_features"]
-      }
-    },
-    {
-      "if": {
         "properties": {
           "adcp": {
             "properties": {
@@ -459,6 +447,18 @@
         "required": ["media_buy", "account"]
       },
       "then": false
+    },
+    {
+      "if": {
+        "required": ["account"],
+        "properties": { "account": { "required": ["agent_onboarding"] } }
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "account.agent_onboarding" } }
+        },
+        "required": ["experimental_features"]
+      }
     }
   ],
   "properties": {
