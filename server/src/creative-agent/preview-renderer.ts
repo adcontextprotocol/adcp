@@ -352,6 +352,56 @@ function renderSocial(manifest: ManifestInput, dims: RenderDimensions): string {
   return wrapInPage(body, dims, manifest.name || 'Social Preview', false, previewAssetOrigins(manifest));
 }
 
+/**
+ * Render an HTML display creative (html5 canonical kind, html_creative asset).
+ *
+ * The HTML content is embedded in a sandboxed srcdoc iframe:
+ * - sandbox without allow-scripts blocks JavaScript execution regardless of CSP.
+ * - sandbox without allow-same-origin treats the frame as a unique null origin,
+ *   preventing it from reading the parent page or its cookies.
+ * - escapeHtml() encodes the content for safe placement in an HTML attribute,
+ *   preventing attribute-boundary breakout.
+ *
+ * CSP inheritance: per W3C CSP3 §4.1.3, srcdoc iframes inherit the embedding
+ * document's CSP list — this includes both the HTTP header CSP set by the
+ * /preview/:id endpoint ("default-src 'none'; ... style-src 'unsafe-inline'")
+ * AND the <meta http-equiv="Content-Security-Policy"> added by wrapInPage.
+ * Both apply inside the srcdoc frame and block inline scripts and network
+ * fetches. The sandbox attribute is the primary isolation boundary;
+ * the inherited CSP provides defense-in-depth.
+ *
+ * Limitation: JavaScript is disabled. HTML layout, inline CSS, and static
+ * markup render correctly; scripts are blocked by sandbox even if present.
+ * This is an agent_approximation preview, not a fully functional HTML5 render.
+ */
+export function renderHtmlDisplay(manifest: ManifestInput, dims: RenderDimensions): string {
+  const assets = manifest.assets || {};
+  const htmlContent = assets.html_creative?.content ?? '';
+
+  let body: string;
+  if (!htmlContent) {
+    body = `<div class="preview"><div class="placeholder"><div class="icon">📝</div><div class="label">HTML Display Ad</div><div class="sub">No html_creative content</div></div></div>`;
+  } else {
+    const encodedHtml = escapeHtml(htmlContent);
+    // Note: sandbox without allow-scripts and allow-same-origin; referrerpolicy
+    // prevents the creative from reading the Referer header on any navigation.
+    body = `<div class="preview"><iframe srcdoc="${encodedHtml}" sandbox width="${dims.width}" height="${dims.height}" style="border:none;width:${dims.width}px;height:${dims.height}px;display:block;" referrerpolicy="no-referrer" title="HTML creative preview (scripts disabled)"></iframe></div>`;
+  }
+
+  return wrapInPage(body, dims, manifest.name || 'HTML Display Preview', false, previewAssetOrigins(manifest));
+}
+
+/**
+ * JS display tag format (display_tag canonical kind, js_creative asset).
+ * Script execution is blocked by the sandbox and inherited CSP, so the tag
+ * cannot render.  Return an explicit placeholder rather than an empty frame
+ * or a misleading "Display Ad" tile.
+ */
+function renderJsDisplay(manifest: ManifestInput, dims: RenderDimensions): string {
+  const body = `<div class="preview"><div class="placeholder"><div class="icon">📝</div><div class="label">JS Display Tag</div><div class="sub">Script execution not supported in reference preview</div></div></div>`;
+  return wrapInPage(body, dims, manifest.name || 'JS Display Preview', false, previewAssetOrigins(manifest));
+}
+
 function renderPlaceholder(manifest: ManifestInput, dims: RenderDimensions, icon: string, label: string): string {
   const body = `<div class="preview"><div class="placeholder"><div class="icon">${icon}</div><div class="label">${escapeHtml(label)}</div><div class="sub">${dims.width}×${dims.height}</div></div></div>`;
   return wrapInPage(body, dims, manifest.name || label, false, previewAssetOrigins(manifest));
@@ -741,6 +791,22 @@ function resolvedRenderer(
 
   // Route to format-specific renderer.
   // Handles both training agent IDs (display_300x250) and reference agent IDs (display_300x250_image).
+
+  // HTML display formats (html5 canonical kind: display_html, display_300x250_html, etc.).
+  // Must be checked before the generic display_ catch-all.
+  if (formatKind === 'html5' || formatId.endsWith('_html')) {
+    const result = genericResult('renderHtmlDisplay', () => renderHtmlDisplay(manifest, dims));
+    result.renderer.tracking_suppressed = true; // sandbox blocks tracker calls in srcdoc frame
+    return result;
+  }
+  // JS display tag (display_tag canonical kind). Script execution is blocked by sandbox +
+  // inherited CSP; return an explicit unsupported placeholder instead of a misleading tile.
+  if (formatKind === 'display_tag' || formatId === 'display_js') {
+    const result = genericResult('renderJsDisplay', () => renderJsDisplay(manifest, dims));
+    result.renderer.tracking_suppressed = true;
+    return result;
+  }
+
   if (formatId.startsWith('display_') || formatId === 'email_sponsored') {
     return imageResult();
   }
