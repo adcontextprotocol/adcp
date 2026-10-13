@@ -814,14 +814,6 @@
           "$ref": "/schemas/core/principal-declarations-state.json",
           "description": "Declared consumption facts with the seller-computed accepted intersection"
         },
-        "agent-onboarding": {
-          "$ref": "/schemas/core/agent-onboarding.json",
-          "description": "Seller onboarding posture for buyer agents, per billing party and sandbox"
-        },
-        "agent-onboarding-tier": {
-          "$ref": "/schemas/core/agent-onboarding-tier.json",
-          "description": "One onboarding mode with its requirements"
-        },
         "principal-changed-webhook": {
           "$ref": "/schemas/core/principal-changed-webhook.json",
           "description": "Caller-anchored invalidation payload for seller-driven connection-state transitions"
@@ -990,6 +982,14 @@
         "brand-id": {
           "$ref": "/schemas/core/brand-id.json",
           "description": "Identifier for a brand within a house portfolio - lowercase alphanumeric with underscores only"
+        },
+        "agent-onboarding": {
+          "$ref": "/schemas/core/agent-onboarding.json",
+          "description": "Seller onboarding posture for buyer agents, per billing party and sandbox"
+        },
+        "agent-onboarding-tier": {
+          "$ref": "/schemas/core/agent-onboarding-tier.json",
+          "description": "One onboarding mode with its requirements"
         },
         "buyer-onboarding-posture": {
           "$ref": "/schemas/core/buyer-onboarding-posture.json",
