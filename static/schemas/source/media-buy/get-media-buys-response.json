@@ -434,6 +434,11 @@
                         "description": "Creative identifier",
                         "x-entity": "creative"
                       },
+                      "landing_page_url": {
+                        "$ref": "/schemas/core/macro-bearing-url.json",
+                        "description": "The landing page actually served for this creative on this package: the assignment override when present, otherwise the creative's own click-through destination. Sellers supporting creative.supports_assignment_landing_page MUST return the effective destination when one exists. AdCP macros follow the same rules as the creative's own click-through.",
+                        "x-added-in": "3.3.0"
+                      },
                       "approval_status": {
                         "$ref": "/schemas/enums/creative-approval-status.json"
                       },

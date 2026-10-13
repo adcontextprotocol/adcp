@@ -205,6 +205,11 @@
             "description": "ID of the package to assign the creative to",
             "x-entity": "package"
           },
+          "landing_page_url": {
+            "$ref": "/schemas/core/macro-bearing-url.json",
+            "description": "Override the creative's click-through destination for this creative on this package only, without changing the library creative. AdCP macros follow the same rules as the creative's own click-through. Requires creative.supports_assignment_landing_page: true; buyers MUST NOT send this field otherwise and sellers without the capability MUST reject it with UNSUPPORTED_FEATURE. The seller MUST serve the override or reject the assignment through existing assignment errors, including when an embedded HTML, JavaScript, or VAST click cannot be overridden. Creative approval remains valid; destination review applies to the assignment.",
+            "x-added-in": "3.3.0"
+          },
           "weight": {
             "type": "number",
             "description": "Relative delivery weight (0-100). When multiple creatives are assigned to the same package, weights determine impression distribution proportionally. When omitted, the creative receives equal rotation with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery).",
@@ -259,6 +264,11 @@
               "operation": { "const": "assign" },
               "creative_id": { "type": "string", "minLength": 1, "x-entity": "creative" },
               "package_id": { "type": "string", "minLength": 1, "x-entity": "package" },
+              "landing_page_url": {
+                "$ref": "/schemas/core/macro-bearing-url.json",
+                "description": "Override the creative's click-through destination for this creative on this package only, without changing the library creative. AdCP macros follow the same rules as the creative's own click-through. Requires creative.supports_assignment_landing_page: true; buyers MUST NOT send this field otherwise and sellers without the capability MUST reject it with UNSUPPORTED_FEATURE. The seller MUST serve the override or reject the assignment through existing assignment errors, including when an embedded HTML, JavaScript, or VAST click cannot be overridden. Creative approval remains valid; destination review applies to the assignment.",
+                "x-added-in": "3.3.0"
+              },
               "weight": { "type": "number", "minimum": 0, "maximum": 100 },
               "placement_ids": {
                 "type": "array",
