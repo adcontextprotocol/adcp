@@ -1396,7 +1396,7 @@ describe('preview renderer', () => {
     );
 
     expect(html).toContain('<!DOCTYPE html>');
-    expect(html).toContain('No html_creative content');
+    expect(html).toContain('No HTML creative content');
     expect(html).not.toContain('<iframe');
   });
 
@@ -1438,7 +1438,7 @@ describe('preview renderer', () => {
     );
 
     expect(html).toContain('<!DOCTYPE html>');
-    expect(html).toContain('JS Display Tag');
+    expect(html).toContain('JS display tag');
     expect(html).toContain('not supported');
     expect(html).not.toContain('<iframe');
   });
@@ -1461,6 +1461,22 @@ describe('preview renderer', () => {
     const meta = getPreviewRendererMetadata(manifest, findFormat('display_300x250_html'));
     expect(meta.export).toBe('renderHtmlDisplay');
     expect(meta.tracking_suppressed).toBe(true);
+  });
+
+  it('canonical html5_bundle (zip) shape shows honest unsupported placeholder, not "No html_creative"', () => {
+    const html = renderPreview(
+      {
+        format_kind: 'html5',
+        params: { width: 300, height: 250 },
+        assets: { html5_bundle: { url: 'https://cdn.example/creative.zip' } },
+      },
+      undefined,
+    );
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('ZIP bundle preview not supported');
+    expect(html).not.toContain('No HTML creative content');
+    expect(html).not.toContain('<iframe');
   });
 });
 

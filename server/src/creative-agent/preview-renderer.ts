@@ -378,13 +378,21 @@ export function renderHtmlDisplay(manifest: ManifestInput, dims: RenderDimension
   const assets = manifest.assets || {};
   const htmlContent = assets.html_creative?.content ?? '';
 
+  // Canonical html5 manifests may use an html5_bundle (zip) slot instead of
+  // the inline html_creative slot used by the reference agent's display_*_html
+  // formats.  The reference preview cannot fetch or extract a zip bundle, so
+  // show an honest unsupported placeholder for that shape.
+  const hasBundleUrl = !!(assets.html5_bundle?.url);
+
   let body: string;
-  if (!htmlContent) {
-    body = `<div class="preview"><div class="placeholder"><div class="icon">📝</div><div class="label">HTML Display Ad</div><div class="sub">No html_creative content</div></div></div>`;
+  if (!htmlContent && hasBundleUrl) {
+    body = `<div class="preview"><div class="placeholder"><div class="icon">📦</div><div class="label">HTML5 bundle</div><div class="sub">ZIP bundle preview not supported in reference renderer</div></div></div>`;
+  } else if (!htmlContent) {
+    body = `<div class="preview"><div class="placeholder"><div class="icon">📝</div><div class="label">HTML display ad</div><div class="sub">No HTML creative content</div></div></div>`;
   } else {
     const encodedHtml = escapeHtml(htmlContent);
-    // Note: sandbox without allow-scripts and allow-same-origin; referrerpolicy
-    // prevents the creative from reading the Referer header on any navigation.
+    // sandbox without allow-scripts and allow-same-origin ensures the frame is
+    // a null-origin sandbox; referrerpolicy suppresses the Referer header.
     body = `<div class="preview"><iframe srcdoc="${encodedHtml}" sandbox width="${dims.width}" height="${dims.height}" style="border:none;width:${dims.width}px;height:${dims.height}px;display:block;" referrerpolicy="no-referrer" title="HTML creative preview (scripts disabled)"></iframe></div>`;
   }
 
@@ -398,8 +406,8 @@ export function renderHtmlDisplay(manifest: ManifestInput, dims: RenderDimension
  * or a misleading "Display Ad" tile.
  */
 function renderJsDisplay(manifest: ManifestInput, dims: RenderDimensions): string {
-  const body = `<div class="preview"><div class="placeholder"><div class="icon">📝</div><div class="label">JS Display Tag</div><div class="sub">Script execution not supported in reference preview</div></div></div>`;
-  return wrapInPage(body, dims, manifest.name || 'JS Display Preview', false, previewAssetOrigins(manifest));
+  const body = `<div class="preview"><div class="placeholder"><div class="icon">📝</div><div class="label">JS display tag</div><div class="sub">Script execution not supported in reference preview</div></div></div>`;
+  return wrapInPage(body, dims, manifest.name || 'JS display preview', false, previewAssetOrigins(manifest));
 }
 
 function renderPlaceholder(manifest: ManifestInput, dims: RenderDimensions, icon: string, label: string): string {
