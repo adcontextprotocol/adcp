@@ -751,7 +751,12 @@ export async function resolveReportingAccountDurably(
   for (const [key, ledger] of ledgers) {
     const [storedPrincipal, accountId] = key.split('\u001f');
     if (storedPrincipal !== principalScope || !accountId) continue;
-    const storedAccount = ledger.accountRefs.find(reference => accountScopeFromRef(reference) === scope);
+    // Mirror the DB lookup below: an account_id reference matches by id.
+    const storedAccount = account.account_id === undefined
+      ? ledger.accountRefs.find(reference => accountScopeFromRef(reference) === scope)
+      : account.account_id === accountId
+        ? ledger.accountRefs.find(reference => reference.account_id === undefined)
+        : undefined;
     if (storedAccount) return { accountId, account: structuredClone(storedAccount) };
   }
   if (!isDatabaseInitialized()) return undefined;
@@ -4004,6 +4009,36 @@ export async function captureReportingMediaBuyCandidateDurably(
   await withDurableReportingLedger(principal, accountId, true, () => {
     setReportingMediaBuyCandidates(principal, accountId, [candidate]);
   }, existingBinding?.account ?? account);
+}
+
+/** Read accepted-buy facts in the exact caller/account scope without a task-session dependency. */
+export async function reportingMediaBuyCandidatesForAccountDurably(
+  principal: string | undefined,
+  accountId: string,
+): Promise<ReportingMediaBuyCandidate[]> {
+  let ledger = ledgers.get(callerScope(principal, accountId));
+  if (isDatabaseInitialized()) {
+    const { rows } = await getPool().query<{ ledger: SerializedReportingLedger | string }>(
+      `SELECT ledger FROM training_reporting_ledgers WHERE principal_scope = $1 AND account_id = $2`,
+      [principal && principal.length > 0 ? principal : 'anonymous', accountId],
+    );
+    const stored = rows[0]?.ledger;
+    ledger = stored === undefined ? undefined : deserializeLedger(
+      typeof stored === 'string' ? JSON.parse(stored) as SerializedReportingLedger : stored,
+    );
+  }
+  const nowMs = Date.now();
+  return [...(ledger?.mediaBuyCandidates ?? [])].flatMap(([mediaBuyId, history]) => {
+    const accepted = candidateAt(history, nowMs);
+    return accepted ? [{
+      mediaBuyId,
+      startTime: accepted.start,
+      endTime: accepted.end,
+      knownAt: accepted.knownAt,
+      effectiveAt: accepted.effectiveAt,
+      packages: structuredClone(accepted.packages),
+    }] : [];
+  });
 }
 
 export async function validateReportingConfigurationReplacementDurably(
