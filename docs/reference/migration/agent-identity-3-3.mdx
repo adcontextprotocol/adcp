@@ -56,7 +56,7 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 2. Treat a verified but unbound origin as identity-established: no account access. Return `unconfigured` from `get_principal`.
 3. Evaluate the operator's trust record only when you bind a principal, check a grant, or apply an `open` onboarding mode. Never evaluate it on the signature path.
 4. Advertise `web-bot-auth` in `request_signing.profiles`.
-5. Answer failures with the profile's HTTP status and headers (`403` with `Accept-Signature`, `400`, `429`). Signature-specific `request_signature_*` codes stay with the RFC 9421 profile.
+5. Answer signature failures with the profile's HTTP status and headers (`403` with `Accept-Signature`, `400`, `429`). Signature-specific `request_signature_*` codes stay with the RFC 9421 profile. Authorization failures after the signature verifies use the AdCP error envelope with existing codes, such as `PERMISSION_DENIED` with `grant_absent`.
 
 **Keep:** RFC 9421 verification through 3.x. Once you bind an origin, refuse RFC 9421 signatures from it.
 

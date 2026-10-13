@@ -855,7 +855,7 @@ The Web Bot Auth profile follows the IETF Web Bot Auth draft as written, so any 
 **Verifier setup:**
 1. Verify against the directory at the origin the covered `Signature-Agent` names. Check the origin's revocation list.
 2. Treat a verified origin you have not bound as identity-established: no account access. Evaluate the operator's trust record only when you bind a principal, check a grant, or apply an `open` onboarding mode.
-3. Report failures with the profile's HTTP status and headers: `403` with `Accept-Signature`, `400`, or `429`.
+3. Report signature failures with the profile's HTTP status and headers: `403` with `Accept-Signature`, `400`, or `429`. Once the signature verifies, authorization failures (scope, binding, grants) use the AdCP error envelope, never these statuses.
 4. Once you have bound an origin, refuse RFC 9421 signatures for it.
 
 The normative rules are in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities). For the end-to-end buyer flow, see [A buyer agent onboards itself](/docs/accounts/buyer-agent-self-onboarding). For moving from the RFC 9421 profile, see the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
