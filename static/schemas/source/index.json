@@ -826,14 +826,6 @@
           "$ref": "/schemas/core/principal-changed-webhook.json",
           "description": "Caller-anchored invalidation payload for seller-driven connection-state transitions"
         },
-        "buyer-onboarding-posture": {
-          "$ref": "/schemas/core/buyer-onboarding-posture.json",
-          "description": "How a buying agent considers sellers, published in its trust.json"
-        },
-        "agent-onboarding-requirement": {
-          "$ref": "/schemas/core/agent-onboarding-requirement.json",
-          "description": "One onboarding requirement, discriminated by kind"
-        },
         "agent-reporting-destination": {
           "$ref": "/schemas/core/agent-reporting-destination.json",
           "description": "Reusable caller-scoped reporting destination configuration"
@@ -998,6 +990,14 @@
         "brand-id": {
           "$ref": "/schemas/core/brand-id.json",
           "description": "Identifier for a brand within a house portfolio - lowercase alphanumeric with underscores only"
+        },
+        "buyer-onboarding-posture": {
+          "$ref": "/schemas/core/buyer-onboarding-posture.json",
+          "description": "How a buying agent considers sellers, published in its trust.json"
+        },
+        "agent-onboarding-requirement": {
+          "$ref": "/schemas/core/agent-onboarding-requirement.json",
+          "description": "One onboarding requirement, discriminated by kind"
         },
         "brand-ref": {
           "$ref": "/schemas/core/brand-ref.json",
