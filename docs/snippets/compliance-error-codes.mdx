@@ -48,6 +48,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CREATIVE_DEADLINE_EXCEEDED` | correctable | check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller |
 | `CREATIVE_INACCESSIBLE` | correctable | verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit |
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
+| `CREATIVE_MERGE_REJECTED` | correctable | confirm the pairing via list_creatives, or use a replace assignment operation to traffic creative_id as a new serving object |
 | `CREATIVE_MISSING_CLICK_URL` | correctable | add the required destination URL and resubmit the creative |
 | `CREATIVE_NOT_FOUND` | correctable | verify creative_id via list_creatives, or sync_creatives to register it |
 | `CREATIVE_REJECTED` | correctable | revise the creative according to the applicable advertising policy or validated accessibility criteria |
@@ -459,6 +460,15 @@ A creative governance agent (get_creative_features) could not retrieve the submi
 **Suggested action:** supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default
 
 A creative bound to a locale-constrained product format has no materialized variant matching locale_policy.accepted_language_ranges, lacks protocol-declared locale topology, or uses serve_default with a seller-ineligible default variant. Seller ranges use RFC 4647 Basic Filtering and are applied independently for every placement where the assignment may serve, before buyer Lookup, locale_fallbacks, or default selection. Distinct from CREATIVE_REJECTED because this is a mechanically discoverable assignment-eligibility mismatch, not subjective content review. error.field SHOULD point to the offending creative or assignment; error.details SHOULD include format_option_id when present, accepted_language_ranges, available_variant_locales, and placement identity when applicable. Recovery: correctable (supply or assign a matching materialized locale variant, narrow placement scope, choose a compatible format option, or change an ineligible serve_default).
+
+</Accordion>
+<a id="error-code-creative-merge-rejected"></a>
+
+<Accordion title="CREATIVE_MERGE_REJECTED — correctable">
+
+**Suggested action:** confirm the pairing via list_creatives, or use a replace assignment operation to traffic creative_id as a new serving object
+
+A sync_creatives merge assignment operation named a seller-assigned merged_creative_id that the seller judges is not the same creative as creative_id (different format or content). The seller MUST leave every assignment unchanged and SHOULD set error.field to the offending assignment_operations entry. Distinct from INVALID_STATE (merged_creative_id is not seller-assigned or not assigned to the package) and CREATIVE_NOT_FOUND (merged_creative_id is not in the account). Recovery: correctable (confirm the pairing via list_creatives, or use a replace operation to traffic creative_id on the package as a new serving object instead of merging).
 
 </Accordion>
 <a id="error-code-creative-missing-click-url"></a>

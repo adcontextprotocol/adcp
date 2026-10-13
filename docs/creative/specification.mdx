@@ -685,6 +685,7 @@ Upload and synchronize creative assets in a library. Implemented by any agent th
 - Agents SHOULD support `dry_run` for validation without applying changes
 - Agents MUST reject requests that combine `delete_missing: true` with `creative_ids` — `delete_missing` applies to the entire library, not a filtered subset
 - Agents MUST NOT archive a creative whose `creative_id_source` is `seller` under `delete_missing`, and MUST treat a sync of a seller-assigned `creative_id` as an update of that creative. See [Seller-assigned creative IDs](/docs/creative/task-reference/sync_creatives#seller-assigned-creative-ids).
+- Agents that advertise `creative.supports_assignment_merge` MUST apply a verified `merge` assignment operation by moving the seller-assigned creative's package assignment, with its serving object and approval, to the buyer's `creative_id` without re-review unless the content differs, and MUST report that object's delivery under the buyer's `creative_id` from the merge onward without restating earlier delivery. See [Merging a seller-created copy](/docs/creative/task-reference/sync_creatives#merging-a-seller-created-copy).
 - Agents that advertise `creative.localization` MUST reject unsupported localization before mutation and return exact localization readback on every accepted localized creative
 - Agents that also manage media buys SHOULD support the `assignments` field for bulk creative-to-package mapping
 - Standalone creative agents that do not manage media buys SHOULD ignore the `assignments` field

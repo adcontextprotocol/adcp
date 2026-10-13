@@ -4581,6 +4581,39 @@ async function runTests() {
     },
     'sync_creatives supports assignment-only replace and unassign operations'
   );
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    {
+      idempotency_key: 'assignment-operations-merge-0001',
+      account: { account_id: 'account-clean-1' },
+      assignment_operations: [
+        { operation: 'merge', package_id: 'package-1', creative_id: 'creative-buyer', merged_creative_id: 'slr_1234' }
+      ]
+    },
+    'sync_creatives supports merging a seller-created copy into a buyer creative'
+  );
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-request.json',
+    {
+      idempotency_key: 'assignment-operations-merge-0002',
+      account: { account_id: 'account-clean-1' },
+      assignment_operations: [
+        { operation: 'merge', package_id: 'package-1', creative_id: 'creative-buyer' }
+      ]
+    },
+    'sync_creatives merge requires merged_creative_id'
+  );
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-request.json',
+    {
+      idempotency_key: 'assignment-operations-merge-0003',
+      account: { account_id: 'account-clean-1' },
+      assignment_operations: [
+        { operation: 'merge', package_id: 'package-1', creative_id: 'creative-buyer', merged_creative_id: 'slr_1234', weight: 50 }
+      ]
+    },
+    'sync_creatives merge carries no weight; a later assign op changes it'
+  );
   await testSchemaRejection(
     '/schemas/creative/sync-creatives-request.json',
     {

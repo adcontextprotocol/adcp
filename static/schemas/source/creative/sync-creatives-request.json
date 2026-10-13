@@ -325,6 +325,38 @@
               },
               "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"
             }
+          },
+          {
+            "title": "Merge seller copy",
+            "description": "Declares that merged_creative_id, a seller-assigned creative currently assigned to package_id, is the same creative as creative_id. On success the seller moves that assignment's serving object, approval, weight, and placement routing to (creative_id, package_id) without re-trafficking it, and merged_creative_id no longer has an assignment on the package. Unlike replace, which traffics creative_id as a new object, merge preserves delivery continuity. Requires creative.supports_assignment_merge.",
+            "properties": {
+              "operation": { "const": "merge" },
+              "creative_id": { "type": "string", "minLength": 1, "description": "Buyer's creative that takes over the assignment. It need not already be assigned to package_id.", "x-entity": "creative" },
+              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" },
+              "merged_creative_id": { "type": "string", "minLength": 1, "description": "Seller-assigned creative (creative_id_source: seller) currently assigned to package_id that the seller verifies is the same creative as creative_id.", "x-entity": "creative" }
+            },
+            "required": ["operation", "creative_id", "package_id", "merged_creative_id"],
+            "additionalProperties": false,
+            "x-added-in": "3.3.0",
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "capability_gate": {
+                  "required_capability": "creative.supports_assignment_merge",
+                  "without_capability": "UNSUPPORTED_FEATURE"
+                },
+                "check_order": [
+                  "merged_creative_id_not_in_account: CREATIVE_NOT_FOUND",
+                  "merged_creative_id_not_seller_assigned_or_not_assigned_to_package: INVALID_STATE",
+                  "seller_judges_not_same_creative: CREATIVE_MERGE_REJECTED"
+                ],
+                "on_success": {
+                  "approval": "inherit_merged_creative_approval_on_package_and_must_not_re_review_unless_content_differs",
+                  "merged_creative": "remove_assignment_on_package_only; not_purged",
+                  "delivery_attribution": "report_under_creative_id_from_merge_time; prior_delivery_stays_under_merged_creative_id_and_must_not_be_restated"
+                }
+              },
+              "spec": "docs/creative/task-reference/sync_creatives.mdx#merging-a-seller-created-copy"
+            }
           }
         ]
       }
