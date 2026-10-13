@@ -930,6 +930,7 @@ phases:
                 width: 300
                 height: 250
                 max_file_size_kb: 200
+                image_formats: ["jpg", "png"]
               context:
                 buyer_ref: "canonical_formats_direct_selector_positive"
           context:
