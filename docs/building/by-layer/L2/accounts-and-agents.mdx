@@ -353,6 +353,43 @@ A `brand.json` listing is sufficient, not necessary. Finding the operator lets t
 
 `authorized_operators` models the interface between the brand and whoever operates on its behalf. It does not model internal agency hierarchies.
 
+### Grants in trust.json (experimental)
+
+From 3.3, a brand can publish demand-side grants in its `/.well-known/trust.json` ([trust.json](/docs/reference/trust-json), [DR-0025](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0025-demand-side-grants-in-trust-json.md), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033)). A grant says "this organization, optionally only these of its agents, may act for us, for these scopes, in these countries, during this window". It is the trust.json successor to `authorized_operators`.
+
+```json
+{
+  "grants": [
+    {
+      "grantee": "pinnacle-agency.example",
+      "scopes": ["adcp:media_buying"],
+      "agents": [{ "url": "https://buyer.pinnacle-agency.example/mcp" }],
+      "profiles": { "adcp": { "brands": ["nova_motors"] } },
+      "valid_until": "2027-06-30T00:00:00Z"
+    }
+  ],
+  "exclusive_grants": true
+}
+```
+
+**How a seller evaluates it at `sync_accounts`:**
+- **The brand's record authorizes.** The seller reads the brand's own trust.json, or its house record when it has one. The buyer's operator record never authorizes a brand outside the operator's registrable domain.
+- **Implicit authority.** When `account.operator`, the brand, and the signer's operator share a registrable domain, authority is implicit. This matches self-authorization above.
+- **Otherwise a grant chain must reach the signer's operator** with a scope covering the operation (`adcp:media_buying` for buys). Either of these satisfies it:
+  - the brand grants the signer's operator, and `account.operator` is the signer's operator;
+  - the brand grants `account.operator`, and `account.operator`'s own trust.json grants the signer's operator (an agency using an intermediary, or a platform hosting the agency's agent).
+
+  `account.operator` MUST be on the chain.
+- **Matching.** `grantee` compares as a registrable domain, exactly. A grant's `agents[]` narrowing matches the signer by [canonical origin](/docs/reference/url-canonicalization#canonical-origin). Grants for `adcp:media_buying` SHOULD narrow with `agents[]`, because a grant to a platform's domain otherwise covers every agent that platform lists.
+- **Effective authority** is the intersection of brands, countries, scopes, and the earliest `valid_until` along the chain. A grantee never extends a grant it received; the second link is its own grant, and the intermediary cannot grant further.
+- **Absence.** `exclusive_grants: true` makes `grants[]` exhaustive for the scopes it names. Without it, an acts-for claim no grant covers stays at the seller's discretion: its own onboarding records, never the brand's brand.json. A fetch failure is never absence.
+- **No downgrade.** When the brand's trust.json fetch returns 200, `authorized_operators[]` in its brand.json is ignored. Through 3.x, `authorized_operators` stays a valid source when the brand publishes no trust.json.
+- **Freshness.** Grants are checked at `sync_accounts`, re-derived at least as often as the revocation polling interval, and re-checked before a spend-committing call when the cached result is older than that.
+
+**When no grant covers the claim,** the request fails with `PERMISSION_DENIED` and `error.details` `{ "scope": "agent", "reason": "grant_absent" }`. It is emitted only once the signer's identity is established, under the cross-tenant oracle clamp in [Per-Agent Authorization Gate](/docs/building/by-layer/L3/error-handling#per-agent-authorization-gate). It is a request-level authorization failure: no account is created, and no account changes status. Grants are public, so the reason discloses nothing the buyer can't already read.
+
+**When a grant is withdrawn,** the agent loses access, not the account. Later calls from that agent fail with `grant_absent`. The account keeps its status and its live buys, and the operator can authorize a different agent for it. `suspended` stays a seller-initiated pause of the account itself.
+
 ## Buyer-agent identity
 
 `authorized_operators` tells the seller whether an operator is allowed to represent a brand. It doesn't tell the seller who the *agent* placing the call is, or what commercial relationship is on file with that agent. Those are different questions, and the seller checks both before provisioning.
