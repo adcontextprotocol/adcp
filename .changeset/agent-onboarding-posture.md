@@ -12,4 +12,4 @@ Add the optional, experimental `account.agent_onboarding` block on `get_adcp_cap
 
 **What `open` means.** It binds identity, not spend, and needs the Web Bot Auth profile.
 
-**Uniformity.** The block is seller-wide, served on the unauthenticated fetch, and absent from error payloads, so it is no onboarding oracle. New schemas: `core/agent-onboarding.json`, `core/agent-onboarding-tier.json`, `core/agent-onboarding-requirement.json`, `enums/agent-onboarding-mode.json`, `enums/agent-onboarding-requirement-kind.json`.
+**Uniformity.** The block is seller-wide, served on the unauthenticated fetch, and absent from error payloads, so it is no onboarding oracle. New schemas: `core/agent-onboarding.json`, `core/agent-onboarding-tier.json`, `core/agent-onboarding-requirement.json`, `enums/agent-onboarding-mode.json`, `enums/agent-onboarding-requirement-kind.json`. Buyer posture (#8114): `core/buyer-onboarding-posture.json` with modes `considers_unsolicited`, `application`, `invite_only` (`enums/buyer-onboarding-mode.json`), published in a buying agent's trust.json at `agents[].profiles.adcp.onboarding` or as a record default at `profiles.adcp.onboarding`.

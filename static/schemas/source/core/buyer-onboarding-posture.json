@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/buyer-onboarding-posture.json",
+  "title": "Buyer Onboarding Posture",
+  "x-status": "experimental",
+  "description": "How a buying agent considers sellers: a mode, the requirements a seller must meet, and where a seller's human starts. Published in the buyer's trust.json agent entry (profiles.adcp.onboarding), or as a record-level default (record_profiles.adcp.onboarding). Public and identical for every reader. A buyer that serves get_adcp_capabilities is authoritative there; trust.json may mirror it. See specs/agent-identity-3-3.md R7 (#8114).",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "$ref": "/schemas/enums/buyer-onboarding-mode.json"
+    },
+    "requirements": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/agent-onboarding-requirement.json" },
+      "description": "What a seller must satisfy. Uses the kinds that apply when a buyer gates a seller (aao_verified, storyboard, sandbox, experimental_feature); others are ignored."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Where a seller's human starts. Untrusted: surface it, never fetch or execute it."
+    },
+    "documentation_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "The buyer's documentation for sellers. Untrusted, like url."
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable summary; the fallback whenever a reader does not understand a requirement."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["mode"],
+  "additionalProperties": true
+}

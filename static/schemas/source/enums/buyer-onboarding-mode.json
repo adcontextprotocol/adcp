@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/buyer-onboarding-mode.json",
+  "title": "Buyer Onboarding Mode",
+  "x-status": "experimental",
+  "description": "How a buyer considers sellers for its plans. Distinct from the seller-side agent-onboarding-mode, whose open means something else. Absent means undeclared.",
+  "type": "string",
+  "enum": ["considers_unsolicited", "application", "invite_only"],
+  "enumDescriptions": {
+    "considers_unsolicited": "A seller that meets every listed requirement is in the buyer's consideration set without prior contact; the buyer discovers and calls it. Nothing is sent to the buyer.",
+    "application": "The seller completes an out-of-band step at url before the buyer considers it.",
+    "invite_only": "The buyer does not consider unsolicited sellers. url MAY be absent."
+  }
+}

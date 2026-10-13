@@ -611,7 +611,7 @@ So `open` delivers a verified identity, sandbox access, and joining a billing re
 | `billing_entity` | seller gating a buyer | The buyer supplies a billing entity on `sync_accounts`. |
 | `contract` | seller gating a buyer | A signed agreement exists; details at `url`. |
 | `credit_application` | seller gating a buyer | A credit application completed at `url`, or later through `sync_accounts` `setup.url`. |
-| `aao_verified`, `storyboard`, `sandbox`, `experimental_feature` | buyer gating a seller | Used in a buyer's own posture: a seller badge (`role`, optional `verification_modes`, `specialisms`, `adcp_version`), a passed storyboard or specialism (`id`), `account.sandbox: true`, or a listed feature (`id`). |
+| `aao_verified`, `storyboard`, `sandbox`, `experimental_feature` | buyer gating a seller | Used in a buyer's own posture (`core/buyer-onboarding-posture.json`, published in the buyer's trust.json at `profiles.adcp.onboarding` on its agent entry or as a record default; modes `considers_unsolicited`, `application`, `invite_only`): a seller badge (`role`, optional `verification_modes`, `specialisms`, `adcp_version`), a passed storyboard or specialism (`id`), `account.sandbox: true`, or a listed feature (`id`). |
 
 A kind used in the wrong direction is ignored. An unknown kind falls back to `message` and `url`.
 
