@@ -109,8 +109,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // covers the additive 3.3 Product fields still in review. The 3.3 broadcast
 // TV, daypart and execution-readiness additions bring it to ~1_282_300 bytes.
 // rewriteEmbeddedResourceRefs (#8041) rewrites rootId#/$defs/key cross-def refs
-// to embedded-resource canonical $id URIs, saving ~58 KB and bringing the
-// comply_test_controller request to ~1_231_449 bytes.
+// to embedded-resource canonical $id URIs, saving ~69 KB and bringing the
+// comply_test_controller request to ~1_220_495 bytes (measured from built artifact
+// with discoveryInput=true; before: 1_289_097 bytes).
 const PARITY_COMPILE_LIMIT = 1_250_000;
 
 function readJson(filename) {
@@ -1211,34 +1212,34 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
 });
 
 test('rewriteEmbeddedResourceRefs unit: resolves equivalently, preserves $ids, fails closed on ambiguity', () => {
-  // Verifies the ref-rewriting transform at the unit level using a temp schema
-  // tree with controlled cases: unique $id (rewrite), duplicate $id (no rewrite),
-  // no $id (no rewrite), and fragment subpath in ref.
-  const tmpDir = os.tmpdir() + '/mcp-rewrite-test-' + Date.now();
-  fs.mkdirSync(path.join(tmpDir, 'core'), { recursive: true });
-  fs.mkdirSync(path.join(tmpDir, 'media-buy'), { recursive: true });
+  // Verifies the ref-rewriting transform via projectSourceSchema with controlled cases:
+  //   - unique $id → rewritten; old and new ref targets are identical by value
+  //   - fragment subpath ref → rewritten; targets are identical
+  //   - no $id → stays root-anchored
+  //   - duplicate $id → stays root-anchored
+  //   - fragment in $id → stays root-anchored (production guard)
+  //   - def $id collides with root projection $id → projection throws (tested separately)
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-rewrite-test-'));
+  fs.mkdirSync(path.join(tmpDir, 'core'));
+  fs.mkdirSync(path.join(tmpDir, 'media-buy'));
 
-  // Schema with unique $id and internal definitions — used to test fragment subpath
+  // Schema with unique $id and internal definitions — tests plain ref and fragment subpath
   fs.writeFileSync(path.join(tmpDir, 'core/alpha.json'), JSON.stringify({
     $schema: 'http://json-schema.org/draft-07/schema#',
     $id: '/schemas/core/alpha.json',
     type: 'object',
-    definitions: {
-      Label: { type: 'string', minLength: 1 },
-    },
-    properties: {
-      label: { $ref: '#/definitions/Label' },
-    },
+    definitions: { Label: { type: 'string', minLength: 1 } },
+    properties: { label: { $ref: '#/definitions/Label' } },
     required: ['label'],
   }));
 
-  // Schema with NO $id — cross-def refs to this must remain root-anchored
+  // No $id — cross-def refs must remain root-anchored
   fs.writeFileSync(path.join(tmpDir, 'core/noid.json'), JSON.stringify({
     $schema: 'http://json-schema.org/draft-07/schema#',
     type: 'string',
   }));
 
-  // Two schemas with the SAME $id — ambiguous, both refs must remain root-anchored
+  // Duplicate $id — ambiguous, refs must remain root-anchored
   fs.writeFileSync(path.join(tmpDir, 'core/dup-a.json'), JSON.stringify({
     $schema: 'http://json-schema.org/draft-07/schema#',
     $id: '/schemas/core/shared-id.json',
@@ -1250,8 +1251,15 @@ test('rewriteEmbeddedResourceRefs unit: resolves equivalently, preserves $ids, f
     type: 'object',
   }));
 
-  // Schema referencing alpha (creates cross-def refs from within a bundled sub-schema)
-  // and also referencing noid/dup-a (ambiguous targets → those cross-def refs must stay)
+  // Fragment $id production guard: $id with a '#' must not be used as rewrite target
+  fs.writeFileSync(path.join(tmpDir, 'core/anchored.json'), JSON.stringify({
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: '/schemas/core/anchored.json#section',
+    type: 'boolean',
+  }));
+
+  // Bridge schema: references alpha, noid, dup-a, anchored from within a bundled
+  // sub-schema — creates the cross-def refs under test. Collision case is separate.
   fs.writeFileSync(path.join(tmpDir, 'core/beta.json'), JSON.stringify({
     $schema: 'http://json-schema.org/draft-07/schema#',
     $id: '/schemas/core/beta.json',
@@ -1261,11 +1269,12 @@ test('rewriteEmbeddedResourceRefs unit: resolves equivalently, preserves $ids, f
       lbl: { $ref: '/schemas/core/alpha.json#/definitions/Label' },
       nitem: { $ref: '/schemas/core/noid.json' },
       ditem: { $ref: '/schemas/core/dup-a.json' },
+      aitem: { $ref: '/schemas/core/anchored.json' },
     },
     required: ['item'],
   }));
 
-  // Root schema referencing all schemas
+  // Root: references all the above
   fs.writeFileSync(path.join(tmpDir, 'media-buy/root.json'), JSON.stringify({
     $schema: 'http://json-schema.org/draft-07/schema#',
     $id: '/schemas/media-buy/root.json',
@@ -1278,14 +1287,54 @@ test('rewriteEmbeddedResourceRefs unit: resolves equivalently, preserves $ids, f
     required: ['a', 'b', 'db'],
   }));
 
-  // Inline walker used only in this test (walkSchema not exported)
-  function walkAllRefs(schema, visit) {
-    function walk(value) {
-      if (!value || typeof value !== 'object') return;
-      if (typeof value.$ref === 'string') visit(value.$ref);
-      for (const child of Object.values(value)) walk(child);
+  // Inline ref resolver: walks the whole schema tree (not schema-aware) to find
+  // a resource by $id and then follows a JSON-pointer fragment within it.
+  function resolveRef(root, ref) {
+    if (ref.startsWith('#')) {
+      if (ref === '#') return root;
+      let node = root;
+      for (const seg of ref.slice(2).split('/')) {
+        const key = seg.replace(/~1/g, '/').replace(/~0/g, '~');
+        if (!node || typeof node !== 'object' || !Object.hasOwn(node, key)) return undefined;
+        node = node[key];
+      }
+      return node;
+    }
+    const hashIdx = ref.indexOf('#');
+    const resourceUrl = hashIdx === -1 ? ref : ref.slice(0, hashIdx);
+    const fragment = hashIdx === -1 ? '#' : ref.slice(hashIdx);
+    let resource = null;
+    function find(v) {
+      if (resource || !v || typeof v !== 'object') return;
+      if (v.$id === resourceUrl) { resource = v; return; }
+      for (const c of Object.values(v)) find(c);
+    }
+    find(root);
+    return resource ? resolveRef(resource, fragment) : undefined;
+  }
+
+  // Strip $ref and $id before deep-comparing resolved nodes: $refs differ only
+  // in spelling (root-anchored vs embedded-resource URI) and $id is presentation
+  // metadata. Constraints (type, required, properties, $defs values) must be equal.
+  function extractConstraints(v) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return v;
+    const out = {};
+    for (const [k, val] of Object.entries(v)) {
+      if (k === '$ref' || k === '$id') continue;
+      out[k] = Array.isArray(val) ? val.map(extractConstraints) : extractConstraints(val);
+    }
+    return out;
+  }
+
+  function collectRefs(schema) {
+    const refs = [];
+    function walk(v) {
+      if (!v || typeof v !== 'object') return;
+      if (typeof v.$ref === 'string') refs.push(v.$ref);
+      for (const c of Object.values(v)) walk(c);
     }
     walk(schema);
+    return refs;
   }
 
   try {
@@ -1299,11 +1348,10 @@ test('rewriteEmbeddedResourceRefs unit: resolves equivalently, preserves $ids, f
       undefined, false, true,
     );
 
-    // Both projections must pass self-containment and local-resolution checks
     assert.deepEqual(collectExternalRefs(projWithRewrite), [], 'no external refs after rewrite');
     assertLocalRefsResolve(projWithRewrite);
 
-    // All $id values in $defs must be preserved unchanged
+    // Every $id in $defs must be preserved unchanged
     const defsNoRewrite = projNoRewrite.$defs || {};
     const defsWithRewrite = projWithRewrite.$defs || {};
     for (const [key, def] of Object.entries(defsNoRewrite)) {
@@ -1317,42 +1365,132 @@ test('rewriteEmbeddedResourceRefs unit: resolves equivalently, preserves $ids, f
 
     const projRootId = projNoRewrite.$id;
     const rootRefPrefix = `${projRootId}#/$defs/`;
-
-    // Cross-def refs from within beta.json (a bundled sub-schema):
-    //   - to alpha (unique $id) → must be rewritten to alphaId URI
-    //   - to noid (no $id) → must remain root-anchored
-    //   - to dup-a (duplicate $id) → must remain root-anchored
-    // Root schema's own refs use #/$defs/ (local form, never root-id-prefixed).
-    const remainingRootAnchored = [];
-    walkAllRefs(projWithRewrite, ref => {
-      if (ref.startsWith(rootRefPrefix)) remainingRootAnchored.push(ref);
-    });
-    // Must have root-anchored refs remaining for noid and dup-a (ambiguous targets)
-    const remainingKeys = remainingRootAnchored.map(ref => {
-      const encodedKey = ref.slice(rootRefPrefix.length).split('/')[0];
-      return encodedKey.replace(/~1/g, '/').replace(/~0/g, '~');
-    });
-    assert.ok(remainingKeys.includes('external:core/noid.json'), 'noid cross-def ref must stay root-anchored');
-    assert.ok(remainingKeys.some(k => k.startsWith('external:core/dup-')), 'dup-a cross-def ref must stay root-anchored');
-    // Refs to alpha/lbl in beta must NOT remain root-anchored (they have unique $id)
-    const alphaDefKey = 'external:core/alpha.json';
-    assert.ok(!remainingKeys.includes(alphaDefKey), 'alpha cross-def ref must be rewritten, not root-anchored');
-
-    // Fragment-subpath ref to alpha#/definitions/Label must be rewritten as
-    // alphaId#/$defs/Label (pointer segment also updated definitions→$defs)
     const alphaDef = defsWithRewrite['external:core/alpha.json'];
     assert.ok(alphaDef && typeof alphaDef.$id === 'string', 'alpha def has $id');
     const alphaId = alphaDef.$id;
-    let foundFragRef = false;
-    walkAllRefs(projWithRewrite, ref => {
-      if (ref === `${alphaId}#/$defs/Label`) foundFragRef = true;
-    });
-    assert.ok(foundFragRef, `fragment-subpath ref must be rewritten to ${alphaId}#/$defs/Label`);
 
-    // Embedded-resource refs (to alpha/beta) must actually resolve via assertLocalRefsResolve
-    // (already confirmed above — assertLocalRefsResolve includes these)
+    // --- Old/new target-equivalence: plain ref to alpha ---
+    // beta.$defs should not contain properties (beta is the bundled sub-schema in $defs);
+    // access beta via projNoRewrite.$defs['external:core/beta.json'].properties.item
+    const betaNoRewrite = defsNoRewrite['external:core/beta.json'];
+    const betaWithRewrite = defsWithRewrite['external:core/beta.json'];
+    const oldPlainRef = betaNoRewrite?.properties?.item?.$ref;
+    const newPlainRef = betaWithRewrite?.properties?.item?.$ref;
+    assert.ok(typeof oldPlainRef === 'string' && oldPlainRef.startsWith(rootRefPrefix),
+      'old beta.item ref is root-anchored');
+    assert.equal(newPlainRef, alphaId, 'new beta.item ref is alphaId (embedded-resource URI)');
+    const oldPlainTarget = resolveRef(projNoRewrite, oldPlainRef);
+    const newPlainTarget = resolveRef(projWithRewrite, newPlainRef);
+    assert.ok(oldPlainTarget !== undefined, 'old plain ref resolves');
+    assert.ok(newPlainTarget !== undefined, 'new plain ref resolves');
+    assert.deepEqual(
+      extractConstraints(oldPlainTarget),
+      extractConstraints(newPlainTarget),
+      'old and new plain refs resolve to identical constraints',
+    );
+
+    // --- Old/new target-equivalence: fragment-subpath ref to alpha#/definitions/Label ---
+    const oldFragRef = betaNoRewrite?.properties?.lbl?.$ref;
+    const newFragRef = betaWithRewrite?.properties?.lbl?.$ref;
+    const expectedFragRef = `${alphaId}#/$defs/Label`;
+    assert.ok(typeof oldFragRef === 'string' && oldFragRef.startsWith(rootRefPrefix),
+      'old beta.lbl ref is root-anchored');
+    assert.equal(newFragRef, expectedFragRef, 'new beta.lbl ref is alphaId#/$defs/Label');
+    const oldFragTarget = resolveRef(projNoRewrite, oldFragRef);
+    const newFragTarget = resolveRef(projWithRewrite, newFragRef);
+    assert.ok(oldFragTarget !== undefined, 'old fragment ref resolves');
+    assert.ok(newFragTarget !== undefined, 'new fragment ref resolves');
+    assert.deepEqual(oldFragTarget, newFragTarget, 'old and new fragment refs resolve to identical node');
+
+    // --- Fail-closed: no $id → ref stays root-anchored ---
+    const oldNoidRef = betaNoRewrite?.properties?.nitem?.$ref;
+    const newNoidRef = betaWithRewrite?.properties?.nitem?.$ref;
+    assert.ok(typeof oldNoidRef === 'string' && oldNoidRef.startsWith(rootRefPrefix), 'old noid ref is root-anchored');
+    assert.equal(oldNoidRef, newNoidRef, 'noid ref unchanged (no $id)');
+
+    // --- Fail-closed: duplicate $id → ref stays root-anchored ---
+    const oldDupRef = betaNoRewrite?.properties?.ditem?.$ref;
+    const newDupRef = betaWithRewrite?.properties?.ditem?.$ref;
+    assert.ok(typeof oldDupRef === 'string' && oldDupRef.startsWith(rootRefPrefix), 'old dup-a ref is root-anchored');
+    assert.equal(oldDupRef, newDupRef, 'dup-a ref unchanged (duplicate $id)');
+
+    // --- Fail-closed: fragment in $id → ref stays root-anchored ---
+    const oldAnchoredRef = betaNoRewrite?.properties?.aitem?.$ref;
+    const newAnchoredRef = betaWithRewrite?.properties?.aitem?.$ref;
+    assert.ok(typeof oldAnchoredRef === 'string' && oldAnchoredRef.startsWith(rootRefPrefix),
+      'old anchored ref is root-anchored');
+    assert.equal(oldAnchoredRef, newAnchoredRef, 'anchored ref unchanged (fragment $id)');
+
+    // Confirm all remaining root-anchored refs belong only to the ambiguous targets
+    const remainingRootAnchoredKeys = collectRefs(projWithRewrite)
+      .filter(r => r.startsWith(rootRefPrefix))
+      .map(r => r.slice(rootRefPrefix.length).split('/')[0].replace(/~1/g, '/').replace(/~0/g, '~'));
+    for (const key of remainingRootAnchoredKeys) {
+      assert.ok(
+        key === 'external:core/noid.json'
+        || key.startsWith('external:core/dup-')
+        || key === 'external:core/anchored.json',
+        `unexpected root-anchored ref remains for ${key}`,
+      );
+    }
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('rewriteEmbeddedResourceRefs unit: root-$id collision causes projection to throw', () => {
+  // A bundled def whose $id matches the root projection $id corrupts assertLocalRefsResolve's
+  // resources map (both nodes compete for the same key). Cross-def fragment refs (rootId#/$defs/...)
+  // then resolve from the wrong node and projectSourceSchema throws, confirming the collision
+  // guard (defSchema.$id !== rootId) is never silently bypassed.
+  const collTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-collision-test-'));
+  try {
+    fs.mkdirSync(path.join(collTmpDir, 'core'));
+    // alpha.json: has internal definitions — bundling beta's fragment ref to it creates
+    // rootId#/$defs/external:core~1alpha.json/$defs/Label cross-def refs in the projection.
+    fs.writeFileSync(path.join(collTmpDir, 'core/alpha.json'), JSON.stringify({
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/core/alpha.json',
+      type: 'object',
+      definitions: { Label: { type: 'string' } },
+    }));
+    // beta.json: references alpha with a fragment path AND the collision dep. This makes
+    // beta the bundled sub-schema that emits both the cross-def fragment ref (which exercises
+    // the resources map) and a cross-def ref to the collision dep (which reaches the guard).
+    const depDir = path.join(collTmpDir, '3.2.1', 'mcp', MCP_PROTOCOL_VERSION);
+    fs.mkdirSync(depDir, { recursive: true });
+    fs.writeFileSync(path.join(depDir, 'coll-root.json'), JSON.stringify({
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: `/schemas/3.2.1/mcp/${MCP_PROTOCOL_VERSION}/coll-root.json`,
+      type: 'null',
+    }));
+    fs.writeFileSync(path.join(collTmpDir, 'core/beta.json'), JSON.stringify({
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/core/beta.json',
+      type: 'object',
+      properties: {
+        lbl: { $ref: '/schemas/core/alpha.json#/definitions/Label' },
+        c: { $ref: `/schemas/3.2.1/mcp/${MCP_PROTOCOL_VERSION}/coll-root.json` },
+      },
+    }));
+    // Root: only references beta. Beta pulls in both alpha and the collision dep.
+    fs.writeFileSync(path.join(collTmpDir, 'coll-root.json'), JSON.stringify({
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/media-buy/coll-root.json',
+      type: 'object',
+      properties: { b: { $ref: '/schemas/core/beta.json' } },
+    }));
+    const collSchemaPath = path.join(collTmpDir, 'coll-root.json');
+    assert.throws(
+      () => projectSourceSchema(
+        readJson(collSchemaPath), collSchemaPath, collTmpDir, '3.2.1', 'coll-root.json',
+        'full', undefined, false, true,
+      ),
+      /Unresolved local \$ref/,
+      'schema where bundled def $id === root projection $id must throw',
+    );
+  } finally {
+    fs.rmSync(collTmpDir, { recursive: true, force: true });
   }
 });
 
@@ -1380,17 +1518,22 @@ test('comply-test-controller projected schema uses embedded-resource refs, not r
   walkAllRefs2(projected, ref => { if (ref.startsWith(rootRefPrefix)) longRefs.push(ref); });
   assert.deepEqual(longRefs, [], `${longRefs.length} root-anchored cross-def refs remain; expected 0`);
 
-  // Each external schema key appears exactly once in $defs (no duplication)
   const defs = projected.$defs || {};
-  const externalKeys = Object.keys(defs).filter(k => k.startsWith('external:'));
-  assert.equal(externalKeys.length, new Set(externalKeys).size, 'each external def appears exactly once');
 
-  // Product.json is present as a shared def with its canonical $id intact
+  // Product.json is present as a shared def with its canonical $id intact.
+  // compactDraft07Schema deduplicates by resolved file path, so each external
+  // schema appears at most once; the meaningful invariant is that the product
+  // graph is present and its $id is preserved (no stripping by the rewrite).
   const productKey = 'external:core/product.json';
   assert.ok(Object.hasOwn(defs, productKey), 'product.json is a shared def in $defs');
+  const productDef = defs[productKey];
   assert.ok(
-    typeof defs[productKey].$id === 'string' && defs[productKey].$id.startsWith('https://'),
+    typeof productDef.$id === 'string' && productDef.$id.startsWith('https://'),
     'product.json def retains its canonical $id',
+  );
+  assert.ok(
+    typeof productDef.properties === 'object' || typeof productDef.allOf !== 'undefined',
+    'product.json def contains its full schema (not a stub)',
   );
 
   // Cross-def refs must now be embedded-resource canonical $id URLs
