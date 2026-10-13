@@ -3,14 +3,12 @@
   "last_updated": "2026-09-30T00:00:00Z",
   "agents": [
     {
-      "url": "https://northwind.example/mcp/streamhaus",
-      "roles": ["adcp:sales"],
-      "jwks_uri": "https://keys.northwind.example/jwks/streamhaus.json"
+      "url": "https://streamhaus.northwind.example/mcp",
+      "roles": ["adcp:sales"]
     },
     {
-      "url": "https://northwind.example/mcp/pinnacle-news",
-      "roles": ["adcp:sales"],
-      "jwks_uri": "https://keys.northwind.example/jwks/pinnacle-news.json"
+      "url": "https://pinnacle-news.northwind.example/mcp",
+      "roles": ["adcp:sales"]
     }
   ],
   "acknowledgements_url": "https://northwind.example/.well-known/trust-acknowledgements.json"
