@@ -11,15 +11,18 @@ they are published here as data rather than prose.
 
 - **`projection_rules`**: per `ref_kind`, the top-level members removed from
   the published entry (`exclude`), the named set arrays (`set_arrays`), and any
-  nested array whose elements are projected with another kind's rules
-  (`nested`). Exclusion applies to top-level members of the entry only, and to
-  top-level members of each nested element; deeper members stay verbatim.
+  nested array whose elements are projected first (`nested`). A `nested` value
+  is either another kind's name or inline element rules with their own
+  `exclude` and `set_arrays`; inline rules are not a `ref_kind`. Exclusion
+  applies to top-level members of the entry only, and to top-level members of
+  each nested element; deeper members stay verbatim.
 - **`projection_vectors`**: a published entry, its projection, the exact JCS
   bytes, and the digest.
 - **`equivalence_vectors`**: pairs of entries that MUST or MUST NOT produce the
   same digest. A rename, new `ext`, rolled `season`, or reordered set array is
   not drift; a `content_rating`, `params`, `status`, or unnamed-member change
-  is.
+  is. A refreshed `distribution[].followers` count is not drift; any other
+  change to a `distribution` entry, such as an identifier, is.
 - **`non_ijson_vectors`**: raw published text that has no JCS form, or that
   does and must resolve.
 - **`pin_ordering_vector`**: the canonical order of `definition_pins[]`.
@@ -37,8 +40,8 @@ they are published here as data rather than prose.
 2. Remove the top-level members named in the kind's `exclude` list.
 3. For each present `set_arrays` member, de-duplicate by JCS bytes and sort
    ascending by the UTF-8 bytes of each element's JCS serialization. Elements
-   of a `nested` array are projected with the named kind's rules first, then
-   de-duplicated and sorted the same way.
+   of a `nested` array are projected with the named kind's rules or the inline
+   element rules first, then de-duplicated and sorted the same way.
 4. Serialize with JCS, hash the UTF-8 bytes with SHA-256, and encode as
    lowercase hex.
 

@@ -1121,6 +1121,7 @@ Collection objects reach a buyer through the publisher's [adagents.json](/docs/g
 - `as_of` is the time the platform's count was read. Buyers comparing two creators compare `as_of` first.
 - The value counts accounts, not de-duplicated people, even though `audience-size` is worded for people. A person who follows the same creator on two platforms is counted twice, so buyers MUST NOT sum `followers` across `distribution` entries or treat it as reach.
 - Display and comparison only. It is not a targeting predicate and does not size a buyable audience.
+- It is outside the [definition pin](/docs/media-buy/specification#definition-pins) projection: a refreshed count does not change the collection's `content_digest`, while any other change to a `distribution` entry does.
 
 A seller that serves or relays collection objects carrying `followers` MUST list `media_buy.collection_cards` in `experimental_features` on `get_adcp_capabilities`. A publisher authoring the field directly in `adagents.json` has no capabilities response; the field is experimental either way. See [experimental status](/docs/reference/experimental-status).
 
