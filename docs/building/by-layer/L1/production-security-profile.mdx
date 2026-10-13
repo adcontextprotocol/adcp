@@ -38,7 +38,7 @@ An endpoint advertises the profile only while all of these hold. Each uses an ex
 | A2 | `request_signing.required_for` and `supported_for` include every spend-committing operation the endpoint supports. |
 | A3 | Verifiers can resolve the endpoint's own keys under the signing profile it advertises: `identity.brand_json_url` for `adcp/request-signing/v1`, or the key directory at the endpoint's origin for `web-bot-auth`. |
 | A4 | `idempotency.supported` is `true`. |
-| A5 | `webhook_signing.supported` is `true` and `legacy_hmac_fallback` is `false` if the endpoint emits webhooks. |
+| A5 | If the endpoint emits webhooks, `webhook_signing.supported` is `true` and `legacy_hmac_fallback` is `false`. For requests served at 3.3 or later, this covers every webhook surface, including `reporting_webhook` and `artifact_webhook`: a buyer that omits `authentication` receives webhooks signed under the advertised profile ([#8176](https://github.com/adcontextprotocol/adcp/issues/8176)). Below 3.3 those two blocks are required, so they always select the legacy scheme. |
 | A6 | `request_signing.operation_sources` is present and lists every source the endpoint resolves operations from. It includes `a2a_invocation_skill` if the endpoint serves any spend-committing operation over A2A, and `mcp_tools_call` if it does so over MCP. Without the A2A marker, a counterparty cannot infer that `required_for` is enforced over A2A. |
 
 A precondition that stops holding withdraws the claim. The endpoint removes the id from `security_profiles` in the same change.
