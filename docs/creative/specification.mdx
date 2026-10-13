@@ -651,13 +651,14 @@ Browse and filter creative assets in a creative library. Implemented by any agen
 **Requirements:**
 - Agents MUST return creatives accessible to the authenticated account
 - Agents MUST include approval status for each creative
+- Agents MUST include a `creative_id` on every listed creative, assigning one to any creative that has no buyer-assigned ID, and on 3.3 or later MUST include `creative_id_source` on every row. See [Creatives created outside AdCP](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp).
 - Agents SHOULD support filtering by format, status, tags, and date range
 - Agents SHOULD support filtering by `concept_ids` and canonical `format_kinds` when the platform organizes creatives into concepts
 - Agents MAY include dynamic content variable definitions when `include_variables=true`
 - Agents MAY include a lightweight delivery snapshot when `include_snapshot=true`. The snapshot provides lifetime impressions and last-served date for operational use — detailed analytics belong in `get_creative_delivery`.
 - Sales agents declaring `list_creatives` in `media_buy.relationship_notifications.projection_tasks` MUST scope creative indicators to `assignments.assigned_packages[].indicators[]`; they MUST NOT place package- or publisher-specific fatigue on the creative as a global property.
 - Those sellers MUST include `media_buy_id` and `approval_status` on every assignment row, including rows whose indicator state is unknown. `rejection_reason` and `approval_scopes` mirror the media-buy projection. `indicator_types_evaluated` declares exact type coverage; `indicators_evaluated_scope` declares partial publisher/placement coverage.
-- When the same relationship is visible through both reads, `media_buy_id`, `package_id`, `creative_id`, `approval_status`, `rejection_reason`, and `approval_scopes` MUST agree. Indicator timestamps and evaluation coverage SHOULD converge, but a later read MAY reflect a strictly newer evaluation; buyers reconcile toward the newer `indicators_as_of` rather than treating a legitimate reevaluation between calls as incoherence.
+- When the same relationship is visible through both reads, `media_buy_id`, `package_id`, `creative_id`, `creative_id_source`, `assignment_platform_id`, `approval_status`, `rejection_reason`, and `approval_scopes` MUST agree. Indicator timestamps and evaluation coverage SHOULD converge, but a later read MAY reflect a strictly newer evaluation; buyers reconcile toward the newer `indicators_as_of` rather than treating a legitimate reevaluation between calls as incoherence.
 - Indicator polling is always available through `get_media_buys` when `supported_indicator_types` is declared. Sellers may additionally accept prospective `indicators.changed` and independently accept `creative.assignment_changed`, including when they are inline-only. Receivers of either event establish a complete all-status or known-ID baseline and repair through `get_media_buys` rather than treating payloads or the bounded reverse projection as complete relationship state.
 - When `account` and `include_pricing=true` are provided, agents that charge MUST include `pricing_options` on each creative — an array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/v3/core/vendor-pricing-option.json) objects. Vendors may offer multiple options per creative (volume tiers, context-specific rates, different pricing models).
 
@@ -683,6 +684,7 @@ Upload and synchronize creative assets in a library. Implemented by any agent th
 - Agents MAY require approval before creatives are available for use
 - Agents SHOULD support `dry_run` for validation without applying changes
 - Agents MUST reject requests that combine `delete_missing: true` with `creative_ids` — `delete_missing` applies to the entire library, not a filtered subset
+- Agents MUST NOT archive a creative whose `creative_id_source` is `seller` under `delete_missing`, and MUST treat a sync of a seller-assigned `creative_id` as an update of that creative. See [Seller-assigned creative IDs](/docs/creative/task-reference/sync_creatives#seller-assigned-creative-ids).
 - Agents that advertise `creative.localization` MUST reject unsupported localization before mutation and return exact localization readback on every accepted localized creative
 - Agents that also manage media buys SHOULD support the `assignments` field for bulk creative-to-package mapping
 - Standalone creative agents that do not manage media buys SHOULD ignore the `assignments` field

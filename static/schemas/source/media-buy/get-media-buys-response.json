@@ -434,6 +434,17 @@
                         "description": "Creative identifier",
                         "x-entity": "creative"
                       },
+                      "creative_id_source": {
+                        "$ref": "/schemas/enums/creative-id-source.json",
+                        "description": "Who assigned creative_id. Sellers on 3.3 or later MUST include it on every row; absent means unknown (pre-3.3 seller). Mirrors list_creatives for the same creative.",
+                        "x-added-in": "3.3.0"
+                      },
+                      "assignment_platform_id": {
+                        "type": "string",
+                        "description": "The seller's identifier for the per-package object when its source of truth keeps a separate object for this creative in this package (a per-package copy, ad, or association). Omit when the creative-level platform_id applies. Mirrors list_creatives for the same relationship.",
+                        "$comment": "x-entity deliberately omitted: seller-opaque identifier in the seller's own namespace; never sent back on AdCP requests.",
+                        "x-added-in": "3.3.0"
+                      },
                       "approval_status": {
                         "$ref": "/schemas/enums/creative-approval-status.json"
                       },

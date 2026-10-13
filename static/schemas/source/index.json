@@ -1241,6 +1241,10 @@
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
         },
+        "creative-id-source": {
+          "$ref": "/schemas/enums/creative-id-source.json",
+          "description": "Who assigned a creative's creative_id: a buyer through AdCP, or the seller for a creative that entered its library outside sync_creatives"
+        },
         "audience-size-precision": {
           "$ref": "/schemas/enums/audience-size-precision.json",
           "description": "How precisely an audience size range is reported (exact, approximate, bucketed)"

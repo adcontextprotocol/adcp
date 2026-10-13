@@ -147,7 +147,7 @@ Implementations that acknowledge a creative on the synchronous success branch bu
 | `assignments`     | array      | No       | Array of `{creative_id, package_id}` objects for bulk assignment. Optional `weight` and `placement_ids` per assignment.                                                  |
 | `dry_run`         | boolean    | No       | When true, rehearse this exact sync operation without applying it (default: false). Use this for seller trafficking acceptance checks; use [`validate_input`](https://adcontextprotocol.org/schemas/v3/creative/validate-input-request.json) for manifest-only preflight against canonical/product format targets. |
 | `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
-| `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. |
+| `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. Never archives seller-assigned creatives ([`creative_id_source: "seller"`](#seller-assigned-creative-ids)). |
 
 Every `creatives[]` item in one request MUST have a unique `creative_id`.
 Duplicate IDs make response correlation and write ordering ambiguous, so the
@@ -525,7 +525,7 @@ The final per-creative `creatives` array lands on the task completion artifact, 
 **Each creative in the success response includes:**
 
 - All request fields
-- `platform_id` - Platform's internal ID (when `action` is not `failed`)
+- `platform_id` - The seller's identifier for the creative in its source of truth (when `action` is not `failed`). [`list_creatives`](/docs/creative/task-reference/list_creatives) returns the same value.
 - `revision_id` - Exact request revision on accepted `created`, `updated`, or `unchanged` items when supplied. Omitted on `failed` and `deleted`.
 - `action` - Lifecycle operation performed by this sync: `created`, `updated`, `unchanged`, `failed`, `deleted`
 - `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `suspended`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`) or `suspended` when a recoverable dependency/authorization gate prevents serving. **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via [`list_creatives`](/docs/creative/task-reference/list_creatives) or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
@@ -1035,6 +1035,14 @@ Invoke [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get
 - `assignment_operations[]` can traffic existing IDs without resending creative bodies: `assign` upserts weight/placement scope, `unassign` removes one assignment, and `replace` atomically swaps an existing creative for a replacement
 - Updates provided fields, leaves others unchanged
 - Use `creative_ids` filter to limit scope to specific creatives
+
+### Seller-assigned creative IDs
+
+[`list_creatives`](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp) also returns creatives that entered the seller's library outside `sync_creatives`, with a seller-assigned `creative_id` and `creative_id_source: "seller"`.
+
+- **Managing one.** A buyer updates a seller-assigned creative by syncing it with its `creative_id` as-is. That is an upsert of the existing creative, subject to the same [active-delivery protection](#best-practices) as any update. The seller MUST NOT refuse it because the creative was created outside AdCP: [account ownership, not creation surface](/docs/media-buy/specification#account-ownership-vs-creation-surface), decides what the buyer can manage. `creative_id_source` stays `seller` afterward, because it records who assigned the ID.
+- **Collisions.** If a buyer syncs a creative it intends as new and its `creative_id` equals an existing seller-assigned one, the sync is an upsert of the existing creative. The buyer detects this from `action: "updated"` or `"unchanged"` where it expected `"created"`. Buyers SHOULD namespace their IDs, for example with a stable prefix.
+- **`delete_missing`.** A full sync replaces the buyer's own set, not creatives the seller created. `delete_missing: true` MUST NOT archive a creative whose `creative_id_source` is `seller`, including one a buyer has since updated.
 
 ### Dry run
 

@@ -51,7 +51,8 @@
               },
               "platform_id": {
                 "type": "string",
-                "description": "Platform-specific ID assigned to the creative"
+                "description": "The seller's identifier for this creative in its source of truth. Also returned on list_creatives.",
+                "$comment": "x-entity deliberately omitted: seller-opaque identifier in the seller's own namespace; buyers echo creative_id, never platform_id, on AdCP requests."
               },
               "localization": {
                 "$ref": "/schemas/core/creative-localization-readback.json",
