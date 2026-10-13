@@ -15,6 +15,11 @@ COPY . .
 # Build the TypeScript server (increase heap for large tsc compilation)
 RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 
+# Preserve every immutable release path and byte while storing identical files
+# only once. COPY carries these hard links into the final image. Mutable latest
+# output is excluded so rebuilding it cannot change a released artifact.
+RUN node scripts/deduplicate-runtime-artifacts.cjs
+
 # Pre-clone external repos in parallel, then strip .git metadata.
 # Only markdown files are indexed at runtime so .git dirs are dead weight.
 # IMPORTANT: Keep in sync with EXTERNAL_REPOS in server/src/addie/mcp/external-repos.ts

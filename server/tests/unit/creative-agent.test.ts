@@ -1328,6 +1328,159 @@ describe('preview renderer', () => {
       expect(html, `Failed to render ${fid.id}`).toContain('<!DOCTYPE html>');
     }
   });
+
+  // ── HTML display format rendering ─────────────────────────────────
+
+  it('renders display_300x250_html with html_creative content visible in preview_html', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_html' },
+        assets: {
+          html_creative: { content: '<a href="https://example.com/" target="_blank">example-marker</a>' },
+        },
+      },
+      findFormat('display_300x250_html'),
+    );
+
+    expect(html).toContain('<!DOCTYPE html>');
+    // Submitted markup must appear (HTML-encoded) in the srcdoc attribute.
+    expect(html).toContain('example-marker');
+    // Must be wrapped in a sandboxed iframe, not rendered as raw script.
+    expect(html).toContain('<iframe');
+    expect(html).toContain('srcdoc=');
+    expect(html).toContain('sandbox');
+    // Must NOT produce the old placeholder tile.
+    expect(html).not.toContain('Display Ad');
+  });
+
+  it('escapes malicious HTML attribute breakout in html_creative srcdoc', () => {
+    const malicious = '" onload="alert(1)" data-x="';
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_html' },
+        assets: { html_creative: { content: malicious } },
+      },
+      findFormat('display_300x250_html'),
+    );
+
+    // The raw `"` must not appear unescaped in the srcdoc attribute value.
+    expect(html).not.toContain('" onload=');
+    // The quote must be encoded as &quot;
+    expect(html).toContain('&quot;');
+    // No executable event handler in the outer page.
+    expect(html).not.toContain('onload="alert(1)"');
+  });
+
+  it('escapes script injection in html_creative srcdoc', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_html' },
+        assets: { html_creative: { content: '<script>alert("xss")</script>' } },
+      },
+      findFormat('display_300x250_html'),
+    );
+
+    // The script tag must be HTML-encoded inside the srcdoc value, not literal.
+    expect(html).not.toContain('<script>alert');
+    // Content is present but encoded.
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('returns placeholder for display_300x250_html with no html_creative', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_html' },
+        assets: {},
+      },
+      findFormat('display_300x250_html'),
+    );
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('No HTML creative content');
+    expect(html).not.toContain('<iframe');
+  });
+
+  it('respects dimensions for display_728x90_html', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_728x90_html' },
+        assets: { html_creative: { content: '<p>ad</p>' } },
+      },
+      findFormat('display_728x90_html'),
+    );
+
+    expect(html).toContain('728px');
+    expect(html).toContain('90px');
+  });
+
+  it('routes format_kind html5 (no formatId) to HTML display renderer', () => {
+    const html = renderPreview(
+      {
+        format_kind: 'html5',
+        params: { width: 300, height: 250 },
+        assets: { html_creative: { content: '<b>html5-marker</b>' } },
+      },
+      undefined,
+    );
+
+    expect(html).toContain('html5-marker');
+    expect(html).toContain('<iframe');
+    expect(html).toContain('sandbox');
+  });
+
+  it('returns explicit unsupported placeholder for display_js format', () => {
+    const html = renderPreview(
+      {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_js' },
+        assets: { js_creative: { content: 'document.write("<div>ad</div>")' } },
+      },
+      findFormat('display_js'),
+    );
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('JS display tag');
+    expect(html).toContain('not supported');
+    expect(html).not.toContain('<iframe');
+  });
+
+  it('image display formats retain renderImage metadata (no regression)', () => {
+    const manifest = {
+      format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_image' },
+      assets: { banner_image: { url: 'https://example.com/ad.jpg' } },
+    };
+    const meta = getPreviewRendererMetadata(manifest, findFormat('display_300x250_image'));
+    expect(meta.export).toBe('renderImage');
+    expect(meta.renderer_id).toBe('adcp-reference-image');
+  });
+
+  it('html display formats report renderHtmlDisplay metadata with tracking_suppressed false', () => {
+    // The submitted HTML may contain anchor hrefs and img srcs that represent
+    // navigation or impression effects, so tracking_suppressed must be false
+    // (submitted content is rendered; effects are not suppressed by the renderer).
+    const manifest = {
+      format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_html' },
+      assets: { html_creative: { content: '<a href="https://example.com/">link</a>' } },
+    };
+    const meta = getPreviewRendererMetadata(manifest, findFormat('display_300x250_html'));
+    expect(meta.export).toBe('renderHtmlDisplay');
+    expect(meta.tracking_suppressed).toBe(false);
+  });
+
+  it('canonical html5_bundle (zip) shape shows honest unsupported placeholder, not "No html_creative"', () => {
+    const html = renderPreview(
+      {
+        format_kind: 'html5',
+        params: { width: 300, height: 250 },
+        assets: { html5_bundle: { url: 'https://cdn.example/creative.zip' } },
+      },
+      undefined,
+    );
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('ZIP bundle preview not supported');
+    expect(html).not.toContain('No HTML creative content');
+    expect(html).not.toContain('<iframe');
+  });
 });
 
 // ── Preview store ───────────────────────────────────────────────────
