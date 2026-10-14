@@ -168,11 +168,11 @@ Supporting sellers MUST return the effective serving destination in [`list_creat
 
 After an assignment `merge`, the buyer creative's landing page for that package applies: its assignment override when present, otherwise its own click-through. The same serve-or-reject and assignment destination-review rules apply when the merge changes the effective destination; inherited creative approval MUST NOT bypass destination policy. A seller that cannot apply the destination rejects the atomic merge instead of keeping the seller copy's old destination silently.
 
-After checking the capability and setting an override with an `assign` operation, the buyer can restore inheritance with this atomic reset. The schema uses `latest` because assignment landing pages are an unreleased 3.3 addition.
+After checking the capability and setting an override with an `assign` operation, the buyer can restore inheritance with this atomic reset. This reset uses existing operations, so its example references the released `v3` request schema.
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
   "account": { "account_id": "acct_acme" },
   "idempotency_key": "assignment-landing-page-reset-0001",
   "assignment_operations": [
