@@ -717,8 +717,8 @@ jobs:
           # Beta.12 capability-resolved replay. Result-row totals include the
           # three signed-request route profiles; storyboard applicability is
           # reported separately in the aggregate summary.
-          MIN_CLEAN: 135
-          MIN_PASSED: 646
+          MIN_CLEAN: 136
+          MIN_PASSED: 669
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
@@ -738,6 +738,7 @@ jobs:
           required_clean=(
             "sales_non_guaranteed"
             "sales_guaranteed"
+            "sales_broadcast_tv"
             "media_buy_seller/billing_finality_delivery"
             "media_buy_seller/canonical_formats"
             "media_buy_seller/external_audience_source_binding"

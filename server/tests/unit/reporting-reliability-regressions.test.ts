@@ -256,7 +256,7 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     const unauthorized = await handleGetMediaBuyDelivery({ account: naturalAccount, reporting_revision_id: published.reporting_revision_id }, {
       mode: 'training', principal: 'other-consumer', servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION,
     });
-    expect(unauthorized).toMatchObject({ errors: [{ code: 'REPORTING_REVISION_NOT_FOUND' }] });
+    expect(unauthorized).toMatchObject({ errors: [{ code: 'REFERENCE_NOT_FOUND' }] });
   });
 
   it('uses read-only omitted-account probes before persisting exactly one matching cursor owner', async () => {
@@ -308,7 +308,7 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
 
     beginReportingRevisionReadTraceForTesting();
     const missing = await handleGetMediaBuyDelivery({ reporting_revision_id: 'reporting-revision.no-such-owner' }, context);
-    expect(missing).toMatchObject({ errors: [{ code: 'REPORTING_REVISION_NOT_FOUND' }] });
+    expect(missing).toMatchObject({ errors: [{ code: 'REFERENCE_NOT_FOUND' }] });
     expectProbeSet(false);
 
     // A corrupted duplicate is not resolved to either account, and the error
@@ -316,7 +316,7 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     duplicateCoreRevisionContentForTesting(principal, owner.accountId, accounts[2].accountId, published.reporting_revision_id);
     beginReportingRevisionReadTraceForTesting();
     const ambiguous = await handleGetMediaBuyDelivery({ reporting_revision_id: published.reporting_revision_id }, context);
-    expect(ambiguous).toMatchObject({ errors: [{ code: 'REPORTING_REVISION_NOT_FOUND' }] });
+    expect(ambiguous).toMatchObject({ errors: [{ code: 'REFERENCE_NOT_FOUND' }] });
     expectProbeSet(false);
 
     // Supplying an account preserves the existing direct write-locking path:
@@ -357,9 +357,9 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     expect(mixed).toMatchObject({ errors: [{ code: 'VALIDATION_ERROR' }] });
     const cursor = (read.pagination as { cursor: string }).cursor;
     const tampered = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, pagination: { cursor: `${cursor}x` } }, { mode: 'training', principal, servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION });
-    expect(tampered).toMatchObject({ errors: [{ code: 'REPORTING_REVISION_NOT_FOUND' }] });
+    expect(tampered).toMatchObject({ errors: [{ code: 'REFERENCE_NOT_FOUND' }] });
     const wrongPrincipal = await handleGetMediaBuyDelivery({ account: { account_id: accountId }, reporting_revision_id: published.reporting_revision_id, pagination: { cursor } }, { mode: 'training', principal: 'other-principal', servedAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION });
-    expect(wrongPrincipal).toMatchObject({ errors: [{ code: 'REPORTING_REVISION_NOT_FOUND' }] });
+    expect(wrongPrincipal).toMatchObject({ errors: [{ code: 'REFERENCE_NOT_FOUND' }] });
     expect(validateSourceSchema('media-buy/get-media-buy-delivery-request.json', { pagination: { max_results: 1 } }).valid).toBe(false);
   });
 
@@ -389,11 +389,11 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     const accountSwap = await handleGetMediaBuyDelivery({
       account: { account_id: 'acct-other-cursor-account' }, reporting_revision_id: published.reporting_revision_id, pagination: { cursor },
     }, context);
-    expect(accountSwap).toMatchObject({ errors: [{ code: 'REPORTING_REVISION_NOT_FOUND' }] });
+    expect(accountSwap).toMatchObject({ errors: [{ code: 'REFERENCE_NOT_FOUND' }] });
     const revisionSwap = await handleGetMediaBuyDelivery({
       account: naturalAccount, reporting_revision_id: 'reporting-revision.other', pagination: { cursor },
     }, context);
-    expect(revisionSwap).toMatchObject({ errors: [{ code: 'REPORTING_REVISION_NOT_FOUND' }] });
+    expect(revisionSwap).toMatchObject({ errors: [{ code: 'REFERENCE_NOT_FOUND' }] });
   });
 
   it('makes revision-content publication idempotent only for byte-identical metadata and bindings', () => {

@@ -306,9 +306,9 @@ Metric availability is declared at two levels:
 1. **Product level**: `reporting_capabilities.available_metrics` declares what the platform can report
 2. **Format level**: `reported_metrics` on a creative format declares what the format can produce (see [Reported Metrics](/docs/creative/formats#reported-metrics))
 
-Buyers receive the intersection of both. `impressions` and `spend` are always reported regardless of the intersection. Standard metrics include:
+Buyers receive the intersection of both. `spend`, and `impressions` where the seller measured it for the row, are always reported regardless of the intersection. Standard metrics include:
 
-- **`impressions`**: Ad views (always available)
+- **`impressions`**: Ad views (always available at totals and package level; optional on delivery rows, see [Rows without impressions](#rows-without-impressions))
 - **`spend`**: Amount spent (always available)
 - **`clicks`**: Click events
 - **`ctr`**: Click-through rate
@@ -1333,20 +1333,20 @@ Delivery data can be broken down across multiple dimensions within each package.
 
 | Dimension | Breakdown field | Required fields | Additional fields | Capability declaration |
 |-----------|----------------|-----------------|-------------------|------------------------|
-| Geography | `by_geo` | `geo_level`, `geo_code`, `impressions`, `spend` | `system`, `country`, `geo_name` | `supports_geo_breakdown` |
-| Device type | `by_device_type` | `device_type`, `impressions`, `spend` | — | `supports_device_type_breakdown` |
-| Device platform | `by_device_platform` | `device_platform`, `impressions`, `spend` | — | `supports_device_platform_breakdown` |
-| Creative format | `by_format` | `format_kind`, `impressions`, `spend` | Other delivery metrics | `supports_format_breakdown` |
-| Audience | `by_audience` | `audience_id`, `audience_source`, `impressions`, `spend` | `audience_name` | `supports_audience_breakdown` |
-| Demographic | `by_demographic` | `demographic`, `demographic_system`, `impressions`, `spend` | `age`, other delivery metrics | `supports_demographic_breakdown` |
-| Placement | `by_placement` | `placement_id`, `impressions`, `spend` | `placement_identity`, `placement_name`, `publisher_domain` | `supports_placement_breakdown` |
-| Property | `by_property` | `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, `property_name` | `supports_property_breakdown` |
-| Collection | `by_collection` | `collection_ref`, `impressions`, `spend` | `collection_name` | `supports_collection_breakdown` |
-| Installment | `by_installment` | `installment_ref`, `impressions`, `spend` | `installment_name`, `scheduled_at` | `supports_installment_breakdown` |
-| Collection × property | `by_collection_property` | `collection_ref`, `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, `collection_name`, `property_name` | `supports_collection_property_breakdown` |
-| Installment × property | `by_installment_property` | `installment_ref`, `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, `installment_name`, `scheduled_at`, `property_name` | `supports_installment_property_breakdown` |
-| Placement × property | `by_placement_property` | `placement_id`, `placement_identity`, `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, convenience names | `supports_placement_property_breakdown` |
-| Creative | `by_creative` | `creative_id`, `impressions`, `spend` | `creative_name`, `weight`, other delivery metrics | `supports_creative_breakdown` |
+| Geography | `by_geo` | `geo_level`, `geo_code`, `spend` | `system`, `country`, `geo_name` | `supports_geo_breakdown` |
+| Device type | `by_device_type` | `device_type`, `spend` | — | `supports_device_type_breakdown` |
+| Device platform | `by_device_platform` | `device_platform`, `spend` | — | `supports_device_platform_breakdown` |
+| Creative format | `by_format` | `format_kind`, `spend` | Other delivery metrics | `supports_format_breakdown` |
+| Audience | `by_audience` | `audience_id`, `audience_source`, `spend` | `audience_name` | `supports_audience_breakdown` |
+| Demographic | `by_demographic` | `demographic`, `demographic_system`, `spend` | `age`, other delivery metrics | `supports_demographic_breakdown` |
+| Placement | `by_placement` | `placement_id`, `spend` | `placement_identity`, `placement_name`, `publisher_domain` | `supports_placement_breakdown` |
+| Property | `by_property` | `publisher_domain`, `identifier`, `spend` | `property_ref`, `property_name` | `supports_property_breakdown` |
+| Collection | `by_collection` | `collection_ref`, `spend` | `collection_name` | `supports_collection_breakdown` |
+| Installment | `by_installment` | `installment_ref`, `spend` | `installment_name`, `scheduled_at` | `supports_installment_breakdown` |
+| Collection × property | `by_collection_property` | `collection_ref`, `publisher_domain`, `identifier`, `spend` | `property_ref`, `collection_name`, `property_name` | `supports_collection_property_breakdown` |
+| Installment × property | `by_installment_property` | `installment_ref`, `publisher_domain`, `identifier`, `spend` | `property_ref`, `installment_name`, `scheduled_at`, `property_name` | `supports_installment_property_breakdown` |
+| Placement × property | `by_placement_property` | `placement_id`, `placement_identity`, `publisher_domain`, `identifier`, `spend` | `property_ref`, convenience names | `supports_placement_property_breakdown` |
+| Creative | `by_creative` | `creative_id`, `spend` | `creative_name`, `weight`, other delivery metrics | `supports_creative_breakdown` |
 | Spot/as-run | `by_spot` | `spot_id`; `aired_at` on aired and makegood rows, `scheduled_at` on scheduled and preempted rows | `creative_id`, `impressions`, `network`, `station`, `daypart`, other delivery metrics; experimental `spot_status`, `scheduled_at`, `replaces_spot_id`, `break_position` | `supports_spot_breakdown` |
 
 Each breakdown entry inherits all fields from `delivery-metrics` (clicks, conversions, and other optional metrics) plus its dimension-specific fields. Every entry requires the fields shown in the required fields column. Check `reporting_capabilities` on the product to discover which dimensions are available; product-level capabilities are authoritative because different products from the same seller may support different breakdowns. `supports_geo_breakdown`, `supports_demographic_breakdown`, and `supports_spot_breakdown` are structured declarations; the other capability declarations in this table are boolean flags. Within `supports_geo_breakdown`, `country` and `region` are booleans, while `metro` is keyed by `metro-system` values and native `postal_area` is keyed by ISO 3166-1 alpha-2 country with arrays of country-local `postal-system` values. Geo rows use `system` for `geo_level: "metro"` and `"postal_area"`; native postal rows also include `country`. Deprecated country-fused postal systems remain accepted for compatibility.
@@ -1387,6 +1387,18 @@ Spot rows are channel-neutral as-run records: TV sellers commonly populate `netw
 The optional `creative_id` identifies the creative that aired, matching the package's creative asset or assignment. For library-backed sellers this is the [`sync_creatives`](/docs/creative/task-reference/sync_creatives) identifier; inline-only sellers use the `creative_id` supplied through `packages[].creatives`. Sellers SHOULD populate it whenever they can associate a specific airing with a creative, particularly when the package could serve more than one creative during any part of the reporting period, including a mid-period replacement. Sellers that cannot make that association MUST omit the field rather than emit a default or placeholder. Buyers MUST NOT aggregate `by_spot` rows by `creative_id` and expect the result to equal `by_creative[]` impressions for the same creative: the two dimensions are independently produced at different granularities and are subject to different metric-maturation and attribution semantics within the package `measurement_window`. `by_creative` is the authoritative creative-performance aggregate; `creative_id` on a spot row identifies which creative aired, not an independent metric roll-up source.
 
 Spot metrics are optional because airing evidence and audience measurement mature independently. `supports_spot_breakdown.available_metrics` tells the buyer which metrics the product can eventually produce at spot grain. A Live row may contain only `{ spot_id, aired_at }`; the same `spot_id` can reappear under C3 or C7 with `impressions`. An absent `impressions` field means unavailable at that measurement window or not declared at spot grain. `impressions: 0` means a measured zero and is never interchangeable with omission; sellers do not emit `null`.
+
+#### Rows without impressions
+
+From AdCP 3.3, `impressions` is optional on `daily_breakdown` rows and on every dimensional breakdown row (`by_format`, `by_device_type`, `by_device_platform`, `by_audience`, `by_demographic`, and the placement, property, collection, installment, geo, creative, keyword, and catalog-item rows). `by_spot` rows already treated `impressions` as optional. Identity keys and `spend` stay required. `aggregated_totals` still requires `impressions`.
+
+- Absent `impressions` means the seller did not measure impressions for that row. It does not mean zero; an explicit `0` is a measured zero.
+- Receivers MUST NOT treat absence as zero, and MUST NOT derive impression-denominated values for the row (`cpm`, `ctr`, `completion_rate`, `viewable_rate`, and similar). Senders MUST omit impression-denominated rates on such a row.
+- Senders MUST NOT put views, plays, downloads, or any other count in `impressions`. Report them in `views`, `completed_views`, `plays`, `downloads`, or `vendor_metric_values`.
+- When `impressions` is a committed metric for the package, disclose the absence through `by_package[].missing_metrics`. Do not add `missing_metrics` to rows.
+- Sellers MUST NOT omit `impressions` toward callers pinned below AdCP 3.3. A caller with no declared pin (see `adcp_version` in [Versioning](/docs/reference/versioning)) is treated as pinned below 3.3, and reporting webhooks follow the pin of the registration that receives them. Toward those callers, a seller with no impression count omits the row, since every one of these breakdowns is optional, and never substitutes `impressions: 0`.
+- A channel that already reports `ooh_metrics.estimated_impressions` SHOULD keep `impressions` present on the row, as that field specifies.
+- The rule applies regardless of `pricing_model`. `pricing_model` lives on `by_package`, not on `daily_breakdown` rows, so the schema cannot condition on it.
 
 #### Spot lifecycle, makegoods, and break position
 
