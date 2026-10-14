@@ -15,6 +15,7 @@
     },
     "proposals": {
       "type": "array",
+      "description": "Draft proposals. The seller SHOULD return them best-first by its own assessment of fit to the brief and goals, so a buyer that reads only the leading entries sees the seller's strongest answers. Order is a seller-relative preference, not a score: positions are not comparable across sellers, and buyers MUST NOT treat position as a delivery, pricing, or quality commitment.",
       "minItems": 1,
       "items": {
         "allOf": [
@@ -31,6 +32,7 @@
     },
     "products": {
       "type": "array",
+      "description": "Compact canonical products referenced by the proposals. The seller SHOULD list them in order of first reference, walking proposals[] in order, so a reader that truncates products[] keeps the products behind the leading proposals. Buyers resolve products by product_id, not position.",
       "minItems": 1,
       "items": { "$ref": "/schemas/core/canonical-product.json" }
     },

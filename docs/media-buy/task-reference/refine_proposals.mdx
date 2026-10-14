@@ -81,6 +81,8 @@ The response contains one ordered `results[]` entry per requested source proposa
 | `finalized` | `proposal` | One committed proposal backed by an inventory hold. |
 | `unable` | none | No honest draft was produced. `reason_code` and `reason` are required. |
 
+`results[]` follows request order and carries no ranking. Within a `revised` or `partial` result that returns more than one draft, the seller SHOULD list `proposals[]` best-first by its own assessment of fit to the revised request. The top-level `products[]` is shared by every result, so a seller SHOULD list it in order of first reference, walking `results[]` in request order and each result's `proposals[]` in order. This is the same seller-relative preference defined in [`request_proposals` result ordering](/docs/media-buy/task-reference/request_proposals#result-ordering); buyers MUST NOT treat position as a commitment.
+
 `reason_code` distinguishes commercial refusal from implementation limits:
 
 | Code | Meaning |

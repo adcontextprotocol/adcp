@@ -58,7 +58,7 @@ Every response has an explicit `outcome`:
 | Field | Type | Description |
 |-------|------|-------------|
 | `outcome` | string | `listed` when the response contains a product page; `unchanged` when a conditional request matches the current feed. |
-| `products` | Product[] | Product offers for this page. Required for `listed`, even when the array is empty; omitted for `unchanged`. |
+| `products` | Product[] | Product offers for this page. Required for `listed`, even when the array is empty; omitted for `unchanged`. The feed has no brief and so no relevance basis: the seller SHOULD keep a stable order across the pages of one cursor walk, and position is not a ranking or a preference signal. Best-first ordering applies to [`request_proposals`](/docs/media-buy/task-reference/request_proposals#result-ordering). |
 | `next_cursor` | string | Cursor for the next page. Omitted on the final page. Pass it as `cursor` in the next request. |
 | `feed_version` | string | Opaque version of the selected offer feed. Pass it as `if_feed_version` on a later request to avoid downloading an unchanged feed. |
 | `pricing_version` | string | Opaque version of the selected pricing layer. Pass it as `if_pricing_version` together with `if_feed_version` when checking both versions. |
