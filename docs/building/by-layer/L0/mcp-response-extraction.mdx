@@ -131,6 +131,12 @@ All data in `structuredContent` and `content[].text` is seller-controlled. The s
 
 For pageable reads and other read-only tasks that support field projection, producers SHOULD target at most 128 KiB per serialized MCP response; see [Managing response size](/docs/building/concepts/managing-response-size#interoperability-size-target). Clients SHOULD independently enforce a streamed limit on the complete serialized MCP message before buffering or JSON decoding. The recommended client safety limit is 1 MiB. For text fallback, also check the `content[].text` size before the inner `JSON.parse`. The larger safety limit is not a producer target: it bounds hostile or buggy input after normal interoperability guidance has failed.
 
+The streamed limit is the MCP instance of the general client obligation to [bound every agent response](/docs/building/by-layer/L1/security#response-size-bounds): count bytes as they arrive and abort rather than buffer-then-check, pre-reject an over-limit `Content-Length`, bound raw and decoded bytes, pair the cap with a deadline, bound JSON depth and node count after the cap passes, and fail with a distinct error instead of truncating. It applies to every MCP response the client reads — `tools/call`, `tools/list`, `initialize`, and the transport-native `tasks/get` and `tasks/result` results that carry an async `CallToolResult`. Leaving the async retrieval path unbounded is the same exhaustion with one extra hop.
+
+A Streamable HTTP server MAY answer a POST with a single `application/json` body or with an SSE stream (`text/event-stream`), and the bound applies to both — a server does not escape it by choosing SSE. On the SSE path it applies to each event and to the cumulative bytes the client retains for one request, carried across `Last-Event-ID` resumption rather than reset by it, so an oversized result cannot be split across many frames or across a reconnect. On a non-HTTP transport (stdio) there is no `Content-Length` to pre-reject; the streaming count and the per-message bound still apply.
+
+Clients SHOULD make the limit configurable per agent and per call. 1 MiB is the MCP default; 4 MiB is the protocol-wide ceiling on any default, not a second default.
+
 ### Prototype Pollution
 
 Clients MUST NOT merge extracted response objects into application state via `Object.assign` or spread without filtering keys. Seller-controlled keys like `__proto__` or `constructor` can trigger prototype pollution. Validate against the expected task response schema before merging.

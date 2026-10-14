@@ -13,7 +13,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 
 3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated; one usage is (see [Deprecations](#deprecations)). Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
-Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). One change loosens a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib). Everything else is an optional declaration or a clarification.
+Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). One change loosens a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib). One new recommendation tightens a limit in the other direction, so a 3.3 buyer can reject what a 3.2 buyer accepted: [clients bound agent response size](#recommended-bound-agent-response-size). Everything else is an optional declaration or a clarification.
 
 For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3). For prerelease artifacts and SDK timing, use the [3.3 beta program](/docs/reference/3-3-beta).
 
@@ -32,6 +32,7 @@ For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/w
 | 9 | Sellers and buyers using accounts | Sellers return `account_id` from `sync_accounts` and declare `account.stable_account_id` when it is accepted everywhere; buyers send it to those sellers. |
 | 10 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
 | 11 | Reliable Reporting buyers | Stop relying on exact reads of older superseded snapshots; persist any snapshot rows you need. |
+| 12 | Buyers, SDK maintainers, and sellers with large catalogs | Adopt the client response-size bound; paginate rather than asking buyers to raise their limits. |
 
 ## Required to claim 3.3 behavior
 
@@ -114,6 +115,16 @@ superseded; an official revision's window restarts at its newest adjustment. See
 ### Delivery rows may omit `impressions`
 
 - `impressions` is no longer required on `daily_breakdown` rows or on the dimensional breakdown rows, so SDK-generated row types make it optional; handle `undefined` or `None`. Absence means not measured, never zero. Sellers omit it only toward callers pinned to 3.3 or later. See [Rows without impressions](/docs/media-buy/media-buys/optimization-reporting#rows-without-impressions).
+
+## Recommended: bound agent response size
+
+Clients SHOULD bound the size of every AdCP response they read, enforce the bound while the body is received rather than after buffering or parsing, apply it to streamed (SSE) responses both per event and cumulatively per call, surface an oversized response as an error rather than truncating it, and default to no more than 4 MiB (4,194,304 bytes). This is a recommendation, not a conformance requirement — a 3.2 implementation does not become non-conformant — but SDKs are adopting the default, so the interop effect is real. See [Response size bounds](/docs/building/by-layer/L1/security#response-size-bounds).
+
+**This tightens a limit, so interop is asymmetric in the opposite direction from the brand.json cap.** A buyer that adopts the default rejects a response a buyer without the bound would have buffered and parsed. The rejection arrives as a mid-body connection abort, not as an `adcp_error` the seller can read off the wire, so a seller whose responses are too large sees a transport failure rather than a protocol error.
+
+**Buyers and SDK maintainers.** Take the bound from your SDK release rather than hand-rolling it. Check its default against your largest known-good response before enabling it in production; raise it for a specific agent or a specific call, never globally, and never by disabling it. Confirm the SDK enforces while streaming (a buffer-then-check implementation does not close the memory exposure), counts decoded bytes, covers SSE cumulatively, and bounds JSON depth and node count after the byte cap passes — the byte cap bounds ingress, the parse bounds bound memory.
+
+**Sellers with large catalogs.** Paginate. `list_products`, `get_products`, `list_creatives`, `get_media_buys`, and the cursor-pageable `tools/list` catalog all support continuation; the 128 KiB producer interoperability target already applies to each page. A response that only succeeds against a buyer who raised its limit for you is not interoperable. See [Managing response size](/docs/building/concepts/managing-response-size#pagination-for-cardinality-control).
 
 ## Clarifications
 
