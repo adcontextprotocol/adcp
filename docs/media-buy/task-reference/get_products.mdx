@@ -731,6 +731,7 @@ result set. Otherwise confirmation remains a best practice.
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | (Optional) Seller's default billing measurement and makegood terms. Buyers may propose different terms at [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). |
 | `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | (Optional) Seller's default performance standards (viewability, IVT, completion rate, brand safety, attention score). Buyers may propose different standards at `create_media_buy`. |
 | `cancellation_policy` | [CancellationPolicy](/docs/media-buy/advanced-topics/pricing-models#cancellation-policy) | (Optional) Cancellation notice period and penalties for guaranteed products. Buyers accept these terms by creating a media buy against the product. |
+| `hold_policy` | HoldPolicy | (Optional, experimental) Whether finalizing a proposal that allocates this product places an inventory hold, and its promised minimum, initial maximum, extension flag, and total ceiling as ISO 8601 durations. Planning information, not a reservation; proposals on this surface carry no `hold_policy`, so it binds nothing here. Absent, the agent's `hold_semantics` default applies. See [Hold policy](/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental). |
 
 ### Advertise only what you accept
 

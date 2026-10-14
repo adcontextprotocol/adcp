@@ -34,7 +34,7 @@ This page is the single reading path for the topology. Everything on it is [expe
 1. **Check capabilities.** The platform reads `supports_exclusive_product_ids` and `hold_semantics` before relying on either. A seller that predates the flag cannot be trusted to reject it, so the platform also verifies subset-ness of every result.
 2. **Bind the universe.** The platform calls `request_proposals` with `criteria.product_ids` and `criteria.product_ids_exclusive: true`. Every purchase, echoed product, and seller-selected signal in the result resolves within that set.
 3. **Negotiate.** `refine_proposals` revisions inherit the universe and may only narrow it. Widening is a new `request_proposals`.
-4. **Finalize terms.** `finalize` commits the same atomic all-or-none batch, but places no hold. `expires_at` is the acceptance window. The composer never returns `hold_unavailable`.
+4. **Finalize terms.** `finalize` commits the same atomic all-or-none batch, but places no hold. `expires_at` is the acceptance window. The composer never returns `hold_unavailable` for an entry whose effective policy is terms-only. `hold_semantics` is the default for products and drafts that declare no [`hold_policy`](/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental), so a composer that never emits one gets terms-only finalize for every proposal and never returns `hold_unavailable`.
 5. **Reserve and execute on the requester.** The platform performs its own availability control when it executes. A bounded universe is not an inventory hold, and a `committed` proposal under `terms_only` does not promise availability.
 
 ## Open items
