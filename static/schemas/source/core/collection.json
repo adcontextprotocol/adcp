@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/collection.json",
   "title": "Collection",
-  "description": "A recurring inventory container — a named program, publication, event series, rotation, or programmed channel that produces bookable installments on a defined cadence. The kind field indicates how to interpret this collection: 'series' for TV/podcast programs, 'publication' for print/newsletter titles, 'event_series' for live events, 'rotation' for DOOH scheduling, and 'channel' for continuously programmed audio or video streams regardless of carriage or monetization model. Declared in the publisher's adagents.json and referenced by products via collection selectors.",
+  "description": "A recurring inventory container — a named program, publication, event series, rotation, or programmed channel that produces bookable installments on a defined cadence. The kind field indicates how to interpret this collection: 'series' for TV/podcast programs, 'publication' for print/newsletter titles, 'event_series' for live events, 'rotation' for DOOH scheduling, and 'channel' for continuously programmed audio or video streams regardless of carriage or monetization model. Declared in the publisher's adagents.json and referenced by products via collection selectors. Selling agents may also return copies in product and proposal responses (core/response-collection.json); adagents.json remains the authorization source.",
   "type": "object",
   "properties": {
     "publisher_domain": {
@@ -71,7 +71,7 @@
     },
     "images": {
       "type": "array",
-      "description": "Experimental (media_buy.collection_cards). Pictures for a collection card (cover art, show poster, creator avatar). The first entry is the primary thumbnail. Display only.",
+      "description": "Experimental (media_buy.collection_cards). Pictures for a collection card (cover art, show poster, creator avatar). The first entry is the primary thumbnail. Display only, and excluded from publisher_collection definition pins.",
       "minItems": 1,
       "maxItems": 10,
       "items": {
@@ -82,12 +82,20 @@
     },
     "sample_content": {
       "type": "array",
-      "description": "Experimental (media_buy.collection_cards). Representative past installments or a sizzle reel, as published-post references. The platform URL implies the kind. Display only: not a creative, and not authorization to reuse the content; reference_authorization and identity_ref are not authorization here. Consumers skip entries without post_url.",
+      "description": "Experimental (media_buy.collection_cards). Representative past installments or a sizzle reel, as published-post references. The platform URL implies the kind. Display only: not a creative, and not authorization to reuse the content; reference_authorization and identity_ref are not authorization here. Consumers skip entries without post_url. Excluded from publisher_collection definition pins.",
       "minItems": 1,
       "maxItems": 10,
       "items": {
         "$ref": "/schemas/core/assets/published-post-asset.json"
       },
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "Experimental (media_buy.collection_cards). Canonical HTTPS page about this collection, operated by the publisher or selling agent, for example a creator profile with full analytics. Buyers link out to it for depth beyond the card, and MAY suppress the link-out when its host is neither the publisher's nor the selling agent's domain. Display only: not authorization evidence, and excluded from publisher_collection definition pins.",
       "x-status": "experimental",
       "x-added-in": "3.3.0"
     },
