@@ -14,7 +14,8 @@ vi.mock('../../src/logger.js', async importOriginal => {
   return { ...actual, createLogger: (name: string) => name === 'training-buyer-oauth'
     ? { error: authority.errorLog } : actual.createLogger(name) };
 });
-import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, TRAINING_BUYER_RESOURCE } from '../../src/training-agent/buyer-oauth.js';
+import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, trainingBuyerDocumentation, TRAINING_BUYER_RESOURCE } from '../../src/training-agent/buyer-oauth.js';
+import { trainingBuyerAgentRegistry } from '../../src/training-agent/buyer-agent-registry.js';
 
 const config = { issuer: 'https://auth.example.com', resource: TRAINING_BUYER_RESOURCE,
   organizationId: 'org_canary', metadataUrl: 'https://test-agent.adcontextprotocol.org/.well-known/oauth-protected-resource/sales/mcp' };
@@ -32,9 +33,9 @@ async function token(overrides: Record<string, unknown> = {}) {
   for (const key of Object.keys(claims)) if ((claims as Record<string, unknown>)[key] === undefined) delete (claims as Record<string, unknown>)[key];
   return new SignJWT(claims).setProtectedHeader({ alg: 'RS256', kid: 'buyer' }).sign(keys.privateKey);
 }
-function buildApp(resolver: JWTVerifyGetKey = async () => keys.publicKey) {
+function buildApp(resolver: JWTVerifyGetKey = async () => keys.publicKey, access: 'sandbox' | 'private-reporting' = 'private-reporting') {
   const result = express(); result.use(express.json());
-  result.use(createTrainingBuyerOAuthMiddleware(config, fallback, resolver));
+  result.use(createTrainingBuyerOAuthMiddleware(config, fallback, resolver, access));
   result.all('/operation', (req, res) => res.json({ principal: res.locals.trainingPrincipal, auth: (req as unknown as { auth: unknown }).auth }));
   return result;
 }
@@ -87,6 +88,11 @@ describe('private training buyer Connect authorization', () => {
     const result = await request(app).post('/operation').set('Authorization', `Bearer ${await token(denial === 'wrong-organization' ? { org_id: 'org_foreign' } : {})}`)
       .send(denial === 'conflicting-selection' ? { organization_id: 'org_foreign' } : {});
     expect(result.status).toBe(403); expect(fallback).not.toHaveBeenCalled();
+    expect(result.headers['www-authenticate']).toContain('Bearer error="insufficient_scope"');
+    expect(result.body).toEqual({ error: 'BUYER_ACCESS_DENIED',
+      error_description: 'Private training buyer reporting requires an owner or admin of the configured canary organization. Use /sales/mcp for the OAuth sandbox.' });
+    expect(result.headers['www-authenticate']).toContain(result.body.error_description);
+    expect(result.headers['cache-control']).toBe('no-store');
   });
   it('denies deleted credentials without recreating local identity', async () => {
     authority.snapshot.mockResolvedValue(null);
@@ -102,7 +108,7 @@ describe('private training buyer Connect authorization', () => {
     expect(result.status).toBe(503); expect(JSON.stringify(result.body)).not.toContain('not-for-response'); expect(fallback).not.toHaveBeenCalled();
     const dependencyLabels = { snapshot: 'primary_authorization', ban: 'platform_ban', memberships: 'workos_membership', jwks: 'jwt_key_service' };
     expect(authority.errorLog).toHaveBeenCalledExactlyOnceWith({ dependency: dependencyLabels[dependency as keyof typeof dependencyLabels],
-      code: 'BUYER_AUTHORIZATION_UNAVAILABLE' }, 'Private training buyer authorization unavailable');
+      code: 'BUYER_AUTHORIZATION_UNAVAILABLE' }, 'Training buyer authorization unavailable');
     expect(JSON.stringify(authority.errorLog.mock.calls)).not.toContain('secret');
     expect(JSON.stringify(authority.errorLog.mock.calls)).not.toContain(signed);
   });
@@ -119,13 +125,106 @@ describe('private training buyer Connect authorization', () => {
   });
 });
 
+describe('organization OAuth sales sandbox', () => {
+  function membership(organizationId: string, localRole = 'member', providerRole = localRole) {
+    authority.snapshot.mockResolvedValue({ ...snapshot, selectedOrganizationId: organizationId,
+      credentialGrant: { ...snapshot.credentialGrant, organizationId, role: localRole } });
+    authority.memberships.mockResolvedValue({ data: [{ ...member, organizationId, role: { slug: providerRole } }] });
+    app = buildApp(undefined, 'sandbox');
+  }
+  async function authenticate(organizationId: string) {
+    return request(app).get('/operation').set('Authorization', `Bearer ${await token({ org_id: organizationId })}`);
+  }
+  it.each(['owner', 'admin', 'member'])('admits a non-canary %s to an organization sandbox', async role => {
+    membership('org_integrator', role);
+    const result = await authenticate('org_integrator');
+    expect(result.status).toBe(200);
+    expect(result.body.principal).toBe('training-oauth:org_integrator');
+    expect(result.body.auth.clientId).toBe(result.body.principal);
+    expect(result.body.auth.extra.training_oauth_actor).toMatchObject({ organization_id: 'org_integrator', principal_id: result.body.principal });
+    expect(authority.snapshot).toHaveBeenCalledTimes(2);
+    expect(authority.snapshot).toHaveBeenCalledWith('user_buyer', 'org_integrator');
+    expect(fallback).not.toHaveBeenCalled();
+  });
+  it.each([['member', 'member'], ['admin', 'member'], ['member', 'admin']])('isolates canary roles %s/%s from the private buyer', async (localRole, providerRole) => {
+    membership(config.organizationId, localRole, providerRole);
+    const result = await authenticate(config.organizationId);
+    expect(result.status).toBe(200);
+    expect(result.body.principal).toBe('training-oauth:org_canary');
+  });
+  it('preserves the private buyer for canary admins', async () => {
+    membership(config.organizationId, 'admin');
+    expect((await authenticate(config.organizationId)).body.principal).toBe('workos:org_canary');
+  });
+  it('admits ordinary organization members without a manually provisioned local grant', async () => {
+    membership('org_integrator');
+    authority.snapshot.mockResolvedValue({ ...snapshot, selectedOrganizationId: 'org_integrator', credentialGrant: null });
+    const result = await authenticate('org_integrator');
+    expect(result.status).toBe(200);
+    expect(result.body.principal).toBe('training-oauth:org_integrator');
+    expect(authority.memberships).toHaveBeenCalledWith({ userId: 'user_buyer', organizationId: 'org_integrator' });
+  });
+  it('demotes a revoked canary grant to the sandbox without retaining private authority', async () => {
+    membership(config.organizationId, 'admin');
+    const signed = await token();
+    expect((await request(app).get('/operation').set('Authorization', `Bearer ${signed}`)).body.principal).toBe('workos:org_canary');
+    authority.snapshot.mockResolvedValue({ ...snapshot, credentialGrant: null, authorizationEpoch: '2' });
+    const sandbox = await request(app).get('/operation').set('Authorization', `Bearer ${signed}`);
+    expect(sandbox.status).toBe(200);
+    expect(sandbox.body.principal).toBe('training-oauth:org_canary');
+    app = buildApp();
+    expect((await request(app).get('/operation').set('Authorization', `Bearer ${signed}`)).status).toBe(403);
+  });
+  it.each(['inactive', 'unknown-role', 'banned', 'revoked', 'conflicting-selection'])('denies sandbox access when %s', async denial => {
+    membership('org_integrator');
+    if (denial === 'inactive') authority.memberships.mockResolvedValue({ data: [] });
+    if (denial === 'unknown-role') authority.memberships.mockResolvedValue({ data: [{ ...member, organizationId: 'org_integrator', role: { slug: 'unknown' } }] });
+    if (denial === 'banned') authority.ban.mockResolvedValue({ banned: true });
+    if (denial === 'revoked') {
+      const before = await authority.snapshot();
+      authority.snapshot.mockResolvedValueOnce(before).mockResolvedValue({ ...before, authorizationEpoch: '2' });
+    }
+    const result = await request(app).post('/operation').set('Authorization', `Bearer ${await token({ org_id: 'org_integrator' })}`)
+      .send(denial === 'conflicting-selection' ? { organization_id: config.organizationId } : {});
+    expect(result.status).toBe(403);
+    expect(result.headers['www-authenticate']).toContain('error="insufficient_scope"');
+    expect(result.body.error_description).toContain('active membership');
+    expect(fallback).not.toHaveBeenCalled();
+  });
+  it('partitions buyer-agent state by organization and private authority with the same OAuth client', async () => {
+    async function agentFor(organizationId: string, role: string) {
+      membership(organizationId, role);
+      const result = await authenticate(organizationId);
+      expect(result.status).toBe(200);
+      const { extra } = result.body.auth;
+      return trainingBuyerAgentRegistry.resolve({ credential: extra.credential, extra, input: {} });
+    }
+    const integrator = await agentFor('org_integrator', 'member');
+    expect(integrator).not.toBeNull();
+    expect(await agentFor('org_integrator', 'admin')).toEqual(integrator);
+    expect((await agentFor('org_other', 'member'))?.agent_url).not.toBe(integrator?.agent_url);
+    const privateBuyer = await agentFor(config.organizationId, 'admin');
+    expect((await agentFor(config.organizationId, 'member'))?.agent_url).not.toBe(privateBuyer?.agent_url);
+  });
+});
+
 describe('buyer OAuth configuration and metadata', () => {
   const env = { TRAINING_BUYER_OAUTH_ENABLED: 'true', TRAINING_BUYER_OAUTH_ISSUER: config.issuer, TRAINING_BUYER_OAUTH_ORGANIZATION_ID: config.organizationId };
-  it('is disabled by default and pins the private resource when enabled', () => {
+  it('is disabled by default and pins the sales resource when enabled', () => {
     expect(trainingBuyerOAuthConfig({})).toBeUndefined();
     expect(trainingBuyerOAuthConfig({ ...env, TRAINING_BUYER_OAUTH_ENABLED: 'false' })).toBeUndefined();
     const configured = trainingBuyerOAuthConfig(env)!;
-    expect(trainingBuyerMetadata(configured)).toMatchObject({ resource: config.resource, authorization_servers: [config.issuer] });
+    expect(trainingBuyerMetadata(configured)).toMatchObject({ resource: config.resource, authorization_servers: [config.issuer],
+      resource_name: 'AdCP sales training sandbox', resource_documentation: 'https://test-agent.adcontextprotocol.org/sales/oauth' });
+  });
+  it('serves connection instructions that describe the public and private access boundaries', () => {
+    const instructions = trainingBuyerDocumentation(config);
+    expect(instructions).toContain(config.resource);
+    expect(instructions).toContain(config.issuer);
+    expect(instructions).toContain(config.metadataUrl);
+    expect(instructions).toContain('PKCE');
+    expect(instructions).toContain('active owner, admin, or member role');
+    expect(instructions).toContain('403 BUYER_ACCESS_DENIED');
   });
   it.each([
     { TRAINING_BUYER_OAUTH_ENABLED: '1' }, { TRAINING_BUYER_OAUTH_ISSUER: '' }, { TRAINING_BUYER_OAUTH_ISSUER: 'http://auth.example.com' },
