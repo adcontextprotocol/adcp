@@ -38,7 +38,7 @@ function slugify(heading) {
   return heading
     .toLowerCase()
     .replace(/`/g, '')
-    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[^a-z0-9_\s-]/g, '')
     .trim()
     .replace(/\s+/g, '-');
 }
@@ -249,7 +249,7 @@ describe('cross-links introduced by this section resolve', () => {
 
   it('the bound links to anchors that exist on the pages it cites', () => {
     const body = section(read(SECURITY), '### Response Size Bounds');
-    const targets = [...body.matchAll(/\]\((\/docs\/[a-zA-Z0-9/_-]+)#([a-z0-9-]+)\)/g)];
+    const targets = [...body.matchAll(/\]\((\/docs\/[a-zA-Z0-9/_-]+)#([a-z0-9_-]+)\)/g)];
     assert.ok(targets.length >= 3, 'expected cross-links to the transport and pagination pages');
 
     for (const [, page, anchor] of targets) {
@@ -264,7 +264,7 @@ describe('cross-links introduced by this section resolve', () => {
   it('the bound links only to same-page anchors that exist', () => {
     const body = section(read(SECURITY), '### Response Size Bounds');
     const headings = headingsOf(SECURITY);
-    for (const [, anchor] of body.matchAll(/\]\(#([a-z0-9-]+)\)/g)) {
+    for (const [, anchor] of body.matchAll(/\]\(#([a-z0-9_-]+)\)/g)) {
       assert.ok(headings.includes(anchor), `unresolved same-page anchor #${anchor}`);
     }
   });
@@ -273,7 +273,7 @@ describe('cross-links introduced by this section resolve', () => {
     const headings = headingsOf(SECURITY);
     for (const relative of [MCP_EXTRACTION, A2A_EXTRACTION, RESPONSE_SIZE, MIGRATION]) {
       for (const [, anchor] of read(relative).matchAll(
-        /\]\(\/docs\/building\/by-layer\/L1\/security#([a-z0-9-]+)\)/g,
+        /\]\(\/docs\/building\/by-layer\/L1\/security#([a-z0-9_-]+)\)/g,
       )) {
         assert.ok(headings.includes(anchor), `${relative}: unresolved security#${anchor}`);
       }
