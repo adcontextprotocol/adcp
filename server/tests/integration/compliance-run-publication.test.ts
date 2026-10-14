@@ -55,6 +55,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
     const schema = `publication_backfill_${randomUUID().replaceAll('-', '')}`;
     const migration = readFileSync(new URL('../../src/db/migrations/589_compliance_run_publication.sql', import.meta.url), 'utf8');
     const requeueMigration = readFileSync(new URL('../../src/db/migrations/608_agent_registry_requeued_at.sql', import.meta.url), 'utf8');
+    const heartbeatClaimMigration = readFileSync(new URL('../../src/db/migrations/622_compliance_heartbeat_claim_ownership.sql', import.meta.url), 'utf8');
     const querySpy = vi.spyOn(databaseClient, 'query');
     try {
       await client.query('BEGIN');
@@ -115,6 +116,7 @@ describe.skipIf(!process.env.DATABASE_URL)('compliance publication transaction',
       expect((await client.query('SELECT * FROM agent_compliance_status ORDER BY agent_url')).rows).toEqual(before.rows);
       // Use the real heartbeat selection query on this transaction's migrated schema.
       await client.query(requeueMigration);
+      await client.query(heartbeatClaimMigration);
       querySpy.mockImplementation((sql, values) => client.query(sql, values));
       expect((await db.getAgentsDueForCheck()).map(agent => agent.agent_url)).toEqual(['never', 'overdue']);
     } finally {
