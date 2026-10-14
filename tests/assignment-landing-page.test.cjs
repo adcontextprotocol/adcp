@@ -41,6 +41,107 @@ const requestBase = {
   idempotency_key: 'assignment-landing-page-0001'
 };
 
+async function checkEnclosingSchemas(cases) {
+  for (const { schema, data, assignment } of cases) {
+    const validate = await compile(readSchema(schema));
+    assert.equal(validate(data), true, `${schema}: ${JSON.stringify(validate.errors)}`);
+    for (const landing_page_url of urls) {
+      const withUrl = structuredClone(data);
+      assignment(withUrl).landing_page_url = landing_page_url;
+      assert.equal(validate(withUrl), true, `${schema}: ${JSON.stringify(validate.errors)}`);
+    }
+    for (const landing_page_url of invalidUrls) {
+      const withInvalidUrl = structuredClone(data);
+      assignment(withInvalidUrl).landing_page_url = landing_page_url;
+      assert.equal(validate(withInvalidUrl), false, `${schema}: ${JSON.stringify(landing_page_url)}`);
+    }
+  }
+}
+
+test('complete create/update requests validate optional assignment landing pages', async () => {
+  await checkEnclosingSchemas([
+    {
+      schema: 'media-buy/create-media-buy-request.json',
+      data: {
+        ...requestBase,
+        brand: { domain: 'acme.example' },
+        start_time: '2026-11-01T00:00:00Z',
+        end_time: '2026-11-30T23:59:59Z',
+        packages: [{
+          product_id: 'display', pricing_option_id: 'cpm', budget: 1000,
+          creative_assignments: [{ creative_id: 'hero' }]
+        }]
+      },
+      assignment: data => data.packages[0].creative_assignments[0]
+    },
+    {
+      schema: 'media-buy/update-media-buy-request.json',
+      data: {
+        ...requestBase, media_buy_id: 'mb_display',
+        packages: [{ package_id: 'pkg_display', creative_assignments: [{ creative_id: 'hero' }] }]
+      },
+      assignment: data => data.packages[0].creative_assignments[0]
+    }
+  ]);
+});
+
+test('complete list/get responses validate effective assignment landing pages', async () => {
+  await checkEnclosingSchemas([
+    {
+      schema: 'creative/list-creatives-response.json',
+      data: {
+        status: 'completed',
+        query_summary: { total_matching: 1, returned: 1 },
+        pagination: { has_more: false },
+        creatives: [{
+          creative_id: 'hero', name: 'Hero', format_kind: 'image', status: 'approved',
+          created_date: '2026-10-13T12:00:00Z', updated_date: '2026-10-13T12:00:00Z',
+          assignments: {
+            assignment_count: 1, returned_assignment_count: 1, assignments_truncated: false,
+            assigned_packages: [{ package_id: 'pkg_display', assigned_date: '2026-10-13T12:00:00Z' }]
+          }
+        }]
+      },
+      assignment: data => data.creatives[0].assignments.assigned_packages[0]
+    },
+    {
+      schema: 'media-buy/get-media-buys-response.json',
+      data: {
+        status: 'completed',
+        media_buys: [{
+          media_buy_id: 'mb_display', status: 'active', currency: 'USD', total_budget: 1000,
+          confirmed_at: '2026-10-13T12:00:00Z', revision: 1,
+          packages: [{
+            package_id: 'pkg_display',
+            creative_approvals: [{ creative_id: 'hero', approval_status: 'approved' }]
+          }]
+        }]
+      },
+      assignment: data => data.media_buys[0].packages[0].creative_approvals[0]
+    }
+  ]);
+});
+
+test('sync assignment reset uses existing atomic unassign/assign operations and rejects null', async () => {
+  const validate = await compile(syncSchema);
+  const assignment = { creative_id: 'hero', package_id: 'pkg_display' };
+  const requests = [
+    { assignment_operations: [{ operation: 'assign', ...assignment, landing_page_url: urls[0] }] },
+    { assignment_operations: [{ operation: 'assign', ...assignment, weight: 50 }] },
+    { assignment_operations: [
+      { operation: 'unassign', ...assignment },
+      { operation: 'assign', ...assignment, weight: 50 }
+    ] }
+  ];
+  for (const request of requests) {
+    assert.equal(validate({ ...requestBase, ...request }), true, JSON.stringify(validate.errors));
+  }
+  assert.equal(validate({
+    ...requestBase,
+    assignment_operations: [{ operation: 'assign', ...assignment, landing_page_url: null }]
+  }), false);
+});
+
 test('package create, update, and read assignments accept optional macro-bearing landing pages', async () => {
   for (const relativePath of ['media-buy/package-request.json', 'media-buy/package-update.json', 'core/package.json']) {
     const assignment = readSchema(relativePath).properties.creative_assignments.items;

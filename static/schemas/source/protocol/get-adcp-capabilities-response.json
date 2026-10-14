@@ -2547,7 +2547,7 @@
         },
         "supports_assignment_landing_page": {
           "type": "boolean",
-          "description": "When true, this agent accepts landing_page_url on creative assignments in create_media_buy, update_media_buy, and sync_creatives, serves that destination on the specified package or rejects the assignment, and returns the actual serving destination in list_creatives and get_media_buys assignment readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "description": "When true, this agent accepts landing_page_url on creative assignments in create_media_buy, update_media_buy, and sync_creatives, serves that destination on the specified package or rejects the assignment, and returns the effective serving destination when unique in list_creatives and get_media_buys assignment readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
           "default": false,
           "x-added-in": "3.3.0"
         },
