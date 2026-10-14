@@ -11,7 +11,7 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ## Version 3.3.0
 
-**Status:** Beta cycle. 3.3 is a minor release targeting the 3.3.0 milestone. Beta.0 is the protocol-first cut used as the canonical input for SDK work; beta.1 incorporates integration feedback and becomes SDK-backed only after SDKs ingest the exact beta.1 bundle. No stable field, enum value, or task is removed, renamed, or deprecated. Two normative changes narrow conformant behavior and are listed under [Behavior changes to review](#behavior-changes-to-review). This section is the cumulative 3.3 narrative and is refreshed at each beta cut; `CHANGELOG.md` records what each individual cut consumed.
+**Status:** Beta cycle. 3.3 is a minor release targeting the 3.3.0 milestone. Beta.0 is the protocol-first cut used as the canonical input for SDK work; beta.1 incorporates integration feedback and becomes SDK-backed only after SDKs ingest the exact beta.1 bundle. No stable field, enum value, or task is removed, renamed, or deprecated; one usage is (natural-key account references after provisioning). Two normative changes narrow conformant behavior and are listed under [Behavior changes to review](#behavior-changes-to-review). This section is the cumulative 3.3 narrative and is refreshed at each beta cut; `CHANGELOG.md` records what each individual cut consumed.
 
 **Where to start:** [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3) is the adopter overview. [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3) has the role-based checklist. The [3.3 beta program](/docs/reference/3-3-beta) covers artifacts, SDK timing, and the proposals still in working-group review.
 
@@ -40,7 +40,7 @@ Each beta is immutable. The `3.3-beta` documentation selector advances to the la
 
 ### Additive surfaces and conformance
 
-Catalog ingestion declarations, DOOH location, `ext.adcp`, and the 3.3 grading changes are described in [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3) and [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3). 3.3 deprecates no stable field, task, or enum value.
+Catalog ingestion declarations, DOOH location, `ext.adcp`, and the 3.3 grading changes are described in [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3) and [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3). 3.3 deprecates no stable field, task, or enum value; it deprecates using the natural key as the account reference after provisioning, planned for removal in 4.0 (see [Deprecations](/docs/reference/migration/3-2-to-3-3#deprecations)).
 
 ### Already shipped in 3.2.2
 
@@ -49,6 +49,19 @@ The account-reference clarification (#7871) and the trust-docs consistency fixes
 ### In working-group review
 
 Proposals still in review, and not part of any beta until they merge, are listed in the [3.3 beta program](/docs/reference/3-3-beta#in-working-group-review-for-3-3).
+
+---
+
+## Version 3.2.4
+
+Maintenance patch for the stable 3.2 line. The release artifact and Git tag are `3.2.4` / `v3.2.4`. The wire version remains `"3.2"`; patch versions identify bundles and are never sent as `adcp_version`.
+
+- **Reliable Reporting (experimental):** `REVISION_UNREADABLE` identifies a published revision whose retained content the seller cannot serve or verify. The issue carries its obligation and revision IDs, names the seller as responsible, and pairs retry or escalation with the repair state. Authorized exact reads use the existing `SERVICE_UNAVAILABLE` error; unknown or unauthorized revisions retain `REFERENCE_NOT_FOUND`. An affected obligation is neither healthy nor complete. Strict readers must update their reporting schema definitions before accepting the new issue.
+- **Conformance corrections:** required billing capability discovery, active non-guaranteed lifecycle acceptance, the advanced-reporting fixture account join, typed proposal seeding and phase dependencies, and minimum-spend fixture placement. Existing controller-seeded storyboards declare their controller requirement so agents without a controller skip the whole storyboard rather than receive misleading fixture failures.
+- **Signing and canonicalization coverage:** additional vectors and 3.2-profile mirrors test existing header, authority, and URL canonicalization rules. The raw non-ASCII host vector uses the malformed-target error already specified by the 3.2 profile; no signing format or covered component changes.
+- **Schemas and guidance:** compose existing version/protocol envelopes in compact schemas, deduplicate provenance in bundled schemas without changing the wire contract, and clarify product channel declarations and experimental principal setup.
+
+This patch does not advance the scheduled mandatory consumer-status task or superseded-snapshot compaction changes. SDKs must synchronize from the published 3.2.4 bundle before claiming support for its new reporting issue.
 
 ---
 

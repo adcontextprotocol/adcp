@@ -174,6 +174,30 @@ describe('resolveUserAgentAuth', () => {
     void _typed;
   });
 
+  it('retains independent token and client issuers without inferring a missing binding', async () => {
+    db.getAuthInfoByOrgAndUrl.mockResolvedValue(null);
+    db.getByOrgAndUrl.mockResolvedValue({ id: 'ctx_1', has_oauth_token: true });
+    db.getOAuthTokensByOrgAndUrl.mockResolvedValue({
+      access_token: 'access', refresh_token: 'refresh', issuer: 'https://tokens.example.test/tenant',
+    });
+    db.getOAuthClient.mockResolvedValue({
+      client_id: 'client', issuer: 'https://registration.example.test/tenant',
+    });
+
+    expect(await call()).toEqual({
+      type: 'oauth',
+      tokens: { access_token: 'access', refresh_token: 'refresh', issuer: 'https://tokens.example.test/tenant' },
+      client: { client_id: 'client', issuer: 'https://registration.example.test/tenant' },
+    });
+
+    db.getOAuthClient.mockResolvedValue({ client_id: 'legacy-client' });
+    expect(await call()).toEqual({
+      type: 'oauth',
+      tokens: { access_token: 'access', refresh_token: 'refresh', issuer: 'https://tokens.example.test/tenant' },
+      client: { client_id: 'legacy-client' },
+    });
+  });
+
   it('omits client_secret when the OAuth client is public', async () => {
     db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce(null);
     db.getByOrgAndUrl.mockResolvedValueOnce({ id: 'ctx_1', has_oauth_token: true });

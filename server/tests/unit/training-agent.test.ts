@@ -19342,6 +19342,49 @@ describe('proposal lifecycle', () => {
     expect(result.outcome).toBe('rejected');
   });
 
+  it('rejects request_proposals when explicit product_ids span seeded fixtures priced in different currencies', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'mixed-currency-product-ids.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    for (const [productId, pricingOptionId, currency] of [
+      ['seeded_usd_podcast', 'cpm_usd', 'USD'],
+      ['seeded_eur_podcast', 'cpm_eur', 'EUR'],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            delivery_type: 'guaranteed',
+            channels: ['audio'],
+            format_options: [{ format_option_id: 'audio_30s', format_kind: 'audio', params: { duration_ms_exact: 30000 } }],
+          },
+        },
+      });
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency, floor_price: 15.0 },
+        },
+      });
+    }
+
+    const { result } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'mixed-currency-product-ids-0001',
+      account,
+      brief: 'Plan a campaign using the selected published offers.',
+      criteria: { product_ids: ['seeded_usd_podcast', 'seeded_eur_podcast'] },
+    });
+
+    expect(result.outcome).toBe('rejected');
+  });
+
   it('does not mix non-seeded catalog products into a seeded-fixture proposal when request_proposals has no criteria', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = {
@@ -24207,7 +24250,8 @@ describe('AdCP protocol compliance', () => {
       : undefined;
 
     const targeting = {
-      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_allow_v1' },
+      // Property lists are fetched and applied; see
+      // training-agent-property-list-targeting.test.ts.
       collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_shows_v1' },
       seller_extension: { inventory_tier: 'premium' },
     };
@@ -24298,7 +24342,7 @@ describe('AdCP protocol compliance', () => {
       : undefined;
 
     const initialTargeting = {
-      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_v1' },
+      collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_v1' },
     };
     const created = await simulateCallTool(server, 'create_media_buy', {
       account,
@@ -24317,7 +24361,6 @@ describe('AdCP protocol compliance', () => {
     const packageId = (created.result.packages as Array<{ package_id: string }>)[0]!.package_id;
 
     const newTargeting = {
-      property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_v2' },
       collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_v2' },
       seller_extension: { inventory_tier: 'standard' },
     };

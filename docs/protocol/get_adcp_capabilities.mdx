@@ -105,9 +105,93 @@ Core AdCP protocol information:
 | Field | Type | Description |
 |-------|------|-------------|
 | `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
+| `implementation` | object | Optional since 3.3. Self-reported SDK packages, exact versions, and integrated server components. See [implementation](#implementation). |
 | `idempotency` | object | **Required.** Idempotency semantics. See [idempotency](#idempotency). |
 | `capability_changes` | object | Optional. Freshness metadata and opt-in `capabilities.changed` invalidation webhooks for cached capability documents. See [capability_changes](#capability_changes). |
 | `attestations` | object | Optional. Allowlisted portable-attestation claim types, issuers, resolvers, verifiers, proof formats, and delivery methods this agent evaluates. See [attestations](#attestations). |
+
+#### implementation
+
+Optional since AdCP 3.3. Reports which AdCP SDKs the deployed agent uses and which server components they supply. This helps buyers investigate version-specific behavior and target integration checks. It is separate from the AdCP wire version and the seller's deployment `build_version`.
+
+| Field | Type | Description |
+|---|---|---|
+| `sdks` | object[] | Required when `implementation` is present. An empty array explicitly reports no AdCP SDK use; an omitted `implementation` means SDK use is unknown. Multiple entries support mixed SDK integrations. |
+| `sdks[].name` | string | Required. Package identifier in its ecosystem, including publisher or module scope where applicable, such as `@adcp/sdk`. |
+| `sdks[].version` | string | Required. Exact resolved package version, including any prerelease or build identifier. Use the ecosystem's version syntax, rather than a range or moving tag such as `latest`. Forks and modified builds should identify their own package or build version. |
+| `sdks[].components` | string[] | Required, unique list of components actually supplied by this SDK on the server. `components: []` reports SDK use without claiming any agent-wide component coverage. Installing a package or using its outbound client does not establish server-side coverage. |
+
+Components are independent; lifecycle handling does not imply SDK authentication or transport:
+
+| Component | What the deployed agent uses from the SDK |
+|---|---|
+| `types` | Build-time AdCP type imports. These may be erased before runtime. |
+| `schema_validation` | Enforced runtime validation of requests and final serialized responses against the SDK's unmodified AdCP schema constraints. Request-only, warning-only, or logging-only validation does not qualify. |
+| `transport` | Inbound protocol framing, dispatch, and response serialization. |
+| `authentication` | Caller authentication. Account authorization remains a separate obligation. |
+| `signing` | Message signing and signature verification. Claim both when both apply to the advertised task paths. |
+| `lifecycle` | Domain state-transition enforcement and asynchronous task lifecycle handling. Claim both when both apply to the advertised task paths. |
+| `idempotency` | Mutating-request replay protection. |
+| `webhooks` | Notification envelopes, delivery, and retries. |
+
+Only list components actually integrated across the advertised task paths where each component applies. A listed component requires every responsibility in its definition that applies to those paths. For example, `signing` requires both outbound signing and inbound signature verification when both apply; `lifecycle` requires both domain transitions and async task handling when the agent exposes both. An agent with no async tasks need not add them to claim SDK lifecycle coverage for its domain transitions. If an SDK handles a component for only some task paths or only some applicable responsibilities, omit that component from this agent-wide declaration. An unlisted component has no claimed SDK coverage; it does not imply unsupported behavior or establish that the component is custom.
+
+An SDK used solely for signing on selected routes can still report its package and version with `components: []`. This differs from `sdks: []`, which reports no SDK use. Task-scoped component reporting is a possible follow-up; this declaration makes only agent-wide claims.
+
+**Wrappers and model subclasses.** A custom wrapper or SDK model subclass can report `types` when it reuses SDK types. To also report `schema_validation`, it must retain the SDK's unmodified protocol checks on requests and final serialized responses after any transformations. Subclassing a model, running inherited validators, or validating before custom serialization does not establish that coverage on its own. Additional constraints can coexist with the claim if the original checks remain enforced, but rejecting protocol-valid inputs may still fail conformance. Relaxing or replacing the original constraints without a separate enforcing SDK validation step does not qualify.
+
+The following custom-wrapper example uses a hypothetical SDK version. Pinnacle Media uses SDK types and enforced validation for every applicable request and final response, while its wrapper supplies transport, authentication, lifecycle, and replay handling. It makes no SDK coverage claim for those wrapper behaviors.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 },
+    "implementation": {
+      "sdks": [
+        {
+          "name": "@adcp/sdk",
+          "version": "15.3.0",
+          "components": ["types", "schema_validation"]
+        }
+      ]
+    }
+  },
+  "supported_protocols": ["media_buy"]
+}
+```
+
+**Reporting accurately.** SDK server frameworks should generate package identity, resolved version, and integrated components from their own build and active runtime configuration. Build-time type-only imports need a build-time declaration. Runtime validation must be enabled and enforcing in the deployed configuration; framework use does not establish `schema_validation` when production validation is disabled or advisory. A framework should not infer coverage merely from a package's presence or from the features that package offers. SDK or integration changes should refresh the capability document and its [freshness metadata](#capability_changes).
+
+**Using the report.** This metadata is self-reported and advisory. Buyers MUST NOT use it for version negotiation. Recognizing an approved package and version in a trusted catalog is useful for triage, but does not prove the deployed server executes that code. Signing this response authenticates the reporting agent; it does not attest code execution. The metadata does not change any [conformance obligations](/docs/building/verification/conformance).
+
+Buyers should reduce check depth only when independently trusted evidence covers the relevant endpoint, AdCP version, SDK version, and integrated components. Such evidence can support reusing results for covered components while deeper checks focus on custom or uncovered behavior; basic endpoint checks still apply. SDK version or integration changes should trigger reassessment of reused evidence. This field does not introduce an SDK approval catalog, certification inheritance policy, or new attestation format.
+
+A buyer can apply the following policy to components relevant to the seller's advertised behavior. Full applicable coverage means those components are covered, rather than mechanically requiring all eight labels.
+
+| Report and independent evidence | Buyer guidance |
+|---|---|
+| Absent, unknown, or partial SDK coverage without applicable verification | Identify components that lack reported SDK coverage and recommend an AgenticAdvertising.org compliance assessment before relying on the seller. |
+| Full applicable SDK coverage reported without applicable verification | Show “SDK integration reported; compliance verification pending.” The self-reported list cannot independently clear the need for verification. |
+| Current, applicable AgenticAdvertising.org verification | Show the verified scope, evidence modes, and grading profile, regardless of SDK use. |
+
+For the wrapper above, buyer messaging could say: “Additional verification recommended. This seller reports SDK types and validation, but does not report SDK coverage for lifecycle or idempotency. Check current compliance status before purchasing.”
+
+For [AAO Verified](/docs/building/verification/aao-verified), match the exact agent URL, role, AdCP version, and relevant specialisms, and check current registry status. For protocol conformance, look for Spec evidence under Strict Spec grading: the evidence mode and grading profile are separate facts. A badge or report for another endpoint, version, or scope does not cover this integration.
+
+**Separate conformance evidence.** An external verifier could display the following illustrative assessment alongside the wrapper's declaration. This table is a human-readable report, not a new protocol response format. Its scope is `https://seller.example/mcp`, media-buy role, AdCP 3.3, and the seller's advertised media-buy behavior. The assessed deployment is `pinnacle-wrapper-2026.10.09.1`, observed at `2026-10-09T09:00:00Z`; these identifiers let a buyer judge applicability and freshness.
+
+| Obligation exercised | External result | Observed evidence |
+|---|---|---|
+| Reject an invalid request payload | Passed | The endpoint rejected the invalid request before execution. |
+| Reject a mutated replay under an existing idempotency key | Failed | The endpoint accepted the changed payload despite declaring replay support. |
+| Enforce domain state transitions | Untested | The assessment did not exercise the transition paths. |
+
+The SDK declaration remains `components: ["types", "schema_validation"]` even with the failed replay and untested lifecycle results. Neither a coverage claim nor one passed schema check establishes overall conformance. The failed obligation needs remediation, and the untested obligation remains a coverage gap. Store these results and any verification status in the external assessment, separately from `adcp.implementation`.
+
+Automatic SDK population and a buyer readiness check combining reported coverage with current verification are follow-ups; this addition defines the metadata contract.
 
 #### idempotency
 
@@ -381,8 +465,9 @@ Account and authentication capabilities. All sellers should declare this section
 | `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent`, or `advertiser`. When the buyer calls `sync_accounts`, every entry must select one of these values. |
 | `supported_account_currency_modes` | string[] | **Required for 3.2 advertiser-account provisioning; additive/optional on the shared 3.x wire schema for 3.1 compatibility.** Models this seller supports: `fixed`, `per_media_buy`, or both. A buyer includes `currency` in `sync_accounts` for `fixed` and omits it for `per_media_buy`. When both are advertised, presence or absence selects the model. Absence means an older seller has not exposed currency-mode discovery; it does not imply support for either mode. |
 | `timezone` | object | **Required for 3.2 advertiser-account provisioning; additive/optional on the shared 3.x wire schema for compatibility.** `seller_fixed` advertises one `fixed_timezone` for every account. `account_fixed` declares whether each immutable account timezone is `seller_assigned` or `buyer_selected`; buyer-selected mode also publishes the exact `supported_timezones`. |
-| `require_operator_auth` | boolean | Default: `false`. Declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller/storefront-assigned `account_id` values. When `false`, the agent is trusted and calls use the advertiser natural key: `brand` + `operator` + optional `operator_unit`, fixed `currency`, optional buyer-selected `timezone`, and `sandbox`. `operator_unit.id` belongs to the operator and is not the seller's `account_id`. Buyer-declared sellers normally provision through `sync_accounts`, MUST continue accepting the natural key, and SHOULD expose `list_accounts` so all key fields can be recovered after a cold start. |
+| `require_operator_auth` | boolean | Default: `false`. Declares who holds the credential the seller authorizes: the buyer agent (`false`) or each operator separately (`true`). It is not about whether the operator named in a natural key authenticates — with `false`, no operator does. It declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller/storefront-assigned `account_id` values. When `false`, the agent is trusted and calls use the advertiser natural key: `brand` + `operator` + optional `operator_unit`, fixed `currency`, optional buyer-selected `timezone`, and `sandbox`. `operator_unit.id` belongs to the operator and is not the seller's `account_id`. Buyer-declared sellers normally provision through `sync_accounts`, MUST continue accepting the natural key, and SHOULD expose `list_accounts` so all key fields can be recovered after a cold start. |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
+| `stable_account_id` | boolean | Default: `false`. When `true`, the seller-assigned `account_id` is a durable `AccountRef` for every account the caller can operate, including buyer-declared accounts: the seller MUST return it on every non-failed `sync_accounts` provisioning result, MUST accept `{ "account_id": "..." }` wherever an `AccountRef` is accepted, and MUST NOT change it for the life of the account, including across identity reconciliation. Buyer-declared sellers still accept the natural key throughout 3.x. Buyers holding an `account_id` from such a seller SHOULD send it instead of the natural key. When absent or `false`, buyers MUST NOT assume a buyer-declared seller accepts its returned `account_id`. Account-id-namespace sellers whose IDs meet these rules SHOULD declare `true`. Natural-key references after provisioning are deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare it during 3.x. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling [`get_products`](/docs/media-buy/task-reference/get_products). When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. Before an account is provisioned, the buyer omits `account` rather than sending a natural key that doesn't resolve yet; see [Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning). |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
 | `identity_updates` | object | Optional capability gate for reconciling an existing account's buyer-controlled operator identity through `sync_accounts` settings-update mode. `supported_changes` declares `operator_unit_name`, `operator_unit`, and/or `operator`. |
@@ -492,6 +577,8 @@ See [`sync_accounts` identity reconciliation](/docs/accounts/tasks/sync_accounts
 **Buyer-declared accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, and account-scoped calls use that credential plus the advertiser natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, optional buyer-selected `timezone`, and `sandbox`). `brand.countries[]` may qualify the commercial advertiser identity without targeting delivery. Most sellers expose `sync_accounts` so the buyer can declare the relationship and select billing or other settings before use. A seller MAY instead auto-provision on the first provisioning task, such as `create_media_buy`, when those settings are unambiguous from capabilities or onboarding defaults; in that mode it MUST expose `list_accounts` as the recovery read and MUST keep accepting the natural key. Discovery tasks never provision ([Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning)). Auto-provisioning is not conformant when buyer input is needed to resolve billing, timezone, terms, sandbox setup, notifications, or other account settings before the operation.
 
 **Account-id namespaces** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and passes seller-assigned `account_id` values on subsequent requests. OAuth is credential acquisition, not an account taxonomy axis. Two namespace patterns use the same wire reference: upstream-managed sellers expose `list_accounts`, making explicit account resolution mandatory before account-scoped calls; seller-defined namespaces without `list_accounts` provide account IDs out-of-band. SDKs SHOULD lazily call `list_accounts` when first needed, auto-select a singleton, cache it per credential/session, and still send explicit `AccountRef` values on required-account calls.
+
+In either model, a seller declaring `stable_account_id: true` lets the buyer switch to `{ "account_id": "..." }` once it holds the ID, so every call after onboarding looks the same regardless of auth model.
 
 For sandbox, the path follows the account namespace: account-id namespaces discover pre-existing test accounts via `list_accounts` or out-of-band setup; buyer-declared accounts send `sandbox: true` through `sync_accounts` or, for a lazy-provisioning seller, in the natural-key account reference.
 
