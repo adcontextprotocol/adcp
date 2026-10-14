@@ -36,7 +36,8 @@
     "max_total_duration_exceeded": "An extend_hold successor expires_at is later than the original hold_placed_at + max_total_duration.",
     "hold_placed_at_not_carried_forward": "An extend_hold successor hold_placed_at differs from its source; the root finalize placement is carried forward unchanged.",
     "extension_not_later": "An extend_hold successor expires_at is not later than its source expires_at.",
-    "extended_while_not_extendable": "An extend_hold succeeds against a source whose hold_policy.extendable is false or absent (it defaults to false)."
+    "extended_while_not_extendable": "An extend_hold succeeds against a source whose hold_policy.extendable is false or absent (it defaults to false).",
+    "no_hold_wrong_task_error": "An extend_hold request against a committed proposal that holds no inventory fails at task level with a code other than INVALID_STATE."
   },
   "finalize_vectors": [
     {
@@ -7815,6 +7816,78 @@
       },
       "expected": {
         "violations": []
+      }
+    },
+    {
+      "id": "extend-terms-only-wrong-task-error",
+      "case": "extension",
+      "name": "A committed proposal that holds no inventory must fail extend_hold with INVALID_STATE, not another task-level code",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#extend-a-hold-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy",
+          "media_buy.hold_extension"
+        ]
+      },
+      "source_proposals": [
+        {
+          "proposal_id": "prop_committed_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_ctv",
+          "name": "Committed prop_draft_ctv",
+          "expires_at": "2026-11-09T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": false
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "extend-extend-terms-only-wrong-task-error",
+        "refinements": [
+          {
+            "proposal_id": "prop_committed_ctv",
+            "action": "extend_hold"
+          }
+        ]
+      },
+      "task_error": {
+        "code": "VALIDATION_ERROR",
+        "message": "prop_committed_ctv cannot be extended.",
+        "recovery": "correctable"
+      },
+      "expected": {
+        "violations": [
+          "no_hold_wrong_task_error"
+        ]
       }
     },
     {

@@ -239,10 +239,14 @@ function gradeExtend(vector) {
     sources.every(s => validate.proposal(s)) &&
     (taskError ? validate.error(taskError) && !response : validate.response(response));
   if (!schemaOk) return { violations: ['schema_invalid'] };
-  if (taskError) return { violations: [] };
 
   const byId = new Map(sources.map(s => [s.proposal_id, s]));
   const entries = request.refinements.map(r => byId.get(r.proposal_id));
+  if (taskError) {
+    // Extending a commitment that holds no inventory MUST fail with INVALID_STATE.
+    const noHold = entries.some(src => !effectivePolicy(src, seller).available);
+    return { violations: noHold && taskError.code !== 'INVALID_STATE' ? ['no_hold_wrong_task_error'] : [] };
+  }
   response.results.forEach((result, i) => {
     const src = entries[i];
     const policy = effectivePolicy(src, seller);
