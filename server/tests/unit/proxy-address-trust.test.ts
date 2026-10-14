@@ -17,9 +17,14 @@ describe('proxy address trust boundaries', () => {
       app.set('trust proxy', subnet);
       app.get('/identity', (req, res) => res.json({ ip: req.ip, ips: req.ips }));
 
-      const response = await request(app)
+      // The peer must be IPv4: these ranges are only wrong for IPv4 peers, and
+      // supertest's default localhost may resolve to ::1.
+      const server = app.listen(0, '127.0.0.1');
+      await new Promise(resolve => server.once('listening', resolve));
+      const response = await request(server)
         .get('/identity')
         .set('X-Forwarded-For', '198.51.100.40');
+      server.close();
 
       expect(response.status).toBe(200);
       expect(['127.0.0.1', '::ffff:127.0.0.1']).toContain(response.body.ip);
