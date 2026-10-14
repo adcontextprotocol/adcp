@@ -2241,7 +2241,11 @@ has all of the following properties.
    matching the task-body caps in [Attestation resolution fetch contract](#attestation-resolution-fetch-contract),
    and reject an over-limit document before schema validation, logging of body
    content, or any LLM-visible processing. These bounds, not the byte cap, are
-   what makes a boundary-probing peer's cap-minus-one response harmless.
+   what makes a boundary-probing peer's cap-minus-one response harmless. They
+   do not bound the length of a single scalar: a conforming document can carry
+   one string as large as the whole cap in a single node. Per-field length
+   limits, not the node count, are what bound what reaches a log or a model
+   context window.
 7. **It errors; it does not truncate.** An oversized response is a failure.
    A truncated response is a schema-invalid response that may still parse, so
    silently dropping the tail yields a plausible-looking partial answer the
@@ -2272,9 +2276,15 @@ has all of the following properties.
    logged.
 9. **It bounds aggregate exposure, not just one response.** A client that fans
    out across agents bounds concurrent in-flight response reads and the total
-   bytes retained across a batch. N peers each answering one byte under the cap
-   are all individually conformant and collectively fatal to a worker — which
-   is the shape of the deployment this control exists to protect. The
+   bytes *and nodes* retained across a batch. N peers each answering one byte
+   under the cap are all individually conformant and collectively fatal to a
+   worker — which is the shape of the deployment this control exists to
+   protect. The per-call default is not multiplied by concurrency: a client
+   whose aggregate budget is smaller than its concurrency times the per-call
+   default lowers one of the two, and the aggregate bound is the one that must
+   hold. Node budgets aggregate the same way — N peers each at the 100,000-member
+   bound is N × 100,000 nodes resident, which is the term that actually
+   exhausts a fan-out worker. The
    [brand.json trust-root fetch](#discovering-an-agents-signing-keys-via-brand_json_url)
    bounds concurrent fetches for the same reason.
 
@@ -2290,14 +2300,22 @@ own cap, that cap governs that path: `MAX_BRAND_JSON_BYTES` (2 MiB),
 `MAX_JWKS_BYTES` and `MAX_CAPABILITIES_BYTES` (64 KiB each), the 4 MiB
 attestation task-body cap, the 4096-byte `adcp_error` cap in
 [Transport Error Mapping](/docs/building/operating/transport-errors#security-considerations),
-and the 5 MB general SSRF body cap for fetches of counterparty-supplied URLs
-(20 MB for the managed-network dereferenced authoritative file). Transport
-profiles set their own defaults under the ceiling: 1 MiB for a serialized MCP
-message (see [MCP response extraction](/docs/building/by-layer/L0/mcp-response-extraction#size-limits))
-and 1 MiB for an A2A call (see [A2A response extraction](/docs/building/by-layer/L0/a2a-response-extraction#size-limits)),
-against a 128 KiB producer interoperability target for a pageable read (see
+the 5 MB general SSRF body cap for fetches of counterparty-supplied URLs
+(20 MB for the managed-network dereferenced authoritative file), the 1 MiB
+streamed cap on an [attestation resolution fetch](#attestation-resolution-fetch-contract)
+and the 1 MiB protocol ceiling on `max_embedded_credential_bytes`, the 1 MiB
+publisher-origin cap on `format_schema` and `adagents.json` fetches, and the
+256 KB A2A auth-challenge fetch cap. Aligning the transport defaults raises
+none of these. Both transport profiles default to 4 MiB — a serialized MCP
+message (see
+[MCP response extraction](/docs/building/by-layer/L0/mcp-response-extraction#size-limits))
+and an A2A call (see [A2A response extraction](/docs/building/by-layer/L0/a2a-response-extraction#size-limits))
+— against a 128 KiB producer interoperability target for a pageable read (see
 [Managing response size](/docs/building/concepts/managing-response-size#interoperability-size-target)).
-The bound in this section is the backstop for a path with no cap of its own.
+The gap between those two numbers is deliberate: 128 KiB is what a cooperating
+producer aims at, and 4 MiB is what a client tolerates from one that is hostile
+or broken. A tighter default is always conformant; a larger one is not. The
+bound in this section is the backstop for a path with no cap of its own.
 
 **Producers paginate.** A producer whose data does not fit
 [paginates](/docs/building/concepts/managing-response-size#pagination-for-cardinality-control);
@@ -2305,6 +2323,28 @@ it does not ask buyers to raise their limits. A response that only succeeds
 against a raised limit is not interoperable, and it fails against a
 default-configured buyer as a mid-body connection abort rather than as a
 protocol error the buyer can act on.
+
+**Discovery responses stay small.** The client cap is a backstop, not a budget
+to spend. Agents **SHOULD** keep their discovery responses — `tools/list`,
+`get_adcp_capabilities`, and the A2A agent card — well under the default
+client cap, and **SHOULD** paginate a large catalog rather than serve it in
+one response. These are the first bytes any counterparty reads, and the
+recourse when a cap trips differs by surface. A buyer that trips its cap on
+the agent card has none: the fetch is a plain `GET` with no narrowing lever,
+and the authenticated extended card is larger, not smaller. On `tools/list`
+the page size is the server's choice — MCP's `cursor` carries no page-size
+parameter — so a buyer cannot ask for less, though AdCP task names are fixed
+by the protocol, so it can still call the named tasks directly. A buyer can
+narrow `get_adcp_capabilities` with `protocols[]`, but that does not help the
+case that matters most: the signing-key discovery path fetches capabilities
+unnarrowed under `MAX_CAPABILITIES_BYTES` (64 KiB), so a capabilities document
+above that budget fails with `request_signature_capabilities_unreachable` and
+makes the agent's signing keys unresolvable for any verifier without a live
+cached mapping, and for the rest within one cache cycle. An oversized
+capabilities document therefore costs signature verification as well as
+discovery. See
+[Discovering an agent's signing keys](#discovering-an-agents-signing-keys-via-brand_json_url)
+and [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
 
 **Scope.** This section covers responses a client reads on its own call path.
 Inbound deliveries a buyer *receives* — A2A push notifications and

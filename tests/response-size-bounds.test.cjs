@@ -28,7 +28,6 @@ const RESPONSE_SIZE = 'building/concepts/managing-response-size.mdx';
 const MIGRATION = 'reference/migration/3-2-to-3-3.mdx';
 
 const CEILING_BYTES = 4 * 1024 * 1024;
-const TRANSPORT_DEFAULT_BYTES = 1024 * 1024;
 const SECTION_ANCHOR = '/docs/building/by-layer/L1/security#response-size-bounds';
 
 const read = (relative) => fs.readFileSync(path.join(DOCS, relative), 'utf8');
@@ -124,9 +123,17 @@ describe('client response-size bound (security.mdx)', () => {
     assert.match(body, /not settable per call/i);
   });
 
-  it('bounds aggregate exposure across a fan-out batch', () => {
+  it('bounds aggregate exposure across a fan-out batch, in nodes as well as bytes', () => {
     assert.match(body, /concurrent in-flight response reads/i);
     assert.match(body, /individually conformant and collectively fatal/i);
+    // Raising the per-call default 4x makes the aggregate term the one that bites.
+    assert.match(body, /not multiplied by concurrency/i);
+    assert.match(body, /N . 100,000 nodes resident/);
+  });
+
+  it('says the node bound does not limit a single scalar', () => {
+    assert.match(body, /do not bound the length of a single scalar/i);
+    assert.match(body, /Per-field length\s+limits, not the node count/i);
   });
 
   it('states precedence over path-specific caps so the ceiling does not loosen them', () => {
@@ -140,6 +147,24 @@ describe('client response-size bound (security.mdx)', () => {
 
   it('points large-catalog producers at pagination rather than raised buyer limits', () => {
     assert.match(body, /it does not ask buyers to raise their limits/i);
+  });
+
+  it('tells agents to keep discovery surfaces under the default client cap', () => {
+    assert.match(body, /Discovery responses stay small/);
+    for (const surface of ['`tools/list`', '`get_adcp_capabilities`', 'A2A agent card']) {
+      assert.ok(body.includes(surface), `discovery clause must cover ${surface}`);
+    }
+    assert.match(body, /MAX_CAPABILITIES_BYTES` \(64 KiB\)/);
+    assert.match(body, /request_signature_capabilities_unreachable/);
+    // Recourse differs per surface; claiming none anywhere was the overstatement.
+    assert.match(body, /narrow `get_adcp_capabilities` with `protocols\[\]`/);
+    assert.match(body, /page size is the server's choice/i);
+  });
+
+  it('states that both transports default to 4 MiB without raising path caps', () => {
+    assert.match(body, /Both transport profiles default to 4 MiB/);
+    assert.match(body, /Aligning the transport defaults raises\s+none of these/);
+    assert.match(body, /A tighter default is always conformant; a larger one is not/);
   });
 
   it('says whether inbound pushed deliveries are in scope', () => {
@@ -167,19 +192,23 @@ describe('transport profiles restate the bound', () => {
         assert.match(body, /resumption/i);
       });
 
-      it('states a whole-call default of 1 MiB, with 4 MiB only as the ceiling', () => {
+      it('states a whole-call default of 4 MiB, matching the SDKs', () => {
         // The two transports must not diverge: an SDK picking 4 MiB for one
         // and 1 MiB for the other makes the same response succeed on one
         // transport and fail on the other.
-        assert.match(body, /\b1 MiB\b/);
         assert.match(
           body,
           name === 'MCP'
-            ? /1 MiB is the MCP default/
-            : /whole-call default is \*\*1 MiB\*\*, matching the MCP profile/,
+            ? /4 MiB is the MCP default/
+            : /whole-call default is \*\*4 MiB \(4,194,304 bytes\)\*\*, matching the MCP profile/,
         );
-        assert.match(body, /ceiling on any default/i);
-        assert.equal(TRANSPORT_DEFAULT_BYTES * 4, CEILING_BYTES);
+        assert.match(body, /ceiling on a default/i);
+        // Both branches must pin the exact byte count, not just the prose.
+        assert.ok(
+          body.includes('4,194,304 bytes') || read(SECURITY).includes('4 MiB (4,194,304 bytes)'),
+        );
+        // Silently reverting this transport to 1 MiB is the failure pinned here.
+        assert.doesNotMatch(body, /(whole-call|MCP) default is \*?\*?1 MiB/);
       });
 
       it('carries the parse and deadline bounds forward, not just the byte cap', () => {
@@ -188,6 +217,35 @@ describe('transport profiles restate the bound', () => {
       });
     });
   }
+
+  it('A2A sets the per-DataPart bound to the call limit, not a tighter number', () => {
+    // The single-artifact invariant makes the authoritative DataPart the whole
+    // response, so any tighter per-part figure silently becomes the effective
+    // A2A cap and diverges from MCP on a byte-identical payload.
+    const body = section(read(A2A_EXTRACTION), '### Size Limits');
+    assert.match(body, /no single part exceeds the configured call limit/);
+    assert.match(body, /single-artifact invariant/);
+    assert.doesNotMatch(body, /maximum DataPart size \(recommended 1 MiB\)/);
+  });
+
+  it('no L0 transport profile states a sub-default byte figure without justifying it', () => {
+    // This is the invariant both transports broke: a tighter inner bound that
+    // nothing explains becomes the real cap.
+    for (const relative of [MCP_EXTRACTION, A2A_EXTRACTION]) {
+      const body = section(read(relative), '### Size Limits');
+      const figures = [...body.matchAll(/(\d+(?:,\d{3})*)\s*(KiB|MiB)\b/g)].map(([, v, u]) => ({
+        bytes: Number(v.replace(/,/g, '')) * (u === 'MiB' ? 1024 * 1024 : 1024),
+        text: `${v} ${u}`,
+      }));
+      for (const f of figures) {
+        if (f.bytes >= CEILING_BYTES) continue;
+        assert.ok(
+          /tighter|target|deliberate|same limit|producer/i.test(body),
+          `${relative} cites ${f.text}, below the ${CEILING_BYTES}-byte default, with no justification clause`,
+        );
+      }
+    }
+  });
 
   it('MCP covers both the single-JSON and SSE Streamable HTTP shapes', () => {
     const body = section(read(MCP_EXTRACTION), '### Size Limits');
@@ -209,7 +267,28 @@ describe('pagination guidance (managing-response-size.mdx)', () => {
   it('ties the interoperability target to the general client bound without raising it', () => {
     const body = section(content, '## Interoperability size target');
     assert.ok(body.includes(SECTION_ANCHOR));
-    assert.match(body, /not a second target a producer may aim at/i);
+    assert.match(body, /That cap defaults to 4 MiB/);
+    // The producer target and the client backstop must not be conflated now
+    // that they are thirty-fold apart.
+    assert.match(body, /32x gap/);
+    assert.match(body, /not slack a producer may spend/i);
+  });
+
+  it('tells agents to keep every discovery surface small', () => {
+    const body = section(content, '## Discovery responses stay small');
+    for (const surface of ['`tools/list`', '`get_adcp_capabilities`', 'A2A agent card']) {
+      assert.ok(body.includes(surface), `discovery guidance must cover ${surface}`);
+    }
+    // An oversized discovery response is not slow, it is unreachable.
+    assert.match(body, /MAX_CAPABILITIES_BYTES/);
+    assert.match(body, /paginate a large catalog/i);
+    // The agent-card figure is editorial; reading it as a cap breaks interop
+    // with agents the spec calls conformant.
+    assert.match(body, /No normative cap exists/);
+    assert.match(body, /MUST NOT reject an agent card at 64 KiB/);
+    // The capabilities figure binds signers, not everyone.
+    assert.match(body, /Binding on any agent that signs/);
+    assert.match(body, /purely non-signing agent is bounded only by the client default/i);
   });
 });
 
@@ -225,6 +304,21 @@ describe('adopter-facing migration entry', () => {
   it('tells buyers how to raise the limit and sellers to paginate', () => {
     assert.match(body, /raise it for a specific agent or a specific call, never globally/i);
     assert.match(body, /Sellers with large catalogs\.\*\* Paginate/);
+  });
+
+  it('tells every agent to check its discovery surfaces', () => {
+    assert.match(body, /check your discovery surfaces first/i);
+    assert.match(body, /cannot discover you at all/i);
+    assert.match(body, /MAX_CAPABILITIES_BYTES/);
+  });
+
+  it('documents the loosening the way the brand.json cap change was documented', () => {
+    const loosening = section(content, '### Client response-size default rises to 4 MiB');
+    assert.match(loosening, /This loosens a limit, so interop is asymmetric/);
+    // A seller spending the new headroom still breaks against 3.2-era clients.
+    assert.match(loosening, /while counterparties remain on 3\.2-era clients/i);
+    assert.match(loosening, /per-call default is not an aggregate budget/i);
+    assert.ok(content.includes('(#client-response-size-default-rises-to-4-mib)'));
   });
 
   it('is reachable from the guide intro and the upgrade checklist', () => {
