@@ -117,8 +117,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // once (1_247_414 bytes measured), still within the limit. Follower counts on
 // collection distribution entries (#8098) add the core/audience-size.json
 // closure to that collection copy (1_251_212 bytes measured), bounded at
-// 1_255_000.
-const PARITY_COMPILE_LIMIT = 1_255_000;
+// 1_255_000. Experimental hold_policy (#7661) reaches it through the seeded
+// Product and the committed proposal (1_259_242 bytes measured), bounded at
+// 1_265_000.
+const PARITY_COMPILE_LIMIT = 1_265_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
