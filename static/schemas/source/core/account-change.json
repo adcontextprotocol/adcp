@@ -92,7 +92,7 @@
     },
     "resource_revision": {
       "type": ["integer", "string"],
-      "description": "Post-change revision exposed by the repair read, when that resource family defines one."
+      "description": "Post-change seller revision exposed by the repair read, when that resource family defines one: `revision` for a media buy or account, and `seller_revision` for a creative. The value is the one immediately after this change, in the same JSON type as the read (a positive integer or a 1 to 255 character string); a read that returns a different value reflects later changes. Omit it for a family that defines no seller revision and for changes to state the revision does not cover."
     },
     "changed_paths": {
       "type": "array",
