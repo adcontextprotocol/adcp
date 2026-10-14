@@ -2559,6 +2559,12 @@
           "description": "When true, this agent accepts buyer-assigned revision_id on sync_creatives, enforces immutable revision content, echoes accepted revision identity, returns it from list_creatives, and attributes delivered executions to it. Revision support does not imply revision history, rollback, or staged activation.",
           "default": false
         },
+        "supports_assignment_landing_page": {
+          "type": "boolean",
+          "description": "When true, this agent accepts landing_page_url on creative assignments in create_media_buy, update_media_buy, and sync_creatives, serves that destination on the specified package or rejects the assignment, and returns the effective serving destination when unique in list_creatives and get_media_buys assignment readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
         "supports_generation": {
           "type": "boolean",
           "description": "When true, this agent can generate creatives from natural language briefs via build_creative. The buyer provides a message with creative direction, and the agent produces a manifest with generated assets. When false, build_creative only supports transformation or library retrieval.",
@@ -2811,6 +2817,20 @@
               "supports_revisions": { "const": true }
             },
             "required": ["supports_revisions"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_assignment_landing_page": { "const": true }
+            },
+            "required": ["supports_assignment_landing_page"]
           },
           "then": {
             "properties": {
