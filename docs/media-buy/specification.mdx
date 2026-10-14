@@ -610,17 +610,18 @@ the normative form is data:
 | --- | --- | --- |
 | `publisher_format_option` | `display_name`, `ext`, `publisher_domain`, `reference_renderer`, `sample_render_url`, `seller_preference` | `applies_to_channels`, `applies_to_property_ids`, `applies_to_property_tags`, `v1_format_ref` |
 | `publisher_placement` | `description`, `ext`, `name`, `presentation_ref`, `preview_provider`, `publisher_domain`, `tags` | `audio_distribution_types`, `channels`, `collection_ids`, `identifiers`, `property_ids`, `property_tags`, `social_placement_surfaces`, `sponsored_placement_types`, `video_placement_types`; `format_options[]` elements are projected as `publisher_format_option` and then treated as a set |
-| `publisher_collection` | `description`, `ext`, `name`, `publisher_domain`, `related_collections`, `season`, `talent` | `genre`; `distribution[]` elements are projected with `followers` excluded and then treated as a set |
+| `publisher_collection` | `description`, `ext`, `images`, `name`, `publisher_domain`, `related_collections`, `sample_content`, `season`, `talent`, `url` | `genre`; `distribution[]` elements are projected with `followers` excluded and then treated as a set |
 | `data_provider_signal` | `criteria_url`, `description`, `ext`, `last_updated`, `name`, `tags` | `allowed_values`, `consent_basis`, `countries`, `data_sources`, `id_types`, `policy_categories`, `restricted_attributes` |
 
-The exclusions are display text, presentation pointers, extension data,
+The exclusions are display text, presentation pointers, collection-card media
+(`images`, `sample_content`, and the collection page `url`), extension data,
 freshness timestamps, cast, tags, and the origin-dependent `publisher_domain`.
 Only a top-level `ext` is excluded (and the top-level `ext` of each element
 projected with another kind's rules); an `ext` deeper in the entry, such as
 inside `params` or a `distribution` entry, stays verbatim.
 Excluding `tags` is deliberate: authorization scope is verified through supply
 path, not through pins. Everything else, including members the AdCP schemas do
-not name, is part of the preimage. A rename is not drift; a change to
+not name, is part of the preimage. A rename or a new card thumbnail is not drift; a change to
 `content_rating`, creative `params`, a collection's `status`, or a signal's
 `segmentation_criteria` is. A refreshed platform-reported follower count
 (`distribution[].followers`) is not drift; a change to any other member of a

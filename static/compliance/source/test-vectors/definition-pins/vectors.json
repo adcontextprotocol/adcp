@@ -49,11 +49,14 @@
       "exclude": [
         "description",
         "ext",
+        "images",
         "name",
         "publisher_domain",
         "related_collections",
+        "sample_content",
         "season",
-        "talent"
+        "talent",
+        "url"
       ],
       "set_arrays": [
         "genre"
@@ -474,6 +477,123 @@
         "ext": {
           "internal_id": 9
         }
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5",
+        "content_digest_b": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5"
+      }
+    },
+    {
+      "id": "collection-card-fields-are-not-drift",
+      "ref_kind": "publisher_collection",
+      "name": "Refreshing card images, samples, and the collection page is not drift",
+      "why": "images, sample_content, and url are collection-card display fields on the exclusion list, so a new thumbnail does not fail committed proposals.",
+      "entry_a": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        },
+        "url": "https://sports-network.example/shows/evening-news",
+        "images": [
+          {
+            "asset_type": "image",
+            "url": "https://cdn.sports-network.example/evening-news/poster.jpg",
+            "width": 1200,
+            "height": 675
+          }
+        ],
+        "sample_content": [
+          {
+            "asset_type": "published_post",
+            "post_url": "https://video.example.com/watch/evening-news-ep-1",
+            "platform": "video.example.com"
+          }
+        ]
+      },
+      "entry_b": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        },
+        "url": "https://sports-network.example/programs/evening-news",
+        "images": [
+          {
+            "asset_type": "image",
+            "url": "https://cdn.sports-network.example/evening-news/poster-v2.jpg",
+            "width": 1200,
+            "height": 675
+          },
+          {
+            "asset_type": "image",
+            "url": "https://cdn.sports-network.example/evening-news/anchor.jpg",
+            "width": 800,
+            "height": 800
+          }
+        ],
+        "sample_content": [
+          {
+            "asset_type": "published_post",
+            "post_url": "https://video.example.com/watch/evening-news-ep-2",
+            "platform": "video.example.com"
+          }
+        ]
       },
       "expected": {
         "same_content_digest": true,

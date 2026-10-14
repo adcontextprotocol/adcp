@@ -32,7 +32,7 @@
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "For a draft, the indicative-terms freshness deadline. For a committed proposal, the inventory-hold deadline."
+      "description": "For a draft, the indicative-terms freshness deadline. For a committed proposal, the inventory-hold deadline under inventory_hold semantics, or the acceptance-window deadline under terms_only semantics (get_adcp_capabilities media_buy.proposal_refinement.hold_semantics)."
     },
     "name": { "type": "string", "minLength": 1, "maxLength": 500 },
     "description": { "type": "string", "maxLength": 2000 },

@@ -111,8 +111,14 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // rewriteEmbeddedResourceRefs (#8041) rewrites rootId#/$defs/key cross-def refs
 // to embedded-resource canonical $id URIs, saving ~69 KB and bringing the
 // comply_test_controller request to ~1_220_495 bytes (measured from built artifact
-// with discoveryInput=true; before: 1_289_097 bytes).
-const PARITY_COMPILE_LIMIT = 1_250_000;
+// with discoveryInput=true; before: 1_289_097 bytes). The response collections
+// array (#8137) reaches the controller through the task-completion get_products
+// response, not the seeded Product, and adds the core/collection.json closure
+// once (1_247_414 bytes measured), still within the limit. Follower counts on
+// collection distribution entries (#8098) add the core/audience-size.json
+// closure to that collection copy (1_251_212 bytes measured), bounded at
+// 1_255_000.
+const PARITY_COMPILE_LIMIT = 1_255_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

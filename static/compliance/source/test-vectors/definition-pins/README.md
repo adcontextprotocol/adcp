@@ -19,7 +19,8 @@ they are published here as data rather than prose.
 - **`projection_vectors`**: a published entry, its projection, the exact JCS
   bytes, and the digest.
 - **`equivalence_vectors`**: pairs of entries that MUST or MUST NOT produce the
-  same digest. A rename, new `ext`, rolled `season`, or reordered set array is
+  same digest. A rename, new `ext`, rolled `season`, refreshed collection-card
+  `images`, `sample_content` or `url`, or reordered set array is
   not drift; a `content_rating`, `params`, `status`, or unnamed-member change
   is. A refreshed `distribution[].followers` count is not drift; any other
   change to a `distribution` entry, such as an identifier, is.
