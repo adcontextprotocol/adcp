@@ -111,7 +111,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // rewriteEmbeddedResourceRefs (#8041) rewrites rootId#/$defs/key cross-def refs
 // to embedded-resource canonical $id URIs, saving ~69 KB and bringing the
 // comply_test_controller request to ~1_220_495 bytes (measured from built artifact
-// with discoveryInput=true; before: 1_289_097 bytes).
+// with discoveryInput=true; before: 1_289_097 bytes). The response collections
+// array (#8137) reaches the controller through the task-completion get_products
+// response, not the seeded Product, and adds the core/collection.json closure
+// once (1_247_414 bytes measured), still within the limit.
 const PARITY_COMPILE_LIMIT = 1_250_000;
 
 function readJson(filename) {
