@@ -30,13 +30,13 @@
       "default": false,
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Whether the seller accepts requests to extend a hold placed under this policy. Defaults to false. A draft is extendable only if every allocated product's effective policy is extendable. Hold extension is specified separately (#8097); when supported, its limits come from this object."
+      "description": "Whether the seller accepts refine_proposals action extend_hold (experimental, media_buy.hold_extension, gated by get_adcp_capabilities media_buy.proposal_refinement.hold_extension) for a hold placed under this policy. Defaults to false: when false or absent, the seller declines extend_hold with hold_unavailable and buyers SHOULD NOT send it. A draft is extendable only if every allocated product's effective policy is extendable. Each extension successor carries this policy forward unchanged."
     },
     "max_total_duration": {
       "$ref": "#/definitions/positive_duration",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Ceiling on the total length of a hold placed under this policy, across the whole extension chain, measured from the original hold_placed_at (extended successors carry hold_placed_at forward). Allowed only when extendable is true. A draft's max_total_duration MUST NOT exceed the max_total_duration of any allocated product that declares one."
+      "description": "Ceiling on the total length of a hold placed under this policy, across the whole extension chain, measured from the original hold_placed_at (extended successors carry hold_placed_at forward). An extend_hold successor's expires_at MUST NOT exceed the original hold_placed_at plus this duration; an extension never resets it. Allowed only when extendable is true. A draft's max_total_duration MUST NOT exceed the max_total_duration of any allocated product that declares one."
     }
   },
   "required": ["available"],

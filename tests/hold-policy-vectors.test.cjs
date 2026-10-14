@@ -2,7 +2,8 @@
 
 /**
  * Replays static/compliance/source/test-vectors/hold-policy/vectors.json
- * through a reference grader for experimental hold_policy (#7661).
+ * through a reference grader for experimental hold_policy (#7661) and
+ * extend_hold (media_buy.hold_extension, #8086).
  *
  * The grader below is the reference: implementers port it, not the prose.
  * It is deliberately small and reads only canonical proposals, canonical
@@ -224,6 +225,56 @@ function gradeDraft(vector) {
   return { violations: [...violations].sort() };
 }
 
+/**
+ * Grade one extend_hold request (experimental, media_buy.hold_extension).
+ * Successors carry hold_policy and hold_placed_at forward unchanged, so the
+ * max_total_duration ceiling is measured from the root finalize placement.
+ */
+function gradeExtend(vector) {
+  const violations = new Set();
+  const { seller, source_proposals: sources, request, response, task_error: taskError } = vector;
+
+  const schemaOk =
+    validate.request(request) &&
+    sources.every(s => validate.proposal(s)) &&
+    (taskError ? validate.error(taskError) && !response : validate.response(response));
+  if (!schemaOk) return { violations: ['schema_invalid'] };
+
+  const byId = new Map(sources.map(s => [s.proposal_id, s]));
+  const entries = request.refinements.map(r => byId.get(r.proposal_id));
+  if (taskError) {
+    // Extending a commitment that holds no inventory MUST fail with INVALID_STATE.
+    const noHold = entries.some(src => !effectivePolicy(src, seller).available);
+    return { violations: noHold && taskError.code !== 'INVALID_STATE' ? ['no_hold_wrong_task_error'] : [] };
+  }
+  response.results.forEach((result, i) => {
+    const src = entries[i];
+    const policy = effectivePolicy(src, seller);
+    if (result.outcome === 'finalized') {
+      const successor = result.proposal;
+      if (termsDigest(successor.commercial_terms) !== successor.terms_digest) violations.add('terms_digest_mismatch');
+      if (!sameJson(successor.commercial_terms, src.commercial_terms)) violations.add('commercial_terms_changed');
+      if (!sameJson(successor.hold_policy, src.hold_policy)) violations.add('hold_policy_not_carried_forward');
+      if (successor.hold_placed_at !== src.hold_placed_at) violations.add('hold_placed_at_not_carried_forward');
+      if (instant(successor.expires_at) <= instant(src.expires_at)) violations.add('extension_not_later');
+      if (src.hold_policy && src.hold_policy.extendable !== true) violations.add('extended_while_not_extendable');
+      if (src.hold_policy && src.hold_policy.max_total_duration && src.hold_placed_at) {
+        const ceiling = instant(src.hold_placed_at) + durationMs(src.hold_policy.max_total_duration);
+        if (instant(successor.expires_at) > ceiling) violations.add('max_total_duration_exceeded');
+      }
+    } else if (result.outcome === 'unable') {
+      if (result.reason_code === 'hold_unavailable' && !policy.available) violations.add('hold_unavailable_without_hold');
+      if (result.reason_code === 'batch_aborted') {
+        const cause = response.results.some(
+          (other, j) => j !== i && other.outcome === 'unable' && other.reason_code !== 'batch_aborted',
+        );
+        if (!cause) violations.add('batch_aborted_without_cause');
+      }
+    }
+  });
+  return { violations: [...violations].sort() };
+}
+
 // ---------------------------------------------------------------------------
 // Vector replay
 // ---------------------------------------------------------------------------
@@ -242,11 +293,17 @@ for (const vector of vectors.draft_vectors) {
   });
 }
 
+for (const vector of vectors.extend_vectors) {
+  test(`extend vector ${vector.id}`, () => {
+    assert.deepEqual(gradeExtend(vector).violations, [...vector.expected.violations].sort(), vector.name);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Fixture integrity
 // ---------------------------------------------------------------------------
 
-const allVectors = [...vectors.finalize_vectors, ...vectors.draft_vectors];
+const allVectors = [...vectors.finalize_vectors, ...vectors.draft_vectors, ...vectors.extend_vectors];
 
 function collectPolicies(node, out = []) {
   if (Array.isArray(node)) node.forEach(n => collectPolicies(n, out));
@@ -275,7 +332,7 @@ test('every case has at least one conformant and one non-conformant vector', () 
   }
   assert.deepEqual(
     [...cases.keys()].sort(),
-    ['agent_default', 'draft_consistency', 'hold_bounds', 'hold_unavailable', 'terms_only_resolution', 'version_gate'],
+    ['agent_default', 'draft_consistency', 'extension', 'hold_bounds', 'hold_unavailable', 'terms_only_resolution', 'version_gate'],
   );
   for (const [name, counts] of cases) {
     assert.ok(counts.ok > 0 && counts.bad > 0, `${name} needs both verdicts: ${JSON.stringify(counts)}`);
@@ -293,6 +350,19 @@ test('source drafts are well-formed canonical drafts with recomputable digests',
       v.request.refinements.map(r => r.proposal_id),
       v.source_drafts.map(d => d.proposal_id),
       `${v.id}: request order matches source_drafts`,
+    );
+  }
+  for (const v of vectors.extend_vectors) {
+    for (const s of v.source_proposals) {
+      assert.ok(validate.proposal(s), `${v.id}: ${JSON.stringify(validate.proposal.errors)}`);
+      assert.equal(s.proposal_status, 'committed');
+      assert.equal(termsDigest(s.commercial_terms), s.terms_digest, `${v.id}: ${s.proposal_id}`);
+    }
+    assert.ok(v.request.refinements.every(r => r.action === 'extend_hold'), `${v.id}: extend_hold only`);
+    assert.deepEqual(
+      v.request.refinements.map(r => r.proposal_id),
+      v.source_proposals.map(s => s.proposal_id),
+      `${v.id}: request order matches source_proposals`,
     );
   }
   for (const v of vectors.draft_vectors) {

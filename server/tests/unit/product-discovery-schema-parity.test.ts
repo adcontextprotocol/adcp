@@ -85,7 +85,7 @@ describe('product discovery MCP schema parity', () => {
         additionalProperties: false,
         // Definition annotations are intentionally stripped from tools/list;
         // dispatch still applies the source-schema default semantics.
-        properties: { action: { enum: ['revise', 'finalize'] } },
+        properties: { action: { enum: ['revise', 'finalize', 'extend_hold'] } },
         oneOf: expect.any(Array),
       });
     const declineTool = tools.get('decline_proposals')!;
@@ -133,8 +133,10 @@ describe('product discovery MCP schema parity', () => {
     // 154 KiB. Experimental response collections (#8137) add the
     // include_collections flag and the response-level collections array with
     // its ResponseCollection item to the four tools (+2,802 bytes; 155.67 KiB
-    // measured), bounded at 156 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(156 * 1024);
+    // measured), bounded at 156 KiB. The experimental extend_hold refinement
+    // action adds one enum value and one revise-field-forbidding arm to
+    // refine_proposals (+836 bytes; 156.78 KiB measured), bounded at 157 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(157 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

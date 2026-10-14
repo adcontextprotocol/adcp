@@ -21,6 +21,10 @@ the meantime.
   the request arrived and the response (or `submitted` completion) left, and
   the seller's `response` or task-level `task_error`.
 - **`draft_vectors`**: one draft with the canonical products it allocates.
+- **`extend_vectors`**: one `refine_proposals` `extend_hold` request
+  (experimental, `media_buy.hold_extension`), the seller's records of its
+  committed `source_proposals`, and the seller's `response` or task-level
+  `task_error`.
 
 Each vector has `expected.violations`, which lists every code the input breaks.
 An empty list means conformant. Finalize vectors may also list
@@ -36,6 +40,7 @@ violations.
 | `agent_default` | A draft without `hold_policy` takes the seller's `hold_semantics` when the seller does not list `media_buy.hold_policy`. A seller that lists it states the policy on every 3.3 draft and committed proposal. A `terms_only` agent can hold a product that declares `available: true`. |
 | `version_gate` | A no-hold committed proposal is never returned to a caller below 3.3. `UNSUPPORTED_FEATURE` is the refusal, and only when the gate applies. A holdable finalize for a caller below 3.3 omits `hold_policy` and `hold_placed_at`. |
 | `draft_consistency` | A feature-listing seller's draft includes `hold_policy`, declares `available: false` when any allocated product's effective policy is non-holdable, and otherwise promises no more than its products (durations and `extendable`). Durations are ordered after normalizing, and `max_total_duration` needs `extendable: true`. |
+| `extension` | An `extend_hold` successor carries `commercial_terms`, `terms_digest`, `hold_policy`, and `hold_placed_at` forward unchanged, has a later `expires_at`, and stays within the original `hold_placed_at` + `max_total_duration` across the chain. `extendable` absent means false. A source that holds no inventory fails with `INVALID_STATE`, never `hold_unavailable`. |
 
 ## Grading
 
@@ -58,6 +63,11 @@ violations.
    `batch_aborted` with no failing sibling.
 6. For a draft vector, also check that a holdable draft promises no more than
    any allocated product's effective policy.
+7. For an extend vector, check each successor against its source: unchanged
+   terms, `hold_policy`, and `hold_placed_at`; a later `expires_at`; a source
+   whose `extendable` is `true`; and `expires_at` no later than the source's
+   `hold_placed_at` + `max_total_duration`. Reject `hold_unavailable` for a
+   source that holds no inventory.
 
 Durations use days, hours, minutes, and seconds only. A day is exactly 86400
 seconds added to the UTC instant, so `P1D` equals `PT24H` and ignores local
@@ -70,7 +80,8 @@ could be any time between `request_received_at` and `response_at`, and a bound
 is a violation only when it fails for every placement in that window.
 
 These vectors do not cover exact-retry replay (the original `hold_placed_at`
-and `expires_at` are returned), installment booking deadlines, or extension.
+and `expires_at` are returned), installment booking deadlines, or
+`extend_hold` batches with more than one entry.
 
 `tests/hold-policy-vectors.test.cjs` contains the reference grader and replays
 every vector.
