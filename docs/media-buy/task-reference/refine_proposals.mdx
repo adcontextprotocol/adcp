@@ -73,6 +73,8 @@ Each present `criteria` field replaces that field from the source proposal; omit
 
 For `revise`, the seller reevaluates returned products against the revision's effective criteria. When those criteria contain property or collection lists, each affected canonical product carries fresh `list_applications` receipts with new evaluation timestamps and counts. `finalize` changes no commercial terms and does not trigger product reevaluation; a finalize-only response MAY repeat the receipts already bound to the source proposal.
 
+When the request sets `include_collections: true` (experimental, `media_buy.collection_cards`, default `false`), the response can carry, alongside `products`, a top-level `collections` array with the full object for each collection those products reference. Sellers MUST NOT return it otherwise. It follows the same rules as on [`request_proposals`](/docs/media-buy/task-reference/request_proposals); see [Collections in responses](/docs/media-buy/product-discovery/collections-and-installments#collections-in-responses).
+
 The response contains one ordered `results[]` entry per requested source proposal. Each entry echoes `source_proposal_id`; buyers cross-check by that echo rather than by position alone. Every returned proposal carries `parent_proposal_id` equal to the entry's `source_proposal_id`, so negotiation lineage survives in the proposals themselves:
 
 | Outcome | Proposal field | Meaning |

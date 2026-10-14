@@ -10,6 +10,11 @@
       "description": "Unique identifier for the creative",
       "x-entity": "creative"
     },
+    "landing_page_url": {
+      "$ref": "/schemas/core/macro-bearing-url.json",
+      "description": "Override the creative's click-through destination for this creative on this package only, without changing the library creative. The override applies to every click-through destination for this assignment, including per-state destinations; partial application MUST be rejected. AdCP macros follow the same rules as the creative's own click-through without declarations, retaining existing 3.x compatibility behavior. Declarations on the original creative assets do not transfer to this URL. Requires creative.supports_assignment_landing_page: true; buyers MUST NOT send this field otherwise and sellers without the capability MUST reject it with UNSUPPORTED_FEATURE. The seller MUST serve the override or reject the assignment through existing assignment errors, including when an embedded HTML, JavaScript, or VAST click cannot be overridden. Creative approval remains valid; destination review applies to the assignment. Omitting this field from a complete package assignment replacement restores inheritance from the creative. On readback, supporting sellers return the effective destination when it is unique; omit the scalar when no destination exists or an unoverridden creative has multiple destinations, rather than selecting one arbitrarily.",
+      "x-added-in": "3.3.0"
+    },
     "weight": {
       "type": "number",
       "description": "Relative delivery weight for this creative (0–100). Valid when the package's effective rotation_mode is weighted, including the backward-compatible default when rotation_mode is omitted. Weights determine impression distribution proportionally — a creative with weight 2 gets twice the delivery of weight 1. When omitted, the creative receives equal weight with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery).",

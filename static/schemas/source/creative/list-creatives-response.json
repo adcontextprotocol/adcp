@@ -278,6 +278,11 @@
                       "format": "date-time",
                       "description": "When this assignment was created"
                     },
+                    "landing_page_url": {
+                      "$ref": "/schemas/core/macro-bearing-url.json",
+                      "description": "The landing page actually served for this creative on this package: the assignment override when present, otherwise the creative's own click-through destination when unique. Sellers supporting creative.supports_assignment_landing_page MUST return that effective destination when it is unique. Omit when no destination exists or an unoverridden creative has multiple destinations; those remain available in the creative's assets. MUST NOT select one destination arbitrarily. Macro-bearing readback retains the effective URL template under the same rules as the creative's own click-through.",
+                      "x-added-in": "3.3.0"
+                    },
                     "approval_status": {
                       "$ref": "/schemas/enums/creative-approval-status.json",
                       "description": "Aggregate approval state for this creative in this package assignment. This mirrors the same relationship in get_media_buys. Sellers advertising list_creatives as an indicator projection task MUST include it; partially_approved requires approval_scopes."
