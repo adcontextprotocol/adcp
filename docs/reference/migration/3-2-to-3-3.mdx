@@ -13,7 +13,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 
 3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated; one usage is (see [Deprecations](#deprecations)). Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
-Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). One change loosens a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib). Everything else is an optional declaration or a clarification.
+Three changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account), [signature verification tightens](#signature-verification-tightens), and [seller-created creatives](#seller-created-creatives). One change loosens a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib). Everything else is an optional declaration or a clarification.
 
 For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3). For prerelease artifacts and SDK timing, use the [3.3 beta program](/docs/reference/3-3-beta).
 
@@ -32,6 +32,7 @@ For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/w
 | 9 | Sellers and buyers using accounts | Sellers return `account_id` from `sync_accounts` and declare `account.stable_account_id` when it is accepted everywhere; buyers send it to those sellers. |
 | 10 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
 | 11 | Reliable Reporting buyers | Stop relying on exact reads of older superseded snapshots; persist any snapshot rows you need. |
+| 12 | Sellers with a creative library | Assign stable `creative_id`s to creatives created outside AdCP, report `creative_id_source`, and exclude seller-created creatives from `delete_missing`. |
 
 ## Required to claim 3.3 behavior
 
@@ -110,6 +111,17 @@ whose content you cannot serve is a `REVISION_UNREADABLE` issue, never a not-fou
 Each window starts at the revision's `created_at`, or at its successor's once
 superseded; an official revision's window restarts at its newest adjustment. See
 [revision retention](/docs/media-buy/task-reference/get_reporting_status#reliability-model).
+
+### Seller-created creatives
+
+`list_creatives` already had to list creatives created outside AdCP, through a seller UI or API, automation, or another system. 3.3 says who assigns their IDs and keeps a buyer's full sync from archiving them.
+
+**Sellers.**
+- Assign a `creative_id` to every listed creative that has no buyer-assigned ID. It MUST be stable for the creative's lifetime, unique within the account, and never equal to a `creative_id` a buyer has used on the account. It MAY equal `platform_id`. A seller that minted unstable or colliding IDs was not prohibited under 3.2 and is not conformant under 3.3.
+- Include `creative_id_source` (`buyer` or `seller`) on every `list_creatives` row and every `get_media_buys` `creative_approvals[]` row.
+- Under `delete_missing: true`, MUST NOT archive a creative whose `creative_id_source` is `seller`, including one a buyer has since updated. Under 3.2 the flag applied to the whole library.
+
+**Buyers.** Treat a missing `creative_id_source` as unknown (a 3.2 seller). A full sync with `delete_missing` replaces only your own set; seller-created creatives stay. To manage a seller-created creative, sync it under its `creative_id` as-is. If a sync you meant as a create returns `action: "updated"` or `"unchanged"`, the ID collided with an existing creative; namespace your IDs. See [Creatives created outside AdCP](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp).
 
 ### Delivery rows may omit `impressions`
 
