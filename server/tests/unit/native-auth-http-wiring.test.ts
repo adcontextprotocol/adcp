@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   consumeAccountLinkCorrelation: vi.fn(),
   recordProactiveEvent: vi.fn(),
   sendAccountLinkedMessage: vi.fn().mockResolvedValue(true),
+  reporting: vi.fn(),
+  reportingProbe: vi.fn(),
 }));
 
 vi.hoisted(() => {
@@ -95,6 +97,11 @@ vi.mock('../../src/db/identity-db.js', async (importOriginal) => {
 
 vi.mock('../../src/db/migrate.js', () => ({
   runMigrations: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../src/training-agent/gcs-reporting.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/training-agent/gcs-reporting.js')>(),
+  getTrainingGcsReporting: mocks.reporting,
 }));
 
 vi.mock('../../src/db/native-auth-state-db.js', () => ({
@@ -175,6 +182,31 @@ describe('native OAuth HTTPServer wiring', () => {
     await server?.stop();
     server = undefined;
     vi.clearAllMocks();
+    mocks.reporting.mockReset();
+  });
+
+  it.each(['unavailable', 'throwing', 'stalled'])('keeps /health independent of a %s reporting provider', async failure => {
+    mocks.reporting.mockReturnValue({ probe: mocks.reportingProbe });
+    if (failure === 'throwing') mocks.reportingProbe.mockRejectedValue(new Error('GCS unavailable'));
+    else if (failure === 'stalled') mocks.reportingProbe.mockImplementation(() => new Promise(() => {}));
+    else mocks.reportingProbe.mockResolvedValue(false);
+    server = new HTTPServer();
+    const response = await request(appFor(server)).get('/health');
+    expect(response.status).toBe(200);
+    expect(response.body.checks.database).toBe(true);
+    expect(mocks.reporting).not.toHaveBeenCalled();
+    expect(mocks.reportingProbe).not.toHaveBeenCalled();
+  });
+
+  it.each(['unavailable', 'throwing'])('holds /ready traffic on a %s reporting provider', async failure => {
+    mocks.reporting.mockReturnValue({ probe: mocks.reportingProbe });
+    if (failure === 'throwing') mocks.reportingProbe.mockRejectedValue(new Error('GCS unavailable'));
+    else mocks.reportingProbe.mockResolvedValue(false);
+    server = new HTTPServer();
+    const response = await request(appFor(server)).get('/ready');
+    expect(response.status).toBe(503);
+    expect(response.body.checks.reporting).toBe(false);
+    expect(mocks.reportingProbe).toHaveBeenCalledOnce();
   });
 
   it('mounts native start and binds the upstream WorkOS transaction with PKCE', async () => {

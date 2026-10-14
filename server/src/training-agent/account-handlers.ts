@@ -7,10 +7,16 @@
 
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { canonicalTargetUri } from '@adcp/sdk/signing';
-import type { WebhookAuthentication } from '@adcp/sdk/server';
+import { AdcpError, type WebhookAuthentication } from '@adcp/sdk/server';
 import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
-import { getSession, SESSION_STORE_UNAVAILABLE_MESSAGE, sessionKeyFromArgs } from './state.js';
+import {
+  getSession,
+  SESSION_STORE_UNAVAILABLE_MESSAGE,
+  registerSharedPublicBrandPartition,
+  sessionKeyFromArgs,
+  setAccountIdAliasResolver,
+} from './state.js';
 import { buildCatalog } from './product-factory.js';
 import {
   clearInMemoryGovernanceBindings,
@@ -33,6 +39,7 @@ import {
 } from './webhook-challenge.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { clearSharedAccountResources } from './shared-account-resources.js';
+import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname } from '../utils/url-security.js';
 import {
   UnsupportedReportingFeatureError,
@@ -43,11 +50,14 @@ import {
   replaceReportingConfigurationsDurably,
   resolveReportingAccountDurably,
   reportingConfigurationStatesForAccountDurably,
+  reportingMediaBuyCandidatesForAccountDurably,
   validateReportingConfigurationReplacementDurably,
   validateReportingConfigurationScopes,
   validateReportingConfigurations,
   type ReportingMediaBuyCandidate,
 } from './reporting-reliability.js';
+
+const logger = createLogger('training-agent-accounts');
 
 // One account may legitimately use the protocol's full 16-subscriber fan-out.
 // Larger multi-account activations must be split by account so a single call
@@ -473,7 +483,7 @@ async function reportingMediaBuyCandidates(
   ));
   const products = new Map(buildCatalog().map(entry => [entry.product.product_id, entry.product]));
   for (const [productId, product] of session.configuredProducts) products.set(productId, product);
-  return [...session.mediaBuys.values()].map(mediaBuy => ({
+  const live = [...session.mediaBuys.values()].map(mediaBuy => ({
     mediaBuyId: mediaBuy.mediaBuyId,
     startTime: mediaBuy.startTime,
     endTime: mediaBuy.canceledAt && mediaBuy.canceledAt < mediaBuy.endTime
@@ -494,6 +504,11 @@ async function reportingMediaBuyCandidates(
       };
     }),
   }));
+  // Accepted purchases are captured under the authenticated reporting account,
+  // independently of legacy task-session partitions. Preserve those immutable
+  // facts after a restart and when the live catalog/session has changed.
+  const accepted = await reportingMediaBuyCandidatesForAccountDurably(ctx.principal, account.accountId);
+  return [...new Map([...live, ...accepted].map(candidate => [candidate.mediaBuyId, candidate])).values()];
 }
 
 /** Resolve a principal-owned sandbox account id to its trusted brand domain. */
@@ -514,7 +529,10 @@ export function accountRefForId(
   principal: string | undefined,
 ): AccountRef | undefined {
   const account = findAccountByIdAcrossSessions(accountId, principal);
-  if (!account) return undefined;
+  return account ? naturalAccountRef(account) : undefined;
+}
+
+function naturalAccountRef(account: AccountState): AccountRef {
   return {
     brand: {
       domain: account.brand.domain.toLowerCase(),
@@ -527,6 +545,78 @@ export function accountRefForId(
     ...(account.timezone && { timezone: account.timezone }),
     ...(account.sandbox && { sandbox: true }),
   };
+}
+
+/**
+ * Natural AccountRef for an account_id this principal provisioned through
+ * sync_accounts or seed_account (or touched by id in sync_accounts settings
+ * mode). The lookup is principal-scoped: another principal's id, or an id
+ * this principal never saw, returns undefined and keeps its opaque partition.
+ * Registered as the session-key alias for `{ account_id }` on routes that
+ * declare account.stable_account_id.
+ */
+export function provisionedNaturalRefForAccountId(
+  accountId: string,
+  principal: string | undefined,
+): AccountRef | undefined {
+  return accountRefForId(accountId, principal);
+}
+
+setAccountIdAliasResolver(provisionedNaturalRefForAccountId);
+
+/**
+ * Public static credentials share one brand-owned sandbox partition for task
+ * state (`registerSharedPublicBrandPartition`). A buyer read and a controller
+ * write that name a sandbox account by account_id join that same partition,
+ * so this is the one place the rule is applied to opaque ids. No-op for other
+ * principals, non-sandbox accounts, and ids the principal does not own.
+ */
+export function registerSharedPublicBrandPartitionForAccountId<T extends object>(
+  args: T,
+  accountId: string,
+  principal: string | undefined,
+): T {
+  if (!principal?.startsWith('static:')) return args;
+  const domain = sandboxBrandDomainForAccountId(accountId, principal);
+  return domain ? registerSharedPublicBrandPartition(args, domain) : args;
+}
+
+/**
+ * Reload a provisioned account into the in-memory store from its durable
+ * reporting binding, so an `{ account_id }` reference keeps resolving to the
+ * account's natural partition after the process store is lost.
+ */
+export async function rehydrateAccountById(
+  principal: string | undefined,
+  accountId: string,
+): Promise<void> {
+  if (findAccountByIdAcrossSessions(accountId, principal)) return;
+  if (getComplianceAccounts().some(account => account.account_id === accountId)) return;
+  let binding: Awaited<ReturnType<typeof resolveReportingAccountDurably>>;
+  try {
+    binding = await resolveReportingAccountDurably(principal, { account_id: accountId });
+  } catch (err) {
+    // Fail closed. Without the binding the id would key its opaque partition:
+    // a read would miss the account's state, and a write would be stranded
+    // where later natural-partition reads never see it. A transient error lets
+    // the buyer retry once the durable store recovers.
+    logger.warn({ err, accountId }, 'Failed to rehydrate account by account_id');
+    throw new AdcpError('SERVICE_UNAVAILABLE', {
+      recovery: 'transient',
+      message: 'Account state is temporarily unavailable. Retry the request.',
+    });
+  }
+  if (!binding || binding.accountId !== accountId) return;
+  const state = accountStateFromReportingBinding(binding, principal, new Date().toISOString());
+  if (!state) return;
+  getAccountMap(sessionKeyFromArgs({ brand: state.brand }, 'open'), principal).set(accountKey(
+    state.brand,
+    state.operator,
+    state.operatorUnit,
+    state.currency,
+    state.sandbox,
+    state.timezone,
+  ), state);
 }
 
 /** Resolve a principal-owned account id to its complete sandbox identity. */
@@ -1234,6 +1324,13 @@ export function seedAccountFixture(
   const accountId = params.account_id;
   if (typeof accountId !== 'string' || accountId.length === 0) {
     return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.account_id is required for seed_account' };
+  }
+  if (getComplianceAccounts().some(account => account.account_id === accountId)) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: `account_id "${accountId}" is a built-in compliance fixture and cannot be seeded`,
+    };
   }
 
   const fixture = (params.fixture ?? {}) as Record<string, unknown>;

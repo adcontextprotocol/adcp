@@ -36,6 +36,28 @@ import { randomUUID } from 'node:crypto';
 
 export const REPLAY_TTL_SECONDS = 86400;
 
+/** Bound boot queries while allowing the configured connection timeout plus query headroom. */
+export async function probeIdempotencyStore(
+  store: Pick<IdempotencyStore, 'probe'>,
+  connectionTimeoutMillis: number = 5000,
+): Promise<void> {
+  if (!store.probe) return;
+  const deadlineMs = Math.max(10_000, connectionTimeoutMillis + 5000);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      store.probe(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(
+          `Idempotency backend probe timed out after ${deadlineMs}ms — check DATABASE_URL and pool reachability`,
+        )), deadlineMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 const MIN_TTL_SECONDS = 3600;
 const MAX_TTL_SECONDS = 604800;
 const DEFAULT_CLOCK_SKEW_SECONDS = 60;

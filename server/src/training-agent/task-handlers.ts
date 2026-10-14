@@ -3092,6 +3092,23 @@ function productForServedAdcpVersion(product: Product, servedAdcpVersion: string
   return rest as Product;
 }
 
+/**
+ * Windowed delivery is counted by the billing measurement vendor the buyer
+ * agreed on the buy, so the row names it as `measurement_source`. The vendor is
+ * a brand reference; its first domain label is the lowercase slug the schema
+ * expects (`summit-measurement.example` -> `summit_measurement`). This is a
+ * sandbox heuristic for the reference seller: the spec does not map the billing
+ * vendor to `measurement_source`, and real sellers report whichever provider
+ * counted the audience.
+ */
+function billingMeasurementSource(terms: Record<string, unknown> | undefined): { measurement_source?: string } {
+  const billing = isRecord(terms?.billing_measurement) ? terms.billing_measurement : undefined;
+  const vendor = isRecord(billing?.vendor) ? billing.vendor : undefined;
+  const domain = typeof vendor?.domain === 'string' ? vendor.domain : undefined;
+  const slug = domain?.split('.')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  return slug ? { measurement_source: slug.slice(0, 64) } : {};
+}
+
 function includeThreeOneFields(ctx: TrainingContext): boolean {
   return !isThreeZeroStoryboardCompat(ctx);
 }
@@ -3105,6 +3122,7 @@ function resolveThreeZeroProposalAlias(proposals: Proposal[]): Proposal | undefi
 }
 
 import {
+  briefExcludesProduct,
   buildCatalog,
   buildProposals,
   TRAINING_AUDIENCE_ACTIVATION_METHODS,
@@ -4029,9 +4047,12 @@ function controllerFixtureSessionKey(
       };
     } else {
       // Resolve first so an opaque ID is usable only by the principal that
-      // owns that sandbox account. Keep the opaque identity for projection:
-      // controller fixture writes are keyed by account_id, and resolving it
-      // to a natural ref here would fork reads into a different partition.
+      // owns that sandbox account. Pass the opaque identity through unchanged:
+      // controller fixture writes for this id derive their key from the same
+      // `{ account_id }`, and sessionKeyFromArgs applies the one id-to-natural
+      // alias (inside runWithAccountIdAliasScope on stable_account_id routes)
+      // to both sides. Rewriting it to the brand-owned natural ref here would
+      // fork reads from those writes.
       if (sandboxAccountRefForId(account.account_id, ctx.principal)) {
         fixtureAccount = { account_id: account.account_id };
       } else {
@@ -11120,6 +11141,7 @@ async function handleGetProductsUnlocked(
     }
 
     const scored = products
+      .filter(p => !briefExcludesProduct(p.product_id, briefLower))
       .map(p => {
         const text = `${p.name} ${p.description} ${p.channels?.join(' ')}`.toLowerCase();
         const keywordScore = terms.filter(t => text.includes(t)).length;
@@ -11868,7 +11890,13 @@ async function handleGetProductsUnlocked(
       const requestedProducts = products.filter(product => (
         exactProductIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
       ));
-      if (requestedProducts.length === exactProductIds.size) {
+      // One proposal carries one budget currency; explicitly selected products
+      // priced in different currencies cannot share it, so build nothing and
+      // let the existing rejection path answer.
+      const requestedCurrencies = new Set(
+        requestedProducts.map(product => product.pricing_options[0]?.currency ?? 'USD'),
+      );
+      if (requestedProducts.length === exactProductIds.size && requestedCurrencies.size === 1) {
         const allocationPercentage = 100 / requestedProducts.length;
         const firstPricing = requestedProducts[0].pricing_options[0];
         proposals = [{
@@ -11951,7 +11979,14 @@ async function handleGetProductsUnlocked(
         const selectedProducts = products.filter(product => (
           exactProductIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
         ));
-        if (selectedProducts.length === exactProductIds.size && selectedProducts.length > 0) {
+        const selectedCurrencies = new Set(
+          selectedProducts.map(product => product.pricing_options[0]?.currency ?? 'USD'),
+        );
+        if (
+          selectedProducts.length === exactProductIds.size
+          && selectedProducts.length > 0
+          && selectedCurrencies.size === 1
+        ) {
           const allocationPercentage = 100 / selectedProducts.length;
           proposals = [{
             proposal_id: 'selected_product_plan',
@@ -16598,6 +16633,11 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 }
 
 export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+  if ((args as unknown as Record<string, unknown>).reporting_revision_id) {
+    const { dispatchTrainingGcsReporting } = await import('./gcs-reporting-tools.js');
+    const gcs = await dispatchTrainingGcsReporting('get_media_buy_delivery', args as unknown as Record<string, unknown>, ctx.principal);
+    if (gcs) return gcs as unknown as Record<string, unknown>;
+  }
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & {
     media_buy_id?: string;
     reporting_revision_id?: string;
@@ -17195,6 +17235,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.measurementWindow ? { measurement_window: simDelivery.measurementWindow } : {}),
+      ...(includeThreeOneFields(ctx) && simDelivery?.measurementWindow
+        ? billingMeasurementSource(pkg.measurementTerms)
+        : {}),
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
       ...(auditMetrics.length > 0 ? { missing_metrics: missingMetrics } : {}),
@@ -19964,6 +20007,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       // validator on the capabilities response accepts.
       supported_billing: [...SUPPORTED_BILLINGS],
       supported_account_currency_modes: ['fixed', 'per_media_buy'],
+      // No stable_account_id here: this v5 monolith serves /mcp and the
+      // /<tenant>/mcp-strict* routes, which neither alias { account_id } to
+      // its natural partition nor rehydrate accounts across machines. Only
+      // the v6 tenant routes declare it (tenants/router.ts).
       sandbox: true,
     },
     ...(wholesaleProfile.signalWholesale && {

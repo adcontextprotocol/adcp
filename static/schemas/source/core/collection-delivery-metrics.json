@@ -14,7 +14,7 @@
           "description": "Current human-readable collection name. Convenience metadata only; collection_ref is stable identity."
         }
       },
-      "required": ["collection_ref", "impressions", "spend"]
+      "required": ["collection_ref", "spend"]
     }
   ]
 }
