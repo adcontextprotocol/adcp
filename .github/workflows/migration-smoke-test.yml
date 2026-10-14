@@ -121,6 +121,8 @@ jobs:
           CREATE ROLE addie_matched_v4_partial_runtime_ci NOLOGIN;
           CREATE ROLE addie_matched_v4_runtime_ci LOGIN INHERIT PASSWORD :'runtime_password';
           GRANT CONNECT, TEMPORARY ON DATABASE adcp_test TO addie_matched_v4_runtime_ci;
+          CREATE SCHEMA training_reporting_gcs AUTHORIZATION addie_matched_v4_runtime_ci;
+          REVOKE ALL ON SCHEMA training_reporting_gcs FROM PUBLIC;
           GRANT USAGE ON SCHEMA public TO addie_matched_v4_runtime;
           GRANT addie_matched_v4_runtime TO addie_matched_v4_runtime_ci WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;
           GRANT addie_matched_v4_operator TO addie_matched_v4_provisioner_ci WITH INHERIT FALSE, SET TRUE, ADMIN FALSE;
@@ -1019,6 +1021,8 @@ jobs:
           GRANT addie_matched_v4_operator TO addie_matched_v4_provisioner_ci WITH INHERIT FALSE, SET TRUE, ADMIN FALSE;
           GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_operator;
           GRANT SELECT, INSERT ON schema_migrations TO addie_matched_v4_runtime_ci;
+          CREATE SCHEMA training_reporting_gcs AUTHORIZATION addie_matched_v4_runtime_ci;
+          REVOKE ALL ON SCHEMA training_reporting_gcs FROM PUBLIC;
           SQL
           psql -h 127.0.0.1 -U addie_matched_v4_provisioner_ci -d adcp_test --single-transaction -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm' -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto' -v runtime_principal=addie_matched_v4_runtime_ci -v migration_principal=addie_matched_v4_provisioner_ci -f server/scripts/addie-matched-v4-role-bootstrap.sql
           psql -h 127.0.0.1 -U postgres -d adcp_test -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) = 2 AND count(*) FILTER (WHERE roleid = 'addie_matched_v4_runtime'::regrole AND member = 'addie_matched_v4_runtime_ci'::regrole AND inherit_option AND NOT set_option AND NOT admin_option AND grantor NOT IN (roleid, member, 'addie_matched_v4_operator'::regrole, 'addie_matched_v4_provisioner_ci'::regrole)) = 1 AND count(*) FILTER (WHERE roleid = 'addie_matched_v4_operator'::regrole AND member = 'addie_matched_v4_provisioner_ci'::regrole AND NOT inherit_option AND set_option AND NOT admin_option AND grantor NOT IN (roleid, member, 'addie_matched_v4_runtime'::regrole, 'addie_matched_v4_runtime_ci'::regrole)) = 1 FROM pg_auth_members WHERE roleid IN ('addie_matched_v4_runtime'::regrole, 'addie_matched_v4_operator'::regrole)" | grep -qx t || { echo 'Upgrade bootstrap left an unintended evaluator runtime/operator membership bridge.' >&2; exit 1; }

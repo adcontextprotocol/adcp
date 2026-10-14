@@ -19,7 +19,7 @@
           "description": "Convenience echo of the installment's scheduled publication or air time."
         }
       },
-      "required": ["installment_ref", "impressions", "spend"]
+      "required": ["installment_ref", "spend"]
     }
   ]
 }
