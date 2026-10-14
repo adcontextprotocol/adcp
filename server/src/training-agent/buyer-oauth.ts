@@ -159,7 +159,7 @@ export function createTrainingBuyerOAuthMiddleware(
       res.locals.trainingPrincipal = principal;
       res.locals.trainingOAuthActor = actor;
       (req as Request & { auth?: AuthInfo }).auth = { token: '', clientId: principal, scopes, expiresAt: payload.exp,
-        extra: { training_oauth_actor: actor,
+        extra: { training_buyer_principal: principal, training_oauth_actor: actor,
           credential: { kind: 'oauth', client_id: payload.client_id, scopes, expires_at: payload.exp } } };
       next();
     } catch (error) {

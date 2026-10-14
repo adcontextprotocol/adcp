@@ -141,6 +141,7 @@ describe('organization OAuth sales sandbox', () => {
     expect(result.status).toBe(200);
     expect(result.body.principal).toBe('training-oauth:org_integrator');
     expect(result.body.auth.clientId).toBe(result.body.principal);
+    expect(result.body.auth.extra.training_buyer_principal).toBe(result.body.principal);
     expect(result.body.auth.extra.training_oauth_actor).toMatchObject({ organization_id: 'org_integrator', principal_id: result.body.principal });
     expect(authority.snapshot).toHaveBeenCalledTimes(2);
     expect(authority.snapshot).toHaveBeenCalledWith('user_buyer', 'org_integrator');
