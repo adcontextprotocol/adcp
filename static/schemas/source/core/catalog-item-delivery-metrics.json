@@ -21,7 +21,6 @@
       },
       "required": [
         "content_id",
-        "impressions",
         "spend"
       ]
     }
