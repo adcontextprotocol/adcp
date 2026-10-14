@@ -64,10 +64,32 @@
     },
     "talent": {
       "type": "array",
-      "description": "Hosts, recurring cast, creators associated with the collection. Each talent entry may include a brand_url linking to their brand.json identity.",
+      "description": "Hosts, recurring cast, creators associated with the collection. Each talent entry may link to the person's brand.json identity through brand_ref (typed) or brand_url.",
       "items": {
         "$ref": "/schemas/core/talent.json"
       }
+    },
+    "images": {
+      "type": "array",
+      "description": "Experimental (media_buy.collection_cards). Pictures for a collection card (cover art, show poster, creator avatar). The first entry is the primary thumbnail. Display only.",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": {
+        "$ref": "/schemas/core/assets/image-asset.json"
+      },
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
+    "sample_content": {
+      "type": "array",
+      "description": "Experimental (media_buy.collection_cards). Representative past installments or a sizzle reel, as published-post references. The platform URL implies the kind. Display only: not a creative, and not authorization to reuse the content; reference_authorization and identity_ref are not authorization here. Consumers skip entries without post_url.",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": {
+        "$ref": "/schemas/core/assets/published-post-asset.json"
+      },
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
     },
     "special": {
       "$ref": "/schemas/core/special.json",
