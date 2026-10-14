@@ -97,6 +97,9 @@ const NO_BILLING_CAPABILITIES: ReadonlySet<never> = new Set();
 
 export const trainingBuyerAgentRegistry = BuyerAgentRegistry.bearerOnly({
   resolveByCredential: async (credential, extra) => {
+    if (credential.kind === 'oauth' && extra?.training_oauth_actor) {
+      return neutralAuthenticatedAgent({ key_id: `oauth:${credential.client_id}` });
+    }
     if (credential.kind !== 'api_key') return null;
     // Set only by the tenant router after verifying a minted sandbox
     // governance-agent credential on the governance tenant: the caller is
