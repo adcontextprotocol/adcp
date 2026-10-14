@@ -1135,7 +1135,11 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   }
 
   assert.ok(localRefCount > 1_000, `expected broad local-ref coverage, saw ${localRefCount}`);
-  assert.ok(totalBytes < 20 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // Whole-projection sanity cap against runaway bundling. main sat at
+  // 20_945_219 bytes under the original 20 MiB cap; experimental hold_policy
+  // (#7661), bundled into every product- and proposal-bearing tool, brings it
+  // to 21_021_886 bytes, so the cap moves to 22 MiB.
+  assert.ok(totalBytes < 22 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);
