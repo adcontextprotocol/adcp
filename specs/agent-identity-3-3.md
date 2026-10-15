@@ -191,7 +191,7 @@ Shape (experimental feature `account.agent_onboarding`):
 - Each mode MAY carry its own `url`, which defaults to the top-level `url`.
 - Modes: `open`, `application`, `invite_only`. An absent key means undeclared, not `invite_only`.
 - Requirement kinds are closed, `x-extensible`, and each kind states the direction it applies to:
-  - seller gating a buyer: `agent_identity` (a trust record entry with the required role), `grant` (R6), `billing_entity`, `contract`, `credit_application`;
+  - seller gating a buyer: `grant` (R6), `billing_entity`, `contract`, `credit_application`. A trust-record entry with the required role is a precondition of every binding (R5 rule 2) and of `open` (R3a step 2), so it is not a listed requirement;
   - buyer gating a seller (#8114): `aao_verified` and `storyboard` (seller badges and storyboards exist today), `sandbox`, `experimental_feature`;
   - a kind used in the wrong direction is ignored;
   - an unknown kind falls back to `message` and `url`.
@@ -207,18 +207,18 @@ Shape (experimental feature `account.agent_onboarding`):
 
 **Uniformity.** The block is seller-wide, identical for every caller, served on the unauthenticated fetch, and absent from error payloads. The oracle clamps in `error-handling.mdx` are unchanged.
 
-**Buyer posture (#8114)** goes in `agents[].profiles.adcp.onboarding` in the buyer's trust record, with record-level `record_profiles.adcp` as an optional default. Its modes are distinct from the seller's: `considers_unsolicited`, `application`, `invite_only`. An agent that serves `get_adcp_capabilities` is authoritative there.
+**Buyer posture (#8114)** goes in `agents[].profiles.adcp.onboarding` in the buyer's trust record, with record-level `profiles.adcp.onboarding` as an optional default. trust.json is its only home. It uses the seller's mode enum (`open`, `application`, `invite_only`), and the direction comes from where the value appears.
 
 ### R8. Relationship status (P4, `get_principal.mdx`)
 
 - `get_principal` adds `relationship: { status, expires_at, setup }` on the `unconfigured`, `recognized`, and `current` results.
 - `relationship` is **omitted** when the seller has no relationship with the caller and no application in progress (the identity-established state of R5 rule 1).
 - Status values, when present:
-  - `pending`: an application or approval is in progress;
+  - `pending_approval`: an application or approval is in progress (the same word `sync_accounts` uses);
   - `active`;
   - `suspended`;
   - `blocked`.
-- While `pending`, an optional `setup { url, message, expires_at }` carries an applicant-specific next step, in the same shape as `sync_accounts` `setup`.
+- While `pending_approval`, an optional `setup { url, message, expires_at }` carries an applicant-specific next step, in the same shape as `sync_accounts` `setup`.
 - It is returned only to the authenticated caller. P4 opens the closed `unconfigured` schema (`get-principal-response.json`) for this one field.
 - `principal.changed` adds the reasons `relationship_changed` and `relationship_expiring`. The second fires at a seller-declared lead time before `expires_at`, following `setup_expiring`.
 
