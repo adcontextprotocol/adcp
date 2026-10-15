@@ -77,6 +77,7 @@
         "required": ["rule", "field"],
         "properties": {
           "rule": { "type": "string" },
+          "field": { "type": "string" },
           "expected": {},
           "predicted": {}
         },
