@@ -286,6 +286,7 @@ phases:
               operator: "pinnacle-agency.example"
               operator_unit:
                 id: "compliance-governance_delivery_monitor-5475949b"
+              sandbox: true
             ext:
               governance_policy_acknowledgements:
                 - "drift_reevaluation"
