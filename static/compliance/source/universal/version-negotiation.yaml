@@ -142,10 +142,12 @@ phases:
 
       The bundle-per-version validation is not yet available in the runner
       (tracked in the adcp-client repository), so the checks declared here
-      (the echo and the 3.1 capability boolean shape) are graded advisory. When the runner ships the capability, add
-      a response-schema check pinned to the served release's bundle and the
+      (the echo and the 3.1 capability boolean shape) are graded advisory until
+      runner capability 14.2.0, the version expected to ship bundle-per-version
+      validation, when they promote to required. At that point add a
+      response-schema check pinned to the served release's bundle and the
       3.1-pinned get_products, sync_accounts, get_media_buys, and
-      get_media_buy_delivery steps, then drop the advisory marker.
+      get_media_buy_delivery steps.
     steps:
       - id: get_capabilities_at_3_1
         title: "Request capabilities pinned to 3.1 and expect the 3.1 shape"
@@ -171,12 +173,10 @@ phases:
             allowed_values: [true, false]
             description: "3.1 capability shape: geo_regions is a boolean, not the 3.2 object form (the projection MUST covers get_adcp_capabilities, DR-0024)"
             severity: advisory
-            permanent_advisory:
-              reason: "Runner cannot yet validate responses against the served release's schema bundle; stays advisory until that runner capability ships."
+            expires_after_version: "14.2.0"
           - check: envelope_field_pattern
             path: "adcp_version"
             pattern: "^3\\.1$"
             description: "Seller echoes the release it served, which the response must then conform to"
             severity: advisory
-            permanent_advisory:
-              reason: "Runner cannot yet validate responses against the served release's schema bundle; stays advisory until that runner capability ships."
+            expires_after_version: "14.2.0"
