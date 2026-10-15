@@ -148,7 +148,7 @@ A verifier applies the following procedure to a request that carries `Signature-
 5. Check the `nonce` against the identity's replay state, and record it (see [Replay protection](#replay-protection)).
 6. If the request carries more than one `web-bot-auth` signature, check that each later signature covers the `signature-agent`, `signature-input`, and `signature` members of every earlier one (see [Relays](#relays)).
 7. If any `web-bot-auth` signature fails, answer `403` with `Accept-Signature`, as described in [Error responses](#error-responses).
-8. For each verified identity, check the identity's revocation list under [Transport revocation](/docs/building/by-layer/L1/security#transport-revocation), with key entries matched by thumbprint. A revoked key gets an AdCP authorization error.
+8. For each verified identity, check the identity's revocation list under [Transport revocation](/docs/building/by-layer/L1/security#transport-revocation), with key entries matched by thumbprint. A revoked key gets the generic authentication error, without `Accept-Signature`.
 9. Pass the verified identities to the AdCP layer, which applies [Onboarding](#onboarding) and the account authorization rules that apply to every request, signed or not.
 
 When a deployment verifies at the edge, Appendix C.10 applies: the edge "can instead verify at the proxy and pass the result to the origin through a deployment-local trusted channel". The edge removes any copy of that result a client sends, and the origin accepts the result only over its authenticated channel to its own edge. The edge forwards the signature fields unchanged, because the seller's own verifier enforces nonce uniqueness whatever the edge does.
@@ -195,7 +195,9 @@ Accept-Signature: sig1=("@method" "@target-uri" "@authority" "content-type" \
     yid;tag="web-bot-auth"
 ```
 
-A revoked key, or an identity without the needed onboarding entry, gets an AdCP authorization error without `Accept-Signature`, so that a signer does not keep signing with the same key. Those errors use the AdCP error envelope and codes, not the transport status codes in the table.
+A request signed with a revoked key gets the generic authentication error without `Accept-Signature`: the signer must stop using that key, so a hint to sign again is wrong. An identity without the needed onboarding entry gets an AdCP authorization error, also without `Accept-Signature`. Those errors use the AdCP error envelope and codes, not the transport status codes in the table.
+
+An unsigned request to an operation in `required_for`, from a caller with no other credential the verifier accepts, gets an answer that depends on what the verifier advertises. A verifier that advertises only `web-bot-auth` answers `403` with `Accept-Signature`. A verifier that also advertises the AdCP RFC 9421 profile answers as that profile does, `401` with `request_signature_required`, and adds `Accept-Signature` for this profile.
 
 ## Relays
 
@@ -286,7 +288,7 @@ The two profiles share the signature base, the covered request components, the p
 | `adcp_use` key purposes | One agent per purpose, each on its own origin |
 | "Exactly one `Signature-Input` label" | Every `web-bot-auth` signature must verify |
 | AdCP nonce rules and replay codes | RFC 9421 `nonce` on every signed request, enforced by the seller's verifier |
-| `request_signature_*` and `webhook_signature_*` codes in `WWW-Authenticate` | `400`, `403` with `Accept-Signature`, `429`, and AdCP authorization errors |
+| `request_signature_*` and `webhook_signature_*` codes in `WWW-Authenticate` | `400`, `403` with `Accept-Signature`, `429`, the generic authentication error for a revoked key, and AdCP authorization errors |
 | Separate webhook profile and encoding | Webhooks are ordinary signed requests |
 
 Account authorization, the signed revocation list, and principal boundaries do not change. The revocation list keeps its path and media type; its key entries are thumbprints under this profile, and the list is accepted only from the identity's origin.
