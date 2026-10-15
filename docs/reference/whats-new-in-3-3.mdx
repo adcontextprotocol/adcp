@@ -62,7 +62,7 @@ These narrow what a conformant implementation may do. Each is detailed in the [m
 - **Delivery rows may omit `impressions`** toward 3.3 callers only, and receivers MUST NOT read absence as zero or derive impression-denominated values. The schema loosens; the rules around it narrow.
 - **Receivers ignore `aggregated_totals` in delivery webhooks** and do not reject a payload for carrying it.
 
-Two more guarantees loosen: a 3.2 verifier can reject a brand.json between 256 KiB and 2 MiB that a 3.3 verifier accepts, and a `ready` audience no longer promises match counts. Many new fields sit inside objects 3.2 closes, so send them only to peers that negotiated 3.3; see [Send only to 3.3 peers](/docs/reference/migration/3-2-to-3-3#send-only-to-3-3-peers).
+Two more guarantees loosen here, and the response-size default a third ([below](#bounded-agent-responses)): a 3.2 verifier can reject a brand.json between 256 KiB and 2 MiB that a 3.3 verifier accepts, and a `ready` audience no longer promises match counts. Many new fields sit inside objects 3.2 closes, so send them only to peers that negotiated 3.3; see [Send only to 3.3 peers](/docs/reference/migration/3-2-to-3-3#send-only-to-3-3-peers).
 
 ## Optional declarations
 
@@ -118,7 +118,7 @@ These merged on `main` during the 3.3 cycle and were also released on the 3.2 li
 
 ## In review for 3.3
 
-Open 3.3 proposals are not part of any beta until they merge. Three working-group decisions from the October 12 session are recorded but their normative text is still in review:
+Open 3.3 proposals are not part of any beta until they merge. Three working-group decisions are ratified (DR-0023 on `main`; DR-0024 and DR-0025 in open PRs), but their normative text is still in review:
 
 - **Agent identity is an origin ([DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md)).** The decision record and the [agent identity proposal](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) are on `main`. The Web Bot Auth profile and the deprecation of the RFC 9421 brand.json profile ([#8162](https://github.com/adcontextprotocol/adcp/pull/8162)), the experimental production security profile ([#8155](https://github.com/adcontextprotocol/adcp/pull/8155)), first-contact binding ([#8168](https://github.com/adcontextprotocol/adcp/pull/8168)), and seller onboarding posture ([#8170](https://github.com/adcontextprotocol/adcp/pull/8170)) are open.
 - **Responses conform to the served release (DR-0024, [#8117](https://github.com/adcontextprotocol/adcp/pull/8117)).** WG-approved; not yet merged.

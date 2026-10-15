@@ -16,8 +16,8 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 Read these first:
 
 - [Required to claim 3.3 behavior](#required-to-claim-3-3-behavior): rules that narrow what a conformant implementation may do.
-- [Brand JSON size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib) and [audience match counts](#audience-match-counts-may-be-absent): two loosened guarantees, so a 3.2 peer can reject or misread what a 3.3 peer sends.
-- [Recommended: bound agent response size](#recommended-bound-agent-response-size): a new SHOULD that tightens what a buyer accepts, and a 4 MiB default that loosens it.
+- [Brand JSON size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib), [audience match counts](#audience-match-counts-may-be-absent), and the [4 MiB response-size default](#client-response-size-default-rises-to-4-mib): three loosened guarantees, so a 3.2 peer can reject or misread what a 3.3 peer sends.
+- [Recommended: bound agent response size](#recommended-bound-agent-response-size): a new SHOULD that tightens what an adopting buyer accepts.
 - [Send only to 3.3 peers](#send-only-to-3-3-peers): new fields a 3.2 validator rejects.
 - [Deprecations](#deprecations): the natural-key account reference after provisioning, planned for removal in 4.0.
 - [SDK and code-generator maintainers](#sdk-and-code-generator-maintainers): schema-shape changes that alter generated types.
@@ -31,8 +31,8 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 1 | Everyone | Keep production on `"3.2"`; choose an exact 3.3 beta artifact for staging. |
 | 2 | SDK and codegen maintainers | Generate from the signed `3.3.0-beta.0` protocol tarball, not `main` or `/schemas/latest/`. |
 | 3 | SDK and codegen maintainers | Treat `daypart_targets[].start_hour` / `end_hour` as optional in generated types (#8025). |
-| 4 | SDK and codegen maintainers | Resolve `#/$defs/Provenance` in bundled schemas instead of expecting inlined provenance (#7950). |
-| 5 | SDK and codegen maintainers | Expect stricter response validation of `compact-task-submitted.json` (#7946). |
+| 4 | SDK and codegen maintainers | Resolve `#/$defs/Provenance` in bundled schemas instead of expecting inlined provenance (#7950, already in 3.2.4). |
+| 5 | SDK and codegen maintainers | Expect stricter response validation of `compact-task-submitted.json` (#7946, already in 3.2.4). |
 | 6 | Sellers and agents | Advertise the exact prerelease in `adcp.supported_versions` and echo the release actually served. |
 | 7 | Buyers | Send `adcp_version: "3.3-beta.N"` only after exact capability discovery; never silently move between beta pins. |
 | 8 | Sellers that provision accounts lazily | Move provisioning off discovery tasks. |
@@ -195,7 +195,7 @@ A schema-valid 3.2 message stays schema-valid under 3.3 unless it already used a
 - `ext.adcp`: now reserved for the AdCP working group. Vendors that used it for their own data move to their own namespace.
 - `reporting_webhook.operation_id`: previously an open extra field, now constrained to 1–255 characters from the pattern above.
 - `audience_size`, `targetable_size`, and `match_rate_basis` on a `sync_audiences` audience result, if used with a different shape.
-- `compact-task-submitted.json` responses that break the version-envelope grammar or carry `task_status` / `response_status`. Conformant sellers already satisfy both.
+- `compact-task-submitted.json` responses that break the version-envelope grammar or carry `task_status` / `response_status` (tightened in 3.2.4). Conformant sellers already satisfy both.
 
 ## SDK and code-generator maintainers
 
