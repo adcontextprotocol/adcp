@@ -363,6 +363,38 @@
       }
     },
     {
+      "name": "vendor-scoped-consent-round-trips-to-native",
+      "input_pixel_url": "https://pixel.example/i?gdpr={GDPR}&gdpr_consent={GDPR_CONSENT}",
+      "mapping": {
+        "{GDPR}": { "native": "${GDPR}" },
+        "{GDPR_CONSENT}": { "native": "${GDPR_CONSENT_755}" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?gdpr=${GDPR}&gdpr_consent=${GDPR_CONSENT_755}",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "vendor-scoped-consent-missing-vendor-id-emits-empty-value",
+      "input_pixel_url": "https://pixel.example/i?gdpr={GDPR}&gdpr_consent={GDPR_CONSENT}",
+      "mapping": {
+        "{GDPR}": { "native": "${GDPR}" },
+        "{GDPR_CONSENT}": { "value": "" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?gdpr=${GDPR}&gdpr_consent=",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": ["{GDPR_CONSENT}"],
+        "suspect_native_values": []
+      }
+    },
+    {
       "name": "native-c0-null-rejected",
       "input_pixel_url": "https://pixel.example/i?cb={CACHEBUSTER}",
       "mapping": { "{CACHEBUSTER}": { "native": "%%CACHE\u0000BUSTER%%" } },

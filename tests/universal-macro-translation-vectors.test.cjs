@@ -47,6 +47,8 @@ const REQUIRED_SUCCESS_CASES = [
   'embedded-ordinary-bracketed-values-not-suspect',
   'privacy-value-mappings-are-encoded-and-reported',
   'bare-query-normalized-away',
+  'vendor-scoped-consent-round-trips-to-native',
+  'vendor-scoped-consent-missing-vendor-id-emits-empty-value',
 ];
 
 const REQUIRED_REJECTION_CASES = [
@@ -92,6 +94,16 @@ describe('universal macro translation compliance fixture', () => {
       vectorsByName.get('bare-query-normalized-away').expected.url,
       'https://pixel.example/i',
     );
+  });
+
+  it('pins vendor-scoped consent: round trip keeps the id, a missing id is empty and never a placeholder', () => {
+    const vectorsByName = new Map(fixture.vectors.map((vector) => [vector.name, vector]));
+    assert.equal(
+      vectorsByName.get('vendor-scoped-consent-round-trips-to-native').expected.url,
+      'https://pixel.example/i?gdpr=${GDPR}&gdpr_consent=${GDPR_CONSENT_755}',
+    );
+    const missing = vectorsByName.get('vendor-scoped-consent-missing-vendor-id-emits-empty-value').expected;
+    assert.equal(missing.url, 'https://pixel.example/i?gdpr=${GDPR}&gdpr_consent=');
   });
 
   it('flags embedded native-token shapes without flagging ordinary bracketed text', () => {

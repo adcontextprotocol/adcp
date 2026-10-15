@@ -298,6 +298,48 @@ test('macro declarations enforce resolver ownership and exact URL encoding depth
   assert.equal(validate({ ...adcp, dialect_semantic: 'SKU', universal_semantic: 'SKU', encoding: { kind: 'rfc3986', depth: 2 } }), false,
     'catalog values have exactly one RFC3986 pass');
 
+  const scoped = {
+    declaration_id: 'tcf-consent-755',
+    token: '${GDPR_CONSENT_755}',
+    dialect: 'vendor',
+    dialect_namespace: 'https://support.google.com/admanager/answer/2376981',
+    dialect_revision: 'admanager-macros-v1',
+    dialect_semantic: 'GDPR_CONSENT_755',
+    mapping_status: 'verified_universal',
+    universal_semantic: 'GDPR_CONSENT',
+    gvl_vendor_id: 755,
+    operation: 'resolve_value',
+    performed_by: 'seller',
+    location: { field: 'url', occurrence: 0, context: 'url_query_value' },
+    encoding: { kind: 'rfc3986', depth: 1 },
+    required: false,
+    unavailable_behavior: 'omit_parameter'
+  };
+  assert.equal(validate(scoped), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...scoped, gvl_vendor_id: 0 }), false, 'GVL ids start at 1');
+  assert.equal(validate({ ...scoped, gvl_vendor_id: '755' }), false, 'GVL ids are integers');
+  assert.equal(validate({ ...scoped, universal_semantic: 'US_PRIVACY' }), false,
+    'a vendor id is valid only on GDPR_CONSENT');
+  assert.equal(validate({ ...adcp, gvl_vendor_id: 755 }), false,
+    'a vendor id cannot ride on a non-consent semantic');
+  const target = {
+    token: '${GDPR_CONSENT_755}',
+    dialect: 'vendor',
+    dialect_namespace: scoped.dialect_namespace,
+    dialect_revision: scoped.dialect_revision,
+    dialect_semantic: 'GDPR_CONSENT_755',
+    mapping_status: 'verified_universal',
+    universal_semantic: 'GDPR_CONSENT',
+    gvl_vendor_id: 755,
+    next_operation: 'resolve_value',
+    performed_by: 'seller',
+    encoding: { kind: 'rfc3986', depth: 1 }
+  };
+  const validateScopedTarget = ajv.getSchema('/schemas/core/macro-translation-target.json');
+  assert.equal(validateScopedTarget(target), true, JSON.stringify(validateScopedTarget.errors));
+  assert.equal(validateScopedTarget({ ...target, universal_semantic: 'GDPR' }), false);
+  assert.equal(ajv.getSchema('/schemas/enums/universal-macro.json').schema.enum.includes('ADDTL_CONSENT'), true);
+
   const unknown = {
     declaration_id: 'unknown-token',
     token: '%%UNIDENTIFIED%%',

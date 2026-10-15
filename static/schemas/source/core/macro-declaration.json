@@ -10,6 +10,7 @@
       "token_occurrence": "location must identify the declared zero-based occurrence of token in location.field",
       "asset_field": "location.field must exist on and be permitted by the containing asset type",
       "catalog_universal_profile": "catalog semantics require seller resolve_value in a URL context with exactly one rfc3986 pass",
+      "gvl_vendor_id_token_match": "when token embeds a GVL id (`${GDPR_CONSENT_<id>}`), gvl_vendor_id must be present and equal that id; translation carries it to translation_target unchanged",
       "omit_parameter_scope": "omit_parameter requires the token to occupy the complete URL query-parameter value"
     },
     "spec": "docs/creative/universal-macros.mdx#declared-source-token-contracts"
@@ -48,6 +49,12 @@
     "universal_semantic": {
       "$ref": "/schemas/enums/universal-macro.json",
       "description": "Verified AdCP universal meaning. Present only when mapping_status is `verified_universal`."
+    },
+    "gvl_vendor_id": {
+      "type": "integer",
+      "minimum": 1,
+      "x-added-in": "3.3.0",
+      "description": "IAB Global Vendor List id of the vendor that receives the consent string, for a vendor-scoped consent token such as `${GDPR_CONSENT_755}`. Valid only when `universal_semantic` is `GDPR_CONSENT`. Translation carries it to `translation_target` unchanged; a translator without one emits an empty value, never a placeholder."
     },
     "operation": { "$ref": "/schemas/enums/macro-processing-operation.json" },
     "performed_by": {
@@ -104,6 +111,10 @@
   ],
   "additionalProperties": false,
   "allOf": [
+    {
+      "if": { "required": ["gvl_vendor_id"] },
+      "then": { "required": ["universal_semantic"], "properties": { "universal_semantic": { "const": "GDPR_CONSENT" } } }
+    },
     {
       "if": { "properties": { "dialect": { "enum": ["iab_vast", "iab_daast", "vendor"] } }, "required": ["dialect"] },
       "then": { "required": ["dialect_namespace", "dialect_revision"] }
