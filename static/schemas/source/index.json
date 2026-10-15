@@ -1245,6 +1245,10 @@
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
         },
+        "creative-merge-rejection-reason": {
+          "$ref": "/schemas/enums/creative-merge-rejection-reason.json",
+          "description": "Why a seller rejected a sync_creatives merge assignment operation"
+        },
         "audience-size-precision": {
           "$ref": "/schemas/enums/audience-size-precision.json",
           "description": "How precisely an audience size range is reported (exact, approximate, bucketed)"
