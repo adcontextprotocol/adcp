@@ -59,7 +59,7 @@ RFC 9421 section 3.2.1 lets an application impose requirements beyond the base s
 | Signature | RFC 9421 with `tag="web-bot-auth"`, `keyid` set to the key's JWK thumbprint, and a covered `Signature-Agent` member naming an origin | Sections 5.2, 5.2.1, 5.5 |
 | Components, every request | `@method`, `@target-uri`, `@authority`, `"signature-agent";key=<label>` | Section 5.2 |
 | Components, requests with a body | Also `content-type` and `content-digest` | Section 5.2: an agent that needs body integrity "MUST send and cover Content-Digest" |
-| Parameters | `created`, `expires`, `keyid`, and a `nonce` with at least 128 bits of entropy on every signed request | RFC 9421 sections 2.3, 3.2.1, 7.2.2; sections 5.2 and 5.2.3; Appendix C.6 |
+| Parameters | `created`, `expires`, `keyid`, and a `nonce` on every signed request. A signer SHOULD send 64 random bytes; a verifier accepts any nonce with at least 128 bits of entropy | RFC 9421 sections 2.3, 3.2.1, 7.2.2; sections 5.2 and 5.2.3; Appendix C.6; WBA architecture draft section 4.2.2 |
 | Algorithm | The verifier derives the algorithm from the key. `alg` is optional and, when present, must match the key | RFC 9421 sections 2.3, 3.2.1, 7.3.6 |
 | Lifetime and clock skew | `expires` at most 300 seconds after `created`. The verifier allows 60 seconds of clock skew | RFC 9421 section 3.2.1 |
 | Key publication | Each identity publishes its keys only in its key directory. `kid` is the thumbprint, so a verifier selects a key by matching `keyid` against `kid` | Sections 5.5, 5.5.1, 6.5 |
@@ -69,7 +69,7 @@ RFC 9421 section 3.2.1 lets an application impose requirements beyond the base s
 | Verification | Every `web-bot-auth` signature on a request must verify, each against its own covered components and its own key | Section 5.2.2 |
 | Failure responses | `400`, `403` with `Accept-Signature`, `429` | Sections 5.3 and 5.4 |
 
-A request that follows the profile is a valid WBA request. A WBA verifier configured with these rules accepts it and rejects a request that falls short. Because the rules are fixed in the profile, a signer knows them before its first request; `Accept-Signature` is the recovery path when a request falls short (see [Error responses](#error-responses)).
+A request that follows the profile is a valid WBA request. A WBA verifier configured with these rules accepts it. A valid WBA signature that falls short of these rules counts only for operations outside `required_for` (see [Verification](#verification)). Because the rules are fixed in the profile, a signer knows them before its first request; `Accept-Signature` is the recovery path when a request falls short (see [Error responses](#error-responses)).
 
 The 300-second ceiling on `expires` is provisional. WBA section 5.2 recommends no more than 24 hours for general automated traffic, and the RFC asks the working group to confirm the shorter value for spend-committing traffic.
 
@@ -144,10 +144,10 @@ A verifier applies the following procedure to a request that carries `Signature-
 1. Parse `Signature`, `Signature-Input`, and `Signature-Agent` as Structured Fields. If any header fails to parse, answer `400` (section 5.4).
 2. For each `Signature-Input` member whose `tag` is `web-bot-auth`, read the `Signature-Agent` member with the same label. If the member is absent, or the signature does not cover `"signature-agent";key=<label>`, reject the signature. An uncovered member is a claim the verifier must not attach policy to (section 4.1).
 3. Resolve the origin the member names to its key directory, from cache or by fetching it, and select the key whose `kid` equals `keyid`. If the directory holds no such key, the request is unverified for that origin.
-4. Check the covered components, the parameters, and the window against the rules in [Profile rules](#profile-rules), and verify the signature with the selected key.
+4. Verify the signature with the selected key, and check its covered components, parameters, and window against the rules in [Profile rules](#profile-rules).
 5. Check the `nonce` against the identity's replay state, and record it (see [Replay protection](#replay-protection)).
 6. If the request carries more than one `web-bot-auth` signature, check that each later signature covers the `signature-agent`, `signature-input`, and `signature` members of every earlier one (see [Relays](#relays)).
-7. If any `web-bot-auth` signature fails, answer `403` with `Accept-Signature`, as described in [Error responses](#error-responses).
+7. If a `web-bot-auth` signature does not verify, answer `403` with `Accept-Signature`, as described in [Error responses](#error-responses). If every signature verifies but one falls short of the profile rules, answer the same way when the operation is in `required_for`. Otherwise, ignore the request's `web-bot-auth` signatures and handle it as an unsigned request, so that a WBA signer is never treated worse than an unsigned caller (section 6.11).
 8. For each verified identity, check the identity's revocation list under [Transport revocation](/docs/building/by-layer/L1/security#transport-revocation), with key entries matched by thumbprint. A revoked key gets the generic authentication error, without `Accept-Signature`.
 9. Pass the verified identities to the AdCP layer, which applies [Onboarding](#onboarding) and the account authorization rules that apply to every request, signed or not.
 
@@ -316,6 +316,7 @@ The keys in `keys.json` are public test keys with published private seeds. Secti
 ## References
 
 - [HTTP Message Signatures for automated traffic, draft-ietf-webbotauth-httpsig-protocol-00](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/00/)
+- [Web Bot Auth architecture, draft-meunier-web-bot-auth-architecture](https://datatracker.ietf.org/doc/draft-meunier-web-bot-auth-architecture/)
 - [RFC 9421: HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421)
 - [RFC 9530: Digest Fields](https://www.rfc-editor.org/rfc/rfc9530)
 - [RFC 7638: JSON Web Key Thumbprint](https://www.rfc-editor.org/rfc/rfc7638) and [RFC 8037](https://www.rfc-editor.org/rfc/rfc8037) Appendix A.3
