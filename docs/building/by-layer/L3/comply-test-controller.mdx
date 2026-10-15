@@ -835,7 +835,7 @@ Experimental (`media_buy.hold_policy`). Makes the next [`refine_proposals`](/doc
 }
 ```
 
-A successful registration uses the `ForcedHoldUnavailableSuccess` response shape: `success: true` and `forced.proposal_id` echoing the draft. Nothing else changes yet, and the draft stays finalizable.
+A successful registration uses the same `ForcedDirectiveSuccess` response shape as the `force_*_arm` scenarios: `success: true`, `forced.arm: "unable"` (the per-entry finalize outcome), and `forced.proposal_id` echoing the draft. Nothing else changes yet, and the draft stays finalizable.
 
 The directive applies to the next finalize from the same sandbox account (account + principal pair) whose batch includes that proposal and that reaches hold placement. For that batch the seller MUST:
 

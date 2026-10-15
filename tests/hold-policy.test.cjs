@@ -248,20 +248,28 @@ test('comply_test_controller force_hold_unavailable requires the draft proposal_
   assert.equal(validate(request({ params: { proposal_id: '' } })), false, 'proposal_id is not empty');
 });
 
-test('comply_test_controller reports a registered hold failure with the forced proposal_id only', async () => {
+test('comply_test_controller reports a registered hold failure as the unable arm with the forced proposal_id', async () => {
   const validate = await compile('/schemas/compliance/comply-test-controller-response.json');
-  const forced = { adcp_version: '3.3', status: 'completed', success: true, forced: { proposal_id: 'availnet_draft_01' } };
+  const forced = {
+    adcp_version: '3.3',
+    status: 'completed',
+    success: true,
+    forced: { arm: 'unable', proposal_id: 'availnet_draft_01' },
+  };
   assert.equal(validate(forced), true, errors(validate));
   assert.equal(validate({ ...forced, message: 'registered' }), true, errors(validate));
-  assert.equal(validate({ ...forced, forced: {} }), false, 'proposal_id is required');
-  assert.equal(validate({ ...forced, forced: { proposal_id: 'availnet_draft_01', arm: 'submitted' } }), false, 'no arm on a hold failure');
-  assert.equal(validate({ ...forced, forced: { arm: 'submitted' } }), true, 'the arm directive shape is unchanged');
+  assert.equal(validate({ ...forced, forced: { arm: 'unable' } }), false, 'proposal_id is required for the unable arm');
+  assert.equal(validate({ ...forced, forced: { proposal_id: 'availnet_draft_01' } }), false, 'arm is required');
+  assert.equal(validate({ ...forced, forced: { arm: 'unable', proposal_id: 'p', task_id: 't' } }), false, 'no task_id on unable');
+  assert.equal(validate({ ...forced, forced: { arm: 'submitted', proposal_id: 'p', task_id: 't' } }), false, 'proposal_id is only for the unable arm');
+  assert.equal(validate({ ...forced, forced: { arm: 'submitted', task_id: 't' } }), true, 'the existing arm directives are unchanged');
   assert.equal(validate({ ...forced, previous_state: 'draft' }), false, 'not a state transition');
 
-  const arm = readSchema('compliance/comply-test-controller-response.json').oneOf.find(
-    branch => branch.title === 'ForcedHoldUnavailableSuccess',
+  const directive = readSchema('compliance/comply-test-controller-response.json').oneOf.find(
+    branch => branch.title === 'ForcedDirectiveSuccess',
   );
-  assert.equal(arm['x-status'], 'experimental');
-  assert.equal(arm['x-added-in'], '3.3.0');
-  assert.equal(arm.properties.forced.properties.proposal_id['x-added-in'], '3.3.0');
+  const proposalId = directive.properties.forced.properties.proposal_id;
+  assert.equal(proposalId['x-status'], 'experimental');
+  assert.equal(proposalId['x-added-in'], '3.3.0');
+  assert.match(directive.properties.forced.properties.arm.description, /force_hold_unavailable/);
 });
