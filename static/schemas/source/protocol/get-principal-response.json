@@ -26,7 +26,9 @@
             },
             "relationship": {
               "$ref": "/schemas/core/principal-relationship.json",
-              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither. Sent only in responses served at 3.3 or later; omitted for callers below 3.3."
             },
             "principal_id": {
               "type": "string",
@@ -61,7 +63,9 @@
             },
             "relationship": {
               "$ref": "/schemas/core/principal-relationship.json",
-              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither. Sent only in responses served at 3.3 or later; omitted for callers below 3.3."
             },
             "principal_id": {
               "type": "string",
@@ -87,7 +91,9 @@
             },
             "relationship": {
               "$ref": "/schemas/core/principal-relationship.json",
-              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither. Sent only in responses served at 3.3 or later; omitted for callers below 3.3."
             }
           },
           "required": ["kind"],

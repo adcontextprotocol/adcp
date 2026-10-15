@@ -59,7 +59,7 @@
         "relationship_expiring",
         "other"
       ],
-      "description": "Coarse reason for the invalidation. Advisory routing/debug metadata; receivers MUST re-read get_principal rather than inferring the new state from the reason."
+      "description": "Coarse reason for the invalidation. Advisory routing/debug metadata; receivers MUST re-read get_principal rather than inferring the new state from the reason. relationship_changed and relationship_expiring were added in 3.3 (experimental, with get_principal relationship)."
     },
     "destination_id": {
       "type": "string",

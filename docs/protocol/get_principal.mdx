@@ -52,11 +52,11 @@ The response reveals only the authenticated caller's identity and state. It neve
 
 ### Relationship status
 
-`current`, `recognized`, and `unconfigured` results MAY carry `relationship` (`core/principal-relationship.json`, experimental): the seller's commercial relationship with the caller, returned only to that caller.
+`current`, `recognized`, and `unconfigured` results MAY carry `relationship` (`core/principal-relationship.json`, experimental): the seller's commercial relationship with the caller, returned only to that caller. It is added in 3.3, so a seller sends it only in responses served at 3.3 or later and omits it for callers below 3.3, whose result arms are closed.
 
 | Field | Meaning |
 |---|---|
-| `status` | `pending_approval` (the seller is reviewing an application or approval, as in the [account status lifecycle](/docs/accounts/overview#account-status-lifecycle)), `active`, `suspended`, or `blocked`. Calls that need a suspended or blocked relationship fail with [`AGENT_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-agent-suspended) or [`AGENT_BLOCKED`](/docs/building/verification/compliance-catalog#error-code-agent-blocked). |
+| `status` | `enums/principal-relationship-status.json`: `pending_approval` (the seller is reviewing an application or approval, as in the [account status lifecycle](/docs/accounts/overview#account-status-lifecycle)), `active`, `suspended`, or `blocked`. Calls that need a suspended or blocked relationship fail with [`AGENT_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-agent-suspended) or [`AGENT_BLOCKED`](/docs/building/verification/compliance-catalog#error-code-agent-blocked). |
 | `expires_at` | When the relationship lapses unless renewed. Absent means no scheduled expiry. |
 | `setup` | While `pending_approval`, the caller's next step: `{ url, message, expires_at }`, the same shape as [`sync_accounts`](/docs/accounts/tasks/sync_accounts) `setup`. Treat `url` as untrusted: surface it, never fetch it. |
 

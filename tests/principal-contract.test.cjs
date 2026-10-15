@@ -512,6 +512,13 @@ describe('sync_principal contract', () => {
       result: { kind: 'unconfigured', relationship: { status: 'paused' } },
     }), false);
 
+    const relationship = JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, 'core/principal-relationship.json'), 'utf8'));
+    const relationshipStatus = JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, 'enums/principal-relationship-status.json'), 'utf8'));
+    assert.equal(relationship['x-added-in'], '3.3.0');
+    assert.equal(relationship.properties.status.$ref, '/schemas/enums/principal-relationship-status.json');
+    assert.equal(relationshipStatus['x-added-in'], '3.3.0');
+    assert.deepEqual(relationshipStatus.enum, ['pending_approval', 'active', 'suspended', 'blocked']);
+
     assert.equal(validateReadResponse({
       status: 'completed',
       result: { kind: 'recognized', principal_kind: 'operator' },

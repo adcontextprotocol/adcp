@@ -3,18 +3,12 @@
   "$id": "/schemas/core/principal-relationship.json",
   "title": "Principal Relationship",
   "x-status": "experimental",
-  "description": "The seller's commercial relationship with the authenticated caller, returned by get_principal only to that caller. Present when a relationship or an application exists; omitted when the seller has no relationship with the caller and no application in progress, which is the identity-established state of a verified signer the seller has not bound. Because it is returned only to the authenticated caller, it never acts as an onboarding oracle. See specs/agent-identity-3-3.md R8.",
+  "x-added-in": "3.3.0",
+  "description": "The seller's commercial relationship with the authenticated caller, returned by get_principal only to that caller. Sent only in responses served at 3.3 or later: a seller MUST omit it for callers below 3.3, whose get_principal result arms are closed (DR-0024, #8117). Present when a relationship or an application exists; omitted when the seller has no relationship with the caller and no application in progress, which is the identity-established state of a verified signer the seller has not bound. Because it is returned only to the authenticated caller, it never acts as an onboarding oracle. See specs/agent-identity-3-3.md R8.",
   "type": "object",
   "properties": {
     "status": {
-      "type": "string",
-      "enum": ["pending_approval", "active", "suspended", "blocked"],
-      "enumDescriptions": {
-        "pending_approval": "The seller is reviewing an application or approval for this caller. The same value and meaning as enums/account-status.json pending_approval, which the same human sees on sync_accounts. setup, when present, carries the caller's next step.",
-        "active": "The relationship is in good standing.",
-        "suspended": "The relationship is temporarily paused; calls that need it fail with AGENT_SUSPENDED.",
-        "blocked": "The relationship is permanently denied; calls that need it fail with AGENT_BLOCKED."
-      },
+      "$ref": "/schemas/enums/principal-relationship-status.json",
       "description": "Current state of the relationship."
     },
     "expires_at": {

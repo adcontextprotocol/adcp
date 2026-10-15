@@ -1257,6 +1257,10 @@
           "$ref": "/schemas/enums/audience-status.json",
           "description": "Matching status of a synced audience on a seller platform"
         },
+        "principal-relationship-status": {
+          "$ref": "/schemas/enums/principal-relationship-status.json",
+          "description": "State of the seller's commercial relationship with the caller, reported by get_principal"
+        },
         "creative-quality": {
           "$ref": "/schemas/enums/creative-quality.json",
           "description": "Quality tier for creative generation (draft, production)"
