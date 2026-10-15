@@ -441,7 +441,7 @@ targeting filter and the legacy top-level `property_list`.
 | `required_performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | Filter to products that can meet the buyer's performance standard requirements. Each entry specifies a metric, threshold, and vendor (e.g., "DoubleVerify for viewability at 70% MRC"). Products that cannot meet these thresholds or do not support the specified vendors are excluded. |
 | `required_metrics` | string[] ([metric vocabulary](/docs/media-buy/media-buys/optimization-reporting)) | Filter to products whose `reporting_capabilities.available_metrics` is a superset of these metrics — i.e., products that commit to reporting all listed metrics in delivery. Use for capability discovery (e.g., `["completed_views"]` for a CTV CPCV buy). Sellers MUST silently exclude products that cannot meet the list — filter-not-fail; do not return an error. The product's declared `available_metrics` becomes the binding reporting contract carried into the resulting media buy. |
 | `required_vendor_metrics` | object[] | Filter to products whose `reporting_capabilities.vendor_metrics` covers vendor-defined metrics (proprietary attention, emissions, panel demographics, brand-lift surveys, etc.). Each entry pins `vendor` (BrandRef) and/or `metric_id` — at least one. Cross-vendor discovery (e.g., "any attention measurement") is the buyer agent's responsibility: resolve which vendors offer a category via the vendors' `brand.json` records, then enumerate them as filter entries. Same filter-not-fail semantics as `required_metrics`. |
-| `audience_evidence_requirements` | AudienceEvidenceRequirements | Apply buyer-authored admissibility or ranking policy to `Product.audience_evidence`. `requirement_mode` distinguishes hard filtering from preference; `evidence_presence` distinguishes evidence-must-exist from apply-when-published. |
+| `audience_evidence_requirements` | AudienceEvidenceRequirements | Apply buyer-authored admissibility or ranking policy to `Product.audience_evidence`. `requirement_mode` distinguishes hard filtering from preference; `evidence_presence` distinguishes evidence-must-exist from apply-when-published. The experimental `target_audiences[]` names the audiences the buyer wants evidence for ([target audiences](#target-audiences-experimental)). |
 | `audience_activation_methods` | object[] | **Experimental** (`media_buy.audience_activation` — check the seller's `experimental_features` before filtering; sellers that do not list the feature ignore this filter, so do not rely on it without checking. See [Experimental status](/docs/reference/experimental-status)). Filter to products whose [`audience_activation.methods`](/docs/media-buy/product-discovery/media-products#audience-activation) matches at least one requested entry (OR across entries). Within an entry every specified field must match (AND); omitted optional fields are wildcards; `directions` matches on non-empty intersection, and a method that omits `directions` matches any requested directions; `vendor` matches on `domain`, plus `brand_id` when specified. Each entry requires `pattern` ([`sync_audiences`](/docs/media-buy/task-reference/sync_audiences), `tmp_identity_match`, `file_transfer`, `dataset_query`, `clean_room`, `platform_distribution`) plus optional `vendor`, `transport`, `directions`, `buyer_agent` — fields inapplicable to the requested pattern make that entry unsatisfiable. Sellers MUST exclude products with no `audience_activation` declaration when this filter is present; exclusions MAY be reported via `filter_diagnostics.excluded_by`. |
 
 ### Audience evidence requirements
@@ -478,6 +478,48 @@ Seller behavior is normative:
 - Buyers inspect `media_buy.audience_evidence` capabilities first. Sellers MUST NOT silently ignore unsupported hard requirement or presence modes; they return a structured unsupported/invalid-request error. A preferred mode the seller does not support may be omitted by the buyer or explicitly rejected by the seller, but is never misrepresented as applied.
 
 Audience evidence does not populate `targeting_overlay`, `demographic_targeting`, or an age-verification field. If the buyer also needs exact execution, it requests that independently through the corresponding product and package targeting surfaces.
+
+#### Target audiences (experimental)
+
+<Note>
+**Experimental** (`media_buy.audience_evidence_targets`). `target_audiences` is part of AdCP 3.3 as an experimental surface: its schemas carry `x-status: experimental`, sellers that evaluate it MUST list `media_buy.audience_evidence_targets` in `experimental_features`, and it may change between 3.x releases with notice. Check the seller's `experimental_features` before sending it. See [Experimental status](/docs/reference/experimental-status).
+</Note>
+
+The requirements above constrain evidence *quality*. `target_audiences[]` adds *which audience* the buyer cares about, so a buyer can ask for "evidence that at least 40% of this inventory's audience is 25–54" instead of burying the preference in the brief.
+
+```json
+{
+  "filters": {
+    "audience_evidence_requirements": {
+      "requirement_mode": "preferred",
+      "evidence_presence": "when_available",
+      "target_audiences": [
+        {
+          "audience": { "dimension": "age", "range": { "min": 25, "max": 54 } },
+          "relationship": "composition",
+          "minimum_value": 0.4
+        }
+      ],
+      "accepted_evidence_types": ["measured"],
+      "minimum_confidence": 0.8
+    }
+  }
+}
+```
+
+Each target has an `audience` ([`audience-characteristic`](https://adcontextprotocol.org/schemas/latest/core/audience-characteristic.json)), a `relationship` (`composition`, `index`, or `reach_estimate`, the same values as `audience_evidence[].relationship`), and a `minimum_value` in the unit the relationship implies: a fraction in [0,1] for `composition`, a ratio for `index`, an integer count for `reach_estimate`.
+
+Seller behavior is normative:
+
+- A product satisfies a target only through an *admissible* `audience_evidence` item, one that passes every other constraint in the same requirements object (methodology, evidence type, provider, confidence, freshness, attestation, and so on), whose `audience` matches the target exactly, whose `relationship` equals the target's, and whose `value` is greater than or equal to `minimum_value`. An inadmissible item never satisfies a target.
+- Audience match is exact. The seller compares `dimension`, `value` or `range`, and `taxonomy` as a canonical key and never compares `label`. A range matches only the same range (an absent bound matches only an absent bound), set values compare as unordered sets, and a scalar `value` never matches a set or a range, even a one-element set or a degenerate range. `taxonomy` is compared as a whole: `system` is compared as an exact string with no normalization, and an audience that carries a `taxonomy` matches only evidence with the same `system`, `version`, and `value_id`, and never evidence without one. Evidence for a superset or subset of the target range (for example 18–54 against a 25–54 target) does not satisfy it in 3.3, and the seller does not infer or adjust a share across ranges.
+- Several targets combine with AND. A product satisfies the field only when every target is satisfied. Different targets MAY be satisfied by different evidence items.
+- `requirement_mode: "required"` excludes a product that publishes evidence but does not satisfy every target. With `evidence_presence: "required"`, a product that publishes no evidence is excluded as before. With `when_available`, a product that publishes no evidence at all remains eligible, and a product that publishes evidence must satisfy every target.
+- `requirement_mode: "preferred"` never excludes. Count, per product, the targets satisfied by an admissible evidence item. A product with a higher count MUST NOT rank below a product with a lower count when the seller's other ranking inputs are equal. How the seller weighs the count against its other inputs is not defined. The seller returns every satisfying snapshot in `audience_evidence_selections[]` with `decision_use: "recommendation"` (or `"eligibility"` when the targets also decided inclusion), even if `fields` omitted that field. 3.3 does not report which target each snapshot satisfied.
+- A target is never a targeting predicate, impression-level proof, or legal-age verification. Hard delivery stays in `targeting_overlay.demographics`.
+- A seller that does not list `media_buy.audience_evidence_targets` in `experimental_features` MUST NOT apply `target_audiences`. With `requirement_mode: "required"` it MUST fail with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) rather than ignore the hard requirement. With `preferred` it MAY ignore the field but MUST NOT report it as applied. A 3.2 seller that validates strictly may instead return a validation error, so buyers check `experimental_features` before sending the field.
+- A required target a product misses is an exclusion, not an error. A seller MAY report it through `filter_diagnostics.excluded_by`. `index` targets carry no baseline in 3.3, so an index threshold is only comparable between sellers that publish the same baseline. Buyers that need to know why a product dropped out, or which targets a preferred result met, re-check the returned `audience_evidence_selections[]` against their own targets using the exact-match rule above.
+- `target_audiences` is accepted on `get_products` and [`list_products`](/docs/media-buy/task-reference/list_products) filters only. `create_media_buy` packages and [`buy_products`](/docs/media-buy/task-reference/buy_products) purchases reject it in 3.3 with `INVALID_REQUEST` (the JSON Schema guard is a `not required` constraint that validators enforce but code generators drop, so SDK types may still show the field), so a purchase does not yet record the preference it was selected under. That echo is expected in 3.4. Until then, a buyer that needs an audit record keeps its own copy of the requirements it sent. `audience_evidence_pins[]` identify the exact snapshots the package was built on, but a pin does not show that a target was honored.
 
 Known place IDs belong in `targeting_overlay`, so the returned product's
 availability, pricing, and forecast are scoped to the effective place

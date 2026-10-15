@@ -99,6 +99,16 @@
       "uniqueItems": true,
       "description": "Optional acceptable claim types when attestation is used. Buyer-supplied claim types further constrain but never broaden seller policy."
     },
+    "target_audiences": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "items": { "$ref": "/schemas/core/audience-evidence-target.json" },
+      "minItems": 1,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "description": "Experimental (media_buy.audience_evidence_targets). Audiences the buyer wants evidence for. Targets combine with AND. required excludes a product whose published evidence misses any target; preferred only ranks and explains via audience_evidence_selections. A seller that does not list the feature MUST fail a required request with UNSUPPORTED_FEATURE. Not a targeting predicate. Not accepted on create_media_buy or buy_products in 3.3."
+    },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["requirement_mode", "evidence_presence"],

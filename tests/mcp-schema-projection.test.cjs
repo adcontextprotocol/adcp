@@ -97,7 +97,7 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // refine_proposals (+501 bytes measured on top of hold_policy, 445.7 → 446.2
 // KiB), bounded at 447 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 447,
+  'media-buy': 455,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
