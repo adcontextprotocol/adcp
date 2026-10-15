@@ -127,6 +127,12 @@
             "$ref": "/schemas/enums/creative-status.json",
             "description": "Current approval status of the creative"
           },
+          "status_as_of": {
+            "type": "string",
+            "format": "date-time",
+            "x-added-in": "3.3.0",
+            "description": "When the seller last refreshed status from its source of truth. Travels with status and is not separately selectable in fields. MUST NOT be later than the oldest upstream observation that could affect status. Accepting an AdCP write MUST NOT by itself advance this value; it advances only when the seller observes the resulting status in its source of truth (at commit time when the seller's AdCP store is that source). A value earlier than the buyer's last accepted write for this creative means the seller has not yet confirmed that write. Sellers SHOULD include it when status is served from a cache or from a source that confirms asynchronously. Omit to make no freshness assertion; buyers MUST NOT infer that status is live. A change that only advances this value MUST NOT fire creative.status_changed and MUST NOT write an account change record."
+          },
           "created_date": {
             "type": "string",
             "format": "date-time",
@@ -318,6 +324,12 @@
                         },
                         "spec": "specs/relationship-scoped-indicators.md#placement-and-reverse-projection"
                       }
+                    },
+                    "approval_status_as_of": {
+                      "type": "string",
+                      "format": "date-time",
+                      "x-added-in": "3.3.0",
+                      "description": "When the seller last refreshed approval_status, rejection_reason, and approval_scopes for this assignment from its source of truth. Same rules as get_media_buys creative_approvals[].approval_status_as_of: never later than the oldest upstream observation that could affect them; not advanced by accepting an AdCP write alone; earlier than the buyer's last accepted write for this relationship means that write is not yet confirmed; omitted means no freshness assertion and buyers MUST NOT infer that the state is live. When both reads carry it for the same relationship, the values MUST agree, like the approval fields they describe. A change that only advances this value MUST NOT fire creative.assignment_changed and MUST NOT write an account change record."
                     },
                     "indicators": {
                       "type": "array",
@@ -715,6 +727,7 @@
             "name": "Holiday Sale - Medium Rectangle",
             "format_kind": "image",
             "status": "approved",
+            "status_as_of": "2026-03-01T06:00:00Z",
             "created_date": "2026-01-10T14:00:00Z",
             "updated_date": "2026-02-20T09:30:00Z",
             "assets": {

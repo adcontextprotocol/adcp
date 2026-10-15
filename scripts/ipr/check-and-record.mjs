@@ -27,14 +27,17 @@
 
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { GitHubClient } from './github.mjs';
 import { isLedgerRemoteAllowed } from './ledger-remote.mjs';
 import {
   SIGN_PHRASE,
+  SIGNATURES_PATH,
   addSignature,
   findSignature,
   hasSigned,
   isSignPhrase,
+  parseSignatures,
   readSignatures,
   writeSignatures,
 } from './signatures.mjs';
@@ -141,6 +144,35 @@ function commitSignaturesChange(message, branch = 'main') {
   throw new Error('Failed to push signature update after retries');
 }
 
+// Read the ledger at the current tip of origin/main rather than the checkout.
+// The check-only job (pull_request_target) does not share a concurrency group
+// with the signature-write job, so a signature can land on main after this
+// job's checkout. Returns null when the fetch fails so callers fail closed
+// (leave the status pending) instead of guessing.
+function readLatestSignatures(branch = 'main') {
+  try {
+    git(['fetch', '--depth=1', 'origin', branch]);
+    return parseSignatures(git(['show', `FETCH_HEAD:${SIGNATURES_PATH}`]));
+  } catch (err) {
+    console.warn(`Could not re-read ledger from origin/${branch}: ${err.message ?? err}`);
+    return null;
+  }
+}
+
+// The handlers reach the ledger only through this object so tests can drive
+// them without a git checkout.
+export function createGitLedger() {
+  return {
+    read: () => readSignatures(LEDGER_DIR),
+    readLatest: () => readLatestSignatures(),
+    write: (data) => writeSignatures(data, LEDGER_DIR),
+    commit: (message) => {
+      configureGitIdentity();
+      return commitSignaturesChange(message);
+    },
+  };
+}
+
 async function setStatus(gh, eventRepo, sha, { state, description }) {
   if (!sha) return;
   await gh.createStatus(eventRepo.owner, eventRepo.repo, sha, {
@@ -193,7 +225,7 @@ function confirmCommentBody(login) {
   ].join('\n');
 }
 
-async function handleIssueComment(gh, event, eventRepo) {
+export async function handleIssueComment(gh, event, eventRepo, ledger = createGitLedger()) {
   const comment = event.comment;
   const issue = event.issue;
   if (!issue?.pull_request) {
@@ -231,7 +263,7 @@ async function handleIssueComment(gh, event, eventRepo) {
     return;
   }
 
-  const signatures = readSignatures(LEDGER_DIR);
+  const signatures = ledger.read();
   if (hasSigned(signatures, prAuthor.id)) {
     const existing = findSignature(signatures, prAuthor.id);
     console.log(`${prAuthor.login} already signed on ${existing.created_at} — no-op.`);
@@ -256,10 +288,9 @@ async function handleIssueComment(gh, event, eventRepo) {
   if (!added) {
     throw new Error(`Unexpected: ${prAuthor.login} already signed after hasSigned check`);
   }
-  writeSignatures(next, LEDGER_DIR);
+  ledger.write(next);
 
-  configureGitIdentity();
-  const committed = commitSignaturesChange(
+  const committed = ledger.commit(
     `chore(ipr): record signature for @${prAuthor.login} (${eventRepo.owner}/${eventRepo.repo}#${issue.number})`,
   );
   if (!committed) {
@@ -267,13 +298,28 @@ async function handleIssueComment(gh, event, eventRepo) {
   }
 
   await ensureComment(gh, eventRepo, issue.number, CONFIRM_COMMENT_MARKER, confirmCommentBody(prAuthor.login));
-  await setStatus(gh, eventRepo, headSha, {
-    state: 'success',
-    description: `@${prAuthor.login} signed just now`,
-  });
+
+  // A check job for a push that raced this signature may have read the ledger
+  // before the push above landed and marked its head pending. Re-read the PR
+  // head now that the signature is on main and mark it as well. Together with
+  // the post-pending re-read in handlePullRequestTarget, every interleaving
+  // ends with the latest head marked success.
+  const shas = new Set([headSha]);
+  try {
+    const latest = await gh.getPullRequest(eventRepo.owner, eventRepo.repo, issue.number);
+    if (latest?.head?.sha) shas.add(latest.head.sha);
+  } catch (err) {
+    console.warn(`Could not re-read PR head after recording: ${err.message ?? err}`);
+  }
+  for (const sha of shas) {
+    await setStatus(gh, eventRepo, sha, {
+      state: 'success',
+      description: `@${prAuthor.login} signed just now`,
+    });
+  }
 }
 
-async function handlePullRequestTarget(gh, event, eventRepo) {
+export async function handlePullRequestTarget(gh, event, eventRepo, ledger = createGitLedger()) {
   const pr = event.pull_request;
   if (!pr) {
     console.log('No pull_request payload — skipping.');
@@ -291,21 +337,31 @@ async function handlePullRequestTarget(gh, event, eventRepo) {
     return;
   }
 
-  const signatures = readSignatures(LEDGER_DIR);
-  if (hasSigned(signatures, prAuthor.id)) {
-    const existing = findSignature(signatures, prAuthor.id);
-    await setStatus(gh, eventRepo, headSha, {
-      state: 'success',
-      description: `@${prAuthor.login} signed on ${existing.created_at.slice(0, 10)}`,
-    });
-    return;
-  }
+  if (await setStatusIfSigned(gh, eventRepo, headSha, prAuthor, ledger.read())) return;
 
   await setStatus(gh, eventRepo, headSha, {
     state: 'pending',
     description: `Awaiting IPR Policy signature from @${prAuthor.login}`,
   });
+
+  // This job runs outside the signature-write concurrency group, so the
+  // checkout can predate a signature the author recorded while this job was
+  // starting. Re-read origin/main *after* posting pending: a signature that
+  // landed meanwhile overwrites the pending status here, and the write job
+  // re-marks the latest head after its push to cover the opposite order.
+  if (await setStatusIfSigned(gh, eventRepo, headSha, prAuthor, ledger.readLatest())) return;
+
   await ensureComment(gh, eventRepo, pr.number, CLAIM_COMMENT_MARKER, requestCommentBody(prAuthor));
+}
+
+async function setStatusIfSigned(gh, eventRepo, headSha, prAuthor, signatures) {
+  if (!signatures || !hasSigned(signatures, prAuthor.id)) return false;
+  const existing = findSignature(signatures, prAuthor.id);
+  await setStatus(gh, eventRepo, headSha, {
+    state: 'success',
+    description: `@${prAuthor.login} signed on ${existing.created_at.slice(0, 10)}`,
+  });
+  return true;
 }
 
 async function main() {
@@ -326,7 +382,21 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err.stack || err.message);
-  process.exit(1);
-});
+// Run only when invoked as a script so tests can import the handlers. Compare
+// real paths: Node resolves symlinks for the main module's import.meta.url but
+// not for argv[1], and a false negative here would silently skip the status.
+function invokedDirectly() {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
+  main().catch((err) => {
+    console.error(err.stack || err.message);
+    process.exit(1);
+  });
+}
