@@ -8,7 +8,7 @@ description: "Experimental trust.json v1: the agents an organization runs, ident
 `trust.json` is an organization-level record of which agents an organization runs, who may act for it, and whose grants it accepts. AdCP 3.3 ships its v1 JSON schemas as an **experimental** surface. Its first reader is the experimental Web Bot Auth signing profile.
 
 <Note>
-**What reads `trust.json` in AdCP 3.3.** The experimental Web Bot Auth signing profile derives an agent's trust record from its origin and reads the listing (origin and roles) when it binds a principal or evaluates `open` onboarding ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). Grants are read when a seller evaluates acts-for authority at `sync_accounts` ([Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033)). Nothing else consumes it, no one is required to publish it, and brand.json behavior is unchanged for the RFC 9421 signing profile. Outside those uses, third parties, crawlers, and registries must not treat a published `trust.json` as authority.
+**What reads `trust.json` in AdCP 3.3.** The experimental Web Bot Auth signing profile derives an agent's trust record from its origin and reads the listing (origin and roles) when it binds a principal or evaluates `open` onboarding ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). Grants are read when a seller evaluates acts-for authority, at `sync_accounts` and on the freshness schedule ([Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033)). Nothing else consumes it, no one is required to publish it, and brand.json behavior is unchanged for the RFC 9421 signing profile. Outside those uses, third parties, crawlers, and registries must not treat a published `trust.json` as authority.
 </Note>
 
 ## Status
@@ -83,6 +83,8 @@ A brand house that delegates authority and runs no agents. A grant names a grant
   ]
 }
 ```
+
+Grants for `adcp:media_buying` SHOULD narrow with `agents[]` on the link that reaches the buying agent, because a grant to a platform's domain otherwise covers every agent that platform lists. That link is the brand house's grant when the grantee's own agent buys, and the grantee's own grant to an intermediary when one buys for it. A grant's `agents[]` lists only its grantee's agents, so a narrowed house grant ends any chain through an intermediary: a house whose grantee uses one, as in the first grant above, leaves its grant unnarrowed. How a seller evaluates grants is in [Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental).
 
 An ad network that accepts publisher grants by reference, with the bulk entries in a sub-document:
 

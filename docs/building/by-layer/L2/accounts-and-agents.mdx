@@ -351,11 +351,11 @@ A `brand.json` listing is sufficient, not necessary. Finding the operator lets t
 
 **Self-authorization is implicit.** When the `operator` domain matches the brand's domain, the brand is operating directly — no listing in `authorized_operators` is needed.
 
-`authorized_operators` models the interface between the brand and whoever operates on its behalf. It does not model internal agency hierarchies.
+`authorized_operators` models the interface between the brand and whoever operates on its behalf. Grants in trust.json model one agency hop; see below.
 
 ### Grants in trust.json (experimental)
 
-From 3.3, a brand can publish demand-side grants in its `/.well-known/trust.json` ([trust.json](/docs/reference/trust-json), [DR-0025](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0025-demand-side-grants-in-trust-json.md), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033)). A grant says "this organization, optionally only these of its agents, may act for us, for these scopes, in these countries, during this window". It is the trust.json successor to `authorized_operators`.
+From 3.3, a brand's house can publish demand-side grants in its `/.well-known/trust.json` ([trust.json](/docs/reference/trust-json), [DR-0025](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0025-demand-side-grants-in-trust-json.md), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033)). A grant says "this organization, optionally only these of its agents, may act for us, for these scopes, in these countries, during this window". It is the trust.json successor to `authorized_operators`.
 
 ```json
 {
@@ -372,22 +372,30 @@ From 3.3, a brand can publish demand-side grants in its `/.well-known/trust.json
 }
 ```
 
-**How a seller evaluates it at `sync_accounts`:**
-- **The brand's record authorizes.** The seller reads the brand's own trust.json, or its house record when it has one. The buyer's operator record never authorizes a brand outside the operator's registrable domain.
-- **Implicit authority.** When `account.operator`, the brand, and the signer's operator share a registrable domain, authority is implicit. This matches self-authorization above.
+This section is the normative home for evaluating grants. Spec R6 and DR-0025 record the design and point here.
+
+**How a seller evaluates acts-for authority:**
+- **Domains compare as registrable domains.** `grantee`, `account.operator`, and the brand's domain are compared with the signer's operator, and with each other, as registrable domains under the pinned Public Suffix List snapshot from step 1 of [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) (spec R3a step 1).
+- **One record authorizes: the house's.** The seller reads `https://{house}/.well-known/trust.json`. The house is the domain the brand's brand.json names as its house (`house` on a house redirect, or a `house_domain` that the house's `brand_refs[]` reciprocates), and otherwise `account.brand.domain` itself. Grants in any other record are not consulted, including a record at the brand's own domain when the brand names a house, so the two never compete. The buyer's operator record never authorizes a brand outside the operator's registrable domain.
+- **Implicit authority.** When `account.operator`, the brand's domain, and the signer's operator are the same registrable domain, authority is implicit and no grant is needed. This extends self-authorization above, which compares the `operator` domain with the brand's domain exactly, to the registrable domain, because the signer's operator is a registrable domain.
 - **Otherwise a grant chain must reach the signer's operator** with a scope covering the operation (`adcp:media_buying` for buys). Any of these satisfies it:
-  - the brand grants the signer's operator, and `account.operator` is the signer's operator;
-  - the brand is `account.operator` and grants the signer's operator (a brand that runs its own account through an agent a platform hosts);
-  - the brand grants `account.operator`, and `account.operator`'s own trust.json grants the signer's operator (an agency using an intermediary, or a platform hosting the agency's agent).
+  - the house grants the signer's operator, and `account.operator` is the signer's operator;
+  - the brand is `account.operator` and its house grants the signer's operator (a brand that runs its own account through an agent a platform hosts);
+  - the house grants `account.operator`, and `account.operator`'s own trust.json grants the signer's operator (an agency using an intermediary, or a platform hosting the agency's agent).
 
-  `account.operator` MUST be on the chain.
-- **Matching.** `grantee` compares as a registrable domain, exactly. A grant's `agents[]` narrowing matches the signer by [canonical origin](/docs/reference/url-canonicalization#canonical-origin). Grants for `adcp:media_buying` SHOULD narrow with `agents[]`, because a grant to a platform's domain otherwise covers every agent that platform lists.
-- **Effective authority** is the intersection of brands, countries, scopes, and the earliest `valid_until` along the chain. A grantee never extends a grant it received; the second link is its own grant, and the intermediary cannot grant further.
-- **Absence.** `exclusive_grants: true` makes `grants[]` exhaustive for the scopes it names. Without it, an acts-for claim no grant covers stays at the seller's discretion: its own onboarding records, never the brand's brand.json. A fetch failure is never absence.
-- **No downgrade.** When the brand's trust.json fetch returns 200, `authorized_operators[]` in its brand.json is ignored. Through 3.x, `authorized_operators` stays a valid source when the brand publishes no trust.json.
-- **Freshness.** Grants are checked at `sync_accounts`, re-derived at least as often as the revocation polling interval, and re-checked before a spend-committing call when the cached result is older than that.
+  `account.operator` MUST be on the chain. A grantee never extends a grant it received: the second link is its own grant, and the intermediary cannot grant further.
+- **`agents[]` narrows the link that reaches the signer.** On any link that carries `agents[]`, the signer's [canonical origin](/docs/reference/url-canonicalization#canonical-origin) MUST be listed, or the chain ends at that link. A grant's `agents[]` names agents its grantee runs, so a house grant to `account.operator` that is narrowed to the agency's own agents never covers an intermediary's agent: a two-link chain needs an unnarrowed first link, and the narrowing goes on `account.operator`'s grant to the intermediary.
+- **Every link must cover the account, and effective authority is the intersection along the chain:**
+  - `profiles.adcp.brands` covers `account.brand.brand_id` (`["*"]` or an omitted list covers every brand the grantor owns);
+  - `countries` covers every value in `account.brand.countries`. A grant with no `countries` is global; a brand reference with no `countries` is covered only by a global grant;
+  - `scopes` covers the operation;
+  - the window runs from the latest `valid_from` to the earliest `valid_until` along the chain, and the check time falls inside it.
+- **Absence.** `exclusive_grants: true` makes `grants[]` exhaustive for the scopes it names. Without it, an acts-for claim no grant covers stays at the seller's discretion: its own onboarding records, never the house's brand.json.
+- **Fetch failure.** A grantor's trust record that can't be fetched is never absence and never `grant_absent`: a spend-committing call fails with the retryable `SERVICE_UNAVAILABLE`.
+- **No downgrade.** A 200 from the house's trust.json makes it the only source of grants, as the Coexistence rules in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) set out. Through 3.x, `authorized_operators` in brand.json stays a valid source only for a house that has never published a trust.json.
+- **Freshness.** Grants are checked at `sync_accounts` and on the freshness schedule in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities).
 
-**When no grant covers the claim,** the request fails with `PERMISSION_DENIED` and `error.details` `{ "scope": "agent", "reason": "grant_absent" }`. It is emitted only once the signer's identity is established, under the cross-tenant oracle clamp in [Per-Agent Authorization Gate](/docs/building/by-layer/L3/error-handling#per-agent-authorization-gate). It is a request-level authorization failure: no account is created, and no account changes status. Grants are public, so the reason discloses nothing the buyer can't already read. Like every authorization outcome for a signer whose identity is established, it uses the AdCP error envelope, never a Web Bot Auth status ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). A grantor's trust record that can't be fetched is not `grant_absent`: a spend-committing call fails with the retryable `SERVICE_UNAVAILABLE`. A record removed after the seller read it (`404` or `410`) is a removal, not an outage: the link it provided is gone, and brand.json `authorized_operators[]` does not come back.
+**When no grant covers the claim,** the request fails with `PERMISSION_DENIED` and `error.details` `{ "scope": "agent", "reason": "grant_absent" }`. It is emitted only once the signer's identity is established, under the cross-tenant oracle clamp in [Per-Agent Authorization Gate](/docs/building/by-layer/L3/error-handling#per-agent-authorization-gate). It is a request-level authorization failure: no account is created, and no account changes status. Grants are public, so the reason discloses nothing the buyer can't already read. Like every authorization outcome for a signer whose identity is established, it uses the AdCP error envelope, never a Web Bot Auth status ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)).
 
 **When a grant is withdrawn,** the agent loses access, not the account. Later calls from that agent fail with `grant_absent`. The account keeps its status and its live buys, and the operator can authorize a different agent for it. `suspended` stays a seller-initiated pause of the account itself.
 
