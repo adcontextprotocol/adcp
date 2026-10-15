@@ -1502,11 +1502,13 @@ Each SDK ships a CLI for dev-loop debugging — `npx @adcp/sdk@latest resolve <u
 
 **Identity is an origin.** A Web Bot Auth identity is the [canonical origin](/docs/reference/url-canonicalization#canonical-origin) `O` named by the signature's covered `Signature-Agent` member. One agent per origin; a governance agent is its own agent.
 
-**Verifying identity.** Identity is established when the signature verifies under a key from `O`'s key directory (`https://O/.well-known/http-message-signatures-directory`), and that key is not revoked in the identity's revocation list. That list is at `O`, at `/.well-known/governance-revocations.json` with the `adcp-gov-revocation+jws` type, and covers all of the identity's keys ([Transport revocation](#transport-revocation)).
+**Verifying identity.** Identity is established when the signature verifies under a key from `O`'s key directory (`https://O/.well-known/http-message-signatures-directory`), and that key is not revoked in the identity's revocation list. That list is at `O`, at `/.well-known/governance-revocations.json` with the `adcp-gov-revocation+jws` type, and covers all of the identity's keys. [Transport revocation](#transport-revocation) says what a request signed with a revoked key gets, and what an identity with no revocation list gets.
+
+Discovery failures and key removal follow WBA §6.10. A request the verifier cannot attribute to `O` is unverified, and what the verifier does with it is local policy under the draft: it handles the request as an anonymous caller's, or answers `403` with `Accept-Signature`.
 
 There is no capabilities fetch and no brand.json lookup, and verification creates no principal. A verified origin the seller has not bound is *identity-established*: it gets what an anonymous caller gets.
 
-**Evaluating the trust record.** The operator's trust record is evaluated when something is gated on it: binding a principal, evaluating a grant, or `open` onboarding. It is never evaluated on the signature path.
+**Evaluating the trust record.** The operator's trust record is evaluated when something is gated on it: binding a principal, evaluating a grant (once [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) lands), or `open` onboarding. It is never evaluated on the signature path.
 
 1. **Derive it.** `R = https://{eTLD+1(host(O))}/.well-known/trust.json`, using a pinned, dated Public Suffix List snapshot that includes the ICANN and PRIVATE sections.
    - An `O` whose host is an IP literal or a public suffix, or has no defined eTLD+1, has no trust record.
@@ -1514,36 +1516,24 @@ There is no capabilities fetch and no brand.json lookup, and verification create
    - Follow at most one `authoritative_location` hop, with zero HTTP redirects. A hop target that itself carries `authoritative_location` is rejected.
    - The **operator** is `eTLD+1(host(O))`: never a value inside the document, and never the host of a hop target.
 2. **Match.** Exactly one `agents[]` entry has a canonical origin equal to `O` and carries the role the gate requires (`adcp:buying` for a buyer).
-3. **Failure.** A failed derivation or match is an authorization outcome. It returns the gate's existing authorization error, one externally visible code, under the cross-tenant oracle clamp. The cause goes to logs only.
+3. **Failure.** A failed derivation or match is an authorization outcome. It returns `PERMISSION_DENIED` with no `details`, one externally visible code, under the cross-tenant oracle clamp. The cause goes to logs only.
 
 **Freshness and operator revocation.**
 - A binding is a cache of the trust-record evaluation, not a standing grant. Verifiers MUST re-evaluate it at least as often as the revocation polling interval, and before a spend-committing call when the cached result is older than that.
-- A fetch failure is not absence, and an outage never restores access.
-  - The last record the verifier read stays authoritative. An origin that record did not list stays delisted.
-  - A spend-committing operation fails closed with `SERVICE_UNAVAILABLE`, which is retryable.
-  - Other operations continue under the binding only within the grace window: until the last record that listed the origin is more than 4× the revocation polling interval past its freshness. After that, they also get `SERVICE_UNAVAILABLE` until a fetch succeeds.
-  - A `404` or `410` after the verifier has read a record is a removal, not an outage: every origin it listed is delisted.
-- An operator revokes an agent by removing its origin from the trust record. That ends every binding and grant that reaches the agent through the operator within one cache lifetime. The origin falls back to identity-established: it gets what an anonymous caller gets, as at first contact. While it is unlisted, `open` onboarding cannot bind it again, and the verifier still refuses RFC 9421 signatures for it (no downgrade).
+- A fetch failure is not absence: the last record the verifier read stays authoritative, and spend-committing operations fail closed with the retryable `SERVICE_UNAVAILABLE`. A seller MAY keep serving non-spend operations under the cached evaluation during an outage and SHOULD bound how long.
+- An operator revokes an agent by removing its origin from the trust record. That ends every binding and grant that reaches the agent through the operator within one cache lifetime. The origin falls back to identity-established: it gets what an anonymous caller gets, as at first contact. An operator that retires all of its agents publishes an empty `agents[]`.
 - Rate-limit, single-flight, and negative-cache trust-record fetches by host, by eTLD+1, and by hop target host. Cache negatives for at most 60 seconds.
 
 **Errors.** Signature failures use the Web Bot Auth status and headers: `403` with `Accept-Signature` for a missing or failed signature, `400` for headers that do not parse, and `429` for a reused nonce. An AdCP error body, when sent, is the generic authentication error with no signature-specific detail.
 
-Once identity is established, every authorization outcome uses the standard AdCP error envelope with existing codes, under the cross-tenant oracle clamp:
-- An operation outside what an identity-established caller may do gets the error an anonymous caller would get.
-- A failed binding or trust-record match gets the gate's authorization error (step 3 above).
-- A grant that does not cover the claim gets `PERMISSION_DENIED`.
-- A trust-record outage gets `SERVICE_UNAVAILABLE`, as Freshness above describes.
-
-A correctly signed request never gets `403` with `Accept-Signature`, which tells the signer to sign again.
-
-**Signer-side outages.** When the verifier can't confirm a signer's identity because the key directory can't be fetched, or the identity's revocation list is stale past grace, it answers `SERVICE_UNAVAILABLE` and serves nothing under that signature. There is no anonymous fallback, because a silent downgrade would hand the buyer different results with no error. A directory that is fetched but doesn't contain the key, or that is absent (`404` or `410`), is a signature failure.
+Once identity is established, every authorization outcome uses the standard AdCP error envelope with existing codes, under the cross-tenant oracle clamp. A request signed with a revoked key gets the answer in [Transport revocation](#transport-revocation). A correctly signed request never gets `403` with `Accept-Signature`, which tells the signer to sign again.
 
 **Cross-organization hosting.** A platform that runs an agent for a brand lists the agent in its own trust record, and the brand grants the platform's domain. There is no hosting-delegation fallback.
 
 **Coexistence with the RFC 9421 profile.**
 - **Profile selection.** A signed message that carries `Signature-Agent` or the `web-bot-auth` tag is verified under the Web Bot Auth profile only, never under the RFC 9421 profile. An uncovered `Signature-Agent` member is never attributed to the signature.
 - **No downgrade.** Once a verifier has bound `O`, it refuses RFC 9421 signatures for any agent URL whose origin is `O`. Before binding, an operator ends RFC 9421 use for an agent by removing its brand.json entry and keys.
-- **Grants.** A 200 from a grantor's trust.json makes it the grantor's only source of grants, and brand.json `authorized_operators[]` is ignored, as `specs/brand-identity-trust-split.md` §No downgrade sets out.
+- **Grants** (once [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) lands). A 200 from a grantor's trust.json makes it the grantor's only source of grants, and brand.json `authorized_operators[]` is ignored, as `specs/brand-identity-trust-split.md` §No downgrade sets out.
 
 #### Agent identity
 
@@ -1668,7 +1658,9 @@ Verifiers MUST NOT use the request bearer token, IP, or any non-`(keyid, nonce)`
 
 #### Transport revocation
 
-Under the RFC 9421 profile, operators SHOULD serve a single combined revocation list at the brand.json origin, covering governance, request-signing, and any other agent signing keys published under their `agents[]` entries. A Web Bot Auth identity serves its list at its own origin ([Web Bot Auth identities](#web-bot-auth-identities)). Format and signing semantics match the governance revocation list (see [Revocation](#revocation) above). For request-signing keys:
+Under the RFC 9421 profile, operators SHOULD serve a single combined revocation list at the brand.json origin, covering governance, request-signing, and any other agent signing keys published under their `agents[]` entries. A Web Bot Auth identity serves its list at its own origin ([Web Bot Auth identities](#web-bot-auth-identities)).
+
+Under the Web Bot Auth profile, a request signed with a revoked key gets the generic authentication error without `Accept-Signature`: the signer must stop using that key, so a hint to sign again would be wrong. An identity that serves no revocation list is identity-established, and cannot be bound for spend-committing operations, which fail closed. Format and signing semantics match the governance revocation list (see [Revocation](#revocation) above). For request-signing keys:
 
 - `revoked_kids` invalidates every request ever signed under that `kid` (before or after the revocation timestamp).
 - `revoked_jtis` is not used (request signatures don't have a `jti`; nonce uniqueness is per-key).
