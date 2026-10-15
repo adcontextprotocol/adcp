@@ -200,11 +200,10 @@ Supplying `trackers` replaces that assignment's previous tracker list; it does n
 
 Supporting sellers MUST return `trackers` in [`list_creatives`](/docs/creative/task-reference/list_creatives) `assignments.assigned_packages[]` and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) `packages[].creative_approvals[]`. Return the complete assignment-scoped list, preserving events, URL templates, order, and duplicate occurrences, or `[]` when there are no assignment trackers. This list excludes the creative's own trackers, which remain in its `assets` and also fire. Buyers can copy a nonempty list back as authored assignment state without duplicating the creative's trackers; use the reset recipe for an empty readback list. After an assignment `merge`, the buyer creative's package assignment trackers apply alongside that creative's trackers; the seller MUST validate the resulting combination or reject the atomic merge.
 
-This request assigns one existing creative to two packages with different measurement values. It uses `latest` because assignment trackers are unreleased 3.3 fields.
+This request assigns one existing creative to two packages with different measurement values. It requires the unreleased 3.3 assignment fields; each tracker follows the [assignment tracker schema](https://adcontextprotocol.org/schemas/latest/core/assignment-tracker.json). The request is validated against the source schema by the assignment-tracker tests.
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json",
   "account": { "account_id": "acct_acme" },
   "idempotency_key": "assignment-trackers-example-0001",
   "assignment_operations": [

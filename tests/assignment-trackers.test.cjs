@@ -134,6 +134,15 @@ test('sync supports multi-package assignment-only trafficking and atomic reset, 
   }
 });
 
+test('unreleased assignment tracker documentation request validates against the source schema', async () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/creative/task-reference/sync_creatives.mdx'), 'utf8');
+  const block = [...doc.matchAll(/```json\n([\s\S]*?)\n```/g)]
+    .find(match => match[1].includes('assignment-trackers-example-0001'));
+  assert.ok(block, 'assignment tracker request example must exist');
+  const validate = await compile('creative/sync-creatives-request.json');
+  assert.equal(validate(JSON.parse(block[1])), true, JSON.stringify(validate.errors));
+});
+
 test('assignment tracker capability defaults off, requires a library, and is independent of landing-page support', async () => {
   const creative = readSchema('protocol/get-adcp-capabilities-response.json').properties.creative;
   assert.equal(creative.properties.supports_assignment_trackers.default, false);
