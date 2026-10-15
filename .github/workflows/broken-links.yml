@@ -62,6 +62,12 @@ on:
     types:
       - completed
 
+# Cancel a PR's superseded run when a newer commit is pushed. Non-PR runs
+# each get their own group (run_id), so they are never cancelled or evicted.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   broken-links:
     runs-on: ubuntu-latest
