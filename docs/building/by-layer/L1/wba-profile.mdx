@@ -35,7 +35,7 @@ Under the profile, an identity is an origin, for example `https://buyer-7k3q.com
 
 Two agents cannot share an origin. An operator that runs several agents gives each its own origin, for example one subdomain per agent. Section 6.5 recommends this for agents that need to be told apart: "these should use distinct signing keys and signing key directories". The same rule covers purposes: a governance agent is an agent like any other, on its own origin (see [One agent per purpose](#one-agent-per-purpose)).
 
-`brand.json`, `adagents.json`, and a seller's onboarding records refer to an identity by its origin. If `trust.json` ([#7809](https://github.com/adcontextprotocol/adcp/issues/7809)) moves agents and grants out of `brand.json`, the same rule applies: `trust.json` lists agent origins with their roles and carries no keys.
+`brand.json`, `adagents.json`, and a seller's onboarding records refer to an identity by its origin. So does [`trust.json`](/docs/reference/trust-json): it lists agent origins with their roles and carries no keys. A multi-tenant vendor gives each tenant its own subdomain, for example `https://7f3a9c.sentinel-governance.example`, which serves that tenant's key directory.
 
 An agent that shares a host with other agents under the AdCP RFC 9421 profile keeps using that profile until it moves to its own origin. When it moves, the seller maps the agent's principal to that origin explicitly. Key discovery therefore never changes who the seller considers the caller to be.
 
@@ -46,7 +46,7 @@ Key lookup is keyed on the pair of origin and key, never on the key alone (secti
 Purpose belongs to the agent, not to the key. A governance agent is its own identity on its own origin, with its own key directory, so no key and no directory states a purpose. A verifier accepts a governance token when both of the following hold:
 
 1. The token's `kid` is in the key directory of the `iss` origin, and `jku` is that directory's URL.
-2. The `iss` origin is the buyer's governance agent: the governance-typed `agents[]` entry in the buyer's `brand.json`, or the `adcp:governance` role in `trust.json` once [#7809](https://github.com/adcontextprotocol/adcp/issues/7809) lands.
+2. The `iss` origin is the buyer's governance agent: the governance-typed `agents[]` entry in the buyer's `brand.json`, or the agent with the `adcp:governance` role in the buyer's [`trust.json`](/docs/reference/trust-json).
 
 Neither check is new. The first is this profile's key lookup, and the second is the governance-agent check AdCP already makes. How documents are signed is a separate decision (RFC #7878, D11). The vectors under `governance/` grade these two checks, and the rest of the token follows the existing [governance verification checklist](/docs/building/by-layer/L1/security#signed-governance-context).
 
