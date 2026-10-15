@@ -227,6 +227,30 @@
         "properties": {
           "media_buy": {
             "properties": {
+              "proposal_refinement": {
+                "properties": { "hold_extension": { "const": true } },
+                "required": ["hold_extension"]
+              }
+            },
+            "required": ["proposal_refinement"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.hold_extension" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
               "audience_targeting": {
                 "required": ["supported_activation_methods"]
               }
@@ -1349,11 +1373,25 @@
               },
               "uniqueItems": true
             },
+            "hold_semantics": {
+              "type": "string",
+              "enum": ["inventory_hold", "terms_only"],
+              "x-added-in": "3.3.0",
+              "x-status": "experimental",
+              "description": "Experimental (media_buy.delegated_composition). What a successful finalize commits by default, for products and drafts that do not declare hold_policy (experimental, media_buy.hold_policy); it is not one setting for the whole agent. A product or draft hold_policy overrides it: a terms_only agent can hold specific products, and an inventory_hold agent can declare non-holdable ones. The rules apply per finalize entry, according to that entry's effective policy. inventory_hold (the default when absent): the seller reserves inventory for the committed proposal and reports its hold expiry; hold_unavailable and hold-driven batch_aborted are possible outcomes. terms_only: the seller commits commercial terms without placing an inventory hold — reservation is owned by the requesting side (delegated composition, where the requester owns the sellable catalog). For an entry whose effective policy is terms-only, the seller MUST NOT return hold_unavailable, and returns batch_aborted only when a sibling failed for a non-hold reason or, in a batch that also contains holdable entries, a holdable sibling returned hold_unavailable. Buyers integrating a terms_only seller perform their own availability control at acceptance. Because committed meant inventory reserved before this field existed, a seller MUST NOT return a committed proposal whose effective policy is terms-only to a caller whose adcp_version is below 3.3; it fails the request at task level with UNSUPPORTED_FEATURE."
+            },
             "max_alternatives": {
               "type": "integer",
               "minimum": 2,
               "maximum": 10,
               "description": "Optional maximum alternatives.count the seller accepts, up to the protocol maximum of 10. Valid only when supported_dimensions includes alternatives. Requests above this ceiling fail at task level with VALIDATION_ERROR identifying refinements[i].alternatives.count; sellers MUST NOT silently clamp the request or return alternatives_unavailable for the declared ceiling violation."
+            },
+            "hold_extension": {
+              "type": "boolean",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "Whether the seller accepts action extend_hold on refine_proposals (feature id media_buy.hold_extension). This is the agent-level gate for the action: buyers MUST NOT send extend_hold unless this is true, and a seller that does not declare it fails the unknown action with VALIDATION_ERROR. extend_hold applies only to committed proposals that hold inventory; against a committed proposal with no hold (an entry whose effective policy is terms-only: hold_policy.available false, or no hold_policy at a seller declaring hold_semantics terms_only) the seller fails the request at task level with INVALID_STATE. When the committed proposal carries hold_policy, extendable false or absent (it defaults to false) means the seller declines with hold_unavailable and buyers SHOULD NOT send extend_hold; the successor's expires_at MUST NOT exceed the original hold_placed_at plus max_total_duration, which successors carry forward unchanged across the whole extension chain; a request the seller cannot extend at all returns hold_unavailable. Absent hold_policy (a seller that does not list media_buy.hold_policy), limits remain seller policy expressed through hold_unavailable.",
+              "default": false
             }
           },
           "required": ["supported_dimensions"],
@@ -1409,6 +1447,13 @@
         "supports_proposals": {
           "type": "boolean",
           "description": "Conformance declaration that this seller supports proposals through either the compact request/refine/finalize lifecycle or the legacy get_products facade. accept_proposal, or the create_media_buy compatibility facade, consumes a finalized committed proposal_id before expires_at.",
+          "default": false
+        },
+        "supports_exclusive_product_ids": {
+          "type": "boolean",
+          "x-added-in": "3.3.0",
+          "x-status": "experimental",
+          "description": "Experimental (media_buy.delegated_composition). Declares that this seller honors criteria.product_ids_exclusive: when a request sets it, the listed product_ids are the complete composable universe, and every proposal purchase, echoed product, and seller-selected signal resolves within them — a brief unsatisfiable within the universe returns rejected (request_proposals) or constraint_unsatisfiable (refine_proposals), never off-universe results. Refinements inherit the universe and may only narrow it. Buyers MUST NOT send the flag unless this is true. Sellers that do not declare this capability MUST NOT silently ignore the flag on request_proposals or refine_proposals; they reject the request at task level with UNSUPPORTED_FEATURE. Primary use is delegated composition, where the requesting platform owns the sellable catalog and the responding agent supplies only the composition judgment.",
           "default": false
         },
         "outcome_target": {
@@ -2545,6 +2590,12 @@
           "description": "When true, this agent accepts buyer-assigned revision_id on sync_creatives, enforces immutable revision content, echoes accepted revision identity, returns it from list_creatives, and attributes delivered executions to it. Revision support does not imply revision history, rollback, or staged activation.",
           "default": false
         },
+        "supports_assignment_landing_page": {
+          "type": "boolean",
+          "description": "When true, this agent accepts landing_page_url on creative assignments in create_media_buy, update_media_buy, and sync_creatives, serves that destination on the specified package or rejects the assignment, and returns the effective serving destination when unique in list_creatives and get_media_buys assignment readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
         "supports_generation": {
           "type": "boolean",
           "description": "When true, this agent can generate creatives from natural language briefs via build_creative. The buyer provides a message with creative direction, and the agent produces a manifest with generated assets. When false, build_creative only supports transformation or library retrieval.",
@@ -2797,6 +2848,20 @@
               "supports_revisions": { "const": true }
             },
             "required": ["supports_revisions"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_assignment_landing_page": { "const": true }
+            },
+            "required": ["supports_assignment_landing_page"]
           },
           "then": {
             "properties": {

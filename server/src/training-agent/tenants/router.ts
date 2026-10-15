@@ -12,6 +12,8 @@
 import { createHash } from 'node:crypto';
 import { Router, type Request, type Response, type RequestHandler } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+import type { AdcpCredential } from '@adcp/sdk/server';
 import { createLogger } from '../../logger.js';
 import { runWithAccountIdAliasScope, runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, resolveTenantHost, type RegistryHolder } from './registry.js';
@@ -536,13 +538,17 @@ function tenantMcpHandler(
         // Scrub any caller value even when no buyer agent resolves.
         delete req.body.params.arguments.__training_task_owner_scope;
         req.body.params.arguments.__training_principal = principal;
-        const credential = apiKeyCredential(req, principal);
+        const auth = (req as Request & { auth?: AuthInfo }).auth;
+        // Use the same upstream-authenticated credential and actor metadata
+        // as ordinary SDK tasks, including OAuth's organization/client scope.
+        const credential = (auth?.extra?.credential as AdcpCredential | undefined)
+          ?? apiKeyCredential(req, principal);
         const demoToken = principal.startsWith('static:demo:')
           ? principal.slice('static:demo:'.length)
           : undefined;
         const buyerAgent = await trainingBuyerAgentRegistry.resolve({
           credential,
-          ...(demoToken && { extra: { demo_token: demoToken } }),
+          extra: { ...(demoToken && { demo_token: demoToken }), ...auth?.extra },
           input: req.body.params.arguments,
         });
         // taskOwnerScopeFor() prioritizes the resolved buyer-agent identity.
