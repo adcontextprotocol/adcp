@@ -43,7 +43,7 @@ The namespace identifies the registry, while the revision pins the exact mapping
 
 Translation and value resolution are different operations. `translate_to_native` changes an AdCP token into a declared downstream token without inserting a runtime value. The translated asset replaces the old declaration with the supplied `translation_target`. `resolve_value` inserts a concrete value using the exact encoding profile. `preserve` performs no mutation.
 
-The first contract permits one translation hop followed by value resolution; `translation_target.next_operation` is therefore fixed to `resolve_value`, which prevents cycles and unbounded chains. On the sales execution path, a translation is compatible only when both seller-wide and selected-product sets contain the source translation tuple and an exact target resolution tuple. On `build_creative`, `preview_creative`, and `validate_input`, the selected `creative.supported_formats[]` route is the authoritative capability set and build-time operations use `performed_by: creative_agent`; no seller authority is borrowed. The emitted target declaration keeps the source `declaration_id`, `location`, `required`, and `unavailable_behavior`, and replaces token, dialect identity, operation, actor, and encoding from `translation_target`.
+The first contract permits one translation hop followed by value resolution; `translation_target.next_operation` is therefore fixed to `resolve_value`, which prevents cycles and unbounded chains. On the sales execution path, a translation is compatible only when both seller-wide and selected-product sets contain the source translation tuple and an exact target resolution tuple. On `build_creative`, `preview_creative`, and `validate_input`, the selected `creative.supported_formats[]` route is the authoritative capability set and build-time operations use `performed_by: creative_agent`; no seller authority is borrowed. The emitted target declaration keeps the source `declaration_id`, `location`, `required`, and `unavailable_behavior`, and replaces token, dialect identity, operation, actor, encoding, `universal_semantic`, and `gvl_vendor_id` from `translation_target`.
 
 ```json
 {
@@ -163,6 +163,18 @@ The click redirect's depth of two is part of the contract, not an implementation
 
 Every `declaration_id` is unique within its asset. Each declared token must exist at the named zero-based occurrence, and every claimed occurrence must have exactly one declaration. This occurrence-level rule prevents one encoding contract from being applied indiscriminately to the same spelling in a URL, path, or opaque markup context.
 
+### Vendor-scoped consent
+
+Google Ad Manager expands `${GDPR_CONSENT_<id>}`, where `<id>` is the IAB Global Vendor List (GVL) id of the vendor receiving the string, and Campaign Manager 360 tags ship `${GDPR_CONSENT_755}` (755 is Google's GVL id). See the Google [Ad Manager macros](https://support.google.com/admanager/answer/2376981) and [CM360 TCF](https://support.google.com/campaignmanager/answer/10031693) pages. `universal_semantic` stays the closed `GDPR_CONSENT`; the vendor id travels beside it as the optional integer `gvl_vendor_id` (`minimum: 1`) on `macro_declarations[]` and on `translation_target`. It is valid only when `universal_semantic` is `GDPR_CONSENT`. A declaration for `${GDPR_CONSENT_755}` therefore carries `token: "${GDPR_CONSENT_755}"`, `universal_semantic: "GDPR_CONSENT"`, and `gvl_vendor_id: 755`.
+
+The id has two sources. When the source token is already vendor-scoped, the id is on the source declaration and is copied to the target. When the source is the plain `{GDPR_CONSENT}` and the target is vendor-scoped, the id comes from the translator's own mapping or configuration. Three rules apply to every translator:
+
+1. **No vendor id, no placeholder.** A translator that has no `gvl_vendor_id` for a vendor-scoped target emits an empty value on the kept parameter. It never invents an id and never emits a placeholder such as `${GDPR_CONSENT_XXX}`, which no ad server can fill and which ships the URL with no consent signal. `{GDPR}` is translated independently and still passes. This rule governs what the translator emits; it does not change the declaration's `unavailable_behavior`. In a `translateUniversalMacros` mapping the empty value is `{ value: '' }`, which also lists the macro in `frozen_consent_macros`.
+2. **At most once per URL.** After translation, a vendor-scoped consent macro appears at most once in a URL, whatever its vendor id (one `${GDPR_CONSENT_<id>}` occurrence of any id per URL). Ad Manager documents that the macro "should only occur once within the URL". A translator that would emit a second keeps the first in query order and emits an empty value for the rest. No compliance vector pins this rule yet: the fixture mapping is per macro token, not per occurrence, so it cannot express it.
+3. **The id round-trips unchanged.** `gvl_vendor_id` on the source declaration is carried to `translation_target` with the same integer value. A translator never rewrites, defaults, or drops it. When a token embeds a GVL id, as in `${GDPR_CONSENT_755}`, the embedded id MUST equal `gvl_vendor_id`, and a declaration for such a token MUST carry `gvl_vendor_id`. Round-trip coverage is at the schema level: the compliance vectors below pin the emitted URL only, because the fixture mapping has no vendor-id channel.
+
+`{ADDTL_CONSENT}` (Google Additional Consent, `${ADDTL_CONSENT}` in Campaign Manager 360 display tags) is part of the universal vocabulary alongside `{GDPR_CONSENT}`.
+
 ## Capability matching and validation
 
 Sellers publish a seller-wide ceiling in `execution.creative_specs.macro_resolution_capabilities`. The selected product format option publishes the binding set in its top-level `macro_resolution_capabilities` field, alongside `format_kind` and `params`. Each entry is one exact semantic/operation/actor contract; it does not create a cross-product from a semantic list and maximum depth. Capability metadata is deliberately outside canonical `params`: it describes who can process a selected format option, not the creative shape itself.
@@ -249,7 +261,8 @@ Different creative contracts support different macros. Read macro support from t
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
 | `{GDPR}` | GDPR applicability flag | `1` (applies), `0` (doesn't apply) |
-| `{GDPR_CONSENT}` | IAB TCF 2.0 consent string | `CPc7TgPPc7TgPAGABC...` |
+| `{GDPR_CONSENT}` | IAB TCF 2.0 consent string. Vendor scope is carried by `gvl_vendor_id`; see [Vendor-scoped consent](#vendor-scoped-consent) | `CPc7TgPPc7TgPAGABC...` |
+| `{ADDTL_CONSENT}` | Google Additional Consent string | `1~89.108.122` |
 | `{US_PRIVACY}` | US Privacy (CCPA) string | `1YNN` |
 | `{GPP_STRING}` | Global Privacy Platform consent string | `DBABMA~CPXxRfAPXxRfAAfKABENB-CgAAAAAAAAAAYgAAAAAAAA` |
 | `{GPP_SID}` | GPP Section ID(s) indicating applicable sections | `7`, `7,8` (US National, US National + California) |
@@ -873,6 +886,7 @@ if (LIMIT_AD_TRACKING == 1 || DEVICE_ID == '' || DEVICE_ID == '00000000-0000-000
 **Empty Values**: Privacy-restricted macros return empty strings or zeros:
 - `{DEVICE_ID}` → `""` or `00000000-0000-0000-0000-000000000000` when LAT enabled
 - `{GDPR_CONSENT}` → `""` when no consent provided
+- `{ADDTL_CONSENT}` → `""` when no additional consent is provided
 - `{IP_ADDRESS}` → `""` or masked/truncated IP when privacy restricted
 
 **Always test for empty values** before using privacy-sensitive macros.

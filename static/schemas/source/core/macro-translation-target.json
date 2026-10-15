@@ -12,6 +12,12 @@
     "dialect_semantic": { "type": "string", "minLength": 1 },
     "mapping_status": { "$ref": "/schemas/enums/macro-mapping-status.json" },
     "universal_semantic": { "$ref": "/schemas/enums/universal-macro.json" },
+    "gvl_vendor_id": {
+      "type": "integer",
+      "minimum": 1,
+      "x-added-in": "3.3.0",
+      "description": "IAB Global Vendor List id carried unchanged from the source declaration. Valid only when `universal_semantic` is `GDPR_CONSENT`."
+    },
     "next_operation": {
       "type": "string",
       "const": "resolve_value"
@@ -22,6 +28,10 @@
   "required": ["token", "dialect", "dialect_semantic", "mapping_status", "next_operation", "performed_by", "encoding"],
   "additionalProperties": false,
   "allOf": [
+    {
+      "if": { "required": ["gvl_vendor_id"] },
+      "then": { "required": ["universal_semantic"], "properties": { "universal_semantic": { "const": "GDPR_CONSENT" } } }
+    },
     {
       "if": { "properties": { "dialect": { "enum": ["iab_vast", "iab_daast", "vendor"] } }, "required": ["dialect"] },
       "then": { "required": ["dialect_namespace", "dialect_revision"] }
