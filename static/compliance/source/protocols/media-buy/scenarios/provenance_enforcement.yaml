@@ -145,6 +145,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           context:
             correlation_id: "provenance_enforcement--get_products"
         validations:
@@ -194,6 +195,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           creatives:
             - creative_id: "acme_no_provenance_probe_001"
               name: "Acme no-provenance probe"
@@ -263,6 +265,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           creatives:
             - creative_id: "acme_no_dst_probe_001"
               name: "Acme no-digital_source_type probe"
@@ -337,6 +340,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           creatives:
             - creative_id: "acme_off_list_verifier_probe_001"
               name: "Acme off-list verifier probe"
@@ -424,6 +428,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           creatives:
             - creative_id: "acme_disclosure_probe_001"
               name: "Acme disclosure probe — missing block"
@@ -494,6 +499,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           creatives:
             - creative_id: "acme_disclosure_probe_001"
               name: "Acme disclosure probe — disclosure attached, on-list verifier"

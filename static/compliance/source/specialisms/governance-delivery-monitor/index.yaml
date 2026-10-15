@@ -350,6 +350,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-governance_delivery_monitor-5475949b"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           governance_context: "$context.governance_context"
@@ -483,6 +484,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-governance_delivery_monitor-5475949b"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true

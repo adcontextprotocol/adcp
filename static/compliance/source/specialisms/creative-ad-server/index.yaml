@@ -326,6 +326,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_ad_server-f52e861a"
+            sandbox: true
           media_buy_ids:
             - "mb_summer_campaign_001"
 
@@ -397,6 +398,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_ad_server-f52e861a"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#creative-ad-server-report-usage"
           reporting_period:
             start: "2099-03-01T00:00:00Z"
