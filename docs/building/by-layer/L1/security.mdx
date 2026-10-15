@@ -1748,6 +1748,8 @@ Buyers MUST NOT derive signer identity from webhook payload fields (`task_id`, `
 
 **Verifier checklist for webhooks.** Apply these 15 checks (14 numbered steps plus sub-step 9a) in order, short-circuiting on the first failure. Step 14 decomposes into 14a (strict-parse requirement) and 14b (logging discipline) — both apply whenever step 14 runs; they are elaborations of one check, not separate checks in the count. The steps below are the [request verifier checklist](#verifier-checklist-requests) with **three profile substitutions** — the `tag` value (`adcp/webhook-signing/v1` instead of `adcp/request-signing/v1`), the direction-of-trust resolution (seller's brand.json `agents[]` entry instead of the buyer's), and webhook v1's legacy unpadded Base64URL binary-value decoder instead of the 3.2 request profile's RFC 8941 Base64 decoder. Parser mode comes from the trusted webhook route/profile configuration before header parsing; it is not a lenient fallback after request-profile parsing fails. Step 14 (body well-formedness) is identical across the two profiles; only the error-code prefix differs (`webhook_body_malformed` vs `request_body_malformed`). Implementations SHOULD share verifier code between the two profiles, branch on the three profile parameters, and configure the profile-specific error codes — NOT fork the implementation. Error codes are prefixed `webhook_*` — most carry the `webhook_signature_*` infix, plus structural codes without it (currently `webhook_target_uri_malformed`, `webhook_mode_mismatch`, `webhook_body_malformed`) — so caller-side error handling distinguishes the two profiles.
 
+**Before step 1: bound the body.** Receivers SHOULD apply the [inbound body bounds](#inbound-body-bounds) — the byte cap (4 MiB default), the depth-64 and 100,000-member parse bounds, and the connect, idle, and total deadlines — before running step 1, since the checklist parses signature parameters and computes `content-digest` over the full body before it reaches step 14. An over-limit request is rejected with HTTP 413 and is not one of the 15 checks below or a `webhook_*` code.
+
 1. Parse `Signature-Input` structure per RFC 9421 §4 and decode the `Signature` binary token with the webhook-v1 unpadded Base64URL profile. Reject if malformed (`webhook_signature_header_malformed`). If `Signature` or `Signature-Input` is present without the other, reject with the same code — a bound pair, not a guessable one.
 2. Reject if any of `created`, `expires`, `nonce`, `keyid`, `alg`, or `tag` is absent from the `Signature-Input` parameters (`webhook_signature_params_incomplete`).
 3. Reject if `tag` is not exactly `adcp/webhook-signing/v1` (`webhook_signature_tag_invalid`). Byte-for-byte match; no case-folding.
@@ -2348,8 +2350,9 @@ and [Discovery responses stay small](/docs/building/concepts/managing-response-s
 
 **Scope.** This section covers responses a client reads on its own call path.
 Inbound deliveries a buyer *receives* — A2A push notifications and
-[AdCP webhooks](#webhook-callbacks) — are a server-side surface that needs its
-own request-body cap; the same streaming discipline applies there.
+[AdCP webhooks](#webhook-callbacks) — are a server-side surface with its
+own request-body cap; see [Inbound body bounds](#inbound-body-bounds). The same
+streaming discipline applies there.
 
 These bounds are the discipline the [SSRF fetch rules](#webhook-url-validation-ssrf)
 already apply to counterparty-supplied URLs and the
@@ -2360,6 +2363,93 @@ on its own call path. They do not replace the per-field hygiene in
 — length limits on seller strings, control-character stripping,
 prototype-pollution filtering. A size bound is what keeps the process alive
 long enough to apply them.
+
+### Inbound body bounds
+
+A webhook endpoint is reachable by anyone who learns its URL, and its request
+body is untrusted until signature verification passes. The memory-exhaustion
+shape from [Response Size Bounds](#response-size-bounds) applies unchanged: the
+peer chooses the byte count, and the expensive work — decompression, JSON
+parsing, RFC 9421 or Web Bot Auth (WBA) verification — runs before any trust
+decision. An unauthenticated peer that can force that path has an allocation
+primitive.
+
+Receivers of A2A push notifications (`push_notification_config.url`
+deliveries) and of AdCP webhooks — reporting, artifact, collection-list, and
+account notification subscribers — **SHOULD** bound the request body. The bound
+is the same discipline as the client-side one, applied to what a peer pushes
+rather than what a client pulls:
+
+1. **It pre-rejects on `Content-Length`.** A declared length over the cap is
+   rejected before the first body byte is read. A request with no
+   `Content-Length`, such as chunked transfer, is not exempt; the streaming
+   count below is what bounds it.
+2. **It counts decoded bytes while streaming.** The count covers bytes after
+   any `Content-Encoding` is decoded, and the decoder output buffer is bounded,
+   so a small compressed body cannot expand past the cap. Raw bytes off the wire
+   are counted against the same cap as well, whichever trips first, so a chunked
+   body with no `Content-Length` cannot run unbounded. The receiver aborts the
+   read the moment a count passes the cap rather than buffering the body and
+   measuring it afterwards. A receiver MAY reject any `Content-Encoding` other
+   than identity on a webhook route; nothing in the webhook profile requires a
+   compressed body. A request carrying both `Content-Length` and
+   `Transfer-Encoding: chunked`, or conflicting `Content-Length` values, is
+   rejected rather than reconciled, as on the response side.
+3. **It bounds what the bytes become, before verification.** After the byte
+   cap passes, the receiver enforces a maximum JSON nesting depth of 64 and at
+   most 100,000 aggregate object members and array elements, matching the
+   task-body caps in [Attestation resolution fetch contract](#attestation-resolution-fetch-contract),
+   and rejects an over-limit document **before** RFC 9421 or WBA verification
+   (and before any legacy HMAC or Bearer check). The bounds are enforced
+   incrementally, by a streaming or abort-on-limit parser, not by buffering the
+   body and running a full parse that has already allocated the document: a
+   counting scanner that aborts at depth 65 or member 100,001 does not itself
+   become the allocation primitive. Verification parses and canonicalizes the
+   request — signature parameters, a `content-digest` or HMAC computed over the
+   full body, and, for webhooks, the body-well-formedness check that is the
+   only step to parse the body itself — and a legacy or receiver-specific path
+   may parse the body earlier still. Bounding first keeps every one of those
+   paths away from input an unauthenticated peer chose. The order is: byte cap,
+   then depth and member bounds, then verification.
+4. **It applies deadlines.** A connect deadline (for a server, the connection
+   and TLS handshake together with the request-header read), a read-idle
+   deadline, and a total deadline for the whole request. The request header
+   section is bounded separately from the body. The spec fixes no values here;
+   the numeric budgets on the [brand.json fetch](#discovering-an-agents-signing-keys-via-brand_json_url)
+   are a reasonable reference. A peer that opens a connection and
+   trickles bytes, or stalls mid-body, otherwise holds a worker for as long as
+   it likes without ever tripping a byte cap.
+5. **It errors; it does not truncate.** An over-limit request is rejected with
+   HTTP `413 Content Too Large`, for a byte, depth, or member violation alike.
+   A truncated body is a payload the receiver
+   might still parse, and the signature and `content-digest` would not cover
+   it. The rejection is an HTTP status, not an `adcp_error.code` and not a
+   `webhook_*` verification code, because it happens before verification
+   runs. The receiver MUST NOT log, echo, or process any excerpt of the
+   rejected body, which has passed none of the verification or string hygiene
+   checks. The same body fails the same way on every attempt, so a sender that
+   retries a `413` on its non-2xx backoff schedule (see
+   [retry semantics](#webhook-callbacks)) only repeats the cost. The receiver
+   closes the connection when it has not read the full body.
+
+**Default.** The cap defaults to no more than 4 MiB (4,194,304 bytes). This
+generalizes the 4 MiB task-body cap in
+[Attestation resolution fetch contract](#attestation-resolution-fetch-contract)
+to inbound push and webhook deliveries rather than adding a second number, and the depth and
+member bounds are that section's 64 and 100,000. The limit SHOULD be
+configurable per endpoint, so a receiver with a specific reason to accept a
+larger body from a known sender raises it deliberately rather than globally. A
+receiver that implements this bound MUST NOT ship an unbounded mode as the
+default. This section does not weaken the attestation task-body cap, which
+remains a MUST wherever a task can carry portable attestations.
+
+**Precedence.** As in the response-side [Precedence](#response-size-bounds)
+paragraph, 4 MiB is a ceiling on what a default may be, not a target and not a
+license to raise a tighter cap. Where a feature defines its own inbound cap,
+that cap governs that feature's deliveries — for example, the 1 MB payload
+limit in [Webhooks](/docs/building/by-layer/L3/webhooks#security-requirements)
+governs webhook deliveries. A tighter default is always
+conformant; a larger one is not.
 
 ## Audit Logging
 
@@ -2416,6 +2506,7 @@ function logSecurityEvent(eventType, details) {
 - [ ] Rotate credentials every 90 days
 - [ ] Use HTTPS for all AdCP communications
 - [ ] Bound every agent response, enforced while the body streams, defaulting to no more than 4 MiB ([response size bounds](#response-size-bounds))
+- [ ] Bound every inbound push-notification and webhook body, enforced before signature verification, defaulting to no more than 4 MiB ([inbound body bounds](#inbound-body-bounds))
 - [ ] Validate responses from publishers
 - [ ] Implement alerts for unusual spending patterns
 
