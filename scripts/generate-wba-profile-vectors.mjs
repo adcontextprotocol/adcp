@@ -155,7 +155,7 @@ const request = h => ({ method: 'POST', url: TARGET, headers: h, body });
 
 /** The Accept-Signature member the verifier sends with a 403 (RFC 9421 section 5.1). */
 function acceptSignature(label, components, freshNonce = false) {
-  const doc = { label, components, parameters: ['created', 'expires', 'nonce', 'keyid', 'tag'], tag: 'web-bot-auth' };
+  const doc = { label, components, parameters: ['created', 'expires', 'nonce', 'keyid', 'alg', 'tag'], tag: 'web-bot-auth' };
   if (freshNonce) doc.nonce = 'verifier-chosen';
   return doc;
 }

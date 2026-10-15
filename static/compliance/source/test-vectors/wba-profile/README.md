@@ -77,7 +77,7 @@ Every request vector has this shape:
     "accept_signature": {
       "label": "sig1",
       "components": "(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\" \"signature-agent\";key=\"sig1\")",
-      "parameters": ["created", "expires", "nonce", "keyid", "tag"],
+      "parameters": ["created", "expires", "nonce", "keyid", "alg", "tag"],
       "tag": "web-bot-auth"
     },
     "reason": "..."
@@ -92,7 +92,7 @@ Every request vector has this shape:
 - **`spec_reference`**: the section of `wba-profile.mdx` the vector grades.
 - **`signing_profile`**: always `web-bot-auth`. A verifier selects these vectors by this value and never grades them as AdCP RFC 9421 profile cases.
 - **`reference_now`**: Unix seconds. Inject this as the verifier's wall clock instead of using the real time.
-- **`request`**: the raw HTTP request the verifier receives. Header names are case-insensitive; `body` is the exact byte string on the wire. Binary header values use RFC 8941 `sf-binary` (standard Base64 with padding). Every request vector is a `create_media_buy` call. Run it against a verifier that lists `create_media_buy` in `required_for`: outside `required_for`, a signature that falls short of the profile rules is ignored rather than answered with `403`.
+- **`request`**: the raw HTTP request the verifier receives. Header names are case-insensitive; `body` is the exact byte string on the wire. Binary header values use RFC 8941 `sf-binary` (standard Base64 with padding).
 - **`response`**: present on the directory-response vector only. The response the directory server sends to `request`, with `status`, `headers`, and the exact `body`.
 - **`directories`**: the key directory each origin serves, as a list of `kid` values from `keys.json`. The harness answers a fetch of `<origin>/.well-known/http-message-signatures-directory` with a JWK Set holding exactly those keys. An origin absent from the object serves no directory. Several vectors list more than one origin so that a harness can show the trap the vector guards against (see `006-key-not-in-named-directory`).
 - **`test_harness_state`**: optional. Preloads verifier state before verification. `replay_cache_entries` lists `{ identity, nonce, ttl_seconds }` pairs the verifier has already accepted. Reset verifier state before every vector.

@@ -46,6 +46,7 @@
         "expires",
         "nonce",
         "keyid",
+        "alg",
         "tag"
       ],
       "tag": "web-bot-auth",
