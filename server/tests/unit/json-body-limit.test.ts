@@ -9,4 +9,8 @@ describe('JSON transport body limits', () => {
     expect(jsonBodyLimitForPath('/api/me/member-profile')).toBe('10mb');
     expect(jsonBodyLimitForPath('/api/json/validate-upload')).toBe('16kb');
   });
+
+  it('caps the public creative-features verifier body', () => {
+    expect(jsonBodyLimitForPath('/governance/creative-features/mcp')).toBe('16kb');
+  });
 });

@@ -72,6 +72,11 @@ const EXEMPT_MCP_EXACT = [
   // check_governance there. Bearer-authenticated; no cookie route handles
   // POST / on any host.
   "/",
+  // Public conformance verifier for provenance truth-of-claim storyboards
+  // (adcp#8199). Server-to-server and deliberately unauthenticated: stateless,
+  // cookie-less, and serving only fixture-keyed get_creative_features. Two
+  // segments before /mcp, so PER_TENANT_MCP_PATH does not match it.
+  "/governance/creative-features/mcp",
 ];
 
 /** Other exact paths exempt from CSRF (not prefix-matched to avoid over-matching). */
