@@ -749,6 +749,27 @@
       "if": {
         "properties": {
           "scenario": {
+            "const": "force_hold_unavailable"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "proposal_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
             "const": "force_upstream_unavailable"
           }
         }
@@ -981,7 +1002,7 @@
   "properties": {
     "scenario": {
       "type": "string",
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'reporting_core_lifecycle_probe' installs a caller/account-scoped Core fixture whose first elapsed obligation is visible before any report, advances its virtual clock into delayed or action_required, and can publish deterministic zero-row or non-empty revisions, restate a provisional revision, restate one the caller already received, or cross the consumer-status deadline and consumer-mismatch escalation boundaries, without waiting for wall-clock boundaries. Other scenarios provide deterministic sandbox probes for their documented lifecycle checks. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'reporting_core_lifecycle_probe' installs a caller/account-scoped Core fixture whose first elapsed obligation is visible before any report, advances its virtual clock into delayed or action_required, and can publish deterministic zero-row or non-empty revisions, restate a provisional revision, restate one the caller already received, or cross the consumer-status deadline and consumer-mismatch escalation boundaries, without waiting for wall-clock boundaries. 'force_hold_unavailable' (experimental, media_buy.hold_policy) makes the next refine_proposals finalize of one draft proposal fail with hold_unavailable, its batch siblings with batch_aborted, and is then consumed. Other scenarios provide deterministic sandbox probes for their documented lifecycle checks. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
     },
     "params": {
       "type": "object",
@@ -1014,7 +1035,7 @@
         "proposal_id": {
           "type": "string",
           "minLength": 1,
-          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires, or the draft or committed proposal whose pinned definition definition_pin_probe mutate_definition changes.",
+          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires, the draft or committed proposal whose pinned definition definition_pin_probe mutate_definition changes, or the holdable draft proposal whose next finalize force_hold_unavailable fails with hold_unavailable.",
           "x-entity": "proposal"
         },
         "pricing_option_id": {

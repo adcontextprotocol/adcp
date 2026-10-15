@@ -80,6 +80,7 @@ Sellers that implement compliance test controller MUST:
           "force_get_products_arm",
           "force_get_signals_arm",
           "force_get_creative_features_arm",
+          "force_hold_unavailable",
           "force_task_completion",
           "force_session_status",
           "simulate_delivery",
@@ -101,7 +102,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_media_buy_purge: {media_buy_id}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. reporting_core_lifecycle_probe: {operation: prepare | publish_zero_row | publish_nonempty | restate_snapshot | omit_obligation | advance_past_status_deadline | advance_past_escalation}, {operation: advance_time, target_health: delayed | action_required}, or {operation: restate_after_received, received_reporting_revision_id, advance_to?: within_grace | past_grace}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_creative_features_arm: {arm: submitted, task_id, evaluation_id, message?} or {arm: completed, result}. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?, property_delivery?, installment_property_delivery?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_media_buy_purge: {media_buy_id}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. reporting_core_lifecycle_probe: {operation: prepare | publish_zero_row | publish_nonempty | restate_snapshot | omit_obligation | advance_past_status_deadline | advance_past_escalation}, {operation: advance_time, target_health: delayed | action_required}, or {operation: restate_after_received, received_reporting_revision_id, advance_to?: within_grace | past_grace}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_creative_features_arm: {arm: submitted, task_id, evaluation_id, message?} or {arm: completed, result}. force_hold_unavailable: {proposal_id}. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?, property_delivery?, installment_property_delivery?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -811,6 +812,40 @@ reads, so repeating them after consumption is a new read and is not guaranteed
 to replay the forced response. `get_creative_features` is replay-protected:
 repeating the exact request with its original `idempotency_key` returns the
 cached forced response even though the directive slot has already been consumed.
+
+### `force_hold_unavailable`
+
+Experimental (`media_buy.hold_policy`). Makes the next [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals#finalize-and-hold-inventory) `finalize` of one draft proposal fail as if the seller could not honor the draft's [`hold_policy`](/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental) minimum. No storyboard can otherwise make a real seller run out of inventory on demand, so this is how a runner reaches the all-or-none failure path deterministically. Any seller that places inventory holds MAY advertise it. The scenario is experimental and rides on the `media_buy.hold_policy` feature id. Sellers that do not hold inventory never need it.
+
+**Params:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `proposal_id` | string | Yes | Draft proposal, owned by the calling sandbox account, whose next finalize fails |
+
+```json
+{
+  "scenario": "force_hold_unavailable",
+  "params": {
+    "proposal_id": "prop_draft_ctv"
+  },
+  "account": {
+    "sandbox": true
+  }
+}
+```
+
+A successful registration uses the `ForcedHoldUnavailableSuccess` response shape: `success: true` and `forced.proposal_id` echoing the draft. Nothing else changes yet, and the draft stays finalizable.
+
+The directive applies to the next finalize from the same sandbox account (account + principal pair) whose batch includes that proposal and that reaches hold placement. For that batch the seller MUST:
+
+- return the named entry `unable` with `reason_code: "hold_unavailable"`;
+- return every otherwise-eligible sibling entry `unable` with `reason_code: "batch_aborted"`, including terms-only siblings, because a holdable sibling failed (a sibling that fails for its own reason, such as `definition_changed`, keeps that code);
+- return no `finalized` result, create no committed proposal, and place no hold, as for any failed finalize.
+
+The directive is then consumed. If the finalize completes as a `submitted` task, the failure surfaces in the completed task result and the directive is consumed when the task completes. If one batch names several proposals that each carry a directive, all of them are consumed, since each returns `hold_unavailable`. A later finalize of the same draft proceeds as it would have without the directive, and the draft is still a draft in between. An exact retry of the failed finalize under its original `idempotency_key` replays the original response and does not consume a directive registered after the failure. These do not consume the directive, because no hold is attempted: a finalize that does not include the proposal, any task-level rejection before hold placement (validation, the version gate, `INVALID_STATE`, [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired)), a finalize whose pin verification fails before any hold is created (the failing entry returns its own `definition_changed` and eligible siblings `batch_aborted`), and `extend_hold`. A second `force_hold_unavailable` for the same proposal before consumption leaves a single directive, so the call is naturally idempotent.
+
+**Errors.** The seller returns `NOT_FOUND` when the proposal does not exist or does not belong to the calling sandbox account, and `INVALID_STATE` when it is not a draft or its effective policy is terms-only: `hold_unavailable` is never valid for such an entry, so the seller MUST NOT register a directive that would force it. A seller that does not support the scenario returns [`UNKNOWN_SCENARIO`](/docs/building/by-layer/L3/comply-test-controller#error-codes).
 
 ### `force_task_completion`
 

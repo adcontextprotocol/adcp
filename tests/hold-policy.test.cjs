@@ -233,3 +233,35 @@ test('experimental-status registry lists media_buy.hold_policy', () => {
   assert.match(row, /core\/hold-policy\.json/);
   assert.match(row, /Availnet/);
 });
+
+test('comply_test_controller force_hold_unavailable requires the draft proposal_id', async () => {
+  const validate = await compile('/schemas/compliance/comply-test-controller-request.json');
+  const request = params => ({
+    adcp_version: '3.3',
+    scenario: 'force_hold_unavailable',
+    account: { sandbox: true },
+    ...params,
+  });
+  assert.equal(validate(request({ params: { proposal_id: 'availnet_draft_01' } })), true, errors(validate));
+  assert.equal(validate(request({})), false, 'params is required');
+  assert.equal(validate(request({ params: {} })), false, 'proposal_id is required');
+  assert.equal(validate(request({ params: { proposal_id: '' } })), false, 'proposal_id is not empty');
+});
+
+test('comply_test_controller reports a registered hold failure with the forced proposal_id only', async () => {
+  const validate = await compile('/schemas/compliance/comply-test-controller-response.json');
+  const forced = { adcp_version: '3.3', status: 'completed', success: true, forced: { proposal_id: 'availnet_draft_01' } };
+  assert.equal(validate(forced), true, errors(validate));
+  assert.equal(validate({ ...forced, message: 'registered' }), true, errors(validate));
+  assert.equal(validate({ ...forced, forced: {} }), false, 'proposal_id is required');
+  assert.equal(validate({ ...forced, forced: { proposal_id: 'availnet_draft_01', arm: 'submitted' } }), false, 'no arm on a hold failure');
+  assert.equal(validate({ ...forced, forced: { arm: 'submitted' } }), true, 'the arm directive shape is unchanged');
+  assert.equal(validate({ ...forced, previous_state: 'draft' }), false, 'not a state transition');
+
+  const arm = readSchema('compliance/comply-test-controller-response.json').oneOf.find(
+    branch => branch.title === 'ForcedHoldUnavailableSuccess',
+  );
+  assert.equal(arm['x-status'], 'experimental');
+  assert.equal(arm['x-added-in'], '3.3.0');
+  assert.equal(arm.properties.forced.properties.proposal_id['x-added-in'], '3.3.0');
+});
