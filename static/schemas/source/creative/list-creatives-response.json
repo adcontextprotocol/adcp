@@ -278,6 +278,12 @@
                       "format": "date-time",
                       "description": "When this assignment was created"
                     },
+                    "trackers": {
+                      "type": "array",
+                      "items": { "$ref": "/schemas/core/assignment-tracker.json" },
+                      "description": "The complete assignment-scoped tracker list for this creative on this package, retaining the accepted URL templates, events, multiplicity, and order. Sellers supporting creative.supports_assignment_trackers MUST return this array, using [] when no assignment trackers exist. Excludes the creative's own trackers, which remain in its assets and also fire for this placement; this is not a combined effective tracker list.",
+                      "x-added-in": "3.3.0"
+                    },
                     "landing_page_url": {
                       "$ref": "/schemas/core/macro-bearing-url.json",
                       "description": "The landing page actually served for this creative on this package: the assignment override when present, otherwise the creative's own click-through destination when unique. Sellers supporting creative.supports_assignment_landing_page MUST return that effective destination when it is unique. Omit when no destination exists or an unoverridden creative has multiple destinations; those remain available in the creative's assets. MUST NOT select one destination arbitrarily. Macro-bearing readback retains the effective URL template under the same rules as the creative's own click-through.",
