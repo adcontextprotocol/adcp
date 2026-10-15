@@ -363,7 +363,7 @@
     "delete_missing": {
       "type": "boolean",
       "default": false,
-      "description": "When true, creatives not included in this sync will be archived. Use with caution for full library replacement. Invalid when creative_ids is provided — delete_missing applies to the entire library scope, not a filtered subset."
+      "description": "When true, creatives not included in this sync will be archived. Use with caution for full library replacement. A seller that declares creative.stable_creative_ids never archives creatives that entered its library outside sync_creatives; other sellers may archive them, so buyers SHOULD NOT use delete_missing against such sellers when seller-created creatives matter. Invalid when creative_ids is provided — delete_missing applies to the entire library scope, not a filtered subset."
     },
     "dry_run": {
       "type": "boolean",

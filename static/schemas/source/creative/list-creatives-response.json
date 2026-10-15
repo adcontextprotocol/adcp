@@ -64,12 +64,18 @@
         "properties": {
           "creative_id": {
             "type": "string",
-            "description": "Unique identifier for the creative",
+            "description": "Unique identifier for the creative. For a creative that entered the library outside sync_creatives, the seller assigns it. Sellers SHOULD keep it stable for the creative's lifetime and unique within the account, and MUST when they declare creative.stable_creative_ids.",
             "x-entity": "creative"
+          },
+          "platform_id": {
+            "type": "string",
+            "description": "The seller's identifier for this creative in its source of truth. Same meaning as platform_id in the sync_creatives response, readable after that response is gone. May equal creative_id for seller-assigned creatives.",
+            "$comment": "x-entity deliberately omitted: seller-opaque identifier in the seller's own namespace; buyers echo creative_id, never platform_id, on AdCP requests.",
+            "x-added-in": "3.3.0"
           },
           "revision_id": {
             "$ref": "/schemas/core/creative-revision-id.json",
-            "description": "Current buyer-authored input revision for this creative. Present when the current effective content has revision identity and the seller advertises creative.supports_revisions; omitted after an accepted content-bearing legacy update without revision_id.",
+            "description": "Current buyer-authored input revision for this creative. Present when the current effective content has revision identity and the seller advertises creative.supports_revisions; omitted after an accepted content-bearing legacy update without revision_id. Sellers MUST NOT mint one for a creative that entered the library outside sync_creatives; it appears only after a buyer supplies one through sync_creatives.",
             "x-adcp-validation": {
               "verifier_constraints": {
                 "revision_readback": {

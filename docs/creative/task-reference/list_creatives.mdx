@@ -185,6 +185,7 @@ The response provides creative data with optional enrichment:
   "creatives": [
     {
       "creative_id": "ft_88201",
+      "platform_id": "cr_400918",
       "revision_id": "rev_2026_08_23_01",
       "name": "Holiday Sale - Medium Rectangle",
       "format_kind": "image",
@@ -222,7 +223,8 @@ transcode version. Older creatives without revision identity may omit it.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `creative_id` | string | Unique creative identifier |
+| `creative_id` | string | Unique creative identifier. Assigned by the seller for creatives created outside AdCP. |
+| `platform_id` | string | The seller's identifier for the creative in its source of truth. Same value `sync_creatives` returns. |
 | `revision_id` | string | Current buyer-authored input revision when the current content is revision-bound. Omitted for legacy/unversioned current content. |
 | `name` | string | Human-readable name |
 | `format_kind` | string | Canonical format kind |
@@ -246,6 +248,18 @@ transcode version. Older creatives without revision identity may omit it.
 | `snapshot_unavailable_reason` | string | Why snapshot is missing — `SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, or `SNAPSHOT_PERMISSION_DENIED` |
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
 | `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as [`get_signals`](/docs/signals/tasks/get_signals) and [`list_content_standards`](/docs/governance/content-standards/tasks/list_content_standards). |
+
+### Creatives created outside AdCP
+
+A creative can enter the seller's library without `sync_creatives`: through a seller UI or API, seller automation, or another system. That happens, for example, when a buyer connects to an advertiser that already has live buys and creatives. Those creatives have no buyer-assigned ID, so the seller assigns their `creative_id`, and the buyer uses it to reference them in later requests.
+
+- Sellers SHOULD keep that ID stable for the creative's lifetime and unique within the account, and SHOULD use UUIDs or a stable prefix (for example, `slr_`) so it does not collide with buyer-chosen IDs. It MAY equal `platform_id`.
+- A seller that declares [`creative.stable_creative_ids`](/docs/protocol/get_adcp_capabilities#creative) MUST keep it stable and unique, and MUST NOT reuse a `creative_id` a buyer has used on the account. Buyers MUST NOT rely on a seller-assigned ID staying the same unless the seller declares it.
+- Sellers MUST NOT mint a `revision_id` for such a creative. `revision_id` is buyer-authored; it appears only after a buyer supplies one through `sync_creatives`.
+
+To manage one of these creatives, a buyer uses its `creative_id` as-is. See [seller-assigned creative IDs](/docs/creative/task-reference/sync_creatives#seller-assigned-creative-ids). A buyer tells its own creatives apart by the IDs it synced.
+
+`platform_id` is the seller's identifier for the creative in its source of truth, the same value `sync_creatives` returns. It lets operators match a creative to the seller's own UI and reports without keeping the sync response. Buyers address creatives by `creative_id`, never by `platform_id`.
 
 ### Assignment indicators
 
