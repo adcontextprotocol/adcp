@@ -92,9 +92,14 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // minute-resolution dayparts add the start_time/end_time pair, its one-of-two
 // exclusion, and the time_granularity requirement to the shared daypart
 // graph carried by every targeting-bearing task (+2,087 bytes measured,
-// 443.3 → 445.4 KiB), bounded at 446 KiB.
+// 443.3 → 445.4 KiB), bounded at 446 KiB. The experimental extend_hold action
+// adds one action enum value and one revise-field-forbidding refinement arm to
+// refine_proposals (+501 bytes measured on top of hold_policy, 445.7 → 446.2
+// KiB), bounded at 447 KiB. Assignment-scoped trackers add a shared event/URL
+// row and assignment arrays to create/update/sync (+766 bytes measured against
+// main, 457,150 → 457,916 bytes / 447.2 KiB), bounded at 448 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 446,
+  'media-buy': 448,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -111,8 +116,16 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // rewriteEmbeddedResourceRefs (#8041) rewrites rootId#/$defs/key cross-def refs
 // to embedded-resource canonical $id URIs, saving ~69 KB and bringing the
 // comply_test_controller request to ~1_220_495 bytes (measured from built artifact
-// with discoveryInput=true; before: 1_289_097 bytes).
-const PARITY_COMPILE_LIMIT = 1_250_000;
+// with discoveryInput=true; before: 1_289_097 bytes). The response collections
+// array (#8137) reaches the controller through the task-completion get_products
+// response, not the seeded Product, and adds the core/collection.json closure
+// once (1_247_414 bytes measured), still within the limit. Follower counts on
+// collection distribution entries (#8098) add the core/audience-size.json
+// closure to that collection copy (1_251_212 bytes measured), bounded at
+// 1_255_000. Experimental hold_policy (#7661) reaches it through the seeded
+// Product and the committed proposal (1_259_242 bytes measured), bounded at
+// 1_265_000.
+const PARITY_COMPILE_LIMIT = 1_265_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1132,7 +1145,11 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   }
 
   assert.ok(localRefCount > 1_000, `expected broad local-ref coverage, saw ${localRefCount}`);
-  assert.ok(totalBytes < 20 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // Whole-projection sanity cap against runaway bundling. main sat at
+  // 20_945_219 bytes under the original 20 MiB cap; experimental hold_policy
+  // (#7661), bundled into every product- and proposal-bearing tool, brings it
+  // to 21_021_886 bytes, so the cap moves to 22 MiB.
+  assert.ok(totalBytes < 22 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);

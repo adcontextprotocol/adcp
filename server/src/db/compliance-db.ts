@@ -1594,6 +1594,8 @@ export class ComplianceDatabase {
     agent_url: string;
     lifecycle_stage: LifecycleStage;
     last_checked_at: Date | null;
+    /** Times a worker process died while this agent's suite was running; 0 when healthy. */
+    heartbeat_orphan_streak: number;
     /** Total due before LIMIT; repeated on each selected row for one-query telemetry. */
     eligible_backlog: number;
   }>> {
@@ -1646,7 +1648,8 @@ export class ComplianceDatabase {
           ka.has_active_badge,
           COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
           s.last_checked_at,
-          m.requeued_at
+          m.requeued_at,
+          COALESCE(m.heartbeat_orphan_streak, 0) AS heartbeat_orphan_streak
         FROM known_agents ka
         LEFT JOIN agent_registry_metadata m ON m.agent_url = ka.agent_url
         LEFT JOIN agent_compliance_status s ON s.agent_url = ka.agent_url
@@ -1662,6 +1665,7 @@ export class ComplianceDatabase {
         agent_url,
         lifecycle_stage,
         last_checked_at,
+        heartbeat_orphan_streak,
         COUNT(*) OVER()::int AS eligible_backlog
       FROM due_agents
       ORDER BY requeued_at ASC NULLS LAST, is_member_registered DESC, has_active_badge DESC,

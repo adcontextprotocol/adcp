@@ -262,6 +262,10 @@ To manage one of these creatives, a buyer uses its `creative_id` as-is. See [sel
 
 ### Assignment indicators
 
+In AdCP 3.3, sellers advertising `creative.supports_assignment_trackers` MUST return `assignments.assigned_packages[].trackers`: the complete assignment-scoped tracker list, or `[]` when none are attached. Preserve event names, URL templates, order, and duplicate occurrences. The list excludes the creative's own trackers in `assets`; both sets fire on this placement. See [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers).
+
+In AdCP 3.3, `assignments.assigned_packages[].landing_page_url` reports the effective serving destination for that creative on that package. Sellers advertising `creative.supports_assignment_landing_page` return the assignment override, or the creative's own destination when unique. Macro-bearing URLs retain the effective template. Omit the scalar when no destination exists or an unoverridden creative has multiple destinations; read those from the creative's `assets` rather than treating an arbitrary destination as applying to every click. The creative's own `status` and assignment `approval_status` remain separate. See [assignment landing pages](/docs/creative/task-reference/sync_creatives#assignment-landing-pages).
+
 Creative-library sellers that advertise `list_creatives` in `media_buy.relationship_notifications.projection_tasks` attach evaluated indicator state to `assignments.assigned_packages[]` and include `media_buy_id` plus `approval_status` on every row, including unknown rows. These fields mirror [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for the same relationship. A mixed publisher/placement outcome uses `approval_status: "partially_approved"` plus complete `approval_scopes[]`; the assignment webhook remains a compact invalidation and buyers reread these scopes. Each evaluated row includes `indicator_types_evaluated`, `indicators_as_of`, and `indicators[]`; omitted types remain unknown.
 
 ```json
