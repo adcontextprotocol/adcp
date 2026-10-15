@@ -38,31 +38,24 @@ on:
         required: true
         description: 'PEM private key for the AAO IPR Bot (org-level secret)'
 
-# Per-repo serialization. GitHub Actions concurrency is scoped per-repo, so
-# this group only serializes signatures landing from THIS caller repo. The
-# rebase-retry loop in `scripts/ipr/check-and-record.mjs` handles contention
-# across sibling AAO repos pushing to the same JSON file.
-concurrency:
-  group: adcp-ipr-signature-write
-  cancel-in-progress: false
-  # cancel-in-progress: false alone still permits only one pending run, so a
-  # burst evicts pending checks for unrelated PRs. `queue: max` keeps up to
-  # 100 pending runs so each PR's check still runs.
-  # GitHub added this option on 2026-05-07; older validators may not know it.
-  # https://github.blog/changelog/2026-05-07-github-actions-concurrency-groups-now-allow-larger-queues/
-  # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency#example-queueing-multiple-pending-runs
-  queue: max
+# Concurrency is set per job, mirroring adcp's own ipr-agreement.yml (see the
+# comment there for the incident that motivated it):
+# - `check` (pull_request_target) only reads the ledger and posts the status.
+#   It gets a per-PR group so unrelated PRs never wait behind each other.
+# - `record` (sign-phrase comments) writes the ledger and keeps the per-repo
+#   `adcp-ipr-signature-write` group.
+# GitHub Actions concurrency is scoped per-repo (the caller's repo here), so
+# the write group only serializes signatures landing from THIS caller repo.
+# The rebase-retry loop in `scripts/ipr/check-and-record.mjs` handles
+# contention across sibling AAO repos pushing to the same JSON file.
 
 jobs:
   check:
+    if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
-    # Skip issue comments that can't contain the sign phrase. Same filter as
-    # adcp's own workflow — avoids spinning up a runner for every comment.
-    if: >-
-      github.event_name == 'pull_request_target' ||
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.pull_request != null &&
-       contains(github.event.comment.body, 'I have read the IPR Policy'))
+    concurrency:
+      group: ipr-check-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     # SECURITY: do not add a checkout of the caller repo to this job. The
     # App token + caller's GITHUB_TOKEN both live in this job's env; a step
     # that runs PR-head code (e.g. `npm ci`, build scripts, anything that
@@ -100,6 +93,59 @@ jobs:
           # calls on the event repo (comment, status). The git push back to
           # adcp uses the App token configured on the .ipr-ledger origin
           # remote by the checkout step above.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LEDGER_DIR: ${{ github.workspace }}/.ipr-ledger
+        run: node ${{ github.workspace }}/.ipr-ledger/scripts/ipr/check-and-record.mjs
+
+  record:
+    # Skip issue comments that can't contain the sign phrase. Same filter as
+    # adcp's own workflow — avoids spinning up a runner for every comment, and
+    # because the group is on this job, unrelated comments never wait in it.
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, 'I have read the IPR Policy')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: adcp-ipr-signature-write
+      cancel-in-progress: false
+      # cancel-in-progress: false alone still permits only one pending job, so
+      # a burst evicts pending signature writes. `queue: max` keeps up to 100
+      # pending. GitHub added this option on 2026-05-07; older validators may
+      # not know it.
+      # https://github.blog/changelog/2026-05-07-github-actions-concurrency-groups-now-allow-larger-queues/
+      # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency#example-queueing-multiple-pending-runs
+      queue: max
+    # SECURITY: same constraint as `check` — never check out or run caller-repo
+    # code in this job.
+    steps:
+      - name: Mint AAO IPR Bot installation token (scoped to adcp)
+        id: app-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ secrets.IPR_APP_ID }}
+          private-key: ${{ secrets.IPR_APP_PRIVATE_KEY }}
+          owner: adcontextprotocol
+          repositories: adcp
+
+      - name: Checkout central IPR ledger
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: adcontextprotocol/adcp
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+          path: .ipr-ledger
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Check and record IPR signature
+        env:
+          # See the `check` job for which token is used for what.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LEDGER_DIR: ${{ github.workspace }}/.ipr-ledger
         run: node ${{ github.workspace }}/.ipr-ledger/scripts/ipr/check-and-record.mjs
