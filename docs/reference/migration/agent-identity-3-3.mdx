@@ -20,7 +20,7 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 | **Where keys live** | brand.json `agents[].jwks_uri` | The origin's key directory, `/.well-known/http-message-signatures-directory` |
 | **Finding the operator record** | `identity.brand_json_url` on the agent's `get_adcp_capabilities` | Derived: `https://{registrable domain}/.well-known/trust.json`. No capabilities call. |
 | **First contact** | Out-of-band credential or onboarding record | The covered `Signature-Agent` header identifies a signer the seller has never seen. Identity grants no authority until the seller binds it. |
-| **Acts-for authority** | brand.json `authorized_operators[]`, or the seller's onboarding record | trust.json `grants[]` from the brand, experimental. `authorized_operators` stays valid when there is no trust.json. |
+| **Acts-for authority** | brand.json `authorized_operators[]`, or the seller's onboarding record | trust.json `grants[]` from the brand's house, experimental. `authorized_operators` stays valid for a brand that has never published a trust.json. |
 | **Onboarding** | Out of band | `account.agent_onboarding` on capabilities, experimental: a mode per billing party and sandbox |
 | **Relationship status** | Discovered on failure (`AGENT_SUSPENDED`) | `get_principal` `relationship` with `expires_at`; `principal.changed` warns before a lapse |
 | **Revocation detail** | `revoked_kids` only | Optional RFC 5280 `revocation_details` (`reason`, `invalidity_date`). Committed work stands on revocation. |
@@ -37,11 +37,22 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 
 ### Buyer agent that signs requests
 
-**Do now (optional):**
+**Do now (optional),** ordered by what each step buys you.
+
+**Identity.** These are the Web Bot Auth part. With them, a seller can verify which origin is calling; a verified origin the seller has not bound is identity-established and gets what an anonymous caller gets.
+
 1. Give the agent its own origin, for example `https://buyer.pinnacle-agency.example`.
 2. Serve the key directory there: a JWK Set with RFC 7638 thumbprint `kid` values, signed per key. Schedule its regeneration before the signatures expire.
-3. List the origin in your registrable domain's `trust.json` with role `adcp:buying`.
-4. Sign with the Web Bot Auth profile for sellers that advertise it (`web-bot-auth` in `request_signing.profiles`).
+3. Sign with the Web Bot Auth profile for sellers that advertise it (`web-bot-auth` in `request_signing.profiles`).
+
+**To be bound by a seller.** A seller reads your trust.json listing only when it binds a principal or applies an `open` onboarding mode.
+
+4. List the origin in your registrable domain's `trust.json` with role `adcp:buying`.
+5. Where a seller already has a principal for your agent, get its explicit out-of-band approval to bind the new origin onto it (see **Existing seller relationships** below).
+
+**To move authority off brand.json.** Optional through 3.x, while `authorized_operators[]` stays valid for a brand that has never published a trust.json.
+
+6. Ask your advertisers to publish grants in their trust.json records (see "Agency or operator" below).
 
 **Keep:** your brand.json `agents[]` entry, its `jwks_uri`, and your `get_adcp_capabilities` `identity.brand_json_url` for sellers still on the RFC 9421 profile. The same key material can appear in both places, but the entries differ: Web Bot Auth `kid` values are thumbprints, and the brand.json JWKs carry `adcp_use`.
 
@@ -71,10 +82,11 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 
 ### Agency or operator
 
-- **Run each agent on its own origin.** An agency hosting several agents on one host moves each to a subdomain before adopting the Web Bot Auth profile. Until then, those agents stay on the RFC 9421 profile.
-- **Publish `/.well-known/trust.json`** at your registrable domain, listing your agents by origin with their roles.
-- **Move acts-for authority to grants.** Each advertiser you buy for publishes a grant to your domain in its own trust.json, ideally narrowed to your buying agent. When you use an intermediary or a hosted platform, you grant it in your own trust.json, and the brand's grant to you plus your grant to it form the chain.
-- **Revoke an agent** by removing its origin from your trust.json. Sellers drop it within one cache lifetime.
+**Identity:** run each agent on its own origin, with its own key directory, and sign with the Web Bot Auth profile, as for a buyer agent above. An agency hosting several agents on one host moves each to a subdomain before adopting the profile. Until then, those agents stay on the RFC 9421 profile.
+
+**To be bound by a seller:** publish `/.well-known/trust.json` at your registrable domain, listing your agents by origin with their roles, and arrange each seller's approval where you have existing principals. **Revoke an agent** by removing its origin from your trust.json. Sellers drop it within one cache lifetime.
+
+**To move authority off brand.json (optional through 3.x):** move acts-for authority to grants. Each advertiser you buy for publishes a grant to your domain in its house's trust.json. When your own agent buys, the grant is ideally narrowed to that agent. When you use an intermediary or a hosted platform, the advertiser's grant to you stays unnarrowed, and you grant the intermediary in your own trust.json, narrowed to its agent; the two grants form the chain. See [Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental).
 
 ### Brand or advertiser
 
@@ -110,7 +122,7 @@ SDK support for the Web Bot Auth profile, trust.json evaluation, and grants is i
 Every 3.3 identity change is optional, so rolling back means turning it off:
 - **Signers:** keep your brand.json keys and capabilities pointer until the sellers you use have bound your origin. Signing with the RFC 9421 profile again works with any seller that has not bound your origin. A seller that has bound it refuses RFC 9421 signatures from it until it unbinds.
 - **Sellers:** stop advertising `web-bot-auth` and stop accepting it. Bindings you created stay in your records. Unbind them before falling back, or those agents lose access.
-- **Brands:** removing your trust.json returns sellers to `authorized_operators` in brand.json. While it exists, keep it complete.
+- **Brands:** a seller that has read your trust.json never falls back to brand.json for you. There is no rollback by deletion; keep the record complete.
 
 ## Related
 

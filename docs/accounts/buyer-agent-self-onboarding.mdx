@@ -44,6 +44,7 @@ Host: buyer.pinnacle-agency.example
 
 HTTP/1.1 200 OK
 Content-Type: application/http-message-signatures-directory+json
+Content-Digest: sha-256=:...:
 Signature-Input: key1=("@authority";req "content-digest");created=1791900000;expires=1791986400;keyid="NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs";tag="http-message-signatures-directory"
 Signature: key1=:...:
 
@@ -148,7 +149,7 @@ The agent calls `sync_principal` with its declarations and webhooks. Because Str
 2. confirms it lists `https://buyer.pinnacle-agency.example` with role `adcp:buying`;
 3. creates a principal limited to the open modes.
 
-A seller without an `open` mode would hold this for its own approval. In that case `get_principal` shows `relationship.status: "pending"`, with any applicant-specific `setup` step.
+A seller without an `open` mode would hold this for its own approval. In that case `get_principal` shows `relationship.status: "pending_approval"`, with any applicant-specific `setup` step.
 
 ## 6. Open the account
 
@@ -178,7 +179,7 @@ The agent subscribes to `principal.changed`. When StreamHaus approves agent bill
 |---|---|---|
 | The seller is `invite_only` for every mode | The posture | Drop the seller and record why. |
 | The mode is `application` | The posture's `url` and requirements | Hand the URL and unmet list to a human. Watch `get_principal` for `relationship`. |
-| The trust record doesn't list the origin | The gate's authorization error | Add the origin to `trust.json` with role `adcp:buying`. |
+| The trust record doesn't list the origin | `PERMISSION_DENIED` with no `details` | Add the origin to `trust.json` with role `adcp:buying`. |
 | No grant covers the brand | `PERMISSION_DENIED`, `reason: "grant_absent"` | Ask the advertiser, or the agency acting for it, to publish the grant. |
 | The origin hosts two agents | The trust record is invalid | Give each agent its own subdomain. |
 | Pinnacle revokes a key with `reason: keyCompromise` | Requests under that key are rejected; buys stand | Review the buys the seller shows you; pause or cancel the ones you didn't intend with `control_media_buy`. |

@@ -35,7 +35,7 @@ This is a verification change: some signatures that verified under 3.2 can fail,
 
 ### Agent identity and buyer self-onboarding (experimental)
 
-A buyer agent can now make itself known to a seller it has never spoken to. The new Web Bot Auth signing profile identifies the signer by its origin and verifies against that origin's key directory, with no capabilities call and no seller-issued credential. The operator's trust.json lists its agents and grants, and sellers publish their onboarding posture in `account.agent_onboarding`. `get_principal` reports relationship status and expiry. The RFC 9421 profile is deprecated in 3.3 and works through 3.x. See [A buyer agent onboards itself](/docs/accounts/buyer-agent-self-onboarding) and the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
+A buyer agent can now make itself known to a seller it has never spoken to. The new Web Bot Auth signing profile identifies the signer by its origin and verifies against that origin's key directory, with no capabilities call and no seller-issued credential. The operator's trust.json lists its agents; brands publish grants in theirs, and sellers publish their onboarding posture in `account.agent_onboarding`. `get_principal` reports relationship status and expiry. The RFC 9421 profile is deprecated in 3.3 and works through 3.x. See [A buyer agent onboards itself](/docs/accounts/buyer-agent-self-onboarding) and the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
 
 ### Account IDs you can rely on
 
