@@ -23,7 +23,7 @@ description: "Experimental trust.json v1: the agents an organization runs, ident
 
 **The document name and path may change.** The [JournalList](https://journallist.net) `trust.txt` naming outreach is still open, so both the `trust.json` name and the `/.well-known/trust.json` location are provisional. This is one reason the surface is experimental. Do not hard-code either into anything you cannot change.
 
-Publishing a `trust.json` is not implementing a task, so a publisher declares nothing in `experimental_features`. A verifier that evaluates trust records advertises the Web Bot Auth profile, and the feature id carries this document's stability contract.
+Publishing a `trust.json` is not implementing a task, so a publisher declares nothing in `experimental_features`. A verifier that evaluates trust records advertises the Web Bot Auth profile (capability fields added by [#7894](https://github.com/adcontextprotocol/adcp/pull/7894)), and the feature id carries this document's stability contract.
 
 ## What the schemas describe
 

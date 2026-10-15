@@ -1010,7 +1010,7 @@ The field name and schema shape (single string, ≤4096 chars) do not change bet
 
 <Note>
 **Two signing profiles in 3.3.**
-- **The AdCP RFC 9421 profile** (`adcp/request-signing/v1`, keys through brand.json) is **deprecated in 3.3**. It stays fully functional through 3.x and is removed in 4.0.
+- **The AdCP RFC 9421 profiles** (`adcp/request-signing/v1` for requests and `adcp/webhook-signing/v1` for webhooks, keys through brand.json) are **deprecated in 3.3**. They stay fully functional through 3.x and are removed in 4.0.
 - **The Web Bot Auth profile** (`web-bot-auth`) is experimental in 3.3. Identity is the signer's origin, keys come from that origin's key directory, and no capabilities call is needed. See [Web Bot Auth identities](#web-bot-auth-identities). New implementations should build it.
 
 This section describes the RFC 9421 profile unless a subsection says otherwise. The decision is [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md).
@@ -1497,7 +1497,7 @@ Each SDK ships a CLI for dev-loop debugging — `npx @adcp/sdk@latest resolve <u
 #### Web Bot Auth identities
 
 <Note>
-**Experimental in 3.3.** This section covers requests and webhooks signed under the Web Bot Auth profile (`web-bot-auth`). The profile's wire rules (the `Signature-Agent` header, the key directory, thumbprint key IDs, the nonce, and the status-code errors) follow the IETF Web Bot Auth draft as written, with no AdCP additions. JWS artifacts (governance context, designated-task response signing, rights attestations) stay on the RFC 9421 chain in 3.3. Design: [`specs/agent-identity-3-3.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) R1–R4 and R9.
+**Experimental in 3.3.** This section covers requests and webhooks signed under the Web Bot Auth profile (`web-bot-auth`). The profile's wire rules (the `Signature-Agent` header, the key directory, thumbprint key IDs, the nonce, and the status-code errors) follow the IETF Web Bot Auth draft as written, with no AdCP additions. JWS artifacts (governance context, designated-task response signing, rights attestations) stay on the RFC 9421 chain in 3.3. Advertising the profile (`web-bot-auth` in `request_signing.profiles` and `webhook_signing.profiles`) depends on [#7894](https://github.com/adcontextprotocol/adcp/pull/7894), which adds those capability fields; this section assumes them. Design: [`specs/agent-identity-3-3.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) R1–R4 and R9.
 </Note>
 
 **Identity is an origin.** A Web Bot Auth identity is the [canonical origin](/docs/reference/url-canonicalization#canonical-origin) `O` named by the signature's covered `Signature-Agent` member. One agent per origin; a governance agent is its own agent.
@@ -1532,6 +1532,7 @@ Once identity is established, every authorization outcome uses the standard AdCP
 
 **Coexistence with the RFC 9421 profile.**
 - **Profile selection.** A signed message that carries `Signature-Agent` or the `web-bot-auth` tag is verified under the Web Bot Auth profile only, never under the RFC 9421 profile. An uncovered `Signature-Agent` member is never attributed to the signature.
+- **Unsigned requests.** For an unsigned request to an operation in `required_for`, from a caller with no other credential the verifier accepts: a verifier that advertises only `web-bot-auth` answers `403` with `Accept-Signature`. A verifier that also advertises the RFC 9421 profile answers as that profile does (`401` with `request_signature_required`) and adds `Accept-Signature` for the Web Bot Auth profile, so a client of either profile learns how to sign.
 - **No downgrade.** Once a verifier has bound `O`, it refuses RFC 9421 signatures for any agent URL whose origin is `O`. Before binding, an operator ends RFC 9421 use for an agent by removing its brand.json entry and keys.
 - **Grants** (once [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) lands). A 200 from a grantor's trust.json makes it the grantor's only source of grants, and brand.json `authorized_operators[]` is ignored, as `specs/brand-identity-trust-split.md` §No downgrade sets out.
 
@@ -1742,6 +1743,10 @@ Servers MUST NOT echo internal verification details beyond the stable code; log 
 
 #### Webhook callbacks
 
+<Note>
+**Deprecated in 3.3.** The RFC 9421 webhook profile described here (`adcp/webhook-signing/v1`, keys through brand.json) is deprecated in 3.3 together with the request profile. It stays fully functional through 3.x and is removed in 4.0. Under the experimental Web Bot Auth profile, a webhook is an ordinary Web Bot Auth request from the seller's origin ([Web Bot Auth identities](#web-bot-auth-identities)); advertising it in `webhook_signing.profiles` depends on [#7894](https://github.com/adcontextprotocol/adcp/pull/7894).
+</Note>
+
 Push-notification webhooks (POSTs to the `push_notification_config.url` a buyer registers), account-level webhooks (POSTs to `accounts[].notification_configs[].url`), agent-level webhooks (POSTs to `sync_principal.configuration.notification_configs[].url` or `sync_agent_notification_configs.notification_configs[].url`), and similar asynchronous seller-initiated callbacks are signed under a symmetric variant of this profile. Role direction is inverted relative to request signing: the **seller signs outbound**, the **buyer verifies**. 9421 webhook signing is baseline-required for any 3.0 seller that emits webhooks, with a deprecated HMAC fallback described in [Webhook Security](#webhook-security).
 
 **Baseline with programmatic advertisement.** 9421 webhook signing is baseline-required for any seller that emits webhooks — the default is signed, not a negotiated option. The `webhook_signing` capability block on `get_adcp_capabilities` exists so buyers can detect a non-signing seller *at onboarding* rather than discovering it by traffic inspection (which is how the asymmetry with `request_signing` manifested before this block was restored). A seller whose capability surface advertises mutating-webhook emission elsewhere (e.g., `media_buy.reporting_delivery_methods` includes `webhook`, `media_buy.content_standards.supports_webhook_delivery: true`, or `wholesale_feed_webhooks.supported: true`) MUST include this block with `supported: true`. A seller that emits no webhooks MAY omit the block entirely; `supported: false` is reserved for the unsafe posture of emitting unsigned webhooks and MUST NOT be used to signal absence-of-webhooks. Buyers that integrate with a seller whose surface advertises mutating-webhook emission while the `webhook_signing` block advertises `supported: false` or is omitted MUST fail onboarding with a user-actionable error — a seller that emits but does not sign webhooks is unsafe to integrate with for any mutating-webhook use case.
@@ -1925,7 +1930,8 @@ Codes parallel the [request-signing error taxonomy](#transport-error-taxonomy), 
 |---|---|
 | 3.0 GA | 9421 webhook signing is baseline for any seller that emits webhooks. Legacy HMAC-SHA256 fallback available when buyer populates `push_notification_config.authentication.credentials` or `accounts[].notification_configs[].authentication.credentials`; sellers MAY decline to support it. |
 | 3.x | HMAC fallback is deprecated. Sellers SHOULD log warnings when selected. SDKs SHOULD surface a deprecation notice to buyers that still configure `authentication`. |
-| 4.0 | `authentication` on `push_notification_config` and `accounts[].notification_configs[]` is removed from the schema. 9421 webhook signing is the only supported path. |
+| 3.3 | The RFC 9421 webhook profile (`adcp/webhook-signing/v1`) is deprecated and stays fully functional through 3.x. The experimental Web Bot Auth profile signs a webhook as an ordinary request from the seller's origin. |
+| 4.0 | `authentication` on `push_notification_config` and `accounts[].notification_configs[]` is removed from the schema. The RFC 9421 webhook profile is removed; webhooks are signed under the Web Bot Auth profile. |
 
 #### TMP cross-reference
 
@@ -1951,8 +1957,8 @@ AdCP 4.0 is the next breaking-changes accumulation window. Mandatory request sig
 | 3.0 GA | Optional, capability-advertised | Verifiers MAY validate; `required_for: []` by default. Signers MAY sign. Reference vectors ship; reference SDK pilots begin. |
 | 3.0–3.1 | Reference SDKs ship; pilots surface bugs | `covers_content_digest` defaults to `"either"`; explicit `"forbidden"` remains available for legacy body-rewriting infrastructure. Early adopters turn on `required_for` incrementally. |
 | 3.2 | Signing remains optional; body integrity becomes mandatory when used | An agent advertising request signing MUST explicitly emit `covers_content_digest: "required"`. Every accepted signature on a request with a body covers `content-digest`; legacy modes require a separately configured 3.0/3.1 endpoint. |
-| 3.3 | Web Bot Auth profile added (experimental); RFC 9421 profile deprecated | Signers MAY sign with `web-bot-auth` (origin identity, key directory at the origin, no capabilities call). The RFC 9421 profile stays fully functional through 3.x. Verifiers that advertise both apply the coexistence rules in [Web Bot Auth identities](#web-bot-auth-identities). |
-| 4.0 | Required for spend-committing operations | `required_for` MUST include `create_media_buy`, `acquire_*`, and every spend-committing operation the verifier supports. Signers MUST sign; legacy digest modes are removed. |
+| 3.3 | Web Bot Auth profile added (experimental); RFC 9421 request and webhook profiles deprecated | Signers MAY sign with `web-bot-auth` (origin identity, key directory at the origin, no capabilities call). The RFC 9421 profiles (`adcp/request-signing/v1`, `adcp/webhook-signing/v1`) stay fully functional through 3.x. Verifiers that advertise both apply the coexistence rules in [Web Bot Auth identities](#web-bot-auth-identities). |
+| 4.0 | Required for spend-committing operations | `required_for` MUST include `create_media_buy`, `acquire_*`, and every spend-committing operation the verifier supports. Signers MUST sign; legacy digest modes are removed. The RFC 9421 request and webhook profiles are removed, so signatures use the Web Bot Auth profile. |
 
 Implementations that ship signing in 3.x SHOULD enable verifier-side `required_for` selectively (per-counterparty pilot, then broader rollout) before 4.0 to validate end-to-end paths against real traffic — this is what makes the 4.0 transition feasible without ecosystem-wide breakage.
 
