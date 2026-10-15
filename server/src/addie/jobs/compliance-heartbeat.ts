@@ -24,7 +24,6 @@ import {
   type ComplianceResult,
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
-import { query } from '../../db/client.js';
 import {
   ComplianceRefreshRequestsDatabase,
   COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT,
@@ -46,6 +45,16 @@ import {
 } from '../../services/verification-profile-shadow.js';
 import { deriveVerificationProfileRoleAssessments } from '../../services/verification-profile-assessment.js';
 import {
+  claimHeartbeatAgents,
+  createHeartbeatProcessIdentity,
+  isolateSuspectAgents,
+  markHeartbeatSuiteStarted,
+  reconcileOrphanedHeartbeatClaims,
+  releaseHeartbeatClaim,
+  releaseUnstartedHeartbeatClaims,
+  type HeartbeatProcessIdentity,
+} from './compliance-heartbeat-claims.js';
+import {
   hostedComplianceTarget,
   HOSTED_COMPLIANCE_OVERRUN_MS,
   HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS,
@@ -56,9 +65,12 @@ const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
 const complianceRefreshDb = new ComplianceRefreshRequestsDatabase();
 const fallbackComplianceTarget = hostedComplianceTarget();
+const processIdentity = createHeartbeatProcessIdentity();
 
 interface HeartbeatOptions {
   limit?: number;
+  /** Identity under which batch claims are recorded; one value per process. */
+  processIdentity?: HeartbeatProcessIdentity;
   /** Include the bounded admin status snapshot used by the scheduled worker. */
   includeOperationalDiagnostics?: boolean;
 }
@@ -144,11 +156,15 @@ export async function runComplianceHeartbeatJob(
     agent_error: 0,
   };
 
-  const agentsDue = await complianceDb.getAgentsDueForCheck(limit);
+  const identity = options.processIdentity ?? processIdentity;
+  await reconcileOrphanedHeartbeatClaims(identity);
+
+  const selectedAgents = await complianceDb.getAgentsDueForCheck(limit);
   // COUNT(*) OVER() is calculated before LIMIT in the due-agent query. Keep a
   // defensive fallback for tests and rolling deploys where an older database
   // result shape may briefly coexist with this worker build.
-  const eligibleBacklog = Number(agentsDue[0]?.eligible_backlog ?? agentsDue.length);
+  const eligibleBacklog = Number(selectedAgents[0]?.eligible_backlog ?? selectedAgents.length);
+  const agentsDue = isolateSuspectAgents(selectedAgents);
   logger.debug(
     { selectedCount: agentsDue.length, eligibleBacklog, batchLimit: limit },
     'Agents due for compliance check',
@@ -168,24 +184,27 @@ export async function runComplianceHeartbeatJob(
     + HOSTED_COMPLIANCE_OVERRUN_MS + (2 * HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
   const waves = Math.ceil(selectedUrls.length / COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT);
   const lockUntil = new Date(Date.now() + waves * perAgentBudgetMs + 300_000);
-  let claimedUrls = new Set<string>();
-  if (selectedUrls.length > 0) {
-    const claimed = await query<{ agent_url: string }>(
-      `INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
-       SELECT unnest($1::text[]), $2::timestamptz
-       ON CONFLICT (agent_url) DO UPDATE SET next_compliance_check_at = EXCLUDED.next_compliance_check_at
-       WHERE agent_registry_metadata.next_compliance_check_at IS NULL
-          OR agent_registry_metadata.next_compliance_check_at < NOW()
-       RETURNING agent_url`,
-      [selectedUrls, lockUntil],
-    );
-    claimedUrls = new Set(claimed.rows.map(row => row.agent_url));
-  }
+  const claimedUrls = await claimHeartbeatAgents(selectedUrls, lockUntil, identity.owner);
   const claimedAgents = agentsDue.filter(agent => claimedUrls.has(agent.agent_url));
   const urls = claimedAgents.map(agent => agent.agent_url);
 
   const processAgent = async (agent: (typeof agentsDue)[number]): Promise<void> => {
     signal?.throwIfAborted();
+    try {
+      await runAgentSuite(agent);
+    } finally {
+      try {
+        await releaseHeartbeatClaim(agent.agent_url, identity.owner);
+      } catch (releaseError) {
+        logger.error(
+          { agentUrl: agent.agent_url, releaseError },
+          'Failed to release compliance heartbeat claim; the agent stays locked until its claim expires',
+        );
+      }
+    }
+  };
+
+  const runAgentSuite = async (agent: (typeof agentsDue)[number]): Promise<void> => {
     const executionFence = await complianceRefreshDb.acquireHeartbeatExecutionFence(agent.agent_url);
     if (!executionFence) {
       await complianceDb.deferComplianceCheckAfterContention(agent.agent_url, lockUntil);
@@ -196,6 +215,12 @@ export async function runComplianceHeartbeatJob(
         'Compliance heartbeat skipped because another full suite is running',
       );
       return;
+    }
+    try {
+      await markHeartbeatSuiteStarted(agent.agent_url, identity.owner);
+    } catch (markError) {
+      await executionFence.release();
+      throw markError;
     }
     const startTime = Date.now();
     let assessmentTimeoutMs = HOSTED_FULL_COMPLIANCE_TIMEOUT_MS;
@@ -606,6 +631,14 @@ export async function runComplianceHeartbeatJob(
   } finally {
     clearInterval(memorySampler);
     sampleMemory();
+    try {
+      await releaseUnstartedHeartbeatClaims(urls, identity.owner);
+    } catch (releaseError) {
+      logger.error(
+        { releaseError },
+        'Failed to release unstarted compliance heartbeat claims; they stay locked until their claims expire',
+      );
+    }
   }
   if (failures.length > 0) {
     logger.warn({ peakMemory, selectedCount: claimedAgents.length }, 'Compliance heartbeat batch stopped before completion');
