@@ -18,6 +18,17 @@ function httpsUrl(value) {
   return url;
 }
 
+// WorkOS metadata omits the root slash that URL.href adds. The SDK saves
+// that issuer on refresh; retain the pin while accepting this spelling pair.
+function sameBuyerIssuer(actual, pinned) {
+  if (typeof actual !== 'string' || typeof pinned !== 'string') return false;
+  try {
+    if (httpsUrl(actual).pathname !== '/' || httpsUrl(pinned).pathname !== '/') return false;
+  } catch { return false; }
+  const withoutRootSlash = value => value.endsWith('/') ? value.slice(0, -1) : value;
+  return withoutRootSlash(actual) === withoutRootSlash(pinned);
+}
+
 // Manual REST/refresh requests need the same bounded, DNS-pinned transport as SDK OAuth flows.
 function buyerFetch(trustedFetchFn) {
   return async (input, init = {}) => {
@@ -140,8 +151,8 @@ export async function finishBuyerLogin(file, callbackUrl, { trustedFetchFn } = {
 export function createBuyerOAuthSession(file, agentUrl, { trustedFetchFn } = {}) {
   const base = httpsUrl(agentUrl).href.replace(/\/$/, '');
   if (file.state.agent?.agent_uri !== base || !file.state.agent.oauth_tokens
-    || file.state.agent.oauth_tokens.issuer !== file.state.issuer
-    || file.state.agent.oauth_client?.issuer !== file.state.issuer
+    || !sameBuyerIssuer(file.state.agent.oauth_tokens.issuer, file.state.issuer)
+    || !sameBuyerIssuer(file.state.agent.oauth_client?.issuer, file.state.issuer)
     || file.state.agent.oauth_resource !== `${base}/mcp`) throw new Error('Sign in to this buyer resource first.');
   const provider = createNonInteractiveOAuthProvider(file.state.agent, { storage: file.storage, resourceOverride: `${base}/mcp` });
   const fetchFn = buyerFetch(trustedFetchFn);

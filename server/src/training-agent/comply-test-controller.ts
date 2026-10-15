@@ -59,6 +59,7 @@ import {
   expireAccountChangeCursors,
   getAccountNotificationSubscribers,
   recordAccountChange,
+  registerSharedPublicBrandPartitionForAccountId,
   resolveAccountIdForRef,
   resolveGovernanceAgentsForAccount,
   sandboxAccountRefForId,
@@ -2191,10 +2192,16 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       // Controller requests carry `sandbox: true` alongside their account
       // assertion, while canonical opaque AccountRef values contain only the
       // seller-assigned ID. Strip the assertion before session-key derivation
-      // so controller mutations and ordinary account-scoped calls share the
-      // same `a:<account_id>` partition. A top-level storyboard brand must not
-      // override that opaque identity.
-      ? { ...args, account: { account_id: opaqueAccountId }, brand: undefined }
+      // so controller mutations and ordinary account-scoped calls share one
+      // partition: `a:<account_id>`, or the account's natural partition on
+      // routes that alias account_id (state.ts runWithAccountIdAliasScope),
+      // with the same static-credential brand rule the buyer-side read
+      // applies. A top-level storyboard brand must not override that identity.
+      ? registerSharedPublicBrandPartitionForAccountId(
+        { ...args, account: { account_id: opaqueAccountId }, brand: undefined },
+        opaqueAccountId,
+        ctx.principal,
+      )
       : staticFixtureAccount
         ? { ...args, account: staticFixtureAccount }
         : staticTaskAccount

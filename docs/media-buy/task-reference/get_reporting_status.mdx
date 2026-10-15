@@ -224,6 +224,38 @@ window appear in the ledger. Consumers must not assume the latest snapshot is th
 only relevant record, and must never treat an adjustment as authority to rewrite an
 invoice or accounting book.
 
+`status_retention_days` keeps metadata for every revision, but content only for the
+revisions a buyer is likely to read. A revision's window starts at its `created_at`,
+or at its successor's `created_at` once it is superseded. An official revision's
+window starts at the later of its own `created_at` and its newest adjustment's. Within
+that window, exact reads MUST return content for:
+
+- the current revision of each logical slice, including every official revision;
+- the snapshot the current revision immediately supersedes;
+- any superseded snapshot for `automated_recovery_window_seconds` or one hour,
+  whichever is longer, after it was superseded, so in-flight paginated reads and
+  late webhook follow-ups still succeed; and
+- for the requesting caller, any revision named by that caller's own receipt or by
+  its current `received`, `unreadable`, or `content_mismatch` status statement.
+
+Older superseded snapshots MAY be compacted to metadata only, so a 15-minute pacing
+feed does not have to keep every intermediate snapshot's rows. An exact read of a
+compacted or expired revision returns the same nondisclosing [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found)
+as an unknown ID. Sellers MAY retain more. Compaction takes effect only in the next
+eligible minor after November 20, 2026; see the
+[migration note](/docs/reference/migration/3-2-to-3-3#superseded-reporting-snapshots-may-be-compacted).
+
+If the seller cannot serve or verify the content of a revision it still owes — its
+stored rows are missing or no longer match `revision_content_sha256` — it opens a
+`REVISION_UNREADABLE` issue naming the revision and each affected obligation. The
+revision stays listed, the obligation is neither `healthy` nor `complete` while the
+issue is open, and exact reads return [`SERVICE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-service-unavailable) rather than a not-found
+result. The issue is `delayed` with `wait_for_retry` while automatic repair runs and
+`action_required` with `contact_seller` once it cannot. It is retired when exact
+reads again return the committed content or the retention rule above no longer
+requires that revision's content.
+An obligation whose official revision is lost never becomes `complete`.
+
 `reporting_revision_id` is the portable AdCP identity. Every ready resource selects
 immutable bytes or an immutable native snapshot/version—for example a Delta version,
 Snowflake object identity, BigQuery snapshot, or manifest generation—and never

@@ -59,7 +59,7 @@ import {
 } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { buildGovernanceAgentCredentialAuthenticator } from './governance-agent-credentials.js';
-import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, TRAINING_BUYER_METADATA_PATH } from './buyer-oauth.js';
+import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, trainingBuyerDocumentation, TRAINING_BUYER_METADATA_PATH } from './buyer-oauth.js';
 
 const logger = createLogger('training-agent-routes');
 
@@ -278,7 +278,7 @@ const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-buil
  *  `_training_agent_tenants` discovery extension. Mirrors the per-tenant
  *  config builders in `tenants/<id>.ts`. */
 const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> = {
-  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-dooh', 'sales-fixed-rate'],
+  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', 'sales-dooh', 'sales-fixed-rate'],
   signals: ['signal-marketplace', 'signal-owned'],
   governance: [
     'governance-spend-authority',
@@ -325,9 +325,15 @@ export function createTrainingAgentRouter(options: {
   const router = Router();
   const buyerOAuth = trainingBuyerOAuthConfig();
   const requireSalesAuth = buyerOAuth ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault) : requireTokenDefault;
+  const requireReportingAuth = buyerOAuth
+    ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault, undefined, 'private-reporting')
+    : requireTokenDefault;
   if (buyerOAuth) router.get(TRAINING_BUYER_METADATA_PATH, (_req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.json(trainingBuyerMetadata(buyerOAuth));
+  });
+  if (buyerOAuth) router.get('/sales/oauth', (_req, res) => {
+    res.type('text/plain').send(trainingBuyerDocumentation(buyerOAuth));
   });
 
   startSessionCleanup();
@@ -350,7 +356,7 @@ export function createTrainingAgentRouter(options: {
     },
   });
 
-  router.use('/sales/reporting', ...(!options.disableRateLimit ? [mcpRateLimiter] : []), requireSalesAuth, trainingGcsReportingRouter());
+  router.use('/sales/reporting', ...(!options.disableRateLimit ? [mcpRateLimiter] : []), requireReportingAuth, trainingGcsReportingRouter());
 
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via

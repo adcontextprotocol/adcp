@@ -493,30 +493,19 @@ test('online media-buy governance proofs do not apply to signed-context-only sel
   assert.equal(signedOnly.phases[0].steps[0].skip_reason, 'capability_unsupported');
 });
 
+function loadBillingGateStoryboard() {
+  return YAML.parse(fs.readFileSync(path.join(
+    __dirname, '..', 'static', 'compliance', 'source', 'universal', 'billing-gate-dispatch.yaml'
+  ), 'utf8'));
+}
+
 test('billing gate skips phases when account capabilities are absent', async () => {
-  const storyboardPath = path.join(
-    __dirname,
-    '..',
-    'static',
-    'compliance',
-    'source',
-    'universal',
-    'billing-gate-dispatch.yaml'
-  );
-  const storyboard = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
+  const storyboard = loadBillingGateStoryboard();
   const perAgentPhases = storyboard.phases.filter(phase => phase.id.startsWith('per_agent_gate_'));
   const capabilityDiscovery = storyboard.phases.find(phase => phase.id === 'capability_discovery');
 
-  assert.deepEqual(
-    {
-      optional: capabilityDiscovery.optional,
-      requires_capability: capabilityDiscovery.requires_capability,
-    },
-    {
-      optional: true,
-      requires_capability: { path: 'account', present: true },
-    }
-  );
+  assert.equal(capabilityDiscovery.optional, undefined);
+  assert.deepEqual(capabilityDiscovery.requires_capability, { path: 'account', present: true });
 
   assert.deepEqual(
     perAgentPhases.map(phase => [phase.id, phase.requires_capability]),
@@ -555,6 +544,8 @@ test('billing gate skips phases when account capabilities are absent', async () 
   });
 
   assert.deepEqual(dispatchedTasks, []);
+  assert.equal(result.overall_passed, true);
+  assert.equal(result.failed_count, 0);
   const phases = Object.fromEntries(result.phases.map(phase => [phase.phase_id, phase]));
   assert.equal(phases.capability_discovery.steps[0].skip_reason, 'not_applicable');
   for (const phaseId of [
@@ -566,6 +557,86 @@ test('billing gate skips phases when account capabilities are absent', async () 
     assert.equal(phases[phaseId].steps[0].skip.reason, 'not_applicable');
   }
 });
+
+for (const { name, supportedBilling, missingDeclaration } of [
+  { name: 'operator billing with omitted-value rejection probes', supportedBilling: ['operator'] },
+  { name: 'all billing values with no rejection probes', supportedBilling: ['operator', 'agent', 'advertiser'] },
+  { name: 'a missing supported_billing declaration', supportedBilling: ['operator'], missingDeclaration: true },
+]) {
+  test(`billing gate grades ${name}`, async () => {
+    const storyboard = loadBillingGateStoryboard();
+    // Exercise all source phases and field validations with the real SDK verdict;
+    // schema fetching is independent of this required-phase regression.
+    const executable = {
+      ...storyboard,
+      phases: storyboard.phases.map(phase => ({
+        ...phase,
+        steps: phase.steps.map(step => ({
+          ...step,
+          validations: step.validations.filter(validation => validation.check !== 'response_schema'),
+        })),
+      })),
+    };
+    const account = {
+      supported_billing: supportedBilling,
+      supported_account_currency_modes: ['fixed'],
+    };
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
+    const capabilityRequests = [];
+    const rejectedBilling = [];
+    const result = await runStoryboard('https://agent.example/mcp', executable, {
+      _profile: { tools, raw_capabilities: { account } },
+      agentTools: tools,
+      test_kit: { commercial_relationship: 'direct' },
+      skip_controller_seeding: true,
+      _client: {
+        resetContext() {},
+        async getAdcpCapabilities(request) {
+          capabilityRequests.push(request);
+          return {
+            success: true,
+            data: {
+              account: missingDeclaration ? { supported_account_currency_modes: ['fixed'] } : account,
+              context: request.context,
+            },
+          };
+        },
+        async syncAccounts(request) {
+          rejectedBilling.push(request.accounts[0].billing);
+          return {
+            success: true,
+            data: {
+              accounts: [{
+                action: 'failed',
+                status: 'rejected',
+                errors: [{ code: 'BILLING_NOT_SUPPORTED', recovery: 'correctable', details: { scope: 'capability' } }],
+              }],
+              context: request.context,
+            },
+          };
+        },
+      },
+    });
+
+    assert.equal(capabilityRequests.length, 1);
+    const discovery = result.phases.find(phase => phase.phase_id === 'capability_discovery');
+    assert.equal(discovery.passed, !missingDeclaration);
+    assert.equal(discovery.steps.some(step => !step.skipped && step.passed), !missingDeclaration);
+    assert.equal(result.overall_passed, !missingDeclaration);
+    if (!missingDeclaration) {
+      assert.equal(result.failed_count, 0);
+      assert.deepEqual(rejectedBilling.sort(), ['operator', 'agent', 'advertiser'].filter(value => !supportedBilling.includes(value)).sort());
+      for (const billing of supportedBilling) {
+        const gate = result.phases.find(phase => phase.phase_id === `capability_gate_${billing}`);
+        assert.ok(gate.steps.every(step => step.skipped && step.skip_reason === 'not_applicable'));
+      }
+      for (const phaseId of ['per_agent_gate_reject', 'per_agent_gate_recover']) {
+        const gate = result.phases.find(phase => phase.phase_id === phaseId);
+        assert.ok(gate.steps.every(step => step.skipped), 'direct billing must skip the per-agent passthrough probes');
+      }
+    }
+  });
+}
 
 test('create_media_buy async storyboard requires its advertised controller scenario', async () => {
   const storyboardPath = path.join(

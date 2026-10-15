@@ -786,7 +786,7 @@ Services apply this checklist to two distinct authorization gates. On an inbound
 14. Check the revocation list (see [Revocation](#revocation)). Reject if `jti` ∈ `revoked_jtis` or if the token header's `kid` ∈ `revoked_kids`. This check runs on every verification, not only on cache miss.
 15. Reject if `jti` has been seen before for this `(iss, aud)` tuple. See [Replay dedup](#replay-dedup) for storage guidance.
 
-Only after all 15 checks pass may the service proceed through the gate represented by that token. For `signed_context`, a valid inbound intent token is the task authorization. For `online_execution_check`, it authorizes prepare/check only; commit additionally requires the valid execution token. Services do not verify `plan_hash` — that claim is bound at the governance-agent / auditor layer (see [Plan-state binding](#plan-state-binding)).
+Only after all 15 checks pass may the service proceed through the gate represented by that token. For `signed_context`, a valid inbound intent token is the task authorization. For `online_execution_check`, it authorizes prepare/check only; commit additionally requires the valid execution token. Services do not verify `plan_hash` — that claim is bound at the governance-agent / auditor layer (see [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit)).
 
 #### Replay dedup
 
@@ -1352,6 +1352,8 @@ Every surface then applies the same steps to the selected record:
 5. **Result.** The canonical URL of the matched entry is the verified agent identity. For an operator record, the host of `identity.brand_json_url` is the agent's operator.
 
 **Shortcuts must be bound both ways.** Onboarding records, registry caches, and crawler indexes MAY stand in for steps 1–4 of the discovery chain. Such a mapping from `A` to an operator record MUST have been established by, or re-confirmed against, `A`'s `identity.brand_json_url`, and re-confirmed at least as often as the brand.json cache lifetime in step 4 of the discovery chain. If several brand.json files list `A`, only the one `A` points to counts.
+
+Agent resolution starts with `get_adcp_capabilities` at `A`, even when the agent hosts no other tools. This includes a buyer agent that only calls sellers. Request signing and non-legacy webhook discovery bind the operator record to `A`'s `identity.brand_json_url`. The 3.x legacy webhook fallback may instead use the agent-origin well-known brand.json when that pointer is absent, but still starts with the capabilities call and is never used for request signatures. An onboarding record does not replace the capabilities endpoint, because its mapping must be established or re-confirmed through discovery. A signer that serves nothing at `A` fails discovery step 1 with `request_signature_capabilities_unreachable`. A bootstrap for signers with no capabilities endpoint is under discussion in [#6105](https://github.com/adcontextprotocol/adcp/issues/6105).
 
 #### Discovering an agent's signing keys via `brand_json_url`
 
@@ -2164,6 +2166,201 @@ const result = await db.query(
 // );
 ```
 
+### Response Size Bounds
+
+An agent response is untrusted input. A client that reads whatever a
+counterparty chooses to send has handed that counterparty an allocation
+primitive: a single discovery reply of a few tens of megabytes can drive a
+buyer process to multi-gigabyte peak usage once the bytes are decompressed,
+parsed into JSON, and materialized as objects — most of it outside the
+runtime's own managed heap, where heap-based limits do not see it. The process
+dies before schema validation, prompt-injection hygiene, or any other control
+on this page gets to run. Checking the size after the body is buffered is too
+late; the allocation already happened.
+
+Clients **SHOULD** bound the size of every AdCP response they read on their own
+call path. That covers every MCP response the client reads — `tools/call`,
+`tools/list`, `initialize`, and the transport-native `tasks/get` and
+`tasks/result` results that carry an async `CallToolResult` — every A2A message
+and task operation including streamed frames, the A2A agent card at
+`.well-known/agent-card.json` and its authenticated extended form, and the
+`get_adcp_capabilities` response. A bound that satisfies this recommendation
+has all of the following properties.
+
+1. **It is enforced while the body is received.** Bytes are counted as they
+   arrive and the connection is aborted as soon as the count exceeds the
+   limit. A check performed after the body is buffered, decoded, or parsed is
+   not such a bound. In practice this rules out the HTTP client's
+   buffered-body convenience API — `requests.get()` without `stream=True`,
+   `HttpResponse.BodyHandlers.ofString()`, `io.ReadAll(resp.Body)`,
+   `await res.json()` — all of which materialize the whole body before any
+   caller code can count a byte.
+2. **It pre-rejects a declared size.** A `Content-Length` already above the
+   limit is rejected before the body is read, and the streaming count is still
+   enforced when that header is absent, chunked, or understated. A response
+   that carries both `Content-Length` and `Transfer-Encoding: chunked`, or
+   conflicting duplicate `Content-Length` headers, is rejected outright rather
+   than reconciled.
+3. **It is paired with a deadline.** A connect timeout, a read-idle timeout,
+   and a total deadline that covers reading the whole body. A peer that drips
+   bytes below the cap forever satisfies a byte limit and still holds a
+   connection, a partial buffer, and a worker slot; only the deadline bounds
+   it. This is the same pairing the [brand.json trust-root fetch](#discovering-an-agents-signing-keys-via-brand_json_url)
+   already requires (step 4) and the [SSRF fetch rules](#webhook-url-validation-ssrf)
+   recommend (step 5).
+4. **It counts raw and decoded bytes, and bounds the decoder.** The limit
+   applies to the bytes received *and* to the bytes after content decoding,
+   whichever trips first, and the decompressor's output buffer is bounded by
+   the remaining allowance so no single decode step can emit more than the
+   limit. Counting only decoded bytes leaves two holes: a compressed stream
+   that decodes to almost nothing never trips the counter and runs forever,
+   and a decompress-then-measure implementation materializes the zip bomb
+   before it measures it. Clients SHOULD additionally send
+   `Accept-Encoding: identity`.
+5. **It covers streamed responses per event and per call.** Every byte
+   received on the stream counts — event data, field names, `id:` and `retry:`
+   lines, comment and keepalive lines, and inter-event whitespace — enforced
+   on bytes accumulated rather than on events dispatched, so neither an
+   endless keepalive run nor one unterminated `data:` line escapes it. The
+   per-call bound is the total decoded bytes the client **retains** for one
+   task; it carries across stream reconnects, A2A `SubscribeToTask`
+   resumption, and MCP `Last-Event-ID` resumption. A client that resumes a
+   stream resumes its count rather than resetting it. Frames the client
+   consumes and discards — interim `statusUpdate` progress snapshots, which
+   are not accumulated — count only against the per-event bound. Without the
+   cumulative bound a peer escapes the limit by answering with
+   `Content-Type: text/event-stream` and paying out the same payload across
+   many small frames.
+6. **It bounds what the bytes become.** A byte cap bounds ingress; it does not
+   bound memory. 4 MiB of densely nested arrays is on the order of two million
+   JSON nodes, which a JavaScript or JVM runtime materializes at tens of bytes
+   each, and deeply nested input exhausts the stack in a recursive-descent
+   parser or a generated validator before any schema check runs. After the
+   byte cap passes, clients enforce a maximum JSON nesting depth of 64 and at
+   most 100,000 aggregate object members and array elements while parsing,
+   matching the task-body caps in [Attestation resolution fetch contract](#attestation-resolution-fetch-contract),
+   and reject an over-limit document before schema validation, logging of body
+   content, or any LLM-visible processing. These bounds, not the byte cap, are
+   what makes a boundary-probing peer's cap-minus-one response harmless. They
+   do not bound the length of a single scalar: a conforming document can carry
+   one string as large as the whole cap in a single node. Per-field length
+   limits, not the node count, are what bound what reaches a log or a model
+   context window.
+7. **It errors; it does not truncate.** An oversized response is a failure.
+   A truncated response is a schema-invalid response that may still parse, so
+   silently dropping the tail yields a plausible-looking partial answer the
+   caller cannot distinguish from a complete one — a correctness bug laid on
+   top of the availability one. SDKs SHOULD raise a distinct, documented error
+   type (`ResponseTooLarge` or the equivalent naming in the host language).
+   This is a client-local error class, not an `adcp_error.code`: it never
+   appears on the wire and is not registered in the
+   [error-code enum](/docs/building/by-layer/L3/error-handling). An
+   orchestrator relaying the failure upstream maps it to a registered code
+   with `recovery: "permanent"`. Clients MUST NOT automatically retry the same
+   request — the peer will send the same oversized body, so a transient-class
+   retry hands the peer three or four times the amplification for free. A
+   retry is meaningful only after the caller narrows the request to a smaller
+   page or fewer fields. The error carries the observed byte count, the
+   configured limit, and the agent identity; it MUST NOT carry a prefix,
+   sample, or excerpt of the oversized body, which has passed none of the
+   string hygiene below, and MUST NOT be placed in an LLM context window or
+   forwarded verbatim to another agent.
+8. **It defaults to no more than 4 MiB (4,194,304 bytes).** The limit SHOULD
+   be configurable per agent and per call, so a buyer with a specific reason to
+   accept a larger response from a known counterparty raises it deliberately
+   rather than globally. A client that implements this bound MUST NOT ship an
+   unbounded mode as the default. An unbounded mode, if offered at all, is a
+   separately named unsafe switch rather than a numeric limit set to zero,
+   null, or infinity; it is not settable per call, where options are often
+   assembled next to LLM-influenced parameters; and each call made under it is
+   logged.
+9. **It bounds aggregate exposure, not just one response.** A client that fans
+   out across agents bounds concurrent in-flight response reads and the total
+   bytes *and nodes* retained across a batch. N peers each answering one byte
+   under the cap are all individually conformant and collectively fatal to a
+   worker — which is the shape of the deployment this control exists to
+   protect. The per-call default is not multiplied by concurrency: a client
+   whose aggregate budget is smaller than its concurrency times the per-call
+   default lowers one of the two, and the aggregate bound is the one that must
+   hold. Node budgets aggregate the same way — N peers each at the 100,000-member
+   bound is N × 100,000 nodes resident, which is the term that actually
+   exhausts a fan-out worker. The
+   [brand.json trust-root fetch](#discovering-an-agents-signing-keys-via-brand_json_url)
+   bounds concurrent fetches for the same reason.
+
+Redirect hops on a response path count cumulatively toward the same limit and
+the hop count itself is bounded; the response header section is bounded
+separately from the body, since HTTP clients ship generous header defaults
+(Go's `MaxResponseHeaderBytes` defaults to 10 MB) that a peer can spend before
+the first body byte.
+
+**Precedence.** 4 MiB is a ceiling on what a *default* may be, not a target and
+not a license to raise a tighter path-specific cap. Where a path defines its
+own cap, that cap governs that path: `MAX_BRAND_JSON_BYTES` (2 MiB),
+`MAX_JWKS_BYTES` and `MAX_CAPABILITIES_BYTES` (64 KiB each), the 4 MiB
+attestation task-body cap, the 4096-byte `adcp_error` cap in
+[Transport Error Mapping](/docs/building/operating/transport-errors#security-considerations),
+the 5 MB general SSRF body cap for fetches of counterparty-supplied URLs
+(20 MB for the managed-network dereferenced authoritative file), the 1 MiB
+streamed cap on an [attestation resolution fetch](#attestation-resolution-fetch-contract)
+and the 1 MiB protocol ceiling on `max_embedded_credential_bytes`, the 1 MiB
+publisher-origin cap on `format_schema` and `adagents.json` fetches, and the
+256 KB A2A auth-challenge fetch cap. Aligning the transport defaults raises
+none of these. Both transport profiles default to 4 MiB — a serialized MCP
+message (see
+[MCP response extraction](/docs/building/by-layer/L0/mcp-response-extraction#size-limits))
+and an A2A call (see [A2A response extraction](/docs/building/by-layer/L0/a2a-response-extraction#size-limits))
+— against a 128 KiB producer interoperability target for a pageable read (see
+[Managing response size](/docs/building/concepts/managing-response-size#interoperability-size-target)).
+The gap between those two numbers is deliberate: 128 KiB is what a cooperating
+producer aims at, and 4 MiB is what a client tolerates from one that is hostile
+or broken. A tighter default is always conformant; a larger one is not. The
+bound in this section is the backstop for a path with no cap of its own.
+
+**Producers paginate.** A producer whose data does not fit
+[paginates](/docs/building/concepts/managing-response-size#pagination-for-cardinality-control);
+it does not ask buyers to raise their limits. A response that only succeeds
+against a raised limit is not interoperable, and it fails against a
+default-configured buyer as a mid-body connection abort rather than as a
+protocol error the buyer can act on.
+
+**Discovery responses stay small.** The client cap is a backstop, not a budget
+to spend. Agents **SHOULD** keep their discovery responses — `tools/list`,
+`get_adcp_capabilities`, and the A2A agent card — well under the default
+client cap, and **SHOULD** paginate a large catalog rather than serve it in
+one response. These are the first bytes any counterparty reads, and the
+recourse when a cap trips differs by surface. A buyer that trips its cap on
+the agent card has none: the fetch is a plain `GET` with no narrowing lever,
+and the authenticated extended card is larger, not smaller. On `tools/list`
+the page size is the server's choice — MCP's `cursor` carries no page-size
+parameter — so a buyer cannot ask for less, though AdCP task names are fixed
+by the protocol, so it can still call the named tasks directly. A buyer can
+narrow `get_adcp_capabilities` with `protocols[]`, but that does not help the
+case that matters most: the signing-key discovery path fetches capabilities
+unnarrowed under `MAX_CAPABILITIES_BYTES` (64 KiB), so a capabilities document
+above that budget fails with `request_signature_capabilities_unreachable` and
+makes the agent's signing keys unresolvable for any verifier without a live
+cached mapping, and for the rest within one cache cycle. An oversized
+capabilities document therefore costs signature verification as well as
+discovery. See
+[Discovering an agent's signing keys](#discovering-an-agents-signing-keys-via-brand_json_url)
+and [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
+
+**Scope.** This section covers responses a client reads on its own call path.
+Inbound deliveries a buyer *receives* — A2A push notifications and
+[AdCP webhooks](#webhook-callbacks) — are a server-side surface that needs its
+own request-body cap; the same streaming discipline applies there.
+
+These bounds are the discipline the [SSRF fetch rules](#webhook-url-validation-ssrf)
+already apply to counterparty-supplied URLs and the
+[brand.json trust-root fetch](#discovering-an-agents-signing-keys-via-brand_json_url)
+applies to `MAX_BRAND_JSON_BYTES`, extended to the responses an agent returns
+on its own call path. They do not replace the per-field hygiene in
+[Transport Error Mapping](/docs/building/operating/transport-errors#security-considerations)
+— length limits on seller strings, control-character stripping,
+prototype-pollution filtering. A size bound is what keeps the process alive
+long enough to apply them.
+
 ## Audit Logging
 
 ### Required Log Events
@@ -2218,6 +2415,7 @@ function logSecurityEvent(eventType, details) {
 - [ ] Store credentials in secure key management system
 - [ ] Rotate credentials every 90 days
 - [ ] Use HTTPS for all AdCP communications
+- [ ] Bound every agent response, enforced while the body streams, defaulting to no more than 4 MiB ([response size bounds](#response-size-bounds))
 - [ ] Validate responses from publishers
 - [ ] Implement alerts for unusual spending patterns
 

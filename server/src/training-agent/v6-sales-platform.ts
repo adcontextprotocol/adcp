@@ -1,8 +1,8 @@
 /**
  * v6 SalesPlatform for the `/sales` tenant.
  *
- * Sales platform claiming `sales-non-guaranteed`, `sales-guaranteed`, and
- * `sales-dooh`. Implements `SalesPlatform` (5 required methods +
+ * Sales platform claiming `sales-non-guaranteed`, `sales-guaranteed`,
+ * `sales-broadcast-tv`, and `sales-dooh`. Implements `SalesPlatform` (5 required methods +
  * 4 optional read-side methods).
  *
  * Spike-grade port: bodies shim through to existing v5 handlers via
@@ -64,6 +64,7 @@ import {
   assertDiscoveryAccountProvisioned,
   isIdentitylessControllerRef,
 } from './v6-account-helpers.js';
+import { registerSharedPublicBrandPartitionForAccountId, rehydrateAccountById } from './account-handlers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { PUBLISHERS } from './publishers.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
@@ -83,7 +84,13 @@ import {
   validateReliableReportingResponse,
   withDurableReportingLedger,
 } from './reporting-reliability.js';
-import { getSession, registerSharedPublicBrandPartition, runWithSessionContext, sessionKeyFromArgs } from './state.js';
+import {
+  getSession,
+  registerSharedPublicBrandPartition,
+  runWithAccountIdAliasScope,
+  runWithSessionContext,
+  sessionKeyFromArgs,
+} from './state.js';
 import { supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
@@ -444,7 +451,7 @@ const TRAINING_SALES_CHANNELS = [
 ] as const;
 
 export const TRAINING_SALES_CAPABILITIES = {
-  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', SALES_DOOH_SPECIALISM, SALES_FIXED_RATE_SPECIALISM] as const,
+  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', SALES_DOOH_SPECIALISM, SALES_FIXED_RATE_SPECIALISM] as const,
   creative_agents: [],
   channels: TRAINING_SALES_CHANNELS,
   overrides: {
@@ -753,11 +760,14 @@ function withCurrentAccountScope(
   // Public training credentials share the controller's brand-owned task
   // partition, but the truthful sandbox/operator AccountRef remains intact for
   // persistence and authorization comparisons.
-  return explicitlySandboxed
-    && typeof principal === 'string'
-    && principal.startsWith('static:')
-    && accountRef?.brand?.domain
-    ? registerSharedPublicBrandPartition(scopedArgs, accountRef.brand.domain)
+  if (typeof principal !== 'string' || !principal.startsWith('static:')) return scopedArgs;
+  if (explicitlySandboxed && accountRef?.brand?.domain) {
+    return registerSharedPublicBrandPartition(scopedArgs, accountRef.brand.domain);
+  }
+  // An account_id for a provisioned sandbox account names the same account as
+  // its `sandbox: true` natural key, so it shares that key's partition.
+  return typeof accountRef?.account_id === 'string'
+    ? registerSharedPublicBrandPartitionForAccountId(scopedArgs, accountRef.account_id, principal)
     : scopedArgs;
 }
 
@@ -1012,6 +1022,7 @@ async function resolveTrainingSalesAccount(
   const canonical = canonicalizeAccountRef(accountRefForResolution(ref, toolName));
   if (enforceDiscoveryProvisioning) {
     await assertDiscoveryAccountProvisioned(canonical, toolName, principal);
+    if (canonical.kind === 'account_id') await rehydrateAccountById(principal, canonical.account_id);
   }
   const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
     ? { account_id: canonical.account_id }
@@ -1519,6 +1530,11 @@ export function legacyListCreativesHandler(
   };
 }
 
+function jobPrincipal(executionContext: object): string | undefined {
+  const principal = (executionContext as { principal?: unknown }).principal;
+  return typeof principal === 'string' ? principal : undefined;
+}
+
 export class TrainingSalesPlatform
   implements DecisioningPlatform<TrainingSalesConfig, TrainingSalesMeta>
 {
@@ -1532,8 +1548,13 @@ export class TrainingSalesPlatform
     if (taskRegistry) {
       this.sellerManagedControlJobs = new SellerManagedControlJobCoordinator(
         taskRegistry,
-        async job => await runWithSessionContext(async () => {
+        async job => await this.withAccountIdAliasScope(jobPrincipal(job.executionContext), () => runWithSessionContext(async () => {
           const executionArgs = structuredClone(job.request);
+          const jobAccount = (executionArgs as { account?: { account_id?: unknown } }).account;
+          if (this.storyboardCompat?.version !== '3.0' && typeof jobAccount?.account_id === 'string') {
+            // A replacement worker may not hold the account in memory yet.
+            await rehydrateAccountById(jobPrincipal(job.executionContext), jobAccount.account_id);
+          }
           if (job.executionContext.sharedPublicBrandDomain) {
             registerSharedPublicBrandPartition(
               executionArgs,
@@ -1553,7 +1574,7 @@ export class TrainingSalesPlatform
               },
             },
           );
-        }),
+        })),
         undefined,
         async job => await emitDurableSellerManagedTaskWebhook({
           pushConfig: job.pushConfig,
@@ -1591,6 +1612,14 @@ export class TrainingSalesPlatform
 
   async acknowledgeSellerManagedWebhook(taskId: string): Promise<void> {
     await this.sellerManagedControlJobs?.acknowledgeFrameworkWebhook(taskId);
+  }
+
+  /** Seller-managed jobs run outside the request, so re-enter the same
+   * account_id alias scope the tenant router gives current routes. */
+  private withAccountIdAliasScope<T>(principal: string | undefined, fn: () => Promise<T>): Promise<T> {
+    return this.storyboardCompat?.version === '3.0' || !principal
+      ? fn()
+      : runWithAccountIdAliasScope(principal, fn);
   }
 
   statusMappers = {};
@@ -1697,6 +1726,8 @@ export class TrainingSalesPlatform
         )
         : withCurrentAccountScope(currentArgs as Record<string, unknown>, ctx.account);
       const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      const { publishTrainingGcsSourceDelivery } = await import('./gcs-reporting-tools.js');
+      await publishTrainingGcsSourceDelivery(args as Record<string, unknown>, result, ctx.authInfo?.clientId);
       return translateV5Result(result);
     },
     // Optional read-side methods.

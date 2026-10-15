@@ -751,7 +751,12 @@ export async function resolveReportingAccountDurably(
   for (const [key, ledger] of ledgers) {
     const [storedPrincipal, accountId] = key.split('\u001f');
     if (storedPrincipal !== principalScope || !accountId) continue;
-    const storedAccount = ledger.accountRefs.find(reference => accountScopeFromRef(reference) === scope);
+    // Mirror the DB lookup below: an account_id reference matches by id.
+    const storedAccount = account.account_id === undefined
+      ? ledger.accountRefs.find(reference => accountScopeFromRef(reference) === scope)
+      : account.account_id === accountId
+        ? ledger.accountRefs.find(reference => reference.account_id === undefined)
+        : undefined;
     if (storedAccount) return { accountId, account: structuredClone(storedAccount) };
   }
   if (!isDatabaseInitialized()) return undefined;
@@ -4006,6 +4011,36 @@ export async function captureReportingMediaBuyCandidateDurably(
   }, existingBinding?.account ?? account);
 }
 
+/** Read accepted-buy facts in the exact caller/account scope without a task-session dependency. */
+export async function reportingMediaBuyCandidatesForAccountDurably(
+  principal: string | undefined,
+  accountId: string,
+): Promise<ReportingMediaBuyCandidate[]> {
+  let ledger = ledgers.get(callerScope(principal, accountId));
+  if (isDatabaseInitialized()) {
+    const { rows } = await getPool().query<{ ledger: SerializedReportingLedger | string }>(
+      `SELECT ledger FROM training_reporting_ledgers WHERE principal_scope = $1 AND account_id = $2`,
+      [principal && principal.length > 0 ? principal : 'anonymous', accountId],
+    );
+    const stored = rows[0]?.ledger;
+    ledger = stored === undefined ? undefined : deserializeLedger(
+      typeof stored === 'string' ? JSON.parse(stored) as SerializedReportingLedger : stored,
+    );
+  }
+  const nowMs = Date.now();
+  return [...(ledger?.mediaBuyCandidates ?? [])].flatMap(([mediaBuyId, history]) => {
+    const accepted = candidateAt(history, nowMs);
+    return accepted ? [{
+      mediaBuyId,
+      startTime: accepted.start,
+      endTime: accepted.end,
+      knownAt: accepted.knownAt,
+      effectiveAt: accepted.effectiveAt,
+      packages: structuredClone(accepted.packages),
+    }] : [];
+  });
+}
+
 export async function validateReportingConfigurationReplacementDurably(
   principal: string | undefined,
   accountId: string,
@@ -4043,6 +4078,56 @@ export async function getReportingStatusForAccountDurably(
   return await withDurableReportingLedger(principal, accountId, true, () => {
     setReportingMediaBuyCandidates(principal, accountId, mediaBuyCandidates);
     return getReportingStatusForAccount(params, principal, accountId);
+  });
+}
+
+/** Freeze an ordinary delivery read as the private canary's daily source snapshot. */
+export async function commitTrainingDailySourcePeriod(input: {
+  principal: string;
+  accountId: string;
+  sourceConfigId: string;
+  sourceConfigVersion: number;
+  mediaBuyIds: string[];
+  period: { start: string; end: string };
+  impressions: number;
+}): Promise<boolean> {
+  if (!isDatabaseInitialized()) throw new Error('Daily source publication requires the primary ledger.');
+  const start = Date.parse(input.period.start);
+  const end = Date.parse(input.period.end);
+  const now = Date.now();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start % DAY_MS !== 0
+    || end - start !== DAY_MS || end >= now || !Number.isSafeInteger(input.impressions)
+    || input.impressions < 0 || input.mediaBuyIds.length < 1 || input.mediaBuyIds.length > 10
+    || new Set(input.mediaBuyIds).size !== input.mediaBuyIds.length) return false;
+  return await withDurableReportingLedger(input.principal, input.accountId, true, () => {
+    const ledger = ledgerFor(input.principal, input.accountId);
+    // Conformance fixtures deliberately use virtual clocks and injected rows.
+    // They cannot supply the live private canary's source evidence.
+    if (ledger.virtualNow || ledger.integrityRecords) return false;
+    const stored = ledger.configs.get(generationKey({ delivery_config_id: input.sourceConfigId, delivery_config_version: input.sourceConfigVersion }));
+    if (!stored || !stored.config.active || stored.config.delivery_config_version !== input.sourceConfigVersion
+      || stored.config.offering_id !== 'analytics-daily-managed'
+      || stored.config.schedule.period_duration !== 'P1D' || stored.config.schedule.alignment !== 'utc'
+      || stored.config.required_finality !== 'official' || !('media_buy_ids' in stored.config.scope)
+      || canonicalize([...stored.config.scope.media_buy_ids].sort()) !== canonicalize([...input.mediaBuyIds].sort())) return false;
+    const record = recordsFor(input.principal, input.accountId, [stored], now).find(item => (
+      item.obligation.period.start === input.period.start && item.obligation.period.end === input.period.end
+    ));
+    if (!record || record.obligation.coverage?.status !== 'full'
+      || canonicalize([...record.obligation.media_buy_ids].sort()) !== canonicalize([...input.mediaBuyIds].sort())) return false;
+    // This offering publishes one snapshot; preserve its first committed bytes
+    // on another read or a process restart instead of rebinding its revision ID.
+    if (ledger.publishedRevisions.has(record.obligation.reporting_obligation_id)) return true;
+    const rows = [{ period_start: input.period.start, period_end: input.period.end, impressions: input.impressions }];
+    const revision = commitRevisionContent(ledger, {
+      ...zeroRowRevision(record.obligation, now),
+      finality: stored.config.required_finality,
+      row_count: rows.length,
+      control_totals: [{ name: 'impressions', value: String(input.impressions), value_type: 'integer', unit: 'impressions' }],
+    }, rows);
+    ledger.publishedRevisions.set(record.obligation.reporting_obligation_id, revision);
+    ledger.version += 1;
+    return true;
   });
 }
 
