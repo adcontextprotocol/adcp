@@ -96,8 +96,11 @@
     },
     "audience_evidence_requirements": {
       "title": "Product Purchase Audience Evidence Requirements",
-      "$ref": "/schemas/core/product-audience-evidence-requirements.json",
-      "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot."
+      "allOf": [
+        { "$ref": "/schemas/core/product-audience-evidence-requirements.json" },
+        { "not": { "required": ["target_audiences"] } }
+      ],
+      "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot. Rejects target_audiences in 3.3."
     },
     "audience_evidence_pins": {
       "type": "array",

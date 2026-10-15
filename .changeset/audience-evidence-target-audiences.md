@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add an experimental `target_audiences[]` list to `audience_evidence_requirements` (`media_buy.audience_evidence_targets`, #8125) so a buyer can name the audience it wants evidence for. Each item (`core/audience-evidence-target.json`) has an `audience`, a `relationship` and a `minimum_value`. A product satisfies a target only through an admissible `audience_evidence` item with an exactly matching audience, the same relationship and a value at or above the minimum. Targets combine with AND, `preferred` ranks and explains through `audience_evidence_selections`, `required` excludes, and a target is never a targeting predicate. The field applies to `get_products` and `list_products` filters; `create_media_buy` packages and `buy_products` purchases reject it in 3.3. Also extracts the existing evidence relationship values into `enums/audience-evidence-relationship.json` (value set unchanged). Additive; requirements without `target_audiences` behave as before.

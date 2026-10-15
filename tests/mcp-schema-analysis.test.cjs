@@ -48,9 +48,13 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // reached from list_products, request_proposals, and refine_proposals.
   // Daypart time granularity adds one shared enum reached through the
   // daypart requirement in the targeting-bearing tools.
-  assert.equal(report.definition_instances, 681);
-  assert.equal(report.unique_definitions, 185);
-  assert.equal(report.repeated_definitions, 133);
+  // Audience evidence targets make the audience characteristic, the target
+  // item, and the evidence relationship enum reachable from the discovery
+  // filters (list_products, request_proposals, refine_proposals) and the
+  // buy_products purchase guard.
+  assert.equal(report.definition_instances, 693);
+  assert.equal(report.unique_definitions, 188);
+  assert.equal(report.repeated_definitions, 136);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -174,7 +178,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 185);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 188);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(
@@ -248,7 +252,7 @@ test("experiment report keeps all alternatives smaller than standalone model con
   );
   assert.ok(
     variants.prompt_cleanup.context_bytes <
-      variants.standalone.context_bytes * 0.83
+      variants.standalone.context_bytes * 0.84
   );
   // Report both operands on failure: this bound drifts into its own limit and
   // is then re-pinned by whichever schema PR trips it first (#6571), and the
