@@ -86,9 +86,12 @@ providers.
   ordinal order. JCS escapes newlines inside strings, so `0x0A` only separates rows.
   Stored bytes are authoritative. Readers verify them and never re-serialize parsed values,
   so verification never depends on number parsing.
-- **Chunks and segments.** A segment is up to 500 rows. A chunk is up to 10,000 rows and
-  8 MiB. A new chunk starts when the current one is full. Each chunk records its segment
-  digests, and the header's `row_manifest_sha256` covers the ordered chunk manifests.
+- **Chunks and segments.** A segment is up to 500 rows and is the unit of verification and
+  of byte-range reads. A chunk is up to 10,000 rows and 8 MiB. A new chunk starts when the
+  current one is full. Each chunk records its segment digests, and the header's
+  `row_manifest_sha256` covers the ordered chunk manifests. The protocol caps a delivery
+  page at 100 rows (`max_results`), so a page is served from within one or two segments
+  and is not sized to a segment.
 - **Envelope reconstruction.** JCS sorts the envelope keys, so a verifier streams
   `{"control_totals":` + totals + `,"reporting_revision_id":` + id +
   `,"reporting_rows":[` + rows joined by `,` + `],"row_count":` + n + `}` without parsing
@@ -105,6 +108,11 @@ providers.
 ## 2. Stored values use their AdCP names
 
 Every stored value that has an AdCP counterpart uses its name, type, pattern and bound.
+`row_binding_id` and the binding's credential reference are adopter-chosen identifiers
+with no AdCP field of their own. Both SDKs cap them at 128 characters, narrower than the
+255 that AdCP's comparable identifiers allow. Widening the bound is tracked in
+[adcp-client#3282](https://github.com/adcontextprotocol/adcp-client/issues/3282) and
+[adcp-client-python#1498](https://github.com/adcontextprotocol/adcp-client-python/issues/1498).
 
 | Stored value | AdCP definition |
 | --- | --- |
@@ -180,6 +188,11 @@ columns, types, partitioning and retention are the adopter's.
 - Each tick reads the next range from the change feed, reads rows through the verified
   reader and runs one load job per table. Job IDs derive from the sink and that range, so
   a replay after a crash under the same IDs is refused by BigQuery.
+- The sink loads two tables: rows first, then one metadata row per revision (revision and
+  obligation IDs, revision number, finality, supersession, period, `observed_at`,
+  `data_through`, digest, row count and control totals). `current_rows` reads through the
+  metadata table. Tracked in
+  [adcp-client#3285](https://github.com/adcontextprotocol/adcp-client/issues/3285).
 - Fixes in #3197, #3239 and #3251: overlapping plans are fenced, a job is looked up by ID
   before uploading, a load that outlasts its deadline converges, and the cancel path is
   removed.
@@ -239,13 +252,20 @@ that intent created, at their recorded versions. Adopted objects are never swept
 retirements and sweeps back off per item, so a stuck item never starves the rest (#3228).
 A sweep skips intents whose binding this host does not configure, and counts them.
 
+The intent sweep cannot see three cases: an object whose `PUT` succeeded before the intent
+recorded it, intents for a binding no running host configures, and intents lost to a
+database restore. A listing collector for them is tracked in
+[adcp-client#3284](https://github.com/adcontextprotocol/adcp-client/issues/3284).
+
 With unique object keys required, the cross-row-set object lock can go. It stays for now
 because header-only revisions (§6) share chunks within an obligation. Each SDK takes
 `pg_advisory_xact_lock(hashtextextended('adcp-reporting-object:' || binding_id || ':' || object_ref, 0))`
 for every external row-object delete and every commit that adopts an existing object.
 Under that lock, a delete proceeds only if no `live` or `unavailable` row set and no other
 open intent references the same binding, key and native version. Removing the lock is a
-follow-up.
+follow-up, tracked in
+[adcp-client#3281](https://github.com/adcontextprotocol/adcp-client/issues/3281) and
+[adcp-client-python#1492](https://github.com/adcontextprotocol/adcp-client-python/issues/1492).
 
 ## 5. Concurrency: one writer SDK per ledger database
 
@@ -267,7 +287,11 @@ first, and an account reader skipped `seq` 1 permanently.
 
 The account-feed truncation guard (§4.1) is defense in depth. It narrows the window and
 cannot close it for every interleaving of a writer that takes a different lock key. It
-does not make mixed writers supported.
+does not make mixed writers supported. Ordering the account feed by `(xid, seq)` behind
+`xid < pg_snapshot_xmin(...)`, as the deployment-wide feed already does, would remove its
+dependence on the lock. It changes the account cursor format, which is acceptable during
+the SDK 16 beta on an experimental subpath. Tracked in
+[adcp-client#3283](https://github.com/adcontextprotocol/adcp-client/issues/3283).
 
 The interop test is the format gate. Each SDK's chunks must verify in the other, against
 one database and one bucket. Python CI builds JavaScript `main` and runs it on reporting
@@ -311,9 +335,8 @@ Retention is period-aligned and protocol-aligned.
 3. Delete the period's PostgreSQL bodies, manifests, headers and records, mark the
    tombstone `retired`, and record the retirement in the change table.
 
-Python's append-only guards protect some records, such as reconciliation records. A period
-that carries them is marked `protected` and is not retired, though its row bytes can still
-be freed. The guards are an audit-model decision for the Python maintainers.
+An SDK's own append-only records can stop phase 3. The period then stays `retiring` with a
+recorded cause after its bytes are freed.
 
 ## 7. Wire mapping and protocol questions
 
@@ -324,8 +347,11 @@ be freed. The guards are an audit-model decision for the Python maintainers.
   unknown ID. The revision leaves every protocol projection, and
   `scope.ledger_retained_from` advances past its period.
 - **Buyers** see collapsed codes, so they cannot probe whether an object exists.
-- **Paging.** Delivery pages map to segments. `total_count` comes from the header. Cursors
-  carry `row_location_version` and re-resolve if rows move.
+- **Paging.** A page reads and verifies only the segments that cover its rows.
+  `max_results` is the protocol's 1 to 100. The JavaScript handlers still accept up to 500
+  ([adcp-client#3213](https://github.com/adcontextprotocol/adcp-client/issues/3213)).
+  `total_count` comes from the header. Cursors carry `row_location_version` and
+  re-resolve if rows move.
 - **Metadata-only paths** (producer, lifecycle, status ingest, planning) never read rows.
 
 Resolved protocol questions:
@@ -361,8 +387,19 @@ Open protocol item:
 Stages 4 and 5 need no shared layout. They would only need one if two SDKs wrote the same
 tables, and §5 rules that out. Behavior comes from the protocol's
 [security and idempotency rules](../docs/building/by-layer/L1/security.mdx), not from a
-shared schema. Each SDK keeps its own tables and migrations. The same constraint applies
-to any store both SDKs would write.
+shared schema. Each SDK keeps its own tables and migrations.
+
+The ledger is one instance of a wider fact: with default table names, two SDKs cannot
+share a database. Both create `adcp_idempotency` by default, with incompatible layouts.
+JavaScript has `scoped_key TEXT PRIMARY KEY`
+([`pg.ts:92-99`](https://github.com/adcontextprotocol/adcp-client/blob/main/src/lib/server/idempotency/backends/pg.ts)).
+Python has `PRIMARY KEY (scope_key, key)`
+([`backends.py:507-516`](https://github.com/adcontextprotocol/adcp-client-python/blob/main/src/adcp/server/idempotency/backends.py)).
+Both use `CREATE TABLE IF NOT EXISTS`, so the second SDK on a database runs against the
+first SDK's shape without an error. Python's docstring warns of this (`backends.py:342-351`).
+Each SDK takes a table-name option, so a deployment that must share a database has to
+rename one side's tables.
+
 [DR-0021](../governance/decisions/DR-0021-idempotency-ledger-outlives-resource.md) is
 related but still proposed. This document does not ratify it.
 
@@ -379,3 +416,67 @@ related but still proposed. This document does not ratify it.
   its account filter mints another tenant's evidence.
 - **Replacing write intents with lifecycle rules.** Rejected (§4.2).
 - **A shared persistence package and a second schema manager.** Dropped (see above).
+- **Plain partitioned rows.** Rows in an append-only table, one per `(revision, ordinal)`,
+  paged by ordinal. Rejected as the row format, for reasons that are not PostgreSQL read
+  speed:
+  - The chunk format is what makes object-storage bindings possible. Rows leave
+    PostgreSQL, the external store is untrusted, and byte-verified segment and chunk
+    digests committed in PostgreSQL let an exact paged read verify a ranged read from it.
+    A plain table has nothing to verify a 100-row page against.
+  - One format serves the `postgres` and `object` kinds. A plain table would give
+    PostgreSQL a second format beside the object one, and the fixtures and verifiers would
+    have to cover both.
+  - Exact reads reproduce `revision_content_sha256` by streaming the stored bytes. A plain
+    table of canonical row text can do that too, by a full ordered scan, and the
+    figures below show it is cheaper. It still gives a page no digest of its own.
+
+  Measured on the JavaScript SDK at `dfc9c4be`, against a local PostgreSQL 16.14 (8 vCPU,
+  16 GiB, `shared_buffers` 128 MB, loopback, one sequential client). One revision of
+  100,000 realistic delivery rows, about 320 bytes each as JCS (32.1 MB): ten chunks of
+  10,000 rows, 20 segments each, in `postgres`-kind row storage. Each read is
+  `readRevisionRows` with `limit` 100, including resolving the row-set handle. The
+  baseline is a table with `PRIMARY KEY (revision_id, ordinal)` and the canonical row
+  text, read with `WHERE ordinal >= $n ORDER BY ordinal LIMIT 100` and parsed, with no
+  verification. Warm is 200 reads of one page after a warm-up. Cold stops PostgreSQL,
+  evicts its files from the OS page cache with `posix_fadvise(DONTNEED)`, restarts it and
+  reads one page on a new connection, 11 times.
+
+  | Median / p95, ms | Chunked, default `BYTEA` | Chunked, `STORAGE EXTERNAL` | Plain rows |
+  | --- | --- | --- | --- |
+  | Warm, first page | 9.2 / 10.4 | 8.8 / 12.7 | 0.57 / 0.76 |
+  | Warm, middle (row 54,250) | 10.2 / 14.9 | 8.3 / 14.1 | 0.55 / 0.62 |
+  | Warm, last page | 12.8 / 16.1 | 8.9 / 12.5 | 0.57 / 0.64 |
+  | Warm, random pages (400) | 12.3 / 18.3 | 9.1 / 16.7 | 1.05 / 1.35 |
+  | Cold, first page | 15.0 / 19.5 | 14.7 / 17.3 | 2.6 / 3.1 |
+  | Cold, middle | 18.3 / 20.3 | 15.2 / 18.1 | 2.5 / 3.6 |
+  | Cold, last page | 22.7 / 31.8 | 15.2 / 21.4 | 2.6 / 3.3 |
+
+  The chunk format costs about 15 to 20 times a plain page read when warm and 6 to 9 times
+  when cold, which is 9 to 23 ms against 0.6 to 2.6 ms. Of the 9 to 10 ms in the middle case, resolving the
+  handle takes about 2 ms, the segment's slice query 1 to 4 ms, and the rest is
+  verification and decoding (100 iterations). A full verified read of the revision takes
+  1.65 s (p95 1.93 s), against 0.26 s for a plain ordered scan that hashes the envelope
+  and 0.36 s for one that parses the rows without verifying them. This is a local,
+  single-node measurement with no concurrency, so it supports comparisons and not absolute
+  figures. It does not argue for the chunk format on PostgreSQL speed. The format is kept
+  for object stores and one shared shape.
+
+  Neither SDK sets `STORAGE EXTERNAL` on the `BYTEA` body column. By default TOAST
+  compresses these bodies 4.6 times (32.1 MB of chunks occupy 6.9 MB), and a slice must
+  decompress everything before its offset. With `EXTERNAL`, a mid-chunk segment slice
+  falls from 3.9 ms to 1.3 ms, and a last-page read from 12.8 to 8.9 ms warm and from 22.7
+  to 15.2 ms cold. A first-page read does not change. The cost is storage: bodies grow to
+  33.4 MB. It matters modestly, for pages late in a chunk. The chunks measured here are
+  3.2 MB, below the 8 MiB bound, and the effect should grow with chunk size, which was not
+  measured. The measurement does not justify changing the default, so it stays a column setting that an adopter with
+  large PostgreSQL-stored revisions can choose.
+- **A separately published storage package.** The ledger, the providers and the sink could
+  ship as a package of their own from the same maintainers, as Auth.js, LangGraph and
+  OpenTelemetry ship storage. Not now. JavaScript keeps them in `@adcp/sdk` behind
+  `@experimental` subpaths: adopters get one install and one version line for the digest
+  code and its fixtures, the cloud SDKs are already optional peers imported only by their
+  own subpath, and the experimental policy already lets those subpaths break in minor
+  releases. The decision is revisited at 16.0 GA
+  ([adcp-client#3286](https://github.com/adcontextprotocol/adcp-client/issues/3286)).
+  Python has the same question open in
+  [adcp-client-python#1510](https://github.com/adcontextprotocol/adcp-client-python/issues/1510).
