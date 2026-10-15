@@ -3,6 +3,7 @@
   "$id": "/schemas/core/agent-onboarding-requirement.json",
   "title": "Agent Onboarding Requirement",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "One requirement an onboarding mode imposes, discriminated by kind. Only aao_verified, storyboard, and experimental_feature carry fields; other kinds are the kind alone. The aao_verified fields (role, verification_modes, verified_specialisms, adcp_version) use the AgenticAdvertising.org Verified badge token's own claim names (docs/building/verification/aao-verified.mdx). The requirement describes the gate the publishing party applies on its own side; it creates no conformance obligation on the counterparty.",
   "type": "object",
   "properties": {

@@ -591,10 +591,10 @@ AdCP leaves contract, credit, and credential issuance to the seller's own system
 **Modes.**
 - **`application`:** the buyer completes an out-of-band step at the mode's `url` before the seller recognizes it for that mode.
 - **`invite_only`:** the seller does not accept unsolicited buyer agents for that mode.
-- **`open`:** a buyer agent that meets every requirement may proceed without prior contact, but only when the seller can establish its identity from the agent's published keys (the [Web Bot Auth](/docs/building/by-layer/L1/security) profile). A seller that only maps opaque, seller-issued credentials MUST NOT declare `open`.
+- **`open`:** a buyer agent that meets every requirement may proceed without prior contact, but only when the seller can establish its identity from the agent's published keys (the [Web Bot Auth](/docs/building/by-layer/L1/security#web-bot-auth-identities) profile). A seller that only maps opaque, seller-issued credentials MUST NOT declare `open`.
 
 **`open` binds identity, not spend.** Under any `open` mode:
-- an account whose brand is outside the buyer's operator domain needs a grant, evaluated as [Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents) describes ([spec R6](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md); that section lands with [#8169](https://github.com/adcontextprotocol/adcp/pull/8169)). Without one, the request fails with [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) and `error.details.reason: "grant_absent"`;
+- an account whose brand is outside the buyer's operator domain needs a grant, evaluated as [Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental) describes ([spec R6](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md); that section lands with [#8169](https://github.com/adcontextprotocol/adcp/pull/8169)). Without one, the request fails with [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) and `error.details.reason: "grant_absent"`;
 - spend-committing operations need an existing seller-side billing relationship with the billed party ([spec R7](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md));
 - sellers SHOULD count quotas and rate limits for automatic onboarding per operator domain, not per origin;
 - an agent whose origin's registrable domain is a hosting platform's tenant subdomain (the Public Suffix List's PRIVATE section) is eligible for `sandbox` only.
@@ -605,7 +605,7 @@ So `open` delivers a verified identity, sandbox access, and joining a billing re
 
 | Kind | Direction | Meaning |
 |---|---|---|
-| `grant` | seller gating a buyer | A demand-side grant authorizes the buyer's operator for the account's brand; implicit when the operator is the brand. |
+| `grant` | seller gating a buyer | A demand-side grant chain authorizes the buyer agent to act for the account's brand, evaluated as [Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental) describes; implicit when `account.operator`, the brand, and the signer's operator are the same registrable domain. |
 | `billing_entity` | seller gating a buyer | The buyer supplies a billing entity on `sync_accounts`. |
 | `contract` | seller gating a buyer | A signed agreement exists; details at `url`. |
 | `credit_application` | seller gating a buyer | A credit application completed at `url`, or later through `sync_accounts` `setup.url`. |

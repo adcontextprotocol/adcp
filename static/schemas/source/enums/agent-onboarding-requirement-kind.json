@@ -3,6 +3,7 @@
   "$id": "/schemas/enums/agent-onboarding-requirement-kind.json",
   "title": "Agent Onboarding Requirement Kind",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "What a counterparty must satisfy before an onboarding mode applies. Each kind states the direction it applies to; a kind used in the other direction is ignored. Readers MUST treat an unknown kind as unsatisfiable by machine and fall back to the posture's message and url.",
   "type": "string",
   "x-extensible": true,
@@ -17,7 +18,7 @@
     "experimental_feature"
   ],
   "enumDescriptions": {
-    "grant": "Seller gating a buyer. A demand-side grant authorizes the buyer's operator for the account's brand (DR-0025); implicit when the operator is the brand.",
+    "grant": "Seller gating a buyer. A demand-side grant chain authorizes the buyer agent to act for the account's brand, evaluated as docs/building/by-layer/L2/accounts-and-agents.mdx §Grants in trust.json describes (DR-0025); implicit when account.operator, the brand, and the signer's operator are the same registrable domain.",
     "billing_entity": "Seller gating a buyer. The buyer supplies a billing entity (core/business-entity.json) on sync_accounts.",
     "contract": "Seller gating a buyer. A signed agreement exists; details at url.",
     "credit_application": "Seller gating a buyer. A credit application is completed at url, or later through sync_accounts setup.url.",

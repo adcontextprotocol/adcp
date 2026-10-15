@@ -3,6 +3,7 @@
   "$id": "/schemas/core/agent-onboarding.json",
   "title": "Agent Onboarding Posture",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "How a seller onboards buyer agents: a mode per billing party and for sandbox, with requirements, and where a human starts. Seller-wide and identical for every caller, served on the unauthenticated get_adcp_capabilities fetch, and absent from error payloads, so it cannot act as a per-agent onboarding oracle. Its content is advisory; it changes no error code and no oracle clamp. An absent key means undeclared, never invite_only. See specs/agent-identity-3-3.md R7 (#8113).",
   "type": "object",
   "properties": {

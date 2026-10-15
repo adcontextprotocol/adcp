@@ -1271,6 +1271,7 @@
         "agent_onboarding": {
           "$ref": "/schemas/core/agent-onboarding.json",
           "x-status": "experimental",
+          "x-added-in": "3.3.0",
           "description": "How this seller onboards buyer agents: a mode per billing party and for sandbox, requirements, and where a human starts. Seller-wide and identical for every caller. Experimental: sellers that declare it MUST list account.agent_onboarding in experimental_features. See docs/protocol/get_adcp_capabilities.mdx#accountagent_onboarding."
         }
       },

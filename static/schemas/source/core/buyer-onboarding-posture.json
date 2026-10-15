@@ -3,6 +3,7 @@
   "$id": "/schemas/core/buyer-onboarding-posture.json",
   "title": "Buyer Onboarding Posture",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "How a buying agent considers sellers: a mode, the requirements a seller must meet, and where a seller's human starts. Published only in the buyer's trust.json: in the agent entry (agents[].profiles.adcp.onboarding), or as a record-level default (profiles.adcp.onboarding). Public and identical for every reader. mode uses the same enum as the seller's posture; here it says how the buyer considers sellers. See specs/agent-identity-3-3.md R7 (#8114).",
   "type": "object",
   "properties": {

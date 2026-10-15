@@ -60,6 +60,19 @@ test('modes and billing keys are closed; requirement kinds use the registered en
   assert.equal(validate(withFeature({ billing: { advertiser: { mode: 'invite_only' } } })), true, JSON.stringify(validate.errors));
 });
 
+test('new schemas carry x-added-in 3.3.0', async () => {
+  for (const uri of [
+    '/schemas/core/agent-onboarding.json',
+    '/schemas/core/agent-onboarding-tier.json',
+    '/schemas/core/agent-onboarding-requirement.json',
+    '/schemas/core/buyer-onboarding-posture.json',
+    '/schemas/enums/agent-onboarding-mode.json',
+    '/schemas/enums/agent-onboarding-requirement-kind.json',
+  ]) {
+    assert.equal((await loadSchema(uri))['x-added-in'], '3.3.0', uri);
+  }
+});
+
 test('every requirement kind states its direction', async () => {
   const kinds = await loadSchema('/schemas/enums/agent-onboarding-requirement-kind.json');
   assert.equal(kinds['x-extensible'], true);

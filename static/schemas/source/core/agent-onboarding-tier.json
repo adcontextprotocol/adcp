@@ -3,6 +3,7 @@
   "$id": "/schemas/core/agent-onboarding-tier.json",
   "title": "Agent Onboarding Tier",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "The onboarding mode for one billing party, or for sandbox access, with its requirements and an optional page of its own.",
   "type": "object",
   "properties": {
