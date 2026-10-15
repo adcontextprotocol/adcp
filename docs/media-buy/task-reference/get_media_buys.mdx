@@ -139,6 +139,7 @@ Returns an array of media buys with current status, creative approval state, and
 |-------|-------------|
 | `creative_id` | Creative identifier |
 | `landing_page_url` | Added in 3.3. Effective serving destination for this creative on this package, including an assignment override. Supporting sellers return the URL (or macro-bearing template) when unique; omit when no destination exists or an unoverridden creative has multiple destinations, whose URLs remain in its creative assets. See [assignment landing pages](/docs/creative/task-reference/sync_creatives#assignment-landing-pages). |
+| `trackers` | Added in 3.3, experimental. Assignment-scoped `pixel_tracker` entries for this creative on this package, returned by sellers advertising `creative.supports_assignment_trackers`; omitted when there are none. The creative's own trackers are not included. See [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers-experimental). |
 | `approval_status` | `pending_review`, `approved`, `partially_approved`, or `rejected` |
 | `rejection_reason` | Explanation of rejection (when `approval_status` is `rejected`) |
 | `approval_scopes` | Complete publisher/placement outcomes when `approval_status` is `partially_approved` |
