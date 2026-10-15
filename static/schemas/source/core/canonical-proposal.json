@@ -32,7 +32,20 @@
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "For a draft, the indicative-terms freshness deadline. For a committed proposal, the inventory-hold deadline."
+      "description": "For a draft, the indicative-terms freshness deadline. For a committed proposal, the inventory-hold deadline under inventory_hold semantics, or the acceptance-window deadline under terms_only semantics (get_adcp_capabilities media_buy.proposal_refinement.hold_semantics, or hold_policy.available false)."
+    },
+    "hold_policy": {
+      "$ref": "/schemas/core/hold-policy.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.hold_policy). On a draft, the binding policy for a successful finalize of this draft, derived by the seller from the allocated products when it created the draft: available is false if any allocated product's effective policy is non-holdable, min_duration and max_duration do not exceed the max_duration of any allocated product that declares one, max_total_duration does not exceed that of any allocated product that declares one, and extendable is true only if every allocated product is extendable. Product values are planning hints; the immutable draft governs finalize even if a product's policy changes. On a committed proposal, the seller carries the draft's policy forward unchanged; it governs the hold finalize placed, including extension limits, and each extend_hold successor carries it forward unchanged. A seller that lists media_buy.hold_policy MUST include it on every draft and committed proposal it returns to a caller at 3.3 or later, and MUST omit it for callers below 3.3. When absent, get_adcp_capabilities media_buy.proposal_refinement.hold_semantics applies."
+    },
+    "hold_placed_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.hold_policy). When the seller placed this committed proposal's hold, which is when it created the committed proposal. Required on a committed proposal whose hold_policy.available is true; forbidden on drafts and when hold_policy.available is false. It MUST be no earlier than when the seller received the finalize request and no later than the synchronous response or, for a submitted finalize, the task's completion. On the committed proposal created by finalize, hold_placed_at plus hold_policy.min_duration MUST NOT be later than expires_at, and expires_at MUST NOT be later than hold_placed_at plus hold_policy.max_duration. An exact retry returns the original hold_placed_at and expires_at; it never restarts the clock. Each extend_hold successor carries hold_placed_at forward unchanged and is bounded by hold_policy.max_total_duration instead of max_duration: its expires_at MUST NOT be later than hold_placed_at plus max_total_duration, so extension never restarts that clock. Omitted, with hold_policy, for callers below 3.3."
     },
     "name": { "type": "string", "minLength": 1, "maxLength": 500 },
     "description": { "type": "string", "maxLength": 2000 },
@@ -75,6 +88,28 @@
     {
       "if": { "properties": { "proposal_status": { "const": "committed" } }, "required": ["proposal_status"] },
       "then": { "required": ["expires_at"] }
+    },
+    {
+      "description": "A committed proposal that holds inventory records when the hold was placed.",
+      "if": {
+        "properties": {
+          "proposal_status": { "const": "committed" },
+          "hold_policy": { "properties": { "available": { "const": true } }, "required": ["available"] }
+        },
+        "required": ["proposal_status", "hold_policy"]
+      },
+      "then": { "required": ["hold_placed_at"] }
+    },
+    {
+      "description": "hold_placed_at describes a placed hold, so it needs a hold_policy that holds and a non-draft proposal.",
+      "if": { "required": ["hold_placed_at"] },
+      "then": {
+        "required": ["hold_policy"],
+        "properties": {
+          "proposal_status": { "not": { "const": "draft" } },
+          "hold_policy": { "properties": { "available": { "const": true } } }
+        }
+      }
     },
     {
       "if": { "properties": { "proposal_kind": { "const": "media_buy_cancellation" } }, "required": ["proposal_kind"] },

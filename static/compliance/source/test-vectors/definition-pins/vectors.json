@@ -49,16 +49,26 @@
       "exclude": [
         "description",
         "ext",
+        "images",
         "name",
         "publisher_domain",
         "related_collections",
+        "sample_content",
         "season",
-        "talent"
+        "talent",
+        "url"
       ],
       "set_arrays": [
-        "distribution",
         "genre"
-      ]
+      ],
+      "nested": {
+        "distribution": {
+          "exclude": [
+            "followers"
+          ],
+          "set_arrays": []
+        }
+      }
     },
     "data_provider_signal": {
       "adagents_array": "signals",
@@ -475,6 +485,123 @@
       }
     },
     {
+      "id": "collection-card-fields-are-not-drift",
+      "ref_kind": "publisher_collection",
+      "name": "Refreshing card images, samples, and the collection page is not drift",
+      "why": "images, sample_content, and url are collection-card display fields on the exclusion list, so a new thumbnail does not fail committed proposals.",
+      "entry_a": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        },
+        "url": "https://sports-network.example/shows/evening-news",
+        "images": [
+          {
+            "asset_type": "image",
+            "url": "https://cdn.sports-network.example/evening-news/poster.jpg",
+            "width": 1200,
+            "height": 675
+          }
+        ],
+        "sample_content": [
+          {
+            "asset_type": "published_post",
+            "post_url": "https://video.example.com/watch/evening-news-ep-1",
+            "platform": "video.example.com"
+          }
+        ]
+      },
+      "entry_b": {
+        "publisher_domain": "sports-network.example",
+        "collection_id": "evening_news",
+        "name": "Evening News",
+        "description": "Nightly newscast",
+        "kind": "series",
+        "genre": [
+          "news",
+          "politics"
+        ],
+        "language": "en",
+        "content_rating": {
+          "system": "tv_parental",
+          "rating": "TV-PG"
+        },
+        "cadence": "daily",
+        "season": "2026",
+        "status": "active",
+        "talent": [
+          {
+            "role": "host",
+            "name": "Pat Example"
+          }
+        ],
+        "related_collections": [
+          {
+            "collection_id": "morning_show",
+            "relationship": "companion"
+          }
+        ],
+        "ext": {
+          "internal_id": 7
+        },
+        "url": "https://sports-network.example/programs/evening-news",
+        "images": [
+          {
+            "asset_type": "image",
+            "url": "https://cdn.sports-network.example/evening-news/poster-v2.jpg",
+            "width": 1200,
+            "height": 675
+          },
+          {
+            "asset_type": "image",
+            "url": "https://cdn.sports-network.example/evening-news/anchor.jpg",
+            "width": 800,
+            "height": 800
+          }
+        ],
+        "sample_content": [
+          {
+            "asset_type": "published_post",
+            "post_url": "https://video.example.com/watch/evening-news-ep-2",
+            "platform": "video.example.com"
+          }
+        ]
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5",
+        "content_digest_b": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5"
+      }
+    },
+    {
       "id": "collection-content-rating-is-drift",
       "ref_kind": "publisher_collection",
       "name": "Changing content_rating is drift",
@@ -710,6 +837,190 @@
         "same_content_digest": false,
         "content_digest_a": "ea243014f56cbb3b44887a24bf839721e7c0eef44b9d5c36927fda86b99f3fa5",
         "content_digest_b": "7af923c5d99ee27ecf262cbb8b9b94a82e963ca7a98a2b29c08895c62ed96e6a"
+      }
+    },
+    {
+      "id": "collection-distribution-followers-are-not-drift",
+      "ref_kind": "publisher_collection",
+      "name": "Refreshing or adding distribution follower counts is not drift",
+      "why": "distribution[] elements are projected with followers excluded, so a new platform-reported count does not fail draft or committed proposals.",
+      "entry_a": {
+        "publisher_domain": "creator-network.example",
+        "collection_id": "nova_cooks",
+        "name": "Nova Cooks",
+        "description": "Weekly cooking videos from a solo creator",
+        "kind": "series",
+        "genre": [
+          "food"
+        ],
+        "language": "en",
+        "cadence": "weekly",
+        "status": "active",
+        "distribution": [
+          {
+            "publisher_domain": "videoplatform.example",
+            "identifiers": [
+              {
+                "type": "youtube_channel_id",
+                "value": "UCexample123456"
+              }
+            ],
+            "followers": {
+              "lower_bound": 1230000,
+              "upper_bound": 1239999,
+              "precision": "approximate",
+              "as_of": "2026-09-01T00:00:00Z"
+            }
+          },
+          {
+            "publisher_domain": "shortvideo.example",
+            "identifiers": [
+              {
+                "type": "tiktok_id",
+                "value": "novacooks"
+              }
+            ]
+          }
+        ]
+      },
+      "entry_b": {
+        "publisher_domain": "creator-network.example",
+        "collection_id": "nova_cooks",
+        "name": "Nova Cooks",
+        "description": "Weekly cooking videos from a solo creator",
+        "kind": "series",
+        "genre": [
+          "food"
+        ],
+        "language": "en",
+        "cadence": "weekly",
+        "status": "active",
+        "distribution": [
+          {
+            "publisher_domain": "videoplatform.example",
+            "identifiers": [
+              {
+                "type": "youtube_channel_id",
+                "value": "UCexample123456"
+              }
+            ],
+            "followers": {
+              "lower_bound": 1240000,
+              "upper_bound": 1249999,
+              "precision": "approximate",
+              "as_of": "2026-10-01T00:00:00Z"
+            }
+          },
+          {
+            "publisher_domain": "shortvideo.example",
+            "identifiers": [
+              {
+                "type": "tiktok_id",
+                "value": "novacooks"
+              }
+            ],
+            "followers": {
+              "lower_bound": 480000,
+              "upper_bound": 489999,
+              "precision": "approximate",
+              "as_of": "2026-10-01T00:00:00Z"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "same_content_digest": true,
+        "content_digest_a": "143399434101f70ab056c3d08813222692c37ef14d168081d7d0a47ed5c3cc27",
+        "content_digest_b": "143399434101f70ab056c3d08813222692c37ef14d168081d7d0a47ed5c3cc27"
+      }
+    },
+    {
+      "id": "collection-distribution-identifier-is-drift",
+      "ref_kind": "publisher_collection",
+      "name": "Changing a distribution identifier is drift",
+      "why": "Only followers is excluded from distribution[] elements; identifiers, property_ids, and publisher_domain stay in the preimage.",
+      "entry_a": {
+        "publisher_domain": "creator-network.example",
+        "collection_id": "nova_cooks",
+        "name": "Nova Cooks",
+        "description": "Weekly cooking videos from a solo creator",
+        "kind": "series",
+        "genre": [
+          "food"
+        ],
+        "language": "en",
+        "cadence": "weekly",
+        "status": "active",
+        "distribution": [
+          {
+            "publisher_domain": "videoplatform.example",
+            "identifiers": [
+              {
+                "type": "youtube_channel_id",
+                "value": "UCexample123456"
+              }
+            ],
+            "followers": {
+              "lower_bound": 1230000,
+              "upper_bound": 1239999,
+              "precision": "approximate",
+              "as_of": "2026-09-01T00:00:00Z"
+            }
+          },
+          {
+            "publisher_domain": "shortvideo.example",
+            "identifiers": [
+              {
+                "type": "tiktok_id",
+                "value": "novacooks"
+              }
+            ]
+          }
+        ]
+      },
+      "entry_b": {
+        "publisher_domain": "creator-network.example",
+        "collection_id": "nova_cooks",
+        "name": "Nova Cooks",
+        "description": "Weekly cooking videos from a solo creator",
+        "kind": "series",
+        "genre": [
+          "food"
+        ],
+        "language": "en",
+        "cadence": "weekly",
+        "status": "active",
+        "distribution": [
+          {
+            "publisher_domain": "videoplatform.example",
+            "identifiers": [
+              {
+                "type": "youtube_channel_id",
+                "value": "UCexample123456"
+              }
+            ],
+            "followers": {
+              "lower_bound": 1230000,
+              "upper_bound": 1239999,
+              "precision": "approximate",
+              "as_of": "2026-09-01T00:00:00Z"
+            }
+          },
+          {
+            "publisher_domain": "shortvideo.example",
+            "identifiers": [
+              {
+                "type": "tiktok_id",
+                "value": "novacooks_official"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "same_content_digest": false,
+        "content_digest_a": "143399434101f70ab056c3d08813222692c37ef14d168081d7d0a47ed5c3cc27",
+        "content_digest_b": "b0fb29d7ea89c657e0a9ba4acb512b3f877d8024efefb093bfb34086c09dfe09"
       }
     },
     {

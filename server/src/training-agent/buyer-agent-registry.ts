@@ -52,6 +52,7 @@
  * leaked test credential is bounded to sandbox accounts).
  */
 
+import { createHash } from 'node:crypto';
 import { BuyerAgentRegistry, type BuyerAgent } from '@adcp/sdk/server';
 import { getCommercialRelationship } from './commercial-relationships.js';
 import { governanceAgentCredentialFromExtra, hostedGraderCredentialFromExtra } from './governance-agent-credentials.js';
@@ -97,8 +98,15 @@ const NO_BILLING_CAPABILITIES: ReadonlySet<never> = new Set();
 
 export const trainingBuyerAgentRegistry = BuyerAgentRegistry.bearerOnly({
   resolveByCredential: async (credential, extra) => {
-    if (credential.kind === 'oauth' && extra?.training_oauth_actor) {
-      return neutralAuthenticatedAgent({ key_id: `oauth:${credential.client_id}` });
+    if (credential.kind === 'oauth') {
+      // This public identifier is stamped only by verified OAuth middleware,
+      // separately from the credential/actor audit context. It is not a secret.
+      const principal = extra?.training_buyer_principal;
+      if (typeof principal !== 'string' || !principal) return null;
+      // The same OAuth application serves many organizations. Its client ID
+      // alone cannot own tasks or other buyer-agent-scoped sandbox state.
+      const key = createHash('sha256').update(principal).update('\0').update(credential.client_id).digest('hex');
+      return neutralAuthenticatedAgent({ key_id: key });
     }
     if (credential.kind !== 'api_key') return null;
     // Set only by the tenant router after verifying a minted sandbox
