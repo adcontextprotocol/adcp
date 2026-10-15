@@ -165,14 +165,19 @@ function requestBase(request, parsed, label) {
 }
 
 /**
- * Verifies every web-bot-auth signature on the request and returns label → origin.
+ * Verifies the one web-bot-auth signature on the request and returns label → origin.
  * Each option skips one profile check, so a test can show a vector fails on that check alone.
  */
-function verifyRequest(vector, { skipNonce = false, skipAgentCoverage = false, skipRelayCoverage = false, keyidOnlyLookup = false } = {}) {
+function verifyRequest(vector, { skipNonce = false, skipAgentCoverage = false, skipSignatureCount = false, keyidOnlyLookup = false } = {}) {
   const { request, reference_now: now } = vector;
   const parsed = parseRequestHeaders(request.headers);
   const replayCache = new Set((vector.test_harness_state?.replay_cache_entries ?? []).map(e => `${e.identity}|${e.nonce}`));
-  const labels = [...parsed.input.keys()];
+  const labels = [...parsed.input].filter(([, m]) => m.params.get('tag') === 'web-bot-auth').map(([label]) => label);
+  if (!skipSignatureCount) {
+    // The profile takes exactly one web-bot-auth signature and one Signature-Agent member per request.
+    if (labels.length !== 1) throw new ProfileError(403, 'count', `expected one web-bot-auth signature, found ${labels.length}`);
+    if (parsed.agent.size !== 1) throw new ProfileError(403, 'count', `expected one Signature-Agent member, found ${parsed.agent.size}`);
+  }
   const identities = {};
   for (const label of labels) {
     const origin = parsed.agent.get(label)?.value;
@@ -187,7 +192,6 @@ function verifyRequest(vector, { skipNonce = false, skipAgentCoverage = false, s
       if (p === 'nonce' && skipNonce) continue;
       if (!params.has(p)) throw new ProfileError(403, 'signature', `${label} has no ${p} parameter`);
     }
-    if (params.get('tag') !== 'web-bot-auth') throw new ProfileError(403, 'signature', `${label} tag is not web-bot-auth`);
     if (!PROFILE_ALGORITHMS.includes(params.get('alg'))) throw new ProfileError(403, 'signature', `${label} alg is not ed25519 or rsa-pss-sha512`);
     if (!skipNonce) {
       const nonce = params.get('nonce');
@@ -211,18 +215,6 @@ function verifyRequest(vector, { skipNonce = false, skipAgentCoverage = false, s
     }
     if (replayCache.has(`${origin}|${params.get('nonce')}`)) throw new ProfileError(403, 'replay', `${label} nonce already seen for ${origin}`);
     identities[label] = origin;
-  }
-  if (!skipRelayCoverage) {
-    // Each later signature covers the three members of every signature before it.
-    for (let later = 1; later < labels.length; later++) {
-      const covered = parsed.input.get(labels[later]).value.map(componentId);
-      for (const inner of labels.slice(0, later)) {
-        for (const member of ['signature-agent', 'signature-input', 'signature']) {
-          const id = `"${member}";key="${inner}"`;
-          if (!covered.includes(id)) throw new ProfileError(403, 'relay', `${labels[later]} does not cover ${id}`);
-        }
-      }
-    }
   }
   return identities;
 }
@@ -252,7 +244,7 @@ describe('Web Bot Auth profile test keys', () => {
 
 describe('Web Bot Auth profile positive vectors', () => {
   for (const { file, vector } of positive.filter(e => !e.vector.response)) {
-    it(`${file}: every signature verifies and names the expected identity`, () => {
+    it(`${file}: the signature verifies and names the expected identity`, () => {
       assert.deepEqual(verifyRequest(vector), vector.expected_outcome.identities);
     });
 
@@ -299,10 +291,9 @@ const TARGETS = {
   '001-missing-nonce.json': { stage: 'signature', skip: { skipNonce: true } },
   '002-replayed-nonce.json': { stage: 'replay' },
   '003-signature-agent-not-covered.json': { stage: 'signature', skip: { skipAgentCoverage: true } },
-  '004-relay-omits-inner-signature.json': { stage: 'relay', skip: { skipRelayCoverage: true } },
-  '005-relay-inner-signature-altered.json': { stage: 'signature' },
-  '006-key-not-in-named-directory.json': { stage: 'signature', skip: { keyidOnlyLookup: true } },
-  '007-malformed-signature-agent.json': { stage: 'parse' },
+  '004-key-not-in-named-directory.json': { stage: 'signature', skip: { keyidOnlyLookup: true } },
+  '005-malformed-signature-agent.json': { stage: 'parse' },
+  '006-two-signatures.json': { stage: 'count', skip: { skipSignatureCount: true } },
 };
 
 describe('Web Bot Auth profile negative vectors', () => {
@@ -336,12 +327,19 @@ describe('Web Bot Auth profile negative vectors', () => {
     }
   }
 
-  it('005: the relay signature fails on its own, because it covers the altered brand signature', () => {
-    const { vector } = negative.find(e => e.file === '005-relay-inner-signature-altered.json');
-    const parsed = parseRequestHeaders(vector.request.headers);
-    const jwk = keys.find(k => k.kid === parsed.input.get('relay').params.get('keyid'));
-    const base = requestBase(vector.request, parsed, 'relay');
-    assert.equal(crypto.verify(null, Buffer.from(base), publicKey(jwk), parsed.signature.get('relay').value), false);
+  it('006: both signatures verify on their own, so only the count check rejects the request', () => {
+    const { vector } = negative.find(e => e.file === '006-two-signatures.json');
+    const { vector: original } = positive.find(e => e.file === '001-single-signer-request.json');
+    assert.deepEqual(verifyRequest(vector, { skipSignatureCount: true }), { sig1: 'https://buyer-7k3q.com', sig2: 'https://agent.brand-7k3q.com' });
+    assert.equal(vector.expected_signature_base.sig1, original.expected_signature_base.sig1);
+  });
+
+  it('a second Signature-Agent member on a single-signature request is rejected with 403', () => {
+    const { vector: original } = positive.find(e => e.file === '001-single-signer-request.json');
+    const headers = { ...original.request.headers, 'Signature-Agent': `${original.request.headers['Signature-Agent']}, sig2="https://agent.brand-7k3q.com"` };
+    const vector = { ...original, request: { ...original.request, headers } };
+    assert.throws(() => verifyRequest(vector), e => e instanceof ProfileError && e.status === 403 && e.stage === 'count');
+    assert.deepEqual(verifyRequest(vector, { skipSignatureCount: true }), original.expected_outcome.identities);
   });
 
   it('002: the replayed request is byte-identical to positive/001', () => {

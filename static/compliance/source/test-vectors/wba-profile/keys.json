@@ -22,16 +22,6 @@
       "_private_d_for_test_only": "mu0nHxQDWktUz0o16gWmACuOZ86HpAwfmO4iP1qApp8"
     },
     {
-      "identity": "https://relay.agency-7k3q.com",
-      "seed_name": "relay-request",
-      "kty": "OKP",
-      "crv": "Ed25519",
-      "kid": "ZtaFf5jj-EzorJmZn6mX3YnmK_QyZKVLbbinzIQKOjQ",
-      "x": "8nrvWz557SHSlmuXE2dMstsU_WmRQNze3VIIeNhN-VE",
-      "use": "sig",
-      "_private_d_for_test_only": "9HMKspy6Bjt8vLzngwm2L1pzrbxOn6A7nTDBRhmRYOE"
-    },
-    {
       "identity": "https://governance-7k3q.com",
       "seed_name": "governance-document",
       "kty": "OKP",

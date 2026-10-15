@@ -1,7 +1,7 @@
 ---
 title: Web Bot Auth request-signing profile
 sidebarTitle: Web Bot Auth profile
-description: "Proposed AdCP 3.3 profile of Web Bot Auth for request and webhook signing: keys resolved from Signature-Agent, identity as an origin, nonce checks, relays."
+description: "Proposed AdCP 3.3 profile of Web Bot Auth for request and webhook signing: keys resolved from Signature-Agent, identity as an origin, nonce checks, one signature per request."
 "og:title": "AdCP — Web Bot Auth request-signing profile"
 ---
 
@@ -39,7 +39,7 @@ Two agents cannot share an origin. An operator that runs several agents gives ea
 
 An agent that shares a host with other agents under the AdCP RFC 9421 profile keeps using that profile until it moves to its own origin. When it moves, the seller maps the agent's principal to that origin explicitly. Key discovery therefore never changes who the seller considers the caller to be.
 
-Key lookup is keyed on the pair of origin and key, never on the key alone (section 5.4). A verifier that indexes keys by thumbprint alone attributes a request to whatever origin the signer claims. Negative vector `006-key-not-in-named-directory` grades this rule.
+Key lookup is keyed on the pair of origin and key, never on the key alone (section 5.4). A verifier that indexes keys by thumbprint alone attributes a request to whatever origin the signer claims. Negative vector `004-key-not-in-named-directory` grades this rule.
 
 ## One agent per purpose
 
@@ -65,8 +65,7 @@ RFC 9421 section 3.2.1 lets an application impose requirements beyond the base s
 | Key publication | Each identity publishes its keys only in its key directory. `kid` is the thumbprint, so a verifier selects a key by matching `keyid` against `kid` | Sections 5.5, 5.5.1, 6.5 |
 | Directory responses | Signed, one signature per key, covering `"@authority";req` and `content-digest`, with `created`, `expires`, the key's thumbprint as `keyid`, and `tag="http-message-signatures-directory"` | Appendix B.1 |
 | Fetches | Directory and revocation-list fetches follow AdCP's fetch rules: HTTPS only, resolved-address checks, no redirects, and size and time limits | Sections 5.5 and 6.7; [Webhook URL validation (SSRF)](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf) |
-| Several signers | Each signer adds its own signature under a label not already in use, with its own `Signature-Agent` member. A relay covers the signature before it, which section 5.2.2 permits and the profile requires | Sections 5.2.2 and 6.6.1; Appendix D.2 |
-| Verification | Every `web-bot-auth` signature on a request must verify, each against its own covered components and its own key | Section 5.2.2 |
+| One signature | A request carries exactly one `web-bot-auth` signature and exactly one `Signature-Agent` member, keyed to that signature's label. An intermediary that signs a request is its signer; whether it may act for another party is an authorization question answered by that party's `brand.json` or `trust.json`, not by a second signature | RFC 9421 section 3.2.1 lets an application add a requirement of this kind. Section 5.2.2 permits more than one signature ("A request MAY contain more than one Web Bot Auth signature") and does not require a verifier to accept one |
 | Failure responses | `400`, `403` with `Accept-Signature`, `429` | Sections 5.3 and 5.4 |
 
 A request that follows the profile is a valid WBA request. A WBA verifier configured with these rules accepts it and rejects a request that falls short. Because the rules are fixed in the profile, a signer knows them before its first request; `Accept-Signature` is the recovery path when a request falls short (see [Error responses](#error-responses)).
@@ -142,14 +141,13 @@ Signature: key1=:QJeeYQ9E5OXMbEy89f1YjQNCB5NjRxN+ck/V+4sRoVNtF5S/446uVIECNC\
 A verifier applies the following procedure to a request that carries `Signature-Input`.
 
 1. Parse `Signature`, `Signature-Input`, and `Signature-Agent` as Structured Fields. If any header fails to parse, answer `400` (section 5.4).
-2. For each `Signature-Input` member whose `tag` is `web-bot-auth`, read the `Signature-Agent` member with the same label. If the member is absent, or the signature does not cover `"signature-agent";key=<label>`, reject the signature. An uncovered member is a claim the verifier must not attach policy to (section 4.1).
-3. Resolve the origin the member names to its key directory, from cache or by fetching it, and select the key whose `kid` equals `keyid`. If the directory holds no such key, the request is unverified for that origin.
+2. Read the one `Signature-Input` member whose `tag` is `web-bot-auth` and the `Signature-Agent` member with the same label. A request that carries more than one `web-bot-auth` member or more than one `Signature-Agent` member is rejected with `403` and `Accept-Signature`. If the `Signature-Agent` member is absent, or the signature does not cover `"signature-agent";key=<label>`, reject the signature. An uncovered member is a claim the verifier must not attach policy to (section 4.1).
+3. Resolve the origin the member names to its key directory, from cache or by fetching it, and select the key whose `kid` equals `keyid`. If the directory holds no such key, the request is unverified.
 4. Verify the signature with the selected key, and check its covered components, parameters, and window against the rules in [Profile rules](#profile-rules).
 5. Check the `nonce` against the identity's replay state, and record it (see [Replay protection](#replay-protection)).
-6. If the request carries more than one `web-bot-auth` signature, check that each later signature covers the `signature-agent`, `signature-input`, and `signature` members of every earlier one (see [Relays](#relays)).
-7. If any `web-bot-auth` signature fails verification or the profile rules, answer `403` with `Accept-Signature`, as described in [Error responses](#error-responses).
-8. For each verified identity, check the identity's revocation list under [Transport revocation](/docs/building/by-layer/L1/security#transport-revocation), with key entries matched by thumbprint. A revoked key gets the generic authentication error, without `Accept-Signature`.
-9. Pass the verified identities to the AdCP layer, which applies [Onboarding](#onboarding) and the account authorization rules that apply to every request, signed or not.
+6. If the signature fails verification or the profile rules, answer `403` with `Accept-Signature`, as described in [Error responses](#error-responses).
+7. Check the identity's revocation list under [Transport revocation](/docs/building/by-layer/L1/security#transport-revocation), with key entries matched by thumbprint. A revoked key gets the generic authentication error, without `Accept-Signature`.
+8. Pass the verified identity to the AdCP layer, which applies [Onboarding](#onboarding) and the account authorization rules that apply to every request, signed or not.
 
 When a deployment verifies at the edge, Appendix C.10 applies: the edge "can instead verify at the proxy and pass the result to the origin through a deployment-local trusted channel". The edge removes any copy of that result a client sends, and the origin accepts the result only over its authenticated channel to its own edge. The edge forwards the signature fields unchanged, because the seller's own verifier enforces nonce uniqueness whatever the edge does.
 
@@ -166,9 +164,9 @@ The account's operator comes from the request's `account.operator`, not from the
 
 ## Replay protection
 
-The seller's verifier MUST reject a `nonce` it has already seen for the same identity within the signature's lifetime, whether or not an edge verifier ran first. It checks the nonce of each signature on a request separately, so a relay cannot hide a replayed inner signature behind a fresh signature of its own.
+The seller's verifier MUST reject a `nonce` it has already seen for the same identity within the signature's lifetime, whether or not an edge verifier ran first.
 
-The profile requires the nonce on every signed request, reads included. A replayed read returns the response to whoever sent the replay, and relays and log pipelines see request headers. RFC 9421 section 7.2.2 describes the nonce as "a per-message unique value to allow the verifier to detect replay of the signature itself". WBA leaves nonce enforcement to deployment policy (Appendix C.6); the profile makes that choice once, so each seller does not have to.
+The profile requires the nonce on every signed request, reads included. A replayed read returns the response to whoever sent the replay, and proxies and log pipelines see request headers. RFC 9421 section 7.2.2 describes the nonce as "a per-message unique value to allow the verifier to detect replay of the signature itself". WBA leaves nonce enforcement to deployment policy (Appendix C.6); the profile makes that choice once, so each seller does not have to.
 
 `idempotency_key` keeps its role. A repeated committed mutation returns the stored response without re-running side effects, under [Idempotency](/docs/building/by-layer/L1/security#idempotency). The signature covers `content-digest`, so it binds the key too.
 
@@ -184,7 +182,7 @@ The profile reports signature failures with HTTP status codes, as WBA does (sect
 | `403` with `Accept-Signature` | Sign again with the listed components and parameters. For a replayed request, the field carries a fresh `nonce` to use. | Section 5.3; RFC 9421 sections 5.1 and 7.2.2 |
 | `429` | The caller exceeded a rate limit. Retry later. | Section 5.3 |
 
-`Accept-Signature` (RFC 9421 section 5.1) names, per label, the covered components and the parameters the profile requires:
+`Accept-Signature` (RFC 9421 section 5.1) names the label, the covered components, and the parameters the profile requires:
 
 ```http
 NOTE: '\' line wrapping per RFC 8792
@@ -198,48 +196,6 @@ Accept-Signature: sig1=("@method" "@target-uri" "@authority" "content-type" \
 A request signed with a revoked key gets the generic authentication error without `Accept-Signature`: the signer must stop using that key, so a hint to sign again is wrong. An identity without the needed onboarding entry gets an AdCP authorization error, also without `Accept-Signature`. Those errors use the AdCP error envelope and codes, not the transport status codes in the table.
 
 An unsigned request to an operation in `required_for`, from a caller with no other credential the verifier accepts, gets an answer that depends on what the verifier advertises. A verifier that advertises only `web-bot-auth` answers `403` with `Accept-Signature`. A verifier that also advertises the AdCP RFC 9421 profile answers as that profile does, `401` with `request_signature_required`, and adds `Accept-Signature` for this profile.
-
-## Relays
-
-A brand agent builds the request for the seller, with the seller's target URI and authority, and signs it. It hands the request to a relay, for example as an HTTP request in absolute form (RFC 9112 section 3.2.2) or through an interface the two agree on. The relay forwards the request to that target without changing any covered component or the body, and adds its own signature under a label not already in use. The relay's signature covers the request and the brand agent's `signature-agent`, `signature-input`, and `signature` members. Section 5.2.2 requires this of a signer that covers another signature: "A signer that covers "signature";key=X MUST also cover "signature-input";key=X, and MUST cover every component identifier listed in "signature-input";key=X." Appendix D.2 shows the same pattern with an agent and a remote browser, where the browser "also covers the agent's signature fields".
-
-```http
-NOTE: '\' line wrapping per RFC 8792
-
-POST /mcp/ HTTP/1.1
-Host: seller-7k3q.com
-Content-Type: application/json
-Content-Digest: sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:
-Signature-Agent: brand="https://agent.brand-7k3q.com", relay="https://relay\
-    .agency-7k3q.com"
-Signature-Input: brand=("@method" "@target-uri" "@authority" "content-type\
-    " "content-digest" "signature-agent";key="brand");created=1790841600;ex\
-    pires=1790841900;nonce="YwSl5nr5sFmghcAAPcAs5F3qh9fJLt9-2hWehzPpaxqlJzZ\
-    pjJ4xxRKFpVPfuC8fM_Zb1VkZLSHH00cYWL7J-g";keyid="hHurKlVBnPJ4AGiPyl6HWMh\
-    xgkIcRBzaC8qWwEtnuVI";alg="ed25519";tag="web-bot-auth", relay=("@method\
-    " "@target-uri" "@authority" "content-type" "content-digest" "signature\
-    -agent";key="relay" "signature-agent";key="brand" "signature-input";key\
-    ="brand" "signature";key="brand");created=1790841601;expires=1790841901\
-    ;nonce="-GaxnHg03kcsnLVNnfSCtmu1a_zGjiVj6mJkFsZhxKyixpqR8yb_rkbLaG1ZA2s\
-    bwwoJjDQuifAeZj1-hBohVw";keyid="ZtaFf5jj-EzorJmZn6mX3YnmK_QyZKVLbbinzIQ\
-    KOjQ";alg="ed25519";tag="web-bot-auth"
-Signature: brand=:7QHcZuQ1NGje/glPbC1DTSmnKDFPf8FIJohfZEOs6/INcF1I5I6xcNsWz\
-    3+Czj9mtGQWRG9wmDOWTAmnPQcoAA==:, relay=:ra29HdXx7Hl46Tb9bx+8hhZQ8sL7xe\
-    eIC0kaWoUTS7qZyjSd9IyZa7jFcdbjkDFMfnmhHtu6RD+WFZ84Tz78CA==:
-
-{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"create_medi\
-    a_buy","arguments":{"idempotency_key":"4f6c1a0e-8d2b-4b7e-9c3a-2e5d7f1b\
-    0a96","account":{"account_id":"acc_42"},"proposal_id":"prop_7","total_b\
-    udget":{"amount":25000,"currency":"USD"}}}}
-```
-
-The relay's signature base includes the brand agent's signature fields, so changing or removing the brand agent's signature also breaks the relay's signature. Negative vector `005-relay-inner-signature-altered` grades that, and `004-relay-omits-inner-signature` grades the coverage requirement.
-
-The seller verifies every signature and so knows both parties. Whether the relay may act for the brand is an authorization question. Appendix D.2 notes that the outer signature "does not say that Alice's agent authorized the remote browser to act for it". The brand's `brand.json` answers that question by listing the relay as an authorized operator. A chain of more parties works the same way, each later signer covering the signatures before it.
-
-A relay could remove the brand agent's signature and present the request as its own. The seller cannot detect that from the request. A seller that needs the brand agent's identity therefore requires the chain to reach back to an agent the brand's `brand.json` names before it accepts spend. An intermediary that builds a request of its own is the first signer of that request.
-
-An intermediary MUST NOT alter the key of a `Signature-Agent` member covered by a signature it cannot recompute (section 6.6.1). Relabeling a `Signature` dictionary member stays permitted, because the label is not part of the signature base.
 
 ## Webhooks
 
@@ -286,7 +242,7 @@ The two profiles share the signature base, the covered request components, the p
 | Keys at `brand.json` `agents[].jwks_uri`, found through [Agent resolution](/docs/building/by-layer/L1/security#agent-resolution) | Key directory at the identity's origin, found from `Signature-Agent` |
 | eTLD+1 binding and the `identity.key_origins` consistency check | Not needed: the identity is the origin, and the directory path is reserved |
 | `adcp_use` key purposes | One agent per purpose, each on its own origin |
-| "Exactly one `Signature-Input` label" | Every `web-bot-auth` signature must verify |
+| "Exactly one `Signature-Input` label" | The same: one `web-bot-auth` signature and one `Signature-Agent` member per request |
 | AdCP nonce rules and replay codes | RFC 9421 `nonce` on every signed request, enforced by the seller's verifier |
 | `request_signature_*` and `webhook_signature_*` codes in `WWW-Authenticate` | `400`, `403` with `Accept-Signature`, `429`, the generic authentication error for a revoked key, and AdCP authorization errors |
 | Separate webhook profile and encoding | Webhooks are ordinary signed requests |
@@ -298,15 +254,13 @@ Account authorization, the signed revocation list, and principal boundaries do n
 The vectors live at `static/compliance/source/test-vectors/wba-profile/` and are served at `/compliance/latest/test-vectors/wba-profile/`. They grade the rules on this page, and each states its expected outcome in the status-code vocabulary of [Error responses](#error-responses).
 
 - `positive/001-single-signer-request`: the request on this page, signed by `https://buyer-7k3q.com`.
-- `positive/002-relay-request-two-signatures`: the relay request on this page; both signatures verify.
-- `positive/003-signed-directory-response`: the directory response on this page, signed per Appendix B.1.
+- `positive/002-signed-directory-response`: the directory response on this page, signed per Appendix B.1.
 - `negative/001-missing-nonce`: `403` with `Accept-Signature`.
 - `negative/002-replayed-nonce`: `403` with `Accept-Signature` carrying a fresh nonce; needs preloaded replay state.
 - `negative/003-signature-agent-not-covered`: `403`; the header is present but not a covered component.
-- `negative/004-relay-omits-inner-signature`: `403`; the relay's signature does not cover the brand agent's members.
-- `negative/005-relay-inner-signature-altered`: `403`; the brand agent's signature changed after the relay signed over it.
-- `negative/006-key-not-in-named-directory`: `403`; the signing key is published by a different origin than the one `Signature-Agent` names.
-- `negative/007-malformed-signature-agent`: `400`; the header does not parse.
+- `negative/004-key-not-in-named-directory`: `403`; the signing key is published by a different origin than the one `Signature-Agent` names.
+- `negative/005-malformed-signature-agent`: `400`; the header does not parse.
+- `negative/006-two-signatures`: `403`; the request carries two `web-bot-auth` signatures, each valid on its own.
 - `governance/001-governance-token`: a governance token from the governance identity, with its own key; it verifies.
 - `governance/002-governance-token-key-not-in-issuer-directory`: `governance_key_unknown`; the key is published by another agent, not by the issuer.
 - `governance/003-governance-token-from-non-governance-agent`: `governance_issuer_not_authorized`; the key and signature are consistent, and the issuer is not the buyer's governance agent.

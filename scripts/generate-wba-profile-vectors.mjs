@@ -70,11 +70,9 @@ function jws(privateKey, header, payload) {
 // ── Identities and keys ───────────────────────────────────────────────────
 const BUYER = 'https://buyer-7k3q.com';
 const BRAND = 'https://agent.brand-7k3q.com';
-const RELAY = 'https://relay.agency-7k3q.com';
 const GOVERNANCE = 'https://governance-7k3q.com';
 const buyer = key('buyer-request');
 const brand = key('brand-request');
-const relay = key('relay-request');
 const governance = key('governance-document');
 
 const files = {};
@@ -88,7 +86,6 @@ write('keys.json', {
   keys: [
     { identity: BUYER, seed_name: 'buyer-request', ...buyer.jwk, _private_d_for_test_only: buyer.d },
     { identity: BRAND, seed_name: 'brand-request', ...brand.jwk, _private_d_for_test_only: brand.d },
-    { identity: RELAY, seed_name: 'relay-request', ...relay.jwk, _private_d_for_test_only: relay.d },
     { identity: GOVERNANCE, seed_name: 'governance-document', ...governance.jwk, _private_d_for_test_only: governance.d },
   ],
 });
@@ -181,41 +178,12 @@ write('positive/001-single-signer-request.json', {
     'The Signature-Agent member sig1 names an origin, so the verifier fetches https://buyer-7k3q.com/.well-known/http-message-signatures-directory, selects the key whose kid equals keyid, and attributes the request to that origin. Ed25519 is deterministic, so an implementation signing with the published seed reproduces the Signature value byte for byte.',
 });
 
-// ── Positive 002: relay with two signatures ───────────────────────────────
-const cb = compList('brand');
-const pb = params(cb, brand.jwk.kid, nonce('brand'));
-const [baseB, sigB] = signBase(brand.privateKey, requestLines('brand', BRAND), pb);
-const RELAY_EXTRA = ['"signature-agent";key="brand"', '"signature-input";key="brand"', '"signature";key="brand"'];
-const cr = compList('relay', RELAY_EXTRA);
-const pr = params(cr, relay.jwk.kid, nonce('relay'), CREATED + 1, EXPIRES + 1);
-const relayLines = [
-  ...requestLines('relay', RELAY),
-  `"signature-agent";key="brand": "${BRAND}"`,
-  `"signature-input";key="brand": ${pb}`,
-  `"signature";key="brand": :${sigB}:`,
-];
-const [baseR, sigR] = signBase(relay.privateKey, relayLines, pr);
-const relayAgent = `brand="${BRAND}", relay="${RELAY}"`;
-const hRelay = headers(relayAgent, `brand=${pb}, relay=${pr}`, `brand=:${sigB}:, relay=:${sigR}:`);
-write('positive/002-relay-request-two-signatures.json', {
-  name: "Relay: brand agent signs, agency relay forwards unchanged and adds a signature covering the brand agent's members",
-  spec_reference: `${SPEC}#relays`,
-  signing_profile: 'web-bot-auth',
-  reference_now: NOW,
-  request: request(hRelay),
-  directories: { [BRAND]: { keys_ref: [brand.jwk.kid] }, [RELAY]: { keys_ref: [relay.jwk.kid] } },
-  expected_signature_base: { brand: baseB, relay: baseR },
-  expected_outcome: { success: true, identities: { brand: BRAND, relay: RELAY } },
-  $comment:
-    "Both web-bot-auth signatures must verify, each against its own covered components and its own identity's directory (Web Bot Auth section 5.2.2). The relay label covers the brand label's signature-agent, signature-input, and signature members, as section 5.2.2 requires of a signer that covers another signature and as Appendix D.2 illustrates. Whether the relay may act for the brand is an authorization question answered by the brand's brand.json, outside this profile.",
-});
-
-// ── Positive 003: signed key directory response ───────────────────────────
+// ── Positive 002: signed key directory response ───────────────────────────
 const dirBody = JSON.stringify({ keys: [buyer.jwk] }, null, 2);
 const dirDigest = digest(dirBody);
 const dirParams = `("@authority";req "content-digest");created=1790841000;expires=1790927400;keyid="${buyer.jwk.kid}";alg="ed25519";tag="http-message-signatures-directory"`;
 const [dirBase, dirSig] = signBase(buyer.privateKey, ['"@authority";req: buyer-7k3q.com', `"content-digest": ${dirDigest}`], dirParams);
-write('positive/003-signed-directory-response.json', {
+write('positive/002-signed-directory-response.json', {
   name: 'Signed key directory response for https://buyer-7k3q.com, one signature per key',
   spec_reference: `${SPEC}#key-directories`,
   signing_profile: 'web-bot-auth',
@@ -308,54 +276,10 @@ write('negative/003-signature-agent-not-covered.json', {
   $comment: `The signature verifies over the components it does cover, so a verifier that reads the identity from the uncovered header and skips the coverage check accepts it and attributes the request to an origin nobody signed for. ${REFUSAL_NOTE}`,
 });
 
-// ── Negative 004: relay omits the inner signature members ─────────────────
-const cRo = compList('relay');
-const pRo = params(cRo, relay.jwk.kid, nonce('relay-omits-inner'), CREATED + 1, EXPIRES + 1);
-const [baseRo, sigRo] = signBase(relay.privateKey, requestLines('relay', RELAY), pRo);
-write('negative/004-relay-omits-inner-signature.json', {
-  name: "Relay adds a second signature that does not cover the brand agent's signature members",
-  spec_reference: `${SPEC}#relays`,
-  signing_profile: 'web-bot-auth',
-  reference_now: NOW,
-  request: request(headers(relayAgent, `brand=${pb}, relay=${pRo}`, `brand=:${sigB}:, relay=:${sigRo}:`)),
-  directories: { [BRAND]: { keys_ref: [brand.jwk.kid] }, [RELAY]: { keys_ref: [relay.jwk.kid] } },
-  expected_signature_base: { brand: baseB, relay: baseRo },
-  expected_outcome: {
-    success: false,
-    status: 403,
-    accept_signature: acceptSignature('relay', cr),
-    reason:
-      "The profile requires each later signer to cover the signature-agent, signature-input, and signature members of the signature before it. The relay label covers none of the brand label's members.",
-  },
-  $comment: `Both signatures verify on their own, so a verifier that checks only cryptographic validity accepts the request. The relay's signature then records nothing about the brand agent's signature having been present, which is the evidence the profile requires of a relay (Web Bot Auth section 5.2.2 and Appendix D.2). ${REFUSAL_NOTE}`,
-});
-
-// ── Negative 005: brand signature altered after the relay signed ──────────
-const alteredSigB = (sigB[0] === 'A' ? 'B' : 'A') + sigB.slice(1);
-// The base a verifier rebuilds from the request as sent: the relay's covered brand signature is the altered one.
-const baseRAltered = [...relayLines.slice(0, -1), `"signature";key="brand": :${alteredSigB}:`, `"@signature-params": ${pr}`].join('\n');
-write('negative/005-relay-inner-signature-altered.json', {
-  name: "Brand agent's signature altered after the relay signed over it",
-  spec_reference: `${SPEC}#relays`,
-  signing_profile: 'web-bot-auth',
-  reference_now: NOW,
-  request: request(headers(relayAgent, `brand=${pb}, relay=${pr}`, `brand=:${alteredSigB}:, relay=:${sigR}:`)),
-  directories: { [BRAND]: { keys_ref: [brand.jwk.kid] }, [RELAY]: { keys_ref: [relay.jwk.kid] } },
-  expected_signature_base: { brand: baseB, relay: baseRAltered },
-  expected_outcome: {
-    success: false,
-    status: 403,
-    accept_signature: acceptSignature('relay', cr),
-    reason:
-      'The relay label claims to cover "signature";key="brand", but the value on the wire is not the one the relay signed, so the relay\'s signature fails. The brand label\'s signature fails as well.',
-  },
-  $comment: `Derived from positive/002-relay-request-two-signatures.json by changing the first character of the brand signature. Every web-bot-auth signature on a request must verify, so one failure rejects the request. The vector shows that the relay's signature binds the brand agent's signature bytes: changing or removing them breaks the relay's signature too. ${REFUSAL_NOTE}`,
-});
-
-// ── Negative 006: key not in the directory the header names ───────────────
+// ── Negative 004: key not in the directory the header names ───────────────
 const pWrong = params(c1, buyer.jwk.kid, nonce('buyer-claims-brand'));
 const [baseWrong, sigWrong] = signBase(buyer.privateKey, requestLines('sig1', BRAND), pWrong);
-write('negative/006-key-not-in-named-directory.json', {
+write('negative/004-key-not-in-named-directory.json', {
   name: 'Signature-Agent names https://agent.brand-7k3q.com, but the signing key is published only by https://buyer-7k3q.com',
   spec_reference: `${SPEC}#identity`,
   signing_profile: 'web-bot-auth',
@@ -373,8 +297,8 @@ write('negative/006-key-not-in-named-directory.json', {
   $comment: `The signature is valid under the buyer agent's key, and the directories object lists that key under its own origin so the harness can show the trap: a verifier that indexes keys by thumbprint alone finds the key, verifies, and attributes the request to the brand agent, an origin that never published the key. A conformant verifier resolves only https://agent.brand-7k3q.com/.well-known/http-message-signatures-directory and rejects. ${REFUSAL_NOTE}`,
 });
 
-// ── Negative 007: unparseable Signature-Agent ─────────────────────────────
-write('negative/007-malformed-signature-agent.json', {
+// ── Negative 005: unparseable Signature-Agent ─────────────────────────────
+write('negative/005-malformed-signature-agent.json', {
   name: 'Signature-Agent is not a parseable Structured Field Dictionary (unterminated string)',
   spec_reference: `${SPEC}#error-responses`,
   signing_profile: 'web-bot-auth',
@@ -388,6 +312,28 @@ write('negative/007-malformed-signature-agent.json', {
   },
   $comment:
     "Signature is a 64-zero-byte placeholder: parsing fails before any key is resolved or any signature is checked, so a verifier that reaches cryptographic verification has skipped the parse step. No Accept-Signature is sent, because the signer's headers, not its signature, need fixing.",
+});
+
+// ── Negative 006: two web-bot-auth signatures on one request ──────────────
+const c2 = compList('sig2');
+const p2 = params(c2, brand.jwk.kid, nonce('brand'));
+const [base2, sig2] = signBase(brand.privateKey, requestLines('sig2', BRAND), p2);
+write('negative/006-two-signatures.json', {
+  name: 'Two web-bot-auth signatures on one request: positive/001 plus a second valid signature from https://agent.brand-7k3q.com',
+  spec_reference: `${SPEC}#verification`,
+  signing_profile: 'web-bot-auth',
+  reference_now: NOW,
+  request: request(headers(`sig1="${BUYER}", sig2="${BRAND}"`, `sig1=${p1}, sig2=${p2}`, `sig1=:${sig1}:, sig2=:${sig2}:`)),
+  directories: { [BUYER]: { keys_ref: [buyer.jwk.kid] }, [BRAND]: { keys_ref: [brand.jwk.kid] } },
+  expected_signature_base: { sig1: base1, sig2: base2 },
+  expected_outcome: {
+    success: false,
+    status: 403,
+    accept_signature: acceptSignature('sig1', c1),
+    reason:
+      'The profile takes exactly one web-bot-auth signature and one Signature-Agent member per request (RFC 9421 section 3.2.1). Web Bot Auth section 5.2.2 permits more than one signature; the profile does not accept one.',
+  },
+  $comment: `The sig1 label is byte-identical to positive/001-single-signer-request.json, and the sig2 label is a second valid signature over the same request from another identity. Each verifies on its own against its own directory, so a verifier that loops over every label and accepts when each verifies has skipped the count check. ${REFUSAL_NOTE}`,
 });
 
 // ── Governance tokens: one agent per purpose ──────────────────────────────
