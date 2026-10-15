@@ -947,6 +947,18 @@ For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-c
 - When `include_snapshot` is true and snapshots are returned, each snapshot MUST include `as_of` and `staleness_seconds`
 - Default `status_filter: ["active"]` applies only when `media_buy_ids` is omitted
 
+#### Creative state freshness
+
+`packages[].creative_assignments_as_of` and `packages[].creative_approvals[].approval_status_as_of` on `get_media_buys`, and `creatives[].status_as_of` and `assignments.assigned_packages[].approval_status_as_of` on [`list_creatives`](/docs/creative/task-reference/list_creatives), apply the `status_as_of` pattern to creative state. Keeping that state current is the seller's job; these fields tell the buyer how current an answer is.
+
+- Each value is the time of the seller's last observation of its source of truth for that state. A rolled-up value MUST NOT be later than the oldest upstream observation that could affect it. Omission makes no freshness assertion; buyers MUST NOT infer that the state is live.
+- `creative_assignments_as_of` covers the package's assignment set, meaning which creatives appear in `creative_approvals`. A creative absent from the set is absent as of that time. `approval_status_as_of` covers `approval_status`, `rejection_reason`, and `approval_scopes`. `status_as_of` covers creative `status`.
+- Accepting an AdCP write (for example, `sync_creatives` or a creative change on `update_media_buy`) MUST NOT by itself advance a value. It advances only when the seller observes the resulting state in its source of truth. A seller whose AdCP store is its source of truth observes at commit time.
+- A value earlier than the buyer's last accepted write for that relationship means the seller has not yet confirmed the write, and the returned state predates it. No separate status value is needed for "not known yet."
+- Sales agents SHOULD include these values when the state is served from a cache or from a source that confirms asynchronously, such as a system that confirms assignments a day after the write.
+- A change that only advances an `*_as_of` value MUST NOT fire `creative.assignment_changed` or `creative.status_changed` and MUST NOT write an account change record.
+- `STALE_RESPONSE` is the complementary signal: a seller that could not reach its source of truth and served cached state past its freshness target emits it alongside the payload. The `*_as_of` values report how old each piece of state is in either case.
+
 ### get_media_buy_delivery
 
 **Schema**: [`media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json) / [`media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)

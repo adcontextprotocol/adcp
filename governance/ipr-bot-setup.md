@@ -56,7 +56,12 @@ The `.pem` file should not be checked into any repo. After generation, paste its
 
 ### `adcp` — local flow
 
-`.github/workflows/ipr-agreement.yml` runs in adcp on PR + comment events. It checks out `main` with the default `GITHUB_TOKEN`, runs `scripts/ipr/check-and-record.mjs`, and commits + pushes signature updates back to adcp. No App involvement.
+`.github/workflows/ipr-agreement.yml` runs in adcp on PR + comment events. It mints an AAO IPR Bot installation token (the default `GITHUB_TOKEN` is not in the ledger ruleset's bypass list), checks out `main` with it, and runs `scripts/ipr/check-and-record.mjs`. It has two jobs:
+
+- `check` (`pull_request_target`) reads the ledger and posts the `IPR Policy / Signature` status. It never writes, so it uses a per-PR concurrency group that cancels superseded checks. PRs never wait behind each other.
+- `record` (comments containing the sign phrase) records new signatures and pushes them to adcp. It keeps the repo-wide `adcp-ipr-signature-write` group.
+
+A push that races a signature is resolved in the script. The check re-reads `origin/main` after posting `pending`, and the write re-marks the PR's latest head after its push. Whichever finishes last, the head ends up `success`. A failed re-read leaves the status `pending` (fail closed).
 
 ### Downstream — cross-repo flow
 
@@ -67,7 +72,7 @@ Each downstream repo has a tiny caller workflow (~15 lines) that invokes the reu
 3. Runs `scripts/ipr/check-and-record.mjs` with `LEDGER_DIR=.ipr-ledger`. The script reads/writes signatures there; `git push` from inside the directory uses the installation token configured by the checkout step.
 4. API calls back to the event repo (comments, status check) use the caller repo's default `GITHUB_TOKEN` — no cross-repo write required for those.
 
-Per-repo concurrency groups (`adcp-ipr-signature-write` in each repo) serialize signature writes within each repo. GitHub Actions concurrency is scoped per-repo, so the cross-repo race is handled by a rebase-retry loop in the script — when a push fails because adcp's main moved, the script pulls with `--rebase` and retries up to 5 times.
+The callable uses the same `check` / `record` split as adcp's own workflow. Per-repo concurrency groups (`adcp-ipr-signature-write` in each repo, on the `record` job only) serialize signature writes within each repo. GitHub Actions concurrency is scoped per-repo, so the cross-repo race is handled by a rebase-retry loop in the script — when a push fails because adcp's main moved, the script pulls with `--rebase` and retries up to 5 times.
 
 ## Rotation
 
