@@ -66,9 +66,9 @@ TMP keeps its own publisher-key model. Verifiers take the publishers that apply 
 
 ### Reporting and artifact webhooks can omit `authentication`
 
-`reporting_webhook.authentication` and `create_media_buy.artifact_webhook.authentication` are no longer required for a request served at 3.3 or later. As with `push_notification_config`, presence of the block selects the deprecated Bearer or HMAC-SHA256 scheme, and absence selects the seller's webhook signing profile (RFC 9421 or Web Bot Auth). No shared secret crosses the wire, so a 3.3 integration can be fully HMAC-free ([#8176](https://github.com/adcontextprotocol/adcp/issues/8176)).
+`reporting_webhook.authentication` and `create_media_buy.artifact_webhook.authentication` are no longer required for a request served at 3.3 or later. When the block is absent, the seller MUST sign every delivery under the webhook signing profile it advertises in `webhook_signing.profile`, and receivers MUST reject unsigned deliveries. No shared secret crosses the wire, so a 3.3 integration can be fully HMAC-free. A `token` is not authentication ([#8176](https://github.com/adcontextprotocol/adcp/issues/8176)).
 
-**Buyers.** Omit the block only when the seller serves 3.3 or later and declares `webhook_signing.supported: true`. Keep sending it to older sellers.
+**Buyers.** Omit the block only when the request is served at 3.3 or later and the seller declares `webhook_signing.supported: true`. A buyer pinned to 3.2 keeps sending it, even to a 3.3 seller.
 
 **Sellers.** If you sign webhooks, accept a 3.3-served request without the block and sign the deliveries. If you don't sign webhooks, reject it with `INVALID_REQUEST` naming the field. A request served below 3.3 still requires the block. Sending it remains valid everywhere in 3.x, and the block is removed in 4.0 ([#4288](https://github.com/adcontextprotocol/adcp/issues/4288)).
 

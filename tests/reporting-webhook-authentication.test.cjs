@@ -32,9 +32,14 @@ test('authentication descriptions carry the switch rule and the 3.3 version gate
   for (const [name, obj] of [['reporting_webhook', reporting], ['artifact_webhook', create.properties.artifact_webhook]]) {
     assert.ok(!obj.required.includes('authentication'), `${name}.authentication must not be required`);
     const d = obj.properties.authentication.description;
-    assert.match(d, /Precedence is a switch, not a fallback/, name);
+    assert.match(d, /seller MUST sign every delivery/, name);
+    assert.match(d, /receivers MUST reject unsigned deliveries/, name);
+    assert.match(d, /webhook_signing\.profile/, name);
+    assert.match(d, /`token` is not authentication/, name);
     assert.match(d, /webhook_mode_mismatch/, name);
     assert.match(d, /below 3\.3/, name);
+    assert.match(d, /served at 3\.3 or later/, name);
+    assert.match(d, /pinned to 3\.2/, name);
     assert.match(d, /webhook_signing\.supported: true/, name);
     assert.match(d, /INVALID_REQUEST/, name);
   }
