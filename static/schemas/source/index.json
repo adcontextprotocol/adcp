@@ -1205,13 +1205,9 @@
     "enums": {
       "description": "Enumerated types and constants",
       "schemas": {
-        "buyer-onboarding-mode": {
-          "$ref": "/schemas/enums/buyer-onboarding-mode.json",
-          "description": "How a buyer considers sellers: considers_unsolicited, application, or invite_only"
-        },
         "agent-onboarding-mode": {
           "$ref": "/schemas/enums/agent-onboarding-mode.json",
-          "description": "Seller onboarding mode for buyer agents: open, application, or invite_only"
+          "description": "Onboarding mode (open, application, invite_only); a seller's posture toward buyer agents or a buyer's toward sellers, by where it appears"
         },
         "agent-onboarding-requirement-kind": {
           "$ref": "/schemas/enums/agent-onboarding-requirement-kind.json",

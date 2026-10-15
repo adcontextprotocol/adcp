@@ -572,7 +572,6 @@ AdCP leaves contract, credit, and credential issuance to the seller's own system
         }
       },
       "url": "https://streamhaus.example/partners/buyer-agents",
-      "documentation_url": "https://docs.streamhaus.example/adcp",
       "message": "Sandbox is open to any verified buying agent. Operator-billed accounts are open when your operator already bills with us and the advertiser has granted your operator."
     }
   }
@@ -586,7 +585,7 @@ AdCP leaves contract, credit, and credential issuance to the seller's own system
 | `…mode` | `open`, `application`, or `invite_only`. An absent key means undeclared, never `invite_only`. |
 | `…url` | Optional page for that mode. Defaults to the top-level `url`. |
 | `…requirements` | What the buyer must satisfy for that mode. |
-| `url`, `documentation_url` | Where a human starts, and the seller's onboarding documentation. Untrusted links: surface them, never fetch or execute them. |
+| `url` | Where a human starts; it can also carry the seller's onboarding documentation. An untrusted link: surface it, never fetch or execute it. |
 | `message` | Human-readable summary. The fallback whenever a reader does not understand a requirement. |
 
 **Modes.**
@@ -595,9 +594,9 @@ AdCP leaves contract, credit, and credential issuance to the seller's own system
 - **`open`:** a buyer agent that meets every requirement may proceed without prior contact, but only when the seller can establish its identity from the agent's published keys (the [Web Bot Auth](/docs/building/by-layer/L1/security) profile). A seller that only maps opaque, seller-issued credentials MUST NOT declare `open`.
 
 **`open` binds identity, not spend.** Under any `open` mode:
-- when the account's brand is outside the buyer's operator domain and no grant covers it, the request is denied;
-- spend-committing operations need an existing seller-side billing relationship with the billed party (the operator domain under `operator`, the brand's domain under `advertiser`);
-- quotas for automatic onboarding are counted per operator domain;
+- an account whose brand is outside the buyer's operator domain needs a grant, evaluated as [Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents) describes ([spec R6](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md); that section lands with [#8169](https://github.com/adcontextprotocol/adcp/pull/8169)). Without one, the request fails with [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) and `error.details.reason: "grant_absent"`;
+- spend-committing operations need an existing seller-side billing relationship with the billed party ([spec R7](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md));
+- sellers SHOULD count quotas and rate limits for automatic onboarding per operator domain, not per origin;
 - an agent whose origin's registrable domain is a hosting platform's tenant subdomain (the Public Suffix List's PRIVATE section) is eligible for `sandbox` only.
 
 So `open` delivers a verified identity, sandbox access, and joining a billing relationship that already exists. Agent-billed accounts and new commercial relationships still go through the seller's application.
@@ -606,12 +605,11 @@ So `open` delivers a verified identity, sandbox access, and joining a billing re
 
 | Kind | Direction | Meaning |
 |---|---|---|
-| `agent_identity` | seller gating a buyer | The buyer agent's origin is listed in its operator's trust.json with role `adcp:buying`. |
 | `grant` | seller gating a buyer | A demand-side grant authorizes the buyer's operator for the account's brand; implicit when the operator is the brand. |
 | `billing_entity` | seller gating a buyer | The buyer supplies a billing entity on `sync_accounts`. |
 | `contract` | seller gating a buyer | A signed agreement exists; details at `url`. |
 | `credit_application` | seller gating a buyer | A credit application completed at `url`, or later through `sync_accounts` `setup.url`. |
-| `aao_verified`, `storyboard`, `sandbox`, `experimental_feature` | buyer gating a seller | Used in a buyer's own posture (`core/buyer-onboarding-posture.json`, published in the buyer's trust.json at `profiles.adcp.onboarding` on its agent entry or as a record default; modes `considers_unsolicited`, `application`, `invite_only`): a seller badge (`role`, optional `verification_modes`, `specialisms`, `adcp_version`), a passed storyboard or specialism (`id`), `account.sandbox: true`, or a listed feature (`id`). |
+| `aao_verified`, `storyboard`, `sandbox`, `experimental_feature` | buyer gating a seller | Used in a buyer's own posture (`core/buyer-onboarding-posture.json`), published only in the buyer's trust.json at `profiles.adcp.onboarding`, on its agent entry or as a record default, with the same three modes read from the buyer's side: a seller badge (`role`, optional `verification_modes`, `verified_specialisms`, `adcp_version`, the badge token's own claim names), a passed storyboard or specialism (`id`), `account.sandbox: true`, or a listed feature (`id`). |
 
 A kind used in the wrong direction is ignored. An unknown kind falls back to `message` and `url`.
 

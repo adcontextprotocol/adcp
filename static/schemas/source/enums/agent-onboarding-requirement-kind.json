@@ -7,7 +7,6 @@
   "type": "string",
   "x-extensible": true,
   "enum": [
-    "agent_identity",
     "grant",
     "billing_entity",
     "contract",
@@ -18,12 +17,11 @@
     "experimental_feature"
   ],
   "enumDescriptions": {
-    "agent_identity": "Seller gating a buyer. The buyer agent's origin is listed in its operator's trust.json with the role the seller needs (adcp:buying).",
     "grant": "Seller gating a buyer. A demand-side grant authorizes the buyer's operator for the account's brand (DR-0025); implicit when the operator is the brand.",
     "billing_entity": "Seller gating a buyer. The buyer supplies a billing entity (core/business-entity.json) on sync_accounts.",
     "contract": "Seller gating a buyer. A signed agreement exists; details at url.",
     "credit_application": "Seller gating a buyer. A credit application is completed at url, or later through sync_accounts setup.url.",
-    "aao_verified": "Buyer gating a seller. The seller holds an AgenticAdvertising.org Verified badge; role is required, and verification_modes, specialisms, and adcp_version narrow it.",
+    "aao_verified": "Buyer gating a seller. The seller holds an AgenticAdvertising.org Verified badge; role is required, and verification_modes, verified_specialisms, and adcp_version narrow it. The field names are the badge token's own claim names (docs/building/verification/aao-verified.mdx).",
     "storyboard": "Buyer gating a seller. The seller passes the named storyboard or specialism (id).",
     "sandbox": "Buyer gating a seller. The seller declares account.sandbox: true.",
     "experimental_feature": "Buyer gating a seller. The seller lists the named feature id (id) in experimental_features."

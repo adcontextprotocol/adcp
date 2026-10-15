@@ -3,11 +3,11 @@
   "$id": "/schemas/core/buyer-onboarding-posture.json",
   "title": "Buyer Onboarding Posture",
   "x-status": "experimental",
-  "description": "How a buying agent considers sellers: a mode, the requirements a seller must meet, and where a seller's human starts. Published in the buyer's trust.json agent entry (profiles.adcp.onboarding), or as a record-level default (record_profiles.adcp.onboarding). Public and identical for every reader. A buyer that serves get_adcp_capabilities is authoritative there; trust.json may mirror it. See specs/agent-identity-3-3.md R7 (#8114).",
+  "description": "How a buying agent considers sellers: a mode, the requirements a seller must meet, and where a seller's human starts. Published only in the buyer's trust.json: in the agent entry (agents[].profiles.adcp.onboarding), or as a record-level default (profiles.adcp.onboarding). Public and identical for every reader. mode uses the same enum as the seller's posture; here it says how the buyer considers sellers. See specs/agent-identity-3-3.md R7 (#8114).",
   "type": "object",
   "properties": {
     "mode": {
-      "$ref": "/schemas/enums/buyer-onboarding-mode.json"
+      "$ref": "/schemas/enums/agent-onboarding-mode.json"
     },
     "requirements": {
       "type": "array",
@@ -18,11 +18,6 @@
       "type": "string",
       "format": "uri",
       "description": "Where a seller's human starts. Untrusted: surface it, never fetch or execute it."
-    },
-    "documentation_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "The buyer's documentation for sellers. Untrusted, like url."
     },
     "message": {
       "type": "string",

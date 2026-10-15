@@ -73,16 +73,17 @@ test('a buying agent publishes its posture in trust.json, per agent or as a reco
   addFormats(ajv);
   const validate = await ajv.compileAsync(await loadSchema('/schemas/trust/v1/trust.json'));
   const posture = {
-    mode: 'considers_unsolicited',
+    mode: 'open',
     requirements: [
       { kind: 'aao_verified', role: 'media-buy', verification_modes: ['spec'] },
       { kind: 'storyboard', id: 'media_buy_seller/acceptance_policy_discovery' },
       { kind: 'sandbox' },
     ],
-    documentation_url: 'https://docs.pinnacle-agency.example/adcp/sellers',
+    url: 'https://docs.pinnacle-agency.example/adcp/sellers',
   };
   const agent = { url: 'https://buyer.pinnacle-agency.example/mcp', roles: ['adcp:buying'] };
   assert.equal(validate({ agents: [{ ...agent, profiles: { adcp: { onboarding: posture } } }] }), true, JSON.stringify(validate.errors));
   assert.equal(validate({ agents: [agent], profiles: { adcp: { onboarding: posture } } }), true, JSON.stringify(validate.errors));
-  assert.equal(validate({ agents: [{ ...agent, profiles: { adcp: { onboarding: { mode: 'open' } } } }] }), false, 'seller-side mode is not a buyer mode');
+  assert.equal(validate({ agents: [{ ...agent, profiles: { adcp: { onboarding: { mode: 'considers_unsolicited' } } } }] }), false, 'buyer and seller share one mode enum');
+  assert.equal(validate({ agents: [agent], record_profiles: { adcp: { onboarding: posture } } }), false, 'record_profiles is a definition, not a wire field');
 });

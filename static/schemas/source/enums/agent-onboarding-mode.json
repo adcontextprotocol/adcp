@@ -3,12 +3,12 @@
   "$id": "/schemas/enums/agent-onboarding-mode.json",
   "title": "Agent Onboarding Mode",
   "x-status": "experimental",
-  "description": "How a seller onboards buyer agents for one billing party or for sandbox access. Absent means undeclared, never invite_only.",
+  "description": "How a party takes on counterparties it has not worked with. The direction comes from where the value appears: in a seller's account.agent_onboarding, how the seller onboards buyer agents for one billing party or for sandbox access; in a buyer's trust.json posture (core/buyer-onboarding-posture.json), how the buyer considers sellers. Absent means undeclared, never invite_only.",
   "type": "string",
   "enum": ["open", "application", "invite_only"],
   "enumDescriptions": {
-    "open": "A buyer agent that meets every listed requirement and whose identity the seller can establish from the agent's published keys (the Web Bot Auth profile) may proceed without prior contact. open binds identity, not spend: spend still needs an existing billing relationship with the billed party, and a brand outside the buyer's operator domain needs a grant. A seller that only maps opaque, seller-issued credentials MUST NOT declare open.",
-    "application": "The buyer completes an out-of-band step at url before the seller recognizes it for this mode.",
-    "invite_only": "The seller does not accept unsolicited buyer agents for this mode. url MAY be absent."
+    "open": "Seller posture: a buyer agent that meets every listed requirement, and whose identity the seller can establish from the agent's published keys (the Web Bot Auth profile), may proceed without prior contact. A seller that only maps opaque, seller-issued credentials MUST NOT declare open. What open allows is in docs/protocol/get_adcp_capabilities.mdx#accountagent_onboarding. Buyer posture: a seller that meets every listed requirement is in the buyer's consideration set without prior contact; the buyer discovers and calls it, and nothing is sent to the buyer.",
+    "application": "The counterparty completes an out-of-band step at url before it is recognized for this mode: the buyer agent, in a seller's posture; the seller, in a buyer's posture.",
+    "invite_only": "The publishing party does not take unsolicited counterparties for this mode. url MAY be absent."
   }
 }

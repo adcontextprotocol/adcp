@@ -21,11 +21,6 @@
       "format": "uri",
       "description": "Where a human at the buyer starts when a mode has no url of its own. Untrusted: surface it, never fetch or execute it."
     },
-    "documentation_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "The seller's onboarding and integration documentation. Untrusted, like url."
-    },
     "message": {
       "type": "string",
       "description": "Human-readable summary of the process and what to have ready. The fallback whenever a reader does not understand a requirement."

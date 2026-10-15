@@ -190,7 +190,7 @@
                     },
                     "onboarding": {
                       "$ref": "/schemas/core/buyer-onboarding-posture.json",
-                      "description": "For a buying agent (role adcp:buying): how it considers sellers. Overrides record_profiles.adcp.onboarding for this agent."
+                      "description": "For a buying agent (role adcp:buying): how it considers sellers. Overrides the record-level profiles.adcp.onboarding for this agent. trust.json is the only home for the buyer posture."
                     }
                   },
                   "additionalProperties": false
