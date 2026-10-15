@@ -10,9 +10,25 @@ Each authenticated/anonymous probe makes at most two discovery attempts, each
 with a fresh AbortSignal and fetch closure, a 10s total
 budget, and explicit 4s SDK transport timeout. Only categorized transient
 transport failures retry; schema, assertion, auth and unknown errors do not.
-Authenticated discovery runs once per attempt and its profile is reused for
-local storyboard resolution. Anonymous success meets the same checks, or
-failed discovery must supply concrete authentication error evidence.
+Authenticated discovery runs once per negotiated release per attempt, and its
+profile is reused for local storyboard resolution. Anonymous success meets the
+same checks, or failed discovery must supply concrete authentication error
+evidence (including the SDK's OAuth challenge, "requires OAuth authorization").
+
+The probe pins the default hosted line (3.0). A 3.0 pin cannot carry
+`adcp_version`, so the SDK sends only `adcp_major_version: 3`, and the agent
+may serve and echo its highest 3.x release. `@adcp/sdk` validates the response
+against the 3.0 pin regardless. The versioning spec says buyers validate
+against the echoed release. When the echo differs from the pin, the smoke check
+therefore requires the echo to be listed in `adcp.supported_versions`,
+discovers again pinned to that release, validates strictly against it, and
+resolves storyboards from that release's hosted bundle. An echo with no hosted
+bundle, a different major, or a different release on the pinned probe fails.
+
+SDK 15.8.1 also keys `comply_test_controller` as protocol `compliance` in its
+tool cross-check, while it parses the `compliance_testing` block as
+`compliance_testing`. The check waives only that exact cross-check message,
+and only when the response carries the `compliance_testing` block.
 
 SDK 14.0.0-rc.35 does not pass the signal to its second capability call. The
 local `trustedFetchFn` composes the attempt signal with the transport signal
