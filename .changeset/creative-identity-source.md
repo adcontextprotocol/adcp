@@ -2,11 +2,10 @@
 "adcontextprotocol": minor
 ---
 
-spec(creative): identify seller-created creatives and return seller IDs on reads. `list_creatives` already lists creatives created outside AdCP; the spec now says who assigns their `creative_id` and how a buyer tells the two kinds apart.
+spec(creative): stable IDs for creatives created outside AdCP. `list_creatives` already lists creatives that entered the seller's library outside `sync_creatives`, for example before a buyer connected to an advertiser with live buys. The seller assigns their `creative_id`, and buyers use it to reference them later.
 
-- New enum `creative-id-source` (`buyer` | `seller`). `list_creatives` `creatives[].creative_id_source` and `get_media_buys` `packages[].creative_approvals[].creative_id_source` report who assigned the ID. Sellers on 3.3 or later MUST include it on every row; absent means unknown.
-- A seller MUST assign a `creative_id` to every listed creative that has no buyer-assigned ID: stable for the creative's lifetime, unique within the account, never equal to an ID a buyer has already used on the account, and MAY equal `platform_id`. Sellers SHOULD use a stable prefix and MUST NOT mint `revision_id` for seller-assigned creatives.
-- A buyer manages a seller-assigned creative by syncing its `creative_id` as-is; this is an upsert under the normal active-delivery protection, and `creative_id_source` stays `seller`. A buyer sync that reuses a seller-assigned ID is an upsert of that creative (`action: updated`); buyers SHOULD namespace their IDs. `delete_missing` MUST NOT archive seller-assigned creatives.
-- `list_creatives` `creatives[].platform_id` returns the seller's identifier for the creative after the `sync_creatives` response is gone. `assignment_platform_id` on `list_creatives` `assigned_packages[]` and `get_media_buys` `creative_approvals[]` carries the seller's identifier for a per-package object when the seller keeps one.
+- New capability `creative.stable_creative_ids` (requires `has_creative_library: true`). A seller that declares it MUST keep seller-assigned creative IDs stable for the creative's lifetime and unique within the account, MUST NOT reuse a buyer's `creative_id`, and under `sync_creatives` `delete_missing` MUST NOT archive seller-created creatives. Without it, sellers SHOULD follow the same rules, buyers MUST NOT rely on them, and `delete_missing` keeps its 3.2 behavior.
+- `list_creatives` `creatives[].platform_id` returns the seller's own identifier, previously only on the `sync_creatives` response, so operators can match a creative to the seller's UI and reports. Buyers still address creatives by `creative_id`.
+- A sync of an existing `creative_id` updates that creative under the normal upsert rules, whatever created it. Buyers SHOULD use UUIDs or a stable prefix for their IDs and detect collisions from `action: updated` where they expected `created`.
 
-All new fields are optional in the schema, so 3.2 payloads remain valid. The `delete_missing` exclusion and the seller-assigned ID rules narrow behavior 3.2 left undefined, so the change is classified Breaking under the WG constitution and recorded in the 3.3 exceptions to 3.x compatibility and the 3.2-to-3.3 migration guide.
+Opt-in and additive: 3.2 sellers stay conformant, and 3.2 payloads stay valid.

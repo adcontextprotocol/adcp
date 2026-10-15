@@ -21,11 +21,13 @@ Clients MUST extract AdCP data from MCP tool results in this order:
 
 1. **Guard: reject error responses.** If `isError` is truthy, return null. Error extraction is a separate path.
 2. **`structuredContent`** — If present and is a non-array object, return it. If the only key is `adcp_error`, return null (this is an error response missing the `isError` flag).
-3. **Text fallback** — Iterate `content[]` items in array order. For each item where `type === 'text'`, enforce a 1MB size limit, then attempt `JSON.parse`. If the result is a non-array object, return it. Skip items that fail to parse, parse as non-objects, or contain only an `adcp_error` key.
+3. **Text fallback** — Iterate `content[]` items in array order. For each item where `type === 'text'`, enforce the configured response-size limit, then attempt `JSON.parse`. If the result is a non-array object, return it. Skip items that fail to parse, parse as non-objects, or contain only an `adcp_error` key.
 4. **No structured data found** — Return null. The response is plain text with no machine-readable AdCP data.
 
 <CodeGroup>
 ```javascript MCP Client
+const MAX_RESPONSE_BYTES = 4 * 1024 * 1024; // 4 MiB default; configurable per agent and per call
+
 function extractAdcpResponseFromMcp(response) {
   // 1. Error responses go through transport-errors extraction
   if (response.isError) return null;
@@ -45,7 +47,7 @@ function extractAdcpResponseFromMcp(response) {
   if (response.content && Array.isArray(response.content)) {
     for (const item of response.content) {
       if (item.type === 'text' && item.text) {
-        if (item.text.length > 1_048_576) continue; // 1MB size limit
+        if (item.text.length > MAX_RESPONSE_BYTES) continue; // same limit as the whole message
         try {
           const parsed = JSON.parse(item.text);
           if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -129,7 +131,13 @@ All data in `structuredContent` and `content[].text` is seller-controlled. The s
 
 ### Size Limits
 
-For pageable reads and other read-only tasks that support field projection, producers SHOULD target at most 128 KiB per serialized MCP response; see [Managing response size](/docs/building/concepts/managing-response-size#interoperability-size-target). Clients SHOULD independently enforce a streamed limit on the complete serialized MCP message before buffering or JSON decoding. The recommended client safety limit is 1 MiB. For text fallback, also check the `content[].text` size before the inner `JSON.parse`. The larger safety limit is not a producer target: it bounds hostile or buggy input after normal interoperability guidance has failed.
+For pageable reads and other read-only tasks that support field projection, producers SHOULD target at most 128 KiB per serialized MCP response; see [Managing response size](/docs/building/concepts/managing-response-size#interoperability-size-target). Clients SHOULD independently enforce a streamed limit on the complete serialized MCP message before buffering or JSON decoding. The recommended client safety limit is 4 MiB (4,194,304 bytes). For text fallback, also check the `content[].text` size before the inner `JSON.parse`, against that same limit rather than a tighter one — for a server that returns only `content[].text`, that item is the entire response, so a sub-limit figure there would silently become the effective cap. The larger safety limit is not a producer target: it bounds hostile or buggy input after normal interoperability guidance has failed.
+
+The streamed limit is the MCP instance of the general client obligation to [bound every agent response](/docs/building/by-layer/L1/security#response-size-bounds): count bytes as they arrive and abort rather than buffer-then-check, pre-reject an over-limit `Content-Length`, bound raw and decoded bytes, pair the cap with a deadline, bound JSON depth and node count after the cap passes, and fail with a distinct error instead of truncating. It applies to every MCP response the client reads — `tools/call`, `tools/list`, `initialize`, and the transport-native `tasks/get` and `tasks/result` results that carry an async `CallToolResult`. Leaving the async retrieval path unbounded is the same exhaustion with one extra hop.
+
+A Streamable HTTP server MAY answer a POST with a single `application/json` body or with an SSE stream (`text/event-stream`), and the bound applies to both — a server does not escape it by choosing SSE. On the SSE path it applies to each event and to the cumulative bytes the client retains for one request, carried across `Last-Event-ID` resumption rather than reset by it, so an oversized result cannot be split across many frames or across a reconnect. On a non-HTTP transport (stdio) there is no `Content-Length` to pre-reject; the streaming count and the per-message bound still apply.
+
+Clients SHOULD make the limit configurable per agent and per call. 4 MiB is the MCP default and is also the protocol-wide ceiling on a default, so a client raises the limit for a specific agent or a specific call rather than shipping a larger default. Implementations are free to default lower; the 4 MiB figure bounds hostile or buggy input after normal interoperability guidance has failed, and is not a size a producer may aim at.
 
 ### Prototype Pollution
 

@@ -4620,7 +4620,7 @@ async function runTests() {
       status: 'completed',
       creatives: [],
       merges: [
-        { creative_id: 'creative-buyer', package_id: 'package-1', merged_creative_id: 'slr_1234', assignment_platform_id: 'obj_1', approval_status: 'approved' }
+        { creative_id: 'creative-buyer', package_id: 'package-1', merged_creative_id: 'slr_1234', approval_status: 'approved' }
       ]
     },
     'sync_creatives success reports each applied merge'

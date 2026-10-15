@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { parseDocument } from 'yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { testCapabilityDiscovery, type TestOptions } from '@adcp/sdk/testing';
-import { boundedDiscovery, checkProbe, MAX_ATTEMPTS, SmokeFailure } from '../../../scripts/external-smoke/check.js';
+import { boundedDiscovery, checkProbe, MAX_ATTEMPTS, releasePrecision, SmokeFailure, type ReleaseProbe } from '../../../scripts/external-smoke/check.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const url = 'https://smoke.example.com/mcp';
@@ -179,6 +179,138 @@ describe('external smoke discovery', () => {
     });
     await expect(checkProbe(url, {}, {}, true, { discover, resolve })).rejects.toThrow();
     expect(discover).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('external smoke served-release negotiation', () => {
+  // A 3.0 pin cannot carry adcp_version, so the SDK sends only
+  // adcp_major_version: 3 and validates against 3.0. The agent may serve its
+  // highest 3.x release and echo it; the spec says to validate against that.
+  const pinned: TestOptions = { ...options, adcpVersion: '3.0.27' };
+  const pinnedResolver = { version: '3.0.27' } as Parameters<typeof checkProbe>[2];
+  const servedProbe: ReleaseProbe = {
+    options: { ...options, adcpVersion: '3.2.4' },
+    resolverOptions: { version: '3.2.4' } as ReleaseProbe['resolverOptions'],
+  };
+  const served = (echo: string | undefined, issues: Array<{ pointer: string; message: string }> = []): Result => {
+    const result = success();
+    result.profile!.adcp_supported_versions = ['3.0', '3.1', '3.2'];
+    result.profile!.raw_capabilities = echo === undefined ? {} : { adcp_version: echo };
+    if (issues.length) result.profile!.capabilities_schema_issues = issues;
+    return result;
+  };
+  const threeTwoShapes = [
+    { pointer: '/media_buy/features/bidding_policy', message: 'must be boolean' },
+    { pointer: '/compliance_testing/scenarios/4', message: 'must be one of: "force_creative_status"' },
+  ];
+
+  it('validates and resolves against the echoed release instead of the 3.0 pin', async () => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>()
+      .mockResolvedValueOnce(served('3.2', threeTwoShapes))
+      .mockResolvedValueOnce(served('3.2'));
+    const repin = vi.fn(() => servedProbe);
+    const resolve = vi.fn(() => resolved);
+    await expect(checkProbe(url, pinned, pinnedResolver, false, { discover, resolve, repin }))
+      .resolves.toBe('authenticated');
+    expect(repin).toHaveBeenCalledExactlyOnceWith('3.2');
+    expect(discover).toHaveBeenNthCalledWith(1, url, pinned);
+    expect(discover).toHaveBeenNthCalledWith(2, url, servedProbe.options);
+    expect(resolve).toHaveBeenCalledExactlyOnceWith(expect.anything(), servedProbe.resolverOptions);
+  });
+
+  it('re-validates at the served release even when the pin validation passed', async () => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>()
+      .mockResolvedValueOnce(served('3.2'))
+      .mockResolvedValueOnce(served('3.2', [{ pointer: '/adcp', message: 'invalid' }]));
+    await expect(checkProbe(url, pinned, pinnedResolver, false, { discover, repin: () => servedProbe }))
+      .rejects.toMatchObject({ kind: 'semantic', message: expect.stringContaining('/adcp') });
+    expect(discover).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['echoes the pinned release', '3.0'],
+    ['omits the echo', undefined],
+  ])('keeps pin validation when the agent %s', async (_label, echo) => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>().mockResolvedValue(served(echo, threeTwoShapes));
+    const repin = vi.fn(() => servedProbe);
+    await expect(checkProbe(url, pinned, pinnedResolver, false, { discover, repin }))
+      .rejects.toMatchObject({ kind: 'semantic', message: expect.stringContaining('bidding_policy') });
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(repin).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a release its supported_versions omit', '3.3', /supported_versions do not list/],
+    ['a different major', '4.0', /majors must agree/],
+  ])('rejects an agent that serves %s', async (_label, echo, message) => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>().mockResolvedValue(served(echo, threeTwoShapes));
+    const repin = vi.fn(() => servedProbe);
+    const rejection = checkProbe(url, pinned, pinnedResolver, false, { discover, repin });
+    await expect(rejection).rejects.toMatchObject({ kind: 'semantic', message: expect.stringMatching(message) });
+    await expect(rejection).rejects.toThrow(/bidding_policy/);
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(repin).not.toHaveBeenCalled();
+  });
+
+  it('fails when no hosted bundle exists for the served release', async () => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>().mockResolvedValue(served('3.2', threeTwoShapes));
+    const repin = () => { throw new Error('No npm-published compliance version is registered for 3.2'); };
+    await expect(checkProbe(url, pinned, pinnedResolver, false, { discover, repin }))
+      .rejects.toMatchObject({ kind: 'semantic', message: expect.stringMatching(/no hosted bundle.*3\.2.*bidding_policy/) });
+    expect(discover).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails when the agent serves another release once pinned to the echoed one', async () => {
+    const discover = vi.fn<typeof testCapabilityDiscovery>()
+      .mockResolvedValueOnce(served('3.2', threeTwoShapes))
+      .mockResolvedValueOnce(served('3.1'));
+    await expect(checkProbe(url, pinned, pinnedResolver, false, { discover, repin: () => servedProbe }))
+      .rejects.toMatchObject({ kind: 'semantic', message: expect.stringContaining('but 3.1 when pinned to 3.2') });
+  });
+
+  it('normalizes pins and echoes to release precision', () => {
+    expect(releasePrecision('3.0.27')).toBe('3.0');
+    expect(releasePrecision('3.2')).toBe('3.2');
+    expect(releasePrecision('3.2.0-rc.7')).toBe('3.2-rc.7');
+    expect(releasePrecision('3.2-rc.7')).toBe('3.2-rc.7');
+    expect(releasePrecision('v3')).toBeUndefined();
+    expect(releasePrecision(3)).toBeUndefined();
+  });
+});
+
+describe('external smoke SDK cross-check and auth evidence', () => {
+  const complianceFalsePositive = 'Tools suggest unreported protocols: compliance (has: [comply_test_controller])';
+  const withCrossCheck = (error: string, protocols: string[], declaresBlock = true): Result => {
+    const result = success();
+    result.profile!.supported_protocols = protocols;
+    result.profile!.raw_capabilities = declaresBlock ? { compliance_testing: { scenarios: ['force_creative_status'] } } : {};
+    result.steps.push({ step: 'Cross-validate protocols and tools', passed: false, duration_ms: 0, error });
+    return result;
+  };
+
+  it('waives the SDK compliance cross-check false positive when compliance_testing was declared', async () => {
+    const discover = vi.fn().mockResolvedValue(withCrossCheck(complianceFalsePositive, ['media_buy', 'compliance_testing']));
+    await expect(checkProbe(url, options, {}, false, { discover, resolve: () => resolved })).resolves.toBe('authenticated');
+  });
+
+  it.each([
+    ['compliance_testing was not declared', complianceFalsePositive, ['media_buy'], false],
+    ['the SDK synthesized compliance_testing without a declared block', complianceFalsePositive, ['media_buy', 'compliance_testing'], false],
+    ['the step reports another issue', `Protocol 'signals' reported but no matching tools found; ${complianceFalsePositive}`, ['media_buy', 'compliance_testing']],
+    ['another protocol is unreported', 'Tools suggest unreported protocols: signals (has: [get_signals])', ['media_buy', 'compliance_testing']],
+  ])('still fails the cross-check when %s', async (_label, error, protocols, declaresBlock = true) => {
+    const discover = vi.fn().mockResolvedValue(withCrossCheck(error, protocols, declaresBlock));
+    await expect(checkProbe(url, options, {}, false, { discover, resolve: () => resolved }))
+      .rejects.toMatchObject({ kind: 'semantic' });
+  });
+
+  it('treats an SDK OAuth challenge as anonymous auth-required evidence', async () => {
+    const discover = vi.fn().mockResolvedValue(failure(
+      'Agent https://smoke.example.com/mcp requires OAuth authorization. Authorization server: https://auth.example.com. Provide an OAuthFlowHandler or run an interactive flow to complete authorization.',
+    ));
+    await expect(checkProbe(url, {}, {}, true, { discover })).resolves.toBe('auth-required');
+    await expect(checkProbe(url, options, {}, false, { discover })).rejects.toMatchObject({ kind: 'auth' });
+    expect(discover).toHaveBeenCalledTimes(2);
   });
 });
 

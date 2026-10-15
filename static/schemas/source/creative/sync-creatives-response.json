@@ -215,11 +215,6 @@
                 "description": "Seller-assigned creative whose assignment on package_id was merged into creative_id.",
                 "x-entity": "creative"
               },
-              "assignment_platform_id": {
-                "type": "string",
-                "description": "The seller's identifier for the per-package object that now serves creative_id on package_id, when the seller keeps one. Same value list_creatives and get_media_buys return for the relationship.",
-                "$comment": "x-entity deliberately omitted: seller-opaque identifier that buyers never send back."
-              },
               "approval_status": {
                 "$ref": "/schemas/enums/creative-approval-status.json",
                 "description": "Approval state the merged assignment inherited from merged_creative_id."

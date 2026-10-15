@@ -138,8 +138,8 @@ Returns an array of media buys with current status, creative approval state, and
 | Field | Description |
 |-------|-------------|
 | `creative_id` | Creative identifier |
-| `creative_id_source` | `buyer` or `seller`: who assigned `creative_id`. Sellers on 3.3 or later MUST include it on every row; absent means unknown. See [Creatives created outside AdCP](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp). |
-| `assignment_platform_id` | The seller's identifier for the per-package object, when its source of truth keeps a separate object for this creative in this package (a per-package copy, ad, or association). Omitted when the creative-level `platform_id` on [`list_creatives`](/docs/creative/task-reference/list_creatives) applies. |
+| `trackers` | Added in 3.3. Complete assignment-scoped measurement tracker list, preserving events, URL templates, order, and duplicate occurrences. Supporting sellers MUST return it, using `[]` when none exist. Excludes the creative's own trackers in `assets`; both sets fire. See [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers). |
+| `landing_page_url` | Added in 3.3. Effective serving destination for this creative on this package, including an assignment override. Supporting sellers return the URL (or macro-bearing template) when unique; omit when no destination exists or an unoverridden creative has multiple destinations, whose URLs remain in its creative assets. See [assignment landing pages](/docs/creative/task-reference/sync_creatives#assignment-landing-pages). |
 | `approval_status` | `pending_review`, `approved`, `partially_approved`, or `rejected` |
 | `rejection_reason` | Explanation of rejection (when `approval_status` is `rejected`) |
 | `approval_scopes` | Complete publisher/placement outcomes when `approval_status` is `partially_approved` |
@@ -153,7 +153,6 @@ Indicators are deliberately attached here rather than to the creative globally. 
 ```json
 {
   "creative_id": "acme_summer_video",
-  "creative_id_source": "buyer",
   "approval_status": "approved",
   "indicator_types_evaluated": ["creative_fatigue"],
   "indicators_as_of": "2026-08-04T12:00:00Z",
@@ -168,7 +167,7 @@ Indicators are deliberately attached here rather than to the creative globally. 
 
 The media buy itself may also carry `budget_constrained`; packages may carry `creative_diversity_low`, `audience_saturation`, `inventory_shortfall_forecast`, `pacing_risk`, or `budget_constrained`. Assignment types remain nested under `creative_approvals[]`. Omitted `indicators` is unknown; empty is evaluated-clear only for `indicator_types_evaluated` and declared coverage. See [Indicators and Warnings](/docs/media-buy/media-buys/indicators).
 
-For sellers that advertise `inline_creative_management` without a creative library, `creative_approvals` is the only standardized approval-state readback surface for the package's currently assigned inline creatives. It reports `creative_id`, `creative_id_source`, aggregate `approval_status`, optional `rejection_reason`, and `approval_scopes` for mixed publisher outcomes, but it does not include the full `CreativeAsset` payload, placement routing, weights, or prior revisions submitted on `create_media_buy` or `update_media_buy`. Buyers should retain their own submitted creative bodies when integrating with inline-only sellers.
+For sellers that advertise `inline_creative_management` without a creative library, `creative_approvals` is the only standardized approval-state readback surface for the package's currently assigned inline creatives. It reports `creative_id`, aggregate `approval_status`, optional `rejection_reason`, and `approval_scopes` for mixed publisher outcomes, but it does not include the full `CreativeAsset` payload, placement routing, weights, or prior revisions submitted on `create_media_buy` or `update_media_buy`. Buyers should retain their own submitted creative bodies when integrating with inline-only sellers.
 
 Creative revisions are represented as `approval_status: "rejected"` with a specific `rejection_reason`. There is no package-level `input-required` status for creative edits; upload corrected library assets via [`sync_creatives`](/docs/creative/task-reference/sync_creatives), or corrected inline-only package assets via `packages[].creatives` on [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy).
 
