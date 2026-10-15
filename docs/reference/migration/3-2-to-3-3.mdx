@@ -39,15 +39,15 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 9 | Signing and verifying implementations | Check agent resolution and pinned keys against the list below; apply the A2A hardening clauses. |
 | 10 | Verifiers that fetch brand.json | Raise the brand.json body cap from 256 KiB to 2 MiB; leave JWKS and capabilities caps unchanged. |
 | 11 | Sellers that send delivery webhooks | Echo `reporting_webhook.operation_id`; send nothing to a registration that omits it. |
-| 12 | Sellers that advertise `measurement_terms` | Advertise only values you accept when replayed unchanged. |
-| 13 | Buyers that receive delivery webhooks | Ignore `aggregated_totals`; do not reject the payload for it. |
-| 14 | Sellers adopting 3.3 fields | Gate the [3.3-only emissions](#send-only-to-3-3-peers) on the negotiated version. |
-| 15 | Sellers that return proposals | Pin every covered third-party definition for callers negotiating 3.3. |
-| 16 | Reliable Reporting buyers | Stop relying on exact reads of older superseded snapshots; persist any snapshot rows you need ([notice](#superseded-reporting-snapshots-may-be-compacted)). |
-| 17 | Buyers that read delivery rows | Treat a missing `impressions` as not measured, never zero (#8108). |
-| 18 | SDK and codegen maintainers | Make `impressions` optional on delivery row types (#8108). |
-| 19 | Sellers and buyers using accounts | Sellers return `account_id` from `sync_accounts` and declare `account.stable_account_id` when it is accepted everywhere; buyers send it to those sellers instead of the deprecated natural-key reference. |
-| 20 | Buyers, SDK maintainers, and every agent operator | Adopt the client response-size bound (4 MiB default); keep `tools/list`, `get_adcp_capabilities`, and the agent card small, and paginate rather than asking buyers to raise their limits. |
+| 12 | Buyers, SDK maintainers, and every agent operator | Adopt the client response-size bound (4 MiB default); keep `tools/list`, `get_adcp_capabilities`, and the agent card small, and paginate rather than asking buyers to raise their limits. |
+| 13 | Sellers that advertise `measurement_terms` | Advertise only values you accept when replayed unchanged. |
+| 14 | Buyers that receive delivery webhooks | Ignore `aggregated_totals`; do not reject the payload for it. |
+| 15 | Sellers adopting 3.3 fields | Gate the [3.3-only emissions](#send-only-to-3-3-peers) on the negotiated version. |
+| 16 | Sellers that return proposals | Pin every covered third-party definition for callers negotiating 3.3. |
+| 17 | Reliable Reporting buyers | Stop relying on exact reads of older superseded snapshots; persist any snapshot rows you need ([notice](#superseded-reporting-snapshots-may-be-compacted)). |
+| 18 | Buyers that read delivery rows | Treat a missing `impressions` as not measured, never zero (#8108). |
+| 19 | SDK and codegen maintainers | Make `impressions` optional on delivery row types (#8108). |
+| 20 | Sellers and buyers using accounts | Sellers return `account_id` from `sync_accounts` and declare `account.stable_account_id` when it is accepted everywhere; buyers send it to those sellers instead of the deprecated natural-key reference. |
 | 21 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
 
 ## Required to claim 3.3 behavior
