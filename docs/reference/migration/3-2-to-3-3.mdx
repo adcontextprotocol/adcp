@@ -13,7 +13,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 
 3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated; one usage is (see [Deprecations](#deprecations)). Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
-Three changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account), [signature verification tightens](#signature-verification-tightens), and [seller-created creatives](#seller-created-creatives). One change loosens a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib). Everything else is an optional declaration or a clarification.
+Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). Two changes loosen a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib) and the [client response-size default rises to 4 MiB](#client-response-size-default-rises-to-4-mib). One new recommendation tightens a limit in the other direction, so a 3.3 buyer can reject what a 3.2 buyer accepted: [clients bound agent response size](#recommended-bound-agent-response-size). Everything else is an optional declaration or a clarification.
 
 For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3). For prerelease artifacts and SDK timing, use the [3.3 beta program](/docs/reference/3-3-beta).
 
@@ -32,7 +32,7 @@ For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/w
 | 9 | Sellers and buyers using accounts | Sellers return `account_id` from `sync_accounts` and declare `account.stable_account_id` when it is accepted everywhere; buyers send it to those sellers. |
 | 10 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
 | 11 | Reliable Reporting buyers | Stop relying on exact reads of older superseded snapshots; persist any snapshot rows you need. |
-| 12 | Sellers with a creative library | Assign stable `creative_id`s to creatives created outside AdCP, report `creative_id_source`, and exclude seller-created creatives from `delete_missing`. |
+| 12 | Buyers, SDK maintainers, and every agent operator | Adopt the client response-size bound (4 MiB default); keep `tools/list`, `get_adcp_capabilities`, and the agent card small, and paginate rather than asking buyers to raise their limits. |
 
 ## Required to claim 3.3 behavior
 
@@ -112,20 +112,33 @@ Each window starts at the revision's `created_at`, or at its successor's once
 superseded; an official revision's window restarts at its newest adjustment. See
 [revision retention](/docs/media-buy/task-reference/get_reporting_status#reliability-model).
 
-### Seller-created creatives
-
-`list_creatives` already had to list creatives created outside AdCP, through a seller UI or API, automation, or another system. 3.3 says who assigns their IDs and keeps a buyer's full sync from archiving them.
-
-**Sellers.**
-- Assign a `creative_id` to every listed creative that has no buyer-assigned ID. It MUST be stable for the creative's lifetime, unique within the account, and never equal to a `creative_id` a buyer has used on the account. It MAY equal `platform_id`. A seller that minted unstable or colliding IDs was not prohibited under 3.2 and is not conformant under 3.3.
-- Include `creative_id_source` (`buyer` or `seller`) on every `list_creatives` row and every `get_media_buys` `creative_approvals[]` row.
-- Under `delete_missing: true`, MUST NOT archive a creative whose `creative_id_source` is `seller`, including one a buyer has since updated. Under 3.2 the flag applied to the whole library.
-
-**Buyers.** Treat a missing `creative_id_source` as unknown (a 3.2 seller). A full sync with `delete_missing` replaces only your own set; seller-created creatives stay. To manage a seller-created creative, sync it under its `creative_id` as-is. If a sync you meant as a create returns `action: "updated"` or `"unchanged"`, the ID collided with an existing creative; namespace your IDs. See [Creatives created outside AdCP](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp).
-
 ### Delivery rows may omit `impressions`
 
 - `impressions` is no longer required on `daily_breakdown` rows or on the dimensional breakdown rows, so SDK-generated row types make it optional; handle `undefined` or `None`. Absence means not measured, never zero. Sellers omit it only toward callers pinned to 3.3 or later. See [Rows without impressions](/docs/media-buy/media-buys/optimization-reporting#rows-without-impressions).
+
+## Recommended: bound agent response size
+
+Clients SHOULD bound the size of every AdCP response they read, enforce the bound while the body is received rather than after buffering or parsing, apply it to streamed (SSE) responses both per event and cumulatively per call, surface an oversized response as an error rather than truncating it, and default to no more than 4 MiB (4,194,304 bytes). This is a recommendation, not a conformance requirement — a 3.2 implementation does not become non-conformant — but SDKs are adopting the default, so the interop effect is real. See [Response size bounds](/docs/building/by-layer/L1/security#response-size-bounds).
+
+**This tightens a limit, so interop is asymmetric in the opposite direction from the brand.json cap.** A buyer that adopts the default rejects a response a buyer without the bound would have buffered and parsed. The rejection arrives as a mid-body connection abort, not as an `adcp_error` the seller can read off the wire, so a seller whose responses are too large sees a transport failure rather than a protocol error.
+
+**Buyers and SDK maintainers.** Take the bound from your SDK release rather than hand-rolling it. Check its default against your largest known-good response before enabling it in production; raise it for a specific agent or a specific call, never globally, and never by disabling it. Confirm the SDK enforces while streaming (a buffer-then-check implementation does not close the memory exposure), counts decoded bytes, covers SSE cumulatively, and bounds JSON depth and node count after the byte cap passes — the byte cap bounds ingress, the parse bounds bound memory.
+
+**Sellers with large catalogs.** Paginate. `list_products`, `get_products`, `list_creatives`, `get_media_buys`, and the cursor-pageable `tools/list` catalog all support continuation; the 128 KiB producer interoperability target already applies to each page. A response that only succeeds against a buyer who raised its limit for you is not interoperable. See [Managing response size](/docs/building/concepts/managing-response-size#pagination-for-cardinality-control).
+
+**Every agent: check your discovery surfaces first.** `tools/list`, `get_adcp_capabilities`, and the A2A agent card are the first bytes a counterparty reads, and they have no fallback — a buyer that trips its cap there cannot discover you at all, rather than getting a smaller page. Measure all three before you measure anything else. Keep `tools/list` pages under 128 KiB. Keep `get_adcp_capabilities` under 64 KiB if you sign anything — that is `MAX_CAPABILITIES_BYTES`, a normative fetch budget, and a document above it makes your signing keys unresolvable as well as your capabilities unreadable. Treat 64 KiB for the agent card as an editorial target rather than a cap: no normative limit applies to it, and a client must not reject a larger one. Capability-selected tool registration and terse `x-tool-summary` descriptions are the usual fix. See [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
+
+### Client response-size default rises to 4 MiB
+
+The recommended client safety limit on a whole MCP message or A2A call rises from 1 MiB to 4 MiB (4,194,304 bytes), matching what the Go, TypeScript, Python and Java SDKs and the hosted grader ship. 4 MiB remains the ceiling on what any default may be. A2A's per-DataPart check is now the same limit rather than a tighter 1 MiB, because the single-artifact invariant makes the authoritative DataPart the whole response — a tighter per-part number would have become the effective A2A cap and rejected what the byte-identical MCP call accepts.
+
+**This loosens a limit, so interop is asymmetric.** A client still enforcing 1 MiB rejects a response between 1 MiB and 4 MiB that a 3.3 client accepts. A tighter default stays conformant, so there is nothing to fix in such a client — but the response it rejects is one the seller is now entitled to send.
+
+**Clients.** Raise the default to 4 MiB, or keep a tighter one deliberately. Everything that made the bound safe is unchanged and still required: enforce while the body streams, pre-reject an over-limit `Content-Length`, count raw and decoded bytes, pair the cap with deadlines, cover SSE cumulatively, and bound JSON depth and node count after the byte cap passes. The byte cap is the lesser control — a 4x larger buffer changes little once the node bound rejects at the 100,001st member — but note that the node bound does not limit the length of a single scalar, so per-field length limits are what keep a 4 MiB string out of a log or a model context.
+
+**Fan-out clients.** This is the change to size before adopting. A per-call default is not an aggregate budget: at 4 MiB and 64 concurrent peers the raw ceiling is 256 MiB, and the resident-object figure is several times that. If your aggregate budget is smaller than concurrency times the per-call default, lower one of the two.
+
+**Sellers.** The extra headroom is not a licence to grow. The 128 KiB producer interoperability target is unchanged, and while counterparties remain on 3.2-era clients a response between 1 MiB and 4 MiB will be rejected by some of them with no protocol error you can see — the same transition window the brand.json cap change created, in the opposite direction. Paginate instead.
 
 ## Clarifications
 
@@ -150,6 +163,10 @@ Optional. A seller declares `media_buy.features.catalog_ingestion` with accepted
 ### Stable account IDs
 
 Optional. Sellers SHOULD now return `account_id` on every non-failed `sync_accounts` provisioning result. A seller that returns it, accepts `{ "account_id": "..." }` wherever an `AccountRef` is accepted, and never changes it for the life of the account (including across identity reconciliation) declares `account.stable_account_id: true`. Buyer-declared sellers keep accepting the natural key. Buyers and SDKs that see the capability store the returned ID and send it instead of the natural key, keeping the natural key to open accounts and to look IDs up through `list_accounts` after a cold start. Account-id-namespace sellers whose IDs already meet the rules should declare it too. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere).
+
+### Stable creative IDs
+
+Creatives that entered a seller's library outside `sync_creatives`, for example before the buyer connected, are listed under a seller-assigned `creative_id`. A seller that keeps those IDs stable, never reuses a buyer's ID, and keeps those creatives out of `delete_missing` declares `creative.stable_creative_ids`. Without it, 3.2 behavior stands: buyers must not rely on those IDs staying the same, and `delete_missing` may archive those creatives. `list_creatives` also returns `platform_id`, the seller's own identifier, which was previously only on the `sync_creatives` response. See [Creatives created outside AdCP](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp).
 
 ### DOOH location and venue summary
 

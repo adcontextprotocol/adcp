@@ -414,6 +414,10 @@
           "$ref": "/schemas/core/creative-item.json",
           "description": "Item within a multi-asset creative format"
         },
+        "assignment-tracker": {
+          "$ref": "/schemas/core/assignment-tracker.json",
+          "description": "Assignment-scoped measurement tracker fired in addition to creative trackers"
+        },
         "creative-assignment": {
           "$ref": "/schemas/core/creative-assignment.json",
           "description": "Assignment of a creative asset to a package"
@@ -1240,10 +1244,6 @@
         "creative-approval-status": {
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
-        },
-        "creative-id-source": {
-          "$ref": "/schemas/enums/creative-id-source.json",
-          "description": "Who assigned a creative's creative_id: a buyer through AdCP, or the seller for a creative that entered its library outside sync_creatives"
         },
         "audience-size-precision": {
           "$ref": "/schemas/enums/audience-size-precision.json",

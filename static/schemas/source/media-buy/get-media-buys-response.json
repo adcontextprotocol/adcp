@@ -434,15 +434,15 @@
                         "description": "Creative identifier",
                         "x-entity": "creative"
                       },
-                      "creative_id_source": {
-                        "$ref": "/schemas/enums/creative-id-source.json",
-                        "description": "Who assigned creative_id. Sellers on 3.3 or later MUST include it on every row; absent means unknown (pre-3.3 seller). Mirrors list_creatives for the same creative.",
+                      "trackers": {
+                        "type": "array",
+                        "items": { "$ref": "/schemas/core/assignment-tracker.json" },
+                        "description": "The complete assignment-scoped tracker list for this creative on this package, retaining the accepted URL templates, events, multiplicity, and order. Sellers supporting creative.supports_assignment_trackers MUST return this array, using [] when no assignment trackers exist. Excludes the creative's own trackers, which remain in its assets and also fire for this placement; this is not a combined effective tracker list.",
                         "x-added-in": "3.3.0"
                       },
-                      "assignment_platform_id": {
-                        "type": "string",
-                        "description": "The seller's identifier for the per-package object when its source of truth keeps a separate object for this creative in this package (a per-package copy, ad, or association). Omit when the creative-level platform_id applies. Mirrors list_creatives for the same relationship.",
-                        "$comment": "x-entity deliberately omitted: seller-opaque identifier in the seller's own namespace; never sent back on AdCP requests.",
+                      "landing_page_url": {
+                        "$ref": "/schemas/core/macro-bearing-url.json",
+                        "description": "The landing page actually served for this creative on this package: the assignment override when present, otherwise the creative's own click-through destination when unique. Sellers supporting creative.supports_assignment_landing_page MUST return that effective destination when it is unique. Omit when no destination exists or an unoverridden creative has multiple destinations; those remain available in the creative's assets. MUST NOT select one destination arbitrarily. Macro-bearing readback retains the effective URL template under the same rules as the creative's own click-through.",
                         "x-added-in": "3.3.0"
                       },
                       "approval_status": {

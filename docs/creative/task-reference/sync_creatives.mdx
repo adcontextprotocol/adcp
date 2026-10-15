@@ -147,7 +147,7 @@ Implementations that acknowledge a creative on the synchronous success branch bu
 | `assignments`     | array      | No       | Array of `{creative_id, package_id}` objects for bulk assignment. Optional `weight` and `placement_ids` per assignment.                                                  |
 | `dry_run`         | boolean    | No       | When true, rehearse this exact sync operation without applying it (default: false). Use this for seller trafficking acceptance checks; use [`validate_input`](https://adcontextprotocol.org/schemas/v3/creative/validate-input-request.json) for manifest-only preflight against canonical/product format targets. |
 | `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
-| `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. Never archives seller-assigned creatives ([`creative_id_source: "seller"`](#seller-assigned-creative-ids)). |
+| `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. Sellers that declare `creative.stable_creative_ids` never archive [seller-created creatives](#seller-assigned-creative-ids); others may. |
 
 Every `creatives[]` item in one request MUST have a unique `creative_id`.
 Duplicate IDs make response correlation and write ordering ambiguous, so the
@@ -1038,11 +1038,11 @@ Invoke [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get
 
 ### Seller-assigned creative IDs
 
-[`list_creatives`](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp) also returns creatives that entered the seller's library outside `sync_creatives`, with a seller-assigned `creative_id` and `creative_id_source: "seller"`.
+[`list_creatives`](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp) also returns creatives that entered the seller's library outside `sync_creatives`, under a `creative_id` the seller assigned.
 
-- **Managing one.** A buyer updates a seller-assigned creative by syncing it with its `creative_id` as-is. That is an upsert of the existing creative, subject to the same [active-delivery protection](#best-practices) as any update. The seller MUST NOT refuse it because the creative was created outside AdCP: [account ownership, not creation surface](/docs/media-buy/specification#account-ownership-vs-creation-surface), decides what the buyer can manage. `creative_id_source` stays `seller` afterward, because it records who assigned the ID.
-- **Collisions.** If a buyer syncs a creative it intends as new and its `creative_id` equals an existing seller-assigned one, the sync is an upsert of the existing creative. The buyer detects this from `action: "updated"` or `"unchanged"` where it expected `"created"`. Buyers SHOULD namespace their IDs, for example with a stable prefix.
-- **`delete_missing`.** A full sync replaces the buyer's own set, not creatives the seller created. `delete_missing: true` MUST NOT archive a creative whose `creative_id_source` is `seller`, including one a buyer has since updated.
+- **Managing one.** A buyer updates such a creative by syncing it under its `creative_id` as-is. That is the normal upsert, subject to the same [active-delivery protection](#best-practices) as any update. Ownership of the account, not the surface that created the creative, decides what the buyer can manage, as for media buys ([account ownership, not creation surface](/docs/media-buy/specification#account-ownership-vs-creation-surface)).
+- **Collisions.** If a buyer syncs a creative it means as new and its `creative_id` equals an existing one, the sync updates the existing creative. The buyer detects this from `action: "updated"` or `"unchanged"` where it expected `"created"`. Buyers SHOULD use UUIDs or a stable prefix for their IDs.
+- **`delete_missing`.** A seller that declares [`creative.stable_creative_ids`](/docs/protocol/get_adcp_capabilities#creative) MUST NOT archive a seller-created creative under `delete_missing: true`, including one a buyer has since updated, because a full sync replaces the buyer's own set. A seller that does not declare it may archive them, as in 3.2, so buyers SHOULD NOT use `delete_missing` with such a seller when seller-created creatives matter.
 
 ### Dry run
 
