@@ -1368,12 +1368,12 @@
           "type": "object",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Open-opportunity support: reading proposals, keeping an opportunity open past a purchase, and creating later proposals under buyer consent. Each part is advertised separately so sellers can adopt them independently. Experimental (media_buy.open_opportunities): sellers declaring this object MUST list the feature id in experimental_features. Buyers MUST NOT send later_proposals consent, opportunity.status open on accept_proposal or buy_products, or an empty decline_proposals declines array to a seller that does not advertise the matching part.",
+          "description": "Open-opportunity support: reading proposals (including seller offers against accepted media buys, when the seller also declares media_buy.seller_offers), keeping an opportunity open past a purchase, and creating later proposals under buyer consent. Each part is advertised separately so sellers can adopt them independently. Experimental (media_buy.open_opportunities): sellers declaring this object MUST list the feature id in experimental_features. Buyers MUST NOT send later_proposals consent, opportunity.status open on accept_proposal or buy_products, or an empty decline_proposals declines array to a seller that does not advertise the matching part.",
           "properties": {
             "list_proposals": {
               "type": "boolean",
               "default": false,
-              "description": "Whether the seller implements list_proposals. Required true when later_proposals.supported is true, because list_proposals is the repair read for proposal.created."
+              "description": "Whether the seller implements list_proposals. Required true when later_proposals.supported is true, because list_proposals is the repair read for proposal.created. Sellers declaring media_buy.seller_offers also require it, as the repair read for proposal.offered, the buy-scoped sibling notification for seller offers against accepted media buys. Seller offers are distinct from later proposals: later_proposals covers new_media_buy drafts under buyer consent, and media_buy_update proposals are out of scope for it."
             },
             "keep_open_after_purchase": {
               "type": "boolean",

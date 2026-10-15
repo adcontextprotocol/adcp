@@ -71,6 +71,64 @@ state beside it. `disposition` was chosen over `state` or `status` to avoid
 collisions with `proposal_status` and `opportunity.status`. `superseded` was
 left out because 3.2 refinement does not retire its source.
 
+### Seller offers share the read path, not the feature
+
+Seller offers against accepted buys (#8102, `media_buy.seller_offers`) reuse
+this read and notification family instead of adding their own. They are not
+later proposals: a later proposal is a draft `new_media_buy` under buyer
+consent; an offer is a committed `media_buy_update` or `media_buy_cancellation`
+and needs no `later_proposals` consent. `media_buy_update` stays out of scope
+for later proposals. This spec carries only the pieces #8102 needs from the
+read path:
+
+- `list_proposals` `origin: "seller_offer"`. It requires
+  `proposal_initiator: "seller"` on the snapshot, allows `committed` and
+  `accepted` proposal status and the two amendment kinds, and forbids
+  `later_reason`. `later` keeps its draft, `new_media_buy` rules. A snapshot
+  with `proposal_initiator: "seller"` is always listed as `seller_offer`.
+- A `media_buy_ids` filter on `list_proposals`, so repairing offers on one buy
+  is not a full `available` scan.
+- `proposal.offered`, the buy-scoped sibling of `proposal.created`, is named in
+  the `list_proposals` repair text and the capability text. Its payload,
+  `proposal_initiator`'s enum and `offer_reason` are defined by #8102. The one
+  schema touch here is a bare `proposal_initiator` property on
+  `canonical-proposal.json`, so `origin` can discriminate before #8102 merges;
+  #8102's definition replaces it.
+
+### Stale offers
+
+A revision of the media buy leaves an outstanding offer's
+`base_media_buy_revision` behind the buy. "Outstanding" means committed and not
+yet accepted, declined, or expired; the revision made by accepting the offer is
+not a staleness event, and terminal dispositions never change. The rule: the
+offer stays readable but cannot be accepted. The seller derives the state from
+the buy's current revision at read time and lists the offer as `withdrawn`,
+with `disposition_changed_at` at the revision time, never as `available`.
+`accept_proposal` and `refine_proposals` fail with `INVALID_STATE`, as for any
+withdrawn snapshot, and the base-revision check still guards acceptance;
+`PROPOSAL_EXPIRED` takes precedence after `expires_at`.
+
+This is a narrow exception to "a committed proposal can't be withdrawn before
+`expires_at`". That rule protects a buyer relying on an inventory hold; a stale
+offer's terms no longer apply to the buy, so nothing the buyer relies on
+changes, and the seller can release the replacement hold. The alternative,
+leaving the offer `available` until `expires_at`, makes
+`dispositions: ["available"]` list offers the buyer cannot accept, and that
+filter is the repair scan. Retention is the existing minimum of 30 days after a
+terminal disposition. There is no `withdrawn` notification, as for drafts, so
+buyers must not cache `available` and should read an offer by `proposal_ids`
+before acting. The primary repair for `proposal.offered` is that read; the
+`media_buy_ids` scan is the catch-up path after missed notifications.
+
+Graduation adds a storyboard step for this: an offer at revision 3, a buyer
+revision of the buy, `list_proposals` with `["available"]` omitting the offer, a
+read by `proposal_ids` showing `withdrawn`, and `accept_proposal` failing.
+
+Merge note for #8102: both branches add `proposal_initiator` to
+`canonical-proposal.json` after `proposal_kind`. Take #8102's `$ref` version and
+keep this change's response-schema constraints. #8102's text that a stale offer
+stays readable until `expires_at` and then expires should adopt `withdrawn`.
+
 ## Alternatives considered
 
 - **Carry it on `get_products`.** `get_products` is deprecated in 3.2. Consent

@@ -3,7 +3,7 @@
   "$id": "/schemas/media-buy/list-proposals-request.json",
   "title": "List Proposals Request",
   "x-status": "experimental",
-  "description": "Read the seller's current proposals for an account, optionally narrowed to opportunities or proposal IDs. Experimental (media_buy.open_opportunities): sellers implementing it MUST list the feature id in experimental_features. Each invocation completes synchronously and never mutates proposal or opportunity state. It is the authoritative current-state and repair read for proposal.created notifications and for proposal records in list_account_changes; buyers use the notification or the change feed to learn that something changed, not routine polling. Results are visible to every principal the seller authorizes for the account, the same as other account-scoped reads, and never cross accounts.",
+  "description": "Read the seller's current proposals for an account, optionally narrowed to opportunities or proposal IDs. Experimental (media_buy.open_opportunities): sellers implementing it MUST list the feature id in experimental_features. Each invocation completes synchronously and never mutates proposal or opportunity state. It is the authoritative current-state and repair read for proposal.created notifications, for proposal.offered notifications (the buy-scoped sibling for seller offers against accepted media buys, defined with media_buy.seller_offers), and for proposal records in list_account_changes; buyers use the notification or the change feed to learn that something changed, not routine polling. Results are visible to every principal the seller authorizes for the account, the same as other account-scoped reads, and never cross accounts.",
   "x-tool-summary": "List the seller's current proposals and their lifecycle state for an account or opportunity.",
   "type": "object",
   "x-operation-family": "list_proposals",
@@ -52,6 +52,14 @@
       "maxItems": 50,
       "uniqueItems": true
     },
+    "media_buy_ids": {
+      "type": "array",
+      "description": "Return only proposals whose snapshot media_buy_id is one of these buys: seller offers and other amendments against those buys, plus the accepted snapshots that created them. Proposals with no media_buy_id are returned only when no media_buy_ids filter is supplied. Unknown or inaccessible IDs are omitted, not errors. Combines with the other filters as an AND.",
+      "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" },
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true
+    },
     "proposal_ids": {
       "type": "array",
       "description": "Return only these proposals. Unknown or inaccessible IDs are omitted, not errors.",
@@ -80,6 +88,14 @@
       "data": {
         "account": { "account_id": "acc_nova_za" },
         "opportunity_ids": ["opp_nova_za_q4"],
+        "dispositions": ["available"]
+      }
+    },
+    {
+      "description": "Catch-up scan for the live offers against one accepted media buy, for example after missed proposal.offered notifications",
+      "data": {
+        "account": { "account_id": "acc_nova_za" },
+        "media_buy_ids": ["mb_nova_za_0412"],
         "dispositions": ["available"]
       }
     }

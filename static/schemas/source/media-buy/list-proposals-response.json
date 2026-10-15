@@ -25,8 +25,8 @@
           },
           "origin": {
             "type": "string",
-            "enum": ["request", "refinement", "later"],
-            "description": "How the snapshot was created: in a request_proposals response, by refine_proposals, or by the seller after the creating task completed under later_proposals consent."
+            "enum": ["request", "refinement", "later", "seller_offer"],
+            "description": "How the snapshot was created: in a request_proposals response, by refine_proposals, by the seller after the creating task completed under later_proposals consent, or by the seller as an offer against an accepted media buy (media_buy.seller_offers, distinct from later proposals). Always seller_offer for a snapshot with proposal_initiator seller."
           },
           "later_reason": { "$ref": "/schemas/enums/later-proposal-reason.json" }
         },
@@ -48,6 +48,33 @@
           }
         },
         "else": { "not": { "required": ["later_reason"] } },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "origin": { "const": "seller_offer" } },
+              "required": ["origin"]
+            },
+            "then": {
+              "properties": {
+                "proposal": {
+                  "properties": {
+                    "proposal_initiator": { "const": "seller" },
+                    "proposal_kind": { "enum": ["media_buy_update", "media_buy_cancellation"] },
+                    "proposal_status": { "enum": ["committed", "accepted"] }
+                  },
+                  "required": ["proposal_initiator"]
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "proposal": {
+                  "properties": { "proposal_initiator": { "not": { "const": "seller" } } }
+                }
+              }
+            }
+          }
+        ],
         "additionalProperties": false
       }
     },
