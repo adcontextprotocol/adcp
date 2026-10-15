@@ -249,6 +249,27 @@
     {
       "if": {
         "properties": {
+          "creative": {
+            "properties": {
+              "supports_assignment_trackers": { "const": true }
+            },
+            "required": ["supports_assignment_trackers"]
+          }
+        },
+        "required": ["creative"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "creative.assignment_trackers" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "media_buy": {
             "properties": {
               "audience_targeting": {
@@ -2596,6 +2617,13 @@
           "default": false,
           "x-added-in": "3.3.0"
         },
+        "supports_assignment_trackers": {
+          "type": "boolean",
+          "description": "Experimental (x-status: experimental) — agents setting this true MUST also list `creative.assignment_trackers` in `experimental_features`; the surface MAY change between 3.x releases with notice (see docs/reference/experimental-status). When true, this agent accepts `trackers` on creative assignments in create_media_buy, update_media_buy, and sync_creatives, fires them in addition to the creative's own trackers for that package or rejects the assignment, counts them against the format's tracker-slot maximum, and returns them in list_creatives and get_media_buys assignment readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "default": false,
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
         "supports_generation": {
           "type": "boolean",
           "description": "When true, this agent can generate creatives from natural language briefs via build_creative. The buyer provides a message with creative direction, and the agent produces a manifest with generated assets. When false, build_creative only supports transformation or library retrieval.",
@@ -2862,6 +2890,20 @@
               "supports_assignment_landing_page": { "const": true }
             },
             "required": ["supports_assignment_landing_page"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_assignment_trackers": { "const": true }
+            },
+            "required": ["supports_assignment_trackers"]
           },
           "then": {
             "properties": {

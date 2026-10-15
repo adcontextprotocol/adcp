@@ -144,8 +144,8 @@ Implementations that acknowledge a creative on the synchronous success branch bu
 | `idempotency_key` | string     | Yes      | Client-generated key that makes retries safe. Use a fresh UUID or other unique value per request. |
 | `creatives`       | Creative[] | Conditional | Creative assets to upload/update (max 100); at least one of `creatives`, `assignments`, or `assignment_operations` is required.                                                                                                                               |
 | `creative_ids`    | string[]   | No       | Optional filter to limit sync scope to specific creative IDs. Only these creatives are affected, others remain untouched. Useful for partial updates and error recovery. |
-| `assignments`     | array      | No       | Deprecated additive `{creative_id, package_id}` shorthand. Optional `weight`, `placement_ids`, and capability-gated `landing_page_url` per assignment.                                                  |
-| `assignment_operations` | array | Conditional | Ordered `assign`, `unassign`, or `replace` operations for existing creative IDs, without requiring creative uploads. Only `assign` accepts capability-gated `landing_page_url`. The request is atomic and requires strict validation. |
+| `assignments`     | array      | No       | Deprecated additive `{creative_id, package_id}` shorthand. Optional `weight`, `placement_ids`, and capability-gated `landing_page_url` and `trackers` per assignment.                                                  |
+| `assignment_operations` | array | Conditional | Ordered `assign`, `unassign`, or `replace` operations for existing creative IDs, without requiring creative uploads. Only `assign` accepts capability-gated `landing_page_url` and `trackers`. The request is atomic and requires strict validation. |
 | `dry_run`         | boolean    | No       | When true, rehearse this exact sync operation without applying it (default: false). Use this for seller trafficking acceptance checks; use [`validate_input`](https://adcontextprotocol.org/schemas/v3/creative/validate-input-request.json) for manifest-only preflight against canonical/product format targets. |
 | `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
 | `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. |
@@ -162,7 +162,7 @@ Buyers MUST NOT send the field unless [`get_adcp_capabilities`](/docs/protocol/g
 
 On additive `assignments[]` upserts and `assign` operations, omitting `landing_page_url` preserves an existing override. To restore inheritance without changing the library creative, atomically `unassign` then `assign` the same creative/package without the field; include any weight or placement settings that must remain on the new assignment. `null` is not accepted. For a complete `update_media_buy` package `creative_assignments` replacement, omission from a supplied assignment row restores inheritance; omitting the entire replacement array leaves assignments unchanged.
 
-The unassign/assign reset recreates assignment state. Its `assign` operation cannot carry `rotation_mode`, `group_id`, `sequence_position`, or structured `placement_refs`. To retain those controls, use a complete `update_media_buy` package `creative_assignments` replacement instead: retain every other assignment and its authored settings, retain the target's rotation/group/placement settings, and omit only the target's `landing_page_url`. Readback URLs are effective destinations, so do not blindly copy them into override fields when reconstructing authored assignment state.
+The unassign/assign reset recreates assignment state, including any assignment [`trackers`](#assignment-trackers-experimental), which it clears; resend them if they must remain. Its `assign` operation cannot carry `rotation_mode`, `group_id`, `sequence_position`, or structured `placement_refs`. To retain those controls, use a complete `update_media_buy` package `creative_assignments` replacement instead: retain every other assignment and its authored settings, retain the target's rotation/group/placement settings, and omit only the target's `landing_page_url`. Readback URLs are effective destinations, so do not blindly copy them into override fields when reconstructing authored assignment state.
 
 Supporting sellers MUST return the effective serving destination in [`list_creatives`](/docs/creative/task-reference/list_creatives) assignments and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) package creative assignment rows (`packages[].creative_approvals[]`). Return the override when present, otherwise the creative's own destination when unique; a macro-bearing destination remains the effective URL template. Omit the scalar when no destination exists or an unoverridden creative has multiple destinations, whose URLs remain in its creative assets. Sellers MUST NOT pick one arbitrarily and present it as applying to every click. Buyers reconcile assignment `approval_status` separately from the library creative's `status`.
 
@@ -181,6 +181,33 @@ After checking the capability and setting an override with an `assign` operation
   ]
 }
 ```
+
+### Assignment trackers (experimental)
+
+In AdCP 3.3, optional `trackers` on `assignments[]`, the `assign` variant of `assignment_operations[]`, and package `creative_assignments` in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) carries tracker URLs for that one creative on that one package. Use it when a tracker carries values that belong to the placement, such as the media buy or package, so one library creative can serve many packages without a creative per placement or a re-sync that overwrites the previous buy's values. Each entry is a [`pixel_tracker`](https://adcontextprotocol.org/schemas/v3/core/assets/pixel-tracker-asset.json) asset, so it accepts any `pixel_tracker` event and the macro-bearing URL shape. `trackers` is experimental: sellers that implement it declare `creative.assignment_trackers` in `experimental_features`, and the shape may change between 3.x releases with [notice](/docs/reference/experimental-status).
+
+An `assignments[]` item:
+
+```json
+{
+  "creative_id": "hero",
+  "package_id": "pkg_display",
+  "trackers": [
+    { "asset_type": "pixel_tracker", "event": "impression", "url": "https://t.example/imp?mb=mb_1&pkg=pkg_display&cb={CACHEBUSTER}" },
+    { "asset_type": "pixel_tracker", "event": "custom", "custom_event_name": "package_ready", "url": "https://t.example/start?mb=mb_1" }
+  ]
+}
+```
+
+Assignment trackers are added to the creative's own trackers for that package and never replace them. The library creative and its approval do not change. They count against the tracker-slot maximum (`quantity.max` where the format declares one) of every effective format option where the assignment may serve, together with the creative's own trackers. A seller that cannot fit or fire them MUST reject the assignment through existing assignment errors; it MUST NOT silently drop any. The `pixel_tracker` fallbacks that ignore an unknown `custom` event, or an event that is not meaningful for a format, do not apply here: an event the seller cannot fire is rejected. An effective [tracker execution contract](/docs/creative/tracker-execution-contracts) still governs which selectors the seller accepts.
+
+Buyers MUST NOT send the field unless [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) declares `creative.supports_assignment_trackers: true` (default false, requiring `has_creative_library: true`); an agent without that capability MUST reject the field with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
+
+Preservation and reset follow the [assignment landing page](#assignment-landing-pages) recipe. On additive `assignments[]` upserts and `assign` operations, omitting `trackers` preserves existing assignment trackers, and supplying the array replaces the assignment's previous trackers rather than appending to them. To clear them, atomically `unassign` then `assign` the same creative/package without the field; that reset recreates the assignment, so resend any `landing_page_url`, `weight`, or placement settings that must remain, and use a complete `update_media_buy` package `creative_assignments` replacement to retain `rotation_mode`, `group_id`, `sequence_position`, or `placement_refs`. `null` and an empty array are not accepted. In a complete package `creative_assignments` replacement, omission from a supplied assignment row clears that row's trackers; omitting the entire replacement array leaves assignments unchanged.
+
+Supporting sellers return the assignment's trackers in [`list_creatives`](/docs/creative/task-reference/list_creatives) assignments and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) `packages[].creative_approvals[]`, and omit the field when there are none. Readback carries only assignment-scoped trackers; the creative's own trackers stay in its assets. Because readback holds the buyer-supplied values, it is safe to copy back when reconstructing an assignment.
+
+After an assignment `merge`, trackers come only from the buyer's assignment. Trackers on the seller-created copy's assignment do not carry over.
 
 ### Creative object
 
