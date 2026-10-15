@@ -503,7 +503,7 @@ describe('sync_principal contract', () => {
       status: 'completed',
       result: {
         kind: 'unconfigured',
-        relationship: { status: 'pending', setup: { message: 'Upload your billing entity details.' } },
+        relationship: { status: 'pending_approval', setup: { message: 'Upload your billing entity details.' } },
       },
     }), true, JSON.stringify(validateReadResponse.errors));
 

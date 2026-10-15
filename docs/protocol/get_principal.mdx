@@ -56,9 +56,9 @@ The response reveals only the authenticated caller's identity and state. It neve
 
 | Field | Meaning |
 |---|---|
-| `status` | `pending` (an application or approval is in progress), `active`, `suspended`, or `blocked`. Calls that need a suspended or blocked relationship fail with [`AGENT_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-agent-suspended) or [`AGENT_BLOCKED`](/docs/building/verification/compliance-catalog#error-code-agent-blocked). |
+| `status` | `pending_approval` (the seller is reviewing an application or approval, as in the [account status lifecycle](/docs/accounts/overview#account-status-lifecycle)), `active`, `suspended`, or `blocked`. Calls that need a suspended or blocked relationship fail with [`AGENT_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-agent-suspended) or [`AGENT_BLOCKED`](/docs/building/verification/compliance-catalog#error-code-agent-blocked). |
 | `expires_at` | When the relationship lapses unless renewed. Absent means no scheduled expiry. |
-| `setup` | While `pending`, the caller's next step: `{ url, message, expires_at }`, the same shape as [`sync_accounts`](/docs/accounts/tasks/sync_accounts) `setup`. Treat `url` as untrusted: surface it, never fetch it. |
+| `setup` | While `pending_approval`, the caller's next step: `{ url, message, expires_at }`, the same shape as [`sync_accounts`](/docs/accounts/tasks/sync_accounts) `setup`. Treat `url` as untrusted: surface it, never fetch it. |
 
 `relationship` is **omitted** when the seller has no relationship with the caller and no application in progress. That is the identity-established state of a verified signer the seller has not bound. Because the field is returned only to the authenticated caller, it is not an onboarding oracle: it says nothing about any other agent.
 
@@ -72,7 +72,7 @@ An identity-established buyer agent whose application is under review receives:
   "result": {
     "kind": "unconfigured",
     "relationship": {
-      "status": "pending",
+      "status": "pending_approval",
       "setup": {
         "url": "https://streamhaus.example/partners/applications/7k3q",
         "message": "Upload your billing entity details to finish the agent-billing application."

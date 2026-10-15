@@ -8,9 +8,9 @@
   "properties": {
     "status": {
       "type": "string",
-      "enum": ["pending", "active", "suspended", "blocked"],
+      "enum": ["pending_approval", "active", "suspended", "blocked"],
       "enumDescriptions": {
-        "pending": "An application or approval is in progress. setup, when present, carries the caller's next step.",
+        "pending_approval": "The seller is reviewing an application or approval for this caller. The same value and meaning as enums/account-status.json pending_approval, which the same human sees on sync_accounts. setup, when present, carries the caller's next step.",
         "active": "The relationship is in good standing.",
         "suspended": "The relationship is temporarily paused; calls that need it fail with AGENT_SUSPENDED.",
         "blocked": "The relationship is permanently denied; calls that need it fail with AGENT_BLOCKED."
@@ -24,7 +24,7 @@
     },
     "setup": {
       "type": "object",
-      "description": "The caller's next step while status is pending, in the same shape as sync_accounts setup. Specific to the authenticated caller, never seller-wide.",
+      "description": "The caller's next step while status is pending_approval, in the same shape as sync_accounts setup. Specific to the authenticated caller, never seller-wide.",
       "properties": {
         "url": {
           "type": "string",

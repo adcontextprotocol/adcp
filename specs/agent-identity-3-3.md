@@ -148,7 +148,7 @@ Evaluated when something is gated on it: binding a principal (R5), evaluating a 
 
 These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md` (on the [#7942](https://github.com/adcontextprotocol/adcp/pull/7942) branch), with the rule 1 rewording from [#7942 comment 6087434878](https://github.com/adcontextprotocol/adcp/pull/7942#issuecomment-6087434878):
 
-1. **Verification alone never creates a principal.** A verified origin with no binding is *identity-established*: it gets what an anonymous caller gets, reads included, plus `get_principal` (R8). A principal comes only from a binding under rule 2, including the binding a seller creates when it approves a new identity. A bound origin whose operator delists it returns to this state (R3a), except that it may still poll and cancel tasks it created while listed.
+1. **Verification alone never creates a principal.** A verified origin with no binding is *identity-established*: it gets what an anonymous caller gets, reads included, plus `get_principal` (R8). A principal comes only from a binding under rule 2, including the binding a seller creates when it approves a new identity.
 2. A binding is an explicit, audited seller record from origin to principal, made only after R3a succeeds.
 3. An origin maps to at most one principal.
 4. A seller binds onto an existing 3.2 `agents[].url` principal only when the origin is unambiguous, and only with explicit out-of-band seller approval. In 3.2, controlling the agent's host was not enough to obtain its keys; this rule keeps origin control alone from inheriting an existing principal. This binding is never automatic.
