@@ -247,6 +247,62 @@ test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', 
   }), true, 'ordinary extension-slot sync payloads retain additive compatibility');
 });
 
+test('consent macro names validate in declarations, targets, and capabilities', () => {
+  const validateName = ajv.getSchema('/schemas/enums/universal-macro.json');
+  for (const name of ['GDPR_CONSENT', 'GDPR_CONSENT_1', 'GDPR_CONSENT_42', 'GDPR_CONSENT_755', 'ADDTL_CONSENT', 'CACHEBUSTER']) {
+    assert.equal(validateName(name), true, name);
+  }
+  for (const name of ['GDPR_CONSENT_', 'GDPR_CONSENT_XXX', 'GDPR_CONSENT_0', 'GDPR_CONSENT_0755',
+    'GDPR_CONSENT_-1', 'GDPR_CONSENT_+755', 'GDPR_CONSENT_7.55', 'GDPR_CONSENT_755_extra',
+    'GDPR_CONSENT_755\n', 'gdpr_consent_755', '{GDPR_CONSENT_755}', 'ADDTL_CONSENT_755', 'PRIVATE_MACRO']) {
+    assert.equal(validateName(name), false, name);
+  }
+  for (const semantic of ['GDPR_CONSENT_755', 'ADDTL_CONSENT']) {
+    const token = `{${semantic}}`;
+    const target = {
+      token: `$${token}`,
+      dialect: 'vendor',
+      dialect_namespace: 'https://macros.acme-example.com/registry',
+      dialect_revision: 'mapping-v1',
+      dialect_semantic: semantic,
+      mapping_status: 'verified_universal',
+      universal_semantic: semantic,
+      next_operation: 'resolve_value',
+      performed_by: 'source_ad_server',
+      encoding: { kind: 'rfc3986', depth: 1 }
+    };
+    const declaration = {
+      declaration_id: 'vendor-consent',
+      token,
+      dialect: 'adcp',
+      dialect_semantic: semantic,
+      mapping_status: 'verified_universal',
+      universal_semantic: semantic,
+      operation: 'translate_to_native',
+      performed_by: 'seller',
+      translation_target: target,
+      location: { field: 'url', occurrence: 0, context: 'url_query_value' },
+      encoding: { kind: 'none', depth: 0 },
+      required: true,
+      unavailable_behavior: 'reject'
+    };
+    const validateDeclaration = ajv.getSchema('/schemas/core/macro-declaration.json');
+    assert.equal(validateDeclaration(declaration), true, JSON.stringify(validateDeclaration.errors));
+    const validateTarget = ajv.getSchema('/schemas/core/macro-translation-target.json');
+    assert.equal(validateTarget(target), true, JSON.stringify(validateTarget.errors));
+    assert.equal(validateDeclaration({ ...declaration, universal_semantic: 'GDPR_CONSENT_XXX' }), false);
+    assert.equal(validateTarget({ ...target, universal_semantic: 'GDPR_CONSENT_XXX' }), false);
+    const capability = {
+      dialect: 'adcp', dialect_semantic: semantic, mapping_status: 'verified_universal',
+      universal_semantic: semantic, operation: 'translate_to_native', performed_by: 'seller',
+      supported_contexts: ['url_query_value'], translation_target: target
+    };
+    const validateCapability = ajv.getSchema('/schemas/core/macro-resolution-capability.json');
+    assert.equal(validateCapability(capability), true, JSON.stringify(validateCapability.errors));
+    assert.equal(validateCapability({ ...capability, universal_semantic: 'GDPR_CONSENT_XXX' }), false);
+  }
+});
+
 test('macro declarations enforce resolver ownership and exact URL encoding depth', () => {
   const validate = ajv.getSchema('/schemas/core/macro-declaration.json');
   const valid = {
