@@ -15,7 +15,7 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 
 | Area | Through 3.2 | From 3.3 |
 |---|---|---|
-| **Signing profile** | RFC 9421 profile (`adcp/request-signing/v1`) | Web Bot Auth profile (`web-bot-auth`), experimental. The RFC 9421 profile is **deprecated**, works through 3.x, and is removed in 4.0. |
+| **Signing profile** | RFC 9421 profiles (`adcp/request-signing/v1`, `adcp/webhook-signing/v1`) | Web Bot Auth profile (`web-bot-auth`), experimental, for requests and webhooks. The RFC 9421 profiles are **deprecated**, work through 3.x, and are removed in 4.0. |
 | **Agent identity** | Canonical agent URL in the operator's brand.json | The agent's canonical origin, one agent per origin |
 | **Where keys live** | brand.json `agents[].jwks_uri` | The origin's key directory, `/.well-known/http-message-signatures-directory` |
 | **Finding the operator record** | `identity.brand_json_url` on the agent's `get_adcp_capabilities` | Derived: `https://{registrable domain}/.well-known/trust.json`. No capabilities call. |
