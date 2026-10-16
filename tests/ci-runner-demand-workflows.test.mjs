@@ -24,6 +24,20 @@ describe('training-agent-storyboards.yml draft skipping', () => {
   });
 });
 
+describe('training-agent-storyboards.yml runner selection', () => {
+  const wf = load('training-agent-storyboards.yml');
+
+  it('runs the heavy matrices on STORYBOARD_RUNNER, falling back to ubuntu-latest', () => {
+    for (const id of ['storyboards', 'sales_storyboard_orchestrators']) {
+      expect(wf.jobs[id]['runs-on'], id).toBe("${{ vars.STORYBOARD_RUNNER || 'ubuntu-latest' }}");
+    }
+  });
+
+  it('keeps the summary job on the standard hosted pool', () => {
+    expect(wf.jobs.sales_storyboards['runs-on']).toBe('ubuntu-latest');
+  });
+});
+
 describe.each([
   ['codeql.yml'],
   ['semgrep.yml'],

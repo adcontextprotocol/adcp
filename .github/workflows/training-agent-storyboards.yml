@@ -57,7 +57,12 @@ jobs:
     name: Storyboards (${{ matrix.surface }} /${{ matrix.tenant }})
     # Skip draft PRs; push events have no pull_request payload and always run.
     if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    # The storyboard matrix is about half of the repo's runner-minutes. Set the
+    # STORYBOARD_RUNNER repository variable to a larger-runner label (for
+    # example ubuntu-latest-m) to move it off the shared hosted pool; unset,
+    # it stays on ubuntu-latest. Unset it again if the larger runner is shut
+    # down (e.g. by the Actions spending limit) so jobs never queue forever.
+    runs-on: ${{ vars.STORYBOARD_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -545,7 +550,8 @@ jobs:
   sales_storyboard_orchestrators:
     name: Sales storyboard orchestrator (${{ matrix.orchestrator }}/8)
     if: github.event.pull_request.draft != true
-    runs-on: ubuntu-latest
+    # Same runner selection as the storyboards matrix above.
+    runs-on: ${{ vars.STORYBOARD_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
