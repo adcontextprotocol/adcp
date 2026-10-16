@@ -266,10 +266,6 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([]);
  */
 const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
   [
-    'media_buy_seller/inline_creatives_without_sync/get_products_legacy_format',
-    'The optional legacy-format branch has no capability gate and therefore executes against the current training seller even though it publishes canonical format_options only. The canonical inline-creative branch remains graded. Remove when the runner gates this branch on an observed format_ids representation.',
-  ],
-  [
     'governance_delivery_monitor/check_governance_drift',
     'The runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
   ],

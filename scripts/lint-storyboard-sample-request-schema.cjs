@@ -194,7 +194,15 @@ function placeholderFor(schema, depth = 0) {
   if (types.includes('number')) return resolved.minimum ?? 0;
   if (types.includes('boolean')) return true;
   if (types.includes('array')) return [];
-  if (types.includes('object')) return synthesizeObject(resolved, depth);
+  if (types.includes('object')) {
+    // A discriminated union written as `{ type: "object", discriminator, oneOf: [...] }`
+    // (core/format-option-ref.json) carries no root `properties`/`required`, so
+    // synthesizing from the root yields `{}` and ajv then reports the discriminator tag
+    // as missing. Take the shape from the first object branch instead. Nodes that do
+    // carry their own `properties`/`required` are unaffected.
+    const branch = resolved.properties ? null : firstObjectBranch(resolved);
+    return synthesizeObject(branch ?? resolved, depth);
+  }
   if (types.includes('null')) return null;
   return STRING_PLACEHOLDER;
 }
