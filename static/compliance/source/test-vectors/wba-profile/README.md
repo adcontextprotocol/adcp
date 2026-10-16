@@ -16,7 +16,7 @@ The domains in the vectors (`buyer-7k3q.com`, `agent.brand-7k3q.com`, `governanc
 
 ## Scope
 
-The vectors exercise the profile rules: the covered `Signature-Agent` member, key selection by thumbprint from the directory the member names, the required `nonce`, replay rejection, one signature per request, the signed directory response, the `400` and `403` responses, and the two checks on a governance token: its key is in the issuer's directory, and its issuer is the buyer's governance agent. They do not exercise live directory fetches, revocation-list polling, or onboarding state, which need live endpoints and belong in integration suites.
+The vectors exercise the profile rules: the covered `Signature-Agent` member, key selection by thumbprint from the directory the member names, the required `nonce`, replay rejection, one signature per request, the signed directory response, the `400`, `403`, and `429` responses, and the two checks on a governance token: its key is in the issuer's directory, and its issuer is the buyer's governance agent. They do not exercise live directory fetches, revocation-list polling, or onboarding state, which need live endpoints and belong in integration suites.
 
 ## File layout
 
@@ -29,7 +29,7 @@ test-vectors/wba-profile/
 │   └── 002-signed-directory-response.json         directory response signed per key (WBA Appendix B.1)
 ├── negative/                                      requests a verifier MUST reject, with the expected status
 │   ├── 001-missing-nonce.json                     → 403 with Accept-Signature (nonce required on every signed request)
-│   ├── 002-replayed-nonce.json                    → 403 with Accept-Signature carrying a fresh nonce (needs test_harness_state)
+│   ├── 002-replayed-nonce.json                    → 429 with Accept-Signature carrying a fresh nonce (needs test_harness_state)
 │   ├── 003-signature-agent-not-covered.json       → 403 (Signature-Agent present but not a covered component)
 │   ├── 004-key-not-in-named-directory.json        → 403 (key is published by an origin other than the one named)
 │   ├── 005-malformed-signature-agent.json         → 400 (Signature-Agent does not parse)
@@ -97,8 +97,8 @@ Every request vector has this shape:
 - **`expected_signature_base`**: keyed by the signature's label, the signature base per RFC 9421 section 2.5. Lines are joined with a single `\n`, there is no trailing newline, and components appear in the order listed in `Signature-Input`, followed by `@signature-params`. The base is the one a verifier computes from the request as sent. `006-two-signatures` carries one base per label, so a harness can show that each signature verifies on its own. Diff your computed base against this field before looking at signatures.
 - **`expected_outcome.success`**: `true` for positive vectors, `false` for negative.
 - **`expected_outcome.identities`**: positive vectors only. Keyed by the signature's label, the origin the verifier attributes the signature to.
-- **`expected_outcome.status`**: negative vectors only. The HTTP status the verifier answers: `400` when the signature headers do not parse, `403` when a signature or the profile's checks fail. Conformance requires this status.
-- **`expected_outcome.accept_signature`**: negative vectors with `403` only. The `Accept-Signature` member the verifier sends (RFC 9421 section 5.1): the label, the covered components, and the parameters the profile requires. `"nonce": "verifier-chosen"` marks the replay case, where the verifier supplies a fresh nonce value that this vector does not pin. The exact serialization is RFC 9421 section 5.1; conformance grades the status, and a harness MAY check that `Accept-Signature` names at least these components and parameters.
+- **`expected_outcome.status`**: negative vectors only. The HTTP status the verifier answers: `400` when the signature headers do not parse, `403` when a signature or the profile's checks fail, and `429` when the signature or its nonce was used before. Conformance requires this status.
+- **`expected_outcome.accept_signature`**: negative vectors with `403` or `429`. The `Accept-Signature` member the verifier sends (RFC 9421 section 5.1): the label, the covered components, and the parameters the profile requires. `"nonce": "verifier-chosen"` marks the replay case, where the verifier supplies a fresh nonce value that this vector does not pin. The exact serialization is RFC 9421 section 5.1; conformance grades the status, and a harness MAY check that `Accept-Signature` names at least these components and parameters.
 - **`expected_outcome.reason`**: the profile rule the request breaks. Informational.
 - **`$comment`**: free-form notes, including which non-conformant verifier behavior the vector catches.
 

@@ -213,7 +213,7 @@ function verifyRequest(vector, { skipNonce = false, skipAgentCoverage = false, s
     if (!crypto.verify(null, Buffer.from(base), publicKey(jwk), parsed.signature.get(label).value)) {
       throw new ProfileError(403, 'signature', `${label} signature does not verify`);
     }
-    if (replayCache.has(`${origin}|${params.get('nonce')}`)) throw new ProfileError(403, 'replay', `${label} nonce already seen for ${origin}`);
+    if (replayCache.has(`${origin}|${params.get('nonce')}`)) throw new ProfileError(429, 'replay', `${label} nonce already seen for ${origin}`);
     identities[label] = origin;
   }
   return identities;
