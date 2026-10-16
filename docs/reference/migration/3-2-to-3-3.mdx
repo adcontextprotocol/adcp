@@ -140,6 +140,14 @@ The recommended client safety limit on a whole MCP message or A2A call rises fro
 
 **Sellers.** The extra headroom is not a licence to grow. The 128 KiB producer interoperability target is unchanged, and while counterparties remain on 3.2-era clients a response between 1 MiB and 4 MiB will be rejected by some of them with no protocol error you can see — the same transition window the brand.json cap change created, in the opposite direction. Paginate instead.
 
+## Recommended: bound inbound push and webhook bodies
+
+Receivers of A2A push notifications and AdCP webhooks SHOULD bound the request body, the receiver-side counterpart of the response bound above. Enforce the cap while the body streams, pre-reject an over-limit `Content-Length`, apply the 64-deep, 100,000-member parse bounds after the byte cap and **before** RFC 9421 or Web Bot Auth verification, apply connect, idle, and total deadlines, and reject with HTTP 413 rather than truncating. The default is 4 MiB, the same number as the attestation task-body cap, and a tighter per-feature cap governs (the 1 MB webhook payload limit still applies to webhook deliveries). See [Inbound body bounds](/docs/building/by-layer/L1/security#inbound-body-bounds).
+
+**Receivers.** A 3.2 receiver that buffered whatever a seller posted is not wrong under 3.2, but it is the surface this closes. Add the cap in front of signature verification, not behind it, and do not truncate.
+
+**Senders.** A 413 is a deterministic failure: the same body fails the same way on every attempt, so retrying it on the non-2xx backoff schedule only repeats the cost. Keep webhook payloads well under the cap.
+
 ## Clarifications
 
 These restate existing rules and need no wire change.
