@@ -1169,7 +1169,7 @@ A buyer comparing creators or shows wants a card: how many followers, who watche
 | Average views per installment | The product or proposal forecast's `views` metric (a projection for the proposed buy; see below) |
 | Topics | `genre[]` with `genre_taxonomy`, and `installment.topics[]` |
 
-Collection objects reach a buyer through the publisher's [adagents.json](/docs/governance/property/adagents), not inline in `get_products`. Composition and views are inline on the product. The follower count is not: it is on the collection the product's `collections` selector resolves to, so a buyer ranking creators on it needs one `adagents.json` fetch per publisher.
+Composition and views are inline on the product. The follower count lives on the collection that the product's `collections` selector resolves to. Sellers that list `media_buy.collection_cards` return full collection objects in the response's top-level `collections` array when the request sets `include_collections: true` (see [collections in responses](#collections-in-responses)). A buyer ranking creators reads `distribution[].followers` there. `followers` is one of the fields where a verified response copy wins over `adagents.json`. For other sellers, and for any collection the response omits, the buyer resolves the collection from the publisher's [adagents.json](/docs/governance/property/adagents), which takes one fetch per publisher.
 
 ### Follower counts
 
