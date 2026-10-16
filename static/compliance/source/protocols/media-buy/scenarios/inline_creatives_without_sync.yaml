@@ -60,9 +60,12 @@ narrative: |
   captured declaration. Verified with @adcp/sdk 15.8.1 - the hosted grader's version -
   and 15.9.2, and verified NOT evaluated on 9.6.2, whose grammar matches test_kit
   references only. 15.8.1 was checked against the published registry tarball, by
-  compiled-source inspection and a public-API runStoryboard reproduction. This does
-  not establish 15.8.1 as the earliest supporting release; versions between were not
-  tested.
+  compiled-source inspection and public-API runStoryboard reproductions. Those cover
+  the three canonical shapes, an absent declaration, the scope-only no-mutation
+  boundary, and - the property this scenario's kind detector rests on - that a FAILED
+  optional discovery step does not promote its captures into the run context, so every
+  canonical phase stands down with no outbound call. This does not establish 15.8.1 as
+  the earliest supporting release; versions between were not tested.
 
   On a runner that does not evaluate these guards the storyboard mis-executes rather
   than degrading politely: every canonical phase opens, and the product-scoped path
@@ -104,11 +107,17 @@ prerequisites:
     and a fixed-price package with no bid_price. So for this brief the seller needs
     its FIRST matched product, that product's FIRST format option, and its first
     pricing option to be compatible with a 300x250 image bought at a fixed price.
-    A seller whose first product or first declaration is, say, video-first will be
-    rejected on create and graded red for an asset-applicability mismatch, not for
-    a protocol defect.
+    The two sides behave differently on a mismatch. On the CANONICAL side the
+    discovery probe asserts format_kind image, so a video-first first declaration is
+    detected there: no canonical create is issued at all, and the canonical lanes
+    stand down. Such a seller is graded red only if it has no legacy representation
+    to carry the run; a dual-emitting seller passes on legacy alone, with its
+    canonical support ungraded. On the LEGACY side there is no equivalent probe -
+    format_ids[] carries no kind to assert - so a first format_id that cannot take a
+    300x250 image is rejected on create and graded red for an asset-applicability
+    mismatch, not for a protocol defect.
 
-    This limit predates this scenario's current shape and is NOT closed here.
+    Neither side SELECTS a matching declaration, and that limit is NOT closed here.
     Selecting a product and declaration by kind and dimensions, independently of
     the order the seller returns them in, needs either a canonical-kind product
     filter (3.1 defines none) or a selection construct the storyboard DSL does not
@@ -1149,4 +1158,4 @@ phases:
           - id: inline_creative_path_coverage
             check: any_of
             allowed_values: [inline_creative_path_exercised]
-            description: "No format path completed create, update, and readback. If a path above failed, that failure is the cause - fix it there; this check is only the summary. If every path stood down instead, neither discovery gate closed on a usable product: the canonical paths need products[0] of the canonical get_products response to carry a fixed_price pricing option and a format_options[0] declaration, and the legacy path needs products[0] of its own response to carry a fixed_price pricing option and format_ids[0].id. A product that declares formats can still close every gate by returning no fixed_price pricing option first."
+            description: "No format path completed create, update, and readback. If a path above failed, that failure is the cause - fix it there; this check is only the summary. If every path stood down instead, neither discovery gate closed on a usable product: the canonical paths need products[0] of the canonical get_products response to carry a fixed_price pricing option and a format_options[0] declaration, and the legacy path needs products[0] of its own response to carry a fixed_price pricing option and format_ids[0].id. A product that declares formats can still close every gate by returning no fixed_price pricing option first, or by carrying a format_options[0] declaration whose format_kind is not image - this fixture's creative is a 300x250 image, so the canonical probe asserts that kind and stands the canonical lanes down when it differs."

@@ -160,6 +160,9 @@ async function runInline({
   canonical,
   legacy,
   canonicalKind = 'image',
+  // Observation hook: lets a test prove the stub's ambiguity branch actually fired,
+  // rather than inferring it from a red run that other causes could also produce.
+  onSelectorLessRejected = null,
   shape = 'product',
   failLane = null,
   readback = 'replacement',
@@ -217,7 +220,7 @@ async function runInline({
         const requested = request.packages[0];
         // A seller that published a selectable id requires a ref naming it. A legacy
         // package is selector-bearing by other means - the creative carries format_id.
-        const options = buildProduct({ canonical, legacy, shape, sameKindCatalog }).format_options ?? [];
+        const options = buildProduct({ canonical, legacy, shape, sameKindCatalog, canonicalKind }).format_options ?? [];
         const published = options[0];
         // A catalog with two entries sharing one format_kind is genuinely ambiguous:
         // `format_kind` alone cannot route, so a correct seller refuses a package that
@@ -230,6 +233,7 @@ async function runInline({
           !requested.format_option_refs &&
           !requested.creatives?.[0]?.format_id
         ) {
+          onSelectorLessRejected?.();
           return { success: false, error: 'format_option_refs[] is required to select a published format option' };
         }
         const pkg = {
@@ -372,7 +376,11 @@ for (const [name, canonical, legacy] of [
 }
 
 // A product whose same-kind declarations need disambiguation must never receive a
-// selector-less purchase. Verified against a seller that actually rejects one.
+// selector-less purchase. The stub's rejection rule is a live guard rather than a
+// branch this suite takes: every lane that reaches create carries either
+// format_option_refs or a creative-level format_id, so the guard fires only if the
+// storyboard regresses. The unnamed case below is the one that makes the SECOND
+// declaration load-bearing.
 test('inline creatives: a named same-kind catalog never receives a selector-less purchase', async () => {
   const { result, creates, refs, ranPhases } = await runInline({
     canonical: true,
@@ -389,6 +397,37 @@ test('inline creatives: a named same-kind catalog never receives a selector-less
     'no selector-less purchase may reach a named same-kind catalog'
   );
   assert.equal(refs[0].format_option_id, 'display_image_300x250');
+});
+
+test('inline creatives: an unnamed same-kind catalog is detected, not bought selector-less', async () => {
+  // Two declarations sharing one format_kind and NEITHER carrying a format_option_id.
+  // format_kind alone cannot route, and there is no id to disambiguate with, so the
+  // product is not authorable by any 3.1 selector. The unnamed lane would otherwise
+  // send a selector-less package here, so this is the case where the second
+  // declaration actually decides the outcome.
+  let selectorLessRejections = 0;
+  const { result, calls, creates } = await runInline({
+    canonical: true,
+    legacy: false,
+    shape: 'unnamed',
+    sameKindCatalog: true,
+    onSelectorLessRejected: () => (selectorLessRejections += 1),
+  });
+  // The unnamed lane attempts its selector-less create and the seller refuses it.
+  assert.equal(creates.length, 1, 'the unnamed lane attempts the only selector it has');
+  assert.equal(
+    selectorLessRejections,
+    1,
+    'the ambiguity rule — not format_option_id, which is absent here — must be what rejects'
+  );
+  // Nothing was established: no buy to update or read back.
+  assert.equal(calls.filter(call => call.task === 'update_media_buy').length, 0);
+  assert.equal(calls.filter(call => call.task === 'get_media_buys').length, 0);
+  const coverage = result.phases
+    .flatMap(phase => phase.steps)
+    .find(step => step.task === 'assert_contribution');
+  assert.equal(coverage.passed, false, 'no path completed, so the coverage gate must fail');
+  assert.equal(result.overall_passed, false);
 });
 
 // #3268's core requirement: brief-mode get_products carries no ordering or stability
@@ -502,8 +541,10 @@ for (const readback of ['missing', 'original']) {
 // canonical, v1_format_ref, or the canonical mapping registry". A NON-projectable
 // legacy format - the case adcp-client#3268 names, and what this storyboard's legacy
 // fixture uses - has no canonical projection, so there is no format_kind to match. And
-// core/product-filters.json defines format_kinds as "Filter to products accepting any
-// of these canonical format kinds", which such a product does not.
+// On the lines where it exists (3.2/main), core/product-filters.json defines
+// format_kinds as "Filter to products accepting any of these canonical format kinds",
+// which such a product does not. 3.1 defines no such filter at all - asserted below -
+// so on this line the point is moot in the request and decisive in principle.
 //
 // So a seller correctly honouring the filter would exclude itself from legacy
 // discovery, and the legacy path - the whole point of the fix - would stop being
