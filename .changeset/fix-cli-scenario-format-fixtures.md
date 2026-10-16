@@ -1,12 +1,16 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": patch
 ---
 
 Grade inline creative paths on what each seller actually publishes, without inventing a dual-emission requirement.
 
-`inline_creatives_without_sync` previously required a product carrying canonical `format_options[]` and treated the legacy `format_ids[]` path as `optional`. It now has three execution paths — canonical selected through `packages[].format_option_refs`, canonical with no stable `format_option_id`, and legacy `format_ids[]` — each preceded by its own optional discovery phase. A path runs only when its own discovery captured the selector it needs, and it buys with the product, pricing option and selector captured from that same `get_products` response. Because the gate and the buy come from one response, a seller whose brief-mode results reorder or change between calls is never failed for it. Execution phases are not optional, so once a representation was actually captured, inline create, update and readback on it must work.
+`inline_creatives_without_sync` required a product carrying canonical `format_options[]` and treated the legacy `format_ids[]` path as `optional`, so canonical-only, legacy-only and non-projectable-legacy sellers were graded wrongly. One canonical discovery now captures the product's whole format declaration alongside its product and pricing identifiers, and three mutually exclusive canonical paths run off that single response: product-scoped `format_option_refs`, publisher-scoped refs carrying `publisher_domain`, and an unnamed option authored with `format_kind` alone. The legacy `format_ids[]` path runs independently. Because each path discovers and buys from one `get_products` response, a seller whose brief-mode results reorder or change between calls is never failed for it. Execution and readback phases stay required, so once a representation was captured, inline create, update and readback on it must work.
 
-`format_option_id` is not required: `core/canonical-format-option.json` requires only `format_kind` and `params`, so a product may advertise a usable canonical option with no stable id. That seller is graded on the unnamed-option path instead of being silently skipped.
+A publisher-catalog-backed option previously received a product-scoped reference, which `core/format-option-ref.json` rejects — a valid seller failed. `format_option_id` is also no longer required, because `core/canonical-format-option.json` requires only `format_kind` and `params`.
+
+The legacy probe stays unfiltered: a non-projectable legacy format has no canonical kind to match, so filtering it by `format_kinds` would exclude the very sellers this corrects. Its fixed 300x250 image asset is documented as an applicability limit instead.
+
+`scripts/lint-storyboard-sample-request-schema.cjs` now descends into `{ type, discriminator, oneOf }` unions when building placeholders. That makes one pre-existing drift in `account_timezone_buyer_selected` visible; it is allowlisted and tracked, not newly introduced.
 
 Make the three provenance storyboards' seeded products complete: they were missing the schema-required `publisher_properties` and `reporting_capabilities`, and their CPM pricing option carried a `rate` field the schema ignores, so the product advertised no price at all. They now declare `fixed_price` and an image format option matching their creative probes.
 
