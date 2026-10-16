@@ -375,6 +375,23 @@ The brand-operator check runs against the seller's cached `brand.json` per [Oper
 1. **Runtime billing gate.** A passthrough-only agent that submits `billing: "agent"` or `billing: "advertiser"` is rejected with `BILLING_NOT_PERMITTED_FOR_AGENT` and an `error.details.suggested_billing` of `operator`. See [Billing and Account Setup](/docs/building/by-layer/L3/error-handling#billing-and-account-setup) for the recovery contract.
 2. **Per-agent defaults.** Sellers MAY pre-fill `payment_terms`, `billing_entity`, rate-card linkage, and credit limit from the buyer agent's onboarding record when provisioning new accounts under that agent. Per-account values on the `sync_accounts` request always take precedence over per-agent defaults — the buyer can override per row. The per-agent layer is a recommended implementation pattern (it mirrors how SSPs maintain `buyer_id` / `seat_id` rows for OpenRTB DSPs); smaller publishers MAY collapse to seller-wide defaults until they have receivables ops that distinguish per-agent terms.
 
+### First contact and binding
+
+<Note>
+**Experimental (Web Bot Auth profile, 3.3).** Under the Web Bot Auth signing profile, a seller can identify a buyer agent it has never onboarded: the signed request names the signer's origin, and the seller verifies it against that origin's key directory ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). These rules govern what happens next. They are rules R5 and R8 in `specs/agent-identity-3-3.md` ([#8118](https://github.com/adcontextprotocol/adcp/issues/8118)).
+</Note>
+
+1. **Verification alone never creates a principal.** A verified origin with no binding is *identity-established*. It gets what an anonymous caller gets, reads included, plus [`get_principal`](/docs/protocol/get_principal), which returns `unconfigured`. A principal comes only from a binding under rule 2, including the binding a seller creates when it approves a new identity.
+2. **A binding is an explicit, audited seller record** from origin to principal. The seller makes it only after the operator's trust record lists the origin with the required role.
+3. **An origin maps to at most one principal.**
+4. **Binding onto an existing RFC 9421 principal needs explicit approval.** A seller binds a Web Bot Auth origin onto an existing `agents[].url` principal only when the origin is unambiguous, and only with explicit out-of-band approval. In the RFC 9421 profile, controlling the agent's host was not enough to obtain its keys, and this rule keeps origin control alone from inheriting an existing principal. This binding is never automatic.
+
+**Automatic binding.** Where the seller declares an `open` onboarding mode, `sync_principal` from an identity-established caller MAY create a **new** principal, limited to the open modes. Anything else waits for the seller's approval. `get_principal` never creates a principal.
+
+**What the buyer sees while it waits.** Until the seller binds it, the caller stays identity-established. An operation that needs a binding fails with `PERMISSION_DENIED` with no `details`, the code [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) names for a failed trust-record evaluation. Once the seller has an application in progress, `get_principal` carries `relationship` with `status: "pending_approval"` and, when the seller has one, an applicant-specific `setup` step. When the relationship becomes active, is suspended or blocked, or approaches its `expires_at`, `principal.changed` fires (`relationship_changed`, `relationship_expiring`) and the buyer re-reads `get_principal`. See [Relationship status](/docs/protocol/get_principal#relationship-status).
+
+**After binding**, the two layers above still apply on every `sync_accounts`: agent identity through the binding, and brand-operator authorization. A binding is a cache of the trust-record evaluation. Its freshness, the outage rules, and what a delisted origin keeps are in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities).
+
 ## Account references
 
 Every account-scoped operation accepts an `account` object instead of a flat `account_id` string. The seller's `require_operator_auth` capability determines the auth model and reference shape; tool exposure distinguishes upstream-managed `account_id` namespaces from seller-defined IDs supplied out-of-band.
