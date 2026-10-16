@@ -3,6 +3,12 @@ name: Training Agent Storyboards
 on:
   pull_request:
     branches: [main, '3.2.x', '3.1.x', '3.0.x']
+    # Draft PRs skip this matrix (see the job-level `if`s): it is ~22 jobs and
+    # ~200 runner-minutes per push, about half of the repo's Actions minutes,
+    # against an org-wide hosted-runner concurrency cap. `ready_for_review`
+    # runs the full matrix when a draft is marked ready. This workflow is not
+    # a required check, so skipped draft runs never block a merge.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'server/src/training-agent/**'
       - 'server/src/services/hosted-compliance-version.ts'
@@ -49,6 +55,8 @@ concurrency:
 jobs:
   storyboards:
     name: Storyboards (${{ matrix.surface }} /${{ matrix.tenant }})
+    # Skip draft PRs; push events have no pull_request payload and always run.
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -536,6 +544,7 @@ jobs:
 
   sales_storyboard_orchestrators:
     name: Sales storyboard orchestrator (${{ matrix.orchestrator }}/8)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -606,7 +615,7 @@ jobs:
 
   sales_storyboards:
     name: Storyboards (current /sales)
-    if: always()
+    if: always() && github.event.pull_request.draft != true
     needs: sales_storyboard_orchestrators
     runs-on: ubuntu-latest
     timeout-minutes: 10
