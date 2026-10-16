@@ -1508,7 +1508,7 @@ Discovery failures and key removal follow WBA §6.10. A request the verifier can
 
 There is no capabilities fetch and no brand.json lookup, and verification creates no principal. A verified origin the seller has not bound is *identity-established*: it gets what an anonymous caller gets.
 
-**Evaluating the trust record.** The operator's trust record is evaluated when something is gated on it: binding a principal, evaluating a grant (once [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) lands), or `open` onboarding. It is never evaluated on the signature path.
+**Evaluating the trust record.** The operator's trust record is evaluated when something is gated on it: binding a principal, evaluating a grant ([Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental)), or `open` onboarding. It is never evaluated on the signature path.
 
 1. **Derive it.** `R = https://{eTLD+1(host(O))}/.well-known/trust.json`, using a pinned, dated Public Suffix List snapshot that includes the ICANN and PRIVATE sections.
    - An `O` whose host is an IP literal or a public suffix, or has no defined eTLD+1, has no trust record.
@@ -1534,7 +1534,7 @@ Once identity is established, every authorization outcome uses the standard AdCP
 - **Profile selection.** A signed message that carries `Signature-Agent` or the `web-bot-auth` tag is verified under the Web Bot Auth profile only, never under the RFC 9421 profile. An uncovered `Signature-Agent` member is never attributed to the signature.
 - **Unsigned requests.** The answer to an unsigned request for an operation in `required_for` is defined on the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) page, including when a verifier advertises both profiles.
 - **No downgrade.** Once a verifier has bound `O`, it refuses RFC 9421 signatures for any agent URL whose origin is `O`. Before binding, an operator ends RFC 9421 use for an agent by removing its brand.json entry and keys.
-- **Grants** (once [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) lands). A 200 from a grantor's trust.json makes it the grantor's only source of grants, and brand.json `authorized_operators[]` is ignored, as `specs/brand-identity-trust-split.md` §No downgrade sets out.
+- **Grants.** A 200 from a grantor's trust.json makes it the grantor's only source of grants, and brand.json `authorized_operators[]` is ignored, as `specs/brand-identity-trust-split.md` §No downgrade sets out.
 
 #### Agent identity
 
