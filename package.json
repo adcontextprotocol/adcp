@@ -191,6 +191,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@adcp-protocol/fixture-test-sdk": "file:tests/sdk-runner",
     "@changesets/cli": "^2.31.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/escape-html": "^1.0.4",

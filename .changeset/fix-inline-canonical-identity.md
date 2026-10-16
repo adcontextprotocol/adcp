@@ -1,0 +1,15 @@
+---
+"adcontextprotocol": patch
+---
+
+Give `inline_creatives_without_sync` one canonical discovery and three exclusive canonical paths, so each format-option shape is graded on the selector it actually publishes.
+
+The previous shape used a discovery probe per representation. Independent probes see independent `get_products` responses, so a seller whose brief ranking differs between calls could satisfy neither probe and fail with no path executed, and a product-local reference was emitted unconditionally. `format-option-ref.json`'s product-local arm sets `publisher_domain: false`, so a publisher-catalog-backed declaration sent with `scope: "product"` is schema-invalid, not merely unresolvable — a conformant publisher-backed seller was failed outright.
+
+One canonical discovery now captures `products[0].format_options[0]` as a whole declaration alongside the product and pricing option. Three mutually exclusive, exhaustive guards route it: unnamed (`format_kind` alone, no selector), product-local (`scope: "product"`), and publisher-catalog (`scope: "publisher"` with `publisher_domain`). The gate and the buy are one observation, so reordered or changed discovery results cannot produce a false failure. Each reference is the captured declaration with a scope constant injected through `context_inputs`, which deep-clones the request, so the stored context is never mutated.
+
+Legacy discovery deliberately does **not** narrow by canonical kind. A non-projectable legacy format has no canonical projection and accepts no kind, so a seller honouring such a filter would exclude itself and lose the only path it can be graded on — exactly the legacy-only population this scenario serves. On 3.1 neither probe narrows, because this line's `product-filters.json` defines no canonical-kind filter; asset applicability is stated in the narrative instead. The buyer submits a 300x250 image, so rank a product whose first format option accepts that creative for this brief.
+
+Required execution, readback and the final contribution assertion remain fatal: once a path's discovery observes its shape, a create, update or replacement-readback failure there fails the storyboard even when another path passes.
+
+**Runner floor.** These guards read captured context in `skip_if`. That is verified present in `@adcp/sdk` 15.8.1 (the hosted grader's version) and 15.9.2, and verified absent in 9.6.2; versions in between were not tested, so the floor is "≥15.8.1 verified" rather than an exact first version. This does not raise the branch's floor — `billing_out_of_band`, `evaluator_auth` and `refine_finalize_exclusivity` already ship context-reading `skip_if` on 3.1.x. The repository's production `@adcp/sdk` stays **9.6.2**; the regression tests run against a private, dev-only `tests/sdk-runner` helper that pins 15.9.2 and is absent from every published artifact.
