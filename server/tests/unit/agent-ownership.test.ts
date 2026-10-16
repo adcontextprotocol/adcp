@@ -67,12 +67,13 @@ describe('agent-ownership', () => {
         fields: [],
       } as never);
 
+      // Scheme and host case fold; path case and trailing slashes do not (#7830).
       const result = await findOwnerOrgForUser('user_123', 'HTTPS://Agent.Example.com/MCP///');
 
       expect(result).toBe('org_abc');
       const [, params] = queryMock.mock.calls[0];
       expect(params).toEqual([
-        JSON.stringify([{ url: 'https://agent.example.com/mcp' }]),
+        JSON.stringify([{ url: 'https://agent.example.com/MCP///' }]),
         'user_123',
       ]);
     });
@@ -125,13 +126,14 @@ describe('agent-ownership', () => {
         fields: [],
       } as never);
 
+      // Scheme and host case fold; path case and trailing slashes do not (#7830).
       const result = await isOrgOwnerOfAgent('org_abc', 'user_123', 'HTTPS://Agent.Example.com/MCP///');
 
       expect(result).toBe(true);
       const [, params] = queryMock.mock.calls[0];
       expect(params).toEqual([
         'org_abc',
-        JSON.stringify([{ url: 'https://agent.example.com/mcp' }]),
+        JSON.stringify([{ url: 'https://agent.example.com/MCP///' }]),
         'user_123',
       ]);
     });

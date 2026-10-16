@@ -49,9 +49,13 @@ describe('FederatedIndexDatabase publisher-scoped agent properties', () => {
     expect(sql).toContain('p.publisher_domain = $2');
     expect(sql).toContain('pub.domain = $2');
     expect(sql).toContain('v.publisher_domain = $2');
+    // $3 is the app-computed registry key for the agent; SQL no longer
+    // canonicalizes agent URLs (#7830).
+    expect(sql).toContain('v.agent_url_canonical = $3');
     expect(params).toEqual([
       'https://network-agent.example',
       'publisher.example',
+      'https://network-agent.example',
     ]);
     expect(timeoutMs).toBe(5_000);
   });
@@ -69,6 +73,7 @@ describe('FederatedIndexDatabase publisher-scoped agent properties', () => {
     expect(mockedQuery.mock.calls[0][1]).toEqual([
       'https://sales-agent.example',
       'control-publisher.example',
+      'https://sales-agent.example',
     ]);
   });
 });

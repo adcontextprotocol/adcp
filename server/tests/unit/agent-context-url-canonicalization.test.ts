@@ -9,8 +9,10 @@ import { AgentContextDatabase } from '../../src/db/agent-context-db.js';
 
 const queryMock = vi.mocked(query);
 const ORG = 'org_loopme';
+// Scheme and host case and the surrounding whitespace are insignificant;
+// the path — including its case and its trailing slashes — is not (#7830).
 const VARIANT = ' HTTPS://PLATFORM.LOOPME.AI/MCP/SELLER/// ';
-const CANONICAL = 'https://platform.loopme.ai/mcp/seller';
+const CANONICAL = 'https://platform.loopme.ai/MCP/SELLER///';
 
 describe('AgentContextDatabase URL canonicalization', () => {
   const db = new AgentContextDatabase();
@@ -71,5 +73,12 @@ describe('AgentContextDatabase URL canonicalization', () => {
   it('rejects an invalid URL key instead of writing an unmatchable context', async () => {
     await expect(db.create({ organization_id: ORG, agent_url: '   ' })).rejects.toThrow('Invalid agent URL');
     expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('keys agents that differ only in path case as different agents', async () => {
+    await db.getByOrgAndUrl(ORG, 'https://platform.loopme.ai/MCP');
+    await db.getByOrgAndUrl(ORG, 'https://platform.loopme.ai/mcp');
+    expect(queryMock.mock.calls[0][1]).toEqual([ORG, 'https://platform.loopme.ai/MCP']);
+    expect(queryMock.mock.calls[1][1]).toEqual([ORG, 'https://platform.loopme.ai/mcp']);
   });
 });

@@ -69,9 +69,11 @@ describe('resolveUserAgentAuth', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it('canonicalizes LoopMe-style path and trailing-slash variants before every lookup', async () => {
-    const variant = 'HTTPS://PLATFORM.LOOPME.AI/MCP/SELLER/';
-    const canonical = 'https://platform.loopme.ai/mcp/seller';
+  it('canonicalizes LoopMe-style host-case variants before every lookup', async () => {
+    // Scheme and host case fold; path case and a non-root trailing slash are
+    // part of the agent's identity and are preserved (#7830).
+    const variant = ' HTTPS://PLATFORM.LOOPME.AI:443/MCP/SELLER/ ';
+    const canonical = 'https://platform.loopme.ai/MCP/SELLER/';
     db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce(null);
     db.getByOrgAndUrl.mockResolvedValueOnce({ id: 'ctx_loopme', has_oauth_token: true });
     db.getOAuthTokensByOrgAndUrl.mockResolvedValueOnce({ access_token: 'loopme-access' });

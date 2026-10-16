@@ -20,7 +20,7 @@ This endpoint is **discovery**, not **authorization**. The publisher's own `adag
 GET https://{aao_directory}/v1/agents/{agent_url}/publishers
 ```
 
-`{agent_url}` MUST be percent-encoded. The directory canonicalizes the lookup key (lowercase host, default port stripped, trailing slash on path component normalized) using the same convention the SDK applies in `verify_agent_authorization`.
+`{agent_url}` MUST be percent-encoded. The directory canonicalizes the lookup key using [AdCP URL canonicalization](/docs/reference/url-canonicalization), the same convention the SDK applies in `verify_agent_authorization`: the scheme and host lowercase, a default port and a root trailing slash are dropped, dot segments resolve, and percent-encoded unreserved characters decode. Path case and a non-root trailing slash are significant — `/mcp` and `/mcp/` are different agents.
 
 ### Query parameters
 
