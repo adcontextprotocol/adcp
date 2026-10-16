@@ -261,7 +261,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 }
 ```
 
-**Or with HMAC signature (recommended for production):**
+**Or with legacy HMAC signature:**
 ```json
 {
   "packages": [...],
@@ -277,12 +277,13 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 }
 ```
 
-**Security is Required:**
-- `authentication` configuration is mandatory (minimum 32 characters)
-- **Bearer tokens**: Simple, good for development (Authorization header)
-- **HMAC-SHA256**: Production-recommended, prevents replay attacks (signature headers)
-- Credentials exchanged out-of-band during publisher onboarding
-- See [Security](/docs/building/by-layer/L1/security) for implementation details
+**Webhook security:**
+- **Signed webhooks (recommended):** from 3.3, omit `authentication` when the request is served at 3.3 or later and the seller declares `webhook_signing.supported: true`. The seller then MUST sign every delivery under the profile it advertises in `webhook_signing.profile`, verified against its published keys with no shared secret, and you MUST reject unsigned deliveries. A seller that does not sign webhooks rejects an omitted block with `INVALID_REQUEST`.
+- **Below 3.3, `authentication` is required** (credentials at least 32 characters), including when a 3.3 seller serves a buyer pinned to 3.2.
+- **`token` is not authentication.** It is echoed back for correlation and never substitutes for `authentication` or a signature.
+- **Bearer tokens** (legacy): Authorization header. **HMAC-SHA256** (legacy): signature headers. Both are deprecated and removed in 4.0.
+- Legacy credentials are exchanged out-of-band during publisher onboarding.
+- See [Webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks) for the switch rule and verification details.
 
 #### Supported Frequencies
 

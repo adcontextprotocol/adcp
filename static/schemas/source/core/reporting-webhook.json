@@ -19,13 +19,13 @@
     },
     "token": {
       "type": "string",
-      "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
+      "description": "Optional client-provided token, echoed back in the webhook payload so the receiver can correlate the delivery with its registration. It is not authentication: it does not prove who sent the delivery and never substitutes for a signature or for authentication.",
       "minLength": 16
     },
     "authentication": {
       "type": "object",
       "deprecated": true,
-      "description": "Legacy authentication configuration for webhook delivery (A2A-compatible). Opts the receiver into Bearer or HMAC-SHA256 signing. Both schemes are deprecated; the preferred signing profile for new integrations is RFC 9421, where the seller signs with a key published at its brand.json agents[] entry and the buyer verifies against the seller's JWKS — no shared secret crosses the wire (see docs/building/by-layer/L1/security.mdx#webhook-callbacks). This field is required in AdCP 3.x; the requirement is removed in AdCP 4.0 when the default RFC 9421 path becomes the only path.",
+      "description": "Legacy authentication for webhook delivery (A2A-compatible): Bearer or HMAC-SHA256, both deprecated and removed in AdCP 4.0 (#4288). **When this block is absent, the seller MUST sign every delivery** under the webhook signing profile it advertises in webhook_signing.profile, verified against its published keys with no shared secret on the wire, and receivers MUST reject unsigned deliveries. A seller that cannot sign webhooks MUST reject a request that omits this block with INVALID_REQUEST naming this field, and MUST NOT accept it and deliver unsigned or unverifiable webhooks. `token` is not authentication: it never substitutes for this block or for a signature. How a seller handles a request that carries this block, and the webhook_mode_mismatch rule, are in docs/building/by-layer/L1/security.mdx#webhook-callbacks. **Version gate:** required when the request is served at a release below 3.3, including a 3.3 seller serving a buyer pinned to 3.2. A buyer MAY omit it only when the request is served at 3.3 or later (the negotiated release, not merely the seller's supported_versions) and the seller declares webhook_signing.supported: true.",
       "properties": {
         "schemes": {
           "type": "array",
@@ -66,10 +66,6 @@
       "uniqueItems": true
     }
   },
-  "required": [
-    "url",
-    "authentication",
-    "reporting_frequency"
-  ],
+  "required": ["url", "reporting_frequency"],
   "additionalProperties": true
 }
