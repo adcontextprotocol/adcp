@@ -4852,6 +4852,7 @@ components:
               - sales-catalog-driven
               - sales-dooh
               - sales-exchange
+              - sales-fixed-rate
               - sales-guaranteed
               - sales-non-guaranteed
               - sales-proposal-mode

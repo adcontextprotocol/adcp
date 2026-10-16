@@ -194,7 +194,7 @@ Create an advertising campaign from selected products.
 **Response contains:**
 
 - `media_buy_id`: The created campaign identifier
-- `status`: Current lifecycle state — `pending_creatives` (no creatives assigned yet), `pending_start` (waiting for flight date), or `active` (serving immediately)
+- `status`: Current lifecycle state — `pending_creatives` (no creatives assigned yet), `pending_start` (creatives in place, not yet serving: waiting for the flight date, or for seller confirmation when `confirmed_at` is null), or `active` (serving immediately)
 - `packages`: Created packages with their IDs
 
 ---
