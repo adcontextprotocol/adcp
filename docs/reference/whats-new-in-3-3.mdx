@@ -69,9 +69,11 @@ that document unnarrowed under `MAX_CAPABILITIES_BYTES`, pushing it past 64 KiB 
 the victim *signature verification*, arriving a cache cycle later with no visible
 connection to its cause.
 
-3.3 bounds both arrays (`maxItems: 100`, `uniqueItems`, `maxLength: 253`) and adds a
-normative byte budget: one eighth of the capabilities budget for any single
-counterparty-asserted field, one quarter for all of them together. Because a bounded
+3.3 adds a normative byte budget — one eighth of the capabilities budget for any
+single counterparty-asserted field, one quarter for both together — and declares
+structural bounds (100 unique entries, 253 characters each) that the conformance
+storyboard grades in 3.x and the schema enforces in 4.0. No previously-valid
+document becomes schema-invalid; what changes is what counts as conformant. Because a bounded
 list would otherwise make a large legitimate network look unauthorized for most of
 its own inventory, the bound ships with `publisher_domains_complete` and
 `data_provider_domains_complete` — default `true`, set `false` when you truncate.

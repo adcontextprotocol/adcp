@@ -2380,11 +2380,15 @@ document past 64 KiB has satisfied every MUST in this paragraph and still
 lost signature verification — self-inflicted rather than attacker-inflicted,
 and just as broken.
 
-The schema's `maxItems` and `maxLength` are a coarse structural ceiling and
-are not sufficient on their own: a count bound cannot express bytes, a
-hundred-entry list of maximum-length domains is thirteen times the size of a
-hundred ordinary ones, and two schema-valid fields at their limits are
-already most of the budget. Where the real set does not fit, an agent
+The structural bounds carried in `x-adcp-validation` — at most 100 unique
+entries, each at most 253 characters — are a coarse ceiling and are not
+sufficient on their own: a count bound cannot express bytes, a hundred-entry
+list of maximum-length domains is thirteen times the size of a hundred
+ordinary ones, and two fields at those limits are already most of the budget.
+Through 3.x they are graded by the conformance storyboard rather than enforced
+by the schema, so a document already above them is reported, not rejected;
+they become schema constraints in 4.0. The byte budget above is the bound that
+binds in 3.x. Where the real set does not fit, an agent
 **MUST** truncate and mark the list incomplete
 (`publisher_domains_complete: false`, `data_provider_domains_complete: false`)
 rather than exceed the budget, and **MUST NOT** drop a field it does in fact

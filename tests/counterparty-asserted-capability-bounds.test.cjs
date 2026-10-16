@@ -42,6 +42,7 @@ const RESPONSE_SIZE = 'building/concepts/managing-response-size.mdx';
 const CAPABILITIES_DOC = 'protocol/get_adcp_capabilities.mdx';
 const AUTHORIZED_PROPERTIES = 'governance/property/authorized-properties.mdx';
 const MIGRATION = 'reference/migration/3-2-to-3-3.mdx';
+const VERSIONING = 'reference/versioning.mdx';
 
 const MAX_CAPABILITIES_BYTES = 65_536;
 /** Per-field and aggregate budgets for counterparty-asserted content. */
@@ -95,46 +96,58 @@ describe('counterparty-asserted capability arrays are bounded', () => {
     describe(label, () => {
       const node = () => container()[field];
 
-      it('bounds how many entries a third party can get into the document', () => {
-        const { maxItems } = node();
-        assert.equal(typeof maxItems, 'number', `${label} must carry maxItems`);
+      it('declares the structural bounds a third party could otherwise blow past', () => {
+        const bounds = node()['x-adcp-validation'].advisory_bounds;
+        assert.ok(bounds, `${label} must declare advisory_bounds`);
+        assert.equal(bounds.item_max_length, MAX_DOMAIN_LENGTH);
+        assert.equal(bounds.unique_items, true);
+        assert.equal(bounds.max_serialized_bytes, PER_FIELD_BUDGET);
         // The count binds the legitimate case. At a realistic ~18-byte domain
-        // the cap must be reached long before the byte budget is, or the
-        // schema rejects honest lists the budget would have allowed.
+        // the cap must be reached long before the byte budget is, or it would
+        // report honest lists the budget would have allowed.
         assert.ok(
-          maxItems * (TYPICAL_DOMAIN_LENGTH + 3) <= PER_FIELD_BUDGET,
-          `${label}: ${maxItems} typical domains must fit the ${PER_FIELD_BUDGET}B budget`,
+          bounds.max_items * (TYPICAL_DOMAIN_LENGTH + 3) <= PER_FIELD_BUDGET,
+          `${label}: ${bounds.max_items} typical domains must fit the ${PER_FIELD_BUDGET}B budget`,
         );
         // And it must still bound the adversarial case to something the
         // document can survive, even though the byte budget is what rejects it.
-        const worstCase = maxItems * (MAX_DOMAIN_LENGTH + 3);
+        const worstCase = bounds.max_items * (MAX_DOMAIN_LENGTH + 3);
         assert.ok(
           worstCase < MAX_CAPABILITIES_BYTES / 2,
           `${label} worst case ${worstCase}B must stay under half of MAX_CAPABILITIES_BYTES`,
         );
       });
 
+      it('keeps the bounds out of the schema so no 3.2 document is invalidated', () => {
+        // The fix is a conformance rule, not a wire break. A 3.2 seller with a
+        // 150-publisher network emitted a valid document; it stays valid and is
+        // graded, not rejected. Reintroducing any of these as a hard constraint
+        // turns an additive minor into a breaking change.
+        const n = node();
+        assert.equal(n.maxItems, undefined, `${label} must not carry a schema maxItems in 3.x`);
+        assert.equal(n.uniqueItems, undefined, `${label} must not carry schema uniqueItems in 3.x`);
+        assert.equal(
+          n.items.maxLength,
+          undefined,
+          `${label} items must not carry a schema maxLength in 3.x`,
+        );
+        const validation = n['x-adcp-validation'];
+        assert.equal(validation.enforced_in_3_x, 'storyboard');
+        assert.equal(validation.schema_enforced_in, '4.0');
+      });
+
       it('is honest that the structural ceiling exceeds the byte budget', () => {
-        // maxItems x maxLength is deliberately looser than the 8,192-byte MUST:
-        // a count cannot express bytes, so the two layers catch different cases.
-        // Anyone reading only the schema would otherwise conclude that a
-        // schema-valid list is a conformant one, which at 100 x 253 it is not.
-        const worstCase = node().maxItems * (MAX_DOMAIN_LENGTH + 3);
+        // The count x length ceiling is deliberately looser than the 8,192-byte
+        // MUST: a count cannot express bytes, so the two layers catch different
+        // cases. Anyone reading only the bounds would otherwise conclude that a
+        // within-bounds list is a conformant one, which at 100 x 253 it is not.
+        const bounds = node()['x-adcp-validation'].advisory_bounds;
+        const worstCase = bounds.max_items * (MAX_DOMAIN_LENGTH + 3);
         assert.ok(
           worstCase > PER_FIELD_BUDGET,
           'if the ceiling ever fits the budget, drop this test and the caveat it pins',
         );
         assert.match(node().description, /deliberately looser than the byte budget/i);
-      });
-
-      it('bounds each entry, without which the array bound buys nothing', () => {
-        // The item pattern matches a single label of any length, so a count
-        // bound on its own leaves the field unbounded in bytes.
-        assert.equal(node().items.maxLength, MAX_DOMAIN_LENGTH, `${label} items need maxLength`);
-      });
-
-      it('rejects duplicates, which otherwise spend the cap carrying nothing', () => {
-        assert.equal(node().uniqueItems, true, `${label} must set uniqueItems`);
       });
 
       it('is marked counterparty-asserted and points at its completeness flag', () => {
@@ -200,13 +213,13 @@ describe('counterparty-asserted capability arrays are bounded', () => {
         .split('/')
         .filter(Boolean)
         .reduce((acc, key) => acc[key], schema.properties);
-      assert.equal(
-        typeof node.maxItems,
-        'number',
-        `domain-valued array at ${pointer} is unbounded. If it is counterparty-asserted, add it to COUNTERPARTY_ASSERTED above; if it is self-declared, bound it here and widen this guard to say so.`,
+      const bounds = node['x-adcp-validation'] && node['x-adcp-validation'].advisory_bounds;
+      assert.ok(
+        bounds,
+        `domain-valued array at ${pointer} declares no bounds. If it is counterparty-asserted, add it to COUNTERPARTY_ASSERTED above; if it is self-declared, bound it here and widen this guard to say so.`,
       );
-      assert.equal(node.items.maxLength, MAX_DOMAIN_LENGTH, `${pointer} items need maxLength`);
-      assert.equal(node.uniqueItems, true, `${pointer} needs uniqueItems`);
+      assert.equal(bounds.item_max_length, MAX_DOMAIN_LENGTH, `${pointer} needs an item length bound`);
+      assert.equal(bounds.unique_items, true, `${pointer} needs a uniqueness bound`);
     }
 
     assert.equal(found.length, COUNTERPARTY_ASSERTED.length, `expected exactly ${COUNTERPARTY_ASSERTED.length} domain-valued arrays, found ${found.length}: ${found.join(', ')}`);
@@ -330,12 +343,38 @@ describe('adopter-facing guidance', () => {
     );
   });
 
-  it('the migration guide carries the tightening and both audiences', () => {
+  it('the normative narrowing is recorded as a 3.3 compatibility exception', () => {
+    // A rule that makes a previously-conformant producer non-conformant is a
+    // narrowing. The repo ships those in a minor only when they are recorded
+    // here with a basis; an unrecorded one is the thing this test prevents.
+    const body = section(
+      read(VERSIONING),
+      '### 3.3 exceptions to 3.x compatibility (beta)',
+    );
+    assert.match(body, /Counterparty-asserted lists are bounded/);
+    assert.match(body, /publisher_domains/);
+    assert.match(body, /data_provider_domains/);
+    assert.match(body, /8,192 bytes/);
+    // And it must say the schemas did not change, which is what keeps this
+    // classifiable as minor rather than major.
+    assert.match(body, /\*\*Schemas are unchanged\*\*/);
+    assert.match(body, /8197/);
+    // The table preamble counts the narrowings; adding a row without updating
+    // it leaves the section self-contradictory.
+    assert.match(body, /three narrow it/i);
+  });
+
+  it('the migration guide carries the narrowing and both audiences', () => {
     const body = section(read(MIGRATION), '### Counterparty-asserted domain lists are bounded');
-    assert.match(body, /This tightens the schema/i);
-    assert.match(body, /maxItems: 100/);
+    // The narrowing is in conformance, not in what validates. Saying "tightens
+    // the schema" would misclassify an additive minor as a breaking change.
+    assert.match(body, /schemas are unchanged/i);
+    assert.match(body, /graded by the conformance storyboard/i);
+    assert.match(body, /stays\s+schema-valid/is);
     assert.match(body, /publisher_domains_complete: false/);
     assert.match(body, /\*\*not\*\* evidence the seller is\s+unauthorized/is);
+    // The recorded exception is what makes the narrowing ratified, not silent.
+    assert.match(body, /3-3-exceptions-to-3-x-compatibility/);
     assert.match(
       read(MIGRATION),
       /\|[^|]*\|[^|]*\|[^|]*publisher_domains[^|]*data_provider_domains[^|]*\|/,

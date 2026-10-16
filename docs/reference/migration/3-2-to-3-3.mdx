@@ -127,18 +127,23 @@ party inflate a victim's capabilities document past `MAX_CAPABILITIES_BYTES` —
 because the signing-key discovery path fetches that document unnarrowed, the victim
 lost signature verification, not just discovery, one cache cycle later.
 
-**This tightens the schema.** Both arrays now carry `maxItems: 100`,
-`uniqueItems: true`, and `maxLength: 253` per entry, and a normative byte budget
-caps any single counterparty-asserted field at 8,192 bytes as served and all of them
-together at 16,384. A response that was schema-valid at 3.2 with 101 domains, a
-duplicate, or a 300-character entry is not schema-valid at 3.3.
+**The schemas are unchanged; the normative rule is new.** A byte budget caps any
+single counterparty-asserted field at 8,192 bytes and both together at 16,384,
+measured as uncompressed serialized JSON. The structural bounds — at most 100
+unique entries, each at most 253 characters — ride in `x-adcp-validation` and are
+graded by the conformance storyboard in 3.x, becoming schema constraints in 4.0.
+So a 3.2 response with 101 domains, a duplicate, or an over-length entry stays
+schema-valid and is reported rather than rejected. What changes in 3.3 is
+conformance: a producer that mirrors a large network wholesale is no longer
+conformant, and the fix is to truncate and flag. Recorded in
+[3.3 exceptions to 3.x compatibility](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta).
 
 **Agents.** Stop mirroring "every counterparty whose adagents.json names me" — that
 is the vector. Publish the publishers or providers you actually represent. If the
 real set does not fit, truncate and set the new `publisher_domains_complete: false`
 (or `data_provider_domains_complete: false`); both default to `true`, so an agent
 whose list is complete changes nothing. Never serve a truncated list as complete.
-The schema bound is a conformance statement, not a runtime control — it makes an
+The bound is a conformance statement, not a runtime control — it makes an
 inflated document non-conformant, it does not stop your serializer emitting one.
 
 **Buyers.** Neither list was ever an allowlist, and both are now explicitly
