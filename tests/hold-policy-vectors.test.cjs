@@ -3,7 +3,8 @@
 /**
  * Replays static/compliance/source/test-vectors/hold-policy/vectors.json
  * through a reference grader for experimental hold_policy (#7661) and
- * extend_hold (media_buy.hold_extension, #8086).
+ * extend_hold (media_buy.hold_extension, #8086), and hold ranking
+ * (media_buy.hold_ranking, #8086).
  *
  * The grader below is the reference: implementers port it, not the prose.
  * It is deliberately small and reads only canonical proposals, canonical
@@ -57,6 +58,7 @@ const validate = {
 // ---------------------------------------------------------------------------
 
 const FEATURE = 'media_buy.hold_policy';
+const RANKING = 'media_buy.hold_ranking';
 const DURATION = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/;
 
 /** Duration in milliseconds. A day is 86400 seconds on the UTC instant. */
@@ -88,8 +90,11 @@ const listsFeature = seller => (seller.experimental_features || []).includes(FEA
 
 const sameJson = (a, b) => (a === undefined || b === undefined ? a === b : jcs(a) === jcs(b));
 
+const ranked = h => h && ((h.hold_policy && 'rankable' in h.hold_policy) || 'hold_rank' in h);
+
 function undeclaredExperimental(seller, holders) {
-  return holders.some(h => h && (h.hold_policy || h.hold_placed_at)) && !listsFeature(seller);
+  if (holders.some(h => h && (h.hold_policy || h.hold_placed_at)) && !listsFeature(seller)) return true;
+  return holders.some(ranked) && !(seller.experimental_features || []).includes(RANKING);
 }
 
 /** min <= max <= total after normalizing; the schema cannot compare durations. */
@@ -108,7 +113,9 @@ function exceedsProducts(draftPolicy, productPolicies) {
     if (p.max_total_duration && draftPolicy.max_total_duration) {
       if (durationMs(draftPolicy.max_total_duration) > durationMs(p.max_total_duration)) return true;
     }
-    return draftPolicy.extendable === true && p.extendable !== true;
+    if (draftPolicy.extendable === true && p.extendable !== true) return true;
+    // A draft is rankable if any allocated product is: an exclusive draft over a rankable product overpromises.
+    return p.rankable === true && draftPolicy.rankable !== true;
   });
 }
 
@@ -165,7 +172,7 @@ function gradeFinalize(vector) {
     violations.add('hold_policy_durations_unordered');
   }
   if (pre33) {
-    if (served.some(h => h.hold_policy || h.hold_placed_at)) violations.add('hold_policy_sent_below_3_3');
+    if (served.some(h => h.hold_policy || h.hold_placed_at || 'hold_rank' in h)) violations.add('hold_policy_sent_below_3_3');
   } else if (listsFeature(seller)) {
     const proposals = [...drafts, ...served.filter(h => h.proposal_status)];
     if (proposals.some(h => !h.hold_policy)) violations.add('hold_policy_missing');
@@ -256,6 +263,8 @@ function gradeExtend(vector) {
       if (!sameJson(successor.commercial_terms, src.commercial_terms)) violations.add('commercial_terms_changed');
       if (!sameJson(successor.hold_policy, src.hold_policy)) violations.add('hold_policy_not_carried_forward');
       if (successor.hold_placed_at !== src.hold_placed_at) violations.add('hold_placed_at_not_carried_forward');
+      // A live hold never moves to a worse position; the successor's snapshot is as of the extension.
+      if (src.hold_rank && successor.hold_rank > src.hold_rank) violations.add('hold_rank_worsened');
       if (instant(successor.expires_at) <= instant(src.expires_at)) violations.add('extension_not_later');
       if (src.hold_policy && src.hold_policy.extendable !== true) violations.add('extended_while_not_extendable');
       if (src.hold_policy && src.hold_policy.max_total_duration && src.hold_placed_at) {
@@ -332,7 +341,16 @@ test('every case has at least one conformant and one non-conformant vector', () 
   }
   assert.deepEqual(
     [...cases.keys()].sort(),
-    ['agent_default', 'draft_consistency', 'extension', 'hold_bounds', 'hold_unavailable', 'terms_only_resolution', 'version_gate'],
+    [
+      'agent_default',
+      'draft_consistency',
+      'extension',
+      'hold_bounds',
+      'hold_unavailable',
+      'ranking',
+      'terms_only_resolution',
+      'version_gate',
+    ],
   );
   for (const [name, counts] of cases) {
     assert.ok(counts.ok > 0 && counts.bad > 0, `${name} needs both verdicts: ${JSON.stringify(counts)}`);
@@ -425,4 +443,21 @@ test('version comparison is by major and minor', () => {
   assert.equal(belowVersion('3.3-rc.1', '3.3'), false);
   assert.equal(belowVersion('3.10', '3.3'), false);
   assert.equal(belowVersion('2.5', '3.3'), true);
+});
+
+test('hold_rank appears only beside a rankable hold_policy, and rankable only with available true', () => {
+  for (const v of allVectors) {
+    if (v.expected.violations.includes('schema_invalid')) continue;
+    for (const p of collectPolicies(v)) if ('rankable' in p) assert.equal(p.available, true, v.id);
+    const walk = node => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== 'object') return;
+      if ('hold_rank' in node) {
+        assert.equal(node.hold_policy.rankable, true, `${v.id}: hold_rank needs rankable`);
+        assert.notEqual(node.proposal_status, 'draft', `${v.id}: no hold_rank on drafts`);
+      }
+      Object.values(node).forEach(walk);
+    };
+    walk(v);
+  }
 });
