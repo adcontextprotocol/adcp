@@ -69,6 +69,16 @@ export type ToolExecutionPolicy = (
   request: ToolExecutionPolicyRequest,
 ) => ToolExecutionPolicyDecision | Promise<ToolExecutionPolicyDecision>;
 
+export type MutationAuthorityRevalidation = (request: {
+  toolName: string;
+  phase: 'before_reservation' | 'after_reservation';
+}) => Promise<{ allowed: true } | { allowed: false; status: 'access_denied' | 'recoverable_error' }>;
+
+/** Application-owned proof of the exact committed intent row. */
+export interface SideEffectReservationReceipt {
+  reservationId: string;
+}
+
 export interface ToolExecution {
   tool_name: string;
   parameters: Record<string, unknown>;
@@ -83,6 +93,10 @@ export interface ToolExecution {
   normalized_result?: ToolResultPresentation;
   /** A normal return from an allowlisted local mutation handler settled its reservation. */
   durable_outcome?: 'known';
+  /** Set only by the executor when authority rejection prevented handler entry. */
+  dispatch_status?: 'not_dispatched';
+  /** Only a post-reservation rejection may settle this exact intent row. */
+  not_dispatched_reservation_id?: string;
   /** Present only when the application handler produced a verified GitHub receipt. */
   github_issue_receipt?: GithubIssueCreationReceipt;
 }
@@ -109,7 +123,8 @@ export interface AddieToolExecutorOptions {
   reserveSideEffect?: (request: {
     toolName: string;
     parameters: Record<string, unknown>;
-  }) => void | Promise<void>;
+  }) => void | SideEffectReservationReceipt | Promise<void | SideEffectReservationReceipt>;
+  revalidateSideEffectAuthority?: MutationAuthorityRevalidation;
 }
 
 export interface AddieToolCallResult {
@@ -844,6 +859,36 @@ export function createAddieToolExecutor(
     }
 
     if (sideEffectKey) {
+      const revalidateAuthority = async (
+        phase: 'before_reservation' | 'after_reservation',
+        reservation?: void | SideEffectReservationReceipt,
+      ): Promise<AddieToolCallResult | undefined> => {
+        if (!operationalExecution) return undefined;
+        let decision;
+        try {
+          decision = options.revalidateSideEffectAuthority
+            ? await options.revalidateSideEffectAuthority({ toolName: call.name, phase })
+            : { allowed: false, status: 'recoverable_error' } as const;
+        } catch {
+          decision = { allowed: false, status: 'recoverable_error' } as const;
+        }
+        if (decision?.allowed === true) return undefined;
+        const status = decision?.allowed === false && decision.status === 'access_denied'
+          ? 'access_denied' : 'recoverable_error';
+        const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
+          status,
+          model_context: status === 'access_denied'
+            ? 'Error: Authority changed; this action was not dispatched. Start a new request.'
+            : 'Error: Authority could not be verified; this action was not dispatched. Retry when available.',
+          user_summary: 'The action was not dispatched because its authority could not be verified.',
+        }));
+        const denied = failureResult(call, sequence, options.executionMode, normalized, Date.now() - startTime, true);
+        denied.execution.dispatch_status = 'not_dispatched';
+        if (phase === 'after_reservation' && reservation?.reservationId) {
+          denied.execution.not_dispatched_reservation_id = reservation.reservationId;
+        }
+        return denied;
+      };
       if (operationalExecution && !options.reserveSideEffect) {
         const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
           status: 'error',
@@ -856,8 +901,11 @@ export function createAddieToolExecutor(
         );
         return failureResult(call, sequence, options.executionMode, normalized, 0, true);
       }
+      const deniedBeforeReservation = await revalidateAuthority('before_reservation');
+      if (deniedBeforeReservation) return deniedBeforeReservation;
+      let reservation: void | SideEffectReservationReceipt;
       try {
-        await options.reserveSideEffect?.({ toolName: call.name, parameters: call.input });
+        reservation = await options.reserveSideEffect?.({ toolName: call.name, parameters: call.input });
       } catch (error) {
         const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
           status: 'error',
@@ -870,6 +918,8 @@ export function createAddieToolExecutor(
         );
         return failureResult(call, sequence, options.executionMode, normalized, 0, true);
       }
+      const deniedAfterReservation = await revalidateAuthority('after_reservation', reservation);
+      if (deniedAfterReservation) return deniedAfterReservation;
       // Record before dispatch so a provider continuation or recovery never
       // resubmits an action whose handler outcome is ambiguous.
       dispatchedSideEffects.add(sideEffectKey);

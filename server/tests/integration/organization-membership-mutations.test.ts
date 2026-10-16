@@ -303,6 +303,17 @@ beforeEach(async () => {
 });
 
 describe('mounted real cookie/JWT organization membership mutation fence', () => {
+  it('commits a role change and exact target epoch bump together without revoking the actor', async () => {
+    const before = await pool.query('SELECT workos_user_id, epoch::text FROM authorization_epochs WHERE workos_user_id = ANY($1)', [[A, target]]);
+    expect(before.rows).toEqual([]);
+    const response = await request(app).patch(`/api/organizations/${org}/members/om_${target}`)
+      .set('Cookie', await cookie()).set('X-CSRF-Token', CSRF_TOKEN).send({ role: 'admin' });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect((await pool.query('SELECT epoch::text FROM authorization_epochs WHERE workos_user_id=$1', [target])).rows).toEqual([{ epoch: '1' }]);
+    expect((await pool.query('SELECT epoch FROM authorization_epochs WHERE workos_user_id=$1', [A])).rowCount).toBe(0);
+    expect((await pool.query('SELECT role FROM organization_memberships WHERE workos_user_id=$1 AND workos_organization_id=$2', [target,org])).rows[0].role).toBe('admin');
+  });
+
   it('rejects a cookie mutation without the matching production CSRF header before auth or side effects', async () => {
     const response = await request(app).post(`/api/organizations/${org}/invitations`)
       .set('Cookie', await cookie()).send({ email: 'invitee@membership-mutation.example.test' });

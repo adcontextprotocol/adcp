@@ -200,6 +200,51 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
   });
 
   describe('addMessage', () => {
+    it.each(['pre_reservation', 'wrong_reservation', 'different_input', 'different_tool', 'owned_reservation'])(
+      'settles only its own proven no-dispatch reservation: %s', async proof => {
+        const thread = await threadService.getOrCreateThread({ channel: 'web', external_id: `${TEST_WEB_EXTERNAL_ID}-no-dispatch-${proof}` });
+        const parameters = { title: 'Review' };
+        const reservationCall = { name: 'schedule_meeting', input: parameters, result: 'External action dispatch reserved; outcome unknown.', is_error: true };
+        const intent = {
+          thread_id: thread.thread_id, role: 'assistant' as const, content: '', tool_calls: [reservationCall],
+          model_execution: TEST_LOCAL_MODEL_EXECUTION, delivery_status: 'interrupted' as const,
+          mutation_reservation: { tool_name: reservationCall.name, input: parameters },
+        };
+        const owned = await threadService.addMessage(intent);
+        await threadService.addMessage({
+          thread_id: thread.thread_id, role: 'assistant', content: '', model_execution: TEST_LOCAL_MODEL_EXECUTION,
+          delivery_status: 'interrupted', tool_calls: [{
+            ...reservationCall, result: 'Authority could not be verified; action not dispatched.', result_status: 'access_denied',
+            dispatch_status: 'not_dispatched',
+            ...(proof !== 'pre_reservation' && { not_dispatched_reservation_id: proof === 'wrong_reservation' ? 'unrelated-row' : owned.message_id }),
+            ...(proof === 'different_input' && { input: { title: 'Another meeting' } }),
+            ...(proof === 'different_tool' && { name: 'create_github_issue' }),
+          }],
+        });
+        if (proof === 'owned_reservation') {
+          expect((await threadService.addMessage(intent)).sequence_number).toBe(3);
+        } else {
+          await expect(threadService.addMessage(intent)).rejects.toThrow('unknown prior outcome');
+        }
+      },
+    );
+
+    it('does not retire an older same-key unknown intent when a later owned reservation is proven not dispatched', async () => {
+      const thread = await threadService.getOrCreateThread({ channel: 'web', external_id: `${TEST_WEB_EXTERNAL_ID}-older-unknown-no-dispatch` });
+      const parameters = { title: 'Review' };
+      const call = { name: 'schedule_meeting', input: parameters, result: 'External action dispatch reserved; outcome unknown.', is_error: true };
+      const row = { thread_id: thread.thread_id, role: 'assistant' as const, content: '', tool_calls: [call], model_execution: TEST_LOCAL_MODEL_EXECUTION, delivery_status: 'interrupted' as const };
+      const first = await threadService.addMessage({ ...row, mutation_reservation: { tool_name: call.name, input: parameters } });
+      // The fence rejects new duplicates; reconstruct a historical second unknown
+      // intent as a raw row. The SQL fence recognizes its marker, not the
+      // addMessage-only mutation_reservation option. Settlement is scoped by row ID.
+      const second = await threadService.addMessage(row);
+      await threadService.addMessage({ ...row, tool_calls: [{ ...call, result: 'Not dispatched', dispatch_status: 'not_dispatched', not_dispatched_reservation_id: second.message_id }] });
+      await expect(threadService.addMessage({ ...row, mutation_reservation: { tool_name: call.name, input: parameters } })).rejects.toThrow('unknown prior outcome');
+      await threadService.addMessage({ ...row, tool_calls: [{ ...call, result: 'Not dispatched', dispatch_status: 'not_dispatched', not_dispatched_reservation_id: first.message_id }] });
+      await expect(threadService.addMessage({ ...row, mutation_reservation: { tool_name: call.name, input: parameters } })).resolves.toBeDefined();
+    });
+
     it('allows a later identical mutation after an exact successful receipt settles its reservation', async () => {
       const thread = await threadService.getOrCreateThread({
         channel: 'web',

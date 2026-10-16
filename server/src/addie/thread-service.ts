@@ -120,7 +120,7 @@ interface CreateMessageInputBase {
   content: string;
   content_sanitized?: string;
   tools_used?: string[];
-  tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; operation?: string; error_code?: string; error_category?: string; retryable?: boolean; retry_after_ms?: number; attempts?: number; recovered_by_later_success?: boolean; durable_outcome?: 'known'; github_issue_receipt?: unknown }>;
+  tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; operation?: string; error_code?: string; error_category?: string; retryable?: boolean; retry_after_ms?: number; attempts?: number; recovered_by_later_success?: boolean; durable_outcome?: 'known'; dispatch_status?: 'not_dispatched'; not_dispatched_reservation_id?: string; github_issue_receipt?: unknown }>;
   knowledge_ids?: number[];
   model?: string;
   model_preference?: WebChatModelPreference;
@@ -189,7 +189,7 @@ export interface ThreadMessage {
   content: string;
   content_sanitized: string | null;
   tools_used: string[] | null;
-  tool_calls: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; durable_outcome?: 'known'; github_issue_receipt?: unknown }> | null;
+  tool_calls: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean; result_status?: string; durable_outcome?: 'known'; dispatch_status?: 'not_dispatched'; not_dispatched_reservation_id?: string; github_issue_receipt?: unknown }> | null;
   knowledge_ids: number[] | null;
   model: string | null;
   model_preference?: WebChatModelPreference | null;
@@ -549,6 +549,14 @@ export class ThreadService {
                  AND receipt_call->>'name' = reserved_call->>'name'
                  AND receipt_call->'input' = reserved_call->'input'
                  AND (
+                   -- An authority denial after a successful reservation proves
+                   -- no handler entry for that exact row. A pre-reservation
+                   -- denial has no row ID and cannot retire an older intent.
+                   (
+                     receipt_call->>'dispatch_status' = 'not_dispatched'
+                     AND receipt_call->>'not_dispatched_reservation_id' = reservation.message_id::text
+                   )
+                   OR
                    -- An allowlisted local mutation handler returned normally.
                    -- Its negative gate results are definitive and may retire
                    -- the reservation even though they normalize as errors.

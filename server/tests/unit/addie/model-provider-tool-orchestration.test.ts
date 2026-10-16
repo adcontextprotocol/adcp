@@ -132,7 +132,7 @@ describe('createAddieToolExecutor', () => {
     }));
     const reserveSideEffect = vi.fn().mockResolvedValue(undefined);
     const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
-      executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect,
+      executionMode: 'production', policy: () => ({ allowed: true }), revalidateSideEffectAuthority: async () => ({ allowed: true }), reserveSideEffect,
     });
     const first = { ...call({ title: 'Synthetic issue', body: 'Synthetic body' }), id: 'call_issue_1', name: 'create_github_issue' };
     const duplicate = { ...first, id: 'call_issue_2' };
@@ -153,7 +153,7 @@ describe('createAddieToolExecutor', () => {
     });
     const reserveSideEffect = vi.fn().mockResolvedValue(undefined);
     const execute = createAddieToolExecutor([getProductsTool], new Map([[getProductsTool.name, handler]]), {
-      executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect,
+      executionMode: 'production', policy: () => ({ allowed: true }), revalidateSideEffectAuthority: async () => ({ allowed: true }), reserveSideEffect,
     });
     const input = { agent_url: 'https://seller.example', idempotency_key: 'stable-products-key', buying_mode: 'wholesale' };
     await execute({ ...call(input), name: getProductsTool.name }, 1);
@@ -166,7 +166,7 @@ describe('createAddieToolExecutor', () => {
     const handler = vi.fn().mockResolvedValue({ status: 'ok', model_context: 'Created.', user_summary: 'Created.', telemetry: { operation: 'create_media_buy' } });
     const reserveSideEffect = vi.fn().mockResolvedValue(undefined);
     const execute = createAddieToolExecutor([genericTool], new Map([[genericTool.name, handler]]), {
-      executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect,
+      executionMode: 'production', policy: () => ({ allowed: true }), revalidateSideEffectAuthority: async () => ({ allowed: true }), reserveSideEffect,
     });
     const input = { agent_url: 'https://seller.example', task: 'create_media_buy', params: { idempotency_key: 'stable-mutation-key' } };
     await execute({ ...call(input), name: genericTool.name }, 1);
@@ -182,7 +182,7 @@ describe('createAddieToolExecutor', () => {
       user_summary: 'Issue created.',
     });
     const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
-      executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect: vi.fn(),
+      executionMode: 'production', policy: () => ({ allowed: true }), revalidateSideEffectAuthority: async () => ({ allowed: true }), reserveSideEffect: vi.fn(),
     });
 
     const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
@@ -215,7 +215,7 @@ describe('createAddieToolExecutor', () => {
     const handler = vi.fn();
     const reserveSideEffect = vi.fn().mockRejectedValue(new Error('storage unavailable'));
     const execute = createAddieToolExecutor([issueTool], new Map([['create_github_issue', handler]]), {
-      executionMode: 'production', policy: () => ({ allowed: true }), reserveSideEffect,
+      executionMode: 'production', policy: () => ({ allowed: true }), revalidateSideEffectAuthority: async () => ({ allowed: true }), reserveSideEffect,
     });
 
     const result = await execute({ ...call(), name: 'create_github_issue' }, 1);
@@ -236,6 +236,7 @@ describe('createAddieToolExecutor', () => {
       {
         executionMode: 'production',
         policy: () => ({ allowed: true }),
+        revalidateSideEffectAuthority: async () => ({ allowed: true }),
         reserveSideEffect: vi.fn().mockResolvedValue(undefined),
       },
     );
@@ -259,6 +260,7 @@ describe('createAddieToolExecutor', () => {
       {
         executionMode: 'production',
         policy: () => ({ allowed: true }),
+        revalidateSideEffectAuthority: async () => ({ allowed: true }),
         reserveSideEffect: vi.fn().mockResolvedValue(undefined),
       },
     );

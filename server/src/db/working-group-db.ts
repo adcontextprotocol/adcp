@@ -42,8 +42,15 @@ export type AAOAdminMembershipAuditMechanism =
 interface AAOAdminMembershipMutationInput {
   targetUserId: string;
   actorUserId: string;
+  actorCanonicalUserId: string;
   actorAuthorizationMechanism: AAOAdminMembershipAuditMechanism;
   reason: string;
+}
+
+/** Preserve credential and person attribution in the existing append-only event. */
+function adminAuditReason(input: AAOAdminMembershipMutationInput, identityId: string | null): string {
+  return JSON.stringify({ reason: input.reason, authenticated_credential_id: input.actorUserId,
+    canonical_user_id: input.actorCanonicalUserId, resolved_identity_id: identityId });
 }
 
 /**
@@ -92,6 +99,13 @@ function extractSlackChannelId(url: string | null | undefined): string | null {
 /**
  * Database operations for working groups
  */
+export class InactiveSiteAdminTargetError extends Error {
+  constructor() {
+    super('Site-admin target credential is inactive; reconcile its retained membership');
+    this.name = 'InactiveSiteAdminTargetError';
+  }
+}
+
 export class WorkingGroupDatabase {
   /**
    * Generic working-group mutations must never change the platform-admin
@@ -1016,6 +1030,9 @@ export class WorkingGroupDatabase {
   ): Promise<WorkingGroupMembership> {
     const targetUserId = await this.resolveToCanonicalUserId(input.targetUserId);
     const guarded = await withActiveCredentialEventMutation(targetUserId, async (client) => {
+      if (await this.resolveCanonicalUserIdWithClient(client, input.targetUserId) !== targetUserId) {
+        throw new Error('AAO admin target mapping changed before the guarded write');
+      }
       const groupResult = await client.query<{ id: string }>(
         'SELECT id FROM working_groups WHERE slug = $1 FOR SHARE',
         [AAO_ADMIN_WORKING_GROUP_SLUG],
@@ -1032,13 +1049,18 @@ export class WorkingGroupDatabase {
         RETURNING *`,
         [group.id, targetUserId, input.actorUserId],
       );
-      await client.query(
+      const actorIdentity = await client.query<{ identity_id: string }>(
+        'SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1', [input.actorUserId],
+      );
+      const audit = await client.query<{ id: string }>(
         `INSERT INTO aao_admin_access_events (
           event_type, actor_user_id, target_user_id, mechanism,
           actor_authorization_mechanism, reason
-        ) VALUES ('granted', $1, $2, 'aao_admin_working_group', $3, $4)`,
-        [input.actorUserId, targetUserId, input.actorAuthorizationMechanism, input.reason],
+        ) VALUES ('granted', $1, $2, 'aao_admin_working_group', $3, $4) RETURNING id`,
+        [input.actorUserId, targetUserId, input.actorAuthorizationMechanism, adminAuditReason(input, actorIdentity.rows[0]?.identity_id ?? null)],
       );
+      if (membershipResult.rowCount !== 1 || !membershipResult.rows[0]) throw new Error('AAO admin grant did not persist exactly one membership');
+      if (audit.rowCount !== 1 || !audit.rows[0]?.id) throw new Error('AAO admin grant audit did not persist exactly one row');
       return membershipResult.rows[0];
     });
     if (!guarded.applied || !guarded.value) {
@@ -1052,45 +1074,37 @@ export class WorkingGroupDatabase {
    * before committing the membership deletion.
    */
   async revokeAAOAdminMembership(input: AAOAdminMembershipMutationInput): Promise<string | null> {
-    const client = await getPool().connect();
-    try {
-      await client.query('BEGIN');
+    const targetUserId = await this.resolveToCanonicalUserId(input.targetUserId);
+    const guarded = await withActiveCredentialEventMutation(targetUserId, async (client) => {
+      if (await this.resolveCanonicalUserIdWithClient(client, input.targetUserId) !== targetUserId) {
+        throw new Error('AAO admin target mapping changed before the guarded write');
+      }
       const groupResult = await client.query<{ id: string }>(
-        'SELECT id FROM working_groups WHERE slug = $1 FOR SHARE',
-        [AAO_ADMIN_WORKING_GROUP_SLUG],
+        'SELECT id FROM working_groups WHERE slug = $1 FOR SHARE', [AAO_ADMIN_WORKING_GROUP_SLUG],
       );
       const group = groupResult.rows[0];
       if (!group) throw new Error('AAO admin working group not found');
-
-      const targetUserId = await this.resolveCanonicalUserIdWithClient(client, input.targetUserId);
       const deleted = await client.query<{ workos_user_id: string }>(
         `DELETE FROM working_group_memberships
          WHERE working_group_id = $1 AND workos_user_id = $2 AND status = 'active'
-         RETURNING workos_user_id`,
-        [group.id, targetUserId],
+         RETURNING workos_user_id`, [group.id, targetUserId],
       );
-      if (deleted.rowCount === 0) {
-        await client.query('ROLLBACK');
-        return null;
-      }
-
-      await client.query(
+      if (deleted.rowCount === 0) return null;
+      if (deleted.rowCount !== 1) throw new Error('AAO admin revoke did not delete exactly one membership');
+      const actorIdentity = await client.query<{ identity_id: string }>(
+        'SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1', [input.actorUserId],
+      );
+      const audit = await client.query<{ id: string }>(
         `INSERT INTO aao_admin_access_events (
-          event_type, actor_user_id, target_user_id, mechanism,
-          actor_authorization_mechanism, reason
-        ) VALUES ('revoked', $1, $2, 'aao_admin_working_group', $3, $4)`,
-        [input.actorUserId, targetUserId, input.actorAuthorizationMechanism, input.reason],
+          event_type, actor_user_id, target_user_id, mechanism, actor_authorization_mechanism, reason
+        ) VALUES ('revoked', $1, $2, 'aao_admin_working_group', $3, $4) RETURNING id`,
+        [input.actorUserId, targetUserId, input.actorAuthorizationMechanism, adminAuditReason(input, actorIdentity.rows[0]?.identity_id ?? null)],
       );
-      await client.query('COMMIT');
+      if (audit.rowCount !== 1 || !audit.rows[0]?.id) throw new Error('AAO admin revoke audit did not persist exactly one row');
       return targetUserId;
-    } catch (error) {
-      await client.query('ROLLBACK').catch((rollbackError) => {
-        logger.warn({ err: rollbackError }, 'AAO admin revoke rollback failed');
-      });
-      throw error;
-    } finally {
-      client.release();
-    }
+    });
+    if (!guarded.applied) throw new InactiveSiteAdminTargetError();
+    return guarded.value ?? null;
   }
 
   private async resolveCanonicalUserIdWithClient(

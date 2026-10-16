@@ -1,3 +1,4 @@
+import { syncMembershipAuthority } from '../../db/membership-db.js';
 /**
  * Unified Account Management Routes
  *
@@ -2572,11 +2573,9 @@ export function setupAccountRoutes(
             }
             membership.workos_membership_id = match.id;
             // Backfill the local cache
-            await pool.query(
-              `UPDATE organization_memberships SET workos_membership_id = $1
-               WHERE workos_organization_id = $2 AND workos_user_id = $3`,
-              [match.id, orgId, userId]
-            );
+            if (!await syncMembershipAuthority(userId, orgId, { membershipId: match.id })) {
+              return res.status(409).json({ error: "Cannot update role: local credential or membership is no longer active" });
+            }
             logger.info(
               { orgId, userId, membershipId: match.id },
               "Backfilled missing WorkOS membership ID"
@@ -2718,17 +2717,10 @@ export function setupAccountRoutes(
                 after,
               });
             for (const syncedMembership of syncedMemberships.data) {
-              await pool.query(
-                `UPDATE organization_memberships
-                 SET role = $1, workos_membership_id = $2, updated_at = NOW()
-                 WHERE workos_organization_id = $3 AND workos_user_id = $4`,
-                [
-                  syncedMembership.role?.slug || "member",
-                  syncedMembership.id,
-                  orgId,
-                  syncedMembership.userId,
-                ]
-              );
+              const applied = await syncMembershipAuthority(syncedMembership.userId, orgId, {
+                role: syncedMembership.role?.slug || "member", membershipId: syncedMembership.id,
+              });
+              if (!applied) logger.warn({ orgId, userId: syncedMembership.userId }, "Skipped membership sync for an inactive or missing local credential");
             }
             after = syncedMemberships.listMetadata?.after ?? undefined;
           } while (after);
@@ -2737,12 +2729,9 @@ export function setupAccountRoutes(
             { err: syncError, orgId, userId, role },
             "Failed to sync WorkOS membership roles after role update; updating target local row only"
           );
-          await pool.query(
-            `UPDATE organization_memberships
-             SET role = $1, updated_at = NOW()
-             WHERE workos_organization_id = $2 AND workos_user_id = $3`,
-            [role, orgId, userId]
-          );
+          if (!await syncMembershipAuthority(userId, orgId, { role })) {
+            return res.status(409).json({ error: "WorkOS role updated; local credential or membership is no longer active" });
+          }
         }
 
         logger.info(

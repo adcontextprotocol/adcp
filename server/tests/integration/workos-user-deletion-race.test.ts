@@ -927,6 +927,7 @@ describe('WorkOS webhook vs sync-users deletion', () => {
     await expect(workingGroups.grantAAOAdminMembership({
       targetUserId: PRIMARY,
       actorUserId: BYSTANDER,
+      actorCanonicalUserId: BYSTANDER,
       actorAuthorizationMechanism: 'aao_admin_working_group',
       reason: 'must remain deleted',
     })).rejects.toThrow('Cannot grant AAO admin authority to an inactive credential');

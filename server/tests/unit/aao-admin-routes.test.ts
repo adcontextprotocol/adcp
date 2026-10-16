@@ -21,6 +21,7 @@ vi.mock('../../src/middleware/auth.js', () => ({
 }));
 
 vi.mock('../../src/db/working-group-db.js', () => ({
+  InactiveSiteAdminTargetError: class InactiveSiteAdminTargetError extends Error {},
   WorkingGroupDatabase: class WorkingGroupDatabase {
     grantAAOAdminMembership = mocks.grant;
     revokeAAOAdminMembership = mocks.revoke;
@@ -31,6 +32,7 @@ vi.mock('../../src/addie/admin-status-cache.js', () => ({
   invalidateAllAdminStatusCaches: mocks.invalidate,
 }));
 
+import { InactiveSiteAdminTargetError } from '../../src/db/working-group-db.js';
 import { createAAOAdminRouter } from '../../src/routes/aao-admin.js';
 
 function createApp() {
@@ -77,10 +79,20 @@ describe('AAO site-admin mutation routes', () => {
     expect(mocks.grant).toHaveBeenCalledWith({
       targetUserId: 'user_target',
       actorUserId: 'admin_1',
+      actorCanonicalUserId: 'admin_1',
       actorAuthorizationMechanism: 'break_glass_admin_email',
       reason: 'Coverage rotation',
     });
     expect(mocks.invalidate).toHaveBeenCalledOnce();
+  });
+
+  it('distinguishes an inactive target from an absent site-admin membership', async () => {
+    mocks.revoke.mockRejectedValue(new InactiveSiteAdminTargetError());
+    const response = await request(createApp()).post('/api/admin/aao-admin/revoke')
+      .send({ workos_user_id: 'user_target', reason: 'Offboarding' });
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('site_admin_target_inactive');
+    expect(mocks.invalidate).not.toHaveBeenCalled();
   });
 
   it('records a revoke through the dedicated operation and invalidates its canonical target', async () => {

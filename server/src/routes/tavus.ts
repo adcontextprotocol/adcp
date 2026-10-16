@@ -62,6 +62,12 @@ import {
 import { isAuthenticatedUserAAOAdmin, AAOAdminLookupUnavailableError, type AAOAdminPrincipal } from "../addie/admin-status-lookup.js";
 import { captureVoiceAuthorization, deriveVoiceCallbackTurnId, issueVoiceCallbackBinding, isVoiceSessionOwner, persistVoiceCallbackBinding, resolveVoiceCallback, resolveVoiceAuthorization, VoiceAuthorizationUnavailableError } from "../addie/voice-authorization.js";
 import { respondToAdminAuthorizationError } from "../auth/admin-authorization-response.js";
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
+import {
+  captureAddieMutationAuthority,
+  organizationMutationAuthorityFromMemberContext,
+  revalidateAddieMutationAuthority,
+} from '../addie/mutation-authority.js';
 import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
@@ -103,6 +109,7 @@ import {
   blockCheckpointedToolReplays,
   buildToolResultCheckpoint,
   reserveToolIntentCheckpoint,
+  toolCallsForCheckpointReplay,
   type StoredToolCall,
 } from "../addie/stream-tool-checkpoints.js";
 import { optionalAuth } from "../middleware/auth.js";
@@ -207,7 +214,7 @@ function validateLlmSecret(req: Request): boolean {
  * This gives voice Addie the same capabilities as chat Addie.
  */
 export async function buildVoiceRequestTools(
-  userId: string,
+  _canonicalUserId: string,
   threadId: string,
   adminPrincipal: AAOAdminPrincipal,
 ): Promise<{
@@ -216,12 +223,16 @@ export async function buildVoiceRequestTools(
   memberContext: MemberContext | null;
   isAAOAdmin: boolean;
 }> {
+  const credentialUserId = getOrganizationAuthorizationUserId(adminPrincipal);
   let memberContext: MemberContext | null = null;
   try {
-    memberContext = await getWebMemberContext(userId, undefined, adminPrincipal);
+    memberContext = await getWebMemberContext(credentialUserId, undefined, adminPrincipal);
   } catch (error) {
     if (error instanceof AAOAdminLookupUnavailableError) throw error;
-    logger.warn({ error, userId }, "Tavus: Failed to get member context");
+    logger.warn({ error, credentialUserId }, "Tavus: Failed to get member context");
+  }
+  if (memberContext?.workos_user?.workos_user_id !== credentialUserId) {
+    throw new AAOAdminLookupUnavailableError();
   }
 
   // Format member context for system prompt
@@ -925,6 +936,8 @@ export function createTavusRouter(options?: {
       forceSafeFallback?: boolean;
     } | null = null;
     let memberRequestContext = "";
+    let voiceMemberContext: MemberContext | null = null;
+    let voiceAssembledAsAdmin = false;
     let userDisplayName: string | null = null;
     let voiceUserId: string | null = null;
     let voiceFillersDisabled = false;
@@ -959,6 +972,8 @@ export function createTavusRouter(options?: {
     try {
       const result = await buildVoiceRequestTools(thread.user_id, threadId, authorization.principal);
       memberRequestContext = result.requestContext;
+      voiceMemberContext = result.memberContext;
+      voiceAssembledAsAdmin = result.isAAOAdmin;
       try {
         pendingVoiceToolSelection = {
           memberContext: result.memberContext,
@@ -1038,9 +1053,8 @@ export function createTavusRouter(options?: {
       await releaseVoiceTurn('turn_id_conflict');
       return res.status(409).json({ error: { code: 'voice_turn_conflict', message: 'The voice turn identifier belongs to different input.' } });
     }
-    const retryCheckpointToolCalls: StoredToolCall[] = requestMessages
-      .filter((message) => message.role === 'assistant' && message.delivery_status === 'interrupted')
-      .flatMap((message) => message.tool_calls ?? []);
+    const retryCheckpointToolCalls: StoredToolCall[] = toolCallsForCheckpointReplay(requestMessages
+      .filter((message) => message.role === 'assistant' && message.delivery_status === 'interrupted'));
     const replayPolicy = blockCheckpointedToolReplays(retryCheckpointToolCalls);
 
     // Log the user message (before voice prefix or guidance is applied)
@@ -1306,14 +1320,35 @@ export function createTavusRouter(options?: {
           allowedToolNames: routedVoiceTools?.allowedToolNames,
           clientRequestId,
           ...(replayPolicy ? { toolExecutionPolicy: replayPolicy } : {}),
+          captureSideEffectAuthority: async ({ mutationToolNames }) => {
+            const originalVoiceAuthorization = structuredClone(thread.context?.voice_authorization);
+            const authority = await captureAddieMutationAuthority({
+              principal: authorization.principal,
+              revalidateCredential: async exactCredentialId => {
+                const live = await resolveVoiceAuthorization(originalVoiceAuthorization);
+                if (live.status === 'unavailable') return 'unavailable';
+                return live.status === 'authorized'
+                  && getOrganizationAuthorizationUserId(live.principal) === exactCredentialId
+                  ? 'authorized' : 'forbidden';
+              },
+              platformAdminMutationTools: mutationToolNames.filter((name) =>
+                ADMIN_TOOLS.some((tool) => tool.name === name) || (voiceAssembledAsAdmin &&
+                  [...EVENT_ADMIN_TOOLS, ...MEETING_TOOLS, ...COMMITTEE_LEADER_TOOLS].some(tool => tool.name === name))),
+              committeeMutationTools: voiceAssembledAsAdmin ? [] : mutationToolNames.filter(name =>
+                [...EVENT_ADMIN_TOOLS, ...MEETING_TOOLS, ...COMMITTEE_LEADER_TOOLS].some(tool => tool.name === name)),
+              organizationAuthority: organizationMutationAuthorityFromMemberContext(voiceMemberContext),
+            });
+            return ({ toolName }) => revalidateAddieMutationAuthority(authority, toolName);
+          },
           costScope,
           reserveSideEffect: async ({ toolName, parameters }) => {
             if (!threadId) throw new Error('A durable conversation thread is required for an external action');
+            let reservation: { reservationId: string } | undefined;
             await withLeaseCriticalSection(async () => {
               // This inline ownership proof extends the exact lease immediately
               // before the durable reservation and handler dispatch boundary.
               await proveVoiceTurnLease(`before_side_effect:${toolName}`);
-              await reserveToolIntentCheckpoint(threadService, {
+              reservation = await reserveToolIntentCheckpoint(threadService, {
                 threadId,
                 toolName,
                 parameters,
@@ -1327,6 +1362,8 @@ export function createTavusRouter(options?: {
             // shared executor runs before a later timer task can interleave.
             await drainInFlightLeaseRenewals();
             if (leaseOwnershipLost) throw new Error('Voice turn lease is no longer owned');
+            if (!reservation) throw new Error('Voice action reservation was not committed');
+            return reservation;
           },
         }
       );

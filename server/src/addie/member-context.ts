@@ -1316,6 +1316,12 @@ export async function getWebMemberContext(
   adminPrincipal?: AAOAdminPrincipal,
 ): Promise<MemberContext> {
   const webAuthority = await resolveWebMemberAuthority(adminPrincipal);
+  if (
+    webAuthority.authenticatedWorkosUserId !== null
+    && webAuthority.authenticatedWorkosUserId !== workosUserId
+  ) {
+    throw new AAOAdminLookupUnavailableError();
+  }
   const context: MemberContext = {
     is_mapped: true, // They're authenticated via WorkOS, so they're "mapped"
     is_member: false,

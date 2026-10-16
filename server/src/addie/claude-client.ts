@@ -5,6 +5,7 @@
  * with tool reference always appended from code.
  */
 
+import { isSideEffectTool } from './side-effect-claims.js';
 import { enforceOutcomeClaims, outcomeClaimContext } from './outcome-claims.js';
 import { enforceJsonValidationClaims } from './json-validation-evidence.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -83,6 +84,7 @@ import {
   orchestrateAcceptedAddieTurn,
   type AddieAcceptedTurnDecision,
   type AddieExecutionMode,
+  type AddieToolExecutorOptions,
   type ToolExecution,
   type ToolExecutionPolicy,
   type ToolHandler,
@@ -913,10 +915,10 @@ export interface ProcessMessageOptions {
    * a production mutation handler is dispatched. Missing or failed writes
    * fail closed at the shared executor boundary.
    */
-  reserveSideEffect?: (request: {
-    toolName: string;
-    parameters: Record<string, unknown>;
-  }) => void | Promise<void>;
+  reserveSideEffect?: AddieToolExecutorOptions['reserveSideEffect'];
+  revalidateSideEffectAuthority?: AddieToolExecutorOptions['revalidateSideEffectAuthority'];
+  /** Capture the immutable credential after the final executable surface is assembled. */
+  captureSideEffectAuthority?: (request: { mutationToolNames: readonly string[] }) => Promise<NonNullable<AddieToolExecutorOptions['revalidateSideEffectAuthority']>>;
   /**
    * Called immediately before a provider invocation with hashes of the exact,
    * ordered system and tool payloads. Transcript content is intentionally absent.
@@ -2035,6 +2037,14 @@ export class AddieClaudeClient {
       modelTools,
       requestWebSearchEnabled,
     } = prepared;
+    const mutationToolNames = [...toolsByName.values()]
+      .filter((tool) => isSideEffectTool(tool.name) || tool.name === 'call_adcp_task' || tool.replaySafety === 'mutation')
+      .map((tool) => tool.name);
+    const revalidateSideEffectAuthority = options?.revalidateSideEffectAuthority
+      ?? (mutationToolNames.length > 0 && (options?.executionMode ?? 'production') === 'production'
+        ? await options?.captureSideEffectAuthority?.({ mutationToolNames })
+        : undefined)
+      ?? (async () => ({ allowed: false, status: 'recoverable_error' } as const));
     const toolExecutorOptions = {
       executionMode: options?.executionMode ?? 'production',
       policy: githubIssueCreationExecutionPolicy(
@@ -2042,6 +2052,7 @@ export class AddieClaudeClient {
         this.executionPolicy(options),
       ),
       reserveSideEffect: options?.reserveSideEffect,
+      revalidateSideEffectAuthority,
       notificationContext: {
         slackUserId: options?.slackUserId,
         userDisplayName: options?.userDisplayName,
@@ -2709,6 +2720,14 @@ export class AddieClaudeClient {
       logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie Stream: Using precision model for billing/financial query');
     }
 
+    const mutationToolNames = [...toolsByName.values()]
+      .filter((tool) => isSideEffectTool(tool.name) || tool.name === 'call_adcp_task' || tool.replaySafety === 'mutation')
+      .map((tool) => tool.name);
+    const revalidateSideEffectAuthority = options?.revalidateSideEffectAuthority
+      ?? (mutationToolNames.length > 0 && (options?.executionMode ?? 'production') === 'production'
+        ? await options?.captureSideEffectAuthority?.({ mutationToolNames })
+        : undefined)
+      ?? (async () => ({ allowed: false, status: 'recoverable_error' } as const));
     const toolExecutorOptions = {
       executionMode: options?.executionMode ?? 'production',
       policy: githubIssueCreationExecutionPolicy(
@@ -2716,6 +2735,7 @@ export class AddieClaudeClient {
         this.executionPolicy(options),
       ),
       reserveSideEffect: options?.reserveSideEffect,
+      revalidateSideEffectAuthority,
       notificationContext: {
         slackUserId: options?.slackUserId,
         userDisplayName: options?.userDisplayName,
