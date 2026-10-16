@@ -47,10 +47,14 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // outcome_target.cost_per adds its object and strength enum schemas, each
   // reached from list_products, request_proposals, and refine_proposals.
   // Daypart time granularity adds one shared enum reached through the
-  // daypart requirement in the targeting-bearing tools.
-  assert.equal(report.definition_instances, 681);
-  assert.equal(report.unique_definitions, 185);
-  assert.equal(report.repeated_definitions, 133);
+  // daypart requirement in the targeting-bearing tools. Compact installment
+  // selection adds the installment change set reached from refine_proposals
+  // plus the InstallmentRef and CollectionRef schemas, which also reach
+  // buy_products through product-purchase-input.json's $refs into the
+  // product-purchase document.
+  assert.equal(report.definition_instances, 686);
+  assert.equal(report.unique_definitions, 188);
+  assert.equal(report.repeated_definitions, 135);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -174,7 +178,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 185);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 188);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

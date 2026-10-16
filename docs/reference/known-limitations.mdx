@@ -46,12 +46,18 @@ Several gaps in the original AdCP 3.0 version of this page have since shipped: t
 
 ## Compact product lifecycle
 
-The canonical Product returned by `list_products` and the proposal lifecycle is a closed, compact shape. Two legacy `get_products` Product members are deliberately absent from it in 3.2 and are deferred to 3.3:
+The canonical Product returned by `list_products` and the proposal lifecycle is a closed, compact shape. One legacy `get_products` Product member is deliberately absent from it:
 
 - **No per-product `audience_activation`, and no `audience_activation_methods` offer filter.** A compact-lifecycle buyer cannot see which activation methods a specific product accepts or filter offers by them. The seller-wide union remains on `get_adcp_capabilities.media_buy.audience_targeting.supported_activation_methods`, and `get_products` keeps the experimental per-product declaration and filter. 3.3 is expected to add both to the compact lifecycle together, so a filter never ranges over a field the product cannot carry.
-- **No `installments`.** A compact product can list its `collections` but not the specific installments it includes. `core/installment.json` still carries the deprecated `collection_id` shorthand alongside `collection_ref`; it will be reshaped to `collection_ref` only before it is added to the canonical Product, so the closed shape does not inherit a deprecated form.
 
 Request-specific configured offers are not a gap: canonical products carry no `is_custom` flag, and `expires_at` identifies them.
+
+`installments` closed in 3.3 ([#8230](https://github.com/adcontextprotocol/adcp/issues/8230)) and is no longer a gap. The canonical Product carries `installments[]` of `core/canonical-installment.json`, a closed shape whose identity is the `(collection_ref, installment_id)` tuple alone — the deprecated publisher-domain-free `collection_id` shorthand on `core/installment.json` was not inherited, and legacy `get_products` keeps its existing form because removing a field there would be a major change. What remains bounded rather than absent:
+
+- **Installment *selection* is experimental, not the installment *representation*.** Naming the exact installments a purchase buys (`commercial_terms.purchases[].installments`) and changing them through `refine_proposals` (`installment_changes`) ship under the experimental feature id `media_buy.installment_selection`; see [Experimental Status](/docs/reference/experimental-status). The Product field itself is a stable 3.3 addition. A seller that returns installments but does not declare the feature offers each product as a fixed set of slots: the buyer sees which slots are included and can accept or decline the product, but cannot drop one.
+- **Absence stays ambiguous between "no installments" and "run-of-collection" only in one direction.** A product that declares `collections` and omits `installments` is run-of-collection by definition. A product that declares neither says nothing about scheduled inventory; the compact lifecycle has no way to assert "this collection has no bookable installments in the flight", and buyers that need that answer re-query closer to the flight using the installments' `valid_until`.
+- **No per-installment pricing, forecast, or hold readback.** `pricing_options` and `forecast` stay product-scoped, so a product whose slots carry different rates is modelled as several products. Per-installment hold readback is tracked in [#8086](https://github.com/adcontextprotocol/adcp/issues/8086), and a seller offer to reschedule an installment in [#8102](https://github.com/adcontextprotocol/adcp/issues/8102).
+- **The reference seller does not yet negotiate slots.** It returns canonical `installments` on `list_products`, but does not declare `media_buy.installment_selection`, so `installment_changes` and purchase-level `installments` are graded by contract tests rather than live against the training agent. Removal condition: training-agent support for the feature id.
 
 ## Measurement and attribution
 

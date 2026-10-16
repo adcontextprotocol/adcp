@@ -65,6 +65,10 @@
           "$ref": "/schemas/core/canonical-placement.json",
           "description": "Compact canonical product placement"
         },
+        "canonical-installment": {
+          "$ref": "/schemas/core/canonical-installment.json",
+          "description": "Compact closed installment on a canonical product, identified by (collection_ref, installment_id)"
+        },
         "canonical-product-action": {
           "$ref": "/schemas/core/canonical-product-action.json",
           "description": "Fine-grained action template for compact products"
@@ -345,6 +349,10 @@
         "installment-deadlines": {
           "$ref": "/schemas/core/installment-deadlines.json",
           "description": "Booking, cancellation, and material submission deadlines for an installment"
+        },
+        "installment-change-set": {
+          "$ref": "/schemas/core/installment-change-set.json",
+          "description": "Installment-level include and omit actions for a proposal refinement"
         },
         "material-deadline": {
           "$ref": "/schemas/core/material-deadline.json",

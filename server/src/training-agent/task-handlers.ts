@@ -7644,10 +7644,11 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
 // Default list_products projection onto the closed core/canonical-product.json.
 // Legacy-only Product keys stay on get_products: audience_activation (the
 // experimental per-product declaration has no canonical counterpart yet; the
-// seller-wide union remains on get_adcp_capabilities), installments (deferred
-// until installment.json drops the deprecated collection_id shorthand), and
-// is_custom (canonical products mark request-specific configured offers with
-// expires_at alone).
+// seller-wide union remains on get_adcp_capabilities) and is_custom (canonical
+// products mark request-specific configured offers with expires_at alone).
+// installments project onto the closed core/canonical-installment.json, which
+// carries no deprecated collection_id shorthand and names a derivative source
+// by installment_ref rather than a response-local installment_id.
 const COMPACT_PRODUCT_FIELDS = new Set([
   'product_id', 'name', 'description', 'publisher_properties', 'channels',
   'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
@@ -7659,8 +7660,40 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'demographic_targeting', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
   'sponsored_placement_types', 'overlay_support', 'media_buy_support', 'identity',
-  'targeting_resolution', 'collections', 'collection_targeting_allowed', 'ext',
+  'targeting_resolution', 'collections', 'collection_targeting_allowed',
+  'installments', 'ext',
 ]);
+
+// core/canonical-installment.json is closed and drops the legacy deprecated
+// collection_id shorthand; identity is the (collection_ref, installment_id)
+// tuple alone.
+const COMPACT_INSTALLMENT_FIELDS = new Set([
+  'installment_id', 'collection_ref', 'name', 'season', 'installment_number',
+  'scheduled_at', 'status', 'duration_seconds', 'flexible_end', 'valid_until',
+  'content_rating', 'topics', 'special', 'guest_talent', 'ad_inventory',
+  'deadlines', 'ext',
+]);
+
+/** Project one legacy Product installment onto the canonical shape. Returns
+ * undefined when the installment carries no collection_ref, because canonical
+ * identity is the tuple and the deprecated shorthand cannot stand in for it. */
+function compactInstallment(installment: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!isRecord(installment.collection_ref)) return undefined;
+  const projected = pickCompactFields(installment, COMPACT_INSTALLMENT_FIELDS);
+  // derivative_of names a response-local installment_id in the legacy shape and
+  // a canonical installment_ref here, resolved against the same collection.
+  const derivative = installment.derivative_of;
+  if (isRecord(derivative) && typeof derivative.installment_id === 'string' && derivative.type !== undefined) {
+    projected.derivative_of = {
+      installment_ref: {
+        collection_ref: structuredClone(installment.collection_ref),
+        installment_id: derivative.installment_id,
+      },
+      type: derivative.type,
+    };
+  }
+  return projected;
+}
 
 let canonicalReportingCapabilityFields: ReadonlySet<string> | undefined;
 
@@ -7716,6 +7749,22 @@ function compactLifecycleProduct(
     projected.pricing_options = product.pricing_options
       .filter(isRecord)
       .map(option => canonicalPricingSnapshot(option, String(option.pricing_option_id ?? '')));
+  }
+  if (selectedFields.has('installments') && Array.isArray(product.installments)) {
+    const installments = product.installments.filter(isRecord)
+      .map(compactInstallment)
+      .filter((entry): entry is Record<string, unknown> => entry !== undefined);
+    if (installments.length > 0) {
+      projected.installments = installments;
+      // A canonical installment names its collection and the Product schema
+      // requires the collections that scope those IDs, so installments pull
+      // collections into a narrower projection.
+      if (projected.collections === undefined && product.collections !== undefined) {
+        projected.collections = structuredClone(product.collections);
+      }
+    } else {
+      delete projected.installments;
+    }
   }
   if (selectedFields.has('reporting_capabilities') && isRecord(product.reporting_capabilities)) {
     projected.reporting_capabilities = pickCompactFields(

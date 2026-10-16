@@ -739,6 +739,104 @@ For premium or guaranteed buys, the seller scopes to specific installments:
 }
 ```
 
+## Installments in the compact lifecycle
+
+The examples above are the additive `get_products` Product. The compact lifecycle — [`list_products`](/docs/media-buy/task-reference/list_products), [`request_proposals`](/docs/media-buy/task-reference/request_proposals), [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) — uses the closed canonical Product, which carries installments from AdCP 3.3 onward.
+
+One shape difference matters. A canonical installment's identity is the `(collection_ref, installment_id)` tuple and nothing else: `collection_ref` is **required**, and the deprecated publisher-domain-free `collection_id` shorthand that `core/installment.json` still accepts is absent. Legacy `get_products` keeps its existing form.
+
+{/* Using latest because canonical-installment.json is not yet released in any version.
+     Update to correct version alias after the next release. */}
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/canonical-installment.json",
+  "installment_id": "juniper_vale_slot_2",
+  "collection_ref": {
+    "publisher_domain": "creatorloop.example",
+    "collection_id": "creatorloop_channel_juniper_vale"
+  },
+  "name": "Juniper Vale Cooks: Meal prep Sunday (sponsored integration)",
+  "status": "scheduled",
+  "scheduled_at": "2026-12-29T17:00:00Z",
+  "duration_seconds": 720,
+  "valid_until": "2026-11-17T17:00:00Z",
+  "deadlines": {
+    "booking_deadline": "2026-11-17T17:00:00Z",
+    "cancellation_deadline": "2026-11-24T17:00:00Z",
+    "material_deadlines": [
+      { "stage": "talking_points", "due_at": "2026-12-01T17:00:00Z", "label": "Talking points and brand guidelines" },
+      { "stage": "script", "due_at": "2026-12-15T17:00:00Z", "label": "Creator script for brand approval" },
+      { "stage": "draft", "due_at": "2026-12-22T17:00:00Z", "label": "Draft cut for final review" }
+    ]
+  }
+}
+```
+
+### Absence is run-of-collection, not "unknown"
+
+A canonical product that declares `collections` and omits `installments` is run-of-collection: inventory across those collections, whatever publishes during the flight. This is the same rule as the legacy Product, and it is the reason `installments` cannot be used to say "no installments are available" — a seller with nothing bookable omits the product.
+
+The converse is a schema rule, not a convention: `installments` requires `collections`, because a canonical installment names the collection that scopes its ID, and every `collection_ref` must be one the product's `collections` selectors already name. A projection that asks for `installments` therefore gets `collections` back too.
+
+### Buying exact installments (experimental)
+
+Naming the specific slots a purchase buys is experimental under the feature id `media_buy.installment_selection`. A proposal's `commercial_terms.purchases[].installments` holds canonical references into the allocated product's `installments`:
+
+```json
+{
+  "product_id": "creatorloop_creator_juniper_vale",
+  "pricing_option_id": "flat_usd",
+  "installments": [
+    {
+      "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+      "installment_id": "juniper_vale_slot_1"
+    },
+    {
+      "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+      "installment_id": "juniper_vale_slot_2"
+    }
+  ]
+}
+```
+
+Present, the array is the complete bought set for that purchase. Absent, the purchase buys the product as offered — run-of-collection when the product names no installments, and the product's complete installment set when it does. Absence never means "no installments".
+
+Because `installments` lives inside `commercial_terms`, it is covered by `terms_digest`. Dropping or swapping a slot produces a different digest, so the `proposal_terms_digest` that [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) verifies binds the exact slots bought, not just the product and the price.
+
+### Dropping and swapping a slot
+
+`refine_proposals` carries `installment_changes`, the installment-level analogue of `product_changes`. A tuple cannot be an object key, so it is a list rather than a map, and each entry names the purchase by `product_id`:
+
+```json
+{
+  "proposal_id": "prop_creatorloop_7781",
+  "action": "revise",
+  "installment_changes": [
+    {
+      "product_id": "creatorloop_creator_juniper_vale",
+      "installment_ref": {
+        "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+        "installment_id": "juniper_vale_slot_2"
+      },
+      "action": "omit"
+    },
+    {
+      "product_id": "creatorloop_creator_juniper_vale",
+      "installment_ref": {
+        "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+        "installment_id": "juniper_vale_slot_3"
+      },
+      "action": "include"
+    }
+  ]
+}
+```
+
+A swap is one `omit` plus one `include` in the same refinement. Entries are unique by `(product_id, installment_ref)`, so a request cannot ask for an installment to be both kept and dropped. Changes the seller understood but could not satisfy come back as `constraint_unsatisfiable` with the failing entries echoed in `unsatisfied_installment_changes`; an installment the named product does not declare is a `REFERENCE_NOT_FOUND` at task level, and a `product_id` the proposal does not purchase is an `INVALID_REQUEST`.
+
+Sellers declare support by listing `installment_changes` in `media_buy.proposal_refinement.supported_dimensions`, which requires `media_buy.installment_selection` in `experimental_features`. Buyers MUST NOT send the field otherwise.
+
 ## get_products response structure
 
 Products reference collections via `collections` selectors — the same pattern as `publisher_properties`. Each selector has a `publisher_domain` and `collection_ids` array pointing to collections declared in that publisher's `adagents.json`. When the request sets `include_collections: true`, the response can also carry the full collection objects, described [below](#collections-in-responses).

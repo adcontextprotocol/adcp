@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/installment-change-set.json",
+  "title": "Installment Change Set",
+  "description": "Installment-level membership actions for one proposal refinement, each naming the purchase it applies to by product_id and the installment by its canonical (collection_ref, installment_id) tuple. A tuple cannot be an object key, so this is a list rather than a map; entries are unique by (product_id, collection_ref, installment_id), so contradictory actions for one installment of one purchase cannot be represented.",
+  "type": "array",
+  "items": {
+    "title": "Installment Change",
+    "type": "object",
+    "properties": {
+      "product_id": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "product",
+        "description": "Product whose purchase in commercial_terms.purchases carries the installment."
+      },
+      "installment_ref": {
+        "$ref": "/schemas/core/installment-ref.json",
+        "description": "Installment the action applies to. It MUST be one the named product's installments declare; an unresolvable reference is rejected at task level with REFERENCE_NOT_FOUND rather than returned as an unsatisfied change."
+      },
+      "action": {
+        "type": "string",
+        "enum": ["include", "omit"],
+        "default": "include",
+        "description": "include requires the installment to be present in that purchase's installments in every returned draft; omit requires its absence. Swapping a slot is one omit plus one include in the same refinement."
+      }
+    },
+    "required": ["product_id", "installment_ref"],
+    "additionalProperties": false
+  },
+  "minItems": 1,
+  "x-adcp-validation": {
+    "unique_by": ["product_id", "installment_ref"]
+  }
+}

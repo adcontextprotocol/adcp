@@ -53,6 +53,8 @@ When a product can honor the overlay exactly, it does not echo the request. A pr
 
 Property and collection lists are the exception to the no-echo rule because the buyer cannot otherwise observe their seller-specific inventory effect. Every returned product carries one `list_applications` receipt per effective targeting reference. Exclusion applications carry zero-match receipts; zero matches for any inclusion application make the product ineligible, so it is not returned. The receipt contains no fetch credential; its counts are scoped to that product and its timestamps, and the product's price and forecast reflect the post-application inventory.
 
+For scheduled media, request `installments` in `fields` to see which episodes, issues, airings, or creator slots a product includes, with their `scheduled_at` and their booking, cancellation, and material `deadlines`. A canonical installment's identity is the `(collection_ref, installment_id)` tuple, so a projection that asks for `installments` also gets `collections` back. A product that declares `collections` and omits `installments` is run-of-collection. See [Installments in the compact lifecycle](/docs/media-buy/product-discovery/collections-and-installments#installments-in-the-compact-lifecycle).
+
 ## Response
 
 Every response has an explicit `outcome`:

@@ -60,6 +60,7 @@ Typed fields are deliberately small and mechanically verifiable:
 | `constraints.impressions` | Hard volume floor. Satisfied only when every purchase carries `impressions` and their sum is at least `min`. |
 | `constraints.flight` | Flight-window bounds. `start_no_later_than` requires a concrete `commercial_terms.start_time` at or before the bound (`asap` is unverifiable and unsatisfied); `end_no_earlier_than` requires `end_time` at or after it. |
 | `product_changes` | Map keyed by product ID. `include` requires a product in `commercial_terms.purchases`; `omit` requires it to be absent. Keying makes contradictory actions unrepresentable. |
+| `installment_changes` | Experimental (`media_buy.installment_selection`). List of `{product_id, installment_ref, action}`. `include` requires an installment in that purchase's `installments`; `omit` requires it to be absent. A tuple cannot be an object key, so this is a list, unique by `(product_id, installment_ref)`. See [Change installments](#change-installments-experimental). |
 | `alternatives.count` | Number of drafts with distinct commercial terms requested, from 2 through the protocol maximum of 10 and no higher than a seller's advertised `max_alternatives`. Returned alternatives have distinct `commercial_terms` and therefore unique `terms_digest` values; diversity strategy remains free text. |
 | `criteria` | Structured discovery criteria to replace on the source proposal. Omitted criteria fields remain inherited; concrete targeting and offer filters belong here. |
 | `remove_media_buy_frequency_cap` | Set to `true` to produce a revised draft without the inherited root frequency cap. Mutually exclusive with `criteria.media_buy_frequency_cap`. |
@@ -102,7 +103,7 @@ Typed failures always use `constraint_unsatisfiable`, regardless of whether the 
 
 A draft that violates a hard constraint MUST NOT be returned as `revised`. For `constraints.total_budget`, satisfaction requires a present `commercial_terms.total_budget`, the requested currency, and an amount inside every supplied bound. An absent total, currency mismatch, or out-of-range amount is unsatisfied: the seller returns `partial`, or `unable` when it cannot produce an honest draft, with `reason_code: "constraint_unsatisfiable"` and `unsatisfied_constraints: ["total_budget"]`. The other `constraints` keys behave identically under their satisfaction rules in the request schema.
 
-Every draft on a `partial` result MUST satisfy every typed constraint whose key is absent from `unsatisfied_constraints` and every product action absent from `unsatisfied_product_changes`, whatever the `reason_code`. This is the invariant that lets a buyer trust typed compliance without parsing prose. Constraint failures are identified through `unsatisfied_constraints` (echoing request `constraints` keys), `unsatisfied_product_changes` (a subset of the requested product-action map), or both.
+Every draft on a `partial` result MUST satisfy every typed constraint whose key is absent from `unsatisfied_constraints`, every product action absent from `unsatisfied_product_changes`, and every installment action absent from `unsatisfied_installment_changes`, whatever the `reason_code`. This is the invariant that lets a buyer trust typed compliance without parsing prose. Constraint failures are identified through `unsatisfied_constraints` (echoing request `constraints` keys), `unsatisfied_product_changes` (a subset of the requested product-action map), `unsatisfied_installment_changes` (a subset of the requested installment-action list), or any combination of them.
 
 A `partial` response to the request above looks like:
 
@@ -285,6 +286,54 @@ Buyers often need more time for legal review or client sign-off than the seller'
 - **Async.** A seller whose extension depends on a person's confirmation MAY use the task's `submitted` path and SHOULD set `expected_confirmation_at` on that response, as for a [finalize that waits on a person](#finalize-and-hold-inventory); the source stays acceptable until the extension completes.
 - **Retries.** An exact retry with the same idempotency key replays the original response. A new key after a successful extension targets a source that is no longer acceptable, so it fails with `INVALID_STATE`; extending a hold always goes through `extend_hold`, never through a new finalize key.
 - **Limits.** `hold_extension: true` is the agent-level gate for the action; the source's [`hold_policy`](#hold-policy-experimental), when present, sets the limits for that hold. `extendable` defaults to `false`: when it is `false` or absent the seller declines (`hold_unavailable`), and buyers SHOULD NOT send `extend_hold` for that proposal. The successor's `expires_at` MUST NOT exceed `hold_placed_at` plus `max_total_duration`. Because every successor carries `hold_placed_at` forward, that is the instant the root finalize placed the hold, so `max_total_duration` is measured across the whole chain of extension successors and is not reset by an extension. A request the seller cannot extend at all, for example because no later `expires_at` fits under that ceiling, returns `hold_unavailable`. Absent `hold_policy` (a seller that does not list `media_buy.hold_policy`), limits remain seller policy expressed through `hold_unavailable`. In either case sellers MAY decline any extension and MAY cap extensions per root lineage, so repeated extension cannot turn a hold into a free option, and how far `expires_at` moves within those bounds is the seller's choice, as for finalize.
+
+## Change installments (experimental)
+
+Experimental under feature id `media_buy.installment_selection`. For scheduled media — a creator's upcoming video, a podcast episode, a sponsored newsletter issue — the installment is the thing being sold, and a buyer renegotiates by dropping or swapping a slot rather than by changing the product mix. `installment_changes` is the installment-level analogue of `product_changes`:
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441009",
+  "refinements": [
+    {
+      "proposal_id": "proposal_123",
+      "action": "revise",
+      "installment_changes": [
+        {
+          "product_id": "creator_juniper_vale",
+          "installment_ref": {
+            "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "channel_juniper_vale" },
+            "installment_id": "slot_2"
+          },
+          "action": "omit"
+        },
+        {
+          "product_id": "creator_juniper_vale",
+          "installment_ref": {
+            "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "channel_juniper_vale" },
+            "installment_id": "slot_3"
+          },
+          "action": "include"
+        }
+      ],
+      "ask": "The December slot lands in our holiday blackout; move it to January."
+    }
+  ]
+}
+```
+
+A swap is one `omit` plus one `include` in the same refinement. The resulting draft carries the new set in `commercial_terms.purchases[].installments`, so its `terms_digest` differs from the source's and the [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) digest check binds the exact slots bought. A purchase whose `installments` the source proposal left absent starts from the product's complete installment set, so a single `omit` entry materializes the remaining slots.
+
+Error handling is deliberately split by what the seller can know before creating a draft:
+
+| Condition | Result |
+|---|---|
+| `product_id` is not purchased in the source proposal, or `product_changes` omits it in the same refinement | Task-level [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request); no draft is created |
+| `installment_ref` names an installment the product does not declare | Task-level [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found); no draft is created |
+| The seller declares `supported_dimensions` without `installment_changes` | Task-level [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before mutation |
+| The change is resolvable but the seller will not or cannot make it | `partial` or `unable` with `reason_code: "constraint_unsatisfiable"` and the entry echoed in `unsatisfied_installment_changes` |
+
+Sellers declare support by listing `installment_changes` in `media_buy.proposal_refinement.supported_dimensions`, which requires `media_buy.installment_selection` in `experimental_features`. Buyers MUST NOT send the field otherwise. See [Installments in the compact lifecycle](/docs/media-buy/product-discovery/collections-and-installments#installments-in-the-compact-lifecycle).
 
 ## Negotiation security
 

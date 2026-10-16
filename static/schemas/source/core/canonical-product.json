@@ -41,6 +41,19 @@
       "default": false,
       "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list or targeting_overlay.collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match)."
     },
+    "installments": {
+      "type": "array",
+      "x-added-in": "3.3.0",
+      "description": "Specific installments this product includes — the episodes, issues, airings, rotation periods, or creator slots being sold. Each entry names its parent through the canonical collection_ref tuple; unlike the legacy get_products installment there is no publisher-domain-free shorthand. Every referenced collection MUST be one the product's collections selectors name, so collections is required alongside. Absence is meaningful and is not 'no installments known': a product that carries collections and omits installments is run-of-collection — inventory across those collections, whatever publishes during the flight. A purchase names the exact installments it buys in commercial_terms.purchases[].installments (experimental, media_buy.installment_selection); a purchase that omits that field buys the product as offered.",
+      "items": { "$ref": "/schemas/core/canonical-installment.json" },
+      "minItems": 1,
+      "x-adcp-validation": {
+        "unique_by": ["collection_ref", "installment_id"],
+        "verifier_constraints": {
+          "installment_collection_scope": "every_installment_collection_ref_is_named_by_product_collections"
+        }
+      }
+    },
     "delivery_type": { "$ref": "/schemas/enums/delivery-type.json" },
     "exclusivity": { "$ref": "/schemas/enums/exclusivity.json" },
     "pricing_options": { "type": "array", "items": { "$ref": "/schemas/core/canonical-pricing-option.json" }, "minItems": 1 },
@@ -140,7 +153,8 @@
   },
   "required": ["product_id", "name"],
   "dependencies": {
-    "targeting_resolution": ["expires_at"]
+    "targeting_resolution": ["expires_at"],
+    "installments": ["collections"]
   },
   "allOf": [
     {

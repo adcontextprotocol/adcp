@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-installment.json",
+  "title": "Canonical Installment",
+  "description": "Compact closed installment view for the AdCP compact product lifecycle — one episode, issue, event, rotation period, or creator slot within a collection. Identity is the tuple (collection_ref, installment_id), so both fields are required and the deprecated publisher-domain-free collection_id shorthand carried by the legacy get_products installment is absent. The parent collection's kind indicates how to interpret each installment. Installments inherit collection-level fields they don't override: content_rating defaults to the collection's baseline, guest_talent is additive to the collection's recurring talent, and topics add context beyond the collection's genre.",
+  "type": "object",
+  "properties": {
+    "installment_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Installment ID within the referenced collection. Collection-scoped, not globally unique.",
+      "x-entity": "installment"
+    },
+    "collection_ref": {
+      "$ref": "/schemas/core/collection-ref.json",
+      "description": "Canonical parent collection identity. Required: the canonical surface has no single-namespace shorthand, so every installment names the publisher domain and collection ID that scope its installment_id. The referenced collection MUST be one the enclosing product's collections selectors name."
+    },
+    "name": {
+      "type": "string",
+      "description": "Installment title"
+    },
+    "season": {
+      "type": "string",
+      "description": "Season identifier (e.g., '1', '2024', 'spring_2026')"
+    },
+    "installment_number": {
+      "type": "string",
+      "description": "Installment number within the season (e.g., '3', '47')"
+    },
+    "scheduled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the installment airs or publishes (ISO 8601)"
+    },
+    "status": {
+      "$ref": "/schemas/enums/installment-status.json",
+      "description": "Lifecycle status of the installment"
+    },
+    "duration_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Expected duration of the installment in seconds"
+    },
+    "flexible_end": {
+      "type": "boolean",
+      "description": "Whether the end time is approximate (live events, sports)"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this installment data expires and should be re-queried. Buyers should re-query before committing budget to a product with tentative installments."
+    },
+    "content_rating": {
+      "$ref": "/schemas/core/content-rating.json",
+      "description": "Installment-specific content rating. Overrides the collection's baseline content_rating when present."
+    },
+    "topics": {
+      "type": "array",
+      "description": "Content topics for this installment. Uses the same taxonomy as the collection's genre_taxonomy when present. Enables installment-level brand safety evaluation beyond content_rating.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "special": {
+      "$ref": "/schemas/core/special.json",
+      "description": "Installment-specific event context. When present, this installment is anchored to a real-world event. Overrides the collection-level special when present."
+    },
+    "guest_talent": {
+      "type": "array",
+      "description": "Installment-specific guests and talent. Additive to the collection's recurring talent.",
+      "items": { "$ref": "/schemas/core/talent.json" },
+      "minItems": 1
+    },
+    "ad_inventory": {
+      "$ref": "/schemas/core/ad-inventory-config.json",
+      "description": "Break-based ad inventory for this installment. For non-break formats (host reads, integrations), use the product's placements."
+    },
+    "deadlines": {
+      "$ref": "/schemas/core/installment-deadlines.json",
+      "description": "Booking, cancellation, and material submission deadlines for this installment. Present when the installment has time-sensitive inventory that requires advance commitment or material delivery."
+    },
+    "derivative_of": {
+      "title": "Canonical Installment Derivation",
+      "type": "object",
+      "description": "When this installment is a clip, highlight, or recap derived from a full installment. Unlike the legacy form, the source is a canonical installment_ref, so a derivative may name a source in another collection.",
+      "properties": {
+        "installment_ref": {
+          "$ref": "/schemas/core/installment-ref.json",
+          "description": "The source installment this content is derived from."
+        },
+        "type": {
+          "$ref": "/schemas/enums/derivative-type.json",
+          "description": "What kind of derivative content this is"
+        }
+      },
+      "required": ["installment_ref", "type"],
+      "additionalProperties": false
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["installment_id", "collection_ref"],
+  "additionalProperties": false
+}
