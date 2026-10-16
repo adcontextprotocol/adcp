@@ -1,29 +1,22 @@
-import type { TestOptions } from '@adcp/sdk/testing';
 import { PUBLIC_TEST_AGENT } from '../../server/src/config/test-agent.js';
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
   withHostedTestOptions,
 } from '../../server/src/services/hosted-compliance-version.js';
-import { checkProbe, type RepinProbe } from './check.js';
+import { checkProbe, type ResolverForRelease } from './check.js';
 
 const url = process.env.ADCP_SMOKE_CHECK_URL || PUBLIC_TEST_AGENT.url;
 const token = process.env.ADCP_SMOKE_CHECK_TOKEN || PUBLIC_TEST_AGENT.token;
 const target = hostedComplianceTarget();
 const resolverOptions = hostedComplianceOptions(target);
-// When the agent serves a different release than the default pin, validate
-// and resolve against this checkout's hosted bundle for the served release.
-const repinFor = (base: Partial<TestOptions>): RepinProbe => release => {
-  const served = hostedComplianceTarget(release);
-  return { options: withHostedTestOptions(base, served), resolverOptions: hostedComplianceOptions(served) };
-};
+// Resolve storyboards from this checkout's hosted bundle for the release the
+// agent served, not the default pin's.
+const resolverFor: ResolverForRelease = release => hostedComplianceOptions(hostedComplianceTarget(release));
 
-const authenticated: Partial<TestOptions> = { auth: { type: 'bearer', token } };
-await checkProbe(url, withHostedTestOptions(authenticated, target), resolverOptions, false, {
-  repin: repinFor(authenticated),
+await checkProbe(url, withHostedTestOptions({ auth: { type: 'bearer', token } }, target), resolverOptions, false, {
+  resolverFor,
 });
 console.log('Authenticated discovery and storyboard resolution passed.');
-const anonymous = await checkProbe(url, withHostedTestOptions({}, target), resolverOptions, true, {
-  repin: repinFor({}),
-});
+const anonymous = await checkProbe(url, withHostedTestOptions({}, target), resolverOptions, true, { resolverFor });
 console.log(`Anonymous discovery: ${anonymous}.`);
