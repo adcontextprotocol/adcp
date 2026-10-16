@@ -58,22 +58,27 @@ test('all 37 routed fixtures have a validated operation', () => {
 // exactly what the maintained SDK does on an explicit 3.1 pin. These fixtures are
 // emissions, so they must satisfy the emission MUST, not the verifier's lenience.
 //
-// This is a 3.0/3.1-ONLY profile. security.mdx on 3.2 INVERTS it: there these values
-// are RFC 8941 sf-binary in the standard alphabet and base64url MUST be rejected, and
-// the versioned fixtures deliberately preserve both profiles. Do NOT forward-port this
-// commit to 3.2/main - the forward-merge conflict on these files is expected and must
-// resolve to each line's own profile.
+// Which corpus this applies to. The two profiles are separated by DIRECTORY, not by
+// branch. These root positive/ and negative/ directories are the legacy 3.0/3.1 corpus
+// on BOTH lines - on main the same root vectors are already unpadded base64url, so this
+// change brings 3.1.x's two outliers into line with them rather than diverging. The
+// standard-alphabet 3.2 corpus lives in the sibling profile-3.2/ directory (on main,
+// exercised by tests/request-signing-profile-3.2-vectors.test.cjs). Do NOT apply this
+// base64url grammar to profile-3.2/ - there the standard alphabet is correct. No
+// blanket take-ours/take-theirs claim about these paths is intended or implied.
 //
 // Scope: this governs the Signature token only. Content-Digest is checked for
 // truthfulness below and keeps its historical standard-base64 form. The same
 // security.mdx rule names Content-Digest alongside Signature, so that form is a known,
 // separately tracked discrepancy - this change neither resolves nor claims to resolve
-// it. It is out of scope here for a concrete reason: content-digest is a COVERED
-// COMPONENT, so its literal field value is part of expected_signature_base. Re-encoding
-// it would change the signed base and require a genuine re-sign. A verifier rebuilds
-// the base from the verbatim received field bytes and MUST NOT normalise Content-Digest
-// to base64url first, or these vectors will fail to verify.
-// Buffer.from(..., 'base64') tolerates both alphabets and missing padding, so the
+// it. It is deferred to keep this change a pure re-encode: content-digest is a COVERED
+// COMPONENT, so its literal field value is part of expected_signature_base, and
+// changing it would mean a genuine re-sign rather than a re-encode.
+// For THESE two vectors specifically - which cover "content-digest" WITHOUT RFC 9421's
+// `;sf` parameter - the base is built from the verbatim received field bytes, so a
+// verifier must not normalise Content-Digest to base64url before rebuilding it or they
+// will fail to verify. (Behaviour under `;sf` is a separate question, not decided here.)
+// Buffer.from(..., 'base64url') tolerates both alphabets and missing padding, so the
 // grammar and canonical round-trip are checked before decoding.
 const BASE64URL_UNPADDED = /^[A-Za-z0-9_-]+$/;
 const decodeBase64UrlUnpadded = text => {
@@ -103,9 +108,11 @@ test('strict base64url decoding rejects standard-alphabet and padded forms', () 
 //
 // Known limit: only 17 of the 38 tokens carry '-' or '_', because many negative vectors
 // use an alphabet-neutral dummy signature. For the other 21 the two alphabets render
-// identically, so this guard enforces the no-padding and canonical-length half of the
-// grammar on them and cannot, even in principle, distinguish the alphabets. That is
-// inherent to those tokens, not a gap in the check.
+// identically, so this guard enforces the no-padding and canonical-trailing-bits half
+// of the grammar on them and cannot, even in principle, distinguish the alphabets. That
+// is inherent to those tokens, not a gap in the check. (Those dummies are 88-char
+// AAAA... blobs that decode to 66 bytes, so no signature-length property holds for them
+// either - length is asserted only on the two corrected vectors below.)
 test('every signed vector emits Signature tokens as unpadded base64url', () => {
   const unsigned = new Set([
     'negative/001-no-signature-header.json',
@@ -135,8 +142,11 @@ test('every signed vector emits Signature tokens as unpadded base64url', () => {
     }
   }
   // Pinned so a new vector cannot silently skip the grammar it is required to satisfy.
-  assert.equal(signedVectors, 37);
-  assert.equal(tokens, 38);
+  // NOTE: this 37 is NOT the same 37 as the routed-fixture test above - that one counts
+  // vectors routed to an operation, this one counts vectors carrying a Signature header.
+  // The two sets differ; do not "fix" one count by copying the other.
+  assert.equal(signedVectors, 37, 'new vector: confirm its Signature token is unpadded base64url, then bump this count');
+  assert.equal(tokens, 38, 'new or multi-label vector: confirm every Signature token, then bump this count');
 });
 
 for (const file of ['positive/002-post-with-content-digest.json', 'negative/018-digest-covered-when-forbidden.json']) {
@@ -162,12 +172,15 @@ for (const file of ['positive/002-post-with-content-digest.json', 'negative/018-
     const signature = decodeBase64UrlUnpadded(encodedSignature);
     assert.ok(signature, `${file}: Signature must be unpadded base64url per the AdCP profile override`);
     assert.equal(signature.length, 64);
-    // These two tokens are the ones this fix re-encoded. Both carry '-' and '_', so the
-    // standard-alphabet form of the SAME bytes is a genuinely different string - this
-    // asserts the re-encode was real, not a no-op on an alphabet-neutral token. The
-    // grammar itself is covered by the strict-decoder unit test and the corpus guard.
-    assert.match(encodedSignature, /[_-]/, `${file}: expected a base64url-distinctive character`);
-    assert.notEqual(signature.toString('base64'), encodedSignature);
+    // These two tokens are the ones this fix re-encoded, and both carry '-' and '_',
+    // which identifies them as genuinely base64url rather than alphabet-neutral. (A
+    // comparison against the standard-alphabet form would be tautological here: the
+    // standard form of 64 bytes is always 88 chars ending '==', which can never equal a
+    // token that already matched /^[A-Za-z0-9_-]+$/.) The grammar itself is covered by
+    // the strict-decoder unit test and the corpus guard. If a future legitimate re-sign
+    // yields a token with neither character, that is a fixture change needing review,
+    // not a runtime defect - re-verify by hand before touching this line.
+    assert.match(encodedSignature, /[_-]/, `${file}: expected a base64url-distinctive character; re-verify by hand before changing`);
     assert.equal(crypto.verify(null, Buffer.from(base), publicKey, signature), true);
     if (file.startsWith('positive/')) {
       // Ed25519 is deterministic: re-signing with the public test-only key reproduces the fixture.
