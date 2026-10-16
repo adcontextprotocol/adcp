@@ -139,8 +139,11 @@ function buildProduct({
   // SHOULD here: format_kind alone no longer identifies one declaration, so a correct
   // seller requires format_option_refs[] and rejects a package without one.
   sameKindCatalog = false,
+  // Kind of the FIRST canonical declaration. Anything other than 'image' is a
+  // mismatch for the fixture's 300x250 image creative and must be detected, not bought.
+  canonicalKind = 'image',
 }) {
-  const first = DECLARATIONS[shape]();
+  const first = { ...DECLARATIONS[shape](), format_kind: canonicalKind };
   return {
     product_id,
     pricing_options: [{ pricing_option_id, pricing_model: 'cpm', currency: 'USD', fixed_price: 5 }],
@@ -156,6 +159,7 @@ function buildProduct({
 async function runInline({
   canonical,
   legacy,
+  canonicalKind = 'image',
   shape = 'product',
   failLane = null,
   readback = 'replacement',
@@ -199,6 +203,7 @@ async function runInline({
           legacy,
           shape,
           sameKindCatalog,
+          canonicalKind,
           ...(drift[discoveryKey(request)] ?? {}),
         });
         // Frozen: the runner captures this object by reference, so if a future SDK
@@ -540,6 +545,45 @@ test('inline creatives: neither discovery narrows by canonical format_kinds on 3
 // The concrete loss if the filter were added: a legacy-only seller that honours
 // format_kinds returns nothing, the legacy gate never opens, and a conformant seller
 // fails the coverage gate having been asked for a canonical kind it never claimed.
+test('inline creatives: a video-first canonical declaration is detected, never bought under', async () => {
+  // Mixed seller: canonical first declaration is video, legacy is available. The
+  // detector must stop the canonical paths rather than sending the 300x250 image
+  // creative under a video declaration; the legacy path still carries the run.
+  const { result, creates, ranPhases } = await runInline({
+    canonical: true,
+    legacy: true,
+    canonicalKind: 'video_hosted',
+  });
+  assert.deepEqual(ranPhases, ['legacy_format_inline_path'], 'no canonical lane may open on a kind mismatch');
+  assert.equal(creates.length, 1);
+  assert.ok(
+    creates[0].request.context.correlation_id.includes('legacy'),
+    'the only buy must be the legacy one'
+  );
+  for (const create of creates) {
+    assert.notEqual(create.request.packages[0].creatives[0]?.format_kind, 'video_hosted');
+    assert.equal(create.request.packages[0].format_option_refs, undefined);
+  }
+  assert.equal(result.overall_passed, true, JSON.stringify(result.phases));
+});
+
+test('inline creatives: a canonical-only video-first seller still fails coverage with zero buys', async () => {
+  // The detector is NOT a selector: with no legacy fallback there is no path left,
+  // so the closing contribution assertion fails and nothing is bought.
+  const { result, creates, ranPhases } = await runInline({
+    canonical: true,
+    legacy: false,
+    canonicalKind: 'video_hosted',
+  });
+  assert.deepEqual(ranPhases, [], 'no execution phase may open');
+  assert.equal(creates.length, 0, 'nothing may be bought');
+  const coverage = result.phases
+    .flatMap(phase => phase.steps)
+    .find(step => step.task === 'assert_contribution');
+  assert.equal(coverage.passed, false, 'the coverage gate must fail rather than pass vacuously');
+  assert.equal(result.overall_passed, false);
+});
+
 test('inline creatives: a legacy-only seller honouring format_kinds would lose all coverage if filtered', async () => {
   const storyboard = loadStoryboardFile(path.join(SCENARIOS, 'inline_creatives_without_sync.yaml'));
   for (const phase of storyboard.phases) {

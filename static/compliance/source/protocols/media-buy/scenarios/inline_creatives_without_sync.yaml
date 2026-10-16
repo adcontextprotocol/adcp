@@ -57,10 +57,12 @@ narrative: |
   never failed for it.
 
   Runner floor. Every canonical path is gated by a skip_if that dereferences the
-  captured declaration. That is verified evaluated on @adcp/sdk 15.8.1 - the hosted
-  grader's version - and on 15.9.2, and verified NOT evaluated on 9.6.2, whose
-  grammar matches test_kit references only. Versions between were not tested, so the
-  floor is stated as ">=15.8.1 verified" rather than an exact first version.
+  captured declaration. Verified with @adcp/sdk 15.8.1 - the hosted grader's version -
+  and 15.9.2, and verified NOT evaluated on 9.6.2, whose grammar matches test_kit
+  references only. 15.8.1 was checked against the published registry tarball, by
+  compiled-source inspection and a public-API runStoryboard reproduction. This does
+  not establish 15.8.1 as the earliest supporting release; versions between were not
+  tested.
 
   On a runner that does not evaluate these guards the storyboard mis-executes rather
   than degrading politely: every canonical phase opens, and the product-scoped path
@@ -241,6 +243,10 @@ phases:
           - check: field_present
             path: "products[0].format_options[0].format_kind"
             description: "Product declares a canonical format option for inline creative validation"
+          - check: field_value
+            path: "products[0].format_options[0].format_kind"
+            value: "image"
+            description: "Mismatch detector, not a format selector. The buyer only has a 300x250 image to send on the canonical paths, so if this first declaration is some other kind the probe fails here, its captures are never promoted, and all three canonical paths stand down rather than buying an image under, say, a video declaration. It does NOT pick a matching declaration out of the catalog: a canonical-only seller whose first declaration is not an image still completes no canonical path and fails the closing coverage assertion. 3.1 defines no canonical-kind product filter, so this detection is all that is available here"
           - check: field_present
             path: "products[0].pricing_options[0].fixed_price"
             description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
@@ -494,10 +500,8 @@ phases:
                 # has no object-spread or projection, so it cannot ALSO add a literal
                 # sibling key in the same expression. context_inputs is the supported
                 # way to add exactly that one key - not a workaround for an SDK defect.
-                # Verified on @adcp/sdk 15.9.2: context_inputs clones the request before
-                # writing, so the captured declaration is not mutated. Not verified on
-                # 15.8.1; a leaked `scope` there would still be inert, since only one
-                # canonical path runs and the declaration is not re-sent.
+                # Verified with @adcp/sdk 15.8.1 and 15.9.2: context_inputs clones the
+                # request before writing, so the captured declaration is not mutated.
                 - "$context.canonical_declaration"
               context:
                 buyer_ref: "inline-creative-product-scoped-line-001"
@@ -706,10 +710,8 @@ phases:
                 # has no object-spread or projection, so it cannot ALSO add a literal
                 # sibling key in the same expression. context_inputs is the supported
                 # way to add exactly that one key - not a workaround for an SDK defect.
-                # Verified on @adcp/sdk 15.9.2: context_inputs clones the request before
-                # writing, so the captured declaration is not mutated. Not verified on
-                # 15.8.1; a leaked `scope` there would still be inert, since only one
-                # canonical path runs and the declaration is not re-sent.
+                # Verified with @adcp/sdk 15.8.1 and 15.9.2: context_inputs clones the
+                # request before writing, so the captured declaration is not mutated.
                 - "$context.canonical_declaration"
               context:
                 buyer_ref: "inline-creative-publisher-scoped-line-001"
