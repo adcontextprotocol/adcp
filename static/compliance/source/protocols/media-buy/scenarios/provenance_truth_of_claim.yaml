@@ -59,12 +59,49 @@ prerequisites:
   controller_seeding: true
 
 fixtures:
+  creative_formats:
+    - format_id: "provenance_display_300x250"
+      fixture:
+        format_id:
+          agent_url: "https://provenance-formats.seller.example/"
+          id: "provenance_display_300x250"
+        name: "Provenance image 300x250"
+        type: "display"
+        assets:
+          - item_type: "individual"
+            asset_id: "image"
+            asset_type: "image"
+            required: true
+            image_requirements:
+              width: 300
+              height: 250
+          - item_type: "individual"
+            asset_id: "headline"
+            asset_type: "text"
+            required: false
+          - item_type: "individual"
+            asset_id: "click_url"
+            asset_type: "url"
+            required: false
   products:
     - product_id: "test-product-truth-of-claim"
       name: "Provenance Truth-of-Claim Test Product"
       description: "Sandbox display inventory exercising verifier-driven contradiction of buyer provenance claims via accepted verifier allowlist"
       delivery_type: "non_guaranteed"
       channels: ["display"]
+      publisher_properties:
+        - publisher_domain: "outdoormagazine.example"
+          selection_type: "all"
+      format_ids:
+        - agent_url: "https://provenance-formats.seller.example/"
+          id: "provenance_display_300x250"
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
       creative_policy:
         co_branding: "optional"
         landing_page: "any"
@@ -77,7 +114,7 @@ fixtures:
       pricing_options:
         - pricing_option_id: "test-pricing-cpm"
           pricing_model: "cpm"
-          rate: 5.00
+          fixed_price: 5.00
           currency: "USD"
 
 phases:
@@ -164,8 +201,8 @@ phases:
             - creative_id: "acme_truth_of_claim_probe_001"
               name: "Acme truth-of-claim probe — contradicted"
               format_id:
-                agent_url: "https://your-platform.example.com"
-                id: "display_300x250"
+                agent_url: "https://provenance-formats.seller.example/"
+                id: "provenance_display_300x250"
               assets:
                 headline:
                   asset_type: "text"
@@ -254,8 +291,8 @@ phases:
             - creative_id: "acme_truth_of_claim_probe_002"
               name: "Acme truth-of-claim probe — consistent"
               format_id:
-                agent_url: "https://your-platform.example.com"
-                id: "display_300x250"
+                agent_url: "https://provenance-formats.seller.example/"
+                id: "provenance_display_300x250"
               assets:
                 headline:
                   asset_type: "text"
