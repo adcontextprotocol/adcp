@@ -99,13 +99,13 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // row and assignment arrays to create/update/sync (+766 bytes measured against
 // main, 457,150 → 457,916 bytes / 447.2 KiB), bounded at 448 KiB. Compact
 // installment selection (#8230) adds the installment-change-set item and its
-// InstallmentRef/CollectionRef closure to refine_proposals, and the same two
-// reference schemas reach buy_products because product-purchase-input.json
-// $refs into product-purchase.json, whose document now carries installments
-// (+1,538 bytes measured against main, 458,185 → 459,723 bytes / 449.0 KiB),
-// bounded at 450 KiB.
+// CanonicalInstallmentRef closure to refine_proposals, and that reference
+// schema also reaches buy_products because product-purchase-input.json $refs
+// into product-purchase.json, whose document now carries installments
+// (+1,283 bytes measured against main, 458,185 → 459,468 bytes / 448.70 KiB),
+// bounded at 449 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 450,
+  'media-buy': 449,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

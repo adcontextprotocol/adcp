@@ -3,6 +3,7 @@ import {
   createTrainingAgentServer,
   invalidateCache,
   clearTaskStore,
+  compactLifecycleProduct,
 } from '../../src/training-agent/task-handlers.js';
 import { clearSessions } from '../../src/training-agent/state.js';
 import { clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
@@ -147,6 +148,56 @@ describe('list_products canonical product projection', () => {
     expect(withCollections).toBeGreaterThan(0);
     expect(withCollectionTargeting).toBeGreaterThan(0);
     expect(withInstallments).toBeGreaterThan(0);
+  });
+
+  // The catalog always builds installments with collection_ref, so these
+  // cases are unreachable through the seeded products. They are the ones that
+  // matter for a seller migrating a legacy catalog: an installments array the
+  // closed canonical shape cannot carry must not quietly become a
+  // run-of-collection claim, which is what an omitted array means.
+  it('projects a legacy installment set all-or-nothing, never into a false run-of-collection claim', async () => {
+    const legacy = (await callTool(server, 'get_products', { account: ACCOUNT, buying_mode: 'wholesale' }).then(
+      result => (result.products as Product[]).find(product => Array.isArray(product.installments)),
+    ))!;
+    expect(legacy).toBeDefined();
+    const installments = legacy.installments as Record<string, unknown>[];
+
+    const project = (product: Record<string, unknown>): Record<string, unknown> | undefined => {
+      const projected = compactLifecycleProduct(product, new Set(['installments', 'collections']));
+      return projected.installments as Record<string, unknown>[] | undefined;
+    };
+
+    // Baseline: the seeded product projects every slot.
+    expect(project(legacy)).toHaveLength(installments.length);
+
+    // One unprojectable slot drops the whole array rather than shortening it.
+    const orphan = { ...structuredClone(installments[0]), installment_id: 'orphan' } as Record<string, unknown>;
+    delete orphan.collection_ref;
+    delete orphan.collection_id;
+    expect(project({ ...legacy, installments: [...installments, orphan] })).toBeUndefined();
+
+    // The deprecated shorthand resolves when the product names one namespace.
+    const shorthandOnly = structuredClone(installments[0]) as Record<string, unknown>;
+    const collectionRef = shorthandOnly.collection_ref as { publisher_domain: string; collection_id: string };
+    delete shorthandOnly.collection_ref;
+    shorthandOnly.collection_id = collectionRef.collection_id;
+    const resolved = project({ ...legacy, installments: [shorthandOnly] });
+    expect(resolved![0].collection_ref).toEqual(collectionRef);
+    expect(resolved![0]).not.toHaveProperty('collection_id');
+
+    // Without collections there is nothing to scope the IDs against, and the
+    // canonical product schema requires them alongside.
+    expect(project({ ...legacy, collections: undefined })).toBeUndefined();
+
+    // Legacy allows empty arrays where the canonical shape requires one entry.
+    const empties = { ...structuredClone(installments[0]), topics: [], guest_talent: [] } as Record<string, unknown>;
+    const projectedEmpties = project({ ...legacy, installments: [empties] })![0];
+    expect(projectedEmpties).not.toHaveProperty('topics');
+    expect(projectedEmpties).not.toHaveProperty('guest_talent');
+    expect(validateSourceSchema('core/canonical-installment.json', projectedEmpties).valid).toBe(true);
+
+    // A non-array value must never survive the verbatim field copy.
+    expect(project({ ...legacy, installments: { installment_id: 'nope' } })).toBeUndefined();
   });
 
   it('pulls collections into a fields projection that asks only for installments', async () => {

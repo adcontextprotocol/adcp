@@ -60,7 +60,7 @@ Typed fields are deliberately small and mechanically verifiable:
 | `constraints.impressions` | Hard volume floor. Satisfied only when every purchase carries `impressions` and their sum is at least `min`. |
 | `constraints.flight` | Flight-window bounds. `start_no_later_than` requires a concrete `commercial_terms.start_time` at or before the bound (`asap` is unverifiable and unsatisfied); `end_no_earlier_than` requires `end_time` at or after it. |
 | `product_changes` | Map keyed by product ID. `include` requires a product in `commercial_terms.purchases`; `omit` requires it to be absent. Keying makes contradictory actions unrepresentable. |
-| `installment_changes` | Experimental (`media_buy.installment_selection`). List of `{product_id, installment_ref, action}`. `include` requires an installment in that purchase's `installments`; `omit` requires it to be absent. A tuple cannot be an object key, so this is a list, unique by `(product_id, installment_ref)`. See [Change installments](#change-installments-experimental). |
+| `installment_changes` | Experimental (`media_buy.installment_selection`). List of `{product_id, installment_ref, action}`, all three required. `include` requires an installment in that purchase's `installments`; `omit` requires it to be absent. A tuple cannot be an object key, so this is a list, and entries MUST be unique by `(product_id, installment_ref)` — unlike `product_changes`, the shape does not enforce it. See [Change installments](#change-installments-experimental). |
 | `alternatives.count` | Number of drafts with distinct commercial terms requested, from 2 through the protocol maximum of 10 and no higher than a seller's advertised `max_alternatives`. Returned alternatives have distinct `commercial_terms` and therefore unique `terms_digest` values; diversity strategy remains free text. |
 | `criteria` | Structured discovery criteria to replace on the source proposal. Omitted criteria fields remain inherited; concrete targeting and offer filters belong here. |
 | `remove_media_buy_frequency_cap` | Set to `true` to produce a revised draft without the inherited root frequency cap. Mutually exclusive with `criteria.media_buy_frequency_cap`. |
@@ -322,22 +322,31 @@ Experimental under feature id `media_buy.installment_selection`. For scheduled m
 }
 ```
 
-A swap is one `omit` plus one `include` in the same refinement. The resulting draft carries the new set in `commercial_terms.purchases[].installments`, so its `terms_digest` differs from the source's and the [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) digest check binds the exact slots bought. A purchase whose `installments` the source proposal left absent starts from the product's complete installment set, so a single `omit` entry materializes the remaining slots.
+A swap is one `omit` plus one `include` in the same refinement. The resulting draft carries the new set in `commercial_terms.purchases[].installments`, ordered by the JCS bytes of each reference so that equal bought sets always produce equal digests, so its `terms_digest` differs from the source's and the [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) digest check binds the exact slot identifiers bought. A purchase whose `installments` the source proposal left absent starts from the product's complete installment set, so a single `omit` entry materializes the remaining slots.
 
 Error handling is deliberately split by what the seller can know before creating a draft:
 
-| Condition | Result |
-|---|---|
-| `product_id` is not purchased in the source proposal, or `product_changes` omits it in the same refinement | Task-level [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request); no draft is created |
-| `installment_ref` names an installment the product does not declare | Task-level [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found); no draft is created |
-| The seller declares `supported_dimensions` without `installment_changes` | Task-level [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before mutation |
-| The change is resolvable but the seller will not or cannot make it | `partial` or `unable` with `reason_code: "constraint_unsatisfiable"` and the entry echoed in `unsatisfied_installment_changes` |
+Checks run in this order, so an unauthorized caller never causes reference resolution:
+
+| # | Condition | Result |
+|---|---|---|
+| 1 | The seller declares `supported_dimensions` without `installment_changes` | Task-level [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before mutation |
+| 2 | Two entries repeat the same `(product_id, installment_ref)`, whether or not their actions agree | Task-level [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request); the seller never picks a winner by position |
+| 3 | `product_id` is neither purchased in the source proposal nor included by `product_changes` in the same refinement, or `product_changes` omits it | Task-level `INVALID_REQUEST`; no draft is created |
+| 4 | `installment_ref` names an installment the product does not declare | Task-level [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found); no draft is created |
+| 5 | The change is resolvable but the seller will not or cannot make it | `partial` or `unable` with `reason_code: "constraint_unsatisfiable"` and the entry echoed in `unsatisfied_installment_changes` |
+
+When the seller omits `proposal_refinement` entirely, typed-dimension support is unknown rather than absent, and an unsupported `installment_changes` comes back as `partial` or `unable` instead of `UNSUPPORTED_FEATURE`.
+
+Two properties a buyer should plan around. **A swap is not atomic**: the seller may satisfy the `omit`, fail the `include`, and return `partial` with a plan strictly worse than the source — say so in `ask` when you need all-or-nothing. And **adding a creator and naming its slots is one round trip**, because an entry may name a product that `product_changes` includes in the same refinement.
 
 Sellers declare support by listing `installment_changes` in `media_buy.proposal_refinement.supported_dimensions`, which requires `media_buy.installment_selection` in `experimental_features`. Buyers MUST NOT send the field otherwise. See [Installments in the compact lifecycle](/docs/media-buy/product-discovery/collections-and-installments#installments-in-the-compact-lifecycle).
 
 ## Negotiation security
 
 Both sides of this task are agents, and both sides' inputs are untrusted. `ask` is attacker-controlled free text: sellers MUST NOT let it alter pricing floors, authorization, or policy, and MUST NOT expose other buyers' terms through it — fence it from any LLM with pricing authority and treat its interpretation as suggestion, never instruction. In the other direction, deterministic `constraint_unsatisfiable` responses form a price oracle: repeated budget or rate probes can binary-search a floor at no cost. Sellers SHOULD apply rate or commercial friction to sustained un-held revision rounds and MAY keep `reason` deliberately coarse rather than revealing how near a rejected constraint came to clearing.
+
+`installment_changes` sharpens that oracle from a price probe into an availability probe. A deterministic `constraint_unsatisfiable` per slot lets a buyer map exactly which of a creator's or a network's upcoming installments are already sold or held to someone else, one entry per probe, at no cost and without placing a hold — commercially sensitive in a way the coarser `product_changes` is not. The same friction guidance applies, and sellers MAY answer an unavailable slot with the same coarse `reason` they would use for a slot they simply decline to sell.
 
 ## Amend an accepted MediaBuy
 

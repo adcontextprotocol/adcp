@@ -69,6 +69,10 @@
           "$ref": "/schemas/core/canonical-installment.json",
           "description": "Compact closed installment on a canonical product, identified by (collection_ref, installment_id)"
         },
+        "canonical-installment-ref": {
+          "$ref": "/schemas/core/canonical-installment-ref.json",
+          "description": "Closed canonical installment identity for digest-covered terms and request paths"
+        },
         "canonical-product-action": {
           "$ref": "/schemas/core/canonical-product-action.json",
           "description": "Fine-grained action template for compact products"

@@ -44,13 +44,14 @@
     "installments": {
       "type": "array",
       "x-added-in": "3.3.0",
-      "description": "Specific installments this product includes — the episodes, issues, airings, rotation periods, or creator slots being sold. Each entry names its parent through the canonical collection_ref tuple; unlike the legacy get_products installment there is no publisher-domain-free shorthand. Every referenced collection MUST be one the product's collections selectors name, so collections is required alongside. Absence is meaningful and is not 'no installments known': a product that carries collections and omits installments is run-of-collection — inventory across those collections, whatever publishes during the flight. A purchase names the exact installments it buys in commercial_terms.purchases[].installments (experimental, media_buy.installment_selection); a purchase that omits that field buys the product as offered.",
+      "description": "Specific installments this product includes — the episodes, issues, airings, rotation periods, or creator slots being sold. Each entry names its parent through the canonical collection_ref tuple; unlike the legacy get_products installment there is no publisher-domain-free shorthand. Every referenced collection MUST be one the product's collections selectors name, so collections is required alongside. Absence is meaningful within a projection that requested this field, and is not 'no installments known': a product that carries collections and omits installments is run-of-collection — inventory across those collections, whatever publishes during the flight. Absence from a list_products response whose fields projection did not request installments carries no meaning at all, which is why a buyer that depends on the run-of-collection reading MUST request the field explicitly. Buyers MUST reject a product whose installment collection_ref is not one its own collections selectors name; the seller's collections are what the referenced adagents.json authorizes. A purchase names the exact installments it buys in commercial_terms.purchases[].installments (experimental, media_buy.installment_selection); a purchase that omits that field buys the product as offered.",
       "items": { "$ref": "/schemas/core/canonical-installment.json" },
       "minItems": 1,
       "x-adcp-validation": {
         "unique_by": ["collection_ref", "installment_id"],
         "verifier_constraints": {
-          "installment_collection_scope": "every_installment_collection_ref_is_named_by_product_collections"
+          "installment_collection_scope": "every_top_level_installment_collection_ref_is_named_by_product_collections",
+          "scope": "top_level_only"
         }
       }
     },

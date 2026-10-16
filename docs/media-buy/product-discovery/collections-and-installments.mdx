@@ -777,7 +777,13 @@ One shape difference matters. A canonical installment's identity is the `(collec
 
 A canonical product that declares `collections` and omits `installments` is run-of-collection: inventory across those collections, whatever publishes during the flight. This is the same rule as the legacy Product, and it is the reason `installments` cannot be used to say "no installments are available" — a seller with nothing bookable omits the product.
 
-The converse is a schema rule, not a convention: `installments` requires `collections`, because a canonical installment names the collection that scopes its ID, and every `collection_ref` must be one the product's `collections` selectors already name. A projection that asks for `installments` therefore gets `collections` back too.
+The converse is a schema rule, not a convention: `installments` requires `collections`, because a canonical installment names the collection that scopes its ID. A projection that asks for `installments` therefore gets `collections` back too.
+
+Two qualifications matter in practice.
+
+**Absence only means run-of-collection inside a projection that asked for the field.** `list_products` returns what `fields` requested, so a product with no `installments` in a projection that never requested them says nothing at all. A buyer choosing between specific slots and run-of-collection requests `installments` explicitly.
+
+**The collection scope is a buyer check, not just a seller rule.** Every top-level `collection_ref` MUST be one the product's `collections` selectors already name, and `publisher_domain` is the authorization root — it names the `adagents.json` that declares the collection. JSON Schema cannot express the set relationship, so buyers MUST reject a product whose installment names a collection its own selectors do not, rather than treating the installment as authorized inventory. (A `derivative_of.installment_ref` is deliberately exempt: a clip may name a source in another collection, and it is a provenance pointer rather than something being sold.)
 
 ### Buying exact installments (experimental)
 
@@ -800,7 +806,7 @@ Naming the specific slots a purchase buys is experimental under the feature id `
 }
 ```
 
-Present, the array is the complete bought set for that purchase. Absent, the purchase buys the product as offered — run-of-collection when the product names no installments, and the product's complete installment set when it does. Absence never means "no installments".
+Present, the array is the complete bought set for that purchase, ordered by the JCS bytes of each reference so equal bought sets always serialize to equal digests. Absent, the purchase buys the product as offered — run-of-collection when the product names no installments, and the product's complete installment set when it does. Absence never means "no installments", which is why a buyer that does not implement the feature MUST reject a proposal carrying `installments` rather than ignore the field: ignoring it reads a two-slot buy as an eight-slot one.
 
 Because `installments` lives inside `commercial_terms`, it is covered by `terms_digest`. Dropping or swapping a slot produces a different digest, so the `proposal_terms_digest` that [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) verifies binds the exact slots bought, not just the product and the price.
 
@@ -833,7 +839,17 @@ Because `installments` lives inside `commercial_terms`, it is covered by `terms_
 }
 ```
 
-A swap is one `omit` plus one `include` in the same refinement. Entries are unique by `(product_id, installment_ref)`, so a request cannot ask for an installment to be both kept and dropped. Changes the seller understood but could not satisfy come back as `constraint_unsatisfiable` with the failing entries echoed in `unsatisfied_installment_changes`; an installment the named product does not declare is a `REFERENCE_NOT_FOUND` at task level, and a `product_id` the proposal does not purchase is an `INVALID_REQUEST`.
+A swap is one `omit` plus one `include` in the same refinement, and it is not atomic — the seller may satisfy the `omit`, fail the `include`, and return `partial`. Entries MUST be unique by `(product_id, installment_ref)`. Unlike `product_changes`, whose object keys make a contradiction structurally impossible, that is a requirement the list shape cannot enforce, so a seller receiving a repeated or contradictory pair rejects the request with `INVALID_REQUEST` rather than applying entries in an arbitrary order. Changes the seller understood but could not satisfy come back as `constraint_unsatisfiable` with the failing entries echoed in `unsatisfied_installment_changes`. For the full check order and error codes, see [Change installments](/docs/media-buy/task-reference/refine_proposals#change-installments-experimental).
+
+Three seller postures are visible from capabilities, and buyers should expect all three:
+
+| Seller declares | What a buyer can do |
+|---|---|
+| Product `installments`, no feature id | See the slot set; take the product or leave it |
+| `media_buy.installment_selection` in `experimental_features` | Also read the exact slots a proposal bought, bound by `terms_digest` |
+| …plus `installment_changes` in `supported_dimensions` | Also drop or swap a slot through `refine_proposals` |
+
+How a hold interacts with a swap is not yet specified: whether revising away from a held slot releases that hold is seller policy for now, and is tracked with per-installment hold readback in [#8086](https://github.com/adcontextprotocol/adcp/issues/8086). `installment_changes` is correspondingly forbidden on `extend_hold`, which changes no terms.
 
 Sellers declare support by listing `installment_changes` in `media_buy.proposal_refinement.supported_dimensions`, which requires `media_buy.installment_selection` in `experimental_features`. Buyers MUST NOT send the field otherwise.
 
@@ -1519,3 +1535,5 @@ The collection/installment model works identically for print publications and au
 - [Print ads](/docs/creative/channels/print) — print-specific creative formats, physical dimensions, bleed, and DPI
 - [brand.json](/docs/brand-protocol/brand-json) — talent identity and brand safety evaluation
 - [Product discovery](/docs/media-buy/product-discovery) — how buyers discover inventory via `get_products`
+- [`list_products`](/docs/media-buy/task-reference/list_products) — requesting `installments` on the canonical product
+- [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals#change-installments-experimental) — dropping and swapping a bought slot

@@ -64,6 +64,7 @@ const COLLECTION_REF = { publisher_domain: PUBLISHER, collection_id: COLLECTION_
 const PRODUCT_ID = 'creatorloop_creator_juniper_vale';
 
 const ref = (installmentId) => ({ collection_ref: { ...COLLECTION_REF }, installment_id: installmentId });
+const change = (installmentId, action) => ({ product_id: PRODUCT_ID, installment_ref: ref(installmentId), action });
 
 const slot = (n, overrides = {}) => ({
   installment_id: `juniper_vale_slot_${n}`,
@@ -203,7 +204,9 @@ test('installments are requestable through the canonical fields projection', () 
   const fields = readSchema('media-buy/product-fields.json');
   assert.ok(fields.items.enum.includes('installments'), 'buyers can project installments');
   assert.ok(fields.items.enum.includes('collections'));
-  assert.match(fields.description, /Requesting installments also returns collections/);
+  assert.match(fields.description, /requesting installments also returns collections/);
+  // The same enum is shared with legacy get_products, where that rule is false.
+  assert.match(fields.description, /Legacy get_products shares this enum but not that rule/);
 });
 
 test('a purchase names the exact installments it buys', async () => {
@@ -218,14 +221,26 @@ test('a purchase names the exact installments it buys', async () => {
     'a slot cannot be bought twice in one purchase',
   );
   assert.equal(validate({ ...PURCHASE, installments: [{ installment_id: 'juniper_vale_slot_1' }] }), false, 'collection_ref is required');
+  assert.equal(
+    validate({ ...PURCHASE, installments: [{ ...ref('juniper_vale_slot_1'), note: 'rider' }] }),
+    false,
+    'an undeclared member cannot ride inside the digest',
+  );
   assert.equal(validate({ ...PURCHASE, installments: ['juniper_vale_slot_1'] }), false, 'a bare ID is not a canonical reference');
 
   const field = readSchema('media-buy/product-purchase.json').properties.installments;
-  assert.equal(field.items.$ref, '/schemas/core/installment-ref.json');
+  assert.equal(field.items.$ref, '/schemas/core/canonical-installment-ref.json');
+  // Inside the terms_digest preimage, equal bought sets must serialize to
+  // equal bytes, so the array carries the same ordering rule definition_pins
+  // does. JCS sorts object members but never reorders arrays.
+  assert.equal(field['x-adcp-validation'].ordered_by, 'jcs_bytes_of_entry');
+  assert.match(field.description, /ordered by the JCS bytes of the reference/);
+  assert.match(field.description, /MUST reject a proposal carrying it rather than ignore it/);
+  assert.match(field.description, /it does not bind what the seller later publishes under those identifiers/);
   assert.equal(field['x-status'], 'experimental');
   assert.equal(field['x-added-in'], '3.3.0');
   assert.match(field.description, /media_buy\.installment_selection/);
-  assert.match(field.description, /MUST NOT emit it to callers negotiating below AdCP 3\.3/);
+  assert.match(field.description, /MUST NOT emit it to a caller negotiating below AdCP 3\.3/);
 });
 
 test('buy_products input cannot select installments; selection is a proposal surface', () => {
@@ -244,16 +259,28 @@ test('selected installments travel inside commercial_terms and move terms_digest
     assert.equal(validate(terms), true, errors(validate));
   }
 
-  const digest = (terms) => termsDigest(terms);
-  assert.match(digest(twoSlots), /^sha256:[A-Za-z0-9_-]{43}$/);
-  assert.equal(digest(twoSlots), digest(termsWith([ref('juniper_vale_slot_1'), ref('juniper_vale_slot_2')])), 'equal terms, equal digest');
-  assert.notEqual(digest(twoSlots), digest(dropped), 'dropping a slot changes the digest');
-  assert.notEqual(digest(twoSlots), digest(swapped), 'swapping a slot changes the digest');
-  assert.notEqual(digest(dropped), digest(swapped));
-  assert.notEqual(digest(twoSlots), digest(runOfCollection), 'naming slots differs from buying the product as offered');
+  assert.match(termsDigest(twoSlots), /^sha256:[A-Za-z0-9_-]{43}$/);
+  assert.equal(
+    termsDigest(twoSlots),
+    termsDigest(termsWith([ref('juniper_vale_slot_1'), ref('juniper_vale_slot_2')])),
+    'equal terms, equal digest',
+  );
+  assert.notEqual(termsDigest(twoSlots), termsDigest(dropped), 'dropping a slot changes the digest');
+  assert.notEqual(termsDigest(twoSlots), termsDigest(runOfCollection), 'naming slots differs from buying the product as offered');
+
+  // JCS sorts object members but never reorders arrays, so without the
+  // ordering rule two identical bought sets would produce different digests —
+  // and two commercially identical drafts could pass the alternatives
+  // distinctness check on permutation alone.
+  const permuted = termsWith([ref('juniper_vale_slot_2'), ref('juniper_vale_slot_1')]);
+  assert.notEqual(termsDigest(twoSlots), termsDigest(permuted), 'array order reaches the digest');
+  assert.ok(
+    readSchema('media-buy/product-purchase.json').properties.installments['x-adcp-validation'].ordered_by,
+    'so the array declares a canonical order',
+  );
 
   const pattern = readSchema('core/canonical-proposal.json').properties.terms_digest.pattern;
-  assert.ok(new RegExp(pattern).test(digest(twoSlots)), 'the digest fits the proposal field');
+  assert.ok(new RegExp(pattern).test(termsDigest(twoSlots)), 'the digest fits the proposal field');
 });
 
 test('a committed proposal binds the exact slots through its digest', async () => {
@@ -286,40 +313,86 @@ test('a committed proposal binds the exact slots through its digest', async () =
   );
 });
 
-test('installment_changes expresses a drop and a swap, and cannot contradict itself', async () => {
+test('installment_changes expresses a drop and a swap with an explicit verb', async () => {
   const validate = await compile('/schemas/core/installment-change-set.json');
-  const drop = [{ product_id: PRODUCT_ID, installment_ref: ref('juniper_vale_slot_2'), action: 'omit' }];
-  const swap = [
-    { product_id: PRODUCT_ID, installment_ref: ref('juniper_vale_slot_2'), action: 'omit' },
-    { product_id: PRODUCT_ID, installment_ref: ref('juniper_vale_slot_3'), action: 'include' },
-  ];
-  assert.equal(validate(drop), true, errors(validate));
-  assert.equal(validate(swap), true, errors(validate));
-  assert.equal(validate([{ product_id: PRODUCT_ID, installment_ref: ref('juniper_vale_slot_2') }]), true, 'action defaults to include');
+  assert.equal(validate([change('juniper_vale_slot_2', 'omit')]), true, errors(validate));
+  assert.equal(
+    validate([change('juniper_vale_slot_2', 'omit'), change('juniper_vale_slot_3', 'include')]),
+    true,
+    errors(validate),
+  );
 
   assert.equal(validate([]), false, 'an empty change set is not a change');
   assert.equal(validate([{ installment_ref: ref('juniper_vale_slot_2'), action: 'omit' }]), false, 'product_id names the purchase');
   assert.equal(validate([{ product_id: PRODUCT_ID, action: 'omit' }]), false, 'installment_ref is required');
+  // A drop that silently defaulted to include is the expensive failure, so
+  // the verb is required where product-refinement.json lets it default.
+  assert.equal(validate([{ product_id: PRODUCT_ID, installment_ref: ref('juniper_vale_slot_2') }]), false, 'action is required');
+  assert.equal(validate([change('juniper_vale_slot_2', 'replace')]), false, 'the action verbs match product_changes');
   assert.equal(
-    validate([{ product_id: PRODUCT_ID, installment_ref: ref('juniper_vale_slot_2'), action: 'replace' }]),
-    false,
-    'the action verbs match product_changes',
-  );
-  assert.equal(
-    validate([{ product_id: PRODUCT_ID, installment_ref: ref('juniper_vale_slot_2'), action: 'omit', ask: 'please' }]),
+    validate([{ ...change('juniper_vale_slot_2', 'omit'), ask: 'please' }]),
     false,
     'entries are closed',
   );
 
   const schema = readSchema('core/installment-change-set.json');
   assert.deepEqual(schema.items.properties.action.enum, ['include', 'omit']);
-  assert.equal(schema.items.properties.action.default, 'include');
+  assert.equal(schema.items.properties.action.default, undefined, 'no default to fall through to');
+  assert.deepEqual(schema.items.required, ['product_id', 'installment_ref', 'action']);
   assert.deepEqual(schema['x-adcp-validation'].unique_by, ['product_id', 'installment_ref']);
+  assert.equal(schema['x-status'], 'experimental');
+  assert.equal(schema['x-added-in'], '3.3.0');
+});
+
+test('a contradictory pair is a seller-rejected MUST, not a structural impossibility', async () => {
+  const validate = await compile('/schemas/core/installment-change-set.json');
+  // product-change-map.json gets this for free from object keys. A list
+  // cannot, so the schema accepts the contradiction and the protocol forbids
+  // it — the docs and the description must say that, not claim otherwise.
+  const contradiction = [change('juniper_vale_slot_2', 'omit'), change('juniper_vale_slot_2', 'include')];
+  assert.equal(validate(contradiction), true, 'JSON Schema cannot express tuple uniqueness');
+  // uniqueItems still catches the literal duplicate for free.
+  assert.equal(validate([change('juniper_vale_slot_2', 'omit'), change('juniper_vale_slot_2', 'omit')]), false, 'literal duplicate');
+
+  const description = readSchema('core/installment-change-set.json').description;
+  assert.ok(
+    !/cannot be represented/.test(description),
+    'the description must not claim a guarantee the shape does not give',
+  );
+  assert.match(description, /entries MUST be unique by \(product_id, installment_ref\)/);
+  assert.match(description, /INVALID_REQUEST/);
+
+  // The buyer-facing error table has to carry the same rule, or an
+  // implementer reading only the docs never learns it.
+  const refine = readDoc('media-buy/task-reference/refine_proposals.mdx');
+  assert.match(refine, /repeat the same \`\(product_id, installment_ref\)\`/);
+  const guide = readDoc('media-buy/product-discovery/collections-and-installments.mdx');
+  assert.ok(!/cannot ask for an installment to be both kept and dropped/.test(guide));
+});
+
+test('references covered by a digest or sent by a buyer use the closed canonical shape', async () => {
+  const validate = await compile('/schemas/core/canonical-installment-ref.json');
+  assert.equal(validate(ref('juniper_vale_slot_1')), true, errors(validate));
+  assert.equal(validate({ ...ref('juniper_vale_slot_1'), note: 'x' }), false, 'extra members would ride inside terms_digest');
+  assert.equal(
+    validate({ collection_ref: { ...COLLECTION_REF, note: 'x' }, installment_id: 'a' }),
+    false,
+    'the nested collection identity is closed too',
+  );
+  assert.equal(validate({ collection_ref: { ...COLLECTION_REF }, installment_id: 'a'.repeat(256) }), false, 'bounded');
+
+  // The open core/installment-ref.json stays as-is for seller-emitted
+  // delivery rows, where an extra member is harmless.
+  assert.equal(readSchema('core/installment-ref.json').additionalProperties, true);
+  assert.equal(
+    readSchema('core/installment-delivery-metrics.json').allOf[1].properties.installment_ref.$ref,
+    '/schemas/core/installment-ref.json',
+  );
 });
 
 test('installment_changes is a revise-only refinement dimension', async () => {
   const validate = await compile('/schemas/media-buy/proposal-refinement.json');
-  const installment_changes = [{ product_id: PRODUCT_ID, installment_ref: ref('juniper_vale_slot_2'), action: 'omit' }];
+  const installment_changes = [change('juniper_vale_slot_2', 'omit')];
 
   assert.equal(validate({ proposal_id: 'p1', action: 'revise', installment_changes }), true, errors(validate));
   assert.equal(
@@ -335,6 +408,11 @@ test('installment_changes is a revise-only refinement dimension', async () => {
   // change set strictly validated rather than stubbing it to a loose array.
   assert.equal(field.$ref, '/schemas/core/installment-change-set.json');
   assert.equal(field['x-adcp-schema-uri'], undefined);
+  // Adding a product and naming its slots has to be one round trip, and the
+  // membership check has to precede reference resolution.
+  assert.match(field.description, /product_changes includes in the same refinement/);
+  assert.match(field.description, /BEFORE resolving any installment_ref/);
+  assert.match(field.description, /A swap is not atomic/);
   assert.equal(field['x-status'], 'experimental');
   assert.equal(field['x-added-in'], '3.3.0');
   assert.match(field.description, /REFERENCE_NOT_FOUND/);
@@ -353,9 +431,7 @@ test('unsatisfied installment changes are reported back on partial and unable re
         outcome: 'partial',
         reason_code: 'constraint_unsatisfiable',
         reason: 'The January slot is already committed to another advertiser.',
-        unsatisfied_installment_changes: [
-          { product_id: PRODUCT_ID, installment_ref: ref('juniper_vale_slot_3'), action: 'include' },
-        ],
+        unsatisfied_installment_changes: [change('juniper_vale_slot_3', 'include')],
         proposals: [
           {
             proposal_id: 'creatorloop_draft_02',
@@ -379,9 +455,7 @@ test('unsatisfied installment changes are reported back on partial and unable re
   // on its own, so a seller that fails only an installment action does not have
   // to invent an empty unsatisfied_constraints array.
   const installmentOnly = structuredClone(response);
-  installmentOnly.results[0].unsatisfied_installment_changes = [
-    { product_id: PRODUCT_ID, installment_ref: ref('juniper_vale_slot_3'), action: 'include' },
-  ];
+  installmentOnly.results[0].unsatisfied_installment_changes = [change('juniper_vale_slot_3', 'include')];
   assert.equal(validate(installmentOnly), true, errors(validate));
   delete installmentOnly.results[0].unsatisfied_installment_changes;
   assert.equal(validate(installmentOnly), false, 'constraint_unsatisfiable needs a typed witness');
@@ -393,9 +467,7 @@ test('unsatisfied installment changes are reported back on partial and unable re
     source_proposal_id: 'creatorloop_draft_01',
     outcome: 'revised',
     proposals: response.results[0].proposals,
-    unsatisfied_installment_changes: [
-      { product_id: PRODUCT_ID, installment_ref: ref('juniper_vale_slot_3'), action: 'include' },
-    ],
+    unsatisfied_installment_changes: [change('juniper_vale_slot_3', 'include')],
   };
   assert.equal(validate(revised), false, 'a revised result satisfied every change');
   delete revised.results[0].unsatisfied_installment_changes;
@@ -444,8 +516,13 @@ test('the documentation records the closed gap, the live boundaries, and the reg
     !/\*\*No `installments`\.\*\*/.test(limitations),
     'the compact-lifecycle installments gap is closed, not restated',
   );
-  assert.match(limitations, /`installments` closed in 3\.3/);
+  assert.match(limitations, /`installments` was the other absent member and shipped in 3\.3/);
   assert.match(limitations, /media_buy\.installment_selection/);
+  // The residual bounds are the point of the entry: they must survive edits
+  // that tidy the closure notice.
+  assert.match(limitations, /Selection is a negotiation surface, not a discovery one/);
+  assert.match(limitations, /canonical and legacy installment shapes will stay forked/);
+  assert.match(limitations, /reference seller does not yet negotiate slots/);
 
   const experimental = readDoc('reference/experimental-status.mdx');
   assert.match(experimental, /^\| `media_buy\.installment_selection` \|/m, 'the feature id has a registry row');
@@ -453,13 +530,24 @@ test('the documentation records the closed gap, the live boundaries, and the reg
   const guide = readDoc('media-buy/product-discovery/collections-and-installments.mdx');
   assert.match(guide, /## Installments in the compact lifecycle/);
   assert.match(guide, /### Absence is run-of-collection, not "unknown"/);
+  assert.match(guide, /buyers MUST reject a product whose installment names a collection its own selectors do not/);
+  assert.match(guide, /Three seller postures are visible from capabilities/);
 
   const refine = readDoc('media-buy/task-reference/refine_proposals.mdx');
   assert.match(refine, /## Change installments \(experimental\)/);
   assert.match(refine, /unsatisfied_installment_changes/);
+  assert.match(refine, /availability probe/, 'the oracle warning covers slot availability, not just price');
 
   const accept = readDoc('media-buy/task-reference/accept_proposal.mdx');
-  assert.match(accept, /that digest check binds the slots as well as the price/);
+  // The digest binds identifiers, not what is published under them. Claiming
+  // more than that is the one thing a buyer would build on and be wrong.
+  assert.match(accept, /cannot be given a different \*set of slot identifiers\*/);
+  assert.match(accept, /What the digest does \*\*not\*\* bind/);
+  assert.match(readDoc('media-buy/specification.mdx'), /installment references in \`purchases\[\]\.installments\`/);
+  assert.match(limitations, /binds which slots were bought, not what is published under them/);
+
+  assert.match(readDoc('reference/whats-new-in-3-3.mdx'), /### Installments on the compact product lifecycle/);
+  assert.match(readDoc('media-buy/task-reference/list_products.mdx'), /only meaningful inside a projection that asked for the field/);
 
   const migration = readDoc('reference/migration/3-2-to-3-3.mdx');
   assert.match(migration, /### Installments on the compact product lifecycle/);
