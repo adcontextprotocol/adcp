@@ -64,6 +64,12 @@
             "allOf": [{ "$ref": "/schemas/core/product-change-map.json" }],
             "description": "Requested product actions not satisfied by every returned draft. This is a subset of the request product_changes map and is valid only on partial or unable results."
           },
+          "unsatisfied_installment_changes": {
+            "allOf": [{ "$ref": "/schemas/core/installment-change-set.json" }],
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
+            "description": "Experimental (media_buy.installment_selection). Requested installment actions not satisfied by every returned draft, each entry repeated exactly as the request carried it. This is a subset of the request installment_changes list and is valid only on partial or unable results, whose reason_code is constraint_unsatisfiable."
+          },
           "drifted_pins": {
             "type": "array",
             "description": "Pins from the source proposal's commercial_terms.definition_pins[] whose published definition no longer resolves to the pinned content_digest, in the pins' canonical order. Required on, and valid only with, reason_code definition_changed.",
@@ -114,7 +120,8 @@
                 { "required": ["reason_code"] },
                 { "required": ["reason"] },
                 { "required": ["unsatisfied_constraints"] },
-                { "required": ["unsatisfied_product_changes"] }
+                { "required": ["unsatisfied_product_changes"] },
+                { "required": ["unsatisfied_installment_changes"] }
               ]
             }
           },
@@ -149,7 +156,8 @@
                 { "required": ["reason_code"] },
                 { "required": ["reason"] },
                 { "required": ["unsatisfied_constraints"] },
-                { "required": ["unsatisfied_product_changes"] }
+                { "required": ["unsatisfied_product_changes"] },
+                { "required": ["unsatisfied_installment_changes"] }
               ]
             }
           },
@@ -186,7 +194,8 @@
             "then": {
               "anyOf": [
                 { "required": ["unsatisfied_constraints"] },
-                { "required": ["unsatisfied_product_changes"] }
+                { "required": ["unsatisfied_product_changes"] },
+                { "required": ["unsatisfied_installment_changes"] }
               ]
             }
           }

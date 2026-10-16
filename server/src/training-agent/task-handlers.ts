@@ -7644,10 +7644,11 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
 // Default list_products projection onto the closed core/canonical-product.json.
 // Legacy-only Product keys stay on get_products: audience_activation (the
 // experimental per-product declaration has no canonical counterpart yet; the
-// seller-wide union remains on get_adcp_capabilities), installments (deferred
-// until installment.json drops the deprecated collection_id shorthand), and
-// is_custom (canonical products mark request-specific configured offers with
-// expires_at alone).
+// seller-wide union remains on get_adcp_capabilities) and is_custom (canonical
+// products mark request-specific configured offers with expires_at alone).
+// installments project onto the closed core/canonical-installment.json, which
+// carries no deprecated collection_id shorthand and names a derivative source
+// by installment_ref rather than a response-local installment_id.
 const COMPACT_PRODUCT_FIELDS = new Set([
   'product_id', 'name', 'description', 'publisher_properties', 'channels',
   'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
@@ -7659,8 +7660,96 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'demographic_targeting', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
   'sponsored_placement_types', 'overlay_support', 'media_buy_support', 'identity',
-  'targeting_resolution', 'collections', 'collection_targeting_allowed', 'ext',
+  'targeting_resolution', 'collections', 'collection_targeting_allowed',
+  'installments', 'ext',
 ]);
+
+// core/canonical-installment.json is closed and drops the legacy deprecated
+// collection_id shorthand; identity is the (collection_ref, installment_id)
+// tuple alone.
+const COMPACT_INSTALLMENT_FIELDS = new Set([
+  'installment_id', 'collection_ref', 'name', 'season', 'installment_number',
+  'scheduled_at', 'status', 'duration_seconds', 'flexible_end', 'valid_until',
+  'content_rating', 'topics', 'special', 'guest_talent', 'ad_inventory',
+  'deadlines', 'ext',
+]);
+
+/** Canonical identity is the (collection_ref, installment_id) tuple, so a
+ * legacy installment carrying only the deprecated shorthand is unprojectable.
+ * Resolve it against the product's collections when that is unambiguous —
+ * which is exactly the condition the shorthand is documented to be valid
+ * under — and give up otherwise. */
+function canonicalCollectionRef(
+  installment: Record<string, unknown>,
+  productCollectionIds: ReadonlyMap<string, string>,
+): Record<string, unknown> | undefined {
+  if (isRecord(installment.collection_ref)) return structuredClone(installment.collection_ref);
+  const shorthand = installment.collection_id;
+  if (typeof shorthand !== 'string') return undefined;
+  const publisherDomain = productCollectionIds.get(shorthand);
+  return publisherDomain === undefined
+    ? undefined
+    : { publisher_domain: publisherDomain, collection_id: shorthand };
+}
+
+/** Project one legacy Product installment onto the closed canonical shape.
+ * Returns undefined when the installment cannot be represented there, which
+ * the caller treats as "this product has no canonical installments" rather
+ * than silently shortening the set — an omitted installments array reads as
+ * run-of-collection, so a partial set would be a different claim. */
+function compactInstallment(
+  installment: Record<string, unknown>,
+  productCollectionIds: ReadonlyMap<string, string>,
+  siblings: readonly Record<string, unknown>[],
+): Record<string, unknown> | undefined {
+  const collectionRef = canonicalCollectionRef(installment, productCollectionIds);
+  if (collectionRef === undefined) return undefined;
+  if (typeof installment.installment_id !== 'string' || installment.installment_id.length === 0) return undefined;
+  const projected = pickCompactFields(installment, COMPACT_INSTALLMENT_FIELDS);
+  projected.collection_ref = collectionRef;
+  // The canonical shape requires at least one entry where the legacy shape
+  // allows an empty array, so an empty one is dropped rather than emitted.
+  for (const field of ['topics', 'guest_talent'] as const) {
+    if (Array.isArray(projected[field]) && (projected[field] as unknown[]).length === 0) delete projected[field];
+  }
+  // derivative_of names a response-local installment_id in the legacy shape and
+  // a canonical installment_ref here. The source may sit in another collection
+  // of a multi-collection product, so resolve it against the sibling that
+  // actually declares that ID rather than assuming the enclosing collection.
+  const derivative = installment.derivative_of;
+  if (isRecord(derivative) && typeof derivative.installment_id === 'string' && typeof derivative.type === 'string') {
+    const source = siblings.find(entry => entry.installment_id === derivative.installment_id);
+    const sourceRef = source && canonicalCollectionRef(source, productCollectionIds);
+    if (sourceRef !== undefined) {
+      projected.derivative_of = {
+        installment_ref: { collection_ref: sourceRef, installment_id: derivative.installment_id },
+        type: derivative.type,
+      };
+    }
+  }
+  return projected;
+}
+
+/** Collection IDs a product's selectors name, mapped to their publisher
+ * domain. An ID claimed by two domains is ambiguous and is left out, so an
+ * installment can never be attributed to the wrong publisher namespace. */
+function productCollectionIndex(collections: unknown): ReadonlyMap<string, string> {
+  const index = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  if (!Array.isArray(collections)) return index;
+  for (const selector of collections) {
+    if (!isRecord(selector) || typeof selector.publisher_domain !== 'string') continue;
+    if (!Array.isArray(selector.collection_ids)) continue;
+    for (const collectionId of selector.collection_ids) {
+      if (typeof collectionId !== 'string') continue;
+      const seen = index.get(collectionId);
+      if (seen !== undefined && seen !== selector.publisher_domain) ambiguous.add(collectionId);
+      else index.set(collectionId, selector.publisher_domain);
+    }
+  }
+  for (const collectionId of ambiguous) index.delete(collectionId);
+  return index;
+}
 
 let canonicalReportingCapabilityFields: ReadonlySet<string> | undefined;
 
@@ -7689,7 +7778,7 @@ function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<
 
 /** Project the additive 3.x get_products representation into the closed
  * canonical offer shape used by list_products. */
-function compactLifecycleProduct(
+export function compactLifecycleProduct(
   product: Record<string, unknown>,
   requestedFields?: ReadonlySet<string>,
   requiredFields: ReadonlySet<string> = new Set(),
@@ -7716,6 +7805,27 @@ function compactLifecycleProduct(
     projected.pricing_options = product.pricing_options
       .filter(isRecord)
       .map(option => canonicalPricingSnapshot(option, String(option.pricing_option_id ?? '')));
+  }
+  // pickCompactFields copies installments verbatim, so clear it before the
+  // guard: a non-array value must never reach the closed canonical shape.
+  delete projected.installments;
+  if (selectedFields.has('installments') && Array.isArray(product.installments)) {
+    // canonical-product.json requires the collections that scope installment
+    // IDs, so without them the field cannot be returned at all.
+    const collectionIds = productCollectionIndex(product.collections);
+    const source = product.installments.filter(isRecord);
+    const installments = collectionIds.size === 0
+      ? []
+      : source.map(entry => compactInstallment(entry, collectionIds, source));
+    // All or nothing: a shortened set would claim the buyer can only buy the
+    // slots that happened to project, and an omitted one claims
+    // run-of-collection. Neither is true of a partially projectable product.
+    if (installments.length > 0 && installments.every(entry => entry !== undefined)) {
+      projected.installments = installments as Record<string, unknown>[];
+      if (projected.collections === undefined && product.collections !== undefined) {
+        projected.collections = structuredClone(product.collections);
+      }
+    }
   }
   if (selectedFields.has('reporting_capabilities') && isRecord(product.reporting_capabilities)) {
     projected.reporting_capabilities = pickCompactFields(
