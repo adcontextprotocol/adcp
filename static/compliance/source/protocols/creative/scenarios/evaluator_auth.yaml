@@ -1,5 +1,5 @@
 id: creative/evaluator_auth
-version: "1.0.3"
+version: "1.0.4"
 title: "Creative evaluator authentication boundary"
 category: creative
 summary: "Verifies that build_creative evaluator pointers use the verifier allowlist, keep credentials out of payloads, and invoke accepted evaluator agents through get_creative_features."
@@ -42,6 +42,13 @@ narrative: |
   The upstream-traffic checks raise the bar against accidental facades, but they
   are not cryptographic proof of transport authentication. Authentication proof
   remains a normative obligation on the producing agent and evaluator.
+
+  Applicability is determined by the capability gate above. For a supporting
+  agent, both off-list rejection phases are required independently: the evaluator
+  spec and build_creative reference require rejection before any outbound call.
+  A later discovery response cannot opt out of these security checks. Missing
+  build or feature identifiers fail the required discovery context captures;
+  their dependent phases skip rather than dispatch unresolved request values.
 
 agent:
   interaction_model: creative_agent
@@ -194,11 +201,10 @@ phases:
 
   - id: reject_off_list_evaluator
     title: "Reject an off-list evaluator URL"
-    optional: true
     requires_capability:
       path: "creative.supports_evaluator"
       equals: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "!context.build_capability_id || !context.creative_feature_id"
     narrative: |
       The buyer supplies a well-formed external evaluator URL that is not in the
       seller's accepted verifier allowlist. The creative agent must reject it
@@ -250,15 +256,14 @@ phases:
           - check: upstream_traffic
             description: "Off-list direct evaluator URL is never called"
             min_count: 0
-            endpoint_pattern: "POST https://unaccepted-evaluator.example/adcp*"
+            endpoint_pattern: "* https://unaccepted-evaluator.example/*"
 
   - id: reject_off_list_feature_agent
     title: "Reject an off-list feature_agent URL"
-    optional: true
     requires_capability:
       path: "creative.supports_evaluator"
       equals: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "!context.build_capability_id || !context.creative_feature_id"
     narrative: |
       The buyer supplies a well-formed `feature_agent.agent_url` alongside an
       account-arranged evaluator id. The nested feature agent uses the same
@@ -315,7 +320,7 @@ phases:
           - check: upstream_traffic
             description: "Off-list nested feature_agent URL is never called"
             min_count: 0
-            endpoint_pattern: "POST https://unaccepted-evaluator.example/adcp*"
+            endpoint_pattern: "* https://unaccepted-evaluator.example/*"
 
   - id: payload_credentials_advisory
     title: "Keep evaluator credentials out of the payload"
