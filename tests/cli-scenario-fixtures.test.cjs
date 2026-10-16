@@ -400,11 +400,15 @@ test('inline creatives: a named same-kind catalog never receives a selector-less
 });
 
 test('inline creatives: an unnamed same-kind catalog is detected, not bought selector-less', async () => {
-  // Two declarations sharing one format_kind and NEITHER carrying a format_option_id.
-  // format_kind alone cannot route, and there is no id to disambiguate with, so the
-  // product is not authorable by any 3.1 selector. The unnamed lane would otherwise
-  // send a selector-less package here, so this is the case where the second
-  // declaration actually decides the outcome.
+  // Two declarations sharing one format_kind, where the FIRST — the only one any
+  // probe captures — carries no format_option_id. The unnamed lane is therefore the
+  // one that opens, and it sends no selector at all, while format_kind alone cannot
+  // route between two same-kind entries. That makes `ambiguous` the sole term that
+  // can trigger the stub's rejection here: `options[0].format_option_id` is
+  // undefined, so the other half of the condition cannot fire. (The second
+  // declaration does carry an id of its own; it is simply not reachable by the
+  // buyer, which is exactly why the catalog is ambiguous from where the buyer
+  // stands.)
   let selectorLessRejections = 0;
   const { result, calls, creates } = await runInline({
     canonical: true,
@@ -540,7 +544,7 @@ for (const readback of ['missing', 'original']) {
 // exact-match raw (agent_url, id) pairs ONCE a format_id has been projected through
 // canonical, v1_format_ref, or the canonical mapping registry". A NON-projectable
 // legacy format - the case adcp-client#3268 names, and what this storyboard's legacy
-// fixture uses - has no canonical projection, so there is no format_kind to match. And
+// fixture uses - has no canonical projection, so there is no format_kind to match.
 // On the lines where it exists (3.2/main), core/product-filters.json defines
 // format_kinds as "Filter to products accepting any of these canonical format kinds",
 // which such a product does not. 3.1 defines no such filter at all - asserted below -
@@ -583,9 +587,6 @@ test('inline creatives: neither discovery narrows by canonical format_kinds on 3
   );
 });
 
-// The concrete loss if the filter were added: a legacy-only seller that honours
-// format_kinds returns nothing, the legacy gate never opens, and a conformant seller
-// fails the coverage gate having been asked for a canonical kind it never claimed.
 test('inline creatives: a video-first canonical declaration is detected, never bought under', async () => {
   // Mixed seller: canonical first declaration is video, legacy is available. The
   // detector must stop the canonical paths rather than sending the 300x250 image
@@ -625,6 +626,9 @@ test('inline creatives: a canonical-only video-first seller still fails coverage
   assert.equal(result.overall_passed, false);
 });
 
+// The concrete loss if the filter were added: a legacy-only seller that honours
+// format_kinds returns nothing, the legacy gate never opens, and a conformant seller
+// fails the coverage gate having been asked for a canonical kind it never claimed.
 test('inline creatives: a legacy-only seller honouring format_kinds would lose all coverage if filtered', async () => {
   const storyboard = loadStoryboardFile(path.join(SCENARIOS, 'inline_creatives_without_sync.yaml'));
   for (const phase of storyboard.phases) {
