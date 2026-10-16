@@ -75,6 +75,11 @@
       ],
       "additionalProperties": false
     },
+    "signing_profile": {
+      "$ref": "/schemas/enums/webhook-signing-profile.json",
+      "default": "adcp/webhook-signing/v1",
+      "description": "Webhook-signing profile the seller uses for every delivery to this `url`. A seller whose `webhook_signing.profiles` does not list it rejects the entry with `INVALID_REQUEST` or `VALIDATION_ERROR`. MUST NOT be combined with `authentication`."
+    },
     "active": {
       "type": "boolean",
       "default": true,
