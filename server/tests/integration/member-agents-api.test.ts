@@ -792,9 +792,11 @@ describe('Per-agent REST API (/api/me/agents)', () => {
   // The registered side now applies `canonicalizeAgentUrl` at every write
   // boundary so the JSONB / `agent_registry_metadata` rows collapse with
   // the canonical form the discovered (crawler) path already uses.
-  // Pins: lowercase + trailing-slash collapse; query/fragment rejected.
+  // Pins: scheme/host case, default port and a root trailing slash collapse;
+  // path case and a non-root trailing slash do not (#7830); query/fragment
+  // rejected.
 
-  it('POST canonicalizes the url before persisting (lowercase + strip trailing slash)', async () => {
+  it('POST canonicalizes the url before persisting (scheme/host case, default port)', async () => {
     const orgId = `${TEST_PREFIX}_canon_post`;
     const userId = `${TEST_PREFIX}_canon_post_user`;
     await seedOrg(pool, orgId, 'individual_professional');
@@ -804,23 +806,52 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const res = await request(app)
       .post('/api/me/agents').query({ org: orgId })
-      .send({ url: 'HTTPS://Canon.Example.test/Agent/', name: 'C', type: 'sales', visibility: 'private' });
+      .send({ url: 'HTTPS://Canon.Example.test:443/Agent', name: 'C', type: 'sales', visibility: 'private' });
     expect(res.status).toBe(201);
-    expect(res.body.agent.url).toBe('https://canon.example.test/agent');
+    expect(res.body.agent.url).toBe('https://canon.example.test/Agent');
 
     const profile = await memberDb.getProfileByOrgId(orgId);
-    const match = profile!.agents.find((a) => a.url === 'https://canon.example.test/agent');
+    const match = profile!.agents.find((a) => a.url === 'https://canon.example.test/Agent');
     expect(match).toBeDefined();
 
     const meta = await pool.query<{ agent_url: string }>(
       `SELECT agent_url FROM agent_registry_metadata WHERE agent_url = $1`,
-      ['https://canon.example.test/agent'],
+      ['https://canon.example.test/Agent'],
     );
     expect(meta.rowCount).toBe(1);
 
     await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
-      'https://canon.example.test/agent',
+      'https://canon.example.test/Agent',
     ]);
+  });
+
+  it('POST keeps path case and a non-root trailing slash as separate agents', async () => {
+    const orgId = `${TEST_PREFIX}_canon_path`;
+    const userId = `${TEST_PREFIX}_canon_path_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'canonpath');
+
+    (app as any).setCurrentUser(userId);
+    const urls = [
+      'https://path.example.test/mcp',
+      'https://path.example.test/MCP',
+      'https://path.example.test/mcp/',
+    ];
+    for (const url of urls) {
+      const res = await request(app)
+        .post('/api/me/agents').query({ org: orgId })
+        .send({ url, name: url, type: 'sales', visibility: 'private' });
+      // 201 every time: the spec says these are three different agents, so
+      // none of them upserts onto another.
+      expect(res.status, url).toBe(201);
+      expect(res.body.agent.url, url).toBe(url);
+    }
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile!.agents.filter((a) => urls.includes(a.url))).toHaveLength(3);
+
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = ANY($1::text[])', [urls]);
   });
 
   it('POST is idempotent across non-canonical and canonical forms (no duplicate JSONB or metadata rows)', async () => {
@@ -833,7 +864,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const first = await request(app)
       .post('/api/me/agents').query({ org: orgId })
-      .send({ url: 'HTTPS://Idem.Example.test/MCP/', name: 'First', type: 'sales', visibility: 'private' });
+      .send({ url: ' HTTPS://Idem.Example.test:443/mcp ', name: 'First', type: 'sales', visibility: 'private' });
     expect(first.status).toBe(201);
     expect(first.body.agent.url).toBe('https://idem.example.test/mcp');
 
@@ -849,7 +880,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
 
     const meta = await pool.query<{ agent_url: string }>(
       `SELECT agent_url FROM agent_registry_metadata WHERE agent_url IN ($1, $2)`,
-      ['https://idem.example.test/mcp', 'HTTPS://Idem.Example.test/MCP/'],
+      ['https://idem.example.test/mcp', 'HTTPS://Idem.Example.test:443/mcp'],
     );
     expect(meta.rowCount).toBe(1);
     expect(meta.rows[0].agent_url).toBe('https://idem.example.test/mcp');
@@ -873,7 +904,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       .send({ url: 'https://patch.example.test/mcp', name: 'P', type: 'sales', visibility: 'private' });
 
     // PATCH with a non-canonical url-encoded path — must collapse onto the canonical row.
-    const noncanonical = encodeURIComponent('HTTPS://Patch.Example.test/MCP/');
+    const noncanonical = encodeURIComponent('HTTPS://Patch.Example.test:443/mcp');
     const res = await request(app)
       .patch(`/api/me/agents/${noncanonical}`).query({ org: orgId })
       .send({ name: 'Renamed' });
@@ -886,7 +917,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     ]);
   });
 
-  it('PATCH allows body.url to differ from the path only in case/trailing slash', async () => {
+  it('PATCH allows body.url to differ from the path only in what the key folds', async () => {
     const orgId = `${TEST_PREFIX}_canon_patch_body`;
     const userId = `${TEST_PREFIX}_canon_patch_body_user`;
     await seedOrg(pool, orgId, 'individual_professional');
@@ -901,7 +932,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     const path = encodeURIComponent('https://patchbody.example.test/mcp');
     const res = await request(app)
       .patch(`/api/me/agents/${path}`).query({ org: orgId })
-      .send({ name: 'OK', url: 'HTTPS://PatchBody.Example.test/MCP/' });
+      .send({ name: 'OK', url: 'HTTPS://PatchBody.Example.test:443/mcp' });
     expect(res.status).toBe(200);
 
     await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
@@ -921,7 +952,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       .post('/api/me/agents').query({ org: orgId })
       .send({ url: 'https://del.example.test/mcp', name: 'D', type: 'sales', visibility: 'private' });
 
-    const noncanonical = encodeURIComponent('HTTPS://Del.Example.test/MCP/');
+    const noncanonical = encodeURIComponent('HTTPS://Del.Example.test:443/mcp');
     const res = await request(app).delete(`/api/me/agents/${noncanonical}`).query({ org: orgId });
     expect(res.status).toBe(204);
 
