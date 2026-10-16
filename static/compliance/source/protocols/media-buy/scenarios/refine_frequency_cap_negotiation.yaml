@@ -10,6 +10,9 @@ required_tools:
   - refine_proposals
 
 requires_all_capabilities:
+  # Refinement support does not imply the compact proposal producer.
+  - path: media_buy.lifecycle_tools
+    contains: request_proposals
   - path: media_buy.aggregate_frequency_capping
     present: true
   - path: media_buy.proposal_refinement.supported_dimensions
