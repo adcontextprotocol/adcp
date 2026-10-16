@@ -1,0 +1,21 @@
+---
+title: L4 — 业务逻辑
+sidebarTitle: L4 — 业务逻辑
+description: "AdCP 栈的业务逻辑层。SDK 留给你的部分：代理侧的库存和定价，调用方侧的规划与购买。大约 95% 的采用者从这一层开始。"
+"og:title": "AdCP — L4（业务逻辑）"
+---
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[L4 — Business logic](/docs/building/by-layer/L4)。没有中文译本的链接会打开英文规范页面。
+</Info>
+
+L4 是让你的代理或调用方成为「你的」那一层。AdCP SDK 交付 L0 到 L3（线路、签名、认证、协议语义），把 L4 留给你。对大多数采用者，从这里开始是对的：团队的增值在这一层，不在重新实现底下的协议。
+
+各下层包含什么、每一层的 SDK 必须提供什么，见 [SDK 栈参考](/docs/building/cross-cutting/sdk-stack)（英文规范）。
+
+## 这一层的页面
+
+- **[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)** — 语言覆盖矩阵、安装命令、包导出、命令行工具。还没选定 SDK 时从这里开始。
+- **[搭建代理](/zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent)** — 服务端。把技能文件交给编程代理，得到符合故事板的 AdCP 代理。
+- **[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)** — 客户端。安装 SDK、发现代理、发起调用、处理响应、读入报告。
+- **[从手写实现迁移](/zh/dist/docs/3.2.3/building/by-layer/L4/migrate-from-hand-rolled)** — 已经有一套在 SDK 成熟之前写好的 AdCP 代理？一次换一层。

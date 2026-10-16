@@ -1,0 +1,200 @@
+---
+title: 选择 SDK
+sidebarTitle: 选择 SDK
+description: "按语言选择 AdCP SDK。覆盖矩阵、安装命令，以及各 SDK 在 L0 到 L3 已经承担的协议表面。"
+"og:title": "AdCP — 选择 SDK"
+---
+
+AdCP SDK 吸收 L0–L3（线路、签名、认证、协议语义），你写 L4 业务逻辑。选你已经在用的语言。三个 SDK 对准同一条线路一致性标准。
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) 是规范文本。包版本必须与英文原文一致；英文矩阵更新时，在同一次变更里改本页。
+</Info>
+
+<Note>
+**生产环境从受维护的 SDK 开始。** AdCP 仍然是开放的线路协议。原始模式适合 SDK 作者、代码生成器和专用基础设施。直接建在线路上的生产实现，必须自己把版本协商、校验、签名、授权、异步状态、幂等、重试、兼容和审计做对。这是一笔正当的企业投资，但应当是故意的选择，而不是默认的集成路径。
+</Note>
+
+每一层包含什么、每一层的 SDK 应该提供什么，见英文的 [SDK 栈参考](/docs/building/cross-cutting/sdk-stack)。
+
+## 覆盖矩阵
+
+每一层「已交付」的含义，是[L0–L3 清单](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide)（英文）。
+
+*上次更新：2026-10-06。*
+
+| SDK | 当前包 | 3.2 支持 | L0 | L1 | L2 | L3 |
+| --- | --- | --- | :-: | :-: | :-: | :-: |
+| **`@adcp/sdk`**（TypeScript） | `14.2.0` | 精确支持 `3.2.1` | ✅ | ✅ | ✅ | ✅ |
+| **`adcp`**（Python） | `8.0.0` | 精确的 `3.2.1` 模式和类型；更高层的辅助函数仍不完整 | ✅ | ⚠️ | ⚠️ | ⚠️ |
+| **`adcp/v3`**（Go） | `v3.2.1` | 内嵌 `3.2.0-rc.1` 生成的模式和类型，线路钉扎默认为 `"3.1"`；最终的 3.2 支持计划随后发布 | ✅ | ⚠️ | ⚠️ | ⚠️ |
+
+图例：✅ 已交付 · ⚠️ 部分交付或随角色而异 · ❌ 尚未覆盖。L0–L3 各列描述的是当前包，不是一项 3.2 支持声明。
+
+`@adcp/sdk@14.2.0` 在 npm 的 `latest` 发行标签上（也在 `adcp-3.2` 上），并包含卖方报告模块（`@adcp/sdk/reporting/source` 和 `@adcp/sdk/reporting/ledger`）以及买方消费模块（`@adcp/sdk/reporting/consumer`）。Python `adcp==8.0.0` 内嵌最终的 3.2 模式。Go 的最终 3.2 支持计划作为后续发行；查看 [adcp-go 发行记录](https://github.com/adcontextprotocol/adcp-go/releases)。
+
+留在 3.1 的集成继续使用 3.1 线路：`@adcp/sdk` 13.x（npm 发行标签 `adcp-3.1`）和 `adcp` 7.x。[SDK 版本对照](/docs/reference/migration/3-1-to-3-2#sdk-versions-for-3-2)（英文）列出每种语言的 3.1 与 3.2 线路，以及各自的升级指南。
+
+<Note>
+**TypeScript 和 Python SDK 内嵌 AdCP 3.2（`3.2.1`）。** 对端在 `get_adcp_capabilities.adcp.supported_versions` 里列出 `"3.2"` 时，发送 `adcp_version: "3.2"`；对端没有列出时保持 `"3.1"`。原始线路和代码生成可以使用[已签名的 `3.2.1` 包](https://adcontextprotocol.org/protocol/3.2.1.tgz)（见[校验协议包](/docs/reference/verifying-protocol-tarballs)，英文）。
+</Note>
+
+TypeScript SDK 目前提供最宽的 L0–L3 表面。Python 是一等 SDK，模式和类型覆盖完整，更高层随角色而异。Go 的 `adcp/v3` 模块提供类型化的 AdCP 3.x 表面、签名，以及传输和服务器构建块，覆盖随角色而异。矩阵日期之后的变化，看下面的发行链接。
+
+每个已发布协议版本的状态，见[版本与兼容](/docs/reference/versions)（英文）。迁移和归档版本的说明在[发行说明与迁移](/docs/reference/migration/index)（英文）。
+
+**TypeScript 和 Python 是一等支持的语言**，层覆盖如上表。**Go** 正朝同一方向移动。**其他语言**不在官方路线图上；社区移植欢迎加入[构建者工作组](/docs/community/working-group)和 [Slack 社区](/docs/community/joining-slack)（均为英文）。
+
+### 3.x 之间的媒体购买兼容
+
+共享同一份协议模式包，并不表示工作流自动化相同。把 SDK 包版本、所服务的 AdCP 版本，以及卖方公布的生命周期工具分开看。
+
+| SDK | 混合版本购买的入口 | 当前边界 |
+| --- | --- | --- |
+| TypeScript | `agent.negotiateMediaBuyLifecycle()` 按操作选择原生工具或既有工具。 | 具名的 `allowedLosses` 允许受支持的旧变更；结果会暴露实际执行的工具和损失。直接调用 `agent.listProducts()` / `agent.buyProducts()` 使用原生工具。 |
+| Python | 既有客户端方法仍然可用；`adcp.compat.purchase_continuation.LegacyPurchaseCoordinator` 处理显式的旧购买延续。 | `client.buy_products()` 这类紧凑方法分发同名工具。延续协调器需要 store 和 executor；它不是通用的自动生命周期路由器。 |
+| Go | 版本辅助函数、生成的请求/响应类型，以及类型化的服务器注册。 | 买方的生命周期选择和延续编排仍由应用自己拥有。 |
+
+TypeScript 协调器已经支持普通的旧购买行为，但损失必须显式选择加入。它的列表适配器把可表示的 `criteria.offer_filters` 映射到协商后的旧模式上，并在分发前拒绝其他不受支持的条件。它的直接购买适配器即使调用方接受非原子围栏，也仍然需要真实的 `feed_version`。仅含产品的简报购买延续提供另一条旧路径。缺少一项新保证，并不使卖方既有的创建 API 变得不可用。
+
+在卖方一侧，框架保留已注册的旧处理函数；只实现紧凑处理函数，不会生成每一种旧行为。在服务较旧的买方时保留既有处理函数，并选择适合那些集成的无版本默认值。
+
+九种买方–卖方组合、审计过的确切发行、当前缺口和可复现探针，见 [SDK 生命周期兼容审计](https://github.com/adcontextprotocol/adcp/blob/main/specs/sdk-lifecycle-compatibility-audit.md)（英文）。TypeScript 现有的[兼容指南](https://github.com/adcontextprotocol/adcp-client/blob/2b27442fbaf972f7a4236af227800feec268aeb0/docs/guides/MEDIA-BUY-3.2-COMPATIBILITY.md)记录了协调器选项、延续存储和受支持的投影。
+
+## JavaScript / TypeScript
+
+[![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
+
+```bash
+npm install @adcp/sdk@14.2.0
+```
+
+```javascript
+import { createSingleAgentClient } from '@adcp/sdk';
+
+const client = createSingleAgentClient({
+  id: 'sales',
+  name: 'Sales agent',
+  agent_uri: 'https://sales.example.com/mcp',
+  protocol: 'mcp',
+});
+
+const products = await client.listProducts({
+  adcp_version: '3.2',
+  account: { account_id: 'account_123' },
+  criteria: {
+    offer_filters: { channels: ['ctv'] },
+  },
+});
+```
+
+**资源：**
+
+- [NPM 包](https://www.npmjs.com/package/@adcp/sdk)
+- [GitHub 仓库](https://github.com/adcontextprotocol/adcp-client)
+
+**包导出：**
+
+- `@adcp/sdk`：主入口。调用方（`createSingleAgentClient`、`ADCPMultiAgentClient`）和共享类型
+- `@adcp/sdk/server`：代理一侧的服务器原语（`createAdcpServerFromPlatform`、决策平台接口）；更低层的 `createAdcpServer` 仍保留在 `@adcp/sdk/server/legacy/v5`
+- `@adcp/sdk/signing`：RFC 9421 签名原语
+- `@adcp/sdk/signing/server`：webhook 和请求验证器（`createWebhookVerifier`、`verifyRequestSignature`、`createExpressVerifier`）
+- `@adcp/sdk/signing/client`：出站签名（`signRequest`、`signWebhook`、`createSigningFetch`）
+- `@adcp/sdk/testing`：买方故事板运行器（`runStoryboard`、`comply`、`testAgent`）和卖方控制器脚手架（`createComplyController`，见[准备测试](/docs/building/verification/get-test-ready)，英文）
+- `@adcp/sdk/conformance`：一致性测试装置用的断言和故事板辅助函数
+- `@adcp/sdk/schemas`：内嵌的 AdCP JSON 模式
+- `@adcp/sdk/types`：TypeScript 类型定义
+
+<Accordion title="维护较旧的集成">
+
+SDK 14 为混合版本部署保留既有的 3.0/3.1 工具和兼容适配器。它也保留 `@adcp/sdk/server/legacy/v5` 和 `@adcp/sdk/types/v2-5`，供仍在迁移旧代码的应用使用。新的 3.2 集成应使用主服务器导出和按工具划分的类型导出。
+
+</Accordion>
+
+## Python
+
+[![PyPI version](https://img.shields.io/pypi/v/adcp)](https://pypi.org/project/adcp/)
+
+```bash
+pip install adcp==8.0.0
+```
+
+```python
+from adcp import ADCPClient, AgentConfig, Protocol, GetProductsRequest
+
+client = ADCPClient(AgentConfig(
+    id='sales',
+    agent_uri='https://sales.example.com/mcp',
+    protocol=Protocol.MCP,
+))
+
+result = await client.get_products(
+    GetProductsRequest(
+        idempotency_key='550e8400-e29b-41d4-a716-446655442045',
+        buying_mode='brief',
+        brief='Video campaign for pet owners',
+    ),
+)
+```
+
+**资源：**
+
+- [PyPI 包](https://pypi.org/project/adcp/)
+- [GitHub 仓库](https://github.com/adcontextprotocol/adcp-client-python)
+
+## Go
+
+```bash
+go get github.com/adcontextprotocol/adcp-go/adcp/v3@v3.2.1
+```
+
+Go SDK 的 `adcp/v3` 模块提供 `3.2.0-rc.1` 生成的模式和类型、类型化的工具注册、响应构建器、签名、合规测试控制器，以及传输和服务器构建块。更高层的覆盖仍随角色而异。`/v3` 后缀是 Go 语义化导入版本所要求的。Go 模块版本不是 AdCP 版本：`v3.2.1` 是一次 SDK 发行，线路钉扎默认为 `"3.1"`，而不是 AdCP 3.2.1。Go 的最终 3.2 支持计划作为后续发行；查看 [adcp-go 发行记录](https://github.com/adcontextprotocol/adcp-go/releases)。
+
+| 组件 | 导入 |
+| --- | --- |
+| 工具注册 | `adcp.AddTool(server, name, desc, handler)` |
+| HTTP 服务器 | `adcp.Serve(createAgent)` |
+| 响应构建器 | `adcp.ProductsResponse(data)`、`adcp.MediaBuyResponse(data)` 等 |
+| 测试控制器 | `adcp.RegisterTestController(server, store)` |
+| 技能 | [github.com/adcontextprotocol/adcp-go/skills](https://github.com/adcontextprotocol/adcp-go/tree/main/skills) |
+
+完整 API 见 [Go SDK README](https://github.com/adcontextprotocol/adcp-go)。
+
+**资源：**
+
+- [GitHub 仓库](https://github.com/adcontextprotocol/adcp-go)
+
+## 命令行工具
+
+JavaScript 和 Python SDK 都带有用于测试和开发的命令行工具。
+
+两个 SDK 的位置参数形状相同：`adcp <agent> [tool] [payload]`。第一个位置参数是别名、内置名（`test-mcp`、`test-a2a`）或 URL，协议会自动检测。用 `--save-auth` 保存别名，避免反复输入。
+
+### JavaScript 命令行
+
+```bash
+npx @adcp/sdk@14.2.0 --help
+npx @adcp/sdk@14.2.0 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@14.2.0 my-agent list_products '{"adcp_version":"3.2","account":{"account_id":"account_123"}}'
+# 或对着内置的公开测试代理：
+npx @adcp/sdk@14.2.0 test-mcp list_products '{"adcp_version":"3.2"}'
+```
+
+载荷里的 `adcp_version` 是命令行原样传递的线路钉扎，因此它可以指向 SDK 内嵌版本以外的发行。请求和响应校验仍使用 SDK 内嵌的包。
+
+命令行也能驱动故事板（`adcp storyboard run`）、一致性评分（`adcp grade`）和注册表诊断。完整表面见 `--help`。
+
+### Python 命令行
+
+```bash
+uvx --from adcp==8.0.0 adcp --help
+uvx --from adcp==8.0.0 adcp --save-auth my-agent https://sales.example.com/mcp
+uvx --from adcp==8.0.0 adcp my-agent get_products '{"adcp_version":"3.2","idempotency_key":"550e8400-e29b-41d4-a716-446655442064","buying_mode":"brief","brief":"CTV campaign"}'
+```
+
+## 接下来
+
+- **[搭建代理](/zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent)**：服务端 L4。技能文件加上编程代理。
+- **[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)**：客户端 L4。安装、调用、处理响应、读入报告。
+- **[模式](/docs/building/by-layer/L0/schemas)**（英文）：模式包、类型生成、版本钉扎。
+- **[从手写实现迁移](/zh/dist/docs/3.2.3/building/by-layer/L4/migrate-from-hand-rolled)**：SDK 覆盖扩大之前已经在跑的代理，一次换一层。

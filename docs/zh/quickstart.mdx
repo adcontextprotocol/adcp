@@ -1,0 +1,324 @@
+---
+title: 快速开始
+sidebarTitle: 快速开始
+"og:title": "AdCP — 快速开始"
+description: "AdCP 快速开始：买方五分钟调用公开测试代理，媒体方与卖方搭建自己的代理。本页含可复制的 curl。"
+---
+
+选择你的路径。买方在五分钟内调用公开测试代理。媒体方和卖方搭建一个买方可以调用的代理。
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。本页走完发现产品、处理错误、创建媒体购买和带签名的 webhook。要收成可维护的集成，继续看[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)。英文原文：[Quickstart](/docs/quickstart)。没有中文译本的链接会打开英文规范页面。
+</Info>
+
+<CardGroup cols={2}>
+  <Card title="我要调用代理" icon="plug">
+    买方一侧。本页其余部分演示如何调用公开测试代理：无需注册，curl 可以直接复制。
+  </Card>
+  <Card title="我要搭建代理" icon="server" href="/zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent">
+    媒体方或卖方一侧。搭建一个买方可以调用的代理。
+  </Card>
+</CardGroup>
+
+## 准备
+
+使用公开测试令牌即可开始，无需注册：
+
+```bash
+export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/sales/mcp"
+```
+
+测试代理按路径区分专业方向：`/sales/mcp` 提供媒体购买工具（本快速开始走这条路径），同级 URL 提供其他专业方向：`/signals/mcp`、`/governance/mcp`、`/creative/mcp`、`/creative-builder/mcp`、`/brand/mcp`。完整租户和工具列表见 [`/.well-known/adagents.json`](https://test-agent.adcontextprotocol.org/.well-known/adagents.json)。
+
+如果需要自己的 API 密钥（按组织隔离，并记录用量），在 [AgenticAdvertising.org 控制台](https://agenticadvertising.org/dashboard/api-keys) 创建。
+
+## 1. 发现产品
+
+AdCP over MCP 使用 JSON-RPC 2.0。传输层是 [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http)，响应以服务器发送事件（SSE）返回。
+
+```bash
+curl -X POST $AGENT_URL \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "get_products",
+      "arguments": {
+        "idempotency_key": "550e8400-e29b-41d4-a716-446655442067",
+        "buying_mode": "brief",
+        "brief": "Video ads for pet food brand",
+        "brand": { "domain": "premiumpetfoods.com" }
+      }
+    }
+  }'
+```
+
+**响应**（为清晰起见，省略了 SSE 封装）：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"products\":[{\"product_id\":\"pinnacle_news_video_premium\",\"name\":\"Pinnacle News Group video guaranteed\",\"channels\":[\"olv\",\"ctv\"],\"pricing_options\":[{\"pricing_option_id\":\"pinnacle_news_video_premium_pricing_0\",\"pricing_model\":\"cpm\",\"currency\":\"USD\",\"fixed_price\":15}],\"delivery_type\":\"guaranteed\"}, ...],\"sandbox\":true}"
+      }
+    ]
+  }
+}
+```
+
+**取出结果**。AdCP 载荷是编码在 `content[0].text` 里的 JSON：
+
+```javascript
+const response = /* parsed JSON-RPC response */;
+const payload = JSON.parse(response.result.content[0].text);
+
+console.log(payload.products[0].product_id);    // "pinnacle_news_video_premium"
+console.log(payload.products[0].channels);      // ["olv", "ctv"]
+console.log(payload.products[0].pricing_options[0].pricing_option_id); // "pinnacle_news_video_premium_pricing_0"
+console.log(payload.products[0].pricing_options[0].fixed_price);       // 15
+```
+
+## 2. 处理错误
+
+发送一个不存在的工具名，看错误长什么样：
+
+```bash
+curl -X POST $AGENT_URL \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "nonexistent_tool",
+      "arguments": {}
+    }
+  }'
+```
+
+**响应：**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"code\":\"INVALID_REQUEST\",\"message\":\"Unknown tool: nonexistent_tool\"}"
+      }
+    ],
+    "isError": true
+  }
+}
+```
+
+**处理它**。先看 `isError`，再解析错误载荷：
+
+```javascript
+const response = /* parsed JSON-RPC response */;
+
+if (response.result.isError) {
+  const err = JSON.parse(response.result.content[0].text);
+  console.log(err.code);     // "INVALID_REQUEST"
+  console.log(err.message);  // "Unknown tool: nonexistent_tool"
+}
+```
+
+常见错误码：`INVALID_REQUEST`（输入不合法）、`RATE_LIMITED`（退避后重试）、`UNAUTHORIZED`（检查凭据）。
+
+## 3. 创建媒体购买（保证幂等）
+
+用第 1 步拿到的产品 ID 创建投放。每个会改状态的请求都必须带 `idempotency_key`：客户端生成的 UUID v4，用来让重试是安全的。相同的键配上相同的载荷，卖方返回原来的结果，而不是再创建一笔购买：
+
+```bash
+export IDEMPOTENCY_KEY="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+
+curl -X POST $AGENT_URL \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
+  -d "{
+    \"jsonrpc\": \"2.0\",
+    \"id\": 1,
+    \"method\": \"tools/call\",
+    \"params\": {
+      \"name\": \"create_media_buy\",
+      \"arguments\": {
+        \"idempotency_key\": \"$IDEMPOTENCY_KEY\",
+        \"account\": { \"account_id\": \"test_account\" },
+        \"brand\": { \"domain\": \"premiumpetfoods.com\" },
+        \"start_time\": \"asap\",
+        \"end_time\": \"2026-04-30T00:00:00Z\",
+        \"packages\": [{
+          \"product_id\": \"pinnacle_news_video_premium\",
+          \"budget\": 5000,
+          \"pricing_option_id\": \"pinnacle_news_video_premium_pricing_0\"
+        }]
+      }
+    }
+  }"
+```
+
+用相同的键和相同的载荷重放请求，卖方返回原始响应，并带上 `replayed: true`。相同的键配上不同的载荷，会得到 `IDEMPOTENCY_CONFLICT`。卖方的时间窗口通过 `get_adcp_capabilities` 查询：
+
+```json
+{ "idempotency": { "supported": true, "replay_ttl_seconds": 86400 } }
+```
+
+完整重试模型见[安全指南](/docs/building/by-layer/L1/security)（英文规范），其中包括 `IDEMPOTENCY_CONFLICT`、`IDEMPOTENCY_EXPIRED`，以及 AgenticAdvertising.org Verified 代理对 UUID v4 的要求。
+
+**响应**（每次调用的 ID 都会不同）：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"media_buy_id\":\"mb_f4139524\",\"status\":\"active\",\"revision\":1,\"packages\":[{\"package_id\":\"pkg_3df649f0\",\"product_id\":\"pinnacle_news_video_premium\",\"budget\":5000,\"pricing_option_id\":\"pinnacle_news_video_premium_pricing_0\"}],\"valid_actions\":[\"pause\",\"cancel\",\"update_budget\",\"update_dates\",\"update_packages\",\"add_packages\",\"sync_creatives\"],\"sandbox\":true}"
+      }
+    ]
+  }
+}
+```
+
+**取出结果：**
+
+```javascript
+const response = /* parsed JSON-RPC response */;
+const buy = JSON.parse(response.result.content[0].text);
+
+console.log(buy.media_buy_id);     // "mb_f4139524"
+console.log(buy.status);           // "active"
+console.log(buy.packages[0].budget); // 5000
+console.log(buy.valid_actions);    // ["pause", "cancel", "update_budget", ...]
+```
+
+## 4. 推送通知（带签名的 webhook）
+
+生产环境中的代理会为长时间运行的操作发送 webhook。AdCP 3.0 用**与代理之间请求相同的 RFC 9421 HTTP Message Signatures 配置**给 webhook 签名：同一套验证器、同一套 JWKS、同一块信任面。不使用共享的 HMAC 密钥。
+
+把代理指向你的 webhook 端点，并公布你的 JWKS。代理用它信任的密钥给每个 POST 签名；你拉取代理的 JWKS，在根据载荷采取行动之前先验证签名：
+
+```json
+{
+  "name": "create_media_buy",
+  "arguments": {
+    "idempotency_key": "5c4c6f29-...",
+    "account": { "account_id": "your_account" },
+    "brand": { "domain": "premiumpetfoods.com" },
+    "push_notification_config": {
+      "url": "https://you.example.com/webhooks/adcp",
+      "authentication": {
+        "schemes": ["HTTP_MESSAGE_SIGNATURES"]
+      }
+    }
+  }
+}
+```
+
+操作完成后，代理向你的 URL 发送一个带签名的 POST。载荷自带 `idempotency_key`，接收方可以据此去掉重试造成的重复：
+
+```json
+{
+  "task_id": "task_456",
+  "idempotency_key": "webhook_evt_8f2a...",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "timestamp": "2026-04-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "packages": [{ "package_id": "pkg_001" }]
+  }
+}
+```
+
+在信任载荷之前先验证签名：用[代理解析](/docs/building/by-layer/L1/security#agent-resolution)（英文规范）解析 `keyid`（卖方的 `identity.brand_json_url` 指向它的 `brand.json`，其中有 `agents[].jwks_uri`），只保留与适用的媒体方 `adagents.json` `signing_keys[]` 钉扎相匹配的密钥，按 AdCP webhook 验证清单执行，并用带类型的 `webhook_signature_*` 原因码拒绝未知密钥、过期日期或不匹配的摘要：
+
+```typescript
+app.post('/webhooks/adcp/*', async (req, res) => {
+  try {
+    await verifyAdcpWebhookSignature(req, {
+      sellerAgentUrl: req.sellerContext.agentUrl,
+      requiredTag: 'adcp/webhook-signing/v1',
+      allowedAlgs: ['ed25519', 'ecdsa-p256-sha256'],
+    });
+  } catch (err) {
+    return res.status(401)
+      .setHeader('WWW-Authenticate', `Signature error="${err.code}"`)
+      .end();
+  }
+
+  const { idempotency_key } = req.body;
+  if (await seen(idempotency_key)) return res.status(200).end();
+  await process(req.body);
+  res.status(200).end();
+});
+```
+
+完整验证配置见[安全指南](/docs/building/by-layer/L1/security)和 [Webhook 指南](/docs/building/by-layer/L3/webhooks)（均为英文规范）：必需请求头、被签名覆盖的组件、nonce 与日期窗口，以及合规运行器会执行的负向测试集。
+
+## 使用客户端库
+
+上面的例子用原始 HTTP，是为了把过程写清楚。实际使用时，用 AdCP 客户端库处理 SSE 解析、重试和认证。安装与调用形状见[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)，覆盖矩阵见[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)：
+
+```bash
+npm install @adcp/sdk  # JavaScript/TypeScript
+pip install adcp          # Python
+```
+
+```javascript
+import { ADCPMultiAgentClient } from '@adcp/sdk';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test',
+  name: 'Test Agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/sales/mcp',
+  protocol: 'mcp',
+  auth_token: process.env.ADCP_AUTH_TOKEN,
+}]);
+
+const result = await client.agent('test').getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442043',
+  buying_mode: 'brief',
+  brief: 'Video ads for pet food brand',
+  brand: { domain: 'premiumpetfoods.com' },
+});
+
+console.log(result.data.products);
+```
+
+## 接下来
+
+中文页面：
+
+- **[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)**：把本页的 curl 收成 SDK 集成
+- **[调用代理](/zh/dist/docs/3.2.3/protocol/calling-an-agent)**：幂等、`account` 的 `oneOf`、异步 `submitted`
+- **[搭建代理](/zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent)**：用技能文件和编程代理生成符合故事板的代理
+- **[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)**：语言覆盖和安装命令
+
+仍为英文的规范页面：
+
+- **[验证你的代理](/docs/building/verification/validate-your-agent)**：用故事板和合规检查测试代理
+- **[合规目录](/docs/building/verification/compliance-catalog)**：代理可以声明的领域和专业方向，以及验证每项声明的故事板
+- **[MCP 集成指南](/docs/building/by-layer/L0/mcp-guide)**：传输、会话和认证细节
+- **[A2A 集成指南](/docs/building/by-layer/L0/a2a-guide)**：流式传输、产物和推送通知
+- **[媒体购买生命周期](/docs/media-buy/media-buys/lifecycle)**：状态机、顺序流程、保证式交易的 IO 路径，以及创意同步时机
+- **[任务参考](/docs/media-buy/task-reference)**：全部任务及可测试示例
+- **[错误处理](/docs/building/operating/transport-errors)**：错误码和恢复策略
+- **[认证](/docs/building/by-layer/L2/authentication)**：生产环境凭据配置
