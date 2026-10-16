@@ -187,6 +187,14 @@ phases:
         validations:
           - check: response_schema
 
+  - id: inspect_update_actions
+    title: "Inspect compact update actions"
+    # Package-cap support does not imply support for compact control. Keep the
+    # independent discovery and creation checks applicable without that tool.
+    requires_capability:
+      path: media_buy.lifecycle_tools
+      contains: control_media_buy
+    steps:
       - id: get_mixed_buy_actions
         title: "Read package-qualified update action"
         task: get_media_buys
@@ -206,6 +214,9 @@ phases:
               applicable_package_ids: ["$context.mutable_package_id"]
 
   - id: enforce_update_boundaries
+    requires_capability:
+      path: media_buy.lifecycle_tools
+      contains: control_media_buy
     title: "Reject immutable update and accept mutable update"
     steps:
       - id: reject_create_only_update
@@ -216,7 +227,7 @@ phases:
         doc_ref: "/media-buy/task-reference/control_media_buy"
         expect_error: true
         negative_path: payload_well_formed
-        stateful: false
+        stateful: true
         sample_request:
           account: { account_id: "$context.account_id" }
           media_buy_id: "$context.media_buy_id"
@@ -241,7 +252,7 @@ phases:
         doc_ref: "/media-buy/task-reference/control_media_buy"
         expect_error: true
         negative_path: payload_well_formed
-        stateful: false
+        stateful: true
         sample_request:
           account: { account_id: "$context.account_id" }
           media_buy_id: "$context.media_buy_id"
@@ -267,7 +278,7 @@ phases:
         doc_ref: "/media-buy/task-reference/control_media_buy"
         expect_error: true
         negative_path: payload_well_formed
-        stateful: false
+        stateful: true
         sample_request:
           account: { account_id: "$context.account_id" }
           media_buy_id: "$context.media_buy_id"
