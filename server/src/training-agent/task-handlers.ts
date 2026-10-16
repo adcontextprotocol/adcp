@@ -123,6 +123,7 @@ import type {
   RefineProposalsRequest,
 } from '@adcp/sdk';
 import { CreativeAssetSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
+import { complianceScenariosForServedVersion } from './compliance-scenarios.js';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getGovernanceSigningPublicJwk } from './governance-signing.js';
 import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
@@ -3290,14 +3291,6 @@ export function acceptancePolicyDiscoveryCapability(
     default_profile_ids: [TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE],
   };
 }
-const THREE_ZERO_COMPLIANCE_SCENARIOS = [
-  'force_creative_status',
-  'force_account_status',
-  'force_media_buy_status',
-  'force_session_status',
-  'simulate_delivery',
-  'simulate_budget_spend',
-] as const;
 const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
 
@@ -19736,29 +19729,30 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
   const protocolMethodsSupportedFor = (signingCap.supported_for?.filter(isProtocolMethodName) ?? [])
     .filter(op => !isThreeZeroResponse || op.includes('/'));
   const wholesaleProfile = wholesaleCapabilityProfile(ctx);
-  const complianceScenarios = isThreeZeroResponse
-    ? [...THREE_ZERO_COMPLIANCE_SCENARIOS]
-    : [
-        'force_creative_status',
-        'force_audience_status',
-        'force_account_status',
-        'force_media_buy_status',
-        'force_create_media_buy_arm',
-        'force_task_completion',
-        'force_creative_purge',
-        'force_session_status',
-        'simulate_delivery',
-        'simulate_budget_spend',
-        'seed_account',
-        'seed_product',
-        'seed_pricing_option',
-        'seed_creative',
-        'seed_plan',
-        'seed_media_buy',
-        'seed_creative_format',
-        'seed_measurement_catalog',
-        'query_provenance_audit_observations',
-      ];
+  // The served release's capabilities schema decides which scenarios may be
+  // listed: 3.0 closes the enum to its original six, later releases accept
+  // any scenario name.
+  const complianceScenarios = complianceScenariosForServedVersion([
+    'force_creative_status',
+    'force_audience_status',
+    'force_account_status',
+    'force_media_buy_status',
+    'force_create_media_buy_arm',
+    'force_task_completion',
+    'force_creative_purge',
+    'force_session_status',
+    'simulate_delivery',
+    'simulate_budget_spend',
+    'seed_account',
+    'seed_product',
+    'seed_pricing_option',
+    'seed_creative',
+    'seed_plan',
+    'seed_media_buy',
+    'seed_creative_format',
+    'seed_measurement_catalog',
+    'query_provenance_audit_observations',
+  ], isThreeZeroResponse ? '3.0' : servedAdcpVersion);
   // AdCP 3.2 requires every signing-capable endpoint to require
   // content-digest coverage and to verify under the 3.2 sf-binary profile.
   // The legacy conformance routes intentionally exercise the 3.0/3.1
