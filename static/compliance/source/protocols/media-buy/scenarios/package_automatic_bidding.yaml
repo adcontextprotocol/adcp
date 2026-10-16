@@ -1,5 +1,5 @@
 id: media_buy_seller/package_automatic_bidding
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller preserves explicit package automatic bidding"
 category: media_buy_seller
 summary: "Verifies package-scoped automatic bidding independently of media-buy bidding support."
@@ -7,9 +7,12 @@ track: media_buy
 requires:
   - controller
 
-requires_capability:
-  path: media_buy.features.bidding_policy.package.fixed.modes
-  contains: automatic
+requires_all_capabilities:
+  - path: media_buy.features.bidding_policy.package.fixed.modes
+    contains: automatic
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - create_media_buy

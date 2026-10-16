@@ -1,5 +1,5 @@
 id: media_buy_seller/available_actions
-version: "1.0.1"
+version: "1.0.2"
 title: "Seller carries product allowed actions into per-buy available actions"
 category: media_buy_seller
 summary: "Validates the AdCP 3.1 media-buy action-discovery flow: product allowed_actions[], buy available_actions[], SLAWindow duration fields, self-serve mutation, and ACTION_NOT_ALLOWED enforcement."
@@ -18,6 +18,9 @@ requires_all_capabilities:
     equals: auto_approve
   - path: creative.has_creative_library
     equals: true
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - get_products
@@ -90,7 +93,7 @@ fixtures:
       description: "Display inventory fixture used to verify product allowed actions become buy available actions."
       # Non-guaranteed so this scenario is runnable by sales-non-guaranteed-only
       # sellers (a guaranteed-only fixture made create_buy_from_product fail with
-      # DELIVERY_MODE_NOT_SUPPORTED, cascading the whole available-actions flow).
+      # UNSUPPORTED_FEATURE, cascading the whole available-actions flow).
       # The allowed_actions below — what this scenario actually grades — are
       # delivery-type-agnostic. Keep this fixture non-guaranteed when extending
       # the scenario; it mirrors the base media-buy flow compatibility fix.

@@ -1,5 +1,5 @@
 id: media_buy_seller/demographic_targeting
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller compiles portable age intent exactly and exposes lossless readback"
 category: media_buy_seller
 summary: "Verifies product-scoped continuous, interval, and signal-backed demographic execution; explicit open-bound and unknown-age handling; exact bucket unions; direct-create rejection of inexact predicates; and exact package readback."
@@ -7,9 +7,12 @@ track: media_buy
 requires:
   - controller
 
-requires_capability:
-  path: media_buy.execution.targeting.demographics.supported
-  equals: true
+requires_all_capabilities:
+  - path: media_buy.execution.targeting.demographics.supported
+    equals: true
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - get_products

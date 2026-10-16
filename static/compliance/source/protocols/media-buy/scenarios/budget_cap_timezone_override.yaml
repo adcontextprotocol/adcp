@@ -1,14 +1,17 @@
 id: media_buy_seller/budget_cap_timezone_override
-version: "1.0.0"
+version: "1.0.1"
 title: "Buyer budget-cap timezone override"
 category: media_buy_seller
 summary: "Verifies that an advertised buyer timezone override applies to aggregate and package caps and is echoed on readback."
 track: media_buy
 introduced_in: "3.2"
 
-requires_capability:
-  path: media_buy.budget_capping.buyer_timezone_override
-  equals: true
+requires_all_capabilities:
+  - path: media_buy.budget_capping.buyer_timezone_override
+    equals: true
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 requires:
   - controller

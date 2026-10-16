@@ -1,5 +1,5 @@
 id: sales_guaranteed
-version: "1.0.3"
+version: "1.0.4"
 title: "Guaranteed media buy with human IO approval"
 protocol: media-buy
 category: sales_guaranteed
@@ -80,13 +80,13 @@ narrative: |
   `committed` can be executed before `expires_at`.
 
   The requires_io_approval capability is scoped to creates that reference products with
-  delivery_type: guaranteed. The current 3.x media_buy_seller baseline uses
-  non-guaranteed fixtures in its core flow and several inherited scenarios.
-  Some inherited workflows require an immediately issued media_buy_id for follow-on
-  checks; others assert immediate preflight rejection or are capability-gated.
-  A guaranteed-only seller can satisfy this IO storyboard yet still lack a complete
-  media-buy grade. A versioned, delivery-mode-aware baseline must preserve synchronous
-  checks for non-guaranteed buys and add task completion/readback for guaranteed buys.
+  delivery_type: guaranteed. The media_buy_seller baseline uses non-guaranteed fixtures in
+  its core flow and several inherited scenarios. A seller that sells only guaranteed
+  inventory declares media_buy.supported_delivery_types: ["guaranteed"]; those baseline
+  phases then grade not_applicable and media_buy_seller_guaranteed grades the guaranteed
+  core flow (submitted create, task completion, readback, delivery) in their place.
+  Without that declaration a guaranteed-only seller is graded on the non-guaranteed
+  baseline, which it cannot satisfy.
 
 agent:
   interaction_model: media_buy_seller

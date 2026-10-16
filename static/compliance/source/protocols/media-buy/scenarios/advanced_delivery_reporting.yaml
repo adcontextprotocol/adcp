@@ -14,9 +14,12 @@ required_tools:
   - get_media_buy_delivery
   - comply_test_controller
 
-requires_capability:
-  path: media_buy.buying_modes
-  contains: wholesale
+requires_all_capabilities:
+  - path: media_buy.buying_modes
+    contains: wholesale
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 narrative: |
   AdCP 3.2 lets a buyer keep large delivery payloads focused with

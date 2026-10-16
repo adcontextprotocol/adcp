@@ -1,5 +1,5 @@
 id: media_buy_seller/dependency_impairment_audience
-version: "1.0.0"
+version: "1.0.1"
 title: "Audience dependency impairment — suspension propagates to media buy health"
 category: media_buy_seller
 summary: "Syncs an audience, targets it from a package, forces ready → suspended, verifies an audience impairment, then restores ready and verifies recovery."
@@ -13,9 +13,12 @@ required_tools:
   - get_media_buys
   - comply_test_controller
 
-requires_capability:
-  path: media_buy.propagation_surfaces
-  contains: "snapshot"
+requires_all_capabilities:
+  - path: media_buy.propagation_surfaces
+    contains: "snapshot"
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 narrative: |
   Audience status is a serving dependency, not catalog decoration. When a

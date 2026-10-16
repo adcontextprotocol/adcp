@@ -1,14 +1,17 @@
 id: media_buy_seller/budget_cap_timezone_fixed
-version: "1.0.0"
+version: "1.0.1"
 title: "Feature-fixed budget-cap timezone resolution"
 category: media_buy_seller
 summary: "Verifies that aggregate and package daily caps default to the budget capability's fixed timezone and remain stable on readback."
 track: media_buy
 introduced_in: "3.2"
 
-requires_capability:
-  path: media_buy.budget_capping.timezone_basis
-  equals: fixed
+requires_all_capabilities:
+  - path: media_buy.budget_capping.timezone_basis
+    equals: fixed
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 requires:
   - controller

@@ -1,5 +1,5 @@
 id: media_buy_seller/pending_creatives_to_start
-version: "1.0.1"
+version: "1.0.2"
 title: "Creative sync unblocks pending_creatives → pending_start"
 category: media_buy_seller
 summary: "Verifies that a media buy created without creatives sits in pending_creatives until sync_creatives completes, then transitions to pending_start."
@@ -15,6 +15,9 @@ requires_all_capabilities:
     equals: auto_approve
   - path: creative.has_creative_library
     equals: true
+  # TEMPORARY(adcp#7852): remove when this scenario is delivery-mode aware (Option B).
+  - path: media_buy.supported_delivery_types
+    contains: non_guaranteed
 
 required_tools:
   - get_products

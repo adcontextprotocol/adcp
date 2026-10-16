@@ -20,6 +20,17 @@ const ROOT = path.join(__dirname, '..');
 const SCHEMA_ROOT = path.join(ROOT, 'static', 'schemas', 'source');
 const SCENARIOS = path.join(ROOT, 'static', 'compliance', 'source', 'protocols', 'media-buy', 'scenarios');
 
+// Scenarios that create buys on non-guaranteed fixtures also carry a delivery-mode
+// gate (adcp#7852). These tests pin the capability gates of the feature under test.
+const DELIVERY_GATE_PATH = 'media_buy.supported_delivery_types';
+function gatesWithoutDelivery(doc) {
+  const predicates = [
+    ...(doc.requires_capability ? [doc.requires_capability] : []),
+    ...(doc.requires_all_capabilities ?? []),
+  ];
+  return predicates.filter(predicate => predicate.path !== DELIVERY_GATE_PATH);
+}
+
 const SUB_CAPABILITIES = {
   seller_optimized_package_budgets: 'budget',
   seller_optimized_min_spend_targets: 'min_spend_target',
@@ -122,10 +133,10 @@ test('every package-control field names its gating capability', () => {
 
 test('core storyboard phases use only core shared-budget controls', () => {
   const storyboard = loadScenario('seller_optimized_budget');
-  assert.deepEqual(storyboard.requires_capability, {
+  assert.deepEqual(gatesWithoutDelivery(storyboard), [{
     path: 'media_buy.features.seller_optimized_budget',
     equals: true,
-  });
+  }]);
   const gatedPhases = new Set(
     storyboard.phases
       .filter(phase => phase.requires_capability?.path?.startsWith('media_buy.features.seller_optimized_'))
@@ -157,7 +168,7 @@ test('core storyboard phases use only core shared-budget controls', () => {
     'the cross-control cap check lives in its own compound-gated scenario',
   );
   const capCheck = loadScenario('seller_optimized_min_spend_target_exceeds_package_cap');
-  assert.deepEqual(capCheck.requires_all_capabilities, [
+  assert.deepEqual(gatesWithoutDelivery(capCheck), [
     { path: 'media_buy.features.seller_optimized_budget', equals: true },
     { path: 'media_buy.features.seller_optimized_package_budgets', equals: true },
     { path: 'media_buy.features.seller_optimized_min_spend_targets', equals: true },
@@ -212,7 +223,7 @@ test('each sub-capability has a positive phase and explicit-false and absent neg
 
 test('proposal-derived package pacing is gated on all three required declarations', () => {
   const storyboard = loadScenario('seller_optimized_proposal_package_pacing');
-  assert.deepEqual(storyboard.requires_all_capabilities, [
+  assert.deepEqual(gatesWithoutDelivery(storyboard), [
     { path: 'media_buy.features.seller_optimized_budget', equals: true },
     { path: 'media_buy.features.seller_optimized_package_pacing', equals: true },
     { path: 'media_buy.supports_proposals', equals: true },
@@ -236,6 +247,7 @@ test('runner applies exactly one sub-capability branch for a core-only seller', 
       raw_capabilities: {
         media_buy: {
           features: { seller_optimized_budget: true, seller_optimized_package_pacing: false },
+          supported_delivery_types: ['guaranteed', 'non_guaranteed'],
         },
       },
     },
