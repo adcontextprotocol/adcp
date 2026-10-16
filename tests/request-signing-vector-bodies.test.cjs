@@ -48,27 +48,42 @@ test('all 37 routed fixtures have a validated operation', () => {
   assert.equal(routed.length, 37);
 });
 
-// RFC 9421 section 4.2 makes the Signature member an RFC 8941 Byte Sequence
-// (sections 3.3.5, 4.1.7, 4.2.7): standard base64 alphabet (+ and /), padded.
-// Buffer.from(..., 'base64') also accepts base64url and missing padding, so the
-// grammar and canonical encoding are checked before decoding.
-const STANDARD_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-const decodeStandardBase64 = text => {
-  if (!STANDARD_BASE64.test(text)) return null;
-  const bytes = Buffer.from(text, 'base64');
-  return bytes.toString('base64') === text ? bytes : null;
+// RFC 9421 section 4.2 makes the Signature member an RFC 8941 Byte Sequence, and
+// RFC 8941 section 3.3.5 specifies the standard base64 alphabet. The AdCP profile
+// OVERRIDES that: docs/building/by-layer/L1/security.mdx ("Binary value encoding")
+// requires Signature to be emitted as base64url WITHOUT padding, and states that a
+// signer emitting `+`, `/` or `=` is non-conformant. Verifiers only SHOULD
+// lenient-decode pure standard base64, so a conforming strict verifier may reject a
+// standard-base64 Signature with request_signature_header_malformed — which is
+// exactly what the maintained SDK does on an explicit 3.1 pin. These fixtures are
+// emissions, so they must satisfy the emission MUST, not the verifier's lenience.
+//
+// Scope: this governs the Signature token only. Content-Digest is checked for
+// truthfulness below and deliberately keeps its historical standard-base64 form —
+// the maintained SDK accepts both legacy digests, and nothing here claims to
+// resolve the older prose that also names Content-Digest.
+// Buffer.from(..., 'base64') tolerates both alphabets and missing padding, so the
+// grammar and canonical round-trip are checked before decoding.
+const BASE64URL_UNPADDED = /^[A-Za-z0-9_-]+$/;
+const decodeBase64UrlUnpadded = text => {
+  if (!BASE64URL_UNPADDED.test(text)) return null;
+  const bytes = Buffer.from(text, 'base64url');
+  return bytes.toString('base64url') === text ? bytes : null;
 };
 
-test('strict standard base64 decoding rejects base64url and unpadded forms', () => {
+test('strict base64url decoding rejects standard-alphabet and padded forms', () => {
   const bytes = Buffer.from([0xfb, 0xff, 0xbf, 0x01, 0x02]);
+  const urlSafe = bytes.toString('base64url');
+  assert.match(urlSafe, /[_-]/);
+  assert.doesNotMatch(urlSafe, /[+/=]/);
+  assert.deepEqual(decodeBase64UrlUnpadded(urlSafe), bytes);
   const standard = bytes.toString('base64');
   assert.match(standard, /[+/]/);
-  assert.deepEqual(decodeStandardBase64(standard), bytes);
-  const urlSafe = standard.replaceAll('+', '-').replaceAll('/', '_');
-  assert.deepEqual(Buffer.from(urlSafe, 'base64'), bytes, 'Node tolerates base64url, so the strict check must reject it');
-  assert.equal(decodeStandardBase64(urlSafe), null);
-  assert.equal(decodeStandardBase64(standard.replace(/=+$/, '')), null);
-  assert.equal(decodeStandardBase64('AB=='), null, 'non-canonical trailing bits');
+  assert.deepEqual(Buffer.from(standard, 'base64url'), bytes, 'Node tolerates standard base64, so the strict check must reject it');
+  assert.equal(decodeBase64UrlUnpadded(standard), null, 'standard alphabet must be rejected');
+  assert.equal(decodeBase64UrlUnpadded(urlSafe + '='), null, 'padding must be rejected');
+  assert.equal(decodeBase64UrlUnpadded('A_=='), null, 'mixed/padded forms must be rejected');
+  assert.equal(decodeBase64UrlUnpadded('AB'), null, 'non-canonical trailing bits');
 });
 
 for (const file of ['positive/002-post-with-content-digest.json', 'negative/018-digest-covered-when-forbidden.json']) {
@@ -91,17 +106,20 @@ for (const file of ['positive/002-post-with-content-digest.json', 'negative/018-
     ].join('\n');
     if (vector.expected_signature_base !== undefined) assert.equal(vector.expected_signature_base, base);
     const encodedSignature = headers.Signature.match(/^sig1=:([^:]+):$/)[1];
-    const signature = decodeStandardBase64(encodedSignature);
-    assert.ok(signature, `${file}: Signature must be padded standard base64 (RFC 8941 Byte Sequence)`);
+    const signature = decodeBase64UrlUnpadded(encodedSignature);
+    assert.ok(signature, `${file}: Signature must be unpadded base64url per the AdCP profile override`);
     assert.equal(signature.length, 64);
-    const urlSafe = encodedSignature.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
-    assert.notEqual(urlSafe, encodedSignature);
-    assert.equal(decodeStandardBase64(urlSafe), null);
+    // Negative controls: the standard-alphabet form of these same bytes is what the
+    // maintained SDK rejects on an explicit 3.1 pin, so it must not satisfy the check.
+    const standardForm = signature.toString('base64');
+    assert.notEqual(standardForm, encodedSignature);
+    assert.equal(decodeBase64UrlUnpadded(standardForm), null);
+    assert.equal(decodeBase64UrlUnpadded(encodedSignature + '='), null);
     assert.equal(crypto.verify(null, Buffer.from(base), publicKey, signature), true);
     if (file.startsWith('positive/')) {
       // Ed25519 is deterministic: re-signing with the public test-only key reproduces the fixture.
       const privateKey = crypto.createPrivateKey({ key: { kty: key.kty, crv: key.crv, x: key.x, d: key._private_d_for_test_only }, format: 'jwk' });
-      assert.equal(crypto.sign(null, Buffer.from(base), privateKey).toString('base64'), encodedSignature);
+      assert.equal(crypto.sign(null, Buffer.from(base), privateKey).toString('base64url'), encodedSignature);
     }
     assert.equal(crypto.verify(null, Buffer.from(base + ' '), publicKey, signature), false);
     assert.equal(vector.expected_outcome.success, file.startsWith('positive/'));
