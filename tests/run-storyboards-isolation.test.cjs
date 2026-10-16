@@ -249,3 +249,283 @@ test('an RSS breach is isolated and reported without stopping siblings', (t) => 
   assert.equal(leak.result_received, false);
   assert.ok(leak.peak_rss_bytes > 80 * 1024 * 1024);
 });
+
+// --- Manual reporter grading contract -------------------------------------
+//
+// The manual runner grades raw SDK step results. It must never credit an
+// optional raw diagnostic as coverage, never rewrite a failed optional step to
+// passed, and never render a success pill for a storyboard the SDK rejected.
+// These cases extract the real functions from the runner source and exercise
+// them directly, so they stay pinned to the shipped implementation rather than
+// a copy. No agent, no network, no production fixtures.
+
+const ts = require('typescript');
+const vm = require('node:vm');
+
+function loadGrader() {
+  const source = fs.readFileSync(
+    path.join(REPO_ROOT, 'server', 'tests', 'manual', 'run-storyboards.ts'),
+    'utf8',
+  );
+  const mapStart = source.indexOf('const KNOWN_FAILING_STEPS:');
+  assert.ok(mapStart >= 0, 'KNOWN_FAILING_STEPS marker moved; extraction would be stale');
+  const mapEnd = source.indexOf('\n]);', mapStart) + '\n]);'.length;
+  const fnStart = source.indexOf('interface StepWaiverEvidence');
+  const fnEnd = source.indexOf('\nasync function main()');
+  // Without these the slice runs to end-of-file and drags in the module's top-level
+  // main().catch(() => process.exit(1)), which would kill the test runner mid-suite.
+  assert.ok(fnStart >= 0, 'StepWaiverEvidence marker moved; extraction would be stale');
+  assert.ok(fnEnd > fnStart, 'main() marker moved; extraction would swallow module top level');
+  const functions = source.slice(fnStart, fnEnd);
+  const probe = `${source.slice(mapStart, mapEnd)}
+const THREE_ZERO_COMPAT_KNOWN_FAILING_STEPS = new Map();
+const isThreeZeroCompatRun = false;
+const verbose = false;
+function isRecord(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
+function formatStepFailureDetail(error, validations) {
+  return error ?? (validations ?? []).filter(v => !v.passed).map(v => v.description ?? v.check).join('; ');
+}
+${functions}
+module.exports = { applyStepSkipList, summarize };`;
+  const compiled = ts.transpileModule(probe, {
+    reportDiagnostics: true,
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  });
+  assert.deepEqual(compiled.diagnostics, [], 'grader extraction must transpile cleanly');
+  const sandbox = { module: { exports: {} }, console, process };
+  vm.runInNewContext(compiled.outputText, sandbox);
+  return sandbox.module.exports;
+}
+
+const grader = loadGrader();
+const passStep = id => ({ step_id: id, passed: true, validations: [] });
+const failStep = (id, more = {}) => ({
+  step_id: id,
+  passed: false,
+  validations: [{ check: 'field_present', passed: false, description: 'raw diagnostic retained' }],
+  ...more,
+});
+// A real entry from the live KNOWN_FAILING_STEPS map.
+const WAIVED_STEP = 'check_governance_drift';
+
+test('the waiver these cases depend on is still live', () => {
+  // Without this, retiring the waiver leaves the assertGates cases below passing for
+  // the wrong reason: no waiver, so nothing to cancel.
+  const source = fs.readFileSync(
+    path.join(REPO_ROOT, 'server', 'tests', 'manual', 'run-storyboards.ts'),
+    'utf8',
+  );
+  assert.match(source, /'governance_delivery_monitor\/check_governance_drift'/);
+});
+
+function grade({ required = [passStep('read')], optional = [], overall = true, failed = 0, assertions, extraPhase }) {
+  const phases = [
+    { phase_id: 'required', passed: required.every(s => s.passed), steps: required },
+    { phase_id: 'optional', passed: optional.every(s => s.passed), steps: optional },
+    ...(extraPhase ? [extraPhase] : []),
+  ];
+  const sb = {
+    id: 'governance_delivery_monitor',
+    title: 'fixture',
+    phases: phases.map(p => ({
+      id: p.phase_id,
+      optional: p.phase_id === 'optional',
+      steps: p.steps.map(s => ({ id: s.step_id })),
+    })),
+  };
+  const result = { overall_passed: overall, failed_count: failed, assertions, phases };
+  const waivers = grader.applyStepSkipList(sb, result);
+  return { result, summary: grader.summarize(sb, result, waivers), waivers };
+}
+
+const assertGates = out =>
+  assert.ok(out.summary.failed > 0 || out.summary.error, `must gate: ${JSON.stringify(out.summary)}`);
+const assertClean = out => {
+  assert.equal(out.summary.failed, 0);
+  assert.equal(out.summary.error, undefined);
+};
+
+test('optional raw diagnostic is non-gating and its raw evidence is left intact', () => {
+  const out = grade({ optional: [failStep('legacy_probe')] });
+  assertClean(out);
+  assert.equal(out.summary.nonGatingFailures.length, 1);
+  // The SDK step itself must NOT be rewritten to passed/skipped.
+  assert.equal(out.result.phases[1].steps[0].passed, false);
+  assert.equal(out.result.phases[1].steps[0].validations[0].passed, false);
+  assert.equal(out.summary.nonGatingFailures[0].error, 'raw diagnostic retained');
+});
+
+test('a required-phase failure is never diverted, even when the SDK aggregate is clean', () => {
+  // The diversion is scoped to AUTHORED optional phases. Without that scope an
+  // inconsistent input - required-phase red alongside a clean aggregate - would leave
+  // every counter and render a success pill with no passing steps.
+  const out = grade({ required: [failStep('required_buy')], overall: true, failed: 0 });
+  assertGates(out);
+  assert.equal(out.summary.failed, 1, 'it must stay in the failure count');
+  assert.equal(out.summary.nonGatingFailures.length, 0, 'it must not become a diagnostic');
+});
+
+test('a diverted optional red inflates neither passing nor skipped coverage', () => {
+  const out = grade({ optional: [failStep('legacy_probe')] });
+  assertClean(out);
+  assert.equal(out.summary.nonGatingFailures.length, 1);
+  // Counted in no status bucket: it executed and failed, so it is not skip coverage.
+  assert.equal(out.summary.skipped, 0, 'a failed probe is never reported as skipped');
+  assert.equal(out.summary.passed, 1, 'only the genuinely passing step counts');
+});
+
+test('an explicit counts_toward_failure marker suppresses only its own step', () => {
+  const out = grade({
+    required: [passStep('read'), failStep('required_buy')],
+    optional: [failStep('probe', { counts_toward_failure: false })],
+    overall: false,
+    failed: 1,
+  });
+  assertGates(out);
+  assert.equal(out.summary.failed, 1);
+  assert.equal(out.summary.nonGatingFailures.length, 1);
+});
+
+test('a required failure still gates when an optional probe also failed', () => {
+  assertGates(grade({
+    required: [passStep('read'), failStep('required_buy')],
+    optional: [failStep('probe')],
+    overall: false,
+    failed: 1,
+  }));
+});
+
+test('a failure inside an authored optional phase still gates when the SDK rejected the run', () => {
+  assertGates(grade({ optional: [failStep('oauth_metadata')], overall: false, failed: 1 }));
+});
+
+test('a failed step assertion is never suppressed by a marker or a clean aggregate', () => {
+  assertGates(grade({
+    optional: [failStep('probe', {
+      counts_toward_failure: false,
+      validations: [{ check: 'assertion', passed: false }],
+    })],
+  }));
+});
+
+test('a detached onEnd assertion gates even with zero failed_count', () => {
+  assertGates(grade({ overall: false, failed: 0, assertions: [{ passed: false, scope: 'storyboard' }] }));
+});
+
+test('overall_passed false with no executed required step still gates', () => {
+  assertGates(grade({ required: [], overall: false, failed: 0 }));
+});
+
+test('an ordinary known required-step waiver keeps its existing effect', () => {
+  const out = grade({ required: [passStep('read'), failStep(WAIVED_STEP)], overall: false, failed: 1 });
+  assertClean(out);
+  assert.equal(out.summary.skipped, 1);
+  assert.equal(out.waivers.requiredStepKeys.size, 1);
+});
+
+test('a known waiver in an OPTIONAL phase cannot cancel a required aggregate failure', () => {
+  const out = grade({ optional: [failStep(WAIVED_STEP)], overall: false, failed: 1 });
+  assertGates(out);
+  assert.equal(out.waivers.requiredStepKeys.size, 0, 'optional waivers are never aggregate credit');
+});
+
+test('a known required waiver does not erase a second required failure', () => {
+  assertGates(grade({
+    required: [passStep('read'), failStep(WAIVED_STEP), failStep('unknown_required')],
+    overall: false,
+    failed: 2,
+  }));
+});
+
+test('a known required waiver does not erase a detached onEnd failure', () => {
+  assertGates(grade({
+    required: [passStep('read'), failStep(WAIVED_STEP)],
+    overall: false,
+    failed: 1,
+    assertions: [{ passed: false, scope: 'storyboard' }],
+  }));
+});
+
+test('a known required waiver cannot explain more aggregate failures than itself', () => {
+  assertGates(grade({ required: [passStep('read'), failStep(WAIVED_STEP)], overall: false, failed: 2 }));
+});
+
+test('a known waiver never erases a failed step assertion', () => {
+  const out = grade({
+    required: [passStep('read'), failStep(WAIVED_STEP, { validations: [{ check: 'assertion', passed: false }] })],
+    overall: false,
+    failed: 1,
+  });
+  assertGates(out);
+  assert.equal(out.result.phases[0].steps[1].passed, false, 'the assertion failure stays visible');
+  assert.equal(out.waivers.requiredStepKeys.size, 0);
+});
+
+test('an unexplained failed required phase survives an unrelated known waiver', () => {
+  assertGates(grade({
+    required: [passStep('read'), failStep(WAIVED_STEP)],
+    overall: false,
+    failed: 1,
+    extraPhase: { phase_id: 'missing_state', passed: false, steps: [] },
+  }));
+});
+
+test('a hard prerequisite skip in the waived phase is not hidden by the waiver', () => {
+  assertGates(grade({
+    required: [
+      passStep('read'),
+      failStep(WAIVED_STEP),
+      { step_id: 'missing_state', passed: false, skipped: true, validations: [] },
+    ],
+    overall: false,
+    failed: 1,
+  }));
+});
+
+test('a counts_toward_failure marker cannot turn an SDK-wide rejection green', () => {
+  assertGates(grade({
+    optional: [failStep('probe', { counts_toward_failure: false })],
+    overall: false,
+    failed: 0,
+  }));
+});
+
+test('a waived-only execution cannot manufacture required coverage', () => {
+  assertGates(grade({ required: [failStep(WAIVED_STEP)], overall: false, failed: 1 }));
+});
+
+// --- End-to-end: non-gating diagnostics survive isolation ------------------
+//
+// These two exercise the ISOLATOR's pre-envelope passthrough and its envelope
+// coherence validator, using a fixture that prints representative lines. They do
+// NOT invoke summarize() or the pill renderer - the grading cases above cover
+// those directly against the shipped functions. The JSON projection carries counts
+// and status only; it deliberately does NOT gain a diagnostics field.
+
+test('a pre-envelope non-gating diagnostic stays visible and its clean envelope is accepted', (t) => {
+  const { result, results } = runFixture(t, ['non_gating_diagnostic']);
+
+  assert.match(result.stdout, /--- Non-gating step diagnostics ---/);
+  assert.match(result.stdout, /get_products_legacy_format: EXPECTED AND NON-GATING/);
+  const envelope = results.find(entry => entry.storyboard_id === 'non_gating_diagnostic');
+  assert.ok(envelope, 'the clean envelope must still be persisted');
+  assert.equal(envelope.summaries[0].has_error, false);
+  assert.equal(envelope.summaries[0].passed, 8);
+  assert.equal(envelope.totals.clean, 1);
+});
+
+test('an SDK rejection with no failed step contributes no clean storyboard and no success pill', (t) => {
+  const { result, results } = runFixture(t, ['runner_rejected_no_failed_step']);
+
+  // The isolator exits 0 for a coherently failed storyboard - exit status
+  // signals infrastructure failures only. The aggregate floors and the
+  // required-exact grep are what grade the result.
+  assert.equal(result.status, 0, result.stderr);
+  const envelope = results.find(entry => entry.storyboard_id === 'runner_rejected_no_failed_step');
+  assert.ok(envelope, 'the rejected envelope must still be persisted');
+  assert.equal(envelope.summaries[0].has_error, true, 'has_error carries the rejection');
+  assert.equal(envelope.totals.clean, 0, 'a rejected storyboard is never clean');
+  // The required-exact grep keys on the success pill; it must not match here.
+  assert.match(result.stdout, /runner_rejected_no_failed_step ✗ /);
+  assert.doesNotMatch(result.stdout, /runner_rejected_no_failed_step\s+✓/);
+});

@@ -78,6 +78,28 @@ if (storyboardId === 'hang') {
   process.stderr.write('stderr prefix\r::warning::forged stderr command\n');
   console.log(`ADCP_STORYBOARD_RESULT ${JSON.stringify(result)}`);
   process.exit(0);
+} else if (storyboardId === 'non_gating_diagnostic') {
+  // The manual runner prints non-gating step diagnostics BEFORE it emits the
+  // result envelope. The parent streams non-envelope lines through safeLogLine,
+  // so that text must survive and the clean envelope must still be accepted.
+  console.log('--- Non-gating step diagnostics ---');
+  console.log('  inline_creatives_without_sync \u00b7 get_products_legacy_format: EXPECTED AND NON-GATING');
+  console.log(`ADCP_STORYBOARD_RESULT ${JSON.stringify({
+    ...result,
+    summaries: [{ ...result.summaries[0], passed: 8 }],
+    totals: { ...result.totals, passed: 8 },
+  })}`);
+  process.exit(0);
+} else if (storyboardId === 'runner_rejected_no_failed_step') {
+  // SDK rejected the run with zero failed STEPS: the reporter must set has_error,
+  // render a failing pill, and contribute no clean storyboard.
+  console.log('  runner_rejected_no_failed_step \u2717 0P / 0F / 0S / 0N/A');
+  console.log(`ADCP_STORYBOARD_RESULT ${JSON.stringify({
+    ...result,
+    summaries: [{ ...result.summaries[0], passed: 0, failed: 0, has_error: true }],
+    totals: { ...result.totals, clean: 0, passed: 0, failed: 0 },
+  })}`);
+  process.exit(0);
 } else if (storyboardId === 'crash') {
   process.exit(17);
 } else if (storyboardId === 'inconsistent_result') {
