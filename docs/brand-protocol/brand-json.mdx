@@ -462,7 +462,7 @@ Each brand in the `brands` array:
 | `keller_type` | enum | No | `master`, `sub_brand`, `endorsed`, `independent` |
 | `parent_brand` | string | No | Parent brand's id |
 | `properties` | array | No | Digital properties associated with this brand |
-| `agents` | array | No | Agents acting for this brand, each `{ type, url, id }` plus optional `jwks_uri`, `description`, `countries`. Rights agents (`type: "rights"`) add `available_uses` and `right_types`. |
+| `agents` | array | No | Agents acting for this brand, each `{ type, url, id }` plus optional `jwks_uri`, `description`, `countries`. Agent keys here serve the RFC 9421 signing profile, deprecated in 3.3; agents on the Web Bot Auth profile publish keys at their own origin and are listed in [trust.json](/docs/reference/trust-json). Rights agents (`type: "rights"`) add `available_uses` and `right_types`. |
 | `brand_agent` | object | No | Deprecated: use an `agents[]` entry with `type: "brand"`. |
 | `rights_agent` | object | No | Deprecated: use an `agents[]` entry with `type: "rights"`. |
 | `logos` | array | No | Brand logo assets |
