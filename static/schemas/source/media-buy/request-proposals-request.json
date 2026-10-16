@@ -57,6 +57,13 @@
         }
       ],
       "description": "Optional planning-cycle context that the seller associates with every proposal created by this request."
+    },
+    "include_collections": {
+      "type": "boolean",
+      "default": false,
+      "description": "Experimental (media_buy.collection_cards). When true, asks the seller to return the response-level collections array: the full object for each collection the returned products' collections selectors reference. Sellers MUST NOT return collections unless this is true, and when it is true they SHOULD include every referenced collection. This request rejects unknown fields, so a seller validating against an earlier schema may reject the flag; send it only to a seller that lists media_buy.collection_cards in experimental_features. Buyers detect omitted collections by comparing product selectors with the returned array and resolve those from the publisher's adagents.json.",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
     }
   },
   "required": ["idempotency_key", "brief"],

@@ -257,7 +257,15 @@ conditions before enabling accounts.
 
 An existing organization API key can authenticate the buyer. When no key is
 available, the opt-in WorkOS Connect path authenticates a person who currently
-has an owner/admin role in the configured canary organization. The reporting
+has an owner/admin role in the configured canary organization for private
+reporting. The canonical `/sales/mcp` endpoint also admits active owner, admin,
+and member roles in other AgenticAdvertising.org organizations into organization-scoped training
+sandboxes. A paid subscription is not required. General OAuth sandbox
+principals use `training-oauth:<organization ID>`, separate from API-key and
+private canary `workos:<organization ID>` principals. Canary owners/admins
+with provisioned local grants retain their private buyer identity; other canary users use the sandbox.
+Buyer-agent state is also partitioned by this principal and OAuth client, so a
+shared OAuth application cannot join different organizations' tasks. The reporting
 account remains owned by the organization. API-key creation remains unavailable
 until its separate membership/provider fence is implemented.
 
@@ -289,18 +297,32 @@ Protected-resource discovery is served at
 challenge. This setting does not enable GCS delivery.
 
 The server pins issuer, audience, signing algorithm and required user claims.
-It checks the exact authenticated credential's fresh primary-database grants,
-identity binding and epoch, platform bans, and current direct WorkOS membership.
+It checks the exact authenticated credential's fresh primary-database identity
+binding and epoch, platform bans, and current direct WorkOS membership. General
+sandbox access uses that direct active membership; no manually provisioned
+local grant is required. Private reporting and the private canary identity
+also require a fresh owner/admin grant for that exact credential.
 Linked credentials' grants confer no authority. It rechecks local state after
 the provider lookup and limits OAuth requests to 60 per minute per IP.
+Private reporting still requires owner/admin authority in both the local grant
+and direct WorkOS membership; sandbox requests accept member authority too.
 Invalid tokens return 401, denied access returns 403 and unavailable authority
 returns 503. The signed-in actor is retained in trusted request auth context.
+Denials include `WWW-Authenticate: Bearer error="insufficient_scope"` and an
+`error_description` in both the challenge and response body. Private reporting
+denials explain the canary restriction and point integrators to `/sales/mcp`.
+The public sales protected-resource metadata remains advertised because it now
+serves general organization members. Its documentation link points to
+[`/sales/oauth`](https://test-agent.adcontextprotocol.org/sales/oauth), served
+with the application so published release snapshots cannot hide the connection
+instructions.
 
 WorkOS consent revocation is distinct from membership or local credential
 revocation. This implementation uses signed access tokens with a maximum
 one-hour lifetime and age; it does not promise immediate consent revocation
-through token introspection. A membership, grant or local deletion change is
-checked on the next request. An operation already admitted may complete;
+through token introspection. Direct membership and local credential changes
+are checked on the next request; local grant changes additionally govern
+private canary authority. An operation already admitted may complete;
 provider checks are not an atomic lease over external membership mutations.
 
 Store OAuth credentials outside the synced repository. Start sign-in with the

@@ -513,6 +513,46 @@
           },
           "additionalProperties": true
         },
+        "collections": {
+          "type": "array",
+          "description": "Experimental (brand.collection_links). Collections this person or brand is associated with, mirroring the brand.json brand-level collections links, so a buyer can go from a person's identity to their channels without fetching the static file. Public, like brand.json. Each link names the collection by publisher_domain and collection_id, which together form a product collections selector; full collection objects come from the selling agent's responses or the publisher's adagents.json. These are the brand's own claims: a collection's talent[].brand_ref link is confirmed when this list names the same {publisher_domain, collection_id} back.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "publisher_domain": {
+                "type": "string",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+                "description": "Publisher namespace that declares the collection in its adagents.json"
+              },
+              "collection_id": {
+                "type": "string",
+                "description": "Collection identifier, scoped to publisher_domain",
+                "x-entity": "collection"
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable collection name"
+              },
+              "role": {
+                "$ref": "/schemas/enums/talent-role.json",
+                "description": "This person's role on the collection"
+              },
+              "seller_agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL of the sales agent that sells inventory for this collection. A routing hint, not authorization evidence: which agent may sell the collection is answered only by the publisher's adagents.json."
+              }
+            },
+            "required": [
+              "publisher_domain",
+              "collection_id",
+              "name"
+            ],
+            "additionalProperties": true
+          },
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
         "available_fields": {
           "type": "array",
           "description": "Fields available but not returned in this response due to authorization level. Tells the caller what they would gain by linking their account via sync_accounts. Values match the request fields enum.",
@@ -530,7 +570,8 @@
               "tagline",
               "voice_synthesis",
               "assets",
-              "rights"
+              "rights",
+              "collections"
             ]
           }
         },
