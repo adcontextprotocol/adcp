@@ -2226,12 +2226,26 @@
           "properties": {
             "publisher_domains": {
               "type": "array",
-              "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.",
+              "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.\n\n**Non-exhaustive routing hint.** Unlike the sibling `primary_channels` and `primary_countries` allowlists, this list is NOT exhaustive and a buyer MUST NOT treat a publisher's absence from it as evidence that the seller is unauthorized for that publisher, whether or not it is marked complete. Each publisher's own adagents.json remains the authority; resolve it for the publisher named on a product rather than denying anything this list omits. When the list is truncated, the seller MUST set `publisher_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each publisher's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent. A seller that mirrors \"every publisher whose adagents.json names me\" is reflecting third-party-controlled content into a document whose size gates signing-key discovery. Sellers MUST NOT mirror this list unbounded: select the publishers you actually represent, keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. These bounds are a coarse structural ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
               "items": {
                 "type": "string",
+                "maxLength": 253,
                 "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
               },
-              "minItems": 1
+              "minItems": 1,
+              "maxItems": 100,
+              "uniqueItems": true,
+              "x-adcp-validation": {
+                "counterparty_asserted": true,
+                "completeness_flag": "publisher_domains_complete",
+                "spec": "docs/building/by-layer/L1/security.mdx#response-size-bounds"
+              }
+            },
+            "publisher_domains_complete": {
+              "type": "boolean",
+              "default": true,
+              "x-added-in": "3.3.0",
+              "description": "Whether `publisher_domains` enumerates every publisher this seller represents. Absent or `true` means the list is complete as served. `false` means the seller represents more publishers than it published — because the real set exceeds `maxItems` or the per-field byte budget — and the list is a sample. This flag is advisory and affects prefetch planning only, never an authorization decision: buyers MUST NOT treat `publisher_domains` as an allowlist whether it is marked complete or not, and MUST resolve each product's publisher through that publisher's own adagents.json. Added in 3.3 so that bounding this counterparty-asserted array cannot silently turn a large but legitimate network into a seller that looks unauthorized for most of its inventory."
             },
             "primary_channels": {
               "type": "array",
@@ -2291,6 +2305,9 @@
     "signals": {
       "type": "object",
       "description": "Signals protocol capabilities. Only present if signals is in supported_protocols.",
+      "dependencies": {
+        "data_provider_domains_complete": ["data_provider_domains"]
+      },
       "properties": {
         "anonymous_discovery": {
           "type": "boolean",
@@ -2299,12 +2316,26 @@
         },
         "data_provider_domains": {
           "type": "array",
-          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.",
+          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.\n\n**Non-exhaustive routing hint.** This list is NOT exhaustive and a buyer MUST NOT treat a provider's absence from it as evidence that the agent may not resell that provider, whether or not it is marked complete. Each provider's own adagents.json remains the authority. When the list is truncated, the agent MUST set `data_provider_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each data provider's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent — the same trust direction as `media_buy.portfolio.publisher_domains`, and the same inflation vector into a document whose size gates signing-key discovery. Agents MUST NOT mirror this list unbounded: keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. These bounds are a coarse structural ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
           "items": {
             "type": "string",
+            "maxLength": 253,
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
-          "minItems": 1
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "x-adcp-validation": {
+            "counterparty_asserted": true,
+            "completeness_flag": "data_provider_domains_complete",
+            "spec": "docs/building/by-layer/L1/security.mdx#response-size-bounds"
+          }
+        },
+        "data_provider_domains_complete": {
+          "type": "boolean",
+          "default": true,
+          "x-added-in": "3.3.0",
+          "description": "Whether `data_provider_domains` enumerates every data provider this agent resells. Absent or `true` means the list is complete as served. `false` means the agent resells more providers than it published — because the real set exceeds `maxItems` or the per-field byte budget — and the list is a sample. This flag is advisory and affects prefetch planning only, never an authorization decision: buyers MUST NOT treat `data_provider_domains` as an allowlist whether it is marked complete or not, and MUST resolve each signal's provider through that provider's own adagents.json. Meaningless without `data_provider_domains`, which the sibling `dependencies` rule requires."
         },
         "discovery_modes": {
           "type": "array",
