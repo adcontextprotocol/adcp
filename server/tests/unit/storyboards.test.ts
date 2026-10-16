@@ -32,6 +32,7 @@ import {
   withHostedTestOptions,
 } from '../../src/services/hosted-compliance-version.js';
 import {
+  getComplianceStoryboardById,
   isComplianceVersionSupported,
   loadComplianceIndex,
   resolveStoryboardsForCapabilities,
@@ -193,7 +194,7 @@ describe('wrapper contract', () => {
     const target = hostedComplianceTarget();
     const index = loadComplianceIndex(hostedComplianceOptions(target));
     expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
-    expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.27');
+    expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.28');
     expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
     expect(HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).toBe(600_000);
     expect(HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS).toBe(1_800_000);
@@ -206,7 +207,7 @@ describe('wrapper contract', () => {
   it('resolves compliance target aliases against checked-in caches', () => {
     const stable = hostedComplianceTarget('3.0');
     expect(stable.requested).toBe('3.0');
-    expect(stable.version).toBe('3.0.27');
+    expect(stable.version).toBe('3.0.28');
     expect(stable.version).toMatch(/^3\.0\.\d+$/);
 
     const beta = hostedComplianceTarget('3.1-beta');
@@ -284,7 +285,7 @@ describe('wrapper contract', () => {
   });
 
   it('caps hosted aliases at explicitly registered released compliance bundles', () => {
-    expect(hostedComplianceTarget('3.0').version).toBe('3.0.27');
+    expect(hostedComplianceTarget('3.0').version).toBe('3.0.28');
     expect(hostedComplianceTarget('3.1').version).toBe('3.1.27');
     expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
     expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
@@ -295,6 +296,36 @@ describe('wrapper contract', () => {
     expect(() => hostedComplianceTarget('3.2.0')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1.12')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1-rc.15')).toThrow(/not available from a published/);
+  });
+
+  it('loads the released 3.0.28 bundle with the pinned hosted SDK', () => {
+    const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0']);
+    const options = hostedComplianceOptions(target);
+
+    expect(target.requested).toBe('3.0');
+    expect(target.version).toBe('3.0.28');
+    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.0\.28$/);
+    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.0\.28$/);
+    expect(loadComplianceIndex(options).adcp_version).toBe('3.0.28');
+  });
+
+  // #7908 backported `depends_on: []` onto the three deterministic_testing
+  // phases that establish their own state. Without it the 3.0.x runner falls
+  // back to "depend on all prior phases", so a seller with no Sponsored
+  // Intelligence loses deterministic_delivery and deterministic_budget to a
+  // prerequisite_failed cascade behind deterministic_session's missing
+  // si_initiate_session (#7824). The backport exists only from 3.0.28, so this
+  // asserts the hosted 3.0 alias resolves to a bundle that carries it — the
+  // runner behaviour itself is graded by the 3.0-compat storyboard matrix.
+  it('grades hosted 3.0 on a bundle whose deterministic_testing phases are independent', () => {
+    const options = hostedComplianceOptions(hostedComplianceTarget('3.0'));
+    const storyboard = getComplianceStoryboardById('deterministic_testing', options);
+
+    for (const phaseId of ['deterministic_session', 'deterministic_delivery', 'deterministic_budget']) {
+      const phase = storyboard.phases.find(item => item.id === phaseId);
+      expect(phase, `${phaseId} is missing from the hosted 3.0 deterministic_testing storyboard`).toBeDefined();
+      expect(phase?.depends_on, `${phaseId} must declare no prior-phase dependency`).toEqual([]);
+    }
   });
 
   it('loads the released 3.1.27 bundle with the pinned hosted SDK', () => {
