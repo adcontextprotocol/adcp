@@ -244,8 +244,16 @@ test('a purchase names the exact installments it buys', async () => {
 });
 
 test('buy_products input cannot select installments; selection is a proposal surface', () => {
+  // Direct purchase would need its own acceptance-time reservation contract
+  // for a slot sold between discovery and buy, which 3.3 does not define. The
+  // asymmetry is pinned here and in the product-purchase-input parity test,
+  // so adding the field to one side without the other fails loudly.
   const input = readSchema('media-buy/product-purchase-input.json');
   assert.equal(input.properties.installments, undefined, 'direct purchase has no installment selection yet');
+  assert.ok(
+    readSchema('media-buy/product-purchase.json').properties.installments,
+    'while the accepted snapshot does carry it',
+  );
 });
 
 test('selected installments travel inside commercial_terms and move terms_digest', async () => {
