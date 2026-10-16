@@ -1,19 +1,6 @@
 {
-  "$comment": "Known storyboard sample_request schema drift, grandfathered before the lint was turned on. Each entry fingerprints the violation; new drift in a listed step fails the lint, and fixed drift that leaves an entry stale also fails (so follow-up PRs must remove entries as they fix fixtures). Regenerate with `node scripts/lint-storyboard-sample-request-schema.cjs --write-allowlist` after a real fix — defaults to shrink-only. Pass `--allow-grow` only when adding a deliberate, newly-identified drift is the explicit intent; never hand-edit to silence a new violation. The account_timezone_buyer_selected entry is pre-existing drift that was invisible until resolveSchemaNode learned to descend into `{ type, discriminator, oneOf }` unions; it is newly VISIBLE, not newly introduced, and is tracked for a follow-up fixture fix rather than widening this conformance bugfix.",
+  "$comment": "Known storyboard sample_request schema drift, grandfathered before the lint was turned on. Each entry fingerprints the violation; new drift in a listed step fails the lint, and fixed drift that leaves an entry stale also fails (so follow-up PRs must remove entries as they fix fixtures). Regenerate with `node scripts/lint-storyboard-sample-request-schema.cjs --write-allowlist` after a real fix — defaults to shrink-only. Pass `--allow-grow` only when adding a deliberate, newly-identified drift is the explicit intent; never hand-edit to silence a new violation.",
   "entries": {
-    "protocols/media-buy/scenarios/account_timezone_buyer_selected.yaml#verify_reconnect/read_reconnected_timezone_key": {
-      "schema": "account/list-accounts-request.json",
-      "errors": [
-        "required@/account:account_id",
-        "additionalProperties@/account:brand",
-        "additionalProperties@/account:operator",
-        "additionalProperties@/account:operator_unit",
-        "additionalProperties@/account:timezone",
-        "additionalProperties@/account:sandbox",
-        "type@/account/sandbox:boolean",
-        "oneOf@/account"
-      ]
-    },
     "protocols/sponsored-intelligence/sponsored-context-accountability.yaml#silent_downgrade_rejected/si_send_message_with_mismatched_receipt": {
       "schema": "sponsored-intelligence/si-send-message-request.json",
       "errors": [

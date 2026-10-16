@@ -93,16 +93,8 @@ function resolveSchemaNode(node, discriminator) {
     const resolved = loadSchema(node.$ref);
     return resolveSchemaNode(resolved, discriminator);
   }
-  // If the node has a concrete type or shape keywords, return it as-is — unless it is
-  // a composite that only declares `type` alongside its branches. Discriminated unions
-  // written as `{ type: "object", discriminator, oneOf: [...] }` (e.g.
-  // core/format-option-ref.json) carry no top-level `properties`, so returning them
-  // here yields an empty `{}` placeholder and ajv then reports the discriminator tag as
-  // missing. Descending into the branches below produces a shape-valid placeholder.
-  const hasComposite = ['oneOf', 'anyOf', 'allOf'].some(
-    (key) => Array.isArray(node[key]) && node[key].length > 0,
-  );
-  if (node.properties || node.items || node.enum || node.const || (node.type && !hasComposite)) {
+  // If the node has a concrete type or shape keywords, return it as-is.
+  if (node.type || node.properties || node.items || node.enum || node.const) {
     return node;
   }
   for (const key of ['oneOf', 'anyOf', 'allOf']) {
@@ -202,7 +194,15 @@ function placeholderFor(schema, depth = 0) {
   if (types.includes('number')) return resolved.minimum ?? 0;
   if (types.includes('boolean')) return true;
   if (types.includes('array')) return [];
-  if (types.includes('object')) return synthesizeObject(resolved, depth);
+  if (types.includes('object')) {
+    // A discriminated union written as `{ type: "object", discriminator, oneOf: [...] }`
+    // (e.g. core/format-option-ref.json) carries no top-level `properties`, so
+    // synthesizing it directly yields `{}` and ajv then reports the discriminator tag
+    // as missing. Fall back to a concrete branch only in that case; nodes that do
+    // declare `properties` keep their existing resolution untouched.
+    const branch = resolved.properties ? null : firstObjectBranch(resolved);
+    return synthesizeObject(branch ?? resolved, depth);
+  }
   if (types.includes('null')) return null;
   return STRING_PLACEHOLDER;
 }

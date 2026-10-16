@@ -34,12 +34,11 @@ for (const name of ['provenance_enforcement', 'provenance_audit_observation', 'p
     const validateProduct = ajv.getSchema('/schemas/core/product.json');
     const validateFormat = ajv.getSchema('/schemas/core/format.json');
     for (const product of storyboard.fixtures.products) {
-      const validate = validateProduct;
-      assert.equal(validate(product), true, ajv.errorsText(validate.errors));
+      assert.equal(validateProduct(product), true, ajv.errorsText(validateProduct.errors));
       const missingFormats = { ...product };
       delete missingFormats.format_ids;
       delete missingFormats.format_options;
-      assert.equal(validate(missingFormats), false, 'the schema must catch the original regression');
+      assert.equal(validateProduct(missingFormats), false, 'the schema must catch the original regression');
     }
     // Seeded formats nest the declaration under `fixture:` with `format_id` as a
     // sibling key (see universal/pagination-integrity-creative-formats.yaml), so the
@@ -92,13 +91,11 @@ for (const name of ['provenance_enforcement', 'provenance_audit_observation', 'p
         }
       }
     }
-    assert.ok(canonicalProbes + legacyProbes > 0, 'the storyboard must probe at least one creative');
-    assert.equal(
-      canonicalProbes,
-      storyboard.phases.flatMap(phase => phase.steps).flatMap(step => step.sample_request?.creatives ?? []).length -
-        legacyProbes,
-      'every probe must be classified'
-    );
+    // On main every provenance probe is canonical; the legacy arm exists for the 3.1
+    // backport. Assert the branch this storyboard actually takes is non-empty so the
+    // cross-checks above cannot quietly stop covering anything.
+    assert.ok(canonicalProbes > 0, `${name} must exercise at least one canonical creative probe`);
+    assert.equal(legacyProbes, 0, `${name} probes are canonical on main; a legacy probe here is unexpected`);
   });
 }
 
@@ -133,6 +130,12 @@ const DECLARATIONS = {
     format_option_id: 'daily_pulse_homepage_image',
     publisher_domain: 'outdoormagazine.example',
   }),
+  // First declaration the fixed 300x250 image creative cannot satisfy.
+  videoFirst: () => ({
+    format_kind: 'video',
+    params: { duration_seconds: 15 },
+    format_option_id: 'preroll_15s',
+  }),
 };
 
 function buildProduct({
@@ -164,6 +167,8 @@ async function runInline({
   canonical,
   legacy,
   shape = 'product',
+  filterLegacyDiscovery = false,
+  stripCanonicalRefs = false,
   failLane = null,
   readback = 'replacement',
   drift = {},
@@ -178,6 +183,15 @@ async function runInline({
   for (const phase of storyboard.phases) {
     for (const step of phase.steps) {
       step.validations = (step.validations ?? []).filter(check => check.check !== 'response_schema');
+      // Simulate the rejected proposal: narrow the legacy probe by canonical kind.
+      if (filterLegacyDiscovery && step.id === 'get_products_legacy_format') {
+        step.sample_request.filters.format_kinds = ['image'];
+      }
+      // Negative control: withhold the disambiguating selector the storyboard sends.
+      if (stripCanonicalRefs) {
+        delete step.sample_request?.packages?.[0]?.format_option_refs;
+        delete step.context_inputs;
+      }
     }
   }
   const calls = [];
@@ -208,17 +222,30 @@ async function runInline({
           sameKindCatalog,
           ...(drift[discoveryKey(request)] ?? {}),
         });
-        for (const declaration of product.format_options ?? []) servedDeclarations.push(declaration);
+        // A seller honouring filters.format_kinds returns nothing when it publishes no
+        // canonical declaration to match - exactly the legacy-only case.
+        if (request.filters?.format_kinds && !product.format_options) {
+          return { success: true, status: 'completed', data: { ...echo, products: [] } };
+        }
+        // Frozen so that if the SDK ever clones on the capture path, a write-back throws
+        // instead of silently making the no-mutation assertion vacuous.
+        for (const declaration of product.format_options ?? []) servedDeclarations.push(Object.freeze(declaration));
         data = { ...echo, products: [product] };
       } else if (task === 'create_media_buy') {
         if (failLane === lane) return { success: false, error: 'inline creative rejected' };
         const requested = request.packages[0];
         // A seller that published a selectable id requires a ref naming it. A legacy
         // package is selector-bearing by other means - the creative carries format_id.
-        const published = (buildProduct({ canonical, legacy, shape, sameKindCatalog }).format_options ?? [])[0];
+        const catalog = buildProduct({ canonical, legacy, shape, sameKindCatalog }).format_options ?? [];
+        const requestedKind = requested.creatives?.[0]?.format_kind;
+        // Ambiguity is a property of the catalog, not of entry [0]: when several options
+        // share the creative's kind, bare format_kind cannot select one and the buyer
+        // must name it. core/creative-asset.json makes the ref required in exactly that case.
+        const ambiguous = catalog.filter(option => option.format_kind === requestedKind).length > 1;
+        const selects = (requested.format_option_refs ?? []).some(ref => ref.format_option_id);
         if (
-          published?.format_option_id &&
-          !requested.format_option_refs &&
+          (ambiguous || catalog[0]?.format_option_id) &&
+          !selects &&
           !requested.creatives?.[0]?.format_id
         ) {
           return { success: false, error: 'format_option_refs[] is required to select a published format option' };
@@ -233,7 +260,9 @@ async function runInline({
         buys.set(lane, { media_buy_id: `${lane}-buy`, package: pkg });
         data = { ...echo, media_buy_id: `${lane}-buy`, packages: [pkg] };
       } else if (task === 'update_media_buy') {
-        data = { ...echo, media_buy_id: request.media_buy_id, affected_packages: [buys.get(lane).package] };
+        const updating = buys.get(lane);
+        if (!updating) return { success: false, error: `no buy for lane ${lane}` };
+        data = { ...echo, media_buy_id: request.media_buy_id, affected_packages: [updating.package] };
       } else if (task === 'get_media_buys') {
         const canonicalLane = lane !== 'legacy';
         const approvals =
@@ -373,6 +402,18 @@ test('inline creatives: a named same-kind catalog never receives a selector-less
     'no selector-less purchase may reach a named same-kind catalog'
   );
   assert.equal(refs[0].format_option_id, 'display_image_300x250');
+
+  // The seller really would have refused without it: same ambiguous catalog, selector
+  // withheld, and the purchase is rejected. Without this, sameKindCatalog proves nothing
+  // the plain product-shape test does not already prove.
+  const withheld = await runInline({
+    canonical: true,
+    legacy: false,
+    shape: 'product',
+    sameKindCatalog: true,
+    stripCanonicalRefs: true,
+  });
+  assert.equal(withheld.result.overall_passed, false, 'an ambiguous same-kind catalog must refuse a selector-less buy');
 });
 
 // #3268's core requirement: brief-mode get_products carries no ordering or stability
@@ -478,20 +519,52 @@ for (const readback of ['missing', 'original']) {
 }
 
 
+// The canonical discovery mismatch detector. It is a guard, not a selector: it stops an
+// image creative being bought against a non-image declaration, and it does NOT make a
+// video-first catalog gradable.
+test('inline creatives: a video-first canonical declaration never receives a mismatched buy', async () => {
+  // Mixed seller: canonical first declaration is video, legacy is still serviceable.
+  const { result, creates, ranPhases } = await runInline({
+    canonical: true,
+    legacy: true,
+    shape: 'videoFirst',
+  });
+  // No canonical path runs, so no image creative is bought against a video declaration.
+  assert.deepEqual(ranPhases, ['legacy_format_inline_path']);
+  assert.equal(
+    creates.filter(call => !call.request.context.correlation_id.includes('legacy')).length,
+    0,
+    'no canonical create may reach a video-first declaration'
+  );
+  // Legacy carries coverage, so the seller is still graded.
+  assert.equal(result.overall_passed, true, JSON.stringify(result.phases));
+});
+
+test('inline creatives: a canonical-only video-first seller makes zero buys and fails coverage', async () => {
+  const { result, creates, ranPhases } = await runInline({
+    canonical: true,
+    legacy: false,
+    shape: 'videoFirst',
+  });
+  assert.deepEqual(ranPhases, [], 'no execution phase may run');
+  assert.equal(creates.length, 0, 'zero creates');
+  const coverage = result.phases.flatMap(phase => phase.steps).find(step => step.task === 'assert_contribution');
+  assert.equal(coverage.passed, false, 'the coverage gate reports that nothing was exercised');
+  assert.equal(result.overall_passed, false, 'the detector guards the buy; it does not make this catalog gradable');
+});
+
 // Legacy discovery must NOT narrow with `filters.format_kinds`, and this pins why.
 //
-// core/product-format-declaration.json's "Format matching vs satisfaction (normative)"
-// clause conditions normalization on the legacy id having been projected: "do not
-// exact-match raw (agent_url, id) pairs ONCE a format_id has been projected through
-// canonical, v1_format_ref, or the canonical mapping registry". A NON-projectable
-// legacy format - the case adcp-client#3268 names, and what this storyboard's legacy
-// fixture uses - has no canonical projection, so there is no format_kind to match. And
 // core/product-filters.json defines format_kinds as "Filter to products accepting any
-// of these canonical format kinds", which such a product does not.
+// of these canonical format kinds". A non-projectable legacy format - the case
+// adcp-client#3268 names, and what this storyboard's legacy fixture uses - has no
+// canonical mapping, so there is no kind for such a product to match on. A seller
+// honouring the filter could therefore return nothing and drop out of legacy discovery
+// entirely, and the legacy path - the whole point of the fix - would stop being graded.
 //
-// So a seller correctly honouring the filter would exclude itself from legacy
-// discovery, and the legacy path - the whole point of the fix - would stop being
-// graded. Applicability is documented on the probe instead of filtered for.
+// Deliberately NOT paraphrased as a normative rule about what sellers must return: the
+// point is the fixture population this scenario has to keep reachable. Applicability is
+// documented on the probe instead of filtered for.
 test('inline creatives: legacy discovery does not narrow by canonical format_kinds', async () => {
   const { calls } = await runInline({ canonical: true, legacy: true });
   const legacyDiscovery = calls.find(
@@ -514,46 +587,25 @@ test('inline creatives: legacy discovery does not narrow by canonical format_kin
   assert.deepEqual(canonicalDiscovery.request.filters.format_kinds, ['image']);
 });
 
-// The concrete loss if the filter were added: a legacy-only seller that honours
-// format_kinds returns nothing, the legacy gate never opens, and a conformant seller
-// fails the coverage gate having been asked for a canonical kind it never claimed.
-test('inline creatives: a legacy-only seller honouring format_kinds would lose all coverage if filtered', async () => {
-  const storyboard = loadStoryboardFile(path.join(SCENARIOS, 'inline_creatives_without_sync.yaml'));
-  for (const phase of storyboard.phases) {
-    for (const step of phase.steps) {
-      step.validations = (step.validations ?? []).filter(check => check.check !== 'response_schema');
-      // Simulate the proposed change: narrow the legacy probe too.
-      if (step.id === 'get_products_legacy_format') {
-        step.sample_request.filters.format_kinds = ['image'];
-      }
-    }
-  }
-  const product = buildProduct({ canonical: false, legacy: true });
-  const client = {
-    executeTask: async (task, request) => {
-      const echo = { context: request.context };
-      if (task === 'comply_test_controller') return { success: true, status: 'completed', data: { success: true } };
-      if (task === 'get_adcp_capabilities') {
-        return {
-          success: true,
-          status: 'completed',
-          data: { ...echo, supported_protocols: ['media_buy'], media_buy: { features: { inline_creative_management: true } } },
-        };
-      }
-      if (task === 'get_products') {
-        // Honours the filter: this product accepts no canonical format kind.
-        const asked = request.filters?.format_kinds;
-        return { success: true, status: 'completed', data: { ...echo, products: asked ? [] : [product] } };
-      }
-      return { success: true, status: 'completed', data: echo };
-    },
-  };
-  const tools = ['comply_test_controller', 'get_adcp_capabilities', 'get_products', 'create_media_buy', 'update_media_buy', 'get_media_buys'];
-  const result = await runStoryboard('https://seller.example/mcp', storyboard, {
-    protocol: 'mcp',
-    agentTools: tools,
-    _client: client,
-    _profile: { name: 'legacy seller', tools, raw_capabilities: { media_buy: { features: { inline_creative_management: true } } } },
+// The concrete loss if the filter were added, proved against the SAME conformant stub
+// the positive control uses: the 'legacy only' test above shows this seller passing
+// unfiltered, so the only variable here is the filter.
+test('inline creatives: narrowing legacy discovery by format_kinds costs a legacy-only seller its only path', async () => {
+  const { result, creates } = await runInline({
+    canonical: false,
+    legacy: true,
+    filterLegacyDiscovery: true,
   });
-  assert.equal(result.overall_passed, false, 'filtering legacy discovery costs a conformant legacy-only seller its only path');
+  const phases = result.phases;
+  // The mechanism, not just the verdict: discovery returns nothing, so the gate never
+  // opens, no buy happens, and the coverage assertion is what fails.
+  assert.equal(
+    phases.find(phase => phase.phase_id === 'legacy_format_inline_path').steps.length,
+    0,
+    'the legacy gate must never open when the filtered probe returns no product'
+  );
+  assert.equal(creates.length, 0, 'a filtered legacy-only seller never gets to buy');
+  const coverage = phases.flatMap(phase => phase.steps).find(step => step.task === 'assert_contribution');
+  assert.equal(coverage.passed, false, 'the conformant seller fails the coverage gate');
+  assert.equal(result.overall_passed, false);
 });

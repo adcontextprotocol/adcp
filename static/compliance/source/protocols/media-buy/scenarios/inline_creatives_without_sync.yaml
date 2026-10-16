@@ -58,13 +58,14 @@ narrative: |
   a seller whose results reorder, or whose canonical shape differs between calls, is
   never failed for it.
 
-  Reading the report: the three discovery phases are optional, and a seller publishing
-  one representation WILL see the other representations' discovery steps go red. That
-  is expected and takes no action - those steps do not gate the run, and the red is how
-  the probe keeps a path it cannot serve from executing. A red step inside one of the
-  three execution phases is the opposite: that representation was advertised and the
-  seller must make inline create, update and readback work on it. The closing
-  assert_contribution is the only coverage gate: it fails when no path completed.
+  Reading the report: both discovery phases - canonical_format_discovery and
+  legacy_format_discovery - are optional, and a seller publishing one representation
+  WILL see the other's discovery step go red. That is expected and takes no action:
+  those steps do not gate the run, and the red is how the probe keeps a path it cannot
+  serve from executing. A red step inside one of the four execution phases is the
+  opposite: that representation was advertised and the seller must make inline create,
+  update and readback work on it. The closing assert_contribution is the only coverage
+  gate: it fails when no path completed.
 
 agent:
   interaction_model: media_buy_seller
@@ -84,6 +85,19 @@ prerequisites:
     Seller advertises media_buy.features.inline_creative_management: true and
     accepts package-scoped CreativeAsset objects on create_media_buy and
     update_media_buy. The seller does not need to implement sync_creatives.
+
+    Applicability - first product and first declaration. This is a controlled fixture:
+    every path captures products[0], its pricing_options[0] and, on the canonical side,
+    format_options[0], and buys with a fixed 300x250 image creative. So the seller must
+    rank a product whose FIRST declaration accepts that creative, and whose first
+    pricing option is fixed-price, first for this brief. filters.format_kinds narrows
+    which products are returned; it does not order format_options[], so it cannot
+    substitute for that. A canonical-only catalog whose first declaration is, say,
+    video still fails - the buy is rejected and the closing contribution check fails.
+
+    Known limitation, not addressed here: selecting a declaration by kind and
+    dimensions independently of catalog order would need a selection construct the
+    storyboard DSL does not have. Tracked separately rather than widening this fix.
   test_kit: "test-kits/acme-outdoor.yaml"
 
 fixtures:
@@ -121,7 +135,7 @@ phases:
     title: "Discover inline creative support"
     narrative: |
       The buyer confirms the seller accepts inline package creatives before
-      exercising either accepted product-format path.
+      exercising any of the accepted product-format paths.
 
     steps:
       - id: get_capabilities
@@ -209,8 +223,11 @@ phases:
           brief: "Display inventory on outdoor lifestyle content. Q3 flight with buyer-supplied inline creative."
           filters:
             is_fixed_price: true
-            # The inline creative below is a 300x250 image, so discovery must not
-            # return a product whose first option is some other kind.
+            # Narrows to products that ACCEPT the image kind. This does not order
+            # format_options[], so it does not guarantee that format_options[0] is the
+            # image declaration - see the first-declaration applicability limit in
+            # prerequisites. It only keeps a product that accepts no image at all out
+            # of the running.
             format_kinds: ["image"]
           account:
             brand:
@@ -235,6 +252,19 @@ phases:
           - check: field_present
             path: "products[0].format_options[0].format_kind"
             description: "Product declares a canonical format option for inline creative validation"
+          # Mismatch detector, not a selector. This phase is optional, so a non-image
+          # first declaration fails here WITHOUT gating the run - and because a failed
+          # step publishes no context, the three canonical paths below all stand down
+          # rather than buying a 300x250 image against, say, a video declaration. A
+          # seller whose only canonical declaration is non-image therefore makes zero
+          # creates and fails the closing coverage check, which is the honest result:
+          # this fixture cannot grade that catalog. Selecting a matching declaration
+          # regardless of catalog order is the separate limitation named in
+          # prerequisites; this check does not provide it.
+          - check: field_value
+            path: "products[0].format_options[0].format_kind"
+            value: "image"
+            description: "First canonical declaration accepts the fixed 300x250 image creative this scenario buys with; a different kind stands the canonical paths down instead of buying a mismatched creative"
           - check: field_present
             path: "products[0].pricing_options[0].fixed_price"
             description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
@@ -484,11 +514,16 @@ phases:
               pricing_option_id: "$context.canonical_pricing_option_id"
               format_option_refs:
                 # The whole captured declaration becomes the ref. format-option-ref.json
-                # allows additional properties on both branches, and this keeps the
-                # {publisher_domain, format_option_id} identity pair coherent rather
-                # than rebuilding it from separately captured leaves. `scope` is the one
-                # field the response cannot supply, so it is injected below from a
-                # storyboard-root constant - context_inputs deep-clones the request
+                # declares additionalProperties: true on both branches, so carrying the
+                # declaration's own fields is intended tolerance, not abuse; it keeps the
+                # {publisher_domain, format_option_id} identity pair coherent rather than
+                # rebuilding it from separately captured leaves. `scope` is the one field
+                # no response supplies. Whole-object substitution replaces this node
+                # outright, so there is no way to author a sibling `scope` beside it
+                # without an object-spread or projection construct the storyboard DSL
+                # does not have - hence the scope-only context_inputs below. That is a
+                # deliberate construction, not a runner defect. Dynamically verified against published
+                # @adcp/sdk 15.8.1 and 15.9.2: context_inputs structuredClones the request
                 # before writing, so the captured declaration is never mutated.
                 - "$context.canonical_declaration"
               context:
@@ -692,11 +727,16 @@ phases:
               pricing_option_id: "$context.canonical_pricing_option_id"
               format_option_refs:
                 # The whole captured declaration becomes the ref. format-option-ref.json
-                # allows additional properties on both branches, and this keeps the
-                # {publisher_domain, format_option_id} identity pair coherent rather
-                # than rebuilding it from separately captured leaves. `scope` is the one
-                # field the response cannot supply, so it is injected below from a
-                # storyboard-root constant - context_inputs deep-clones the request
+                # declares additionalProperties: true on both branches, so carrying the
+                # declaration's own fields is intended tolerance, not abuse; it keeps the
+                # {publisher_domain, format_option_id} identity pair coherent rather than
+                # rebuilding it from separately captured leaves. `scope` is the one field
+                # no response supplies. Whole-object substitution replaces this node
+                # outright, so there is no way to author a sibling `scope` beside it
+                # without an object-spread or projection construct the storyboard DSL
+                # does not have - hence the scope-only context_inputs below. That is a
+                # deliberate construction, not a runner defect. Dynamically verified against published
+                # @adcp/sdk 15.8.1 and 15.9.2: context_inputs structuredClones the request
                 # before writing, so the captured declaration is never mutated.
                 - "$context.canonical_declaration"
               context:
@@ -863,12 +903,11 @@ phases:
       to capture here and is graded on a canonical path instead.
 
       Unlike canonical discovery this probe deliberately does NOT narrow with
-      filters.format_kinds. product-format-declaration.json requires legacy ids to be
-      normalized to canonical only once a format_id "has been projected through
-      canonical, v1_format_ref, or the canonical mapping registry" - a NON-projectable
-      legacy format has no such projection and therefore accepts no canonical kind, so a
-      seller correctly honouring that filter would exclude itself and lose the only path
-      it can be graded on.
+      filters.format_kinds. A non-projectable legacy format has no canonical mapping to
+      match against, so a seller honouring that filter could return nothing and lose the
+      only path on which it can be graded - which is precisely the population this
+      scenario exists to cover. The filter is therefore omitted by design, not by
+      oversight.
 
       Applicability is stated here instead: the buyer submits a 300x250 image creative
       on this path, so rank a product whose format_ids[0] accepts that creative first
