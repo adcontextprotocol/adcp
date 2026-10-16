@@ -159,6 +159,7 @@ interface Summary {
   error?: string;
   failures: Array<{ step: string; error: string; validationId?: string }>;
   skips: Array<{ step: string; reason: string }>;
+  nonGatingFailures: Array<{ step: string; error: string }>;
 }
 
 async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close: () => Promise<void> }> {
@@ -747,7 +748,20 @@ function brandFromKit(
  * never rewritten: that would hide evidence that a runner blocker has cleared
  * and prevent removal of a stale skip entry.
  */
-function applyStepSkipList(storyboardId: string, result: StoryboardResult): void {
+interface StepWaiverEvidence {
+  requiredStepKeys: Set<string>;
+  requiredPhaseIds: Set<string>;
+}
+
+function hasFailedAssertion(step: { validations?: unknown }): boolean {
+  return Array.isArray(step.validations) && step.validations.some(validation =>
+    isRecord(validation) && validation.check === 'assertion' && validation.passed === false
+  );
+}
+
+function applyStepSkipList(sb: Storyboard, result: StoryboardResult): StepWaiverEvidence {
+  const storyboardId = sb.id;
+  const evidence: StepWaiverEvidence = { requiredStepKeys: new Set(), requiredPhaseIds: new Set() };
   for (const phase of result.phases ?? []) {
     for (const step of (phase.steps ?? []) as Array<Record<string, unknown>>) {
       const stepId = (step.id ?? step.step_id) as string | undefined;
@@ -772,7 +786,14 @@ function applyStepSkipList(storyboardId: string, result: StoryboardResult): void
         || validations.some(validation => (
           isRecord(validation) && validation.passed === false
         ));
-      if (!hadFailure) continue;
+      if (!hadFailure || hasFailedAssertion(step)) continue;
+      // Only a known failure in an authored REQUIRED phase can explain an SDK
+      // aggregate failure. Optional raw diagnostics are never waiver credit.
+      const phaseDef = sb.phases.find(def => def.id === phase.phase_id);
+      if (phaseDef && !phaseDef.optional && step.counts_toward_failure !== false && !step.skipped) {
+        evidence.requiredStepKeys.add(`${phase.phase_id}/${stepId}`);
+        evidence.requiredPhaseIds.add(phase.phase_id);
+      }
       step.passed = true;
       step.skipped = true;
       step.skip_reason = 'known_failing';
@@ -781,6 +802,7 @@ function applyStepSkipList(storyboardId: string, result: StoryboardResult): void
       delete step.error;
     }
   }
+  return evidence;
 }
 
 function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; skip_reason?: string; skip?: { detail?: string }; validations?: Array<{ passed: boolean }>; error?: string; response?: { accepted?: unknown; errors?: Array<{ code?: unknown }> } }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
@@ -805,15 +827,63 @@ function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: b
   return 'passed';
 }
 
-function summarize(sb: Storyboard, result: StoryboardResult | { error: string }): Summary {
-  const base: Summary = { id: sb.id, title: sb.title, passed: 0, failed: 0, skipped: 0, not_applicable: 0, failures: [], skips: [] };
+/**
+ * Rendered on the pill so a run carrying diverted optional reds is never
+ * indistinguishable from an unqualified pass. The required-clean greps anchor on
+ * the counts before this suffix, so appending is safe.
+ */
+function nonGatingSuffix(summary: Summary): string {
+  return summary.nonGatingFailures.length > 0 ? ` (+${summary.nonGatingFailures.length} non-gating)` : '';
+}
+
+/**
+ * Agent-derived text reaches CI stdout here. The isolator's safeLogLine defends the
+ * sharded path, but the direct workflow path tees stdout straight to the step, so a
+ * newline could forge a `::error::` workflow command or a `✓` pill line that the
+ * unanchored required-clean grep would accept. Collapse control characters and bound
+ * the length, matching how the failure list is already rendered.
+ */
+function sanitizeDiagnostic(text: string): string {
+  const flattened = text.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+  return flattened.length > 160 ? `${flattened.slice(0, 157)}...` : flattened;
+}
+
+function summarize(sb: Storyboard, result: StoryboardResult | { error: string }, waivers?: StepWaiverEvidence): Summary {
+  const base: Summary = { id: sb.id, title: sb.title, passed: 0, failed: 0, skipped: 0, not_applicable: 0, failures: [], skips: [], nonGatingFailures: [] };
   if ('error' in result) {
     base.error = result.error;
     return base;
   }
+  const authoritativeClean = result.overall_passed === true && result.failed_count === 0;
   for (const phase of result.phases ?? []) {
     for (const step of phase.steps ?? []) {
       const status = stepStatus(step as Parameters<typeof stepStatus>[0]);
+      // `counts_toward_failure` is published: @adcp/sdk 15.9.3 (adcp-client#3301) and
+      // 16.0.0-beta.4 (#3303) declare it on the step result and honour it in the JUnit
+      // reporter. This repo is pinned to 15.9.2, which predates it, so the marker is
+      // absent today and the authoritativeClean fallback below is the live path. No SDK
+      // bump is needed here; the marker arm is forward-compatible support, not dead code.
+      const marker = (step as { counts_toward_failure?: boolean }).counts_toward_failure;
+      // Only an AUTHORED optional phase may hold a non-gating red. Without this the
+      // SDK aggregate alone would decide, and a required-phase failure arriving
+      // alongside a clean aggregate would silently leave every counter - the same
+      // `optional` test applyStepSkipList already applies.
+      const authoredOptional = sb.phases.find(def => def.id === phase.phase_id)?.optional === true;
+      if (status === 'failed' && authoredOptional && !hasFailedAssertion(step)
+        && (marker === false || (marker === undefined && authoritativeClean))) {
+        // Keep raw diagnostic evidence; do not rewrite the SDK step to pass/skip.
+        const raw = step as { id?: string; step_id?: string; error?: string; validations?: Array<{ id?: string; passed: boolean; description?: string; error?: string; actual?: unknown }> };
+        base.nonGatingFailures.push({
+          step: raw.id ?? raw.step_id ?? '(unknown step)',
+          error: formatStepFailureDetail(raw.error, raw.validations, { includeActual: true }),
+        });
+        // Deliberately counted in no status bucket: it executed and it failed, so it is
+        // neither passed nor skipped coverage. The enforced envelope invariant is
+        // totals == sum(summaries) with clean = failed === 0 && !has_error, so this
+        // cannot inflate clean or passing coverage. It stays visible through the
+        // nonGatingFailures count rendered on the pill below.
+        continue;
+      }
       base[status] += 1;
       if (status === 'failed') {
         // Webhook-assertion pseudo-steps (expect_webhook*) return their id on
@@ -846,6 +916,31 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
           reason: s.skip_reason ?? s.error ?? 'runner did not provide a skip reason',
         });
       }
+    }
+  }
+  // SDK assertions and runner-wide failures need not appear on a failed step.
+  const failedAssertions = result.assertions?.some(assertion => assertion.passed === false) ?? false;
+  const sdkRejected = result.overall_passed === false || result.failed_count > 0;
+  if (failedAssertions) {
+    base.error = 'SDK reported a gating assertion failure';
+  } else if (sdkRejected && base.failed === 0) {
+    const requiredPhases = sb.phases.filter(phase => !phase.optional);
+    const resultPhases = result.phases ?? [];
+    const requiredExecutedPass = requiredPhases.some(def => resultPhases.some(phase =>
+      phase.phase_id === def.id && phase.steps.some(step => !step.skipped && step.passed)
+    ));
+    const allRejectedPhasesExplained = requiredPhases.every(def => {
+      const phase = resultPhases.find(value => value.phase_id === def.id);
+      return phase?.passed === true || (waivers?.requiredPhaseIds.has(def.id) === true
+        && phase !== undefined && !phase.steps.some(step => step.skipped && step.passed === false));
+    });
+    const knownRequiredWaiversExplainRejection =
+      (waivers?.requiredStepKeys.size ?? 0) > 0
+      && waivers!.requiredStepKeys.size === result.failed_count
+      && requiredExecutedPass
+      && allRejectedPhasesExplained;
+    if (!knownRequiredWaiversExplainRejection) {
+      base.error = 'SDK rejected this storyboard for a reason not explained by known required-step waivers';
     }
   }
   return base;
@@ -1072,12 +1167,12 @@ async function main() {
             ...(brand && { brand }),
             ...(testKit && { test_kit: testKit }),
           });
-          applyStepSkipList(storyboard.id, result);
-          const summary = { ...summarize(storyboard, result), id: variantLabel };
+          const waivers = applyStepSkipList(storyboard, result);
+          const summary = { ...summarize(storyboard, result, waivers), id: variantLabel };
           results.push(summary);
-          const pill = summary.failed === 0
-            ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
-            : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
+          const pill = summary.failed === 0 && summary.error === undefined
+            ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A${nonGatingSuffix(summary)}`
+            : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A${nonGatingSuffix(summary)}`;
           // eslint-disable-next-line no-console
           console.log(`  ${variantLabel.padEnd(40)} ${pill}`);
         } catch (err) {
@@ -1127,12 +1222,12 @@ async function main() {
             context: routing.context,
           }),
         });
-        applyStepSkipList(storyboard.id, result);
-        const summary = summarize(storyboard, result);
+        const waivers = applyStepSkipList(storyboard, result);
+        const summary = summarize(storyboard, result, waivers);
         results.push(summary);
-        const pill = summary.failed === 0
-          ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
-          : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
+        const pill = summary.failed === 0 && summary.error === undefined
+          ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A${nonGatingSuffix(summary)}`
+          : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A${nonGatingSuffix(summary)}`;
         // eslint-disable-next-line no-console
         console.log(`  ${storyboard.id.padEnd(40)} ${pill}`);
       } catch (err) {
@@ -1172,6 +1267,22 @@ async function main() {
       if (!verbose && r.failures.length > 5) {
         // eslint-disable-next-line no-console
         console.log(`    … +${r.failures.length - 5} more (run with --verbose)`);
+      }
+    }
+  }
+
+  const diagnosticResults = results.filter(result => result.nonGatingFailures.length > 0);
+  if (diagnosticResults.length > 0) {
+    // eslint-disable-next-line no-console
+    console.log('\n--- Non-gating step diagnostics ---');
+    for (const result of diagnosticResults) {
+      for (const diagnostic of result.nonGatingFailures.slice(0, verbose ? undefined : 5)) {
+        // eslint-disable-next-line no-console
+        console.log(`  ${result.id} · ${diagnostic.step}: ${sanitizeDiagnostic(diagnostic.error)}`);
+      }
+      if (!verbose && result.nonGatingFailures.length > 5) {
+        // eslint-disable-next-line no-console
+        console.log(`    … +${result.nonGatingFailures.length - 5} more (run with --verbose)`);
       }
     }
   }
