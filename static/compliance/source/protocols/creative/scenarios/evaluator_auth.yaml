@@ -237,6 +237,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_evaluator_auth-1e409e0c"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -302,6 +303,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_evaluator_auth-1e409e0c"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -368,6 +370,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_evaluator_auth-1e409e0c"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -446,6 +449,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_evaluator_auth-1e409e0c"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           context:
@@ -558,6 +562,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_evaluator_auth-1e409e0c"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           context:
