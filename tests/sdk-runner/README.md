@@ -1,0 +1,41 @@
+# `@adcp-protocol/fixture-test-sdk`
+
+Private, test-only. Nothing here ships.
+
+## Why it exists
+
+`static/compliance/source/protocols/media-buy/scenarios/inline_creatives_without_sync.yaml`
+gates its three canonical paths with `skip_if` expressions that read **captured
+context** (for example
+`!context.canonical_declaration || context.canonical_declaration.format_option_id`).
+
+The root project's production `@adcp/sdk` is **9.6.2**, whose `skip_if` grammar
+only matches `test_kit.*`; any other expression is ignored and the phase runs
+anyway. That runner therefore cannot execute this storyboard at all, so the
+regression tests cannot be written against it.
+
+This package pins a published `@adcp/sdk` **15.9.2** purely so
+`tests/cli-scenario-fixtures.test.cjs` can drive a runner that evaluates those
+guards. Its conflicting peers (`@a2a-js/sdk` 1.x vs the root's 0.3.x) nest under
+`tests/sdk-runner/node_modules`, so **root production resolution is unchanged**:
+`@adcp/sdk` 9.6.2 with `@a2a-js/sdk` 0.3.x.
+
+## Verified runner floor
+
+Context-aware `skip_if` is **verified present in 15.8.1 and 15.9.2** and
+**verified absent in 9.6.2**. Versions between 9.6.3 and 15.8.0 were not tested,
+so the floor is stated as "≥15.8.1 verified", not as an exact first version.
+15.8.1 is the version the hosted grader runs.
+
+This is not a new floor for the branch: `billing_out_of_band`, `evaluator_auth`
+and `refine_finalize_exclusivity` already ship context-reading `skip_if` on
+3.1.x.
+
+## Rules
+
+- **Never import this from `server/`.** Runtime code uses `@adcp/sdk`, which
+  stays 9.6.2. This package is a `devDependency` (`file:tests/sdk-runner`) and
+  is absent from a production install.
+- Only `./testing` is forwarded, because that is all the regression tests need.
+  Do not add forwarders speculatively.
+- Bumping the pin here has no effect on the server or on any published artifact.

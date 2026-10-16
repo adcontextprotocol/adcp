@@ -1,6 +1,10 @@
 # Dependencies
 /node_modules
 server/node_modules
+# Nested install for the private, test-only SDK helper (tests/sdk-runner).
+# Its conflicting peers live here; only the helper's source and the root lock
+# are committed.
+tests/sdk-runner/node_modules
 
 # Production
 /build
