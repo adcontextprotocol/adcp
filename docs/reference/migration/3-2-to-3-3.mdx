@@ -1,7 +1,7 @@
 ---
 title: Migrating from 3.2 to 3.3
 sidebarTitle: 3.2 to 3.3
-description: "Role-based migration checklist for adopting the AdCP 3.3 beta while preserving 3.2 compatibility: two behavior tightenings, optional new declarations, and no deprecations."
+description: "Role-based migration checklist for adopting the AdCP 3.3 beta while preserving 3.2 compatibility: three behavior tightenings, optional new declarations, and no deprecations."
 "og:title": "AdCP — Migrating from 3.2 to 3.3"
 ---
 
@@ -13,7 +13,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 
 3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated; one usage is (see [Deprecations](#deprecations)). Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
-Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). Two changes loosen a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib) and the [client response-size default rises to 4 MiB](#client-response-size-default-rises-to-4-mib). One new recommendation tightens a limit in the other direction, so a 3.3 buyer can reject what a 3.2 buyer accepted: [clients bound agent response size](#recommended-bound-agent-response-size). Everything else is an optional declaration or a clarification.
+Three changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account), [signature verification tightens](#signature-verification-tightens), and [responses conform to the served release](#responses-conform-to-the-served-release). Two changes loosen a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib) and the [client response-size default rises to 4 MiB](#client-response-size-default-rises-to-4-mib). One new recommendation tightens a limit in the other direction, so a 3.3 buyer can reject what a 3.2 buyer accepted: [clients bound agent response size](#recommended-bound-agent-response-size). Everything else is an optional declaration or a clarification.
 
 For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3). For prerelease artifacts and SDK timing, use the [3.3 beta program](/docs/reference/3-3-beta).
 
@@ -116,6 +116,10 @@ superseded; an official revision's window restarts at its newest adjustment. See
 
 - `impressions` is no longer required on `daily_breakdown` rows or on the dimensional breakdown rows, so SDK-generated row types make it optional; handle `undefined` or `None`. Absence means not measured, never zero. Sellers omit it only toward callers pinned to 3.3 or later. See [Rows without impressions](/docs/media-buy/media-buys/optimization-reporting#rows-without-impressions).
 
+### Responses conform to the served release
+
+A seller that serves a request at release R (the release it echoes in `adcp_version`) MUST emit a response that validates against R's published schema. It projects or omits shapes introduced after R, such as new `oneOf` arms, widened types, and alternative required fields. A seller that cannot project for a release MUST NOT list it in `supported_versions`. The rule includes `get_adcp_capabilities`, and the negotiation fields (`adcp.supported_versions`, `adcp.major_versions`, the `adcp_version` echo) keep the same shape across 3.x so any 3.x client can read them and pin. 3.2 sellers serving a `"3.1"` pin could emit six shapes a strict 3.1 validator rejects, led by the `sync_accounts` required-field flip; see the [3.1 to 3.2 list](/docs/reference/migration/3-1-to-3-2#version-negotiation-across-3-1-and-3-2). The rule is in [Serving an older pin](/docs/reference/versioning#serving-an-older-pin). Buyers should keep parsing tolerantly.
+
 ## Recommended: bound agent response size
 
 Clients SHOULD bound the size of every AdCP response they read, enforce the bound while the body is received rather than after buffering or parsing, apply it to streamed (SSE) responses both per event and cumulatively per call, surface an oversized response as an error rather than truncating it, and default to no more than 4 MiB (4,194,304 bytes). This is a recommendation, not a conformance requirement — a 3.2 implementation does not become non-conformant — but SDKs are adopting the default, so the interop effect is real. See [Response size bounds](/docs/building/by-layer/L1/security#response-size-bounds).
@@ -186,6 +190,7 @@ Existing 3.2 deprecations keep their published removal windows.
 
 ## Compliance and grading
 
+- `version_negotiation` gains an optional advisory scenario for 3.1-pinned response shapes, pending runner support for validating against the served release's schema bundle.
 - `media_buy_seller/unprovisioned_account_reference` is new and advisory until runner capability `14.1.0`.
 - `media_buy_seller/stable_account_id` is new and runs only for buyer-declared sellers that declare `account.stable_account_id: true`. It addresses the account by `account_id` on `get_media_buys` and requires `@adcp/sdk` 15.8.0 or later, whose storyboard runner sends an authored `account_id` as written.
 - Advanced delivery reporting runs only for sellers that advertise wholesale discovery, and proposal-finalization replay only for sellers that advertise idempotency support.
@@ -197,7 +202,7 @@ These change grading results, not the wire.
 
 ## Rollback
 
-Stay on, or return to, `"3.2"`: every 3.3 declaration is optional, so removing it restores 3.2 behavior. The two tightenings above are the exception: they apply as soon as you claim 3.3 behavior, so keep a 3.2-pinned route until your discovery and verification paths pass against the beta.
+Stay on, or return to, `"3.2"`: every 3.3 declaration is optional, so removing it restores 3.2 behavior. The three tightenings above are the exception: they apply as soon as you claim 3.3 behavior, so keep a 3.2-pinned route until your discovery and verification paths pass against the beta.
 
 ## Related
 

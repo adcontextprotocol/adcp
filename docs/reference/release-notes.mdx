@@ -28,6 +28,7 @@ Each beta is immutable. The `3.3-beta` documentation selector advances to the la
 
 - **Accounts:** discovery and negotiation tasks never provision an account; unresolved `account` references return `ACCOUNT_NOT_FOUND` with one recovery path (#7848, #7871).
 - **Trust and signing:** one agent-resolution algorithm for every signing surface, canonical URL matching, publisher key pins that only narrow, and `adagents.json` agent URLs that include the endpoint path (#7882, #7827, #7881).
+- **Versioning:** a response to a request negotiated at release R must validate against R's schema; sellers project newer shapes or drop that release from `supported_versions` (#7718).
 - **Media buy:** optional `media_buy.features.catalog_ingestion` declarations for catalog types, modes, feed formats, identifiers, batch limits, and item status reporting (#7927).
 - **Channels:** structured DOOH `location` on placements and `dooh_inventory_summary.venue_counts[]` on products (#7416).
 - **Extensions:** the AdCP-owned `ext.adcp` namespace with an optional `opportunity` binding for 3.2 `get_products` integrations (#7904).

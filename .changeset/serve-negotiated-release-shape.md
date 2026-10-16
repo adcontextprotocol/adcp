@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Require responses to conform to the negotiated release (#7718, WG-approved 2026-10-12, DR-0024). A response to a request negotiated at release R MUST validate against R's published schema; shapes introduced after R (new `oneOf`/`anyOf` arms, widened types, alternative required fields) MUST be projected to R's shape or omitted, and a seller that cannot project for a release MUST NOT list it in `supported_versions`. The rule covers `get_adcp_capabilities` too, and the negotiation fields (`adcp.supported_versions`, `adcp.major_versions`, the `adcp_version` echo) keep the same shape across every release of a major. Unpinned requests are served at the default or highest release and parsed tolerantly. New enum values stay governed by the unknown-value tolerance rule. The 3.1 to 3.2 migration guide lists the six known divergences, led by the `sync_accounts` required-field flip, and the `version_negotiation` storyboard gains an optional advisory stub scenario pending runner support for validating against the served release's schema bundle. Signing-profile selection by negotiated version is out of scope.
