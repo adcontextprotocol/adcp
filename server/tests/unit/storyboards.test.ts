@@ -262,7 +262,7 @@ describe('wrapper contract', () => {
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe('3.2.4');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.2-rc.7']).version).toBe('3.2.0-rc.7');
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe('3.2.4');
-    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe('3.1.24');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe('3.1.27');
 
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.7']).requested).toBe('3.1-beta');
@@ -285,7 +285,7 @@ describe('wrapper contract', () => {
 
   it('caps hosted aliases at explicitly registered released compliance bundles', () => {
     expect(hostedComplianceTarget('3.0').version).toBe('3.0.27');
-    expect(hostedComplianceTarget('3.1').version).toBe('3.1.24');
+    expect(hostedComplianceTarget('3.1').version).toBe('3.1.27');
     expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
     expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
     expect(hostedComplianceTarget('3.2').version).toBe('3.2.4');
@@ -297,15 +297,15 @@ describe('wrapper contract', () => {
     expect(() => hostedComplianceTarget('3.1-rc.15')).toThrow(/not available from a published/);
   });
 
-  it('loads the released 3.1.24 bundle with the pinned hosted SDK', () => {
+  it('loads the released 3.1.27 bundle with the pinned hosted SDK', () => {
     const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1']);
     const options = hostedComplianceOptions(target);
 
     expect(target.requested).toBe('3.1');
-    expect(target.version).toBe('3.1.24');
-    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.24$/);
-    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.24$/);
-    expect(loadComplianceIndex(options).adcp_version).toBe('3.1.24');
+    expect(target.version).toBe('3.1.27');
+    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.27$/);
+    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.27$/);
+    expect(loadComplianceIndex(options).adcp_version).toBe('3.1.27');
   });
 
   it.each([
