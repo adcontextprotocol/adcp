@@ -187,6 +187,11 @@
                         "$ref": "/schemas/enums/right-type.json"
                       },
                       "minItems": 1
+                    },
+                    "onboarding": {
+                      "$ref": "/schemas/core/buyer-onboarding-posture.json",
+                      "x-added-in": "3.3.0",
+                      "description": "For a buying agent (role adcp:buying): how it considers sellers. Overrides the record-level profiles.adcp.onboarding for this agent. trust.json is the only home for the buyer posture."
                     }
                   },
                   "additionalProperties": false
@@ -371,6 +376,11 @@
                   "items": {
                     "$ref": "/schemas/core/identity-relying-party.json"
                   }
+                },
+                "onboarding": {
+                  "$ref": "/schemas/core/buyer-onboarding-posture.json",
+                  "x-added-in": "3.3.0",
+                  "description": "Default buyer onboarding posture for every buying agent this record lists; an agent entry's profiles.adcp.onboarding overrides it."
                 }
               },
               "additionalProperties": false

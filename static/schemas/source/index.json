@@ -987,6 +987,22 @@
           "$ref": "/schemas/core/brand-id.json",
           "description": "Identifier for a brand within a house portfolio - lowercase alphanumeric with underscores only"
         },
+        "agent-onboarding": {
+          "$ref": "/schemas/core/agent-onboarding.json",
+          "description": "Seller onboarding posture for buyer agents, per billing party and sandbox"
+        },
+        "agent-onboarding-tier": {
+          "$ref": "/schemas/core/agent-onboarding-tier.json",
+          "description": "One onboarding mode with its requirements"
+        },
+        "buyer-onboarding-posture": {
+          "$ref": "/schemas/core/buyer-onboarding-posture.json",
+          "description": "How a buying agent considers sellers, published in its trust.json"
+        },
+        "agent-onboarding-requirement": {
+          "$ref": "/schemas/core/agent-onboarding-requirement.json",
+          "description": "One onboarding requirement, discriminated by kind"
+        },
         "brand-ref": {
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Reference to a brand via house domain + brand_id (like publisher + property_id)"
@@ -1193,6 +1209,14 @@
     "enums": {
       "description": "Enumerated types and constants",
       "schemas": {
+        "agent-onboarding-mode": {
+          "$ref": "/schemas/enums/agent-onboarding-mode.json",
+          "description": "Onboarding mode (open, application, invite_only); a seller's posture toward buyer agents or a buyer's toward sellers, by where it appears"
+        },
+        "agent-onboarding-requirement-kind": {
+          "$ref": "/schemas/enums/agent-onboarding-requirement-kind.json",
+          "description": "Extensible onboarding requirement kinds, each scoped to a direction"
+        },
         "pricing-model": {
           "$ref": "/schemas/enums/pricing-model.json",
           "description": "Supported pricing models for advertising products"
