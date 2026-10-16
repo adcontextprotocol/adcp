@@ -201,16 +201,27 @@ async function runInline({
           sameKindCatalog,
           ...(drift[discoveryKey(request)] ?? {}),
         });
-        for (const declaration of product.format_options ?? []) servedDeclarations.push(declaration);
+        // Frozen: the runner captures this object by reference, so if a future SDK
+        // wrote the injected `scope` back onto the capture it must throw here rather
+        // than leave the no-mutation assertion silently passing for the wrong reason.
+        for (const declaration of product.format_options ?? [])
+          servedDeclarations.push(Object.freeze(declaration));
         data = { ...echo, products: [product] };
       } else if (task === 'create_media_buy') {
         if (failLane === lane) return { success: false, error: 'inline creative rejected' };
         const requested = request.packages[0];
         // A seller that published a selectable id requires a ref naming it. A legacy
         // package is selector-bearing by other means - the creative carries format_id.
-        const published = (buildProduct({ canonical, legacy, shape, sameKindCatalog }).format_options ?? [])[0];
+        const options = buildProduct({ canonical, legacy, shape, sameKindCatalog }).format_options ?? [];
+        const published = options[0];
+        // A catalog with two entries sharing one format_kind is genuinely ambiguous:
+        // `format_kind` alone cannot route, so a correct seller refuses a package that
+        // carries no disambiguating ref. Gate on the ambiguity itself, not on
+        // options[0] having an id, so the second entry is actually load-bearing.
+        const ambiguous =
+          options.filter(option => option.format_kind === published?.format_kind).length > 1;
         if (
-          published?.format_option_id &&
+          (published?.format_option_id || ambiguous) &&
           !requested.format_option_refs &&
           !requested.creatives?.[0]?.format_id
         ) {
@@ -226,8 +237,14 @@ async function runInline({
         buys.set(lane, { media_buy_id: `${lane}-buy`, package: pkg });
         data = { ...echo, media_buy_id: `${lane}-buy`, packages: [pkg] };
       } else if (task === 'update_media_buy') {
-        data = { ...echo, media_buy_id: request.media_buy_id, affected_packages: [buys.get(lane).package] };
+        const updated = buys.get(lane);
+        // Without this guard a cascade-behaviour change would crash the stub from
+        // inside executeTask and the test would still pass on overall_passed alone.
+        if (!updated) return { success: false, error: `no media buy recorded for lane ${lane}` };
+        data = { ...echo, media_buy_id: request.media_buy_id, affected_packages: [updated.package] };
       } else if (task === 'get_media_buys') {
+        const read = buys.get(lane);
+        if (!read) return { success: false, error: `no media buy recorded for lane ${lane}` };
         const canonicalLane = lane !== 'legacy';
         const approvals =
           canonicalLane && readback === 'missing'
@@ -244,7 +261,7 @@ async function runInline({
           media_buys: [
             {
               media_buy_id: request.media_buy_ids[0],
-              packages: [{ package_id: buys.get(lane).package.package_id, creative_approvals: approvals }],
+              packages: [{ package_id: read.package.package_id, creative_approvals: approvals }],
             },
           ],
         };
@@ -319,6 +336,7 @@ for (const [shape, phase, scope] of [
     }
     // The ref is built by substituting the captured declaration and then injecting
     // `scope`. That injection must never write back into the captured object.
+    assert.ok(servedDeclarations.length > 0, 'no declaration was served, so the loop below proves nothing');
     for (const declaration of servedDeclarations) {
       assert.equal('scope' in declaration, false, 'injecting scope must not mutate the captured declaration');
     }
@@ -560,5 +578,16 @@ test('inline creatives: a legacy-only seller honouring format_kinds would lose a
     _client: client,
     _profile: { name: 'legacy seller', tools, raw_capabilities: { media_buy: { features: { inline_creative_management: true } } } },
   });
+  // Assert the MECHANISM, not just a red run: a stub that cannot complete a buy
+  // would fail with or without the filter and prove nothing. The legacy execution
+  // phase must never open, and the sole coverage gate must be what fails.
+  const legacyPhase = result.phases.find(phase => phase.phase_id === 'legacy_format_inline_path');
+  assert.equal(legacyPhase.steps.filter(step => !step.skipped).length, 0, 'the legacy path must never open');
+  const coverage = result.phases
+    .flatMap(phase => phase.steps)
+    .find(step => step.task === 'assert_contribution');
+  assert.equal(coverage.passed, false, 'no path completed, so the coverage gate must fail');
   assert.equal(result.overall_passed, false, 'filtering legacy discovery costs a conformant legacy-only seller its only path');
+  // Positive control: the same seller, unfiltered, is graded green by the
+  // 'legacy only buys on exactly its advertised representations' test above.
 });
