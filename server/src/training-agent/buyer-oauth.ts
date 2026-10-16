@@ -46,8 +46,36 @@ export function trainingBuyerOAuthConfig(env: NodeJS.ProcessEnv = process.env): 
 }
 
 export function trainingBuyerMetadata(config: TrainingBuyerOAuthConfig) {
-  return { resource: config.resource, authorization_servers: [config.issuer],
+  return { resource: config.resource, resource_name: 'AdCP sales training sandbox',
+    resource_documentation: new URL('/sales/oauth', config.resource).href, authorization_servers: [config.issuer],
     bearer_methods_supported: ['header'], scopes_supported: ['openid', 'profile', 'email', 'offline_access'] };
+}
+
+/** Served with the application so discovery never points to stale release docs. */
+export function trainingBuyerDocumentation(config: TrainingBuyerOAuthConfig): string {
+  return `AdCP sales training sandbox: OAuth authentication
+
+Connect to ${config.resource}. Follow its unauthenticated 401 WWW-Authenticate
+challenge to ${config.metadataUrl}. Use the advertised authorization server
+${config.issuer}, PKCE, and the exact resource indicator ${config.resource}.
+Request openid profile email offline_access. Use a public OAuth client registered
+with that server, or dynamic client registration when supported by the server.
+
+Sign in with an AgenticAdvertising.org account and select an organization where
+you have an active owner, admin, or member role. A paid subscription is not
+required. General callers share an organization-scoped training sandbox.
+Private canary owners/admins with a provisioned local grant retain their private
+buyer identity; ordinary canary members use a separate sandbox.
+
+Live GCS reporting under /sales/reporting is restricted to the private canary's
+provisioned owners/admins. Denied OAuth calls return 403 BUYER_ACCESS_DENIED with
+error_description and WWW-Authenticate: Bearer error="insufficient_scope".
+Show the description instead of retrying sign-in or reporting discovery failure.
+
+Without organization access, use the shared public bearer test token documented
+at https://docs.adcontextprotocol.org/docs/quickstart#setup. Other specialism
+endpoints accept bearer test tokens or organization API keys.
+`;
 }
 
 class BuyerAuthorizationError extends Error {
@@ -59,8 +87,14 @@ export function createTrainingBuyerOAuthMiddleware(
   config: TrainingBuyerOAuthConfig,
   fallback: RequestHandler,
   keyResolver: JWTVerifyGetKey = createRemoteJWKSet(new URL('/oauth2/jwks', config.issuer), { timeoutDuration: 5_000 }),
+  access: 'sandbox' | 'private-reporting' = 'sandbox',
 ): RequestHandler {
   const keys = unavailableJWTKeyService(keyResolver);
+  const privateReporting = access === 'private-reporting';
+  const allowedRoles = privateReporting ? ['owner', 'admin'] : ['owner', 'admin', 'member'];
+  const accessDescription = privateReporting
+    ? 'Private training buyer reporting requires an owner or admin of the configured canary organization. Use /sales/mcp for the OAuth sandbox.'
+    : 'The sales training sandbox requires active membership in the signed-in AgenticAdvertising.org organization. Check organization access or use the public test bearer token.';
   const limit = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false,
     validate: { xForwardedForHeader: false, ip: false },
     handler: (_req, res) => { res.status(429).json({ error: 'BUYER_RATE_LIMITED' }); } });
@@ -69,7 +103,9 @@ export function createTrainingBuyerOAuthMiddleware(
     if (token && !looksLikeJWT(token)) return fallback(req, res, next);
     res.setHeader('Cache-Control', 'no-store');
     const unauthorized = () => respondUnauthorized(req, res, { resourceMetadata: config.metadataUrl,
-      error: token ? 'invalid_token' : 'invalid_request', errorDescription: 'Sign in to the private training buyer.' });
+      error: token ? 'invalid_token' : 'invalid_request', errorDescription: privateReporting
+        ? 'Sign in as an owner or admin of the private training buyer organization.'
+        : 'Sign in to an AgenticAdvertising.org organization to use the sales training sandbox, or use the public test bearer token.' });
     if (!token) return unauthorized();
     let limited = true;
     await limit(req, res, () => { limited = false; });
@@ -89,13 +125,15 @@ export function createTrainingBuyerOAuthMiddleware(
       let selected: string | null;
       try { selected = selectedOrganizationForAuthentication(req, payload.org_id); }
       catch { throw new BuyerAuthorizationError(403); }
-      if (selected !== config.organizationId) throw new BuyerAuthorizationError(403);
+      if (!selected || !/^org_[A-Za-z0-9]+$/.test(selected)
+        || (privateReporting && selected !== config.organizationId)) throw new BuyerAuthorizationError(403);
       dependency = 'primary_authorization';
       const before = await loadAuthorizationSnapshot(payload.sub, selected);
       if (!before) throw new BuyerAuthorizationError(401);
       if (before.authenticatedUserId !== payload.sub || before.selectedOrganizationId !== selected
-        || before.credentialGrant?.organizationId !== selected
-        || !['owner', 'admin'].includes(before.credentialGrant.role)) throw new BuyerAuthorizationError(403);
+        || (before.credentialGrant && before.credentialGrant.organizationId !== selected)
+        || (privateReporting && (!before.credentialGrant
+          || !allowedRoles.includes(before.credentialGrant.role)))) throw new BuyerAuthorizationError(403);
       dependency = 'platform_ban';
       const ban = await bansDb.checkPlatformBanForUserAndOrg(payload.sub, selected);
       if (ban.banned) throw new BuyerAuthorizationError(403);
@@ -103,26 +141,36 @@ export function createTrainingBuyerOAuthMiddleware(
       const memberships = await getPipesWorkos().userManagement.listOrganizationMemberships({ userId: payload.sub, organizationId: selected });
       const direct = memberships.data.filter(m => m.userId === payload.sub && m.organizationId === selected && m.status === 'active');
       const role = resolveUserRole(direct);
-      if (role !== 'owner' && role !== 'admin') throw new BuyerAuthorizationError(403);
+      if (!role || !allowedRoles.includes(role)) throw new BuyerAuthorizationError(403);
       // Network checks can outlive a local revocation or identity rebind.
       dependency = 'primary_authorization';
       const after = await loadAuthorizationSnapshot(payload.sub, selected);
       if (!after || !sameAuthorizationSnapshot(before, after)) throw new BuyerAuthorizationError(403);
-      const principal = `workos:${selected}`;
+      // Preserve the private canary identity only when both authorities grant
+      // owner/admin access. General OAuth callers share an organization sandbox
+      // in a separate namespace, including ordinary members of the canary org.
+      const privateBuyer = selected === config.organizationId
+        && !!before.credentialGrant && ['owner', 'admin'].includes(before.credentialGrant.role)
+        && ['owner', 'admin'].includes(role);
+      const principal = privateBuyer ? `workos:${selected}` : `training-oauth:${selected}`;
       const scopes = typeof payload.scope === 'string' ? payload.scope.split(' ').filter(Boolean) : [];
-      const actor = { user_id: payload.sub, organization_id: selected, client_id: payload.client_id,
+      const actor = { user_id: payload.sub, organization_id: selected, principal_id: principal, client_id: payload.client_id,
         identity_id: after.identityId, authorization_epoch: after.authorizationEpoch };
       res.locals.trainingPrincipal = principal;
       res.locals.trainingOAuthActor = actor;
       (req as Request & { auth?: AuthInfo }).auth = { token: '', clientId: principal, scopes, expiresAt: payload.exp,
-        extra: { training_oauth_actor: actor,
+        extra: { training_buyer_principal: principal, training_oauth_actor: actor,
           credential: { kind: 'oauth', client_id: payload.client_id, scopes, expires_at: payload.exp } } };
       next();
     } catch (error) {
       if ((error instanceof BuyerAuthorizationError && error.status === 401) || isInvalidWorkOSJWTError(error)) return unauthorized();
-      if (error instanceof BuyerAuthorizationError) { res.status(403).json({ error: 'BUYER_ACCESS_DENIED' }); return; }
+      if (error instanceof BuyerAuthorizationError) {
+        res.setHeader('WWW-Authenticate', `Bearer error="insufficient_scope", error_description="${accessDescription}"`);
+        res.status(403).json({ error: 'BUYER_ACCESS_DENIED', error_description: accessDescription });
+        return;
+      }
       // Dependency errors can contain credentials; log only fixed classifications.
-      logger.error({ dependency, code: 'BUYER_AUTHORIZATION_UNAVAILABLE' }, 'Private training buyer authorization unavailable');
+      logger.error({ dependency, code: 'BUYER_AUTHORIZATION_UNAVAILABLE' }, 'Training buyer authorization unavailable');
       res.status(503).json({ error: 'BUYER_AUTHORIZATION_UNAVAILABLE' });
     }
   };

@@ -59,7 +59,7 @@ import {
 } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { buildGovernanceAgentCredentialAuthenticator } from './governance-agent-credentials.js';
-import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, TRAINING_BUYER_METADATA_PATH } from './buyer-oauth.js';
+import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, trainingBuyerDocumentation, TRAINING_BUYER_METADATA_PATH } from './buyer-oauth.js';
 
 const logger = createLogger('training-agent-routes');
 
@@ -325,9 +325,15 @@ export function createTrainingAgentRouter(options: {
   const router = Router();
   const buyerOAuth = trainingBuyerOAuthConfig();
   const requireSalesAuth = buyerOAuth ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault) : requireTokenDefault;
+  const requireReportingAuth = buyerOAuth
+    ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault, undefined, 'private-reporting')
+    : requireTokenDefault;
   if (buyerOAuth) router.get(TRAINING_BUYER_METADATA_PATH, (_req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.json(trainingBuyerMetadata(buyerOAuth));
+  });
+  if (buyerOAuth) router.get('/sales/oauth', (_req, res) => {
+    res.type('text/plain').send(trainingBuyerDocumentation(buyerOAuth));
   });
 
   startSessionCleanup();
@@ -350,7 +356,7 @@ export function createTrainingAgentRouter(options: {
     },
   });
 
-  router.use('/sales/reporting', ...(!options.disableRateLimit ? [mcpRateLimiter] : []), requireSalesAuth, trainingGcsReportingRouter());
+  router.use('/sales/reporting', ...(!options.disableRateLimit ? [mcpRateLimiter] : []), requireReportingAuth, trainingGcsReportingRouter());
 
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via
