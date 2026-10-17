@@ -11,9 +11,13 @@ introduced_in: "3.1"
 required_tools:
   - build_creative
 
-requires_capability:
-  path: creative.supports_evaluator
-  equals: true
+# The compound gate requires an established positive profile. A single
+# requires_capability permits unknown raw capabilities after a failed probe.
+requires_all_capabilities:
+  - path: creative
+    present: true
+  - path: creative.supports_evaluator
+    equals: true
 
 narrative: |
   `build_creative.evaluator` is an experimental buyer-attached pointer for
@@ -43,9 +47,11 @@ narrative: |
   are not cryptographic proof of transport authentication. Authentication proof
   remains a normative obligation on the producing agent and evaluator.
 
-  Applicability is determined by the capability gate above. For a supporting
-  agent, both off-list rejection phases are required independently: the evaluator
-  spec and build_creative reference require rejection before any outbound call.
+  Applicability requires the established positive capability profile above;
+  unknown capability evidence receives no executed security coverage. For a
+  supporting agent, both off-list rejection phases are required independently: the
+  evaluator spec and build_creative reference require rejection before any
+  outbound call.
   A later discovery response cannot opt out of these security checks. Missing
   build or feature identifiers fail the required discovery context captures;
   their dependent phases skip rather than dispatch unresolved request values.
@@ -265,9 +271,9 @@ phases:
       equals: true
     skip_if: "!context.build_capability_id || !context.creative_feature_id"
     narrative: |
-      The buyer supplies a well-formed `feature_agent.agent_url` alongside an
-      account-arranged evaluator id. The nested feature agent uses the same
-      accepted-verifier allowlist and must be rejected before any outbound call
+      The buyer supplies a well-formed `feature_agent.agent_url` alongside the
+      accepted external evaluator source configured in the prerequisites. The
+      nested feature agent uses the same accepted-verifier allowlist and must be rejected before any outbound call
       when it is off-list.
 
     steps:
@@ -294,7 +300,7 @@ phases:
             dimension: "best_of_n"
           keep_mode: "keep_one"
           evaluator:
-            evaluator_id: "quality-default"
+            agent_url: "https://quality-evaluator.example/adcp"
             feature_agent:
               agent_url: "https://unaccepted-evaluator.example/adcp"
               feature_id: "$context.creative_feature_id"

@@ -96,6 +96,7 @@ async function runEvaluatorBoundary({
   missingCatalog,
   attack,
   optionalFailure = false,
+  preflightFailure = false,
 } = {}) {
   const storyboard = parseStoryboard(fs.readFileSync(path.join(creativeScenariosPath, 'evaluator_auth.yaml'), 'utf8'));
   const capabilities = {
@@ -113,18 +114,20 @@ async function runEvaluatorBoundary({
   };
   if (support === 'absent') delete capabilities.creative.supports_evaluator;
   const discovery = structuredClone(capabilities);
-  discovery.creative.supports_evaluator = discoverySupport;
+  if (discoverySupport === 'absent') delete discovery.creative.supports_evaluator;
+  else discovery.creative.supports_evaluator = discoverySupport;
   if (missingCatalog === 'build') discovery.creative.supported_formats = [];
   if (missingCatalog === 'feature') discovery.governance.creative_features = [];
   // Unsupported agents need neither a build tool nor a controller to skip this
   // optional feature; evaluate applicability before those requirements.
-  const tools = support === true
+  const tools = support === true || preflightFailure
     ? ['get_adcp_capabilities', 'build_creative', 'comply_test_controller']
     : ['get_adcp_capabilities'];
   const requests = [];
   const trafficQueries = [];
   let recordedCalls = [];
   let unavailable = false;
+  let capabilityAttempts = 0;
   const successData = context => ({
     creatives: [{ variants: [{
       build_variant_id: 'variant-boundary',
@@ -136,13 +139,20 @@ async function runEvaluatorBoundary({
     context,
   });
   const result = await runStoryboard('https://agent.example/mcp', storyboard, {
-    _profile: { tools, raw_capabilities: capabilities },
+    _profile: preflightFailure ? undefined : { tools, raw_capabilities: capabilities },
     _controllerCapabilities: { detected: true, scenarios: ['query_upstream_traffic', 'force_upstream_unavailable'] },
-    agentTools: tools,
+    agentTools: preflightFailure ? undefined : tools,
     skip_controller_seeding: true,
     _client: {
       resetContext() {},
+      async getAgentInfo() {
+        return { name: 'Creative boundary fixture', tools: tools.map(name => ({ name })) };
+      },
       async getAdcpCapabilities(request) {
+        capabilityAttempts++;
+        if (preflightFailure && capabilityAttempts === 1) {
+          throw new Error('Transient preflight capability failure');
+        }
         requests.push({ task: 'get_adcp_capabilities', request });
         return { success: true, data: { ...discovery, context: request.context } };
       },
@@ -159,6 +169,10 @@ async function runEvaluatorBoundary({
         assert.equal(task, 'build_creative');
         requests.push({ task, request });
         const form = request.evaluator.feature_agent ? 'feature_agent' : 'direct';
+        if (form === 'feature_agent') {
+          assert.equal(request.evaluator.agent_url, 'https://quality-evaluator.example/adcp');
+          assert.equal(request.evaluator.evaluator_id, undefined, 'nested probe must not depend on an unprovisioned preset');
+        }
         const url = request.evaluator.feature_agent?.agent_url ?? request.evaluator.agent_url;
         const offList = url === 'https://unaccepted-evaluator.example/adcp';
         recordedCalls = [];
@@ -197,7 +211,7 @@ async function runEvaluatorBoundary({
       },
     },
   });
-  return { result, requests, trafficQueries, steps: result.phases.flatMap(phase => phase.steps) };
+  return { result, requests, trafficQueries, capabilityAttempts, steps: result.phases.flatMap(phase => phase.steps) };
 }
 
 test('supporting evaluator passes the complete authored boundary fixture with both rejection paths executed', async () => {
@@ -250,6 +264,27 @@ for (const support of [false, 'absent']) {
     assert.equal(steps.length, 1);
     assert.equal(steps[0].skip_reason, 'capability_unsupported');
     assert.equal(steps[0].skip.reason, 'not_applicable');
+  });
+}
+
+// Exercise actual SDK profiling, including its successful tool discovery plus
+// transient get-capabilities failure. An explicit storyboard run must not infer
+// evaluator support from an unknown profile, whatever the next response says.
+for (const discoverySupport of [false, 'absent', true]) {
+  test(`unknown preflight receives no evaluator coverage before later ${discoverySupport} discovery`, async () => {
+    const { result, requests, trafficQueries, capabilityAttempts, steps } = await runEvaluatorBoundary({
+      preflightFailure: true,
+      discoverySupport,
+    });
+    assert.equal(capabilityAttempts, 1, 'normal profiling attempted capability discovery');
+    assert.equal(result.overall_passed, true, JSON.stringify(result));
+    assert.equal(result.failed_count, 0);
+    assert.equal(result.passed_count, 0, 'indeterminate applicability is not passing security coverage');
+    assert.deepEqual(requests, []);
+    assert.deepEqual(trafficQueries, []);
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0].skip.reason, 'not_applicable');
+    assert.match(steps[0].skip.detail, /raw capabilities unavailable/);
   });
 }
 
