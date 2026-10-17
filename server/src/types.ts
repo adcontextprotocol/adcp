@@ -35,7 +35,13 @@ export interface FormatInfo {
 export interface Agent {
   $schema?: string;
   name: string;
+  /** Registry identity key — see {@link AgentConfig.url}. */
   url: string;
+  /**
+   * The URL exactly as registered, when the key folded something away.
+   * Authorization matching reads this (via `declaredAgentUrl`), never `url`.
+   */
+  declared_url?: string;
   type: AgentType;
   protocol?: "mcp" | "a2a";
   description: string;
@@ -491,7 +497,21 @@ export function isValidAgentVisibility(value: unknown): value is AgentVisibility
  * Each agent has a URL and a visibility tier.
  */
 export interface AgentConfig {
+  /**
+   * The registry identity key (`registryAgentUrlKey`). Folds the things two
+   * spellings of one endpoint differ by, including a trailing slash, so one
+   * agent has one row — see server/src/db/registry-agent-url-key.ts.
+   */
   url: string;
+  /**
+   * The URL exactly as it was registered, present only when the key folded
+   * something away. AUTHORIZATION MATCHING USES THIS, never `url`: whether a
+   * publisher's adagents.json authorizes this agent is decided by
+   * spec-exact comparison where a trailing slash is significant (#7829), and
+   * the key cannot answer that question. Read it through
+   * `declaredAgentUrl()` so the fallback to `url` is never forgotten.
+   */
+  declared_url?: string;
   visibility: AgentVisibility;
   // Label set when the agent is registered (not refreshed from discovery).
   // Defaults to the company name; renames cascade into labels that still

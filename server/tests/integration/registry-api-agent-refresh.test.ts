@@ -1391,9 +1391,12 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
   it('canonicalizes the requested URL before authorized saved-auth lookup and probing', async () => {
     const agentUrl = ownedAgentUrl('canonical-saved-bearer');
-    const requestedUrl = agentUrl
+    // Only what the registry key folds: scheme and host case, a default
+    // port, surrounding whitespace. A trailing slash on /mcp would be a
+    // different agent now (#7830).
+    const requestedUrl = ` ${agentUrl
       .replace('https://', 'HTTPS://')
-      .replace('.example.com', '.EXAMPLE.COM') + '/';
+      .replace('.example.com', '.EXAMPLE.COM:443')} `;
     const { AgentContextDatabase } = await import('../../src/db/agent-context-db.js');
     const db = new AgentContextDatabase();
     const context = await db.create({

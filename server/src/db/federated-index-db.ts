@@ -1,6 +1,7 @@
-import { query, queryWithTimeout } from './client.js';
+import { getClient, query, queryWithTimeout } from './client.js';
 import type { PoolClient } from 'pg';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
+import { registryAgentUrlLookupKey } from './registry-agent-url-key.js';
 
 /**
  * Discovered agent from adagents.json or list_authorized_properties
@@ -192,10 +193,11 @@ export class FederatedIndexDatabase {
    *
    * UNION over legacy + catalog (publisher-wide rows). See
    * getAgentsForDomain for evidence→source mapping and dual-read
-   * rationale. Canonicalizes the input via lower(rtrim($1, '/')) to
-   * match the writer's canonicalizer (publisher-db.ts:91-108) when
-   * looking up the catalog arm; the legacy arm is keyed on the raw
-   * input to preserve historical behavior on non-canonical legacy data.
+   * rationale. The catalog arm is keyed on the registry key the app
+   * computed ($2) — spec canonicalization needs IDN, dot-segment and
+   * percent-encoding handling that SQL cannot do (#7830). The legacy arm is
+   * keyed on the raw input to preserve historical behavior on non-canonical
+   * legacy data.
    */
   async getDomainsForAgent(agentUrl: string): Promise<AgentPublisherAuthorization[]> {
     const result = await query<AgentPublisherAuthorization>(
@@ -221,7 +223,7 @@ export class FederatedIndexDatabase {
            v.updated_at AS last_validated,
            1 AS src_priority
            FROM v_effective_agent_authorizations v
-          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+          WHERE v.agent_url_canonical = $2
             AND v.property_rid IS NULL
             AND v.property_id_slug IS NULL
        ), deduped AS (
@@ -232,7 +234,7 @@ export class FederatedIndexDatabase {
           ORDER BY agent_url, publisher_domain, source, src_priority
        )
        SELECT * FROM deduped ORDER BY source, publisher_domain`,
-      [agentUrl]
+      [agentUrl, registryAgentUrlLookupKey(agentUrl)]
     );
     return result.rows;
   }
@@ -245,8 +247,11 @@ export class FederatedIndexDatabase {
    * signing-key pin status, and revocation lifecycle.
    *
    * Computed at query time from the cached `publishers.adagents_json`
-   * JSONB blob — no per-row HTTP fetches. The endpoint is hot-path read
-   * for sync clients, so all derivations live in SQL.
+   * JSONB blob — no per-row HTTP fetches. Every derivation that does not
+   * need the registry agent-URL key lives in SQL; `signing_keys_pinned`
+   * needs it (manifest entries carry raw URLs), so it is resolved in one
+   * follow-up query over the page's publishers and matched in the app —
+   * SQL cannot reproduce the spec canonicalization (#7830).
    */
   async getPublishersForAgentDetail(
     agentUrl: string,
@@ -268,8 +273,9 @@ export class FederatedIndexDatabase {
     // UNION ALL with explicit src_priority (legacy=0 wins on collision) +
     // DISTINCT ON ordered by (publisher_domain, src_priority,
     // authz_last_validated DESC) so the surviving row is deterministic and
-    // freshest. Canonical form for the agent (LOWER+RTRIM(/)+BTRIM) mirrors
-    // the writer's canonicalizer in publisher-db.ts.
+    // freshest. The catalog arm matches on the registry key the app computed
+    // ($7); the legacy arm stays keyed on the raw input.
+    const agentKey = registryAgentUrlLookupKey(agentUrl);
     const result = await query<AgentPublisherDetailRow>(
       `WITH authz_unioned AS (
          SELECT publisher_domain, source, last_validated AS authz_last_validated, 0 AS src_priority
@@ -288,7 +294,7 @@ export class FederatedIndexDatabase {
            v.updated_at AS authz_last_validated,
            1 AS src_priority
            FROM v_effective_agent_authorizations v
-          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+          WHERE v.agent_url_canonical = $7
             AND v.property_rid IS NULL
             AND v.property_id_slug IS NULL
        ), dedup AS (
@@ -297,11 +303,12 @@ export class FederatedIndexDatabase {
            FROM authz_unioned
           ORDER BY publisher_domain, src_priority, authz_last_validated DESC NULLS LAST
        ), enriched AS (
-         -- Walk the publishers.adagents_json blob ONCE per row to derive
-         -- signing_keys_pinned and is_revoked in a single CTE, then reuse
-         -- both in the SELECT and WHERE. Avoids triple-walking the JSONB
-         -- (signing_keys_pinned + status CASE + WHERE NOT EXISTS) per row,
-         -- which dominates the query plan at managed-network fan-outs.
+         -- Derive is_revoked once per row and reuse it in both the SELECT
+         -- and the WHERE. Walking the JSONB twice (status CASE + WHERE NOT
+         -- EXISTS) per row dominates the query plan at managed-network
+         -- fan-outs. signing_keys_pinned used to be derived here too; it
+         -- moved to signingKeysPinnedByPublisher when matching a manifest
+         -- entry to an agent became app-side key equality (#7830).
          --
          -- For fan-out children (publishers.adagents_json IS NULL, with
          -- manager_domain set), revocation must consult the MANAGER's
@@ -317,17 +324,6 @@ export class FederatedIndexDatabase {
            pub.last_validated AS publisher_last_validated,
            pub.discovery_method,
            pub.manager_domain,
-           COALESCE((
-             SELECT bool_or(
-               jsonb_typeof(agent->'signing_keys') = 'array'
-               AND jsonb_array_length(agent->'signing_keys') > 0
-             )
-               FROM jsonb_array_elements(
-                 COALESCE(pub.adagents_json->'authorized_agents', '[]'::jsonb)
-               ) AS agent
-              WHERE LOWER(RTRIM(BTRIM(agent->>'url'), '/'))
-                  = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
-           ), false) AS signing_keys_pinned,
            (
              EXISTS (
                SELECT 1
@@ -387,7 +383,6 @@ export class FederatedIndexDatabase {
               AND dp.publisher_domain = e.publisher_domain
               AND dp.property_id IS NOT NULL
          ) ELSE NULL END AS property_ids,
-         e.signing_keys_pinned,
          CASE WHEN e.is_revoked THEN 'revoked' ELSE 'authorized' END AS status
        FROM enriched e
        WHERE e.publisher_domain > $2
@@ -395,9 +390,53 @@ export class FederatedIndexDatabase {
          AND ($4::boolean OR NOT e.is_revoked)
        ORDER BY e.publisher_domain
        LIMIT $5`,
-      [agentUrl, cursor, since, includeRevoked, limit, includePropertyIds],
+      [agentUrl, cursor, since, includeRevoked, limit, includePropertyIds, agentKey],
     );
-    return result.rows;
+    const pinned = await this.signingKeysPinnedByPublisher(
+      agentKey,
+      result.rows.map(row => row.publisher_domain),
+    );
+    return result.rows.map(row => ({
+      ...row,
+      signing_keys_pinned: pinned.has(row.publisher_domain),
+    }));
+  }
+
+  /**
+   * Which of `publisherDomains` pin at least one signing key for the agent
+   * keyed as `agentKey`, read from each publisher's cached manifest.
+   *
+   * Split out of getPublishersForAgentDetail because matching a manifest
+   * entry to an agent is registry-key equality, and the key is only
+   * computable in the app (#7830). Bounded by the caller's page size.
+   */
+  private async signingKeysPinnedByPublisher(
+    agentKey: string,
+    publisherDomains: string[],
+  ): Promise<Set<string>> {
+    const pinned = new Set<string>();
+    if (publisherDomains.length === 0) return pinned;
+    const result = await query<{ publisher_domain: string; agent_url: string; has_keys: boolean }>(
+      `SELECT pub.domain AS publisher_domain,
+              agent->>'url' AS agent_url,
+              (jsonb_typeof(agent->'signing_keys') = 'array'
+               AND jsonb_array_length(agent->'signing_keys') > 0) AS has_keys
+         FROM publishers pub
+        CROSS JOIN LATERAL jsonb_array_elements(
+          CASE WHEN jsonb_typeof(pub.adagents_json->'authorized_agents') = 'array'
+               THEN pub.adagents_json->'authorized_agents'
+               ELSE '[]'::jsonb END
+        ) AS agent
+        WHERE pub.domain = ANY($1::text[])
+          AND jsonb_typeof(agent->'url') = 'string'`,
+      [publisherDomains],
+    );
+    for (const row of result.rows) {
+      if (!row.has_keys) continue;
+      if (registryAgentUrlLookupKey(row.agent_url) !== agentKey) continue;
+      pinned.add(row.publisher_domain);
+    }
+    return pinned;
   }
 
   /**
@@ -419,41 +458,36 @@ export class FederatedIndexDatabase {
 
     for (let i = 0; i < agentUrls.length; i += BATCH_SIZE) {
       const batch = agentUrls.slice(i, i + BATCH_SIZE);
-      // Canonicalize each input agent_url for the catalog-side lookup.
-      // Wildcard '*' is preserved literally; other inputs are
-      // lowercased and have trailing slashes stripped to match the
-      // writer's canonicalizer (publisher-db.ts:91-108). The legacy arm
-      // is keyed on the raw input to preserve historical behavior on
-      // non-canonical legacy data.
+      // Registry key per input, computed in the app — SQL cannot reproduce
+      // the spec canonicalization (#7830). The legacy arm is still keyed on
+      // the raw input to preserve historical behavior on non-canonical
+      // legacy data, and gets its dedup key from the same app-side mapping
+      // ($1/$3 unnest side by side) rather than re-deriving it in SQL.
+      const batchKeys = batch.map(registryAgentUrlLookupKey);
       const canonicalToInput = new Map<string, string>();
-      for (const u of batch) {
-        let canon: string;
-        const trimmed = u.trim();
-        if (trimmed === '*') {
-          canon = '*';
-        } else {
-          canon = trimmed.toLowerCase();
-          while (canon.endsWith('/')) canon = canon.slice(0, -1);
-        }
-        // First-wins: if multiple inputs share a canonical form, the
-        // first one in the batch is the lookup key. Callers don't pass
-        // duplicates today.
-        if (!canonicalToInput.has(canon)) canonicalToInput.set(canon, u);
-      }
+      // First-wins: if multiple inputs share a key, the first one in the
+      // batch is the lookup key. Callers don't pass duplicates today.
+      batch.forEach((u, idx) => {
+        const key = batchKeys[idx];
+        if (!canonicalToInput.has(key)) canonicalToInput.set(key, u);
+      });
       const canonical = Array.from(canonicalToInput.keys());
-      // Both arms emit a `dedup_canonical` column (the canonical form of
+      // Both arms emit a `dedup_canonical` column (the registry key of
       // their agent_url). DISTINCT ON dedup_canonical collapses cases
       // where the same agent has both a legacy row and a catalog row.
       // src_priority=0 means legacy wins on collision.
       const result = await query<AgentPublisherAuthorization & { dedup_canonical: string }>(
-        `WITH unioned AS (
+        `WITH inputs AS (
+           SELECT raw_url, registry_key FROM unnest($1::text[], $3::text[])
+             AS t(raw_url, registry_key)
+         ), unioned AS (
            SELECT
-             CASE WHEN agent_url = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM(agent_url), '/')) END
-               AS dedup_canonical,
-             agent_url, publisher_domain, authorized_for,
-             property_ids, source, discovered_at, last_validated, 0 AS src_priority
-             FROM agent_publisher_authorizations
-            WHERE agent_url = ANY($1)
+             i.registry_key AS dedup_canonical,
+             apa.agent_url, apa.publisher_domain, apa.authorized_for,
+             apa.property_ids, apa.source, apa.discovered_at, apa.last_validated,
+             0 AS src_priority
+             FROM agent_publisher_authorizations apa
+             JOIN inputs i ON i.raw_url = apa.agent_url
            UNION ALL
            SELECT
              v.agent_url_canonical AS dedup_canonical,
@@ -482,7 +516,7 @@ export class FederatedIndexDatabase {
                 source, discovered_at, last_validated
            FROM unioned
           ORDER BY dedup_canonical, src_priority, source, publisher_domain`,
-        [batch, canonical]
+        [batch, canonical, batchKeys]
       );
       for (const row of result.rows) {
         // Re-key the result to the input verbatim the caller asked
@@ -568,19 +602,16 @@ export class FederatedIndexDatabase {
   /**
    * Get all agent→domain pairs in a single query (for bulk snapshots).
    *
-   * UNION over legacy + catalog (publisher-wide rows). Both arms emit
-   * the canonical agent_url (lowercased + trailing-slash-stripped, with
-   * '*' preserved literally) so set-dedup collapses cross-arm duplicates
-   * even when one side stored a non-canonical form. Without this the
-   * snapshot consumer in crawler.ts would emit phantom
-   * agent.discovered/removed events for the casing delta.
+   * UNION over legacy + catalog (publisher-wide rows). SQL dedups what it
+   * can see — a pair identical on both sides — and the one caller,
+   * FederatedIndexService.getAllAgentDomainPairs, folds the rest by registry
+   * key as it builds its Map. The legacy arm stores raw URLs and spec
+   * canonicalization is app-only (#7830), so the cross-arm fold cannot
+   * happen here; doing it twice would just move bytes around.
    */
   async getAllAgentDomainPairs(): Promise<Array<{ agent_url: string; publisher_domain: string }>> {
     const result = await query<{ agent_url: string; publisher_domain: string }>(
-      `SELECT
-         CASE WHEN agent_url = '*' THEN '*'
-              ELSE LOWER(RTRIM(BTRIM(agent_url), '/')) END AS agent_url,
-         publisher_domain
+      `SELECT agent_url, publisher_domain
          FROM agent_publisher_authorizations
        UNION
        SELECT v.agent_url_canonical AS agent_url, v.publisher_domain
@@ -653,43 +684,66 @@ export class FederatedIndexDatabase {
    * upsert loop. agent_claim rows are untouched (they belong to a
    * different publisher's discovery flow).
    *
-   * `currentAgentUrls` is the canonical-form list — already trimmed,
-   * lowercased, and stripped of trailing slashes. The DELETE
-   * canonicalizes the stored agent_url with the same shape so a
+   * `currentAgentUrls` is the manifest's agent URL list in any form; both
+   * sides are reduced to the registry key here before comparison, so a
    * historical non-canonical row still matches.
    */
   async reconcileAdagentsAuthorizations(
     publisherDomain: string,
     currentAgentUrls: string[],
   ): Promise<void> {
-    // Canonicalize both sides in SQL so a caller that forgets to
-    // canonicalize doesn't silently nuke every adagents_json row for
-    // the publisher. The stored side mirrors the writer's canonical
-    // form (lowercase, no trailing slash, '*' literal preserved); the
-    // input side runs the same shape.
+    // Both sides are keyed in the app: SQL cannot reproduce the spec
+    // canonicalization (#7830), and keying only one side would silently
+    // delete every adagents_json row for the publisher.
     //
-    // Cross-publisher safety: the DELETE is scoped by `publisher_domain`
-    // and `source='adagents_json'`. A NULL agent_url in any row would
-    // make the CASE expression NULL, the IN comparison NULL, and
-    // `NOT NULL` NULL — Postgres treats NULL as not-true so the row
-    // is preserved (fail-safe). The agent_url column is NOT NULL by
-    // schema (migration 025) so this is theoretical, but the canonical
-    // SQL pattern doesn't rely on the schema invariant.
-    await query(
-      `DELETE FROM agent_publisher_authorizations
-        WHERE publisher_domain = $1
-          AND source = 'adagents_json'
-          AND NOT (
-            CASE WHEN agent_url = '*' THEN '*'
-                 ELSE LOWER(RTRIM(BTRIM(agent_url), '/')) END
-            IN (
-              SELECT CASE WHEN u = '*' THEN '*'
-                          ELSE LOWER(RTRIM(BTRIM(u), '/')) END
-                FROM unnest($2::text[]) AS u
-            )
-          )`,
-      [publisherDomain, currentAgentUrls],
-    );
+    // This reads the publisher's stored URLs first and then deletes the
+    // stale ones by exact value, rather than expressing "not in the current
+    // set" as a single SQL predicate. Both statements run in one transaction
+    // with the read taken FOR UPDATE, so the pair is as atomic as the single
+    // statement it replaced. Deleting by value is fail-safe in the same way
+    // the old CASE expression was: a stored URL that cannot be keyed simply
+    // doesn't match any current key and is removed, and an empty delete list
+    // is a no-op.
+    //
+    // Cross-publisher safety: both statements are scoped by
+    // `publisher_domain` and `source='adagents_json'`, so no row belonging
+    // to another publisher or to the agent_claim flow is ever considered.
+    const keep = new Set<string>();
+    for (const url of currentAgentUrls) keep.add(registryAgentUrlLookupKey(url));
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      // FOR UPDATE, so a concurrent crawl of the same publisher either waits
+      // for this delete or is already visible to it. Without the lock, a row
+      // re-added between the read and the delete would be removed anyway —
+      // the single-statement form this replaced could not do that.
+      const stored = await client.query<{ agent_url: string }>(
+        `SELECT agent_url
+           FROM agent_publisher_authorizations
+          WHERE publisher_domain = $1
+            AND source = 'adagents_json'
+          FOR UPDATE`,
+        [publisherDomain],
+      );
+      const stale = [...new Set(stored.rows
+        .map(row => row.agent_url)
+        .filter(agentUrl => !keep.has(registryAgentUrlLookupKey(agentUrl))))];
+      if (stale.length > 0) {
+        await client.query(
+          `DELETE FROM agent_publisher_authorizations
+            WHERE publisher_domain = $1
+              AND source = 'adagents_json'
+              AND agent_url = ANY($2::text[])`,
+          [publisherDomain, stale],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /**
@@ -974,7 +1028,7 @@ export class FederatedIndexDatabase {
                  THEN pub.adagents_json->'properties'
                  ELSE '[]'::jsonb END
           ) AS prop
-          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+          WHERE v.agent_url_canonical = $2
             AND v.property_rid IS NOT NULL
             -- Slug-match catalog row to manifest entry. Slugless catalog
             -- rows (cp.property_id IS NULL) can't be uniquely tied to a
@@ -1005,7 +1059,7 @@ export class FederatedIndexDatabase {
           ORDER BY publisher_domain, name, property_type, src_priority
        )
        SELECT * FROM deduped ORDER BY publisher_domain, property_type, name`,
-      [agentUrl]
+      [agentUrl, registryAgentUrlLookupKey(agentUrl)]
     );
     return result.rows.map(row => this.deserializeProperty(row));
   }
@@ -1065,7 +1119,7 @@ export class FederatedIndexDatabase {
                  THEN pub.adagents_json->'properties'
                  ELSE '[]'::jsonb END
           ) AS prop
-          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+          WHERE v.agent_url_canonical = $3
             AND v.publisher_domain = $2
             AND v.property_rid IS NOT NULL
             AND prop->>'property_id' IS NOT NULL
@@ -1091,7 +1145,7 @@ export class FederatedIndexDatabase {
           ORDER BY publisher_domain, name, property_type, src_priority
        )
        SELECT * FROM deduped ORDER BY publisher_domain, property_type, name`,
-      [agentUrl, canonicalDomain],
+      [agentUrl, canonicalDomain, registryAgentUrlLookupKey(agentUrl)],
       5_000,
     );
     return result.rows.map(row => this.deserializeProperty(row));
@@ -1213,11 +1267,11 @@ export class FederatedIndexDatabase {
          UNION
          SELECT v.publisher_domain
            FROM v_effective_agent_authorizations v
-          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+          WHERE v.agent_url_canonical = $2
             AND v.property_rid IS NOT NULL
        ) sub
        ORDER BY publisher_domain`,
-      [agentUrl]
+      [agentUrl, registryAgentUrlLookupKey(agentUrl)]
     );
     return result.rows.map(r => r.publisher_domain);
   }
@@ -1534,7 +1588,7 @@ export class FederatedIndexDatabase {
            END AS source,
            1 AS src_priority
            FROM v_effective_agent_authorizations v
-          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+          WHERE v.agent_url_canonical = $3
             AND v.publisher_domain = $2
             AND v.property_rid IS NULL
             AND v.property_id_slug IS NULL
@@ -1543,7 +1597,7 @@ export class FederatedIndexDatabase {
         ORDER BY src_priority,
                  CASE source WHEN 'adagents_json' THEN 0 ELSE 1 END
         LIMIT 1`,
-      [agentUrl, canonicalDomain]
+      [agentUrl, canonicalDomain, registryAgentUrlLookupKey(agentUrl)]
     );
 
     if (authResult.rows.length === 0) return 'none';
@@ -1695,7 +1749,7 @@ export class FederatedIndexDatabase {
            JOIN v_effective_agent_authorizations v ON v.property_rid = cp.property_rid
           WHERE ci.identifier_type = $3
             AND ci.identifier_value = LOWER($4)
-            AND v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+            AND v.agent_url_canonical = $5
             AND v.property_rid IS NOT NULL
        )
        SELECT id, publisher_domain FROM unioned LIMIT 1`,
@@ -1704,6 +1758,7 @@ export class FederatedIndexDatabase {
         JSON.stringify([{ type: identifierType, value: identifierValue }]),
         identifierType,
         identifierValue,
+        registryAgentUrlLookupKey(agentUrl),
       ]
     );
 
