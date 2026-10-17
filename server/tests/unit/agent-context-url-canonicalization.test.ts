@@ -9,10 +9,10 @@ import { AgentContextDatabase } from '../../src/db/agent-context-db.js';
 
 const queryMock = vi.mocked(query);
 const ORG = 'org_loopme';
-// Scheme and host case and the surrounding whitespace are insignificant;
-// the path — including its case and its trailing slashes — is not (#7830).
+// Scheme and host case, surrounding whitespace and trailing slashes are
+// insignificant for registry identity; path CASE is not (#7830).
 const VARIANT = ' HTTPS://PLATFORM.LOOPME.AI/MCP/SELLER/// ';
-const CANONICAL = 'https://platform.loopme.ai/MCP/SELLER///';
+const CANONICAL = 'https://platform.loopme.ai/MCP/SELLER';
 
 describe('AgentContextDatabase URL canonicalization', () => {
   const db = new AgentContextDatabase();
@@ -80,5 +80,11 @@ describe('AgentContextDatabase URL canonicalization', () => {
     await db.getByOrgAndUrl(ORG, 'https://platform.loopme.ai/mcp');
     expect(queryMock.mock.calls[0][1]).toEqual([ORG, 'https://platform.loopme.ai/MCP']);
     expect(queryMock.mock.calls[1][1]).toEqual([ORG, 'https://platform.loopme.ai/mcp']);
+  });
+
+  it('keys agents that differ only in a trailing slash as one agent', async () => {
+    await db.getByOrgAndUrl(ORG, 'https://platform.loopme.ai/mcp/');
+    await db.getByOrgAndUrl(ORG, 'https://platform.loopme.ai/mcp');
+    expect(queryMock.mock.calls[0][1]).toEqual(queryMock.mock.calls[1][1]);
   });
 });

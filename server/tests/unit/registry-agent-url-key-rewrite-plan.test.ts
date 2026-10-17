@@ -25,6 +25,17 @@ describe('planStoreRewrite', () => {
     expect(planIsBlocked(plan)).toBe(false);
   });
 
+  it('folds a trailing slash, so /mcp/ and /mcp collide on one key', () => {
+    const plan = planStoreRewrite('s', [
+      row({ rowId: 'a', rawUrl: 'https://agent.example/mcp/', storedKey: 'https://agent.example/mcp/' }),
+      row({ rowId: 'b', rawUrl: 'https://agent.example/mcp' }),
+    ]);
+    expect(plan.rewrites.map(r => r.rowId)).toEqual(['a']);
+    expect(plan.merges).toHaveLength(1);
+    expect(plan.merges[0].key).toBe('https://agent.example/mcp');
+    expect(planIsBlocked(plan)).toBe(true);
+  });
+
   it('keeps root-served agents byte-identical, so they need no rewrite', () => {
     const plan = planStoreRewrite('s', [
       row({ rowId: '1', rawUrl: 'https://agent.example/' }),
@@ -48,7 +59,13 @@ describe('planStoreRewrite', () => {
 
   it('rewrites the other changed classes: trailing slash, port, dot segments, percent, IDN', () => {
     const plan = planStoreRewrite('s', [
-      row({ rowId: 'slash', rawUrl: 'https://agent.example/mcp/' }),
+      // Self-keyed in production: the stored key itself carries the slash,
+      // which is where the trailing-slash collisions come from.
+      row({
+        rowId: 'slash',
+        rawUrl: 'https://agent.example/mcp/',
+        storedKey: 'https://agent.example/mcp/',
+      }),
       row({ rowId: 'port', rawUrl: 'https://agent.example:443/mcp' }),
       row({ rowId: 'dots', rawUrl: 'https://agent.example/a/./b/../c' }),
       row({ rowId: 'pct', rawUrl: 'https://agent.example/%7Euser' }),
@@ -56,7 +73,7 @@ describe('planStoreRewrite', () => {
       row({ rowId: 'frag', rawUrl: 'https://agent.example/mcp#x' }),
     ]);
     expect(Object.fromEntries(plan.rewrites.map(r => [r.rowId, r.toKey]))).toEqual({
-      slash: 'https://agent.example/mcp/',
+      slash: 'https://agent.example/mcp',
       port: 'https://agent.example/mcp',
       dots: 'https://agent.example/a/c',
       pct: 'https://agent.example/~user',

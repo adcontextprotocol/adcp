@@ -89,11 +89,51 @@ export function legacyRegistryAgentUrlKey(raw: string): string | null {
  * significant — `/mcp` and `/mcp/` are different agents, which is the whole
  * point of #7830.
  *
- * Registry-local rule: a root-served agent with no query loses its `/`, so
- * `https://agent.example/` keys as `https://agent.example`. That is the same
- * resource under the spec (RFC 3986 §6.2.3), and it keeps the key for a
- * root-served agent byte-identical across the migration unless the URL also
- * carried a default port.
+ * Registry-local rule: THE PATH NEVER ENDS IN A SLASH. `https://agent.example/`
+ * keys as `https://agent.example`, and `https://agent.example/mcp/` keys as
+ * `https://agent.example/mcp`. The one exception is a root path carrying a
+ * query, where the `/` is kept so the query still reads as a query:
+ * `https://agent.example/?t=1`.
+ *
+ * This DIVERGES FROM THE SPEC, deliberately and only for registry identity.
+ * RFC 3986 and docs/reference/url-canonicalization treat `/mcp` and `/mcp/`
+ * as different resources, and for authorization matching they stay different
+ * — see the warning below. For identity they are one agent: an operator who
+ * registers `https://x.example/mcp/` and a publisher who writes
+ * `https://x.example/mcp` mean the same endpoint, and in production every
+ * single registry-key collision is exactly that pair.
+ *
+ * AUTHORIZATION MATCHING MUST NOT USE THIS FUNCTION. Whether an
+ * `adagents.json` entry authorizes a given agent URL is decided by
+ * `canonicalTargetUri` with the trailing slash significant (#7829,
+ * `server/src/validator.ts`). Those paths take the URL as registered, via
+ * `declaredAgentUrl`, never the key.
+ *
+ * Classification of every store and path this key touches:
+ *
+ *   IDENTITY — folds. The registry's own projections and per-agent state:
+ *     catalog_agent_authorizations.agent_url_canonical and the
+ *     adagents_authorization_overrides mirror of it, agent_registry_metadata,
+ *     agent_compliance_status, agent_verification_badges,
+ *     agent_storyboard_status, the capability/health/inventory snapshots,
+ *     agent_contexts, discovered_agents, member_profiles.agents[].url.
+ *     Every one of these answers "which agent is this row about".
+ *
+ *   AUTHORIZATION — spec-exact, never folds. `AgentValidator.validate` and
+ *     its callers (`find_agents_for_property` in mcp-tools.ts,
+ *     properties.ts), which compare against a publisher's live
+ *     adagents.json. They take `declaredAgentUrl(agent)`.
+ *
+ *   RAW-MATCHED — untouched. agent_publisher_authorizations and
+ *     agent_property_authorizations, whose readers compare `agent_url`
+ *     against the caller's input directly (#3177 dual-read).
+ *
+ * `catalog_agent_authorizations` is the one store that could be read either
+ * way: it is an identity-keyed projection of manifests. Its key folds, and
+ * its raw `agent_url` is preserved unchanged and exposed on both the
+ * `/registry/authorizations` snapshot and the `authorization.*` change feed,
+ * so a consumer that needs the spec-exact answer has the bytes to compute
+ * it. The registry's own reads of it are identity reads.
  *
  * Returns `null` — never a best-effort string — for anything that is not an
  * absolute http(s) URL, carries userinfo, or contains a wildcard, backslash,
@@ -154,13 +194,20 @@ export function registryAgentUrlKey(raw: string): string | null {
     // already normalized is unaffected — the transform is idempotent.
     const canonical = normalizePercentEncoding(
       canonicalTargetUri(`${url.protocol}//${url.host}${suffix}`, '3.2'));
-    const parsed = new URL(canonical);
-    // Root path with no query: drop the '/' (see the registry-local rule).
-    // `?` can only introduce the query in a canonical target URI — a literal
-    // '?' inside a path is percent-encoded by WHATWG parsing.
-    return parsed.pathname === '/' && !canonical.includes('?')
-      ? canonical.slice(0, -1)
-      : canonical;
+    // Fold the trailing slash off the path. `?` can only introduce the query
+    // in a canonical target URI — a literal '?' inside a path is
+    // percent-encoded by WHATWG parsing — so splitting on the first one
+    // separates path from query safely.
+    const queryAt = canonical.indexOf('?');
+    const query = queryAt < 0 ? '' : canonical.slice(queryAt);
+    let path = queryAt < 0 ? canonical : canonical.slice(0, queryAt);
+    while (path.endsWith('/')) path = path.slice(0, -1);
+    if (query === '') return path;
+    // Stripping a ROOT path leaves `scheme://authority`, and
+    // `https://a.example?t=1` would not read as a query against a path, so
+    // put that one slash back. A stripped non-root path needs nothing.
+    const authorityOnly = `${url.protocol}//${url.host}`;
+    return path === authorityOnly ? `${path}/${query}` : `${path}${query}`;
   } catch {
     return null;
   }
@@ -174,4 +221,18 @@ export function registryAgentUrlKey(raw: string): string | null {
  */
 export function registryAgentUrlLookupKey(raw: string): string {
   return registryAgentUrlKey(raw) ?? raw;
+}
+
+/**
+ * The URL to hand to anything that decides AUTHORIZATION — the spec-exact
+ * comparison in `AgentValidator`, where a trailing slash is significant
+ * (#7829). Never the registry key: the key folds the trailing slash for
+ * identity, so matching a publisher's `adagents.json` against it would
+ * authorize `/mcp` for an entry that says `/mcp/` and vice versa.
+ *
+ * `declared_url` is set only where the key folded something away, so the
+ * fallback is the overwhelmingly common case.
+ */
+export function declaredAgentUrl(agent: { url: string; declared_url?: string }): string {
+  return agent.declared_url ?? agent.url;
 }

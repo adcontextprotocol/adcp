@@ -409,10 +409,10 @@ describe('registry badge routes', () => {
   });
 
   it('canonicalizes the agent URL before ownership and opt-out writes', async () => {
-    // Scheme and host case fold; path case and a non-root trailing slash do
-    // not — they identify a different agent (#7830).
+    // Scheme/host case and the trailing slash fold; path case does not —
+    // /MCP and /mcp are different agents (#7830).
     const rawAgentUrl = 'HTTPS://BADGE.EXAMPLE.COM/MCP/';
-    const canonicalAgentUrl = 'https://badge.example.com/MCP/';
+    const canonicalAgentUrl = 'https://badge.example.com/MCP';
 
     const response = await request(buildApp('private', true))
       .put(`/api/registry/agents/${encodeURIComponent(rawAgentUrl)}/compliance/opt-out`)

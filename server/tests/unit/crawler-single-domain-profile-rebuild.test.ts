@@ -333,7 +333,7 @@ describe('CrawlerService single-domain profile rebuild', () => {
     await ctx.crawlSingleDomain('publisher.example');
 
     expect(ctx.buildInventoryProfiles).toHaveBeenCalledWith({
-      agentUrls: ['https://old-agent.example/mcp/', 'https://new-agent.example/mcp/'],
+      agentUrls: ['https://old-agent.example/mcp', 'https://new-agent.example/mcp'],
       deleteStale: false,
     });
   });
@@ -349,7 +349,7 @@ describe('CrawlerService single-domain profile rebuild', () => {
     await ctx.crawlSingleDomain('publisher.example');
 
     expect(ctx.buildInventoryProfiles).toHaveBeenCalledWith({
-      agentUrls: ['https://old-agent.example/mcp/'],
+      agentUrls: ['https://old-agent.example/mcp'],
       deleteStale: false,
     });
   });
@@ -417,7 +417,7 @@ describe('CrawlerService single-domain profile rebuild', () => {
       undefined,
     );
     expect(ctx.buildInventoryProfiles).toHaveBeenCalledWith({
-      agentUrls: ['https://old-agent.example/mcp/', 'https://new-agent.example/mcp/'],
+      agentUrls: ['https://old-agent.example/mcp', 'https://new-agent.example/mcp'],
       deleteStale: false,
     });
   });
@@ -522,7 +522,7 @@ describe('CrawlerService single-domain profile rebuild', () => {
       },
     }));
     expect(ctx.buildInventoryProfiles).toHaveBeenCalledWith({
-      agentUrls: ['https://old-agent.example/mcp/'],
+      agentUrls: ['https://old-agent.example/mcp'],
       deleteStale: false,
     });
   });

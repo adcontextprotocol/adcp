@@ -4,15 +4,17 @@ import { auditAgentUrlKeyMigration, proposedRegistryAgentUrlKey } from '../../sr
 const row = (rawUrl: string, store = 'metadata') => ({ store, rowId: rawUrl, rawUrl });
 
 describe('registry URL migration preflight', () => {
-  it('preserves endpoint path case and non-root trailing slashes', () => {
-    expect(proposedRegistryAgentUrlKey('HTTPS://Agent.Example/tenants/Acme/mcp/')).toBe('https://agent.example/tenants/Acme/mcp/');
+  it('preserves endpoint path case and folds a trailing slash', () => {
+    // Path case is the P0 fix; the trailing slash is folded for registry
+    // identity (#7830 maintainer decision), so only the case differs here.
+    expect(proposedRegistryAgentUrlKey('HTTPS://Agent.Example/tenants/Acme/mcp/')).toBe('https://agent.example/tenants/Acme/mcp');
     const audit = auditAgentUrlKeyMigration([
       row('https://agent.example/tenants/Acme/mcp/'),
       row('https://agent.example/tenants/acme/mcp'),
     ]);
     expect(audit.splitCandidates).toHaveLength(1);
     expect(audit.splitCandidates[0].proposedKeys).toHaveLength(2);
-    expect(audit.nonRootTrailingSlashRows).toHaveLength(1);
+    expect(audit.trailingSlashFoldedRows).toHaveLength(1);
   });
 
   it('normalizes equivalent URLs and exposes merge candidates', () => {
@@ -61,7 +63,9 @@ describe('registry URL migration preflight', () => {
       row('https://agent.example/mcp', 'metadata'),
       row('https://agent.example/MCP/', 'manifest'),
     ]);
-    expect(audit.changedRows).toHaveLength(1);
+    // The catalog row's stored key moves to /MCP, and the manifest row's
+    // raw URL folds its trailing slash — two rows change.
+    expect(audit.changedRows).toHaveLength(2);
     expect(audit.rawSourceRequired).toHaveLength(1);
     expect(audit.splitCandidates).toHaveLength(1);
     expect(audit.splitCandidates[0].candidates).toHaveLength(3);

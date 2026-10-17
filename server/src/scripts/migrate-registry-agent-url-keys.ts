@@ -82,107 +82,20 @@ import {
   type KeyedRow,
   type StorePlan,
 } from './registry-agent-url-key-rewrite-plan.js';
+import {
+  DERIVED_KEY_SCOPES,
+  MERGE_POLICIES,
+  PROFILE_AGENTS_STORE,
+  REPORT_ONLY_STORES,
+  REWRITE_STORES,
+  keyScopesFor,
+  quoteIdentifier,
+  type CombineRule,
+  type KeyScope,
+  type MergePolicy,
+} from './registry-key-stores.js';
 
-export const PROFILE_AGENTS_STORE = 'member_profiles.agents';
-
-/**
- * Identity stores: `agent_url` (or `agent_url_canonical`) is how a reader
- * finds the row, so a key left in the old form makes the row unreachable and
- * the next write creates a duplicate alongside it.
- */
-const REWRITE_STORES = new Set([
-  'adagents_authorization_overrides',
-  'agent_capabilities_snapshot',
-  'agent_compliance_refresh_requests',
-  'agent_compliance_status',
-  'agent_contexts',
-  'agent_grading_profile_projection_jobs',
-  'agent_grading_profiles',
-  'agent_health_snapshot',
-  'agent_inventory_profiles',
-  'agent_registry_metadata',
-  'agent_storyboard_status',
-  'agent_verification_badges',
-  'catalog_agent_authorizations',
-  'discovered_agents',
-]);
-
-/**
- * Tables that hold an `agent_url` but must NOT be rewritten, each with the
- * reason, because "why was this skipped" is the first question an operator
- * reading the report will have.
- *
- * Two shapes. Append-only history records the key that was in use when the
- * event happened — rewriting it would falsify the record, and three of these
- * tables enforce that with an append-only trigger (migration 598), so a blind
- * UPDATE would abort the run. The other shape is a reader that matches
- * `agent_url` against the caller's raw input rather than against a key.
- *
- * Not a store, but worth knowing: for `evidence='agent_claim'` rows,
- * `catalog_agent_authorizations.created_by` holds the asserting agent's URL
- * (migration 440), and it has never been canonicalized. After the rewrite it
- * and `agent_url_canonical` on the same row are in different key forms. The
- * documented revocation path matches `created_by` against a raw URL, so it
- * stays self-consistent; tracked separately rather than changed here.
- */
-const REPORT_ONLY_STORES = new Map<string, string>([
-  ['agent_publisher_authorizations',
-    'readers match agent_url against the caller raw input, not a key (#3177 dual-read)'],
-  ['agent_property_authorizations',
-    'readers match agent_url against the caller raw input, not a key (#3177 dual-read)'],
-  ['agent_compliance_runs',
-    'append-only run history; append-only trigger (migration 598)'],
-  ['agent_compliance_step_diagnostics',
-    'per-run diagnostics; child of agent_compliance_runs'],
-  ['agent_grading_profile_audit',
-    'append-only audit trail; append-only trigger (migration 598)'],
-  ['verification_profile_role_assessments',
-    'append-only assessment history; append-only trigger (migration 598)'],
-  ['verification_profile_shadow_assessments',
-    'shadow-mode assessment history'],
-  ['addie_agent_quality_evaluations',
-    'evaluation history; records the key in use at the time'],
-  ['agent_outbound_requests',
-    'request telemetry; high volume, no identity role'],
-  ['manifest_references',
-    'community manifest contributions; agent_url is a reference, not a key'],
-  ['type_reclassification_log',
-    'append-only reclassification log'],
-]);
-
-/**
- * Active-set uniqueness for the two derived-key tables, whose unique indexes
- * are partial AND expression-based (COALESCE over nullable scope columns), so
- * the generic pg_index walk below cannot model them. Kept next to the index
- * definitions they mirror: idx_caa_unique_active (migration 440) and
- * idx_aao_unique_active (migration 432).
- *
- * The CASE yields NULL outside the active set, which takes tombstoned and
- * superseded rows out of collision detection without taking them out of the
- * rewrite. They still have to move: their key is a change-feed payload field,
- * and leaving them behind would make the VALIDATE at the end — which scans
- * every row, not just the active ones — fail after every write has committed.
- */
-const DERIVED_KEY_SCOPES: Record<string, { scopeExpr: string }> = {
-  catalog_agent_authorizations: {
-    scopeExpr: `CASE WHEN deleted_at IS NULL THEN
-                  COALESCE(property_rid::text, '') || E'\\n'
-                  || COALESCE(publisher_domain, '') || E'\\n' || evidence END`,
-  },
-  adagents_authorization_overrides: {
-    scopeExpr: `CASE WHEN superseded_at IS NULL THEN
-                  host_domain || E'\\n' || COALESCE(property_id, '')
-                  || E'\\n' || override_type END`,
-  },
-};
-
-interface UniqueScope {
-  indexName: string;
-  /** Scope columns, excluding the key column itself. May be empty. */
-  columns: string[];
-  /** Partial-index predicate, or null. */
-  predicate: string | null;
-}
+export { PROFILE_AGENTS_STORE };
 
 interface TableStore {
   table: string;
@@ -190,25 +103,15 @@ interface TableStore {
   keyColumn: string;
   /** Column the key is computed from. Equal to keyColumn when self-keyed. */
   sourceColumn: string;
-  scopes: UniqueScope[];
-  /**
-   * Unique indexes on the key column this code cannot model, by name. Any
-   * entry blocks the store: merge detection would be blind to it.
-   */
-  unmodelledIndexes: string[];
-  /** Explicit scope expression for the derived-key tables. */
-  scopeExpr: string | null;
+  scopes: KeyScope[];
+  /** True when the scope came from DERIVED_KEY_SCOPES rather than pg_index. */
+  derivedScope: boolean;
 }
 
 interface ProfileAgents {
   id: string;
   slug: string;
   agents: Array<Record<string, unknown>>;
-}
-
-/** Quote an identifier that came from pg_catalog, never from an operator. */
-function quote(identifier: string): string {
-  return `"${identifier.replaceAll('"', '""')}"`;
 }
 
 async function discoverStores(client: PoolClient): Promise<TableStore[]> {
@@ -221,30 +124,6 @@ async function discoverStores(client: PoolClient): Promise<TableStore[]> {
      GROUP BY c.table_name HAVING bool_or(c.column_name = 'agent_url')
      ORDER BY c.table_name
   `);
-  // Unique indexes, with the expression-column case detectable: an index key
-  // column that is an expression has attnum 0 and no pg_attribute row, so the
-  // aggregated name array comes back shorter than indnkeyatts.
-  const { rows: indexes } = await client.query<{
-    table_name: string; index_name: string; key_columns: string[] | null;
-    key_count: number; predicate: string | null;
-  }>(`
-    SELECT c.relname AS table_name,
-           ic.relname AS index_name,
-           i.indnkeyatts AS key_count,
-           -- ::text matters: array_agg over the name type yields name[],
-           -- which the pg driver hands back as the string '{agent_url}'.
-           (SELECT array_agg(a.attname::text ORDER BY k.ord)
-              FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
-              JOIN pg_attribute a
-                ON a.attrelid = i.indrelid AND a.attnum = k.attnum
-             WHERE k.ord <= i.indnkeyatts) AS key_columns,
-           pg_get_expr(i.indpred, i.indrelid) AS predicate
-      FROM pg_index i
-      JOIN pg_class c ON c.oid = i.indrelid
-      JOIN pg_class ic ON ic.oid = i.indexrelid
-      JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
-     WHERE i.indisunique AND i.indisvalid AND i.indislive
-  `);
 
   const unclassified = tables
     .map(table => table.table_name)
@@ -254,9 +133,9 @@ async function discoverStores(client: PoolClient): Promise<TableStore[]> {
       `Unclassified agent_url table(s): ${unclassified.join(', ')}. Add each to `
       + 'REWRITE_STORES (an identity store a reader looks rows up in) or to '
       + 'REPORT_ONLY_STORES with a reason, in '
-      + 'server/src/scripts/migrate-registry-agent-url-keys.ts. Refusing to run: '
-      + 'rewriting an unclassified store, or silently leaving one on the old '
-      + 'key, are both ways to lose data.',
+      + 'server/src/scripts/registry-key-stores.ts. Refusing to run: rewriting '
+      + 'an unclassified store, or silently leaving one on the old key, are '
+      + 'both ways to lose data.',
     );
   }
 
@@ -264,32 +143,15 @@ async function discoverStores(client: PoolClient): Promise<TableStore[]> {
   for (const table of tables) {
     if (!REWRITE_STORES.has(table.table_name)) continue;
     const keyColumn = table.has_canonical ? 'agent_url_canonical' : 'agent_url';
-    const explicit = DERIVED_KEY_SCOPES[table.table_name];
-    const onKey = indexes
-      .filter(index => index.table_name === table.table_name)
-      .filter(index => Array.isArray(index.key_columns) && index.key_columns.includes(keyColumn));
-    // An index whose key list is shorter than indnkeyatts contains an
-    // expression. Modelling it as if it did not would under-report merges —
-    // the one failure the whole script exists to prevent — so name it and
-    // let it block the store instead.
-    const unmodelled = explicit
-      ? []
-      : onKey.filter(index => (index.key_columns?.length ?? 0) !== index.key_count)
-        .map(index => index.index_name);
-    const scopes = explicit ? [] : onKey
-      .filter(index => (index.key_columns?.length ?? 0) === index.key_count)
-      .map(index => ({
-        indexName: index.index_name,
-        columns: (index.key_columns as string[]).filter(column => column !== keyColumn),
-        predicate: index.predicate,
-      }));
+    // keyScopesFor throws on a unique index it cannot model, rather than
+    // leaving merge detection blind to it.
+    const scopes = await keyScopesFor(client, table.table_name, keyColumn);
     stores.push({
       table: table.table_name,
       keyColumn,
       sourceColumn: 'agent_url',
       scopes,
-      unmodelledIndexes: unmodelled,
-      scopeExpr: explicit?.scopeExpr ?? null,
+      derivedScope: DERIVED_KEY_SCOPES[table.table_name] !== undefined,
     });
   }
   return stores;
@@ -302,30 +164,30 @@ async function discoverStores(client: PoolClient): Promise<TableStore[]> {
  * together.
  */
 async function readTable(client: PoolClient, store: TableStore): Promise<KeyedRow[]> {
-  const scopeSelects = store.scopeExpr !== null
-    ? [`(${store.scopeExpr}) AS scope_0`]
-    : store.scopes.map((scope, index) => {
-      const tuple = scope.columns.length === 0
-        ? `''`
-        : scope.columns.map(column => `COALESCE(${quote(column)}::text, '')`).join(` || E'\\n' || `);
-      // Outside a partial index's predicate the row is not constrained by it.
-      const guarded = scope.predicate === null ? tuple : `CASE WHEN ${scope.predicate} THEN ${tuple} END`;
-      return `(${guarded}) AS scope_${index}`;
-    });
+  const scopeSelects = store.scopes.map((scope, index) => {
+    const tuple = scope.columns.length === 0
+      ? `''`
+      : scope.columns.map(column => `COALESCE(${quoteIdentifier(column)}::text, '')`).join(` || E'\\n' || `);
+    // Outside a partial index's predicate the row is not constrained by it,
+    // which takes a tombstoned or superseded row out of collision detection
+    // without taking it out of the rewrite.
+    const guarded = scope.predicate === null ? tuple : `CASE WHEN ${scope.predicate} THEN ${tuple} END`;
+    return `(${guarded}) AS scope_${index}`;
+  });
   const scopeCount = scopeSelects.length;
   const derived = store.keyColumn !== store.sourceColumn;
 
   const sql = derived
-    ? `SELECT id::text AS row_id, ${quote(store.sourceColumn)} AS raw_url,
-              ${quote(store.keyColumn)} AS stored_key${scopeSelects.map(s => `, ${s}`).join('')}
-         FROM public.${quote(store.table)}`
+    ? `SELECT id::text AS row_id, ${quoteIdentifier(store.sourceColumn)} AS raw_url,
+              ${quoteIdentifier(store.keyColumn)} AS stored_key${scopeSelects.map(s => `, ${s}`).join('')}
+         FROM public.${quoteIdentifier(store.table)}`
     // Self-keyed tables are rewritten by value, so only the distinct
     // (url, scope…) tuples matter — a history table with a million rows per
     // agent is planned from a handful. Positional GROUP BY avoids repeating
     // the partial-index CASE expressions.
-    : `SELECT ${quote(store.keyColumn)} AS row_id, ${quote(store.keyColumn)} AS raw_url,
-              ${quote(store.keyColumn)} AS stored_key${scopeSelects.map(s => `, ${s}`).join('')}
-         FROM public.${quote(store.table)}
+    : `SELECT ${quoteIdentifier(store.keyColumn)} AS row_id, ${quoteIdentifier(store.keyColumn)} AS raw_url,
+              ${quoteIdentifier(store.keyColumn)} AS stored_key${scopeSelects.map(s => `, ${s}`).join('')}
+         FROM public.${quoteIdentifier(store.table)}
         GROUP BY ${Array.from({ length: scopeCount + 3 }, (_, index) => index + 1).join(', ')}`;
 
   const { rows } = await client.query<Record<string, string | null>>(sql);
@@ -413,11 +275,11 @@ async function applyTableRewrite(
   // mis-attachment #7830 exists to fix. A moved row is skipped instead, and
   // the row-count delta surfaces it.
   const match = store.keyColumn !== store.sourceColumn
-    ? `t.id::text = r.row_id AND t.${quote(store.sourceColumn)} = r.raw_url`
-    : `t.${quote(store.keyColumn)} = r.row_id AND t.${quote(store.sourceColumn)} = r.raw_url`;
+    ? `t.id::text = r.row_id AND t.${quoteIdentifier(store.sourceColumn)} = r.raw_url`
+    : `t.${quoteIdentifier(store.keyColumn)} = r.row_id AND t.${quoteIdentifier(store.sourceColumn)} = r.raw_url`;
   const { rowCount } = await client.query(
-    `UPDATE public.${quote(store.table)} AS t
-        SET ${quote(store.keyColumn)} = r.new_key
+    `UPDATE public.${quoteIdentifier(store.table)} AS t
+        SET ${quoteIdentifier(store.keyColumn)} = r.new_key
        FROM unnest($1::text[], $2::text[], $3::text[]) AS r(row_id, new_key, raw_url)
       WHERE ${match}`,
     [
@@ -457,7 +319,14 @@ async function applyProfileRewrite(client: PoolClient, plan: StorePlan): Promise
       const key = registryAgentUrlKey(agent.url);
       if (key === null || key === agent.url) return agent;
       touched = true;
-      return { ...agent, url: key };
+      // The key folds a trailing slash for identity; authorization matching
+      // is spec-exact (#7829). Keep what was registered so
+      // find_agents_for_property still matches the publisher's manifest.
+      return {
+        ...agent,
+        url: key,
+        ...(agent.declared_url === undefined ? { declared_url: agent.url } : {}),
+      };
     });
     if (!touched) continue;
     await client.query(
@@ -467,6 +336,197 @@ async function applyProfileRewrite(client: PoolClient, plan: StorePlan): Promise
     updated += 1;
   }
   return updated;
+}
+
+// =============================================================================
+// Merge
+// =============================================================================
+
+export interface MergeDrop {
+  /** Stored key of the row whose value is not carried into the merged row. */
+  rowKey: string;
+  column: string;
+  dropped: unknown;
+  kept: unknown;
+}
+
+export interface MergeAction {
+  table: string;
+  index: string;
+  /** The key every row in this group lands on. */
+  toKey: string;
+  /** The rest of the uniqueness tuple, column => value. */
+  scope: Record<string, string | null>;
+  winnerKey: string;
+  loserKeys: string[];
+  /** Columns the policy composes, with the value the merged row gets. */
+  merged: Record<string, unknown>;
+  /**
+   * Every value a losing row held that the merged row does not. This is the
+   * "nothing is dropped silently" guarantee — it is printed in the dry run
+   * and again on apply.
+   */
+  drops: MergeDrop[];
+  rationale: string;
+}
+
+type Row = Record<string, unknown>;
+
+function compareValues(a: unknown, b: unknown, order?: readonly string[]): number {
+  if (order) {
+    const ia = order.indexOf(String(a));
+    const ib = order.indexOf(String(b));
+    return ia === ib ? 0 : ia < ib ? -1 : 1;
+  }
+  if (a === b) return 0;
+  // NULL sorts lowest, so `desc` puts a row that has a value above one that
+  // does not — "most recently checked" must not lose to "never checked".
+  if (a === null || a === undefined) return -1;
+  if (b === null || b === undefined) return 1;
+  if (a instanceof Date && b instanceof Date) return a.getTime() - b.getTime();
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+}
+
+/** Rank a collision group best-first, deterministically. */
+function rankRows(rows: Row[], policy: MergePolicy, keyColumn: string): Row[] {
+  return [...rows].sort((left, right) => {
+    for (const rule of policy.rank) {
+      const cmp = compareValues(left[rule.column], right[rule.column], rule.order);
+      if (cmp !== 0) return rule.direction === 'desc' ? -cmp : cmp;
+    }
+    // Stored key as the final tiebreak: two runs over the same data must
+    // pick the same winner, or a dry run does not describe the apply.
+    return String(left[keyColumn]) < String(right[keyColumn]) ? -1 : 1;
+  });
+}
+
+function combineColumn(rows: Row[], column: string, rule: CombineRule): unknown {
+  if (rule.kind === 'reset') return rule.value;
+  const values = rows.map(row => row[column]).filter(value => value !== null && value !== undefined);
+  if (rule.kind === 'anyTrue') return values.some(Boolean);
+  if (values.length === 0) return null;
+  if (rule.kind === 'min') {
+    return values.reduce((best, value) => (compareValues(value, best) < 0 ? value : best));
+  }
+  const max = values.reduce((best, value) => (compareValues(value, best) > 0 ? value : best));
+  if (rule.kind === 'max') return max;
+  // maxPlusOne: bigint columns come back from pg as strings.
+  return (BigInt(String(max)) + 1n).toString();
+}
+
+/**
+ * Turn a store's merge collisions into an explicit, reviewable plan.
+ *
+ * Reads only the rows that actually collide: the plan already knows which
+ * stored keys they are, so a table with a million rows and two collisions
+ * costs two lookups rather than a full scan.
+ */
+async function planMerges(
+  client: PoolClient,
+  store: TableStore,
+  plan: StorePlan,
+): Promise<MergeAction[]> {
+  const policy = MERGE_POLICIES[store.table];
+  if (policy === undefined || plan.merges.length === 0) return [];
+  const identifier = `public.${quoteIdentifier(store.table)}`;
+  const keyColumn = quoteIdentifier(store.keyColumn);
+  const actions: MergeAction[] = [];
+
+  for (const collision of plan.merges) {
+    const storedKeys = [...new Set(collision.rows.map(row => row.storedKey))];
+    const scope = store.scopes.find(entry => collision.scope.startsWith(`${store.scopes.indexOf(entry)}\u0000`))
+      ?? store.scopes[0];
+    const scopeColumns = scope?.columns ?? [];
+    const scopeValues = collision.scope.slice(collision.scope.indexOf('\u0000') + 1).split('\n');
+    const scopeFilter = scopeColumns
+      .map((column, index) => `coalesce(${quoteIdentifier(column)}::text, '') = $${index + 2}`)
+      .join(' AND ');
+    const { rows } = await client.query<Row>(
+      `SELECT * FROM ${identifier}
+        WHERE ${keyColumn} = ANY($1::text[])${scopeFilter ? ` AND ${scopeFilter}` : ''}`,
+      [storedKeys, ...scopeColumns.map((_, index) => scopeValues[index] ?? '')],
+    );
+    if (rows.length < 2) continue;
+
+    const ranked = rankRows(rows, policy, store.keyColumn);
+    const [winner, ...losers] = ranked;
+    const merged: Record<string, unknown> = {};
+    for (const [column, rule] of Object.entries(policy.combine)) {
+      if (!(column in winner)) continue;
+      merged[column] = combineColumn(ranked, column, rule);
+    }
+    // Everything the merged row will NOT carry, column by column, so no
+    // value disappears without appearing in the report first.
+    const drops: MergeDrop[] = [];
+    for (const loser of losers) {
+      for (const column of Object.keys(loser)) {
+        if (column === store.keyColumn || scopeColumns.includes(column)) continue;
+        const keptValue = column in merged ? merged[column] : winner[column];
+        const loserValue = loser[column];
+        if (loserValue === null || loserValue === undefined) continue;
+        if (JSON.stringify(loserValue) === JSON.stringify(keptValue)) continue;
+        drops.push({
+          rowKey: String(loser[store.keyColumn]),
+          column,
+          dropped: loserValue,
+          kept: keptValue ?? null,
+        });
+      }
+    }
+    actions.push({
+      table: store.table,
+      index: scope?.indexName ?? 'unknown',
+      toKey: collision.key,
+      scope: Object.fromEntries(scopeColumns.map((column, index) => [column, scopeValues[index] ?? ''])),
+      winnerKey: String(winner[store.keyColumn]),
+      loserKeys: losers.map(loser => String(loser[store.keyColumn])),
+      merged,
+      drops,
+      rationale: policy.rationale,
+    });
+  }
+  return actions;
+}
+
+/**
+ * Delete the losing rows, then move the winner onto the merged key and
+ * values. Losers go first so the winner's key change cannot trip the unique
+ * index on a row that is about to disappear.
+ */
+async function applyMerges(
+  client: PoolClient,
+  store: TableStore,
+  actions: MergeAction[],
+): Promise<number> {
+  let merged = 0;
+  for (const action of actions) {
+    const identifier = `public.${quoteIdentifier(store.table)}`;
+    const keyColumn = quoteIdentifier(store.keyColumn);
+    const scopeColumns = Object.keys(action.scope);
+    const scopeFilter = scopeColumns
+      .map((column, index) => `coalesce(${quoteIdentifier(column)}::text, '') = $${index + 2}`)
+      .join(' AND ');
+    const scopeParams = scopeColumns.map(column => action.scope[column] ?? '');
+    await client.query(
+      `DELETE FROM ${identifier}
+        WHERE ${keyColumn} = ANY($1::text[])${scopeFilter ? ` AND ${scopeFilter}` : ''}`,
+      [action.loserKeys, ...scopeParams],
+    );
+    const assignments = [`${keyColumn} = $${scopeParams.length + 2}`];
+    const values: unknown[] = [action.winnerKey, ...scopeParams, action.toKey];
+    for (const [column, value] of Object.entries(action.merged)) {
+      values.push(value);
+      assignments.push(`${quoteIdentifier(column)} = $${values.length}`);
+    }
+    const { rowCount } = await client.query(
+      `UPDATE ${identifier} SET ${assignments.join(', ')}
+        WHERE ${keyColumn} = $1${scopeFilter ? ` AND ${scopeFilter}` : ''}`,
+      values,
+    );
+    merged += rowCount ?? 0;
+  }
+  return merged;
 }
 
 /**
@@ -508,15 +568,24 @@ async function readRawUrlSources(client: PoolClient): Promise<Map<string, Set<st
   return byLegacyKey;
 }
 
-function summarize(plan: StorePlan, rawSources: Map<string, Set<string>>) {
+function summarize(
+  plan: StorePlan,
+  rawSources: Map<string, Set<string>>,
+  merges: MergeAction[],
+) {
   return {
     store: plan.store,
     rowCount: plan.rowCount,
     rewriteCount: plan.rewrites.length,
-    blocked: planIsBlocked(plan),
+    mergeCount: merges.length,
+    // Every fold, with the row that survives, the rows that do not, and
+    // every value the merged row does not carry.
+    merges,
+    blocked: planIsBlocked(plan) && merges.length !== plan.merges.length,
     rewrites: plan.rewrites,
     unkeyable: plan.unkeyable,
-    merges: plan.merges,
+    /** The raw collisions, before the policy resolved them into `merges`. */
+    mergeCollisions: plan.merges,
     chains: plan.chains,
     splits: plan.splits,
     lossyRowCount: plan.lossyRows.length,
@@ -542,7 +611,7 @@ async function readReportOnlyGap(client: PoolClient) {
   const gaps: Array<{ table: string; reason: string; changedUrls: string[] }> = [];
   for (const [table, reason] of REPORT_ONLY_STORES) {
     const { rows } = await client.query<{ agent_url: string }>(
-      `SELECT DISTINCT agent_url FROM public.${quote(table)} WHERE agent_url IS NOT NULL`);
+      `SELECT DISTINCT agent_url FROM public.${quoteIdentifier(table)} WHERE agent_url IS NOT NULL`);
     const changedUrls = rows
       .map(row => row.agent_url)
       .filter(agentUrl => (registryAgentUrlKey(agentUrl) ?? agentUrl) !== agentUrl);
@@ -577,7 +646,7 @@ async function readKeysRejectedByConstraint(client: PoolClient) {
     // the predicate can be negated.
     const predicate = rows[0].def.replace(/^CHECK\s*/, '').replace(/\s*NOT VALID$/, '');
     const { rows: counted } = await client.query<{ count: string }>(
-      `SELECT count(*)::text AS count FROM public.${quote(table)} WHERE NOT ${predicate}`,
+      `SELECT count(*)::text AS count FROM public.${quoteIdentifier(table)} WHERE NOT ${predicate}`,
     );
     const rowCount = Number(counted[0].count);
     if (rowCount > 0) rejected.push({ table, constraint, rowCount });
@@ -670,7 +739,9 @@ export async function runMigration(
   const selected = (store: string) => stores === undefined || stores.includes(store);
   const pool = getPool();
   const client = await pool.connect();
-  const planned: Array<{ store: TableStore | null; plan: StorePlan }> = [];
+  const planned: Array<{
+    store: TableStore | null; plan: StorePlan; merges: MergeAction[];
+  }> = [];
   let reportOnlyGap: Array<{ table: string; reason: string; changedUrls: string[] }> = [];
   let strandedSuppressions: StrandedSuppression[] = [];
   let rawSources = new Map<string, Set<string>>();
@@ -686,16 +757,15 @@ export async function runMigration(
       // A self-keyed table has no independent raw URL: whatever the old
       // algorithm destroyed is not recoverable from the row.
       const rawIsDerived = store.keyColumn === store.sourceColumn;
-      planned.push({
-        store,
-        plan: planStoreRewrite(store.table, await readTable(client, store), rawIsDerived),
-      });
+      const plan = planStoreRewrite(store.table, await readTable(client, store), rawIsDerived);
+      planned.push({ store, plan, merges: await planMerges(client, store, plan) });
     }
     if (selected(PROFILE_AGENTS_STORE)) {
       planned.push({
         store: null,
         plan: planStoreRewrite(
           PROFILE_AGENTS_STORE, profileAgentRows(await readProfiles(client)), true),
+        merges: [],
       });
     }
     reportOnlyGap = await readReportOnlyGap(client);
@@ -710,20 +780,30 @@ export async function runMigration(
     client.release();
   }
 
-  const unmodelled = planned.flatMap(entry =>
-    (entry.store?.unmodelledIndexes ?? []).map(index => ({ store: entry.store!.table, index })));
-  const blocked = planned.some(entry => planIsBlocked(entry.plan))
-    || unmodelled.length > 0
+  // A merge collision is only blocking when the table has no policy to
+  // resolve it. planMerges returns one action per resolvable collision, so a
+  // shortfall means at least one was left unexplained.
+  const unresolvedMerges = planned.flatMap(entry =>
+    entry.plan.merges.slice(entry.merges.length).map(collision => ({
+      store: entry.plan.store,
+      key: collision.key,
+      storedKeys: [...new Set(collision.rows.map(row => row.storedKey))],
+      reason: MERGE_POLICIES[entry.plan.store] === undefined
+        ? 'no merge policy for this store — resolve by hand'
+        : 'policy exists but the group could not be planned; inspect the rows',
+    })));
+  const blocked = planned.some(entry =>
+      entry.plan.unkeyable.length > 0 || entry.plan.chains.length > 0)
+    || unresolvedMerges.length > 0
     || strandedSuppressions.length > 0;
   console.log(JSON.stringify({
     issue: 7830,
     mode: apply ? 'apply' : 'dry-run',
     ...(stores === undefined ? {} : { onlyStores: stores }),
     blocked,
-    stores: planned.map(entry => summarize(entry.plan, rawSources)),
-    // Unique indexes on a key column whose scope this script cannot model.
-    // Merge detection would be blind to them, so they block.
-    unmodelledUniqueIndexes: unmodelled,
+    stores: planned.map(entry => summarize(entry.plan, rawSources, entry.merges)),
+    // Collisions a policy cannot resolve. Each one blocks.
+    unresolvedMerges,
     // Active suppressions that would stop matching a base row. Blocks: a
     // suppression that silently stops applying is a ban that silently lifts.
     strandedSuppressions,
@@ -742,10 +822,10 @@ export async function runMigration(
   }
   if (blocked) {
     throw new Error(
-      'Refusing to apply: a store has a merge or chain collision, a row whose URL no '
-      + 'longer produces a key, a unique index whose scope cannot be modelled, or an '
-      + 'active suppression that would stop matching. Resolve them by hand — the '
-      + 'rewrite must not pick a winner.',
+      'Refusing to apply: a store has a chain collision, a merge collision with no '
+      + 'policy to resolve it, a row whose URL no longer produces a key, or an active '
+      + 'suppression that would stop matching. Resolve them by hand — the rewrite '
+      + 'must not pick a winner it was not told how to pick.',
     );
   }
 
@@ -758,10 +838,21 @@ export async function runMigration(
   try {
     await writer.query('BEGIN');
     await writer.query("SET LOCAL statement_timeout = '600s'");
-    for (const { store, plan } of planned) {
+    for (const { store, plan, merges } of planned) {
       if (store === null) continue;
+      // Merges first: they delete the losing rows, which is what frees the
+      // key the surviving row is about to move onto.
+      const mergedRows = await applyMerges(writer, store, merges);
+      for (const action of merges) {
+        console.log(
+          `${plan.store}: folded ${action.loserKeys.join(', ')} into ${action.winnerKey} `
+          + `-> ${action.toKey}`
+          + (action.drops.length > 0
+            ? `\n  dropped: ${action.drops.map(d => `${d.column}=${JSON.stringify(d.dropped)}`).join(', ')}`
+            : ''));
+      }
       const { updated, skipped } = await applyTableRewrite(writer, store, plan);
-      console.log(`${plan.store}: rewrote ${updated} row(s)`
+      console.log(`${plan.store}: merged ${mergedRows} row(s), rewrote ${updated} row(s)`
         + (skipped > 0 ? `, skipped ${skipped} that changed under the plan` : ''));
     }
     await writer.query('COMMIT');

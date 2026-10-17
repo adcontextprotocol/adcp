@@ -138,7 +138,6 @@ describe('registry agent_url key migration (#7830)', () => {
     it('accepts the key shapes the old constraint rejected', async () => {
       for (const key of [
         'https://agent.key-migration.example/tenants/Acme/mcp',
-        'https://agent.key-migration.example/mcp/',
         'https://agent.key-migration.example/mcp?token=A',
         'https://xn--bcher-kva.key-migration.example/mcp',
         'https://agent.key-migration.example/?',
@@ -153,7 +152,8 @@ describe('registry agent_url key migration (#7830)', () => {
         'https://Agent.key-migration.example/mcp',          // uncanonicalized host
         'https://user:pw@agent.key-migration.example/mcp',  // userinfo
         'https://agent.key-migration.example/mcp#frag',     // fragment
-        'https://agent.key-migration.example/',             // bare root slash
+        'https://agent.key-migration.example/',             // root slash
+        'https://agent.key-migration.example/mcp/',         // any trailing slash
         'https://agent.key-migration.example/a*b',          // embedded wildcard
         'https://agent.key-migration.example/a\\b',         // backslash
         'https://agent.key-migration.example/a b',          // whitespace
@@ -208,7 +208,7 @@ describe('registry agent_url key migration (#7830)', () => {
          VALUES ($1, $2, $3, 'suppress', 'bad_actor', 'test', 'user_test')`,
         [PUB, `raw:${key}`, key],
       );
-      await expect(insertOverride('https://agent.key-migration.example/Mcp/')).resolves.toBeTruthy();
+      await expect(insertOverride('https://agent.key-migration.example/Mcp')).resolves.toBeTruthy();
       await expect(insertOverride('*')).rejects.toThrow(/chk_aao_agent_url_canonical/);
     });
   });
@@ -318,10 +318,11 @@ describe('registry agent_url key migration (#7830)', () => {
     });
 
     it('reports a merge collision and refuses to apply it', async () => {
-      // Both rows are the same publisher-wide adagents_json authorization, so
-      // they share idx_caa_unique_active's scope once the port is dropped.
-      await insertAuth('https://agent.key-migration.example:443/mcp',
-        'https://agent.key-migration.example:443/mcp');
+      // Both rows are the same publisher-wide adagents_json authorization,
+      // so they share idx_caa_unique_active's scope once the trailing slash
+      // folds — the collision shape production actually has.
+      await insertPreMigrationAuth('https://agent.key-migration.example/mcp/',
+        'https://agent.key-migration.example/mcp/', PUB);
       await insertAuth('https://agent.key-migration.example/mcp',
         'https://agent.key-migration.example/mcp', OTHER_PUB);
       await pool.query(
@@ -330,10 +331,13 @@ describe('registry agent_url key migration (#7830)', () => {
 
       const { blocked } = await catalogOnly(false);
 
-      expect(blocked).toBe(true);
+      // catalog_agent_authorizations HAS a merge policy, so the collision is
+      // resolved rather than blocking — the plan says exactly how.
+      expect(blocked).toBe(false);
       const store = storeReport('catalog_agent_authorizations');
+      expect(store.mergeCollisions).toHaveLength(1);
       expect(store.merges).toHaveLength(1);
-      await expect(catalogOnly(true)).rejects.toThrow(/Refusing to apply/);
+      expect(store.merges[0].toKey).toBe('https://agent.key-migration.example/mcp');
     });
 
     it('reports a split without blocking', async () => {
@@ -382,15 +386,15 @@ describe('registry agent_url key migration (#7830)', () => {
   });
 
   describe('apply', () => {
-    it('rewrites every changed class and leaves root-served keys untouched', async () => {
+    it('rewrites every changed class, folding every trailing slash', async () => {
       // [raw agent_url, pre-migration stored key, expected key after rewrite]
       const cases: Array<[string, string, string]> = [
         ['https://agent.key-migration.example/tenants/Acme/mcp',
           'https://agent.key-migration.example/tenants/acme/mcp',
           'https://agent.key-migration.example/tenants/Acme/mcp'],
         ['https://agent.key-migration.example/mcp/',
-          'https://agent.key-migration.example/mcp',
-          'https://agent.key-migration.example/mcp/'],
+          'https://agent.key-migration.example/mcp/',
+          'https://agent.key-migration.example/mcp'],
         ['https://agent.key-migration.example:443/mcp',
           'https://agent.key-migration.example:443/mcp',
           'https://agent.key-migration.example/mcp'],
@@ -466,22 +470,32 @@ describe('registry agent_url key migration (#7830)', () => {
       }
     });
 
-    it('refuses a self-keyed rewrite that would collide on the primary key', async () => {
-      const stale = 'https://collide.key-migration.example:443/mcp';
+    it('folds a self-keyed trailing-slash collision under the table policy', async () => {
+      const stale = 'https://collide.key-migration.example/mcp/';
       const existing = 'https://collide.key-migration.example/mcp';
       await pool.query(
-        `INSERT INTO agent_registry_metadata (agent_url) VALUES ($1), ($2)`, [stale, existing]);
+        `INSERT INTO agent_registry_metadata (agent_url, updated_at, compliance_opt_out)
+         VALUES ($1, now() - interval '1 day', true), ($2, now(), false)`, [stale, existing]);
       try {
         const { blocked } = await runMigration({
           apply: false, stores: ['agent_registry_metadata'] });
-        expect(blocked).toBe(true);
-        expect(storeReport('agent_registry_metadata').merges).toHaveLength(1);
-        await expect(runMigration({ apply: true, stores: ['agent_registry_metadata'] }))
-          .rejects.toThrow(/Refusing to apply/);
-        const { rows } = await pool.query(
-          `SELECT agent_url FROM agent_registry_metadata WHERE agent_url IN ($1, $2)`,
-          [stale, existing]);
-        expect(rows).toHaveLength(2);
+        // Resolved by the table's policy, not blocked.
+        expect(blocked).toBe(false);
+        const report = storeReport('agent_registry_metadata');
+        expect(report.mergeCollisions).toHaveLength(1);
+        const [merge] = report.merges;
+        expect(merge.winnerKey).toBe(existing);
+        expect(merge.loserKeys).toEqual([stale]);
+        // The conservative flag survives from the losing row, and the fact
+        // that it moved is in the report rather than silent.
+        expect(merge.merged.compliance_opt_out).toBe(true);
+
+        await runMigration({ apply: true, stores: ['agent_registry_metadata'] });
+
+        const { rows } = await pool.query<{ agent_url: string; compliance_opt_out: boolean }>(
+          `SELECT agent_url, compliance_opt_out FROM agent_registry_metadata
+            WHERE agent_url IN ($1, $2)`, [stale, existing]);
+        expect(rows).toEqual([{ agent_url: existing, compliance_opt_out: true }]);
       } finally {
         await pool.query(`DELETE FROM agent_registry_metadata WHERE agent_url IN ($1, $2)`,
           [stale, existing]);

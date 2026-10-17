@@ -825,7 +825,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     ]);
   });
 
-  it('POST keeps path case and a non-root trailing slash as separate agents', async () => {
+  it('POST keeps path case separate but folds a trailing slash', async () => {
     const orgId = `${TEST_PREFIX}_canon_path`;
     const userId = `${TEST_PREFIX}_canon_path_user`;
     await seedOrg(pool, orgId, 'individual_professional');
@@ -833,25 +833,31 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     await createProfile(orgId, 'canonpath');
 
     (app as any).setCurrentUser(userId);
-    const urls = [
-      'https://path.example.test/mcp',
-      'https://path.example.test/MCP',
-      'https://path.example.test/mcp/',
-    ];
-    for (const url of urls) {
+    // /mcp and /MCP are different agents; /mcp/ is the same agent as /mcp
+    // for registry identity (#7830).
+    const distinct = ['https://path.example.test/mcp', 'https://path.example.test/MCP'];
+    for (const url of distinct) {
       const res = await request(app)
         .post('/api/me/agents').query({ org: orgId })
         .send({ url, name: url, type: 'sales', visibility: 'private' });
-      // 201 every time: the spec says these are three different agents, so
-      // none of them upserts onto another.
       expect(res.status, url).toBe(201);
       expect(res.body.agent.url, url).toBe(url);
     }
 
-    const profile = await memberDb.getProfileByOrgId(orgId);
-    expect(profile!.agents.filter((a) => urls.includes(a.url))).toHaveLength(3);
+    // The trailing-slash form upserts onto /mcp rather than creating a third.
+    const folded = await request(app)
+      .post('/api/me/agents').query({ org: orgId })
+      .send({ url: 'https://path.example.test/mcp/', name: 'Folded', type: 'sales', visibility: 'private' });
+    expect(folded.status).toBe(200);
+    expect(folded.body.agent.url).toBe('https://path.example.test/mcp');
+    // The spelling that was registered is kept for spec-exact authorization
+    // matching (#7829) — see declaredAgentUrl.
+    expect(folded.body.agent.declared_url).toBe('https://path.example.test/mcp/');
 
-    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = ANY($1::text[])', [urls]);
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile!.agents.filter((a) => distinct.includes(a.url))).toHaveLength(2);
+
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = ANY($1::text[])', [distinct]);
   });
 
   it('POST is idempotent across non-canonical and canonical forms (no duplicate JSONB or metadata rows)', async () => {

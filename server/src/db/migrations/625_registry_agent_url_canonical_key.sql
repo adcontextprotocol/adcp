@@ -71,11 +71,13 @@ ALTER TABLE catalog_agent_authorizations
 --     (WHATWG parsing folds it to '/', so the key would not round-trip),
 --     whitespace or control character (unmatchable by any lookup caller);
 --   * no fragment — canonicalization drops it;
---   * no bare trailing '/' directly after the authority. Path case and a
---     trailing slash deeper in the path ARE significant now and are allowed;
---     the root slash is dropped so a root-served agent's key stays
---     byte-identical to the one the old algorithm produced, unless the URL
---     also carried a default port.
+--   * no trailing '/' on the path, anywhere. Path CASE is significant — that
+--     is the P0 fix — but a trailing slash is folded for registry identity:
+--     `/mcp` and `/mcp/` are one agent. The single exception is a root path
+--     carrying a query (`https://x.example/?t=1`), where the slash is kept so
+--     the query still reads as a query. Authorization matching keeps the
+--     trailing slash significant and never reads this column; see
+--     server/src/db/registry-agent-url-key.ts.
 --
 -- The authority class mirrors CANONICAL_AUTHORITY in
 -- server/src/db/registry-agent-url-key.ts. The two MUST stay in step: a key
@@ -92,7 +94,11 @@ ALTER TABLE catalog_agent_authorizations
           ~ '^[a-z0-9._~!$&''()+,;=:[\]-]+$'
       AND agent_url_canonical !~ '[*\\#]'
       AND agent_url_canonical !~ '[[:space:][:cntrl:]]'
-      AND agent_url_canonical !~ '^https?://[^/?#]+/$'
+      AND (
+        split_part(agent_url_canonical, '?', 1) !~ '/$'
+        OR (agent_url_canonical ~ '\?'
+            AND split_part(agent_url_canonical, '?', 1) ~ '^https?://[^/?#]+/$')
+      )
     )
   ) NOT VALID;
 
@@ -120,7 +126,11 @@ ALTER TABLE adagents_authorization_overrides
         ~ '^[a-z0-9._~!$&''()+,;=:[\]-]+$'
     AND agent_url_canonical !~ '[*\\#]'
     AND agent_url_canonical !~ '[[:space:][:cntrl:]]'
-    AND agent_url_canonical !~ '^https?://[^/?#]+/$'
+    AND (
+      split_part(agent_url_canonical, '?', 1) !~ '/$'
+      OR (agent_url_canonical ~ '\?'
+          AND split_part(agent_url_canonical, '?', 1) ~ '^https?://[^/?#]+/$')
+    )
   ) NOT VALID;
 
 COMMENT ON COLUMN adagents_authorization_overrides.agent_url_canonical IS

@@ -30,17 +30,25 @@ describe('registryAgentUrlKey', () => {
       .toBe(legacyRegistryAgentUrlKey('https://agent.example/tenants/acme/mcp'));
   });
 
-  it('keeps a non-root trailing slash significant', () => {
-    expect(registryAgentUrlKey('https://agent.example/mcp/')).toBe('https://agent.example/mcp/');
+  it('folds a trailing slash off the path, at the root and below it', () => {
+    // Registry identity only: /mcp and /mcp/ are one agent. Authorization
+    // matching keeps them distinct — registry-identity-vs-authorization.test.ts.
+    expect(registryAgentUrlKey('https://agent.example/mcp/')).toBe('https://agent.example/mcp');
     expect(registryAgentUrlKey('https://agent.example/mcp')).toBe('https://agent.example/mcp');
-    expect(registryAgentUrlKey('https://agent.example/MCP///')).toBe('https://agent.example/MCP///');
-  });
-
-  it('drops the root slash so every root-served agent keeps its existing key', () => {
+    expect(registryAgentUrlKey('https://agent.example/MCP///')).toBe('https://agent.example/MCP');
     expect(registryAgentUrlKey('https://agent.example/')).toBe('https://agent.example');
     expect(registryAgentUrlKey('https://agent.example')).toBe('https://agent.example');
+    expect(registryAgentUrlKey('https://agent.example//')).toBe('https://agent.example');
     expect(registryAgentUrlKey('https://agent.example/'))
       .toBe(legacyRegistryAgentUrlKey('https://agent.example/'));
+  });
+
+  it('keeps the root slash when a query follows it, and drops it below the root', () => {
+    // Without the slash `https://agent.example?t=1` would not read as a
+    // query against a path.
+    expect(registryAgentUrlKey('https://agent.example/?t=1')).toBe('https://agent.example/?t=1');
+    expect(registryAgentUrlKey('https://agent.example/mcp/?t=1'))
+      .toBe('https://agent.example/mcp?t=1');
   });
 
   it('drops a default port and keeps a non-default one', () => {
@@ -113,6 +121,7 @@ describe('registryAgentUrlKey', () => {
   it('is idempotent — keying a key returns the same key', () => {
     const raws = [
       'HTTPS://Agent.Example:443/a/./b/../%7Ec/',
+      'https://agent.example/mcp/',
       'https://agent.example',
       'https://agent.example/mcp?',
       '*',

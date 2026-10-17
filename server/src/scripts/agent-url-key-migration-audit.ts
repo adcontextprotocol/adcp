@@ -52,10 +52,14 @@ export function auditAgentUrlKeyMigration(rows: AgentUrlAuditRow[]) {
   });
   return {
     rowCount: rows.length,
-    nonRootTrailingSlashRows: entries.filter(row => {
-      if (!row.proposedKey || row.proposedKey === '*') return false;
-      const path = new URL(row.proposedKey).pathname;
-      return path !== '/' && path.endsWith('/');
+    // Rows whose raw URL carries a trailing slash the key folds away. These
+    // are the identity merges, and they are also the rows whose registered
+    // spelling has to be preserved for spec-exact authorization matching
+    // (#7829) — see declaredAgentUrl.
+    trailingSlashFoldedRows: entries.filter(row => {
+      if (row.proposedKey === null || row.proposedKey === '*') return false;
+      const path = row.rawUrl.trim().split('#', 1)[0].split('?', 1)[0];
+      return path.endsWith('/');
     }),
     bareQueryRows: entries.filter(row => row.rawUrl.split('#', 1)[0].endsWith('?')),
     invalidRows: entries.filter(row => row.proposedKey === null),
