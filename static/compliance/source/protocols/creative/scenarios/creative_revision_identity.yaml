@@ -217,3 +217,79 @@ phases:
           - check: field_absent
             path: "creatives[1]"
             description: "The exact creative_id filter returns one row"
+
+  - id: provenance_readback
+    title: "Read back creative-level provenance"
+    optional: true
+    narrative: |
+      Sellers that persist creative-level provenance echo it on list_creatives
+      for the returned revision. Sellers that do not persist it omit the field,
+      so omission passes and only a wrong echoed value fails.
+    steps:
+      - id: sync_revision_with_provenance
+        title: "Create revision rev_launch_2 with provenance"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#creative-revisions"
+        comply_scenario: creative_flow
+        stateful: true
+        sample_request:
+          account: *revision_account
+          creatives:
+            - creative_id: "revision_launch_banner"
+              revision_id: "rev_launch_2"
+              name: "Launch banner revision two"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/revision-launch-v2.png"
+                  width: 300
+                  height: 250
+              provenance:
+                digital_source_type: "trained_algorithmic_media"
+                ai_tool:
+                  name: "Example Image Generator"
+          idempotency_key: "$generate:uuid_v4#creative_revision_identity_provenance"
+          context:
+            correlation_id: "creative_revision_identity--provenance-sync"
+        expected: |
+          Accept the creative and echo rev_launch_2 exactly.
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].revision_id"
+            value: "rev_launch_2"
+            description: "The accepted buyer revision echoes exactly"
+
+      - id: list_provenance
+        title: "Confirm provenance echoes for the returned revision"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives#provenance-readback"
+        comply_scenario: creative_flow
+        stateful: true
+        sample_request:
+          account: *revision_account
+          filters:
+            creative_ids: ["revision_launch_banner"]
+          context:
+            correlation_id: "creative_revision_identity--provenance-readback"
+        expected: |
+          Return rev_launch_2 with the creative-level provenance accepted on
+          sync_creatives. Omission is conformant for sellers that do not
+          persist creative-level provenance.
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].revision_id"
+            value: "rev_launch_2"
+            description: "The current revision reads back exactly"
+          - check: field_value_or_absent
+            path: "creatives[0].provenance.digital_source_type"
+            value: "trained_algorithmic_media"
+            description: "Creative-level provenance echoes for the returned revision"
