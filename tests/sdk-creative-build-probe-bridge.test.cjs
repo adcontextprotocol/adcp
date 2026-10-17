@@ -131,3 +131,27 @@ test('bridge rejects version drift, late-file drift and mixed states before writ
     }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+
+test('bridge rejects a payload traversal before writing any package target', () => {
+  const { dir, root } = originalPackage();
+  try {
+    const first = path.join(root, manifest.files[0].path);
+    const original = fs.readFileSync(first, 'utf8');
+    const harness = path.join(dir, 'owned-bridge');
+    const harnessPatches = path.join(harness, 'patches/sdk-creative-build-probe');
+    fs.mkdirSync(path.join(harness, 'scripts'), { recursive: true });
+    fs.cpSync(patchRoot, harnessPatches, { recursive: true });
+    const installerFile = path.join(harness, 'scripts/install-sdk-creative-build-probe.cjs');
+    fs.copyFileSync(path.resolve(__dirname, '../scripts/install-sdk-creative-build-probe.cjs'), installerFile);
+    const altered = structuredClone(manifest);
+    const entry = altered.files.find(item => item.contents_file === 'creative-build-probe.js');
+    // An outside payload with the correct bytes would satisfy output hashes.
+    // The installer must reject its path before reading or writing any target.
+    fs.copyFileSync(path.join(patchRoot, entry.contents_file), path.join(harness, 'patches/outside.js'));
+    entry.contents_file = '../outside.js';
+    fs.writeFileSync(path.join(harnessPatches, 'manifest.json'), JSON.stringify(altered));
+    assert.throws(() => require(installerFile).install(root), /Invalid SDK bridge contents_file/);
+    assert.equal(fs.readFileSync(first, 'utf8'), original);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

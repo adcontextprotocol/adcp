@@ -10,6 +10,7 @@ const { createHash } = require('node:crypto');
 const patchRoot = path.resolve(__dirname, '../patches/sdk-creative-build-probe');
 const manifest = JSON.parse(fs.readFileSync(path.join(patchRoot, 'manifest.json'), 'utf8'));
 const digest = value => createHash('sha256').update(value).digest('hex');
+const helperPayloads = new Set(['creative-build-probe.js', 'creative-build-probe.mjs', 'creative-build-probe.d.ts', 'creative-build-probe.d.mts']);
 
 function install(packageRoot) {
   const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
@@ -20,6 +21,9 @@ function install(packageRoot) {
   const staged = manifest.files.map(entry => {
     if (!(entry.path === 'bin/adcp.js' || entry.path.startsWith('dist/lib/testing/storyboard/') || /^dist\/lib\/testing\/index\.(js|mjs|d\.ts|d\.mts)$/.test(entry.path)) || entry.path.includes('..')) {
       throw new Error('Invalid SDK bridge target');
+    }
+    if (entry.contents_file !== undefined && (!helperPayloads.has(entry.contents_file) || !entry.path.endsWith('/' + entry.contents_file))) {
+      throw new Error('Invalid SDK bridge contents_file');
     }
     const file = path.join(packageRoot, entry.path);
     const before = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;

@@ -22,11 +22,21 @@ function at(value, ...keys) {
   for (const key of keys) value = isRecord(value) ? value[key] : void 0;
   return value;
 }
+function displayDiagnostic(value, limit) {
+  let displayed = "";
+  for (const char of value) {
+    const escaped = JSON.stringify(char).slice(1, -1).replace(/[\u007f-\u009f\u2028\u2029]/g, (control) => `\\u${control.charCodeAt(0).toString(16).padStart(4, "0")}`);
+    if (displayed.length + escaped.length > limit - 1) return `${displayed}\u2026`;
+    displayed += escaped;
+  }
+  return displayed;
+}
 function displayUnknownKind(kind) {
-  return JSON.stringify(kind.slice(0, 128)).replace(
-    /[\u007f-\u009f\u2028\u2029]/g,
-    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`
-  );
+  return `"${displayDiagnostic(kind.slice(0, 128), 768)}"`;
+}
+function displayValidationErrors(errors) {
+  const message = errors.slice(0, 8).map((error) => `${(error.instancePath || "/").slice(0, 2048)} ${(error.message ?? "").slice(0, 2048)}`).join("; ");
+  return displayDiagnostic(message, 2048);
 }
 function validateCreativeBuildProbeSpec(value) {
   if (!isRecord(value) || Object.keys(value).some((key) => key !== "context_prefix" && key !== "message") || typeof value.context_prefix !== "string" || !/^[a-z][a-z0-9_]*$/.test(value.context_prefix) || typeof value.message !== "string" || value.message.trim().length === 0) {
@@ -254,7 +264,7 @@ function resolveCreativeBuildProbeWithSchemas(creative, spec, testKit, governanc
     }
     if (!validateFormat(entry.format) || !validateKind(entry.format.format_kind)) {
       return invalid(
-        `malformed format declaration: ${[...validateFormat.errors ?? [], ...validateKind.errors ?? []].map((error) => `${error.instancePath || "/"} ${error.message}`).join("; ")}`
+        `malformed format declaration: ${displayValidationErrors([...validateFormat.errors ?? [], ...validateKind.errors ?? []])}`
       );
     }
     const validateParams = getSchemaValidatorByRef(
@@ -268,7 +278,7 @@ function resolveCreativeBuildProbeWithSchemas(creative, spec, testKit, governanc
     }
     if (validateParams && !validateParams(entry.format.params) || validateFormat && !validateFormat(entry.format) || validateKind && !validateKind(entry.format.format_kind)) {
       return invalid(
-        `malformed format declaration: ${[...validateParams?.errors ?? [], ...validateFormat?.errors ?? [], ...validateKind?.errors ?? []].map((error) => `${error.instancePath || "/"} ${error.message}`).join("; ")}`
+        `malformed format declaration: ${displayValidationErrors([...validateParams?.errors ?? [], ...validateFormat?.errors ?? [], ...validateKind?.errors ?? []])}`
       );
     }
     if (isBuildRoute(entry)) buildRoutes.push(entry);
