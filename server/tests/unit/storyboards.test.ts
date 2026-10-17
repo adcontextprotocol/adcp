@@ -260,10 +260,10 @@ describe('wrapper contract', () => {
     // 3.2 GA: stable 3.2 wins over 3.1, and a 3.2 prerelease pin stays on
     // that prerelease instead of being upgraded to the GA bundle.
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).requested).toBe('3.2');
-    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe('3.2.4');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe('3.2.5');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.2-rc.7']).version).toBe('3.2.0-rc.7');
-    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe('3.2.4');
-    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe('3.1.27');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe('3.2.5');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe('3.1.29');
 
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.7']).requested).toBe('3.1-beta');
@@ -286,15 +286,20 @@ describe('wrapper contract', () => {
 
   it('caps hosted aliases at explicitly registered released compliance bundles', () => {
     expect(hostedComplianceTarget('3.0').version).toBe('3.0.28');
-    expect(hostedComplianceTarget('3.1').version).toBe('3.1.27');
+    expect(hostedComplianceTarget('3.1').version).toBe('3.1.29');
     expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
     expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
-    expect(hostedComplianceTarget('3.2').version).toBe('3.2.4');
+    expect(hostedComplianceTarget('3.2').version).toBe('3.2.5');
     expect(hostedComplianceTarget('3.2.2').version).toBe('3.2.2');
     expect(hostedComplianceTarget('3.2.3').version).toBe('3.2.3');
+    expect(hostedComplianceTarget('3.2.4').version).toBe('3.2.4');
+    expect(hostedComplianceTarget('3.1.27').version).toBe('3.1.27');
     expect(hostedComplianceTarget('3.2-rc').version).toBe('3.2.0-rc.7');
     expect(() => hostedComplianceTarget('3.2.0')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1.12')).toThrow(/not available from a published/);
+    // 3.1.28's records are on main, but the hosted 3.1 alias moved straight
+    // from 3.1.27 to 3.1.29, so 3.1.28 is not a hosted grading target.
+    expect(() => hostedComplianceTarget('3.1.28')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1-rc.15')).toThrow(/not available from a published/);
   });
 
@@ -328,15 +333,15 @@ describe('wrapper contract', () => {
     }
   });
 
-  it('loads the released 3.1.27 bundle with the pinned hosted SDK', () => {
+  it('loads the released 3.1.29 bundle with the pinned hosted SDK', () => {
     const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1']);
     const options = hostedComplianceOptions(target);
 
     expect(target.requested).toBe('3.1');
-    expect(target.version).toBe('3.1.27');
-    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.27$/);
-    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.27$/);
-    expect(loadComplianceIndex(options).adcp_version).toBe('3.1.27');
+    expect(target.version).toBe('3.1.29');
+    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.29$/);
+    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.29$/);
+    expect(loadComplianceIndex(options).adcp_version).toBe('3.1.29');
   });
 
   it.each([
@@ -344,6 +349,7 @@ describe('wrapper contract', () => {
     ['3.2.2', /\/dist\/compliance\/3\.2\.2$/, /\/dist\/schemas\/3\.2\.2$/],
     ['3.2.3', /\/dist\/compliance\/3\.2\.3$/, /\/dist\/schemas\/3\.2\.3$/],
     ['3.2.4', /\/dist\/compliance\/3\.2\.4$/, /\/dist\/schemas\/3\.2\.4$/],
+    ['3.2.5', /\/dist\/compliance\/3\.2\.5$/, /\/dist\/schemas\/3\.2\.5$/],
   ] as const)('loads the explicitly pinned %s bundle with the hosted SDK', (version, complianceDir, schemaRoot) => {
     const target = hostedComplianceTarget(version);
     const options = hostedComplianceOptions(target);
