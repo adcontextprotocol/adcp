@@ -57,6 +57,30 @@ This is a recommendation, not a conformance requirement, but the interop effect 
 
 The seller-side counterpart matters more than the number: keep discovery responses small. `tools/list`, `get_adcp_capabilities`, and the A2A agent card are the first bytes a counterparty reads, and an oversized one makes an agent unreachable rather than slow. `get_adcp_capabilities` is the sharpest case — above `MAX_CAPABILITIES_BYTES` your signing keys stop resolving too. See [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
 
+### Nobody else gets to write your capabilities document
+
+Two capability fields enumerate relationships a *counterparty* asserts:
+`media_buy.portfolio.publisher_domains` and `signals.data_provider_domains` are both
+populated from those counterparties' `/.well-known/adagents.json`, which any domain
+owner publishes unilaterally and without the named agent's consent. An agent that
+mirrored every publisher claiming it had handed an unauthenticated stranger a write
+primitive into its own discovery document — and since the signing-key path fetches
+that document unnarrowed under `MAX_CAPABILITIES_BYTES`, pushing it past 64 KiB cost
+the victim *signature verification*, arriving a cache cycle later with no visible
+connection to its cause.
+
+3.3 adds a normative byte budget — one eighth of the capabilities budget for any
+single counterparty-asserted field, one quarter for both together — and declares
+structural bounds (100 unique entries, 253 characters each) that the conformance
+storyboard grades in 3.x and the schema enforces in 4.0. No previously-valid
+document becomes schema-invalid; what changes is what counts as conformant. Because a bounded
+list would otherwise make a large legitimate network look unauthorized for most of
+its own inventory, the bound ships with `publisher_domains_complete` and
+`data_provider_domains_complete` — default `true`, set `false` when you truncate.
+Both lists are explicitly non-exhaustive, so a buyer must resolve the publisher named
+on a product through that publisher's own `adagents.json` and must never read absence
+from the list as a denial.
+
 ### Clarifications and conformance
 
 - `authorized_agents[].url` in `adagents.json` is the agent's full protocol endpoint URL, including its path, and one entry is needed for each agent URL. See [Agent URL matching](/docs/governance/property/adagents#agent-url-matching).

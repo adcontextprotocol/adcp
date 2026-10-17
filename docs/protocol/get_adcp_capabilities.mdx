@@ -1311,11 +1311,31 @@ geographic targeting.
 
 | Field                  | Type     | Description                                            |
 | ---------------------- | -------- | ------------------------------------------------------ |
-| `publisher_domains`    | string[] | **Required.** Publisher domains this seller represents |
+| `publisher_domains`    | string[] | **Required.** Publisher domains this seller represents. Bounded: ≤ 100 unique entries, each ≤ 253 chars, 8,192 bytes as served. **Not an allowlist** — see below |
+| `publisher_domains_complete` | boolean | Whether `publisher_domains` is complete as served (default `true`). Set `false` when truncated |
 | `primary_channels`     | string[] | Complete AdCP channel allowlist for briefs this agent accepts; omission means unknown |
 | `primary_countries`    | string[] | Complete ISO 3166-1 alpha-2 country allowlist for briefs this agent accepts; omission means unknown |
 | `description`          | string   | Markdown portfolio description                         |
 | `advertising_policies` | string   | Content policies and restrictions                      |
+
+`publisher_domains` is **counterparty-asserted and non-exhaustive**, which makes it
+the one field here a third party can write. Authorization flows from each
+publisher's `adagents.json`, published unilaterally by the domain owner with no
+consent from the agent it names — so a seller that mirrors "every publisher whose
+adagents.json names me" lets a stranger inflate its own capabilities document, and
+since the signing-key discovery path fetches that document unnarrowed under
+`MAX_CAPABILITIES_BYTES`, the cost is signature verification rather than discovery.
+From 3.3 the
+[per-field byte budget](/docs/building/by-layer/L1/security#response-size-bounds)
+caps it at 8,192 bytes as served, and the structural bounds (100 unique entries,
+253 chars each) are graded by the conformance storyboard, becoming schema
+constraints in 4.0. Select the publishers you actually represent;
+where they do not fit, truncate and set `publisher_domains_complete: false`.
+
+Buyers: absence from this list is **not** a denial. Resolve the publisher named on
+each product through that publisher's own `adagents.json` — especially when
+`publisher_domains_complete` is `false`. See
+[Authorization validation workflow](/docs/governance/property/authorized-properties#authorization-validation-workflow).
 
 ### signals
 
@@ -1324,7 +1344,8 @@ Signals protocol capabilities. Only present if `signals` is in `supported_protoc
 | Field | Type | Description |
 |-------|------|-------------|
 | `anonymous_discovery` | boolean | Whether [`get_signals`](/docs/signals/tasks/get_signals) accepts anonymous discovery in `brief` or `wholesale` mode. `true` permits a successful anonymous response but makes no completeness or cross-account equivalence claim; `false` requires an authenticated principal; absence is unspecified legacy behavior. Presented credentials are always validated and invalid credentials never downgrade to anonymous access. |
-| `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal definitions and to verify authorization. |
+| `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal definitions and to verify authorization. Counterparty-asserted and non-exhaustive, with the same bounds and the same cautions as [`media_buy.portfolio.publisher_domains`](#portfolio): ≤ 100 unique entries, each ≤ 253 chars, 8,192 bytes as served. Absence is not a denial. |
+| `data_provider_domains_complete` | boolean | Whether `data_provider_domains` is complete as served (default `true`). Set `false` when truncated |
 | `discovery_modes` | string[] | Discovery modes the agent supports on [`get_signals`](/docs/signals/tasks/get_signals). `"brief"` (semantic discovery via `signal_spec` / `signal_refs`, with deprecated `signal_ids` accepted for older clients) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_refs` / `signal_ids` and enumerate the full priced signals feed. Agents not declaring `"wholesale"` MAY return [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) for wholesale calls. Absent declaration is treated as `["brief"]`. |
 | `features.catalog_signals` | boolean | **Deprecated.** Legacy wire flag for structured `signal_ref` references to provider-published signal definitions in adagents.json `signals[]`. |
 
