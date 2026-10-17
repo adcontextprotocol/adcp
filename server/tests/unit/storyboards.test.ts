@@ -33,6 +33,7 @@ import {
 } from '../../src/services/hosted-compliance-version.js';
 import {
   isComplianceVersionSupported,
+  listAllComplianceStoryboards,
   loadComplianceIndex,
   resolveStoryboardsForCapabilities,
 } from '@adcp/sdk/testing';
@@ -274,22 +275,41 @@ describe('wrapper contract', () => {
 
   it('caps hosted aliases at explicitly registered released compliance bundles', () => {
     expect(hostedComplianceTarget('3.0').version).toBe('3.0.25');
-    expect(hostedComplianceTarget('3.1').version).toBe('3.1.24');
+    expect(hostedComplianceTarget('3.1').version).toBe('3.1.29');
+    expect(hostedComplianceTarget('3.2').version).toBe('3.2.5');
     expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
     expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
     expect(() => hostedComplianceTarget('3.1.12')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1-rc.15')).toThrow(/not available from a published/);
   });
 
-  it('loads the released 3.1.24 bundle with the pinned hosted SDK', () => {
+  it('loads the released 3.1.29 bundle and signing vectors with the pinned hosted SDK', () => {
     const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1']);
     const options = hostedComplianceOptions(target);
 
     expect(target.requested).toBe('3.1');
-    expect(target.version).toBe('3.1.24');
-    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.24$/);
-    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.24$/);
-    expect(loadComplianceIndex(options).adcp_version).toBe('3.1.24');
+    expect(target.version).toBe('3.1.29');
+    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.29$/);
+    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.29$/);
+    expect(loadComplianceIndex(options).adcp_version).toBe('3.1.29');
+
+    const storyboards = listAllComplianceStoryboards(options);
+    expect(storyboards).toHaveLength(122);
+    for (const storyboard of storyboards) {
+      expect(storyboard.adcp_version).toBe('3.1.29');
+      expect(storyboard.phases.some(phase => phase.id === 'synthesis_error'), storyboard.id).toBe(false);
+    }
+    const signing = storyboards.find(storyboard => storyboard.id === 'signed_requests');
+    expect(signing?.phases.find(phase => phase.id === 'positive_vectors')?.steps).toHaveLength(12);
+    expect(signing?.phases.find(phase => phase.id === 'negative_vectors')?.steps).toHaveLength(28);
+  });
+
+  it.each(['3.0.25', '3.1.20', '3.1.22', '3.1.23', '3.1.24',
+    '3.2.1', '3.2.2', '3.2.3', '3.2.4', '3.2.5'])('keeps explicit hosted target %s exact after 3.1 advancement', version => {
+    const target = hostedComplianceTarget(version);
+    const options = hostedComplianceOptions(target);
+    expect(target.version).toBe(version);
+    expect(loadComplianceIndex(options).adcp_version).toBe(version);
   });
 
   it('uses canonical hosted targets without silently upgrading 3.0-only agents', () => {
