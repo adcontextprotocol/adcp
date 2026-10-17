@@ -124,8 +124,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // closure to that collection copy (1_251_212 bytes measured), bounded at
 // 1_255_000. Experimental hold_policy (#7661) reaches it through the seeded
 // Product and the committed proposal (1_259_242 bytes measured), bounded at
-// 1_265_000.
-const PARITY_COMPILE_LIMIT = 1_265_000;
+// 1_265_000. Experimental hold ranking (#8086) adds hold_policy.rankable and
+// the committed proposal's hold_rank (1_264_154 → 1_266_010 bytes measured
+// against main), bounded at 1_268_000.
+const PARITY_COMPILE_LIMIT = 1_268_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
