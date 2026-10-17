@@ -357,6 +357,14 @@ export interface MergeAction {
   toKey: string;
   /** The rest of the uniqueness tuple, column => value. */
   scope: Record<string, string | null>;
+  /**
+   * The unique index's partial predicate, or null. It is part of the
+   * identity of the group: `idx_caa_unique_active` and
+   * `idx_aao_unique_active` only constrain live rows, so a tombstoned or
+   * superseded row sharing the same key and scope is NOT in this collision
+   * and must not be read, ranked or deleted with it.
+   */
+  predicate: string | null;
   winnerKey: string;
   loserKeys: string[];
   /** Columns the policy composes, with the value the merged row gets. */
@@ -439,13 +447,21 @@ async function planMerges(
       ?? store.scopes[0];
     const scopeColumns = scope?.columns ?? [];
     const scopeValues = collision.scope.slice(collision.scope.indexOf('\u0000') + 1).split('\n');
-    const scopeFilter = scopeColumns
-      .map((column, index) => `coalesce(${quoteIdentifier(column)}::text, '') = $${index + 2}`)
-      .join(' AND ');
+    // The predicate is not optional. Without it this re-read pulls in
+    // tombstoned and superseded rows that the plan deliberately excluded —
+    // and `rankRows` would happily crown one: a superseded bad_actor
+    // override outranks a live correction, a soft-deleted authorization
+    // with a fresh updated_at outranks the live grant. The live rows would
+    // then be deleted as losers, dropping an authorization or lifting a ban.
+    const filters = [`${keyColumn} = ANY($1::text[])`];
+    scopeColumns.forEach((column, index) => {
+      filters.push(`coalesce(${quoteIdentifier(column)}::text, '') = $${index + 2}`);
+    });
+    if (scope?.predicate) filters.push(`(${scope.predicate})`);
+    const scopeParams = scopeColumns.map((_, index) => scopeValues[index] ?? '');
     const { rows } = await client.query<Row>(
-      `SELECT * FROM ${identifier}
-        WHERE ${keyColumn} = ANY($1::text[])${scopeFilter ? ` AND ${scopeFilter}` : ''}`,
-      [storedKeys, ...scopeColumns.map((_, index) => scopeValues[index] ?? '')],
+      `SELECT * FROM ${identifier} WHERE ${filters.join(' AND ')}`,
+      [storedKeys, ...scopeParams],
     );
     if (rows.length < 2) continue;
 
@@ -479,6 +495,7 @@ async function planMerges(
       index: scope?.indexName ?? 'unknown',
       toKey: collision.key,
       scope: Object.fromEntries(scopeColumns.map((column, index) => [column, scopeValues[index] ?? ''])),
+      predicate: scope?.predicate ?? null,
       winnerKey: String(winner[store.keyColumn]),
       loserKeys: losers.map(loser => String(loser[store.keyColumn])),
       merged,
@@ -504,13 +521,17 @@ async function applyMerges(
     const identifier = `public.${quoteIdentifier(store.table)}`;
     const keyColumn = quoteIdentifier(store.keyColumn);
     const scopeColumns = Object.keys(action.scope);
-    const scopeFilter = scopeColumns
-      .map((column, index) => `coalesce(${quoteIdentifier(column)}::text, '') = $${index + 2}`)
-      .join(' AND ');
+    // Same predicate the plan was built under — see MergeAction.predicate.
+    // Without it the DELETE would remove tombstoned rows the plan never
+    // looked at, and the UPDATE could land on one.
+    const scopeConditions = scopeColumns
+      .map((column, index) => `coalesce(${quoteIdentifier(column)}::text, '') = $${index + 2}`);
+    if (action.predicate) scopeConditions.push(`(${action.predicate})`);
+    const scopeFilter = scopeConditions.length > 0 ? ` AND ${scopeConditions.join(' AND ')}` : '';
     const scopeParams = scopeColumns.map(column => action.scope[column] ?? '');
     await client.query(
       `DELETE FROM ${identifier}
-        WHERE ${keyColumn} = ANY($1::text[])${scopeFilter ? ` AND ${scopeFilter}` : ''}`,
+        WHERE ${keyColumn} = ANY($1::text[])${scopeFilter}`,
       [action.loserKeys, ...scopeParams],
     );
     const assignments = [`${keyColumn} = $${scopeParams.length + 2}`];
@@ -521,7 +542,7 @@ async function applyMerges(
     }
     const { rowCount } = await client.query(
       `UPDATE ${identifier} SET ${assignments.join(', ')}
-        WHERE ${keyColumn} = $1${scopeFilter ? ` AND ${scopeFilter}` : ''}`,
+        WHERE ${keyColumn} = $1${scopeFilter}`,
       values,
     );
     merged += rowCount ?? 0;

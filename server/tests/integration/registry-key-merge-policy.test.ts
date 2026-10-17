@@ -51,6 +51,8 @@ describe('registry key merge policies (#7830)', () => {
     ]) {
       await pool.query(`DELETE FROM ${table} WHERE agent_url LIKE $1`, [`%${HOST}%`]);
     }
+    await pool.query(
+      `DELETE FROM catalog_agent_authorizations WHERE publisher_domain LIKE $1`, [`%${HOST}%`]);
   }
 
   beforeEach(async () => {
@@ -74,6 +76,27 @@ describe('registry key merge policies (#7830)', () => {
 
   async function run(store: string, apply: boolean) {
     return runMigration({ apply, stores: [store] });
+  }
+
+  /**
+   * Insert pre-migration rows while the relaxed CHECK is off. A key with a
+   * trailing slash is exactly what the constraint now rejects and exactly
+   * what production still holds, which is why migration 625 adds it NOT
+   * VALID. Re-added NOT VALID so the fixture survives.
+   */
+  async function withConstraintOff(fn: () => Promise<void>): Promise<void> {
+    const { rows: [{ def }] } = await pool.query<{ def: string }>(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+        WHERE conname = 'chk_caa_agent_url_canonical'`);
+    await pool.query(
+      `ALTER TABLE catalog_agent_authorizations DROP CONSTRAINT chk_caa_agent_url_canonical`);
+    try {
+      await fn();
+    } finally {
+      await pool.query(
+        `ALTER TABLE catalog_agent_authorizations ADD CONSTRAINT chk_caa_agent_url_canonical `
+        + `${def.replace(/ NOT VALID$/, '')} NOT VALID`);
+    }
   }
 
   it('folds a root-slash pair in agent_compliance_status onto the freshest check', async () => {
@@ -226,6 +249,55 @@ describe('registry key merge policies (#7830)', () => {
               expires_at > now() + interval '29 days' AS far
          FROM discovered_agents WHERE agent_url = $1`, [ROOT]);
     expect(dates[0]).toEqual({ early: true, far: true });
+  });
+
+  it('ignores tombstoned and superseded rows that share the key and scope', async () => {
+    // idx_caa_unique_active and idx_aao_unique_active constrain live rows
+    // only, so a soft-deleted or superseded row is NOT part of the
+    // collision. If the merge re-read dropped the partial predicate it
+    // would pull these in, rank them — a fresh updated_at on a tombstone
+    // beats the live grant, a superseded bad_actor beats a live correction
+    // — and then DELETE the live rows as losers.
+    const liveA = `${PATHED}/`;
+    const liveB = PATHED;
+    await withConstraintOff(async () => {
+      await pool.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence, updated_at, deleted_at)
+         VALUES ($1, $1, $3, 'adagents_json', now() - interval '5 days', NULL),
+                ($2, $2, $3, 'adagents_json', now() - interval '4 days', NULL),
+                -- A tombstone on the same key and scope, with the freshest
+                -- updated_at of the three.
+                ($2, $2, $3, 'adagents_json', now(), now())`,
+        [liveA, liveB, `pub.${HOST}`],
+      );
+    });
+    try {
+      const { blocked } = await runMigration({
+        apply: false, stores: ['catalog_agent_authorizations'] });
+      expect(blocked).toBe(false);
+      const merges = report('catalog_agent_authorizations').merges;
+      expect(merges).toHaveLength(1);
+      // Exactly the two live rows, never the tombstone.
+      expect(merges[0].loserKeys).toEqual([liveA]);
+      expect(merges[0].winnerKey).toBe(liveB);
+
+      await runMigration({ apply: true, stores: ['catalog_agent_authorizations'] });
+
+      const { rows } = await pool.query<{ canonical: string; dead: boolean }>(
+        `SELECT agent_url_canonical AS canonical, deleted_at IS NOT NULL AS dead
+           FROM catalog_agent_authorizations WHERE publisher_domain = $1
+          ORDER BY dead`, [`pub.${HOST}`]);
+      // One live merged row, and the tombstone untouched — still a
+      // tombstone, and rekeyed by the ordinary rewrite rather than deleted.
+      expect(rows).toEqual([
+        { canonical: PATHED, dead: false },
+        { canonical: PATHED, dead: true },
+      ]);
+    } finally {
+      await pool.query(`DELETE FROM catalog_agent_authorizations WHERE publisher_domain = $1`,
+        [`pub.${HOST}`]);
+    }
   });
 
   it('is idempotent — a second run finds nothing left to fold', async () => {
