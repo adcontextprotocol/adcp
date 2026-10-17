@@ -38,7 +38,6 @@ import {
   withHostedTestOptions,
   type HostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
-import { reconcileCapabilityNoticesWithEchoedRelease } from '../../services/hosted-capability-notices.js';
 import { classifyComplianceStep } from '../../compliance/step-disposition.js';
 import { createLogger } from '../../logger.js';
 import { withSdkSafeTransport, type SdkTransportOptions } from '../../utils/sdk-safe-fetch.js';
@@ -324,13 +323,10 @@ export async function comply(
   } finally {
     await receiverLease?.release();
   }
-  // The SDK validated the agent's capabilities against the target release.
-  // When the agent served a newer release in the same major, rebuild the
-  // informational capability-schema notices against that release instead.
-  const result = reconcileCapabilityNoticesWithEchoedRelease(
-    redactHostedGovernanceSecrets(rawResult, mintedSecrets),
-    target,
-  );
+  // An agent that echoes a newer release in the target's major has its
+  // capabilities validated against that release by the SDK, using the hosted
+  // roots withHostedComplianceOptions supplies (servedReleaseSchemaRoots).
+  const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { hosted_provenance: ComplianceRunProvenance }).hosted_provenance =
     complianceRunProvenance(result, options);
