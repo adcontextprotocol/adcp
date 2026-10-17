@@ -18,6 +18,7 @@
  */
 
 import { Request, Response, NextFunction } from "express";
+import { CREATIVE_FEATURES_VERIFIER_PATH } from "../training-agent/creative-features-verifier-path.js";
 import crypto from "crypto";
 import { createLogger } from "../logger.js";
 
@@ -76,7 +77,7 @@ const EXEMPT_MCP_EXACT = [
   // (adcp#8199). Server-to-server and deliberately unauthenticated: stateless,
   // cookie-less, and serving only fixture-keyed get_creative_features. Two
   // segments before /mcp, so PER_TENANT_MCP_PATH does not match it.
-  "/governance/creative-features/mcp",
+  CREATIVE_FEATURES_VERIFIER_PATH,
 ];
 
 /** Other exact paths exempt from CSRF (not prefix-matched to avoid over-matching). */

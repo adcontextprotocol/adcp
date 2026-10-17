@@ -23,7 +23,9 @@ import type { ToolArgs, TrainingContext } from './types.js';
 
 const logger = createLogger('training-agent-creative-features-verifier');
 
-export const CREATIVE_FEATURES_VERIFIER_PATH = '/governance/creative-features/mcp';
+import { CREATIVE_FEATURES_VERIFIER_PATH } from './creative-features-verifier-path.js';
+
+export { CREATIVE_FEATURES_VERIFIER_PATH };
 export const CREATIVE_FEATURES_VERIFIER_URL = `https://test-agent.adcontextprotocol.org${CREATIVE_FEATURES_VERIFIER_PATH}`;
 
 /** Per-IP ceiling, separate from the authenticated MCP routes' bucket. */

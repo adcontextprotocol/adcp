@@ -18,6 +18,7 @@ vi.hoisted(() => {
 });
 
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
+import { jsonBodyLimitForPath } from '../../src/utils/json-body-limit.js';
 
 const ROOT = resolve(__dirname, '../../..');
 const SCENARIOS = resolve(ROOT, 'static/compliance/source/protocols/media-buy/scenarios');
@@ -27,6 +28,8 @@ const TRUE_ASSET = `${ASSET_BASE}ai-generated-true.jpg`;
 const FALSE_ASSET = `${ASSET_BASE}ai-generated-false.jpg`;
 
 let rateLimitedBase = '';
+let bareBase = '';
+let mountedBase = '';
 let unlimitedBase = '';
 const closers: Array<() => Promise<void>> = [];
 
@@ -41,7 +44,31 @@ async function serve(disableRateLimit: boolean): Promise<string> {
   return `http://127.0.0.1:${(srv.address() as { port: number }).port}/api/training-agent`;
 }
 
+/**
+ * Mirrors the main app's wiring in http.ts: the transport body cap comes from
+ * `jsonBodyLimitForPath(req.path)` before routing, and the training-agent router
+ * is reachable both under `/api/training-agent` and bare (host-based routing).
+ */
+async function serveWithTransportCaps(): Promise<{ bare: string; mounted: string }> {
+  const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
+  const app = express();
+  app.use((req, res, next) => express.json({ limit: jsonBodyLimitForPath(req.path) })(req, res, next));
+  const router = createTrainingAgentRouter({ disableRateLimit: true });
+  app.use('/api/training-agent', router);
+  app.use(router);
+  // Body-parser failures surface as Express errors; return their status.
+  app.use((err: { status?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    res.status(err.status ?? 500).json({ error: 'body_error' });
+  });
+  const srv = http.createServer(app);
+  await new Promise<void>(done => srv.listen(0, '127.0.0.1', () => done()));
+  closers.push(() => new Promise(done => srv.close(() => done())));
+  const origin = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
+  return { bare: origin, mounted: `${origin}/api/training-agent` };
+}
+
 beforeAll(async () => {
+  ({ bare: bareBase, mounted: mountedBase } = await serveWithTransportCaps());
   unlimitedBase = await serve(true);
   rateLimitedBase = await serve(false);
 });
@@ -168,6 +195,45 @@ describe('public creative-features verifier route', () => {
       headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
     });
+    expect(response.status).toBe(401);
+  });
+});
+
+describe('transport body cap on every reachable spelling of the verifier', () => {
+  const padded = (bytes: number) => ({
+    jsonrpc: '2.0', id: 1, method: 'tools/call',
+    params: { name: 'get_creative_features', arguments: { creative_manifest: manifestFor(TRUE_ASSET), context: { pad: 'x'.repeat(bytes) } } },
+  });
+  const post = (url: string, body: unknown) => fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+    body: JSON.stringify(body),
+  });
+  const spellings = (): Array<[string, string]> => [
+    ['bare', `${bareBase}/governance/creative-features/mcp`],
+    ['bare, trailing slash', `${bareBase}/governance/creative-features/mcp/`],
+    ['bare, mixed case', `${bareBase}/Governance/Creative-Features/MCP`],
+    ['mounted under /api/training-agent', `${mountedBase}/governance/creative-features/mcp`],
+    ['mounted, trailing slash', `${mountedBase}/governance/creative-features/mcp/`],
+  ];
+
+  it('rejects a 20 KB body with 413 on every spelling', async () => {
+    for (const [label, url] of spellings()) {
+      expect((await post(url, padded(20_000))).status, label).toBe(413);
+    }
+  });
+
+  it('accepts a body under the cap on every spelling', async () => {
+    for (const [label, url] of spellings()) {
+      const response = await post(url, padded(1_000));
+      expect(response.status, label).toBe(200);
+    }
+  });
+
+  it('leaves the 10 MB default on other training-agent paths', async () => {
+    // A 20 KB body is rejected by the verifier cap above but must not hit a
+    // body-size error on an authenticated tenant route (it fails auth instead).
+    const response = await post(`${mountedBase}/governance/mcp`, padded(20_000));
     expect(response.status).toBe(401);
   });
 });
