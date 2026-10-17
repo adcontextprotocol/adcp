@@ -414,6 +414,10 @@
           "$ref": "/schemas/core/creative-item.json",
           "description": "Item within a multi-asset creative format"
         },
+        "assignment-tracker": {
+          "$ref": "/schemas/core/assignment-tracker.json",
+          "description": "Assignment-scoped measurement tracker fired in addition to creative trackers"
+        },
         "creative-assignment": {
           "$ref": "/schemas/core/creative-assignment.json",
           "description": "Assignment of a creative asset to a package"
@@ -1240,6 +1244,10 @@
         "creative-approval-status": {
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
+        },
+        "creative-merge-rejection-reason": {
+          "$ref": "/schemas/enums/creative-merge-rejection-reason.json",
+          "description": "Why a seller rejected a sync_creatives merge assignment operation"
         },
         "audience-size-precision": {
           "$ref": "/schemas/enums/audience-size-precision.json",

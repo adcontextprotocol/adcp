@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# Cancel a PR's superseded scan when a newer commit is pushed. Push runs each
+# get their own group (run_id), so main-branch scans are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   semgrep:
     name: Scan

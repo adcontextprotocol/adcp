@@ -33,6 +33,7 @@ For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/w
 | 10 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
 | 11 | Reliable Reporting buyers | Stop relying on exact reads of older superseded snapshots; persist any snapshot rows you need. |
 | 12 | Buyers, SDK maintainers, and every agent operator | Adopt the client response-size bound (4 MiB default); keep `tools/list`, `get_adcp_capabilities`, and the agent card small, and paginate rather than asking buyers to raise their limits. |
+| 13 | Media-buy sellers and signals resellers | Stop mirroring counterparty `adagents.json` into `publisher_domains` / `data_provider_domains`; truncate and flag incomplete rather than exceed the new bounds. Buyers: never deny on absence from either list. |
 
 ## Required to claim 3.3 behavior
 
@@ -116,6 +117,53 @@ superseded; an official revision's window restarts at its newest adjustment. See
 
 - `impressions` is no longer required on `daily_breakdown` rows or on the dimensional breakdown rows, so SDK-generated row types make it optional; handle `undefined` or `None`. Absence means not measured, never zero. Sellers omit it only toward callers pinned to 3.3 or later. See [Rows without impressions](/docs/media-buy/media-buys/optimization-reporting#rows-without-impressions).
 
+### Counterparty-asserted domain lists are bounded
+
+`media_buy.portfolio.publisher_domains` and `signals.data_provider_domains` are the
+only two capability fields whose contents a third party writes: both are populated
+from counterparties' `/.well-known/adagents.json`, which any domain owner publishes
+unilaterally without the named agent's consent. Unbounded, that let an unrelated
+party inflate a victim's capabilities document past `MAX_CAPABILITIES_BYTES` — and
+because the signing-key discovery path fetches that document unnarrowed, the victim
+lost signature verification, not just discovery, one cache cycle later.
+
+**The schemas are unchanged; the normative rule is new.** A byte budget caps any
+single counterparty-asserted field at 8,192 bytes and both together at 16,384,
+measured as uncompressed serialized JSON. The structural bounds — at most 100
+unique entries, each at most 253 characters — ride in `x-adcp-validation` and are
+graded by the conformance storyboard in 3.x, becoming schema constraints in 4.0.
+So a 3.2 response with 101 domains, a duplicate, or an over-length entry stays
+schema-valid and is reported rather than rejected. What changes in 3.3 is
+conformance: a producer that mirrors a large network wholesale is no longer
+conformant, and the fix is to truncate and flag. Recorded in
+[3.3 exceptions to 3.x compatibility](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta).
+
+**Agents.** Stop mirroring "every counterparty whose adagents.json names me" — that
+is the vector. Publish the publishers or providers you actually represent. If the
+real set does not fit, truncate and set the new `publisher_domains_complete: false`
+(or `data_provider_domains_complete: false`); both default to `true`, so an agent
+whose list is complete changes nothing. Never serve a truncated list as complete.
+The bound is a conformance statement, not a runtime control — it makes an
+inflated document non-conformant, it does not stop your serializer emitting one.
+
+**Buyers.** Neither list was ever an allowlist, and both are now explicitly
+non-exhaustive: a publisher's absence is **not** evidence the seller is
+unauthorized for it, with or without the completeness flag. If you prefetch
+`publisher_domains` into an authorization cache, treat a cache miss as "not looked
+up yet" and resolve that publisher's own `adagents.json` on demand — a buyer that
+denies on cache miss will reject legitimate inventory from any seller whose list is
+truncated.
+
+**Bound that on-demand resolve.** `products[]` and each product's
+`publisher_properties[]` are sized by the seller, so a naive per-property fetch
+hands the seller your fan-out — a larger amplification than the one this change
+closes. Resolve a product's domains in one deduplicated pass, cap the number of
+publisher origins and the concurrency, negative-cache failures, and use the
+[SSRF profile](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf) with
+the 1 MiB publisher-origin cap rather than a bare `fetch` — the domain pattern
+admits dotless labels like `localhost`. See
+[Authorization validation workflow](/docs/governance/property/authorized-properties#authorization-validation-workflow).
+
 ## Recommended: bound agent response size
 
 Clients SHOULD bound the size of every AdCP response they read, enforce the bound while the body is received rather than after buffering or parsing, apply it to streamed (SSE) responses both per event and cumulatively per call, surface an oversized response as an error rather than truncating it, and default to no more than 4 MiB (4,194,304 bytes). This is a recommendation, not a conformance requirement — a 3.2 implementation does not become non-conformant — but SDKs are adopting the default, so the interop effect is real. See [Response size bounds](/docs/building/by-layer/L1/security#response-size-bounds).
@@ -163,6 +211,10 @@ Optional. A seller declares `media_buy.features.catalog_ingestion` with accepted
 ### Stable account IDs
 
 Optional. Sellers SHOULD now return `account_id` on every non-failed `sync_accounts` provisioning result. A seller that returns it, accepts `{ "account_id": "..." }` wherever an `AccountRef` is accepted, and never changes it for the life of the account (including across identity reconciliation) declares `account.stable_account_id: true`. Buyer-declared sellers keep accepting the natural key. Buyers and SDKs that see the capability store the returned ID and send it instead of the natural key, keeping the natural key to open accounts and to look IDs up through `list_accounts` after a cold start. Account-id-namespace sellers whose IDs already meet the rules should declare it too. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere).
+
+### Stable creative IDs
+
+Creatives that entered a seller's library outside `sync_creatives`, for example before the buyer connected, are listed under a seller-assigned `creative_id`. A seller that keeps those IDs stable, never reuses a buyer's ID, and keeps those creatives out of `delete_missing` declares `creative.stable_creative_ids`. Without it, 3.2 behavior stands: buyers must not rely on those IDs staying the same, and `delete_missing` may archive those creatives. `list_creatives` also returns `platform_id`, the seller's own identifier, which was previously only on the `sync_creatives` response. See [Creatives created outside AdCP](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp).
 
 ### DOOH location and venue summary
 

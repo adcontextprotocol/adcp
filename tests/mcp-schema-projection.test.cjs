@@ -95,9 +95,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // 443.3 → 445.4 KiB), bounded at 446 KiB. The experimental extend_hold action
 // adds one action enum value and one revise-field-forbidding refinement arm to
 // refine_proposals (+501 bytes measured on top of hold_policy, 445.7 → 446.2
-// KiB), bounded at 447 KiB.
+// KiB), bounded at 447 KiB. Assignment-scoped trackers add a shared event/URL
+// row and assignment arrays to create/update/sync (+766 bytes measured against
+// main, 457,150 → 457,916 bytes / 447.2 KiB), bounded at 448 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 447,
+  'media-buy': 448,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -122,8 +124,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // closure to that collection copy (1_251_212 bytes measured), bounded at
 // 1_255_000. Experimental hold_policy (#7661) reaches it through the seeded
 // Product and the committed proposal (1_259_242 bytes measured), bounded at
-// 1_265_000.
-const PARITY_COMPILE_LIMIT = 1_265_000;
+// 1_265_000. Experimental hold ranking (#8086) adds hold_policy.rankable and
+// the committed proposal's hold_rank (1_264_154 → 1_266_010 bytes measured
+// against main), bounded at 1_268_000.
+const PARITY_COMPILE_LIMIT = 1_268_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

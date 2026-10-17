@@ -92,7 +92,7 @@ test('hold_policy validates standalone and rejects undeclared properties', async
   assert.equal(validate({ available: false }), true, errors(validate));
   assert.equal(validate({ available: false, extendable: false }), false, 'extendable is forbidden without a hold');
   assert.equal(validate({}), false, 'available is required');
-  assert.equal(validate({ ...HOLDABLE, rankable: true }), false, 'additionalProperties is closed');
+  assert.equal(validate({ ...HOLDABLE, undeclared: true }), false, 'additionalProperties is closed');
   assert.equal(validate({ available: 'yes' }), false);
 });
 
@@ -231,5 +231,63 @@ test('experimental-status registry lists media_buy.hold_policy', () => {
   const row = registry.split('\n').find((line) => line.startsWith('| `media_buy.hold_policy` |'));
   assert.ok(row, 'registry row present');
   assert.match(row, /core\/hold-policy\.json/);
+  assert.match(row, /Availnet/);
+});
+
+test('rankable is a hold-only boolean that defaults to false', async () => {
+  const validate = await compile('/schemas/core/hold-policy.json');
+  assert.equal(validate({ ...HOLDABLE, rankable: true }), true, errors(validate));
+  assert.equal(validate({ available: true, rankable: false }), true, errors(validate));
+  assert.equal(validate({ available: false, rankable: true }), false, 'rankable is forbidden without a hold');
+  assert.equal(validate({ available: false, rankable: false }), false, 'even false is forbidden without a hold');
+  assert.equal(validate({ available: true, rankable: 'yes' }), false);
+  const rankable = readSchema('core/hold-policy.json').properties.rankable;
+  assert.equal(rankable.default, false);
+  assert.match(rankable.description, /media_buy\.hold_ranking/);
+  assert.match(readSchema('core/hold-policy.json').properties.available.description, /not reinterpreted/);
+});
+
+test('a committed proposal holding a ranked hold reports hold_rank, and only then', async () => {
+  const validate = await compile('/schemas/core/canonical-proposal.json');
+  const ranked = {
+    ...DRAFT,
+    proposal_id: 'availnet_committed_02',
+    parent_proposal_id: DRAFT.proposal_id,
+    proposal_status: 'committed',
+    hold_policy: { ...HOLDABLE, rankable: true },
+    hold_placed_at: '2027-01-14T17:00:00Z',
+    hold_rank: 2,
+  };
+  assert.equal(validate(ranked), true, errors(validate));
+  assert.equal(validate({ ...ranked, hold_rank: 1 }), true, errors(validate));
+  assert.equal(validate(omit(ranked, 'hold_rank')), false, 'required under a rankable policy');
+  assert.equal(validate({ ...ranked, hold_rank: 0 }), false, 'positions start at 1');
+  assert.equal(validate({ ...ranked, hold_rank: 1.5 }), false, 'integer');
+
+  const exclusive = { ...ranked, hold_policy: HOLDABLE };
+  assert.equal(validate(omit(exclusive, 'hold_rank')), true, errors(validate));
+  assert.equal(validate(exclusive), false, 'forbidden when rankable is absent');
+  assert.equal(validate({ ...exclusive, hold_policy: { ...HOLDABLE, rankable: false } }), false, 'forbidden when rankable is false');
+  assert.equal(validate(omit(ranked, 'hold_policy')), false, 'hold_rank needs hold_policy');
+  assert.equal(
+    validate({ ...DRAFT, hold_policy: { ...HOLDABLE, rankable: true }, hold_rank: 1 }),
+    false,
+    'forbidden on a draft',
+  );
+  assert.equal(validate({ ...DRAFT, hold_policy: { ...HOLDABLE, rankable: true } }), true, 'a rankable draft has no rank');
+
+  const rank = readSchema('core/canonical-proposal.json').properties.hold_rank;
+  assert.equal(rank['x-status'], 'experimental');
+  assert.equal(rank['x-added-in'], '3.3.0');
+  assert.match(rank.description, /media_buy\.hold_ranking/);
+  assert.match(rank.description, /MUST NOT move a live hold to a worse position/);
+  assert.match(rank.description, /MUST NOT disclose any other buyer/);
+});
+
+test('experimental-status registry lists media_buy.hold_ranking', () => {
+  const registry = fs.readFileSync(path.join(ROOT, 'docs/reference/experimental-status.mdx'), 'utf8');
+  const row = registry.split('\n').find((line) => line.startsWith('| `media_buy.hold_ranking` |'));
+  assert.ok(row, 'registry row present');
+  assert.match(row, /hold_rank/);
   assert.match(row, /Availnet/);
 });

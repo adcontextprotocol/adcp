@@ -38,7 +38,7 @@
       "$ref": "/schemas/core/hold-policy.json",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.hold_policy). On a draft, the binding policy for a successful finalize of this draft, derived by the seller from the allocated products when it created the draft: available is false if any allocated product's effective policy is non-holdable, min_duration and max_duration do not exceed the max_duration of any allocated product that declares one, max_total_duration does not exceed that of any allocated product that declares one, and extendable is true only if every allocated product is extendable. Product values are planning hints; the immutable draft governs finalize even if a product's policy changes. On a committed proposal, the seller carries the draft's policy forward unchanged; it governs the hold finalize placed, including extension limits, and each extend_hold successor carries it forward unchanged. A seller that lists media_buy.hold_policy MUST include it on every draft and committed proposal it returns to a caller at 3.3 or later, and MUST omit it for callers below 3.3. When absent, get_adcp_capabilities media_buy.proposal_refinement.hold_semantics applies."
+      "description": "Experimental (media_buy.hold_policy). On a draft, the binding policy for a successful finalize of this draft, derived by the seller from the allocated products when it created the draft: available is false if any allocated product's effective policy is non-holdable, min_duration and max_duration do not exceed the max_duration of any allocated product that declares one, max_total_duration does not exceed that of any allocated product that declares one, extendable is true only if every allocated product is extendable, and rankable is true if any allocated product's effective policy is rankable. Product values are planning hints; the immutable draft governs finalize even if a product's policy changes. On a committed proposal, the seller carries the draft's policy forward unchanged; it governs the hold finalize placed, including extension limits, and each extend_hold successor carries it forward unchanged. A seller that lists media_buy.hold_policy MUST include it on every draft and committed proposal it returns to a caller at 3.3 or later, and MUST omit it for callers below 3.3. When absent, get_adcp_capabilities media_buy.proposal_refinement.hold_semantics applies."
     },
     "hold_placed_at": {
       "type": "string",
@@ -46,6 +46,13 @@
       "x-status": "experimental",
       "x-added-in": "3.3.0",
       "description": "Experimental (media_buy.hold_policy). When the seller placed this committed proposal's hold, which is when it created the committed proposal. Required on a committed proposal whose hold_policy.available is true; forbidden on drafts and when hold_policy.available is false. It MUST be no earlier than when the seller received the finalize request and no later than the synchronous response or, for a submitted finalize, the task's completion. On the committed proposal created by finalize, hold_placed_at plus hold_policy.min_duration MUST NOT be later than expires_at, and expires_at MUST NOT be later than hold_placed_at plus hold_policy.max_duration. An exact retry returns the original hold_placed_at and expires_at; it never restarts the clock. Each extend_hold successor carries hold_placed_at forward unchanged and is bounded by hold_policy.max_total_duration instead of max_duration: its expires_at MUST NOT be later than hold_placed_at plus max_total_duration, so extension never restarts that clock. Omitted, with hold_policy, for callers below 3.3."
+    },
+    "hold_rank": {
+      "type": "integer",
+      "minimum": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.hold_ranking). Advisory readback of the buyer's own position in the seller's queue of holds on the inventory this committed proposal holds: 1 is first position, and n means n - 1 other holds are ahead. A hold is ahead when its booking could prevent this one from booking; holds on capacity this hold does not need are not counted. Required on a committed proposal whose hold_policy has available true and rankable true; forbidden on drafts and whenever hold_policy is absent, has available false, or does not have rankable true. When the hold covers inventory at different positions, this is the worst (largest) of them, because acceptance is all or none. It is a point-in-time snapshot taken when the seller created this committed proposal (hold_placed_at for a finalize, the extension for an extend_hold successor). The proposal is immutable, so the value is never updated, an exact retry replays it, and no notification reports a change. A seller MUST NOT move a live hold to a worse position after placing it: no later hold or booking stands ahead of it, and commitments the seller must honor, such as renewal rights, are counted when the hold is placed. The buyer's current position is therefore never worse than the reported one; it improves as holds ahead lapse, are released, or are declined. A buyer reads a newer position from an extend_hold successor, or learns whether it can book by calling accept_proposal. The value discloses only how many holds are ahead: a seller MUST NOT disclose any other buyer's identity or terms through any field, reason, or error, and MUST NOT disclose another hold's expiry except that expected_confirmation_at on a submitted accept_proposal MAY reflect when a hold ahead is due to resolve. It returns hold_rank only on proposals it returns to the buyer that holds them. Sellers emitting it MUST list media_buy.hold_ranking in experimental_features. Omitted, with hold_policy, for callers below 3.3."
     },
     "name": { "type": "string", "minLength": 1, "maxLength": 500 },
     "description": { "type": "string", "maxLength": 2000 },
@@ -108,6 +115,34 @@
         "properties": {
           "proposal_status": { "not": { "const": "draft" } },
           "hold_policy": { "properties": { "available": { "const": true } } }
+        }
+      }
+    },
+    {
+      "description": "A committed proposal holding a ranked hold reports the buyer's position.",
+      "if": {
+        "properties": {
+          "proposal_status": { "const": "committed" },
+          "hold_policy": {
+            "properties": { "available": { "const": true }, "rankable": { "const": true } },
+            "required": ["available", "rankable"]
+          }
+        },
+        "required": ["proposal_status", "hold_policy"]
+      },
+      "then": { "required": ["hold_rank"] }
+    },
+    {
+      "description": "hold_rank describes a placed ranked hold, so it needs a hold_policy with available and rankable true and a non-draft proposal.",
+      "if": { "required": ["hold_rank"] },
+      "then": {
+        "required": ["hold_policy"],
+        "properties": {
+          "proposal_status": { "not": { "const": "draft" } },
+          "hold_policy": {
+            "properties": { "available": { "const": true }, "rankable": { "const": true } },
+            "required": ["rankable"]
+          }
         }
       }
     },

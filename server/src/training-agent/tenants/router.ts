@@ -12,6 +12,8 @@
 import { createHash } from 'node:crypto';
 import { Router, type Request, type Response, type RequestHandler } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+import type { AdcpCredential } from '@adcp/sdk/server';
 import { createLogger } from '../../logger.js';
 import { runWithAccountIdAliasScope, runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, resolveTenantHost, type RegistryHolder } from './registry.js';
@@ -49,6 +51,7 @@ import {
 import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } from '../seller-optimized-budget.js';
 import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
+import { complianceScenariosForServedVersion } from '../compliance-scenarios.js';
 import { runWithReleaseLineEcho } from './release-line-echo.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -262,8 +265,13 @@ function salesCapabilityScenarios(
   storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
   servedVersion?: string,
 ): string[] {
-  if (storyboardCompat?.version === '3.0') return [...SALES_LEGACY_CAPABILITY_SCENARIOS];
-  return salesComplyScenarios(storyboardCompat, servedVersion);
+  // Capability discovery advertises only the scenarios the served release's
+  // schema allows. comply_test_controller list_scenarios is not limited by
+  // that enum, so the frozen 3.0 facade still lists its seed scenarios there.
+  return complianceScenariosForServedVersion(
+    salesComplyScenarios(storyboardCompat, servedVersion),
+    storyboardCompat?.version === '3.0' ? '3.0' : servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
 }
 
 /**
@@ -536,13 +544,17 @@ function tenantMcpHandler(
         // Scrub any caller value even when no buyer agent resolves.
         delete req.body.params.arguments.__training_task_owner_scope;
         req.body.params.arguments.__training_principal = principal;
-        const credential = apiKeyCredential(req, principal);
+        const auth = (req as Request & { auth?: AuthInfo }).auth;
+        // Use the same upstream-authenticated credential and actor metadata
+        // as ordinary SDK tasks, including OAuth's organization/client scope.
+        const credential = (auth?.extra?.credential as AdcpCredential | undefined)
+          ?? apiKeyCredential(req, principal);
         const demoToken = principal.startsWith('static:demo:')
           ? principal.slice('static:demo:'.length)
           : undefined;
         const buyerAgent = await trainingBuyerAgentRegistry.resolve({
           credential,
-          ...(demoToken && { extra: { demo_token: demoToken } }),
+          extra: { ...(demoToken && { demo_token: demoToken }), ...auth?.extra },
           input: req.body.params.arguments,
         });
         // taskOwnerScopeFor() prioritizes the resolved buyer-agent identity.
@@ -1286,6 +1298,25 @@ function projectTenantCapabilities(
         ...complianceTesting,
         scenarios: [...scenarios],
       };
+    }
+    // Every tenant: a release whose capabilities schema closes the scenario
+    // enum (3.0) never sees scenarios added after it, whichever projection
+    // above or SDK derivation contributed them.
+    if (structured.compliance_testing && typeof structured.compliance_testing === 'object') {
+      const listed = (structured.compliance_testing as { scenarios?: unknown }).scenarios;
+      if (Array.isArray(listed)) {
+        const scenarios = complianceScenariosForServedVersion(
+          listed.filter((s): s is string => typeof s === 'string'),
+          storyboardCompat?.version === '3.0' ? '3.0' : servedVersion,
+        );
+        // The schema requires a non-empty list; with nothing left to claim,
+        // drop the block rather than advertise an invalid one.
+        if (scenarios.length > 0) {
+          structured.compliance_testing = { ...structured.compliance_testing, scenarios };
+        } else {
+          delete structured.compliance_testing;
+        }
+      }
     }
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
     const firstText = parsed.result?.content?.[0];
