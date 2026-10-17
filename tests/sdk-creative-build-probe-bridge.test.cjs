@@ -13,6 +13,7 @@ const sdkRoot = path.resolve(require.resolve('@adcp/sdk/testing'), '../../../..'
 function originalPackage() {
   // Stay inside this repository so public SDK entry points can resolve their
   // ordinary dependencies from the parent node_modules.
+  fs.mkdirSync(path.resolve(__dirname, '../.context'), { recursive: true });
   const dir = fs.mkdtempSync(path.resolve(__dirname, '../.context/sdk-probe-test-'));
   const root = path.join(dir, 'node_modules/@adcp/sdk');
   fs.cpSync(sdkRoot, root, { recursive: true });
