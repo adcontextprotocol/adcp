@@ -3317,6 +3317,8 @@ type VersionResolution =
 type McpRequestHandler = (request: { params?: Record<string, unknown> }, extra: unknown) => Promise<unknown> | unknown;
 
 const TASK_PROTOCOL_METHODS = ['tasks/get', 'tasks/result', 'tasks/list', 'tasks/cancel'] as const;
+// `request_signing.protocol_methods_*` item pattern in the AdCP 3.1 schemas.
+const THREE_ONE_PROTOCOL_METHOD_NAME_PATTERN = /^[a-z][a-z0-9_]*\/[a-z][a-z0-9_]*$/;
 
 function parseAdcpReleaseVersion(value: unknown): ParsedAdcpReleaseVersion | undefined {
   if (typeof value !== 'string') return undefined;
@@ -19723,11 +19725,20 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     || (parsedServedAdcpVersion?.major === 3 && parsedServedAdcpVersion.minor === 0);
   const requiredFor = signingCap.required_for.filter(op => !isProtocolMethodName(op));
   const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethodName(op));
+  // AdCP 3.1 limits protocol method names to one lowercase slash path
+  // (`tasks/cancel`); 3.2 widened the grammar to nested A2A 0.3 paths and
+  // A2A 1.0 PascalCase names. Before 3.2, advertise only names the 3.1
+  // schema accepts. The legacy strict routes serve 3.1 to a major-only pin,
+  // and a buyer may validate against the echoed release (@adcp/sdk 15.9.5).
+  const servesPreThreeTwoRelease = isThreeZeroResponse
+    || (parsedServedAdcpVersion?.major === 3 && parsedServedAdcpVersion.minor < 2);
+  const protocolMethodForServedRelease = (op: string): boolean => !servesPreThreeTwoRelease
+    || THREE_ONE_PROTOCOL_METHOD_NAME_PATTERN.test(op);
   const protocolMethodsRequiredFor = signingCap.required_for
     .filter(isProtocolMethodName)
-    .filter(op => !isThreeZeroResponse || op.includes('/'));
+    .filter(protocolMethodForServedRelease);
   const protocolMethodsSupportedFor = (signingCap.supported_for?.filter(isProtocolMethodName) ?? [])
-    .filter(op => !isThreeZeroResponse || op.includes('/'));
+    .filter(protocolMethodForServedRelease);
   const wholesaleProfile = wholesaleCapabilityProfile(ctx);
   // The served release's capabilities schema decides which scenarios may be
   // listed: 3.0 closes the enum to its original six, later releases accept
