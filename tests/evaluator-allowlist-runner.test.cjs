@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseStoryboard, runStoryboard, buildComplianceBundleResults } = require('@adcp/sdk/testing');
+const { parseStoryboard, runStoryboard, buildComplianceBundleResults, createTestClient } = require('@adcp/sdk/testing');
 const creativeScenariosPath = path.join(__dirname, '..', 'static', 'compliance', 'source', 'protocols', 'creative', 'scenarios');
 
 // Use the complete authored fixture and the real loader/runner. In particular,
@@ -20,6 +20,10 @@ async function runEvaluatorBoundary({
   catalog,
   generation = true,
   transformation = false,
+  transformers = false,
+  expectedTransformer,
+  expectedFormatId,
+  adcpVersion,
   testKit,
   governanceEnforcement,
   expectedTarget = 'display-build',
@@ -34,6 +38,7 @@ async function runEvaluatorBoundary({
       ...(support !== undefined && { supports_evaluator: support }),
       supports_generation: generation,
       supports_transformation: transformation,
+      supports_transformers: transformers,
       supported_formats: catalog ?? [{
         capability_id: 'display-build',
         format: { format_kind: 'image', params: {}, technical_requirements_complete: true },
@@ -70,12 +75,13 @@ async function runEvaluatorBoundary({
     }] }],
     context,
   });
-  const result = await runStoryboard('https://agent.example/mcp', storyboard, {
+  const runOptions = {
     _profile: preflightFailure ? undefined : { tools, raw_capabilities: capabilities },
     _controllerCapabilities: { detected: true, scenarios: ['query_upstream_traffic', 'force_upstream_unavailable'] },
     agentTools: preflightFailure ? undefined : tools,
     skip_controller_seeding: true,
     test_kit: testKit,
+    adcpVersion,
     _client: {
       resetContext() {},
       async getAgentInfo() {
@@ -110,8 +116,10 @@ async function runEvaluatorBoundary({
         const offList = url === 'https://unaccepted-evaluator.example/adcp';
         recordedCalls = [];
         if (offList) {
-          assert.equal(request.target_capability_id, expectedTarget);
-          assert.deepEqual(request.creative_manifest, expectedManifest);
+          assert.equal(request.target_capability_id, expectedTarget === null ? undefined : expectedTarget);
+          assert.deepEqual(request.target_format_id, expectedFormatId);
+          assert.deepEqual(request.creative_manifest, expectedManifest === null ? undefined : expectedManifest);
+          assert.equal(request.transformer_id, expectedTransformer);
           if (testKit) assert.equal(request.message, undefined, 'operator source recipe must not acquire an unprovisioned brief');
           for (const key of ['rank_by', 'max_variants', 'keep_mode', 'variant_axis']) {
             assert.equal(request.evaluator[key] ?? request[key], undefined, `${key} is not a required probe precondition`);
@@ -148,7 +156,12 @@ async function runEvaluatorBoundary({
         return { success: true, data };
       },
     },
-  });
+  };
+  if (adcpVersion) {
+    runOptions._client = Object.assign(createTestClient('https://agent.example/mcp', 'mcp', runOptions), runOptions._client);
+    runOptions._client.buildCreativeLegacy = input => runOptions._client.executeTask('build_creative', input);
+  }
+  const result = await runStoryboard('https://agent.example/mcp', storyboard, runOptions);
   const [bundle] = buildComplianceBundleResults([{ ref: { kind: 'protocol', id: 'creative', path: '/fixture' }, storyboards: [storyboard] }], [result]);
   return { result, bundle, requests, trafficQueries, capabilityAttempts, steps: result.phases.flatMap(phase => phase.steps) };
 }
@@ -334,4 +347,49 @@ test('real bundle grading withholds passing status for missing input and fails a
     assert.equal((await runEvaluatorBoundary({ attack: { form, endpoint: 'POST https://unaccepted-evaluator.example/adcp' } })).bundle.status, 'failing');
     assert.equal((await runEvaluatorBoundary({ attack: { form, accept: true } })).bundle.status, 'failing');
   }
+});
+
+for (const mode of ['transformer', 'legacy']) {
+  for (const attack of [undefined,
+    { form: 'direct', endpoint: 'GET https://unaccepted-evaluator.example/probe' },
+    { form: 'feature_agent', endpoint: 'POST https://unaccepted-evaluator.example/adcp' },
+    { form: 'direct', accept: true }, { form: 'feature_agent', accept: true }]) {
+    test(`authored fixture ${mode} provisioned input: ${attack ? JSON.stringify(attack) : 'good'}`, async () => {
+      const legacy = mode === 'legacy';
+      const legacyFormat = { agent_url: 'https://formats.example', id: 'sandbox_named_format' };
+      const manifest = { format_kind: 'image', assets: { image_main: { asset_type: 'image', url: 'https://test-assets.example/image.jpg', width: 300, height: 250 } } };
+      const input = legacy ? { creative_manifest: manifest, target_format_id: legacyFormat }
+        : { transformer_id: 'sandbox-transformer', config: { headline: 'Winter offer' } };
+      const entry = { ...(legacy ? {} : { capability_id: 'display-build', operations: ['build'] }), format: { format_kind: 'image', params: {} } };
+      const opts = { attack, generation: false, transformation: legacy, transformers: !legacy,
+        expectedTransformer: legacy ? undefined : input.transformer_id,
+        expectedManifest: legacy ? manifest : null,
+        expectedTarget: legacy ? null : 'display-build', expectedFormatId: legacy ? legacyFormat : undefined,
+        adcpVersion: legacy ? '3.1.29' : undefined,
+        catalog: legacy ? [{ format: { format_kind: 'video_vast', params: {} } }, entry] : [entry],
+        testKit: { creative_build_probes: [{ match: [{ path: '/format/format_kind', operator: 'equals', value: 'image' }], input }] } };
+      const { result } = await runEvaluatorBoundary(opts);
+      assert.equal(result.overall_passed, !attack);
+      assert.equal(result.failed_count, attack ? 1 : 0);
+      assert.ok(result.passed_count > 0);
+      assert.equal(result.fixture_resolutions[0].status, 'resolved');
+      if (!attack) for (const id of ['payload_credentials_advisory', 'accepted_evaluator_invocation', 'accepted_evaluator_unavailable_degrades']) {
+        const phase = result.phases.find(p => p.phase_id === id);
+        assert.ok(phase.steps.some(step => !step.skipped), `${mode}: advisory phase ${id} must execute with either prepared selector`);
+      }
+    });
+  }
+}
+
+test('full authored discovery still grades unrelated malformed metadata on an unsupported 3.1 kind', async () => {
+  const target = { agent_url: 'https://formats.example', id: 'sandbox_named_format' };
+  const { result } = await runEvaluatorBoundary({ adcpVersion: '3.1.29', generation: false, transformation: true,
+    expectedTarget: null, expectedFormatId: target, expectedManifest: { format_kind: 'image', assets: {} },
+    catalog: [{ format: { format_kind: 'future_canonical', params: {}, seller_preference: 123 } }, { format: { format_kind: 'image', params: {} } }],
+    testKit: { creative_build_probes: [{ match: [{ path: '/format/format_kind', operator: 'equals', value: 'image' }], input: { creative_manifest: { format_kind: 'image', assets: {} }, target_format_id: target } }] }
+  });
+  assert.equal(result.overall_passed, false);
+  const discovery = result.phases.flatMap(p => p.steps).find(step => step.step_id === 'get_capabilities');
+  assert.equal(discovery.passed, false);
+  assert.ok(discovery.validations.some(v => v.check === 'response_schema' && v.passed === false));
 });

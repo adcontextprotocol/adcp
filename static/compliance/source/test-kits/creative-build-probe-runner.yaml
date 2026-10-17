@@ -21,7 +21,8 @@ description: |
   Prefer an operator-provisioned test_kit.creative_build_probes recipe whose
   nonempty match clauses use the existing fixture-resolution path/operator/value
   DSL against the complete catalog entry. Each recipe's input may contain only
-  message, creative_manifest, creative_id, transformer_id, and config. The
+  message, creative_manifest, creative_id, transformer_id, config, and (for legacy
+  routing) target_format_id. The
   operator asserts that this input is valid for EVERY route the recipe matches,
   for this account and test run. Use a specific capability_id predicate when a
   canonical-kind predicate cannot establish that. Recipes do not override the
@@ -31,9 +32,18 @@ description: |
   this does not restrict other legal build_creative request modes.
   Selected input modes must also be advertised by the creative agent.
 
+  Follow the selected capabilities schema's format reference and selected build
+  request's selector contract. In 3.2, bind target_capability_id to the catalog
+  identity. In 3.1, a recipe must explicitly supply a schema-valid, discovered or
+  provisioned target_format_id and assert its mapping to the matched route;
+  never synthesize a named-format ID from capability_id. A missing capability_id
+  is legal on that legacy path. Retain unknown 3.1 canonical kinds as unsupported
+  routes and continue to known routes. Do not impose 3.2 ID/operations rules on
+  older catalogs. This changes harness inputs, not protocol capabilities.
+
   A bounded automatic recipe is available only when exactly one build route is
   advertised (including unaddressable legacy entries), supports_generation is
-  true, and its format declares technical_requirements_complete: true. The
+  true, capability-ID routing is supported, and its format declares technical_requirements_complete: true. The
   format_kind must be a known non-custom canonical kind, params must be empty,
   and other format metadata must be understood as inert: display_name,
   seller_preference, experimental, sample_render_url, format_option_id,
@@ -47,11 +57,11 @@ description: |
   requirements on producers' catalogs.
 
   Select a satisfiable route, continuing beyond non-build or unmatched entries.
-  Bind <prefix>_capability_id and <prefix>_message plus any supplied
+  Bind exactly one <prefix>_capability_id or <prefix>_target_format_id, plus any supplied <prefix>_message and
   <prefix>_creative_manifest, _creative_id, _transformer_id, and _config. Clear
   stale values in this namespace first. Only then enable this harness contract.
   Emit a fixture_resolution_result with fixture_type: creative_format, the prefix
-  as handle, exact matched requirements, and seller_ids.capability_id. Record
+  as handle, exact matched requirements, and seller_ids.capability_id or seller_ids.format_id. Record
   whether the input came from the automatic generation rule or the test kit.
 
   No satisfiable input is fixture_unsatisfied with detail naming
@@ -82,3 +92,29 @@ references:
 # aliases count on every visit. Exceedance is a harness configuration error,
 # not a producer catalog limit or conformance verdict. Missing required
 # selected-version validators are an explicit zero-credit harness gap.
+
+# Recipes are trusted operator-authored test inputs. Preserve their messages
+# exactly; do not infer evaluator instructions from them. Key/URL checks reject
+# known credential aliases but cannot prove opaque config values secret-free.
+# Provision transformers with matching live output_capability_ids (3.2) or
+# output_format_ids (legacy), valid config parameters, and account entitlement.
+# A transformer_id plus config is a complete provisioned mode; no dummy brief
+# or source manifest is required by this runner contract.
+
+# An explicit legacy selector recipe is also supported on newer versions that
+# retain target_format_id. Bind exactly one selector. A recipe cannot override
+# canonical_formats_only:true or contradict an advertised v1_format_ref pairing;
+# reference agent URLs use existing canonicalization, and declared dimensions/
+# duration must agree. Incompatible route/recipe pairs are unavailable, not
+# producer failures; continue to another satisfiable route.
+
+# Resolution certifies selected route/input preparation, not full catalog validity.
+# Unknown legacy kinds remain locally unsupported/unvalidated. Keep the authored
+# mandatory discovery response_schema validation to grade the entire response;
+# standalone boundary steps assert their selected security probe only.
+
+# Operator briefs are sent as build_creative.message to the tested agent's model.
+# Author creative direction without evaluator instructions or expected verdicts.
+# An explicit runner test_kit replaces the declared kit as a whole; include the
+# recipes in that override when supplying auth. Hosted auth defaults preserve
+# explicit recipes but do not merge recipes from another declared brand kit.

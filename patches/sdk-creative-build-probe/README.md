@@ -1,7 +1,7 @@
 Temporary SDK bridge for adcp#8240. Upstream source and executable tests:
 https://github.com/adcontextprotocol/adcp-client/pull/3332
 
-Qualified upstream source: `7281e63ebffca3bed92f961c74f3cd8e47d6b20f`.
+Qualified upstream source: `25cfecd81268490b6622236025e7a9f18fbf686a`.
 
 The manifest contains bounded insertions into SDK **15.9.2** loader, runner and
 matching declarations, plus the shared resolver compiled from upstream source.

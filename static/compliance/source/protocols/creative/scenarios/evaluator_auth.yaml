@@ -81,7 +81,8 @@ prerequisites:
   description: |
     The creative agent advertises `creative.supports_evaluator: true`, lists
     `creative.evaluator` in `experimental_features`, exposes at least one
-    routable build entry in `creative.supported_formats[]`. The runner contract
+    usable build entry in `creative.supported_formats[]`. For 3.1, provision a
+    matched legacy `target_format_id` recipe; do not derive it from a capability ID. The runner contract
     `test-kits/creative-build-probe-runner.yaml` documents preparation of that
     entry. Add operator recipes to the brand kit named below, or supply your
     kit through the runner test_kit option/--test-kit. Provision account-specific transformation/library/transformer inputs
@@ -244,7 +245,6 @@ phases:
           off-list URL before any outbound call to the supplied evaluator.
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_off_list"
-          target_capability_id: "$context.build_capability_id"
           evaluator:
             agent_url: "https://unaccepted-evaluator.example/adcp"
           account:
@@ -258,6 +258,10 @@ phases:
           context:
             correlation_id: "creative_evaluator_auth--off_list"
         context_inputs:
+          - key: build_capability_id
+            inject_at: target_capability_id
+          - key: build_target_format_id
+            inject_at: target_format_id
           - key: build_message
             inject_at: message
           - key: build_creative_manifest
@@ -308,7 +312,6 @@ phases:
           endpoint.
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_feature_agent_off_list"
-          target_capability_id: "$context.build_capability_id"
           evaluator:
             agent_url: "https://quality-evaluator.example/adcp"
             feature_agent:
@@ -324,6 +327,10 @@ phases:
           context:
             correlation_id: "creative_evaluator_auth--feature_agent_off_list"
         context_inputs:
+          - key: build_capability_id
+            inject_at: target_capability_id
+          - key: build_target_format_id
+            inject_at: target_format_id
           - key: build_message
             inject_at: message
           - key: build_creative_manifest
@@ -351,7 +358,7 @@ phases:
     requires_capability:
       path: "creative.supports_evaluator"
       equals: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "context.supports_evaluator != true || !context.creative_feature_id"
     narrative: |
       The buyer attempts to pass an evaluator API key inside the evaluator
       object. The payload is schema-valid but non-conforming: evaluator
@@ -378,7 +385,6 @@ phases:
           must not forward the smuggled credential to the evaluator.
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_payload_credential"
-          target_capability_id: "$context.build_capability_id"
           max_variants: 2
           variant_axis:
             dimension: "best_of_n"
@@ -401,6 +407,10 @@ phases:
           context:
             correlation_id: "creative_evaluator_auth--payload_credential"
         context_inputs:
+          - key: build_capability_id
+            inject_at: target_capability_id
+          - key: build_target_format_id
+            inject_at: target_format_id
           - key: build_message
             inject_at: message
           - key: build_creative_manifest
@@ -440,7 +450,7 @@ phases:
     requires_capability:
       path: "creative.supports_evaluator"
       equals: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "context.supports_evaluator != true || !context.creative_feature_id"
     narrative: |
       The buyer supplies an accepted external evaluator URL. The creative agent
       builds variants, calls the evaluator through the `get_creative_features`
@@ -466,7 +476,6 @@ phases:
           authentication mechanism.
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_accepted"
-          target_capability_id: "$context.build_capability_id"
           max_variants: 2
           variant_axis:
             dimension: "best_of_n"
@@ -490,6 +499,10 @@ phases:
           context:
             correlation_id: "creative_evaluator_auth--accepted"
         context_inputs:
+          - key: build_capability_id
+            inject_at: target_capability_id
+          - key: build_target_format_id
+            inject_at: target_format_id
           - key: build_message
             inject_at: message
           - key: build_creative_manifest
@@ -531,7 +544,7 @@ phases:
     requires_capability:
       path: "creative.supports_evaluator"
       equals: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "context.supports_evaluator != true || !context.creative_feature_id"
     narrative: |
       An accepted evaluator can be unreachable or can reject the producing
       agent's transport authentication. The buyer-visible build should not fail
@@ -593,7 +606,6 @@ phases:
           evaluator ranking was unavailable and seller-default ranking was used.
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_unavailable"
-          target_capability_id: "$context.build_capability_id"
           max_variants: 2
           variant_axis:
             dimension: "best_of_n"
@@ -614,6 +626,10 @@ phases:
           context:
             correlation_id: "creative_evaluator_auth--unavailable_degrade"
         context_inputs:
+          - key: build_capability_id
+            inject_at: target_capability_id
+          - key: build_target_format_id
+            inject_at: target_format_id
           - key: build_message
             inject_at: message
           - key: build_creative_manifest

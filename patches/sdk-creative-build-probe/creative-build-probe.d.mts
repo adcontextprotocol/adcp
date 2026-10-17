@@ -10,7 +10,8 @@ export interface CreativeBuildProbeInputFixture {
 }
 export type CreativeBuildProbeResolution = {
     status: 'resolved';
-    capabilityId: string;
+    capabilityId?: string;
+    formatId?: Record<string, unknown>;
     context: StoryboardContext;
     source: 'generation' | 'test_kit';
     requirements: FixtureMatchClause[];
