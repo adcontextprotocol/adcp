@@ -213,6 +213,14 @@ function stableLineForHostedPrereleaseTarget(target: HostedComplianceTarget): st
   return line === target.requested ? line : undefined;
 }
 
+/**
+ * The stable line a prerelease-backed target is graded as (for example "3.2"
+ * served from a 3.2 RC cache), or undefined for an ordinary target.
+ */
+export function hostedStableLineAliasForTarget(target: HostedComplianceTarget): string | undefined {
+  return stableLineForHostedPrereleaseTarget(target);
+}
+
 function complianceVersions(): string[] {
   const complianceRoot = repoPath('dist', 'compliance');
   return readdirSync(complianceRoot, { withFileTypes: true })
@@ -510,6 +518,12 @@ export function agentAdvertisesBadgeEligibleHostedComplianceTarget(
   return supportedVersions.some(version => advertisesStableBadgeLine(version, requestedLine));
 }
 
+/** Whether the hosted schema bundle for an exact version is on disk. */
+export function hostedSchemaArtifactsExist(version: string): boolean {
+  const schemaRoot = hostedSchemaRoot(version);
+  return existsSync(join(schemaRoot, 'bundled')) || existsSync(join(schemaRoot, 'core'));
+}
+
 function assertHostedArtifacts(version: string): void {
   const complianceDir = hostedComplianceDir(version);
   const schemaRoot = hostedSchemaRoot(version);
@@ -520,7 +534,7 @@ function assertHostedArtifacts(version: string): void {
     );
   }
 
-  if (!existsSync(join(schemaRoot, 'bundled')) && !existsSync(join(schemaRoot, 'core'))) {
+  if (!hostedSchemaArtifactsExist(version)) {
     throw new Error(
       `Hosted AdCP schema bundle ${version} not found at ${schemaRoot}. Run npm run build:schemas.`,
     );

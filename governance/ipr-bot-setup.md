@@ -72,7 +72,7 @@ Each downstream repo has a tiny caller workflow (~15 lines) that invokes the reu
 3. Runs `scripts/ipr/check-and-record.mjs` with `LEDGER_DIR=.ipr-ledger`. The script reads/writes signatures there; `git push` from inside the directory uses the installation token configured by the checkout step.
 4. API calls back to the event repo (comments, status check) use the caller repo's default `GITHUB_TOKEN` — no cross-repo write required for those.
 
-The callable uses the same `check` / `record` split as adcp's own workflow. Per-repo concurrency groups (`adcp-ipr-signature-write` in each repo, on the `record` job only) serialize signature writes within each repo. GitHub Actions concurrency is scoped per-repo, so the cross-repo race is handled by a rebase-retry loop in the script — when a push fails because adcp's main moved, the script pulls with `--rebase` and retries up to 5 times.
+The callable uses the same `check` / `record` split as adcp's own workflow. Per-repo concurrency groups (`adcp-ipr-signature-write` in each repo, on the `record` job only) serialize signature writes within each repo. GitHub Actions concurrency is scoped per-repo, so the script handles the cross-repo race. When a push fails because adcp's main moved, the script resets to the new main and applies the signature again, skipping the write if that author is already recorded. It retries up to 5 times with exponential backoff. It does not rebase, because two signatures appended at the same time edit the same lines of the JSON file and would conflict.
 
 ## Rotation
 

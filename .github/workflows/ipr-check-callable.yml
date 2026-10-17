@@ -46,8 +46,9 @@ on:
 #   `adcp-ipr-signature-write` group.
 # GitHub Actions concurrency is scoped per-repo (the caller's repo here), so
 # the write group only serializes signatures landing from THIS caller repo.
-# The rebase-retry loop in `scripts/ipr/check-and-record.mjs` handles
-# contention across sibling AAO repos pushing to the same JSON file.
+# The retry loop in `scripts/ipr/check-and-record.mjs` handles contention
+# across sibling AAO repos pushing to the same JSON file: on a rejected push
+# it resets to the new main, re-applies the signature, and retries with backoff.
 
 jobs:
   check:
