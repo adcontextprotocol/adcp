@@ -24,7 +24,8 @@ description: |
   message, creative_manifest, creative_id, transformer_id, config, and (for legacy
   routing) target_format_id. The
   operator asserts that this input is valid for EVERY route the recipe matches,
-  for this account and test run. Use a specific capability_id predicate when a
+  for this account and test run. The preparer checks the selected binding; it
+  does not certify unselected matches or remote account entitlements. Use a specific capability_id predicate when a
   canonical-kind predicate cannot establish that. Recipes do not override the
   evaluator, account, authentication, correlation, or trust controls. Manifests
   must validate against the selected protocol schema; credentials/trust material
@@ -32,14 +33,18 @@ description: |
   this does not restrict other legal build_creative request modes.
   Selected input modes must also be advertised by the creative agent.
 
-  Follow the selected capabilities schema's format reference and selected build
-  request's selector contract. In 3.2, bind target_capability_id to the catalog
-  identity. In 3.1, a recipe must explicitly supply a schema-valid, discovered or
+  Follow the capabilities schema's format reference using the SDK's validated
+  served-release selection (same major, listed supported version, available
+  trusted schema root). Keep build request selectors, source manifests and
+  outgoing requests on the run's pin. Capability-ID routing requires both the
+  served catalog's routing contract and the pinned request's selector support. In 3.1, a recipe must explicitly supply a schema-valid, discovered or
   provisioned target_format_id and assert its mapping to the matched route;
   never synthesize a named-format ID from capability_id. A missing capability_id
   is legal on that legacy path. Retain unknown 3.1 canonical kinds as unsupported
   routes and continue to known routes. Do not impose 3.2 ID/operations rules on
-  older catalogs. This changes harness inputs, not protocol capabilities.
+  older catalogs. Preserve advertised legacy reference constraints even when
+  the pinned request has older fields. This changes harness inputs, not protocol
+  capabilities.
 
   A bounded automatic recipe is available only when exactly one build route is
   advertised (including unaddressable legacy entries), supports_generation is
@@ -68,7 +73,9 @@ description: |
   creative_format:<prefix>, zero executed security validations, and a coverage
   gap. It is neither producer nonconformance nor security coverage. Malformed
   catalogs produce structured failed validations, not an unavailable strategy;
-  malformed operator recipes are authoring errors. Single-step execution
+  malformed operator recipes are authoring errors during applicable preparation
+  with the required schemas available. Unavailable prerequisites can produce a
+  zero-credit gap before exhaustive recipe diagnostics. Single-step execution
   uses the same resolver and fixture_unsatisfied disposition. Routed or replicated
   runs currently require independent single-agent runs and report a fixture gap
   before controller seeding. Engines without this contract retain their existing

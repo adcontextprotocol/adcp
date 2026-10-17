@@ -124,8 +124,10 @@ test('bridge rejects version drift, late-file drift and mixed states before writ
     fs.writeFileSync(first, original);
     const pkgFile = path.join(root, 'package.json');
     const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
-    pkg.version = '99.0.0'; fs.writeFileSync(pkgFile, JSON.stringify(pkg));
-    assert.throws(() => install(root), /requires.*15\.9\.2/);
-    assert.equal(fs.readFileSync(first, 'utf8'), original);
+    for (const version of ['15.9.2', '99.0.0']) {
+      pkg.version = version; fs.writeFileSync(pkgFile, JSON.stringify(pkg));
+      assert.throws(() => install(root), /requires.*15\.9\.5/);
+      assert.equal(fs.readFileSync(first, 'utf8'), original);
+    }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

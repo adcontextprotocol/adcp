@@ -54,6 +54,35 @@
       "x-added-in": "3.3.0",
       "description": "Experimental (media_buy.hold_ranking). Advisory readback of the buyer's own position in the seller's queue of holds on the inventory this committed proposal holds: 1 is first position, and n means n - 1 other holds are ahead. A hold is ahead when its booking could prevent this one from booking; holds on capacity this hold does not need are not counted. Required on a committed proposal whose hold_policy has available true and rankable true; forbidden on drafts and whenever hold_policy is absent, has available false, or does not have rankable true. When the hold covers inventory at different positions, this is the worst (largest) of them, because acceptance is all or none. It is a point-in-time snapshot taken when the seller created this committed proposal (hold_placed_at for a finalize, the extension for an extend_hold successor). The proposal is immutable, so the value is never updated, an exact retry replays it, and no notification reports a change. A seller MUST NOT move a live hold to a worse position after placing it: no later hold or booking stands ahead of it, and commitments the seller must honor, such as renewal rights, are counted when the hold is placed. The buyer's current position is therefore never worse than the reported one; it improves as holds ahead lapse, are released, or are declined. A buyer reads a newer position from an extend_hold successor, or learns whether it can book by calling accept_proposal. The value discloses only how many holds are ahead: a seller MUST NOT disclose any other buyer's identity or terms through any field, reason, or error, and MUST NOT disclose another hold's expiry except that expected_confirmation_at on a submitted accept_proposal MAY reflect when a hold ahead is due to resolve. It returns hold_rank only on proposals it returns to the buyer that holds them. Sellers emitting it MUST list media_buy.hold_ranking in experimental_features. Omitted, with hold_policy, for callers below 3.3."
     },
+    "holds": {
+      "type": "array",
+      "minItems": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.installment_holds). Readback of the specific installments this committed proposal's hold covers. It describes the one hold that finalize placed, not separate holds: every entry was placed by the same all-or-none finalize, shares hold_placed_at and this proposal's expires_at, and is accepted, extended, superseded, or lapses with the proposal as a whole. No task addresses an entry on its own, and there are no partial holds. Allowed only on a non-draft proposal whose hold_policy has available true; forbidden on drafts and on terms-only commitments. It is readback, not contract: commercial_terms stays authoritative. When present it lists every installment the hold covers, once per product_id and installment_ref; every product_id is a product in commercial_terms.purchases, and every installment is one that product includes, scheduled within that purchase's flight. Inventory that is not a specific installment, such as a run-of-collection product, is not listed. Entries carry no expires_at: this proposal's expires_at is the hold deadline for every entry, and it is already capped at the earliest booking_deadline or change_cutoff of the held installments. Under a rankable hold_policy (media_buy.hold_ranking), every entry carries hold_rank, and this proposal's hold_rank is no better than any entry's; it equals the worst entry's unless unlisted inventory is held at a worse position. The array lists only this proposal's own hold: sellers MUST NOT include or describe other buyers' holds on the same installments. A seller that lists media_buy.installment_holds MUST include holds on every committed proposal it returns to a caller at 3.3 or later that allocates a product declaring specific installments. Each extend_hold successor lists the same entries, at positions no worse than the source's. Omitted, with hold_policy, for callers below 3.3.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "product",
+            "description": "Allocated product, from commercial_terms.purchases, whose inventory in this installment is held."
+          },
+          "installment_ref": {
+            "$ref": "/schemas/core/installment-ref.json",
+            "description": "The held installment."
+          },
+          "hold_rank": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The buyer's own position on this installment, with the same snapshot, never-worse, and privacy rules as the proposal's hold_rank. Present on every entry when the proposal carries hold_rank, and forbidden otherwise."
+          }
+        },
+        "required": ["product_id", "installment_ref"],
+        "additionalProperties": false
+      }
+    },
     "name": { "type": "string", "minLength": 1, "maxLength": 500 },
     "description": { "type": "string", "maxLength": 2000 },
     "brief_alignment": { "type": "string", "maxLength": 2000 },
@@ -145,6 +174,23 @@
           }
         }
       }
+    },
+    {
+      "description": "holds describes a placed hold, so it needs a hold_policy that holds and a non-draft proposal.",
+      "if": { "required": ["holds"] },
+      "then": {
+        "required": ["hold_policy"],
+        "properties": {
+          "proposal_status": { "not": { "const": "draft" } },
+          "hold_policy": { "properties": { "available": { "const": true } } }
+        }
+      }
+    },
+    {
+      "description": "holds entries carry hold_rank exactly when the proposal does.",
+      "if": { "required": ["hold_rank"] },
+      "then": { "properties": { "holds": { "items": { "required": ["hold_rank"] } } } },
+      "else": { "properties": { "holds": { "items": { "not": { "required": ["hold_rank"] } } } } }
     },
     {
       "if": { "properties": { "proposal_kind": { "const": "media_buy_cancellation" } }, "required": ["proposal_kind"] },

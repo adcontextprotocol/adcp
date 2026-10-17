@@ -1,5 +1,10 @@
 import { matchesFixtureRequirements, normalizeFixtureMatchExpression } from "./fixture-resolution.mjs";
-import { getSchemaDocumentByRef, getSchemaValidatorByRef } from "../../validation/schema-loader.mjs";
+import {
+  getSchemaDocumentByRef,
+  getSchemaValidatorByRef,
+  withServedValidationVersion
+} from "../../validation/schema-loader.mjs";
+import { ADCP_VERSION } from "../../version.mjs";
 import { SECRET_KEY_PATTERN } from "../../utils/redact-secrets.mjs";
 import { MAX_JSON_DEPTH } from "../../utils/json-depth.mjs";
 import { canonicalizeAgentUrl } from "../../discovery/resolve-agent-properties.mjs";
@@ -68,7 +73,7 @@ function validateRecipeBudget(value, location) {
   };
   visit(value, 0);
 }
-function validateInput(value, location, adcpVersion) {
+function validateInput(value, location, validateManifest) {
   if (!isRecord(value) || Object.keys(value).some((key) => !INPUT_FIELDS.has(key))) {
     throw new Error(
       `${location}: input may only contain message, creative_manifest, creative_id, transformer_id, config and target_format_id`
@@ -91,8 +96,7 @@ function validateInput(value, location, adcpVersion) {
     );
   if (value.creative_manifest !== void 0) {
     const manifest = value.creative_manifest;
-    const validate = getSchemaValidatorByRef("core/creative-manifest.json", adcpVersion);
-    if (!validate || !validate(manifest)) {
+    if (!validateManifest || !validateManifest(manifest)) {
       throw new Error(`${location}: creative_manifest must be a complete manifest, including format and assets`);
     }
   }
@@ -103,6 +107,39 @@ function validateInput(value, location, adcpVersion) {
   }
 }
 function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governanceEnforcement) {
+  return resolveCreativeBuildProbeWithSchemas(
+    creative,
+    spec,
+    testKit,
+    governanceEnforcement,
+    adcpVersion,
+    captureRequestSchemas(adcpVersion)
+  );
+}
+function captureRequestSchemas(adcpVersion) {
+  return {
+    request: getSchemaDocumentByRef("media-buy/build-creative-request.json", adcpVersion)?.schema,
+    validateManifest: getSchemaValidatorByRef("core/creative-manifest.json", adcpVersion),
+    validateFormatId: getSchemaValidatorByRef("core/format-id.json", adcpVersion),
+    formatIdProperties: at(getSchemaDocumentByRef("core/format-id.json", adcpVersion)?.schema, "properties")
+  };
+}
+function prepareCreativeBuildProbe(capabilities, spec, testKit, adcpVersion) {
+  const requestSchemas = captureRequestSchemas(adcpVersion);
+  return withServedValidationVersion(
+    capabilities,
+    adcpVersion ?? ADCP_VERSION,
+    (catalogVersion) => resolveCreativeBuildProbeWithSchemas(
+      at(capabilities, "creative"),
+      spec,
+      testKit,
+      at(capabilities, "adcp", "governance_enforcement"),
+      catalogVersion,
+      requestSchemas
+    )
+  );
+}
+function resolveCreativeBuildProbeWithSchemas(creative, spec, testKit, governanceEnforcement, catalogAdcpVersion, requestSchemas) {
   validateCreativeBuildProbeSpec(spec);
   if (isRecord(creative) && creative.supported_formats !== void 0 && !Array.isArray(creative.supported_formats)) {
     return { status: "failed", detail: "creative.supported_formats: malformed catalog (expected array)" };
@@ -117,7 +154,7 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
   if (!Array.isArray(recipes)) throw new Error("test_kit.creative_build_probes must be an array");
   if (recipes.some(
     (recipe) => isRecord(recipe) && isRecord(recipe.input) && recipe.input.creative_manifest !== void 0
-  ) && !getSchemaValidatorByRef("core/creative-manifest.json", adcpVersion)) {
+  ) && !requestSchemas.validateManifest) {
     return {
       status: "unsatisfied",
       detail: `fixture_unsatisfied: creative_format:${spec.context_prefix}: selected-version source manifest schema validator is unavailable`
@@ -131,21 +168,25 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
     }
     const match = normalizeFixtureMatchExpression(recipe.match, `${location}.match`);
     if (match.length === 0) throw new Error(`${location}: at least one explicit match predicate is required`);
-    validateInput(recipe.input, location, adcpVersion);
+    validateInput(recipe.input, location, requestSchemas.validateManifest);
     return { match, input: recipe.input };
   });
-  const catalogDocument = getSchemaDocumentByRef("protocol/get-adcp-capabilities-response.json", adcpVersion);
+  const catalogDocument = getSchemaDocumentByRef("protocol/get-adcp-capabilities-response.json", catalogAdcpVersion);
   const catalog = catalogDocument?.schema;
-  const selectedVersion = catalogDocument?.resolvedVersion ?? adcpVersion ?? "selected bundle";
+  const selectedVersion = catalogDocument?.resolvedVersion ?? catalogAdcpVersion ?? "selected bundle";
   const item = at(catalog, "properties", "creative", "properties", "supported_formats", "items");
-  const request = getSchemaDocumentByRef("media-buy/build-creative-request.json", adcpVersion)?.schema;
+  const request = requestSchemas.request;
   const canonicalSelector = !!at(request, "properties", "target_capability_id");
   const legacySelector = !!at(request, "properties", "target_format_id");
+  const catalogRequest = getSchemaDocumentByRef("media-buy/build-creative-request.json", catalogAdcpVersion)?.schema;
+  const canonicalCatalog = !!at(catalogRequest, "properties", "target_capability_id");
+  const requestIdPattern = at(request, "properties", "target_capability_id", "pattern");
+  const canonicalAddressable = (route) => canonicalCatalog && canonicalSelector && typeof route.capability_id === "string" && (typeof requestIdPattern !== "string" || new RegExp(requestIdPattern).test(route.capability_id));
   const ref = at(item, "properties", "format", "$ref");
   const formatRef = typeof ref === "string" ? ref.replace(/^(?:https:\/\/adcontextprotocol\.org)?\/schemas\/(?:(?:v?\d[^/]*|latest)\/)?/, "") : void 0;
-  const validateFormat = formatRef ? getSchemaValidatorByRef(formatRef, adcpVersion) : void 0;
-  const validateKind = getSchemaValidatorByRef("core/canonical-format-kind.json", adcpVersion);
-  if (!validateFormat || !validateKind || !canonicalSelector && !legacySelector) {
+  const validateFormat = formatRef ? getSchemaValidatorByRef(formatRef, catalogAdcpVersion) : void 0;
+  const validateKind = getSchemaValidatorByRef("core/canonical-format-kind.json", catalogAdcpVersion);
+  if (!validateFormat || !validateKind || !catalogRequest || !canonicalSelector && !legacySelector) {
     return {
       status: "unsatisfied",
       detail: `fixture_unsatisfied: creative_format:${spec.context_prefix}: selected-version creative catalog schema validators are unavailable`
@@ -157,7 +198,7 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
         throw new Error(
           "test_kit.creative_build_probes: target_format_id is not supported by the selected build request"
         );
-      const validateId = getSchemaValidatorByRef("core/format-id.json", adcpVersion);
+      const validateId = requestSchemas.validateFormatId;
       if (!validateId)
         return {
           status: "unsatisfied",
@@ -172,7 +213,12 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
   const idPattern = at(item, "properties", "capability_id", "pattern");
   const hasOperations = at(item, "properties", "operations") !== void 0;
   const isBuildRoute = (entry) => !hasOperations || entry.operations === void 0 || Array.isArray(entry.operations) && entry.operations.includes("build");
-  const selectorProperties = at(getSchemaDocumentByRef("core/format-id.json", adcpVersion)?.schema, "properties");
+  const selectorProperties = at(
+    getSchemaDocumentByRef("core/format-id.json", catalogAdcpVersion)?.schema,
+    "properties"
+  );
+  const requestSelectorProperties = requestSchemas.formatIdProperties;
+  const requestHasPixelRatio = at(requestSelectorProperties, "pixel_ratio") !== void 0;
   const legacyDimensions = ["width", "height", "duration_ms", "pixel_ratio"].filter(
     (key) => at(selectorProperties, key) !== void 0
   );
@@ -187,7 +233,7 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
     });
     if (!isRecord(entry)) return invalid("malformed catalog entry (expected object)");
     if (entry.capability_id !== void 0) {
-      if (typeof entry.capability_id !== "string" || typeof idPattern === "string" && !new RegExp(idPattern).test(entry.capability_id) || canonicalSelector && ids.has(entry.capability_id)) {
+      if (typeof entry.capability_id !== "string" || typeof idPattern === "string" && !new RegExp(idPattern).test(entry.capability_id) || canonicalCatalog && ids.has(entry.capability_id)) {
         return invalid("capability_id must be usable and unique within the catalog");
       }
       ids.add(entry.capability_id);
@@ -201,7 +247,7 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
     if (!isRecord(entry.format) || typeof entry.format.format_kind !== "string" || !isRecord(entry.format.params)) {
       return invalid("format must declare format_kind and params");
     }
-    if (!canonicalSelector && !validateKind(entry.format.format_kind)) {
+    if (!canonicalCatalog && !validateKind(entry.format.format_kind)) {
       unavailableKinds.add(entry.format.format_kind);
       if (isBuildRoute(entry)) buildRoutes.push(entry);
       continue;
@@ -211,7 +257,10 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
         `malformed format declaration: ${[...validateFormat.errors ?? [], ...validateKind.errors ?? []].map((error) => `${error.instancePath || "/"} ${error.message}`).join("; ")}`
       );
     }
-    const validateParams = getSchemaValidatorByRef(`formats/canonical/${entry.format.format_kind}.json`, adcpVersion);
+    const validateParams = getSchemaValidatorByRef(
+      `formats/canonical/${entry.format.format_kind}.json`,
+      catalogAdcpVersion
+    );
     if (entry.format.format_kind !== "custom" && !validateParams) {
       unavailableKinds.add(entry.format.format_kind);
       if (isBuildRoute(entry)) buildRoutes.push(entry);
@@ -236,7 +285,7 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
     const knownKind = validateKind(route.format.format_kind);
     if (!knownKind || route.format.format_kind !== "custom" && !getSchemaValidatorByRef(
       `formats/canonical/${route.format.format_kind}.json`,
-      adcpVersion
+      catalogAdcpVersion
     ))
       continue;
     let source = "test_kit";
@@ -249,7 +298,7 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
     };
     const format = route.format;
     const legacyBindingAgrees = (input2) => {
-      if (input2.target_format_id === void 0) return canonicalSelector && typeof route.capability_id === "string";
+      if (input2.target_format_id === void 0) return canonicalAddressable(route);
       if (format.canonical_formats_only === true || !isRecord(input2.target_format_id)) return false;
       if (!Array.isArray(format.v1_format_ref)) return true;
       const target = input2.target_format_id;
@@ -257,7 +306,7 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
       if (targetUrl === null) return false;
       return format.v1_format_ref.some(
         (ref2) => isRecord(ref2) && ref2.id === target.id && typeof ref2.agent_url === "string" && typeof target.agent_url === "string" && canonicalizeAgentUrl(ref2.agent_url) === targetUrl && legacyDimensions.every(
-          (key) => key === "pixel_ratio" ? (ref2[key] ?? 1) === (target[key] ?? 1) : ref2[key] === void 0 || ref2[key] === target[key]
+          (key) => key === "pixel_ratio" ? (ref2[key] ?? 1) === (requestHasPixelRatio ? target[key] ?? 1 : 1) : ref2[key] === void 0 || ref2[key] === target[key]
         )
       );
     };
@@ -265,7 +314,7 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
       (recipe) => matchesFixtureRequirements(route, recipe.match) && usable(recipe.input) && legacyBindingAgrees(recipe.input)
     );
     let input = selectedRecipe?.input;
-    const kindValidator = getSchemaValidatorByRef("core/canonical-format-kind.json", adcpVersion);
+    const kindValidator = getSchemaValidatorByRef("core/canonical-format-kind.json", catalogAdcpVersion);
     const emptyCompleteFormat = format.technical_requirements_complete === true && format.format_kind !== "custom" && kindValidator?.(format.format_kind) === true && Object.keys(format.params).length === 0 && Object.keys(format).every(
       (key) => [
         "format_kind",
@@ -281,10 +330,10 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
         "canonical_formats_only"
       ].includes(key)
     ) && Object.keys(route).every((key) => ["capability_id", "operations", "format"].includes(key));
-    if (!input && canonicalSelector && typeof route.capability_id === "string" && creative.supports_generation === true && buildRoutes.length === 1 && emptyCompleteFormat) {
+    if (!input && canonicalAddressable(route) && creative.supports_generation === true && buildRoutes.length === 1 && emptyCompleteFormat) {
       source = "generation";
       const manifest = { format_kind: format.format_kind, assets: {} };
-      const validateManifest = getSchemaValidatorByRef("core/creative-manifest.json", adcpVersion);
+      const validateManifest = requestSchemas.validateManifest;
       if (!validateManifest?.(manifest)) continue;
       input = { message: spec.message, creative_manifest: manifest };
     }
@@ -308,6 +357,7 @@ function resolveCreativeBuildProbe(creative, spec, testKit, adcpVersion, governa
   };
 }
 export {
+  prepareCreativeBuildProbe,
   resolveCreativeBuildProbe,
   validateCreativeBuildProbeSpec
 };

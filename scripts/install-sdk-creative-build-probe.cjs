@@ -2,7 +2,7 @@
 'use strict';
 
 // Owned, temporary SDK bridge; see .agents/sdk-shim-ledger.json. Apply only
-// reviewed 15.9.2 preimages, never a newer runner bundle or an approximate edit.
+// reviewed 15.9.5 preimages, never a newer runner bundle or an approximate edit.
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');

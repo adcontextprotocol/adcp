@@ -26,12 +26,16 @@ async function runEvaluatorBoundary({
   adcpVersion,
   testKit,
   governanceEnforcement,
+  capabilitiesVersion,
+  schemaRoot,
+  servedReleaseSchemaRoots,
   expectedTarget = 'display-build',
   expectedManifest = { format_kind: 'image', assets: {} },
 } = {}) {
   const storyboard = parseStoryboard(fs.readFileSync(path.join(creativeScenariosPath, 'evaluator_auth.yaml'), 'utf8'));
   const capabilities = {
-    adcp: { major_versions: [3], idempotency: { supported: false },
+    ...(capabilitiesVersion && { status: 'completed', adcp_version: capabilitiesVersion }),
+    adcp: { major_versions: [3], ...(capabilitiesVersion && { supported_versions: [adcpVersion.split('.').slice(0, 2).join('.'), capabilitiesVersion] }), idempotency: { supported: false },
       ...(governanceEnforcement && { governance_enforcement: governanceEnforcement }) },
     supported_protocols: ['creative', 'governance'],
     creative: {
@@ -82,6 +86,8 @@ async function runEvaluatorBoundary({
     skip_controller_seeding: true,
     test_kit: testKit,
     adcpVersion,
+    schemaRoot,
+    servedReleaseSchemaRoots,
     _client: {
       resetContext() {},
       async getAgentInfo() {
@@ -392,4 +398,60 @@ test('full authored discovery still grades unrelated malformed metadata on an un
   const discovery = result.phases.flatMap(p => p.steps).find(step => step.step_id === 'get_capabilities');
   assert.equal(discovery.passed, false);
   assert.ok(discovery.validations.some(v => v.check === 'response_schema' && v.passed === false));
+});
+
+
+// Capability catalogs follow the validated served release; build inputs and
+// dispatch remain on the selected run pin, including legacy named formats.
+for (const attack of [undefined,
+  { form: 'direct', endpoint: 'GET https://unaccepted-evaluator.example/discovery' },
+  { form: 'feature_agent', endpoint: 'POST https://unaccepted-evaluator.example/adcp' },
+  { form: 'direct', accept: true }, { form: 'feature_agent', accept: true }]) {
+  test(`served 3.2 non-build-first catalog with pinned 3.1 input: ${JSON.stringify(attack ?? 'good')}`, async () => {
+    const target = { agent_url: 'https://formats.example', id: 'sandbox_audio' };
+    const manifest = { format_id: target, assets: {} };
+    const { result, bundle, requests, steps } = await runEvaluatorBoundary({
+      attack, adcpVersion: '3.1.29', capabilitiesVersion: '3.2',
+      schemaRoot: path.resolve(__dirname, '../dist/schemas/3.1.29'),
+      servedReleaseSchemaRoots: { '3.2.5': path.resolve(__dirname, '../dist/schemas/3.2.5') },
+      generation: false, transformation: true,
+      catalog: [
+        { capability_id: 'validate-only', operations: ['validate'], format: { format_kind: 'audio_vast', params: {} } },
+        { capability_id: 'audio-build', operations: ['build'], format: { format_kind: 'audio_vast', params: {}, v1_format_ref: [target] } },
+      ],
+      expectedTarget: null, expectedFormatId: target, expectedManifest: manifest,
+      testKit: { creative_build_probes: [{
+        match: [{ path: '/capability_id', operator: 'equals', value: 'audio-build' }],
+        input: { creative_manifest: manifest, target_format_id: target },
+      }] },
+    });
+    assert.equal(result.overall_passed, !attack, JSON.stringify(result));
+    assert.equal(result.fixture_resolutions[0].status, 'resolved');
+    assert.ok(requests.some(({ task, request }) => task === 'build_creative' && request.target_format_id?.id === target.id));
+    assert.ok(steps.find(step => step.step_id === 'get_capabilities').validations.some(v => v.check === 'response_schema' && v.passed));
+    if (attack) assert.equal(bundle.status, 'failing');
+    else for (const id of ['reject_unaccepted_agent_url', 'reject_unaccepted_feature_agent']) {
+      const step = steps.find(step => step.step_id === id);
+      assert.ok(step.passed && !step.skipped);
+      assert.ok(step.validations.some(v => v.check === 'upstream_traffic' && v.passed && !v.not_applicable));
+    }
+  });
+}
+
+// Both released catalog item schemas explicitly allow entry extensions. A
+// provisioned recipe can supply valid input when automatic preparation cannot
+// interpret an extension; do not turn that valid catalog into a producer fault.
+test('served 3.2 catalog retains legal entry extensions with provisioned input', async () => {
+  const { result, steps } = await runEvaluatorBoundary({
+    adcpVersion: '3.2.5', capabilitiesVersion: '3.2', generation: false, transformation: true,
+    schemaRoot: path.resolve(__dirname, '../dist/schemas/3.2.5'),
+    catalog: [{ ...completeImageRoute('transform-build'), seller_extension: { workflow: 'sandbox' } }],
+    testKit: provisionedBuild, expectedTarget: 'transform-build', expectedManifest: sourceManifest,
+  });
+  assert.equal(result.overall_passed, true, JSON.stringify(result));
+  assert.equal(result.fixture_resolutions[0].status, 'resolved');
+  assert.ok(steps.find(step => step.step_id === 'get_capabilities').validations.some(v => v.check === 'response_schema' && v.passed));
+  for (const id of ['reject_unaccepted_agent_url', 'reject_unaccepted_feature_agent']) {
+    assert.ok(steps.some(step => step.step_id === id && step.passed && !step.skipped));
+  }
 });

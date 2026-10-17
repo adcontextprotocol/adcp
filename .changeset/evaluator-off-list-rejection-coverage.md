@@ -14,3 +14,7 @@ Forward authored probe recipes through the manual runner, including recipe-only
 kits. Malformed understood catalog declarations retain their catalog cause as
 prerequisite failures (actionable dependency failures in hosted classification),
 instead of being mislabeled controller setup failures.
+
+Resolve capability catalogs against the validated served release while preserving
+the pinned build request and source-input contract, including provisioned legacy
+formats when the catalog uses newer canonical vocabulary.
