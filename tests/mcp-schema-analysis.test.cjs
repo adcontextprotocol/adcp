@@ -49,8 +49,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // Daypart time granularity adds one shared enum reached through the
   // daypart requirement in the targeting-bearing tools. Experimental
   // list_collections (#8183) adds one tool and the collection selector,
-  // collection kind, and genre taxonomy definitions it alone reaches.
-  assert.equal(report.definition_instances, 692);
+  // collection kind, and genre taxonomy definitions it alone reaches, plus the
+  // shared locale tag its languages filter references.
+  assert.equal(report.definition_instances, 693);
   assert.equal(report.unique_definitions, 188);
   assert.equal(report.repeated_definitions, 133);
   assert.ok(report.repeated_definition_bytes > 180_000);
