@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/enums/audience-match-rate-basis.json",
+  "title": "Audience Match Rate Basis",
+  "description": "Where an audience match rate came from. Qualifies effective_match_rate on a sync_audiences result so a buyer can tell a rate the platform reported from one computed from approximate counts.",
+  "type": "string",
+  "enum": [
+    "platform_reported",
+    "derived"
+  ],
+  "enumDescriptions": {
+    "platform_reported": "The destination platform reported the match rate itself. The seller passes it through without recomputing it.",
+    "derived": "The seller computed the match rate from other counts it holds, for example a size or matched count divided by the number of members uploaded. When any input is approximate or bucketed the rate is itself approximate."
+  }
+}

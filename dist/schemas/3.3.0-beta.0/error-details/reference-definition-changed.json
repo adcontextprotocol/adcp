@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/error-details/reference-definition-changed.json",
+  "title": "Reference Definition Changed Details",
+  "description": "Recommended details shape for REFERENCE_DEFINITION_CHANGED errors, one error per drifted pin. error.field identifies the failing pin as a path into the proposal's commercial_terms, such as commercial_terms.definition_pins[2]. The details object carries the digest the definition resolves to now so the buyer can compare it with the pin it holds. Producer-authored values MUST remain buyer-safe and MUST NOT contain fetch targets, resolver errors, internal identifiers, or other producer-private detail.",
+  "type": "object",
+  "properties": {
+    "current_content_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Lowercase-hex SHA-256 the pinned definition resolves to now, computed with the same projection as the pin. Omitted only when the entry was withdrawn from a successfully fetched, validated document."
+    },
+    "pinned_content_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "The content_digest carried by the failing pin."
+    },
+    "ref_kind": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/enums/definition-pin-ref-kind.json"
+    },
+    "reference": {
+      "type": "object",
+      "description": "The closed reference identity of the failing pin, copied from the pin so a buyer can match by identity rather than by index."
+    },
+    "pin_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based position of the failing pin in the proposal's commercial_terms.definition_pins, matching the index in error.field."
+    }
+  },
+  "additionalProperties": true
+}

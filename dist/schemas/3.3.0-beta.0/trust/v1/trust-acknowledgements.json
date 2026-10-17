@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/trust/v1/trust-acknowledgements.json",
+  "title": "trust.json acknowledgements sub-document",
+  "x-status": "experimental",
+  "description": "Bulk acknowledgements referenced from trust.json acknowledgements_url, for organizations (e.g. ad networks and SSPs) that accept thousands of grants. Kept off the signature-verification fetch path. Every entry follows the trust.json acknowledgement rules: agent_url MUST be an agents[] entry in the referencing trust.json, and terms come only from the grantor's document. Removing an entry withdraws the acknowledgement; verifiers SHOULD apply the grant source's retention rules (for adcp:adagents, the revoked-publisher-domain retention) before treating a removal as permanent. Normative-sounding language (MUST, SHOULD) in these descriptions records the intended design for a later release and is not enforced by anything in 3.3. Third parties, crawlers and registries MUST NOT treat a published trust.json as authority in 3.3. The v1 in the path is a namespace, not a stability promise: while x-status is experimental the schema may change in breaking ways. EXPERIMENTAL (x-status: experimental, feature id identity.trust_json): schemas only. Nothing in AdCP 3.3 reads, requires, or verifies this document, and brand.json behavior is unchanged. The document name and its /.well-known path may change before graduation (the JournalList trust.txt naming outreach is still open), so do not treat the file name as frozen. See RFC #7809.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "acknowledgements": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/trust/v1/trust.json#/definitions/acknowledgement"
+      }
+    },
+    "next": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "Optional same-host URL of the next shard (untrusted input; see trust.json https_url). Verifiers follow shards in order and stop at a configured limit."
+    }
+  },
+  "required": [
+    "acknowledgements"
+  ],
+  "additionalProperties": false
+}

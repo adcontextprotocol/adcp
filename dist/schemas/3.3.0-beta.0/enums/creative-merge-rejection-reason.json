@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/enums/creative-merge-rejection-reason.json",
+  "title": "Creative Merge Rejection Reason",
+  "description": "Why a seller rejected a sync_creatives merge assignment operation. Carried in CREATIVE_MERGE_REJECTED error details so a buyer can tell a pairing the seller judged wrong from one the buyer must fix.",
+  "type": "string",
+  "enum": [
+    "content_mismatch",
+    "format_mismatch",
+    "not_on_package",
+    "not_supported"
+  ],
+  "enumDescriptions": {
+    "content_mismatch": "The seller judges that merged_creative_id is not the same creative as creative_id: its content differs. The seller's copy is a different creative; to run creative_id on the package, use replace.",
+    "format_mismatch": "creative_id cannot take over the serving object because its format differs from merged_creative_id's (for example, a different format kind or dimensions). The buyer can sync a matching format of creative_id and retry.",
+    "not_on_package": "merged_creative_id is not a seller-assigned creative currently assigned to package_id in this account. Covers unknown IDs, buyer-assigned creatives, and creatives assigned elsewhere, so the response does not reveal whether an ID exists outside this package.",
+    "not_supported": "The seller supports merge but cannot merge this pairing on this package (for example, a channel or object type the seller cannot hand over without re-trafficking). Use replace."
+  },
+  "x-added-in": "3.3.0"
+}
