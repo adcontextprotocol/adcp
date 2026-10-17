@@ -1,0 +1,215 @@
+{
+  "package": "@adcp/sdk",
+  "version": "15.9.2",
+  "files": [
+    {
+      "path": "dist/lib/testing/storyboard/runner.js",
+      "before": "13f8873455a3b3589a66e9a444069f964d4416b9533c7618408336903c6e2433",
+      "after": "07577b26ea8bf8b0fff8d6d32c441fd40da7e27a5ea32e482e0edaa7367dd630",
+      "replacements": [
+        {
+          "from": "var import_node_crypto = require(\"node:crypto\");\n",
+          "to": "var import_creative_build_probe = require(\"./creative-build-probe.js\");\nvar import_node_crypto = require(\"node:crypto\");\n"
+        },
+        {
+          "from": "  let fixtureCoverageGap;\n  {\n    let seeding;",
+          "to": "  let fixtureCoverageGap;\n  if (storyboard.creative_build_probe && !skipControllerSeedingForPhaseGates) {\n    const resolution = routingContext || isMultiInstance ? {\n      status: \"unsatisfied\",\n      detail: `fixture_unsatisfied: creative_format:${storyboard.creative_build_probe.context_prefix}: resolve an independent fixture for each routed or replicated agent in a single-agent run`\n    } : (0, import_creative_build_probe.resolveCreativeBuildProbe)(\n      profile?.raw_capabilities?.creative,\n      storyboard.creative_build_probe,\n      options.test_kit,\n      options.adcpVersion,\n      profile?.raw_capabilities?.adcp?.governance_enforcement\n    );\n    const handle = storyboard.creative_build_probe.context_prefix;\n    fixtureResolutionRecords = [\n      {\n        fixture_type: \"creative_format\",\n        handle,\n        requirements: resolution.status === \"resolved\" ? resolution.requirements : [],\n        status: resolution.status,\n        ...resolution.status === \"resolved\" ? { seller_ids: { capability_id: resolution.capabilityId } } : {},\n        strategy: \"discover\",\n        strategies_attempted: [\n          {\n            strategy: \"discover\",\n            disposition: resolution.status === \"unsatisfied\" ? \"unavailable\" : resolution.status,\n            detail: resolution.status === \"resolved\" ? `Bound build route using ${resolution.source} input` : resolution.detail\n          }\n        ]\n      }\n    ];\n    if (resolution.status !== \"resolved\") {\n      const noPhasesIndex = phaseResults.findIndex((phase) => phase.phase_id === \"no_phases\");\n      if (noPhasesIndex >= 0) {\n        skippedCount -= phaseResults[noPhasesIndex].steps.filter((step) => step.skipped).length;\n        phaseResults.splice(noPhasesIndex, 1);\n      }\n    }\n    if (resolution.status === \"failed\") {\n      seedingFailed = true;\n      failedCount += 1;\n      seedingPhaseResult = {\n        phase_id: \"fixture_resolution\",\n        phase_title: \"Creative build fixture resolution\",\n        passed: false,\n        duration_ms: 0,\n        steps: [\n          {\n            storyboard_id: storyboard.id,\n            phase_id: \"fixture_resolution\",\n            step_id: \"creative_build_catalog\",\n            title: \"Validate advertised creative build catalog\",\n            task: \"get_adcp_capabilities\",\n            passed: false,\n            duration_ms: 0,\n            context: {},\n            extraction: { path: \"none\" },\n            validations: [\n              {\n                check: \"creative_build_probe_catalog\",\n                passed: false,\n                description: \"Advertised creative catalog satisfies its format and routing contract\",\n                error: resolution.detail\n              }\n            ]\n          }\n        ]\n      };\n    } else if (resolution.status === \"resolved\") {\n      for (const key of [\"capability_id\", \"message\", \"creative_manifest\", \"creative_id\", \"transformer_id\", \"config\"]) {\n        delete context[`${handle}_${key}`];\n      }\n      Object.assign(context, resolution.context);\n      options = { ...options, contracts: [.../* @__PURE__ */ new Set([...options.contracts ?? [], \"creative_build_probe_runner\"])] };\n    } else {\n      fixtureUnsatisfied = true;\n      if (preSeeded === void 0 || preSeeded.attach) skippedCount += 1;\n      fixtureCoverageGap = {\n        reason: \"fixture_unsatisfied\",\n        detail: resolution.detail,\n        fixtures: [{ fixture_type: \"creative_format\", handle, requirements: [] }]\n      };\n    }\n  }\n  {\n    let seeding;"
+        },
+        {
+          "from": "creativeAssetFixtureGap || skipControllerSeedingForPhaseGates ? null",
+          "to": "creativeAssetFixtureGap || fixtureUnsatisfied || seedingFailed || skipControllerSeedingForPhaseGates ? null"
+        },
+        {
+          "from": "fixtureResolutionRecords = seeding.resolutionRecords;",
+          "to": "fixtureResolutionRecords = fixtureResolutionRecords ? [...fixtureResolutionRecords, ...seeding.resolutionRecords ?? []] : seeding.resolutionRecords;"
+        },
+        {
+          "from": "    return runMultiPass(agentUrls, storyboard, options);",
+          "to": "    if (storyboard.creative_build_probe) return executeStoryboardPass(agentUrls, storyboard, options, 0);\n    return runMultiPass(agentUrls, storyboard, options);"
+        },
+        {
+          "from": "  const injectedReceiver = options._webhookReceiver;",
+          "to": "  if (storyboard.creative_build_probe) {\n    const resolution = (0, import_creative_build_probe.resolveCreativeBuildProbe)(\n      profile?.raw_capabilities?.creative,\n      storyboard.creative_build_probe,\n      options.test_kit,\n      options.adcpVersion,\n      profile?.raw_capabilities?.adcp?.governance_enforcement\n    );\n    if (resolution.status === \"failed\") {\n      if (!clientResolution.reusedShared) await (0, import_protocols.closeScopedConnections)(options.protocol);\n      return {\n        storyboard_id: storyboard.id,\n        step_id: found.step.id,\n        phase_id: found.phaseId,\n        title: found.step.title,\n        task: found.step.task,\n        passed: false,\n        duration_ms: 0,\n        validations: [\n          {\n            check: \"creative_build_probe_catalog\",\n            passed: false,\n            description: \"Advertised creative catalog satisfies its format and routing contract\",\n            error: resolution.detail\n          }\n        ],\n        context,\n        extraction: { path: \"none\" },\n        contributions: Array.from(options.contributions ?? [])\n      };\n    }\n    if (resolution.status === \"unsatisfied\") {\n      if (!clientResolution.reusedShared) await (0, import_protocols.closeScopedConnections)(options.protocol);\n      return {\n        storyboard_id: storyboard.id,\n        step_id: found.step.id,\n        phase_id: found.phaseId,\n        title: found.step.title,\n        task: found.step.task,\n        passed: true,\n        skipped: true,\n        skip_reason: \"fixture_unsatisfied\",\n        skip: { reason: \"not_applicable\", detail: resolution.detail },\n        duration_ms: 0,\n        validations: [],\n        context,\n        extraction: { path: \"none\" },\n        contributions: Array.from(options.contributions ?? [])\n      };\n    }\n    for (const key of [\"capability_id\", \"message\", \"creative_manifest\", \"creative_id\", \"transformer_id\", \"config\"]) {\n      delete context[`${storyboard.creative_build_probe.context_prefix}_${key}`];\n    }\n    Object.assign(context, resolution.context);\n    options = { ...options, contracts: [.../* @__PURE__ */ new Set([...options.contracts ?? [], \"creative_build_probe_runner\"])] };\n  }\n  const injectedReceiver = options._webhookReceiver;"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/loader.js",
+      "before": "bf94284049dcae7d7072293c5182867aad01752930581ce90b40852f0fd1a9dd",
+      "after": "a2f6a9420f8e82bcdf8a4772e4587c914cf3cfce3b2da19e34f9678a8ce47024",
+      "replacements": [
+        {
+          "from": "var import_fs = require(\"fs\");\n",
+          "to": "var import_creative_build_probe = require(\"./creative-build-probe.js\");\nvar import_fs = require(\"fs\");\n"
+        },
+        {
+          "from": "function validateStoryboardShape(storyboard) {",
+          "to": "function validateStoryboardShape(storyboard) {\n  if (storyboard.creative_build_probe !== undefined) (0, import_creative_build_probe.validateCreativeBuildProbeSpec)(storyboard.creative_build_probe);"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/runner.mjs",
+      "before": "98946fd98450585df5184812f24b1156ae1a9e29359c68ec045bb138652f7043",
+      "after": "edf932d0cbc9d53cd812b086e116c10a27264c203b4ca0f0d22eb0855386a29b",
+      "replacements": [
+        {
+          "from": "import { createHash, createHmac } from \"node:crypto\";\n",
+          "to": "import { resolveCreativeBuildProbe, validateCreativeBuildProbeSpec } from \"./creative-build-probe.mjs\";\nimport { createHash, createHmac } from \"node:crypto\";\n"
+        },
+        {
+          "from": "  let fixtureCoverageGap;\n  {\n    let seeding;",
+          "to": "  let fixtureCoverageGap;\n  if (storyboard.creative_build_probe && !skipControllerSeedingForPhaseGates) {\n    const resolution = routingContext || isMultiInstance ? {\n      status: \"unsatisfied\",\n      detail: `fixture_unsatisfied: creative_format:${storyboard.creative_build_probe.context_prefix}: resolve an independent fixture for each routed or replicated agent in a single-agent run`\n    } : resolveCreativeBuildProbe(\n      profile?.raw_capabilities?.creative,\n      storyboard.creative_build_probe,\n      options.test_kit,\n      options.adcpVersion,\n      profile?.raw_capabilities?.adcp?.governance_enforcement\n    );\n    const handle = storyboard.creative_build_probe.context_prefix;\n    fixtureResolutionRecords = [\n      {\n        fixture_type: \"creative_format\",\n        handle,\n        requirements: resolution.status === \"resolved\" ? resolution.requirements : [],\n        status: resolution.status,\n        ...resolution.status === \"resolved\" ? { seller_ids: { capability_id: resolution.capabilityId } } : {},\n        strategy: \"discover\",\n        strategies_attempted: [\n          {\n            strategy: \"discover\",\n            disposition: resolution.status === \"unsatisfied\" ? \"unavailable\" : resolution.status,\n            detail: resolution.status === \"resolved\" ? `Bound build route using ${resolution.source} input` : resolution.detail\n          }\n        ]\n      }\n    ];\n    if (resolution.status !== \"resolved\") {\n      const noPhasesIndex = phaseResults.findIndex((phase) => phase.phase_id === \"no_phases\");\n      if (noPhasesIndex >= 0) {\n        skippedCount -= phaseResults[noPhasesIndex].steps.filter((step) => step.skipped).length;\n        phaseResults.splice(noPhasesIndex, 1);\n      }\n    }\n    if (resolution.status === \"failed\") {\n      seedingFailed = true;\n      failedCount += 1;\n      seedingPhaseResult = {\n        phase_id: \"fixture_resolution\",\n        phase_title: \"Creative build fixture resolution\",\n        passed: false,\n        duration_ms: 0,\n        steps: [\n          {\n            storyboard_id: storyboard.id,\n            phase_id: \"fixture_resolution\",\n            step_id: \"creative_build_catalog\",\n            title: \"Validate advertised creative build catalog\",\n            task: \"get_adcp_capabilities\",\n            passed: false,\n            duration_ms: 0,\n            context: {},\n            extraction: { path: \"none\" },\n            validations: [\n              {\n                check: \"creative_build_probe_catalog\",\n                passed: false,\n                description: \"Advertised creative catalog satisfies its format and routing contract\",\n                error: resolution.detail\n              }\n            ]\n          }\n        ]\n      };\n    } else if (resolution.status === \"resolved\") {\n      for (const key of [\"capability_id\", \"message\", \"creative_manifest\", \"creative_id\", \"transformer_id\", \"config\"]) {\n        delete context[`${handle}_${key}`];\n      }\n      Object.assign(context, resolution.context);\n      options = { ...options, contracts: [.../* @__PURE__ */ new Set([...options.contracts ?? [], \"creative_build_probe_runner\"])] };\n    } else {\n      fixtureUnsatisfied = true;\n      if (preSeeded === void 0 || preSeeded.attach) skippedCount += 1;\n      fixtureCoverageGap = {\n        reason: \"fixture_unsatisfied\",\n        detail: resolution.detail,\n        fixtures: [{ fixture_type: \"creative_format\", handle, requirements: [] }]\n      };\n    }\n  }\n  {\n    let seeding;"
+        },
+        {
+          "from": "creativeAssetFixtureGap || skipControllerSeedingForPhaseGates ? null",
+          "to": "creativeAssetFixtureGap || fixtureUnsatisfied || seedingFailed || skipControllerSeedingForPhaseGates ? null"
+        },
+        {
+          "from": "fixtureResolutionRecords = seeding.resolutionRecords;",
+          "to": "fixtureResolutionRecords = fixtureResolutionRecords ? [...fixtureResolutionRecords, ...seeding.resolutionRecords ?? []] : seeding.resolutionRecords;"
+        },
+        {
+          "from": "    return runMultiPass(agentUrls, storyboard, options);",
+          "to": "    if (storyboard.creative_build_probe) return executeStoryboardPass(agentUrls, storyboard, options, 0);\n    return runMultiPass(agentUrls, storyboard, options);"
+        },
+        {
+          "from": "  const injectedReceiver = options._webhookReceiver;",
+          "to": "  if (storyboard.creative_build_probe) {\n    const resolution = resolveCreativeBuildProbe(\n      profile?.raw_capabilities?.creative,\n      storyboard.creative_build_probe,\n      options.test_kit,\n      options.adcpVersion,\n      profile?.raw_capabilities?.adcp?.governance_enforcement\n    );\n    if (resolution.status === \"failed\") {\n      if (!clientResolution.reusedShared) await closeScopedConnections(options.protocol);\n      return {\n        storyboard_id: storyboard.id,\n        step_id: found.step.id,\n        phase_id: found.phaseId,\n        title: found.step.title,\n        task: found.step.task,\n        passed: false,\n        duration_ms: 0,\n        validations: [\n          {\n            check: \"creative_build_probe_catalog\",\n            passed: false,\n            description: \"Advertised creative catalog satisfies its format and routing contract\",\n            error: resolution.detail\n          }\n        ],\n        context,\n        extraction: { path: \"none\" },\n        contributions: Array.from(options.contributions ?? [])\n      };\n    }\n    if (resolution.status === \"unsatisfied\") {\n      if (!clientResolution.reusedShared) await closeScopedConnections(options.protocol);\n      return {\n        storyboard_id: storyboard.id,\n        step_id: found.step.id,\n        phase_id: found.phaseId,\n        title: found.step.title,\n        task: found.step.task,\n        passed: true,\n        skipped: true,\n        skip_reason: \"fixture_unsatisfied\",\n        skip: { reason: \"not_applicable\", detail: resolution.detail },\n        duration_ms: 0,\n        validations: [],\n        context,\n        extraction: { path: \"none\" },\n        contributions: Array.from(options.contributions ?? [])\n      };\n    }\n    for (const key of [\"capability_id\", \"message\", \"creative_manifest\", \"creative_id\", \"transformer_id\", \"config\"]) {\n      delete context[`${storyboard.creative_build_probe.context_prefix}_${key}`];\n    }\n    Object.assign(context, resolution.context);\n    options = { ...options, contracts: [.../* @__PURE__ */ new Set([...options.contracts ?? [], \"creative_build_probe_runner\"])] };\n  }\n  const injectedReceiver = options._webhookReceiver;"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/loader.mjs",
+      "before": "ee3098c582ad0ca84610be3cf0d80984c01f12006d1e82ced64ff13e2e1337b3",
+      "after": "cc3ac3b1b53b8009c7417d86739a6446f61901eb3457ffff4fe3e8901a9bddb9",
+      "replacements": [
+        {
+          "from": "import { readFileSync } from \"fs\";\n",
+          "to": "import { resolveCreativeBuildProbe, validateCreativeBuildProbeSpec } from \"./creative-build-probe.mjs\";\nimport { readFileSync } from \"fs\";\n"
+        },
+        {
+          "from": "function validateStoryboardShape(storyboard) {",
+          "to": "function validateStoryboardShape(storyboard) {\n  if (storyboard.creative_build_probe !== undefined) validateCreativeBuildProbeSpec(storyboard.creative_build_probe);"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/creative-build-probe.js",
+      "before": null,
+      "after": "214b25b7fd981a87c541fb8a7ebba745823270f5b7709c3e54f7debffeca581b",
+      "contents_file": "creative-build-probe.js"
+    },
+    {
+      "path": "dist/lib/testing/storyboard/creative-build-probe.mjs",
+      "before": null,
+      "after": "5dddc58dee6e66961f5d860540a47371ce7af1da69e2c97f0b91be572ec19d9e",
+      "contents_file": "creative-build-probe.mjs"
+    },
+    {
+      "path": "dist/lib/testing/storyboard/creative-build-probe.d.ts",
+      "before": null,
+      "after": "3d7143f519f0de3fe85615f28e7e65ec2d58649bc9feb45109b78306b9043977",
+      "contents_file": "creative-build-probe.d.ts"
+    },
+    {
+      "path": "dist/lib/testing/storyboard/creative-build-probe.d.mts",
+      "before": null,
+      "after": "d6509899670bfbcaceab3cafffc91c6cb4996a752e8b4f0eb2210e766e78dba6",
+      "contents_file": "creative-build-probe.d.mts"
+    },
+    {
+      "path": "dist/lib/testing/storyboard/types.d.ts",
+      "before": "e5d71ca00bfceacc9ddd581e7507158fc1ef100ce8fa0d29fc74f83543415ba0",
+      "after": "e7b0fed0414a62c6ec537c7e4b1bc2dc8e0ae64c75a5099d909acf1441208aaa",
+      "replacements": [
+        {
+          "from": "export interface Storyboard {",
+          "to": "export interface Storyboard {\n    /** Opt-in read-only preparation of a valid evaluator build fixture. */\n    creative_build_probe?: import(\"./creative-build-probe\").CreativeBuildProbeSpec;"
+        },
+        {
+          "from": "fixture_type: 'product' | 'pricing_option';",
+          "to": "fixture_type: 'product' | 'pricing_option' | 'creative_format';"
+        },
+        {
+          "from": "    seller_ids?: {\n        product_id: string;\n        pricing_option_id?: string;\n    };",
+          "to": "    seller_ids?: {\n        product_id?: string;\n        pricing_option_id?: string;\n        capability_id?: string;\n    };"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/types.d.mts",
+      "before": "169453a0dbc93a1c612860d3658a9c3009a4088686357c99a9a38ebb4bcb41af",
+      "after": "068c1a6162d7373e6d71b8eca8f2498686a4dbbffabaa46d0c20f40fa3e695e7",
+      "replacements": [
+        {
+          "from": "export interface Storyboard {",
+          "to": "export interface Storyboard {\n    /** Opt-in read-only preparation of a valid evaluator build fixture. */\n    creative_build_probe?: import(\"./creative-build-probe.mjs\").CreativeBuildProbeSpec;"
+        },
+        {
+          "from": "fixture_type: 'product' | 'pricing_option';",
+          "to": "fixture_type: 'product' | 'pricing_option' | 'creative_format';"
+        },
+        {
+          "from": "    seller_ids?: {\n        product_id: string;\n        pricing_option_id?: string;\n    };",
+          "to": "    seller_ids?: {\n        product_id?: string;\n        pricing_option_id?: string;\n        capability_id?: string;\n    };"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/index.js",
+      "before": "710a87fe6b984f6bb5fb015d15da8c04409c7633cddb4a84390d564aaade2303",
+      "after": "89e9d865c879f316ca457ecc70a1cd6e7656e595a1f1b843fade72f050ddf2e9",
+      "replacements": [
+        {
+          "from": "emporalValidation,\n  testTerminalStateEnforcement,\n  testValidation,\n  unregisterExternalSchemaRoot,\n  validateFixtureResolutionDeclarations,\n  validateRateLimitTripSpec,\n  withExternalSchemaRoot\n});\n",
+          "to": "emporalValidation,\n  testTerminalStateEnforcement,\n  testValidation,\n  unregisterExternalSchemaRoot,\n  validateFixtureResolutionDeclarations,\n  validateRateLimitTripSpec,\n  withExternalSchemaRoot\n});\n\nvar creativeBuildProbeBridge = require(\"./storyboard/creative-build-probe.js\");\nObject.defineProperties(module.exports, { resolveCreativeBuildProbe: { enumerable: true, get: () => creativeBuildProbeBridge.resolveCreativeBuildProbe }, validateCreativeBuildProbeSpec: { enumerable: true, get: () => creativeBuildProbeBridge.validateCreativeBuildProbeSpec } });\n"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/index.mjs",
+      "before": "fffaf905f7f2086f92c51d538b01a64871533048692501e35eb69cf1dbdf7cf8",
+      "after": "0c5c8417881e1285c9a9a35bc5c043eb06d45863d0e3baa462154e3b3ac56e93",
+      "replacements": [
+        {
+          "from": "TemporalValidation,\n  testTerminalStateEnforcement,\n  testValidation,\n  unregisterExternalSchemaRoot,\n  validateFixtureResolutionDeclarations,\n  validateRateLimitTripSpec,\n  withExternalSchemaRoot\n};\n",
+          "to": "TemporalValidation,\n  testTerminalStateEnforcement,\n  testValidation,\n  unregisterExternalSchemaRoot,\n  validateFixtureResolutionDeclarations,\n  validateRateLimitTripSpec,\n  withExternalSchemaRoot\n};\n\nexport { resolveCreativeBuildProbe, validateCreativeBuildProbeSpec } from \"./storyboard/creative-build-probe.mjs\";\n"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/index.d.ts",
+      "before": "7ac7001b57817ed000da5b631d1a8a294ba6594ba3ac07e8cbcdb530520e214c",
+      "after": "c2b245075c5ff2c8a7c8a1a2f5da7cd95d57f813f642a816b5f6ec9626f066a2",
+      "replacements": [
+        {
+          "from": "GraphGrade, type OAuthMetadataGraphObservation, type OAuthMetadataGraphVector, type OAuthMetadataGraphVectorCorpus, BrandJsonSchema, AdagentsJsonSchema, MCP_SESSION_PROBE_TASK, } from './storyboard';\n",
+          "to": "GraphGrade, type OAuthMetadataGraphObservation, type OAuthMetadataGraphVector, type OAuthMetadataGraphVectorCorpus, BrandJsonSchema, AdagentsJsonSchema, MCP_SESSION_PROBE_TASK, } from './storyboard';\n\nexport { resolveCreativeBuildProbe, validateCreativeBuildProbeSpec } from \"./storyboard/creative-build-probe\";\nexport type { CreativeBuildProbeSpec, CreativeBuildProbeInputFixture, CreativeBuildProbeResolution } from \"./storyboard/creative-build-probe\";\n"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/index.d.mts",
+      "before": "a8a5abe009d1e63170c594073e7ac191af7f19b71e3719368704c776bdff817b",
+      "after": "95719644e4aee7da236141c56603442f4930c80c432967a4d5fec2ee8670fccf",
+      "replacements": [
+        {
+          "from": ", type OAuthMetadataGraphObservation, type OAuthMetadataGraphVector, type OAuthMetadataGraphVectorCorpus, BrandJsonSchema, AdagentsJsonSchema, MCP_SESSION_PROBE_TASK, } from './storyboard/index.mjs';\n",
+          "to": ", type OAuthMetadataGraphObservation, type OAuthMetadataGraphVector, type OAuthMetadataGraphVectorCorpus, BrandJsonSchema, AdagentsJsonSchema, MCP_SESSION_PROBE_TASK, } from './storyboard/index.mjs';\n\nexport { resolveCreativeBuildProbe, validateCreativeBuildProbeSpec } from \"./storyboard/creative-build-probe.mjs\";\nexport type { CreativeBuildProbeSpec, CreativeBuildProbeInputFixture, CreativeBuildProbeResolution } from \"./storyboard/creative-build-probe.mjs\";\n"
+        }
+      ]
+    },
+    {
+      "path": "bin/adcp.js",
+      "before": "c842d5d593509b6ac4894244bb2eb38079ad6f4282c20d52f621c419d8038d6e",
+      "after": "64e97605b18f73f50cbbed376132e177f2c8fda75a49d8d2c45c83c220e32105",
+      "replacements": [
+        {
+          "from": "ids.pricing_option_id || ids.product_id || '?'",
+          "to": "ids.pricing_option_id || ids.product_id || ids.capability_id || '?'"
+        }
+      ]
+    }
+  ]
+}

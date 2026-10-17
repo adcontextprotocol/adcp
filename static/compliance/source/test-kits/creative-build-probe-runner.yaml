@@ -1,0 +1,84 @@
+id: creative_build_probe_runner
+applies_to:
+  storyboards:
+    - creative/evaluator_auth
+endpoint_scope: sandbox
+harness_mode: black_box
+description: |
+  Read-only preparation of one otherwise valid build_creative request, before
+  fixture seeding or task dispatch. This is a runner contract, not a new agent
+  capability. An operator provisions an active sandbox account, build entitlement,
+  task authorization (including governance where applicable), and the accepted
+  evaluator fixture. Format completeness does not establish those prerequisites.
+
+  The storyboard's creative_build_probe contains context_prefix and message.
+  Resolve route identity and input atomically from the established capability
+  profile's creative.supported_formats. Explicit operations must include build;
+  omitted operations retain the existing legacy build meaning. An omitted
+  capability_id is legal but cannot be used for capability-ID routing. Catalog
+  position never establishes whether an operation or its inputs are supported.
+
+  Prefer an operator-provisioned test_kit.creative_build_probes recipe whose
+  nonempty match clauses use the existing fixture-resolution path/operator/value
+  DSL against the complete catalog entry. Each recipe's input may contain only
+  message, creative_manifest, creative_id, transformer_id, and config. The
+  operator asserts that this input is valid for EVERY route the recipe matches,
+  for this account and test run. Use a specific capability_id predicate when a
+  canonical-kind predicate cannot establish that. Recipes do not override the
+  evaluator, account, authentication, correlation, or trust controls. Manifests
+  must validate against the selected protocol schema; credentials/trust material
+  must not be embedded in the recipe. For this probe contract, config requires a provisioned transformer;
+  this does not restrict other legal build_creative request modes.
+  Selected input modes must also be advertised by the creative agent.
+
+  A bounded automatic recipe is available only when exactly one build route is
+  advertised (including unaddressable legacy entries), supports_generation is
+  true, and its format declares technical_requirements_complete: true. The
+  format_kind must be a known non-custom canonical kind, params must be empty,
+  and other format metadata must be understood as inert: display_name,
+  seller_preference, experimental, sample_render_url, format_option_id,
+  publisher_domain, applies_to_channels, or canonical_formats_only. The route may
+  contain only capability_id, operations, and format. Unhandled declarations,
+  extensions, slots, connections, or unknown metadata require a provisioned
+  recipe. Supply both the authored brief and creative_manifest with the selected
+  format_kind and assets: {}. Do not synthesize seed assets or infer omitted
+  constraints without completeness. These conditions follow existing canonical
+  completeness and build-generation input requirements; they are not additional
+  requirements on producers' catalogs.
+
+  Select a satisfiable route, continuing beyond non-build or unmatched entries.
+  Bind <prefix>_capability_id and <prefix>_message plus any supplied
+  <prefix>_creative_manifest, _creative_id, _transformer_id, and _config. Clear
+  stale values in this namespace first. Only then enable this harness contract.
+  Emit a fixture_resolution_result with fixture_type: creative_format, the prefix
+  as handle, exact matched requirements, and seller_ids.capability_id. Record
+  whether the input came from the automatic generation rule or the test kit.
+
+  No satisfiable input is fixture_unsatisfied with detail naming
+  creative_format:<prefix>, zero executed security validations, and a coverage
+  gap. It is neither producer nonconformance nor security coverage. Malformed
+  catalogs produce structured failed validations, not an unavailable strategy;
+  malformed operator recipes are authoring errors. Single-step execution
+  uses the same resolver and fixture_unsatisfied disposition. Routed or replicated
+  runs currently require independent single-agent runs and report a fixture gap
+  before controller seeding. Engines without this contract retain their existing
+  unsatisfied-contract and required-phase/vacuous-pass guards; callers must report
+  the missing harness rather than claim passing security coverage.
+references:
+  - /creative/canonical-formats#technical-completeness-and-file-size-units
+  - /creative/task-reference/build_creative
+  - /schemas/core/creative-operation-format-declaration.json
+
+# Payload-bound authorization limitation
+# Current probe preparation requires a sandbox build fixture that does not need
+# a per-request signed governance_context. The runner detects an advertised
+# build_creative signed_context enforcement claim and reports fixture_unsatisfied
+# with zero security credit; static recipes cannot pre-sign the fresh request.
+# Other governed tasks do not disable this build probe. Preparing fresh governed
+# probe authorizations is a separate runner integration, not a protocol decision.
+
+# Operator recipe authoring limits: 100,000 traversed nodes, 4 MiB of UTF-8
+# string/key bytes, and the SDK's existing JSON depth bound per recipe. Repeated
+# aliases count on every visit. Exceedance is a harness configuration error,
+# not a producer catalog limit or conformance verdict. Missing required
+# selected-version validators are an explicit zero-credit harness gap.
