@@ -163,11 +163,12 @@ export const PRIVATE_MEMBERS = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth', 'k'];
 /**
  * A directory publishes public keys only. Every key is checked, whatever its
  * type, before the keys the profile does not use are skipped (WBA 5.5.1: a
- * verifier SHOULD reject malformed entries).
+ * verifier SHOULD reject malformed entries). Names compare without regard to
+ * case, so `D` is refused like `d`: Go's encoding/json matches keys that way.
  */
 export function checkPublicKeysOnly(keys) {
   for (const key of keys) {
-    const members = PRIVATE_MEMBERS.filter(m => Object.hasOwn(key, m));
+    const members = Object.keys(key).filter(name => PRIVATE_MEMBERS.includes(name.toLowerCase()));
     if (members.length > 0) refuse('directory-private-key', `directory key ${key.kid} carries private members ${members.join(', ')}`);
   }
 }
