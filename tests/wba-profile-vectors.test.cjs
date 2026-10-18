@@ -344,6 +344,18 @@ describe('Web Bot Auth profile negative vectors', () => {
     assert.deepEqual(verifyRequest(vector, { skipSignatureCount: true }), original.expected_outcome.identities);
   });
 
+  it('a Signature-Input member with another tag is not read', () => {
+    const { vector: original } = positive.find(e => e.file === '001-single-signer-request.json');
+    const h = original.request.headers;
+    const headers = {
+      ...h,
+      'Signature-Input': `${h['Signature-Input']}, cdn=("@method" "@authority");created=1790841600;keyid="edge";alg="ed25519";tag="cdn-edge"`,
+      Signature: `${h.Signature}, cdn=:${Buffer.alloc(64).toString('base64')}:`,
+    };
+    const vector = { ...original, request: { ...original.request, headers } };
+    assert.deepEqual(verifyRequest(vector), original.expected_outcome.identities);
+  });
+
   it('002: the replayed request is byte-identical to positive/001', () => {
     const { vector } = negative.find(e => e.file === '002-replayed-nonce.json');
     const { vector: original } = positive.find(e => e.file === '001-single-signer-request.json');
