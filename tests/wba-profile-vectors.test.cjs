@@ -266,6 +266,7 @@ describe('Web Bot Auth profile positive vectors', () => {
   for (const { file, vector } of positive.filter(e => e.vector.response)) {
     it(`${file}: each directory signature verifies with the key the directory itself publishes`, () => {
       const { response } = vector;
+      assert.equal(response.headers['Content-Type'], 'application/http-message-signatures-directory+json');
       const digest = `sha-256=:${crypto.createHash('sha256').update(response.body).digest('base64')}:`;
       assert.equal(response.headers['Content-Digest'], digest);
       const input = parseDictionary(response.headers['Signature-Input']);
