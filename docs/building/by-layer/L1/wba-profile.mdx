@@ -25,7 +25,7 @@ A verifier resolves a signer's keys in one step:
 Signature-Agent member  ->  origin  ->  https://<origin>/.well-known/http-message-signatures-directory
 ```
 
-The verifier reads the `Signature-Agent` member keyed to the signature label and takes the origin it names. It fetches the HTTP Message Signatures Directory at that origin's well-known path (section 5.5). One fetch returns one file, and the verifier reads no other document to find keys. The directory is the only key location the profile recognizes. The verifier ignores a `Signature-Agent` member with a `type` parameter other than `directory`, as section 5.2.1 permits for a type the verifier does not support.
+The verifier reads the `Signature-Agent` member keyed to the signature label and takes the origin it names. The member value is the ASCII serialization of an `https` origin (RFC 6454 section 6.2), such as `https://buyer-7k3q.com`, with no path, query, fragment, or userinfo. The verifier refuses any other value, including an `http` origin, with `403`. It fetches the HTTP Message Signatures Directory at that origin's well-known path (section 5.5). One fetch returns one file, and the verifier reads no other document to find keys. The directory is the only key location the profile recognizes. The verifier ignores a `Signature-Agent` member with a `type` parameter other than `directory`, as section 5.2.1 permits for a type the verifier does not support.
 
 Section 5.5 explains why the well-known path matters: "TLS authenticates the host but not the path", and "The well-known URI is reserved, so directory additionally names a domain".
 
@@ -51,7 +51,7 @@ RFC 9421 section 3.2.1 lets an application impose requirements beyond the base s
 
 | Rule | Profile choice | Basis |
 |---|---|---|
-| Signature | RFC 9421 with `tag="web-bot-auth"`, `keyid` set to the key's JWK thumbprint, and a covered `Signature-Agent` member naming an origin | Sections 5.2, 5.2.1, 5.5 |
+| Signature | RFC 9421 with `tag="web-bot-auth"`, `keyid` set to the key's JWK thumbprint, and a covered `Signature-Agent` member whose value is the ASCII serialization of an `https` origin (RFC 6454 section 6.2), with no path, query, fragment, or userinfo | Sections 5.2, 5.2.1, 5.5 |
 | Components, every request | `@method`, `@target-uri`, `@authority`, `"signature-agent";key=<label>` | Section 5.2 |
 | Components, requests with a body | Also `content-type` and `content-digest` | Section 5.2: an agent that needs body integrity "MUST send and cover Content-Digest" |
 | Parameters | `created`, `expires`, `keyid`, `alg`, and a `nonce` on every signed request. The nonce is 64 random bytes, encoded as unpadded base64url or as canonical padded base64 | RFC 9421 sections 2.3, 3.2.1, 7.2.2; sections 5.2 and 5.2.3; Appendix C.6; WBA architecture draft section 4.2.2 and Appendix A |
@@ -251,6 +251,8 @@ The conformance tooling judges implementations with Cloudflare's `web-bot-auth` 
 
 - **Member keyed to the label.** The library accepts a signature that covers any one `Signature-Agent` member, whatever its key. The profile requires the member keyed to the signature's label, as section 5.2.1 states: "Its member keyed to the signature label MUST be signed as a component." A verifier built on the library adds this rule through the library's `validate` hook. Scenario `R19` in `scenarios.json` grades it, with tier `adcp`.
 
+The library also does not enforce one WBA MUST yet: section 5.2.1 requires an `https` origin, and the library accepts `http` ([cloudflare/web-bot-auth#162](https://github.com/cloudflare/web-bot-auth/issues/162)). This is a gap in the library, not a difference in the profile. Scenario `R16` grades the rule, with tier `adcp` until the library enforces it.
+
 ## Conformance vectors
 
 The vectors live at `static/compliance/source/test-vectors/wba-profile/` and are served at `/compliance/latest/test-vectors/wba-profile/`. They grade the rules on this page, and each states its expected outcome in the status-code vocabulary of [Error responses](#error-responses).
@@ -274,6 +276,7 @@ The keys in `keys.json` are public test keys with published private seeds. Secti
 - [Web Bot Auth architecture, draft-meunier-web-bot-auth-architecture](https://datatracker.ietf.org/doc/draft-meunier-web-bot-auth-architecture/)
 - [RFC 9421: HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421)
 - [RFC 9530: Digest Fields](https://www.rfc-editor.org/rfc/rfc9530)
+- [RFC 6454: The Web Origin Concept](https://www.rfc-editor.org/rfc/rfc6454)
 - [RFC 7638: JSON Web Key Thumbprint](https://www.rfc-editor.org/rfc/rfc7638) and [RFC 8037](https://www.rfc-editor.org/rfc/rfc8037) Appendix A.3
 - [RFC 8941: Structured Field Values for HTTP](https://www.rfc-editor.org/rfc/rfc8941)
 - [RFC #7878: An AdCP profile of Web Bot Auth for request signing](https://github.com/adcontextprotocol/adcp/issues/7878)
