@@ -364,7 +364,7 @@
       "id": "R18",
       "name": "Signature-Agent member with type=jwks_uri",
       "base": "post",
-      "signature_agent": "sig1=\"https://buyer-7k3q.com/jwks.json\";type=jwks_uri",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com\";type=jwks_uri",
       "expected": {
         "success": false,
         "status": 403
@@ -550,8 +550,8 @@
       "expected": {
         "success": false
       },
-      "tier": "wba",
-      "basis": "Profile: every Ed25519 key signs (Appendix B.1 recommends it)"
+      "tier": "adcp",
+      "basis": "Profile: every Ed25519 key signs; WBA Appendix B.1 only RECOMMENDS a signature, and a verifier MAY use an unproven key"
     },
     {
       "id": "D04",
@@ -619,6 +619,46 @@
       },
       "tier": "adcp",
       "basis": "WBA section 5.5.1: the well-known directory MUST be served with application/http-message-signatures-directory+json"
+    },
+    {
+      "id": "D09",
+      "name": "Directory served with status 203",
+      "status": 203,
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "WBA section 5.5: a status other than 200 is a discovery failure"
+    },
+    {
+      "id": "D10",
+      "name": "Signed with tag web-bot-auth",
+      "parameters": {
+        "tag": "web-bot-auth"
+      },
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "WBA Appendix B.1: tag=\"http-message-signatures-directory\""
+    },
+    {
+      "id": "D11",
+      "name": "Second Ed25519 key that does not sign",
+      "unsigned_keys": [
+        {
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "kid": "hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI",
+          "x": "JB8XPw49dSvDh0kqkCxtoxiNb_RZFhxPdlc-1GedFSc",
+          "use": "sig"
+        }
+      ],
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "Profile: every Ed25519 key in the directory signs"
     }
   ]
 }
