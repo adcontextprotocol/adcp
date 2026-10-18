@@ -119,7 +119,7 @@ The result is the verified identity `O`. A signer whose trust record does not li
 
 ### R3a. Trust record evaluation (P3, `security.mdx`)
 
-Evaluated when something is gated on it: binding a principal (R5), evaluating a grant (R6), and `open` onboarding (R7). It is never evaluated on the signature path.
+Evaluated when something is gated on it: binding a principal (R5), evaluating a grant (R6), and `open` onboarding (R7). It is never evaluated on the request-signature path. For a JWS artifact, R4 derives it to select the profile.
 
 1. **Derive.** `R = https://{eTLD+1(host(O))}/.well-known/trust.json`, using a pinned, dated Public Suffix List snapshot that includes the ICANN and PRIVATE sections.
    - An `O` whose host is an IP literal or a public suffix, or has no defined eTLD+1, has no trust record.
@@ -147,7 +147,7 @@ Evaluated when something is gated on it: binding a principal (R5), evaluating a 
   - for historical verification, the verifier uses the existing governance key archive at `O` (`security.mdx` §Revocation);
   - every other check of the surface is unchanged.
 
-  Profile selection never reads an unsigned field. Any other JWS artifact is verified under the 3.2 profile.
+  Profile selection never reads an unsigned field. A JWS artifact from an issuer whose `O` no trust record lists is verified under the 3.2 profile, which stays fully functional through 3.x.
 - **The 3.2 profile is deprecated in 3.3**, with a notice in `security.mdx` and the release notes. It remains fully functional through 3.x and is removed in 4.0, together with the brand.json trust fields and `identity.brand_json_url` (`brand-identity-trust-split.md` §Migration).
 - **No downgrade, keyed by origin.** Once a verifier has bound `O` (R5), it refuses the 3.2 profile for any agent URL whose origin is `O`. Before binding, an operator ends 3.2 use for an agent by removing its brand.json entry and keys, which reaches every verifier within the JWKS cache bound.
 - **Grants** follow `brand-identity-trust-split.md` §No downgrade and §Grants. A 200 from the grantor's trust.json makes it the only source of grants, and brand.json `authorized_operators[]` is ignored. `exclusive_grants` keeps its schema meaning: with `false`, an uncovered claim stays at the relying party's discretion, which is its own onboarding records and never the grantor's brand.json.
