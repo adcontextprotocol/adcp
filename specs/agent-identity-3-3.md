@@ -11,7 +11,7 @@
 
 It also supersedes the client-only bootstrap in #7942 and option B (`adcp-agent-url`) in #7817.
 
-**Scope of 3.3**: the WBA profile covers signed **HTTP requests and webhooks**. JWS artifacts (governance context `iss`, designated-task response signing, rights attestations) from a WBA identity are signed with keys from that identity's key directory ([R4](#r4-coexistence-with-the-32-profile-p3)). Historical verification uses the existing governance key archive.
+**Scope of 3.3**: the WBA profile covers signed **HTTP requests and webhooks**. JWS artifacts (governance context `iss`, designated-task response signing, rights attestations) from a WBA identity are signed with keys from that identity's key directory ([R4](#r4-coexistence-with-the-32-profile-p3)). Historical verification of a governance context uses the existing governance key archive.
 
 **Not in scope**: TMP, whose match-time signatures use publisher keys from the property registry, as `security.mdx` §Agent resolution already says.
 
@@ -70,7 +70,7 @@ Characters follow the [character bible](./character-bible.md): Sam's buyer agent
 | D1 | **First-contact signer identity uses the Web Bot Auth `Signature-Agent` header** (#7878 option A), as an optional, capability-advertised, experimental profile in 3.3. #7817 closes as superseded. | The IETF `webbotauth` working group adopted the protocol draft. It defines the header, directory, caching, and fetch rules. `adcp-agent-url` would polish a surface 4.0 retires. |
 | D2 | **One agent per origin; a governance agent is its own agent.** An origin that hosts more than one agent is ineligible for the profile; those agents move to subdomains or stay on the 3.2 profile. | Keys, revocation, and the trust record all derive from the origin. Refusing shared origins avoids merging principals. `security.mdx` already requires governance keys on a separate origin; with origin identity, that rule is the whole key-purpose mechanism (WBA §6.5). |
 | D3 | **Keys live only in the identity origin's directory.** Remove `agents[].jwks_uri`, the `/.well-known/jwks.json` default, and the "MUST point back via `identity.trust_url`" text from trust.json v1 before 3.3 beta.0. | Agreed on #7819. #8067 shipped them in the experimental schema, but nothing has released it, so no notice period applies. |
-| D4 | **The trust record is derived:** `https://{eTLD+1(origin)}/.well-known/trust.json`, with at most one `authoritative_location` hop. No `identity.trust_url`, no capabilities back-pointer. It is evaluated where it gates something (binding, grants, `open` onboarding), not on the signature path. | Under D2 and D3 the record only attests role and operator. The registrable-domain owner already controls every origin under it. In WBA, identity is complete once the directory key verifies (WBA §4.1). |
+| D4 | **The trust record is derived:** `https://{eTLD+1(origin)}/.well-known/trust.json`, with at most one `authoritative_location` hop. No `identity.trust_url`, no capabilities back-pointer. It is evaluated where it gates something (binding, grants, `open` onboarding), not on the request-signature path. | Under D2 and D3 the record only attests role and operator. The registrable-domain owner already controls every origin under it. In WBA, identity is complete once the directory key verifies (WBA §4.1). |
 | D5 | **The 3.2 profile is deprecated in 3.3, stays fully functional through 3.x, and is removed in 4.0. #7942's client-only bootstrap does not ship.** | `versioning.mdx` requires a deprecation notice at least 6 months before removal, and `brand-identity-trust-split.md` already plans to remove the 3.2 key chain in 4.0. The notice tells the next implementer to build WBA. A client-only bootstrap would be a second first-contact mechanism. |
 | D6 | **Key revocation for WBA identities is published at the identity origin; agent revocation is the operator delisting the origin.** The 3.2 profile is unchanged. | Key facts live at one origin; the operator keeps a lever when that origin is compromised (R3a, freshness). |
 | D7 | **Demand-side grants (#6033) move into 3.3.** | Without public grants, a seller cannot verify acts-for without an onboarding record, and self-onboarding stops at identity. |
@@ -140,14 +140,14 @@ Evaluated when something is gated on it: binding a principal (R5), evaluating a 
 ### R4. Coexistence with the 3.2 profile (P3)
 
 - Signed messages without `Signature-Agent` or the `web-bot-auth` tag are verified under the 3.2 profile.
-- **JWS artifacts.** For a JWS artifact (governance context, designated-task response signing, rights attestations), `O` is the canonical origin of `iss`, or of `agent_url` where the surface uses it. When the trust record derived from `O` (R3a step 1) lists `O`, the verifier verifies the JWS with a key from `O`'s key directory, never under the 3.2 profile:
+- **JWS artifacts.** For a JWS artifact, `O` is the canonical origin of the signing agent's URL: `iss` for a governance context, `agent_url` for designated-task response signing, and `rights_agent.url` for a rights attestation. When the trust record derived from `O` (R3a step 1) lists `O`, the verifier verifies the JWS with a key from `O`'s key directory, never under the 3.2 profile:
   - `alg` is `EdDSA`, and `kid` is the key's JWK thumbprint;
-  - purpose separation is by origin (D2), so the 3.2 `adcp_use` check does not apply;
+  - purpose separation is by origin (D2), so the 3.2 key-purpose checks (`use`, `key_ops`, and `adcp_use`) do not apply;
   - revocation is `O`'s list (R3);
-  - for historical verification, the verifier uses the existing governance key archive at `O` (`security.mdx` §Revocation);
+  - for historical verification of a governance context, the verifier uses the existing governance key archive at `O` (`security.mdx` §Revocation);
   - every other check of the surface is unchanged.
 
-  Profile selection never reads an unsigned field. A JWS artifact from an issuer whose `O` no trust record lists is verified under the 3.2 profile, which stays fully functional through 3.x.
+  Profile selection never reads an unsigned field. A fetch failure is not absence (R3a), so it never selects the 3.2 profile. A JWS artifact from an issuer whose `O` no trust record lists is verified under the 3.2 profile, which stays fully functional through 3.x.
 - **The 3.2 profile is deprecated in 3.3**, with a notice in `security.mdx` and the release notes. It remains fully functional through 3.x and is removed in 4.0, together with the brand.json trust fields and `identity.brand_json_url` (`brand-identity-trust-split.md` §Migration).
 - **No downgrade, keyed by origin.** Once a verifier has bound `O` (R5), it refuses the 3.2 profile for any agent URL whose origin is `O`. Before binding, an operator ends 3.2 use for an agent by removing its brand.json entry and keys, which reaches every verifier within the JWKS cache bound.
 - **Grants** follow `brand-identity-trust-split.md` §No downgrade and §Grants. A 200 from the grantor's trust.json makes it the only source of grants, and brand.json `authorized_operators[]` is ignored. `exclusive_grants` keeps its schema meaning: with `false`, an uncovered claim stays at the relying party's discretion, which is its own onboarding records and never the grantor's brand.json.
@@ -265,7 +265,7 @@ The window of exposure is the time between compromise and the revocation reachin
 | Stale brand.json grants override trust.json | A 200 from trust.json disables `authorized_operators[]` (R4). |
 | Anonymous party opens billed accounts | `open` binds identity only. Spend needs an existing billing relationship, and an out-of-domain brand needs a grant whose chain includes `account.operator` (R6, R7). |
 | Free registrable domains on hosting platforms defeat quotas | PRIVATE-section domains are `sandbox` only; quotas per operator domain (R7). |
-| Trust-record fetches used as an amplifier or network probe | Evaluated only at gates, never on the signature path. One hop, fetch limits, and one external authorization code (R3a). |
+| Trust-record fetches used as an amplifier or network probe | Evaluated only at gates and, for a JWS artifact, to select the profile (R4); never on the request-signature path. One hop, fetch limits, and one external authorization code (R3a). |
 | Signature errors used to probe which check failed | WBA status and headers only; no signature-specific body detail (R2). |
 | Posture used as an onboarding oracle | Seller-wide, unauthenticated, uniform block. Per-agent state only in authenticated `get_principal` (R7, R8). |
 | PSL drift between verifiers | Pinned, dated snapshot, as `security.mdx` already requires. |
@@ -278,7 +278,7 @@ The window of exposure is the time between compromise and the revocation reachin
 | **Edge verifiers.** Deployed CDN verifiers lag the draft. | Sellers verify at their origin with the SDKs (WBA Appendix C.10). The interop matrix is tracked separately. |
 | **One agent per origin.** Path-hosted agents must move to subdomains. Multi-tenant sales platforms whose path-based URLs appear in many publishers' `adagents.json` files cannot move without those files changing. | The problem being solved is buyer to seller, and buyers can add subdomains cheaply. Path-hosted sellers keep 3.2 webhook signing until they migrate. |
 | **Directory upkeep.** Signed directory responses expire, so publishing keys is a scheduled job. | SDK CLIs provide a regenerate command; the walkthrough (P8) shows a scheduled job. |
-| **Document signing.** Governance and rights JWS need key-purpose isolation and historical provenance. | Purpose isolation is by origin (D2). Historical verification uses the existing governance key archive (R4). |
+| **Document signing.** Governance and rights JWS need key-purpose isolation and historical provenance. | Purpose isolation is by origin (D2). Historical verification of a governance context uses the existing governance key archive (R4). |
 
 ## Compatibility and migration
 
