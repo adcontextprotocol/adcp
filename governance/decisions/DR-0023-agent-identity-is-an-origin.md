@@ -16,7 +16,7 @@ For AdCP 3.3, first-contact signer identity uses an optional, experimental, capa
 
 - **The signer names its origin** in a covered `Signature-Agent` header, with `tag="web-bot-auth"`. The tag applies to requests and webhooks alike.
 - **Identity is complete when the signature verifies** under a key from that origin's directory (`/.well-known/http-message-signatures-directory`) and the origin's revocation list does not revoke it.
-- **The operator's trust record is derived** at `https://{eTLD+1(origin)}/.well-known/trust.json`. It is evaluated where something is gated on it (binding, grants, `open` onboarding), never on the signature path. The verifier does not call the signer's `get_adcp_capabilities`.
+- **The operator's trust record is derived** at `https://{eTLD+1(origin)}/.well-known/trust.json`. It is evaluated where something is gated on it (binding, grants, `open` onboarding), never on the signature path. *Amended by DR-XXXX: never on the request-signature path; for a JWS artifact, the record is derived to select the profile.* The verifier does not call the signer's `get_adcp_capabilities`.
 
 **Identity is an origin.** One agent per origin, and a governance agent is its own agent. Keys appear only in the directory, so trust.json v1 carries no `jwks_uri`.
 
@@ -44,7 +44,7 @@ The design spec is `specs/agent-identity-3-3.md`. It defines the rules (R0–R8)
 
 **This record settles:**
 - origin identity;
-- derived trust records, evaluated off the signature path;
+- derived trust records, evaluated off the signature path *(amended by DR-XXXX: off the request-signature path)*;
 - that verification alone grants no authority;
 - the WBA error contract;
 - the deprecation of the 3.2 profile in 3.3, with removal in 4.0.
