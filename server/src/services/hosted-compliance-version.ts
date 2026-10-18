@@ -53,6 +53,7 @@ export interface HostedComplianceTarget {
 }
 
 type HostedResolveOptions = ResolveOptions & { schemaRoot: string };
+type HostedRunResolveOptions = HostedResolveOptions & Pick<TestOptions, 'servedReleaseSchemaRoots'>;
 type RuntimeTestKitAuth = {
   api_key?: string;
   basic?: { username: string; password: string };
@@ -510,6 +511,12 @@ export function agentAdvertisesBadgeEligibleHostedComplianceTarget(
   return supportedVersions.some(version => advertisesStableBadgeLine(version, requestedLine));
 }
 
+/** Whether the hosted schema bundle for an exact version is on disk. */
+export function hostedSchemaArtifactsExist(version: string): boolean {
+  const schemaRoot = hostedSchemaRoot(version);
+  return existsSync(join(schemaRoot, 'bundled')) || existsSync(join(schemaRoot, 'core'));
+}
+
 function assertHostedArtifacts(version: string): void {
   const complianceDir = hostedComplianceDir(version);
   const schemaRoot = hostedSchemaRoot(version);
@@ -520,7 +527,7 @@ function assertHostedArtifacts(version: string): void {
     );
   }
 
-  if (!existsSync(join(schemaRoot, 'bundled')) && !existsSync(join(schemaRoot, 'core'))) {
+  if (!hostedSchemaArtifactsExist(version)) {
     throw new Error(
       `Hosted AdCP schema bundle ${version} not found at ${schemaRoot}. Run npm run build:schemas.`,
     );
@@ -535,6 +542,46 @@ function hostedStableLineAliasForVersion(
   return stableLineForHostedPrereleaseTarget(target);
 }
 
+/**
+ * Hosted schema roots for the releases an agent graded on `version` may echo
+ * in its `get_adcp_capabilities` response, keyed by exact release.
+ *
+ * A 3.0 pin sends only `adcp_major_version`, so a conformant agent may serve
+ * and echo a newer release in the same major. @adcp/sdk (15.9.5+) validates
+ * that capabilities response against the echoed release when the echo is the
+ * pin's major, is listed in the response's `adcp.supported_versions`, and has
+ * a schema root. Passing the hosted published bundles keeps that validation
+ * on the artifacts hosted compliance grades with, not the SDK's packaged
+ * copies. Only the capabilities validation uses these roots; storyboards,
+ * other tasks and grading stay on `version`.
+ *
+ * One entry per hosted line (the preferred lines, then the default line),
+ * skipping `version` itself, other majors, and releases without a hosted
+ * schema bundle.
+ */
+export function hostedServedReleaseSchemaRoots(version: string): Record<string, string> {
+  const major = versionMajor(version);
+  const roots: Record<string, string> = {};
+  if (!major) return roots;
+  for (const line of [...HOSTED_COMPLIANCE_PREFERRED_LINES, DEFAULT_HOSTED_COMPLIANCE_LINE]) {
+    let release: string;
+    try {
+      release = resolveHostedComplianceVersion(line);
+    } catch {
+      // A line may be configured before its published artifacts are present.
+      continue;
+    }
+    if (release === version || release in roots) continue;
+    if (versionMajor(release) !== major || !hostedSchemaArtifactsExist(release)) continue;
+    roots[release] = hostedSchemaRoot(release);
+  }
+  return roots;
+}
+
+function versionMajor(version: string): string | undefined {
+  return version.match(/^([1-9][0-9]*)\.[0-9]+/)?.[1];
+}
+
 export function hostedComplianceOptions(target: HostedComplianceTarget): HostedResolveOptions {
   assertHostedArtifacts(target.version);
   const hostedStableLineAlias = hostedStableLineAliasForVersion(target, target.version);
@@ -546,11 +593,11 @@ export function hostedComplianceOptions(target: HostedComplianceTarget): HostedR
   };
 }
 
-export function withHostedComplianceOptions<T extends Partial<ResolveOptions> | undefined>(
+export function withHostedComplianceOptions<T extends Partial<HostedRunResolveOptions> | undefined>(
   options: T,
   target: HostedComplianceTarget,
-): (T extends undefined ? HostedResolveOptions : NonNullable<T> & HostedResolveOptions) {
-  const input = (options ?? {}) as Partial<ResolveOptions>;
+): (T extends undefined ? HostedRunResolveOptions : NonNullable<T> & HostedRunResolveOptions) {
+  const input = (options ?? {}) as Partial<HostedRunResolveOptions>;
   const version = resolveHostedComplianceVersion(input.version ?? target.version);
   assertHostedArtifacts(version);
   const hostedStableLineAlias = hostedStableLineAliasForVersion(target, version);
@@ -560,8 +607,9 @@ export function withHostedComplianceOptions<T extends Partial<ResolveOptions> | 
     version,
     complianceDir: input.complianceDir ?? (version === target.version ? target.complianceDir : hostedComplianceDir(version)),
     schemaRoot: input.schemaRoot ?? hostedSchemaRootForVersion(version, target),
+    servedReleaseSchemaRoots: input.servedReleaseSchemaRoots ?? hostedServedReleaseSchemaRoots(version),
     ...(hostedStableLineAlias && { hostedStableLineAlias }),
-  } as T extends undefined ? HostedResolveOptions : NonNullable<T> & HostedResolveOptions;
+  } as T extends undefined ? HostedRunResolveOptions : NonNullable<T> & HostedRunResolveOptions;
 }
 
 export function hostedAuthProbeTaskForProfile(
@@ -659,6 +707,9 @@ export function withHostedStoryboardRunOptions<T extends Partial<StoryboardRunOp
     ...input,
     adcpVersion: version,
     schemaRoot: input.schemaRoot ?? hostedSchemaRootForVersion(version, target),
+    // Step re-runs validate an echoed release's capabilities the same way
+    // comply() does (withHostedComplianceOptions).
+    servedReleaseSchemaRoots: input.servedReleaseSchemaRoots ?? hostedServedReleaseSchemaRoots(version),
     ...(hostedStableLineAlias && { wireAdcpVersion: hostedStableLineAlias }),
   } as T extends undefined ? StoryboardRunOptions : NonNullable<T> & StoryboardRunOptions;
 }

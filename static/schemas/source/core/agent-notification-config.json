@@ -77,8 +77,7 @@
     },
     "signing_profile": {
       "$ref": "/schemas/enums/webhook-signing-profile.json",
-      "default": "adcp/webhook-signing/v1",
-      "description": "Webhook-signing profile the seller uses for every delivery to this `url`. A seller whose `webhook_signing.profiles` does not list it rejects the entry with `INVALID_REQUEST` or `VALIDATION_ERROR`. MUST NOT be combined with `authentication`."
+      "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the entry with `INVALID_REQUEST` or `VALIDATION_ERROR`. MUST NOT be combined with `authentication`."
     },
     "active": {
       "type": "boolean",
@@ -113,7 +112,10 @@
             "signal.updated",
             "signal.priced",
             "signal.removed",
-            "wholesale_feed.bulk_change"
+            "wholesale_feed.bulk_change",
+            "collection_card.updated",
+            "collection_card.removed",
+            "collection_catalog.bulk_change"
           ]
         }
       }

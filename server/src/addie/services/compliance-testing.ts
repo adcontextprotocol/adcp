@@ -323,6 +323,9 @@ export async function comply(
   } finally {
     await receiverLease?.release();
   }
+  // An agent that echoes a newer release in the target's major has its
+  // capabilities validated against that release by the SDK, using the hosted
+  // roots withHostedComplianceOptions supplies (servedReleaseSchemaRoots).
   const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { hosted_provenance: ComplianceRunProvenance }).hosted_provenance =

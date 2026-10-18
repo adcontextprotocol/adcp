@@ -603,7 +603,7 @@
         "success": false
       },
       "tier": "adcp",
-      "basis": "Profile: every Ed25519 key signs (Appendix B.1 recommends it)"
+      "basis": "Profile: every Ed25519 key signs; WBA Appendix B.1 only RECOMMENDS a signature, and a verifier MAY use an unproven key"
     },
     {
       "id": "D04",
@@ -674,17 +674,17 @@
     },
     {
       "id": "D09",
-      "name": "Status 203",
+      "name": "Directory served with status 203",
       "status": 203,
       "expected": {
         "success": false
       },
       "tier": "adcp",
-      "basis": "WBA section 5.5: a resource fetched for discovery MUST be served with 200, and any other status is a discovery failure"
+      "basis": "WBA section 5.5: a status other than 200 is a discovery failure"
     },
     {
       "id": "D10",
-      "name": "Signature tag web-bot-auth",
+      "name": "Signed with tag web-bot-auth",
       "parameters": {
         "tag": "web-bot-auth"
       },
@@ -692,7 +692,7 @@
         "success": false
       },
       "tier": "adcp",
-      "basis": "WBA Appendix B.1: tag MUST be http-message-signatures-directory"
+      "basis": "WBA Appendix B.1: tag=\"http-message-signatures-directory\""
     },
     {
       "id": "D11",
@@ -710,7 +710,7 @@
         "success": false
       },
       "tier": "adcp",
-      "basis": "Profile: every Ed25519 key signs (Appendix B.1 recommends it)"
+      "basis": "Profile: every Ed25519 key in the directory signs"
     },
     {
       "id": "D12",

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/notification-config.json",
   "title": "Notification Config",
-  "description": "Account-level webhook subscription for notifications whose lifecycle outlives any single media buy — creative state changes, library purges, account status changes, wholesale feed change webhooks, and future account-anchored resource events after those event types are added to this schema. This is distinct from `push-notification-config.json`, which anchors at a per-resource operation (a single task or media buy). The one-shot `sync_accounts.push_notification_config` channel may report the first async result of a provisioning request, while durable account lifecycle events such as later `payment_required` or `suspended` transitions use `account.status_changed` here. An account MAY register multiple notification configs to fan a single seller's events out to multiple buyer-side endpoints; each entry filters by `event_types`. As with push-notification-config, the default signing scheme is the AdCP RFC 9421 webhook profile against the seller's brand.json `agents[]` JWKS; the optional `authentication` block opts into the deprecated Bearer / HMAC-SHA256 fallback for compatibility. Credentials and shared secrets in `authentication.credentials` are write-only — sellers MUST NOT echo them back in `list_accounts` responses. Sellers MUST verify endpoint control before activating a new or changed active account-level notification config; delivery-time SSRF validation still applies to every fire.",
+  "description": "Account-level webhook subscription for notifications whose lifecycle outlives any single media buy — creative state changes, library purges, account status changes, wholesale feed and collection card change webhooks, and future account-anchored resource events after those event types are added to this schema. This is distinct from `push-notification-config.json`, which anchors at a per-resource operation (a single task or media buy). The one-shot `sync_accounts.push_notification_config` channel may report the first async result of a provisioning request, while durable account lifecycle events such as later `payment_required` or `suspended` transitions use `account.status_changed` here. An account MAY register multiple notification configs to fan a single seller's events out to multiple buyer-side endpoints; each entry filters by `event_types`. As with push-notification-config, the default signing scheme is the AdCP RFC 9421 webhook profile against the seller's brand.json `agents[]` JWKS; the optional `authentication` block opts into the deprecated Bearer / HMAC-SHA256 fallback for compatibility. Credentials and shared secrets in `authentication.credentials` are write-only — sellers MUST NOT echo them back in `list_accounts` responses. Sellers MUST verify endpoint control before activating a new or changed active account-level notification config; delivery-time SSRF validation still applies to every fire.",
   "type": "object",
   "properties": {
     "subscriber_id": {
@@ -19,7 +19,7 @@
     },
     "event_types": {
       "type": "array",
-      "description": "Account-anchored notification types this subscriber wishes to receive on the registered `url`. The seller MUST NOT fire other types against this endpoint, and MUST NOT silently widen the filter when new account-anchored types are added. Creative lifecycle, assignment, indicator, account status, wholesale feed, reporting.delivery_ready, reporting.status_changed, and reporting.ledger_changed events are valid here; media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) and agent-anchored types (`capabilities.changed`) are schema-invalid on this surface and sellers MUST reject those entries as per-account validation failures with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at the invalid `event_types` entry rather than silently dropping them.",
+      "description": "Account-anchored notification types this subscriber wishes to receive on the registered `url`. The seller MUST NOT fire other types against this endpoint, and MUST NOT silently widen the filter when new account-anchored types are added. Creative lifecycle, assignment, indicator, account status, wholesale feed, collection card (collection_card.* and collection_catalog.bulk_change, experimental: register them only with a seller that lists them in wholesale_feed_webhooks.event_types), reporting.delivery_ready, reporting.status_changed, and reporting.ledger_changed events are valid here; media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) and agent-anchored types (`capabilities.changed`) are schema-invalid on this surface and sellers MUST reject those entries as per-account validation failures with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at the invalid `event_types` entry rather than silently dropping them.",
       "items": {
         "type": "string",
         "enum": [
@@ -38,6 +38,9 @@
           "signal.priced",
           "signal.removed",
           "wholesale_feed.bulk_change",
+          "collection_card.updated",
+          "collection_card.removed",
+          "collection_catalog.bulk_change",
           "reporting.delivery_ready",
           "reporting.status_changed",
           "reporting.ledger_changed"
@@ -78,8 +81,7 @@
     },
     "signing_profile": {
       "$ref": "/schemas/enums/webhook-signing-profile.json",
-      "default": "adcp/webhook-signing/v1",
-      "description": "Webhook-signing profile the seller uses for every delivery to this `url`. A seller whose `webhook_signing.profiles` does not list it rejects the entry as a per-account validation failure with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at it. MUST NOT be combined with `authentication`."
+      "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the entry as a per-account validation failure with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at it. MUST NOT be combined with `authentication`."
     },
     "active": {
       "type": "boolean",
@@ -161,6 +163,19 @@
           "wholesale_feed.bulk_change"
         ],
         "product_payload_view": "canonical",
+        "active": true
+      }
+    },
+    {
+      "description": "Collection card mirror subscriber (experimental, media_buy.collection_catalog); bootstraps and repairs through list_collections",
+      "data": {
+        "subscriber_id": "card-mirror",
+        "url": "https://buyer.example/webhooks/adcp/collection-cards",
+        "event_types": [
+          "collection_card.updated",
+          "collection_card.removed",
+          "collection_catalog.bulk_change"
+        ],
         "active": true
       }
     },

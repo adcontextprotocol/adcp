@@ -29,8 +29,9 @@ permissions:
 #
 # GitHub Actions concurrency is scoped per repo, so neither group serializes
 # against downstream AAO repos using the cross-repo callable workflow. The
-# rebase-retry loop in `scripts/ipr/check-and-record.mjs` handles that
-# contention.
+# retry loop in `scripts/ipr/check-and-record.mjs` handles that contention: on
+# a rejected push it resets to the new main, re-applies the signature, and
+# retries with backoff.
 
 jobs:
   check:

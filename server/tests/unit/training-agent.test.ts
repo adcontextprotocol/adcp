@@ -18098,18 +18098,36 @@ describe('get_adcp_capabilities handler', () => {
     const { isProtocolMethodName } = await import('../../src/training-agent/request-signing.js');
     expect(requiredFor.every(op => !isProtocolMethodName(op))).toBe(true);
 
-    expect(rs.protocol_methods_required_for).toEqual([
-      'tasks/cancel',
-      'tasks/pushNotificationConfig/set',
-    ]);
-    expect(rs.protocol_methods_supported_for).toEqual([
-      'tasks/cancel',
-      'tasks/pushNotificationConfig/set',
-    ]);
+    // This route serves releases before 3.2, whose schemas accept only one
+    // lowercase slash path; the verifier still enforces every listed method.
+    expect(rs.protocol_methods_required_for).toEqual(['tasks/cancel']);
+    expect(rs.protocol_methods_supported_for).toEqual(['tasks/cancel']);
 
     // Cross-namespace leak guard.
     const supportedFor = rs.supported_for as string[];
     expect(supportedFor.every(op => !isProtocolMethodName(op))).toBe(true);
+  });
+
+  it('advertises only protocol method names the served release schema accepts', async () => {
+    const legacyServer = createTrainingAgentServer({ mode: 'open', strict: true });
+    const currentServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
+    const [{ result: majorOnly }, { result: current }] = await Promise.all([
+      // A major-only pin is served 3.1, the route's highest release.
+      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_major_version: 3 }),
+      simulateCallTool(currentServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+    ]);
+
+    expect(majorOnly.adcp_version).toMatch(/^3\.1/);
+    const legacySigning = majorOnly.request_signing as Record<string, unknown>;
+    expect(legacySigning.protocol_methods_required_for).toEqual(['tasks/cancel']);
+    expect(legacySigning.protocol_methods_supported_for).toEqual(['tasks/cancel']);
+
+    const currentSigning = current.request_signing as Record<string, unknown>;
+    expect(currentSigning.protocol_methods_required_for).toEqual([
+      'tasks/cancel',
+      'tasks/pushNotificationConfig/set',
+      'CreateTaskPushNotificationConfig',
+    ]);
   });
 
   it('advertises 3.2 only on signing routes that require content-digest coverage', async () => {

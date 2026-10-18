@@ -104,6 +104,18 @@ describe('Web Bot Auth profile test keys', () => {
   });
 });
 
+describe('Web Bot Auth profile schema fields', () => {
+  it('signing_profile has no default, so filling in defaults never adds it next to authentication', () => {
+    for (const name of ['push-notification-config', 'notification-config', 'agent-notification-config']) {
+      const schema = JSON.parse(fs.readFileSync(path.join(__dirname, `../static/schemas/source/core/${name}.json`), 'utf8'));
+      const field = schema.properties.signing_profile;
+      assert.equal(field.$ref, '/schemas/enums/webhook-signing-profile.json', name);
+      assert.ok(!('default' in field), `${name}.signing_profile declares a default`);
+      assert.ok(schema.properties.authentication, `${name} has no authentication field`);
+    }
+  });
+});
+
 describe('Web Bot Auth profile positive vectors', () => {
   for (const { file, vector } of positive.filter(e => !e.vector.response)) {
     it(`${file}: the judge verifies the signature and names the expected identity`, async () => {
@@ -181,6 +193,23 @@ describe('Web Bot Auth profile negative vectors', () => {
     }
     assert.deepEqual(identities, { sig1: 'https://buyer-7k3q.com', sig2: 'https://agent.brand-7k3q.com' });
     assert.equal(vector.expected_signature_base.sig1, original.expected_signature_base.sig1);
+  });
+
+  it('a Signature-Agent value that is not exactly an https origin is refused with 403', async () => {
+    const { vector: original } = positive.find(e => e.file === '001-single-signer-request.json');
+    const { headers, ...request } = original.request;
+    const unsigned = { ...request, headers: { 'content-type': headerOf(headers, 'content-type') } };
+    const key = privateJwk(parseDictionary(headerOf(headers, 'signature-input')).get('sig1')[1].get('keyid'));
+    const now = original.reference_now;
+    for (const value of ['http://buyer-7k3q.com', 'https://buyer-7k3q.com/', 'https://Buyer-7k3q.com', 'https://buyer-7k3q.com:443', 'https://buyer-7k3q.com/agent']) {
+      // The library signs the value as given, and the value's origin serves the key, so the origin rule is the only one the request breaks.
+      const signed = await judge.signRequest({ key, origin: value, request: unsigned, now });
+      const origin = new URL(value).origin;
+      const directories = { [origin]: await judge.signDirectory({ keys: [key], origin, now }) };
+      const result = await judge.verifyRequest({ request: signed, directories, now });
+      assert.deepEqual([result.status, result.rule], [403, 'signature-agent-origin'], `${value}: ${result.error}`);
+      assert.equal((await judge.verifyRequest({ request: signed, directories, now }, { bare: true })).ok, true, value);
+    }
   });
 
   it('002: the replayed request is byte-identical to positive/001', () => {

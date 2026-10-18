@@ -194,7 +194,15 @@ function placeholderFor(schema, depth = 0) {
   if (types.includes('number')) return resolved.minimum ?? 0;
   if (types.includes('boolean')) return true;
   if (types.includes('array')) return [];
-  if (types.includes('object')) return synthesizeObject(resolved, depth);
+  if (types.includes('object')) {
+    // A discriminated union written as `{ type: "object", discriminator, oneOf: [...] }`
+    // (e.g. core/format-option-ref.json) carries no top-level `properties`, so
+    // synthesizing it directly yields `{}` and ajv then reports the discriminator tag
+    // as missing. Fall back to a concrete branch only in that case; nodes that do
+    // declare `properties` keep their existing resolution untouched.
+    const branch = resolved.properties ? null : firstObjectBranch(resolved);
+    return synthesizeObject(branch ?? resolved, depth);
+  }
   if (types.includes('null')) return null;
   return STRING_PLACEHOLDER;
 }
