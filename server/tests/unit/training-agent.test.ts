@@ -8094,6 +8094,39 @@ describe('create_media_buy handler', () => {
     expect(typeof result.media_buy_id).toBe('string');
   });
 
+  it('returns stable audience platform IDs and matching legacy aliases on sync and discovery', async () => {
+    const account = { brand: { domain: 'nova-platform-ids.example' }, operator: 'pinnacle-agency.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const audience = {
+      audience_id: 'nova_loyalty',
+      name: 'Nova loyalty',
+      audience_type: 'crm',
+      add: [{ external_id: 'member_1', hashed_email: 'a'.repeat(64) }],
+    };
+    const { result: synced } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      audiences: [audience],
+    });
+    const created = (synced.audiences as Array<Record<string, unknown>>)[0]!;
+    expect(created.action).toBe('created');
+    expect(typeof created.platform_id).toBe('string');
+    expect(created.seller_id).toBe(created.platform_id);
+
+    const { result: updated } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      audiences: [{ ...audience, name: 'Updated Nova loyalty' }],
+    });
+    const { result: discovered } = await simulateCallTool(server, 'sync_audiences', { account });
+    for (const [result, action] of [[updated, 'updated'], [discovered, 'unchanged']] as const) {
+      expect(result.audiences).toEqual([expect.objectContaining({
+        audience_id: 'nova_loyalty',
+        action,
+        platform_id: created.platform_id,
+        seller_id: created.platform_id,
+      })]);
+    }
+  });
+
   it('binds a declared external dataset source, preserves it in discovery, and accepts it for targeting', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
     const account = { brand: { domain: 'sourced-audience.example' }, operator: 'pinnacle-agency.example' };
@@ -18098,18 +18131,36 @@ describe('get_adcp_capabilities handler', () => {
     const { isProtocolMethodName } = await import('../../src/training-agent/request-signing.js');
     expect(requiredFor.every(op => !isProtocolMethodName(op))).toBe(true);
 
-    expect(rs.protocol_methods_required_for).toEqual([
-      'tasks/cancel',
-      'tasks/pushNotificationConfig/set',
-    ]);
-    expect(rs.protocol_methods_supported_for).toEqual([
-      'tasks/cancel',
-      'tasks/pushNotificationConfig/set',
-    ]);
+    // This route serves releases before 3.2, whose schemas accept only one
+    // lowercase slash path; the verifier still enforces every listed method.
+    expect(rs.protocol_methods_required_for).toEqual(['tasks/cancel']);
+    expect(rs.protocol_methods_supported_for).toEqual(['tasks/cancel']);
 
     // Cross-namespace leak guard.
     const supportedFor = rs.supported_for as string[];
     expect(supportedFor.every(op => !isProtocolMethodName(op))).toBe(true);
+  });
+
+  it('advertises only protocol method names the served release schema accepts', async () => {
+    const legacyServer = createTrainingAgentServer({ mode: 'open', strict: true });
+    const currentServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
+    const [{ result: majorOnly }, { result: current }] = await Promise.all([
+      // A major-only pin is served 3.1, the route's highest release.
+      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_major_version: 3 }),
+      simulateCallTool(currentServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+    ]);
+
+    expect(majorOnly.adcp_version).toMatch(/^3\.1/);
+    const legacySigning = majorOnly.request_signing as Record<string, unknown>;
+    expect(legacySigning.protocol_methods_required_for).toEqual(['tasks/cancel']);
+    expect(legacySigning.protocol_methods_supported_for).toEqual(['tasks/cancel']);
+
+    const currentSigning = current.request_signing as Record<string, unknown>;
+    expect(currentSigning.protocol_methods_required_for).toEqual([
+      'tasks/cancel',
+      'tasks/pushNotificationConfig/set',
+      'CreateTaskPushNotificationConfig',
+    ]);
   });
 
   it('advertises 3.2 only on signing routes that require content-digest coverage', async () => {
