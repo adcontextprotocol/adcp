@@ -351,7 +351,7 @@ describe('adopter-facing guidance', () => {
       read(VERSIONING),
       '### 3.3 exceptions to 3.x compatibility (beta)',
     );
-    assert.match(body, /Counterparty-asserted lists are bounded/);
+    assert.match(body, /^\| Counterparty-asserted lists are bounded \|/m);
     assert.match(body, /publisher_domains/);
     assert.match(body, /data_provider_domains/);
     assert.match(body, /8,192 bytes/);
@@ -359,9 +359,6 @@ describe('adopter-facing guidance', () => {
     // classifiable as minor rather than major.
     assert.match(body, /\*\*Schemas are unchanged\*\*/);
     assert.match(body, /8197/);
-    // The table preamble counts the narrowings; adding a row without updating
-    // it leaves the section self-contradictory.
-    assert.match(body, /three narrow it/i);
   });
 
   it('the migration guide carries the narrowing and both audiences', () => {

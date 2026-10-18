@@ -85,7 +85,7 @@ export type TrainingAudienceStatus = 'processing' | 'ready' | 'too_small' | 'sus
 interface AudienceState {
   audienceId: string;
   name: string;
-  sellerId: string;
+  platformId: string;
   uploadedCount: number;
   matchedCount: number;
   status: TrainingAudienceStatus;
@@ -507,7 +507,8 @@ export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) 
       return {
         audience_id: a.audienceId,
         name: a.name,
-        seller_id: a.sellerId,
+        platform_id: a.platformId,
+        seller_id: a.platformId,
         action: 'unchanged',
         status: a.status,
         ...(a.statusReason && { reason: a.statusReason }),
@@ -621,7 +622,7 @@ export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) 
     const state: AudienceState = {
       audienceId: input.audience_id,
       name: input.name ?? existing?.name ?? input.audience_id,
-      sellerId: existing?.sellerId ?? `aud_${randomUUID().slice(0, 8)}`,
+      platformId: existing?.platformId ?? `aud_${randomUUID().slice(0, 8)}`,
       uploadedCount: totalUploaded,
       matchedCount: totalMatched,
       status,
@@ -637,7 +638,8 @@ export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) 
     const result: Record<string, unknown> = {
       audience_id: state.audienceId,
       name: state.name,
-      seller_id: state.sellerId,
+      platform_id: state.platformId,
+      seller_id: state.platformId,
       action: existing ? 'updated' : 'created',
       status: state.status,
       uploaded_count: uploadedThisCall,
