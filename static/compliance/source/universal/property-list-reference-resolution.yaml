@@ -33,16 +33,17 @@ prerequisites:
   controller_seeding: true
 fixtures:
   accounts:
-    - account_id: acct_reference_resolution_sandbox_82820001
+    - account_id: "acct_acmeoutdoor_example_sandbox_51cf6c5be402"
       fixture:
         brand:
-          domain: acmeoutdoor.example
-        operator: pinnacle-agency.example
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
         operator_unit:
-          id: compliance-property_list_reference_resolution-82820001
-        billing: operator
-        status: active
+          id: "compliance-property_list_reference_resolution-80f9aa53"
+        billing: "operator"
+        status: "active"
         sandbox: true
+
 phases:
   - id: reference_resolution
     title: Issue and resolve a scoped reference
@@ -62,7 +63,8 @@ phases:
               domain: acmeoutdoor.example
             operator: pinnacle-agency.example
             operator_unit:
-              id: compliance-property_list_reference_resolution-82820001
+              id: "compliance-property_list_reference_resolution-80f9aa53"
+            sandbox: true
           name: Unshared control list
           base_properties:
             - selection_type: identifiers
@@ -93,7 +95,8 @@ phases:
               domain: acmeoutdoor.example
             operator: pinnacle-agency.example
             operator_unit:
-              id: compliance-property_list_reference_resolution-82820001
+              id: "compliance-property_list_reference_resolution-80f9aa53"
+            sandbox: true
           name: Shared reference list
           base_properties:
             - selection_type: identifiers
