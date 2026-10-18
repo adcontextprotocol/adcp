@@ -780,6 +780,26 @@
       },
       "tier": "adcp",
       "basis": "Profile: refuse a directory in which any key carries a private member; WBA section 5.5.1: a verifier SHOULD reject malformed entries"
+    },
+    {
+      "id": "D14c",
+      "name": "Extra P-256 key that carries its private scalar as an upper-case D",
+      "unsigned_keys": [
+        {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "ayhQePn14MyJGqrKHsp_A06Z0N6IZoE0-7wbn66qLLc",
+          "y": "k98dk4yymVze93JE_EpboBD6oaZbcII4Lvf_Oqu8kII",
+          "kid": "4rrLPtiRac4zmWwTBQeJlzgNyb5jai8HSOTJONOIKFY",
+          "use": "sig",
+          "D": "IyiPVggq91xZTs3CxpETaAbK6Qca0DuuD9-DZx7ueHs"
+        }
+      ],
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "Profile: private member names compare without regard to case; WBA section 5.5.1: a verifier SHOULD reject malformed entries"
     }
   ]
 }
