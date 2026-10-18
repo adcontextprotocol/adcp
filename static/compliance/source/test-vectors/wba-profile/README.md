@@ -137,7 +137,9 @@ Run the positive vectors first. If `positive/001` fails, the signature base, key
 
 `scripts/generate-wba-profile-vectors.mjs` writes every file in this directory except this README. It derives the keys from their seeds, builds each signature base component by component, and signs it with Ed25519. Run `node scripts/generate-wba-profile-vectors.mjs --check` to confirm the committed files match the generator. The positive values are the ones in RFC #7878's illustrations. Do not hand-edit the vector files; change the generator and run it again.
 
-`tests/wba-profile-vectors.test.cjs` verifies the vectors without sharing code with the generator. It parses the headers, rebuilds each signature base from the request, and checks signatures and digests with `node:crypto`. For each negative vector it asserts the expected status and the check that fails. For each negative vector with a valid signature, it asserts that the request verifies once that one check is skipped. `npm run test:wba-profile-vectors` runs both. The positive vectors were also verified with a generic RFC 9421 library ([`http-message-sig`](https://www.npmjs.com/package/http-message-sig)) and, for the single-signer request, with Cloudflare's [`web-bot-auth`](https://www.npmjs.com/package/web-bot-auth) library.
+`tests/wba-profile-vectors.test.cjs` grades the vectors with the judge in `tests/wba-interop/`: Cloudflare's [`web-bot-auth`](https://www.npmjs.com/package/web-bot-auth) and [`http-message-sig`](https://www.npmjs.com/package/http-message-sig) libraries at pinned versions, bare and with the profile's rules in `tests/wba-interop/policy.mjs`. The judge shares no code with the generator. For each negative vector, the test asserts the expected status from the judge, and whether the bare library accepts the vector, which shows whether the vector breaks a WBA rule or only an AdCP rule. It checks each committed signature against its `expected_signature_base`, so the library's verification shows that the library computes the same base. `npm run test:wba-profile-vectors` runs the generator check and the test.
+
+`tests/wba-interop/run.mjs` grades an implementation through an adapter against the same judge, with the vectors, live signing in both directions, and `scenarios.json`. `tests/wba-interop/PROTOCOL.md` defines the adapter protocol, and `node tests/wba-interop/run.mjs --self` checks every scenario's tier.
 
 ## Adding vectors
 
@@ -148,4 +150,4 @@ Every added vector MUST:
 3. State `expected_outcome.status` for a negative vector in the profile's status-code vocabulary, and `accept_signature` for a `403`.
 4. Include `expected_signature_base` for every label when the signature headers parse, computed from the request as sent.
 5. Include `test_harness_state` when the vector needs preloaded verifier state.
-6. Come from `scripts/generate-wba-profile-vectors.mjs`. A negative vector also needs an entry in `TARGETS` in `tests/wba-profile-vectors.test.cjs`, naming the check it targets.
+6. Come from `scripts/generate-wba-profile-vectors.mjs`. A negative vector also needs an entry in `TARGETS` in `tests/wba-profile-vectors.test.cjs`, naming what the bare library answers.
