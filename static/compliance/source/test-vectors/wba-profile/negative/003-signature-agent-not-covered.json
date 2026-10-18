@@ -9,7 +9,7 @@
     "headers": {
       "Content-Type": "application/json",
       "Content-Digest": "sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:",
-      "Signature-Agent": "sig1=\"https://buyer-7k3q.com/.well-known/http-message-signatures-directory\"",
+      "Signature-Agent": "sig1=\"https://buyer-7k3q.com\"",
       "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\" \"content-digest\");created=1790841600;expires=1790841900;nonce=\"7zKVsUsDkwbtvncoToQq1fW7IyIQrbSC3ZY-tFE2mdNOSKRmoZ7NEqEuwZsFZKg61b7KK0nXkR7AlA6_WFZJ9A\";keyid=\"6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I\";alg=\"ed25519\";tag=\"web-bot-auth\"",
       "Signature": "sig1=:e9r9FdXp1AxLJv4Lzg03+tRR1RXafvY7QjEd8DrkN29WHN5etGgyPI5ruhoYvuMqJbN1FAnmtkAfl/UG0BIpAw==:"
     },

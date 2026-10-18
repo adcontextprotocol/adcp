@@ -5,13 +5,13 @@ description: "Proposed AdCP 3.3 Web Bot Auth profile for request and webhook sig
 "og:title": "AdCP — Web Bot Auth request-signing profile"
 ---
 
-This page defines an AdCP profile of Web Bot Auth (WBA), the IETF protocol for identifying automated HTTP clients. Under the profile, a seller identifies a signing agent from the request itself. The signer names its key directory, the well-known URI of its origin, in a covered `Signature-Agent` header, and the seller fetches the signer's keys from that URL. The seller then decides, under AdCP's own rules, what the identified agent may do.
+This page defines an AdCP profile of Web Bot Auth (WBA), the IETF protocol for identifying automated HTTP clients. Under the profile, a seller identifies a signing agent from the request itself. The signer names its origin in a covered `Signature-Agent` header, and the seller fetches the signer's keys from that origin's key directory. The seller then decides, under AdCP's own rules, what the identified agent may do.
 
 <Note>
 **Status: proposed for AdCP 3.3.** This page illustrates the request and webhook profile proposed in [RFC #7878](https://github.com/adcontextprotocol/adcp/issues/7878). The proposal publishes this profile alongside the AdCP RFC 9421 profile in [Signed Requests (Transport Layer)](/docs/building/by-layer/L1/security#signed-requests-transport-layer), which stays as written. Nothing on this page is normative until the working group records a decision on the RFC. Document signing and transparency logs are separate decisions and are not part of this page.
 </Note>
 
-The profile selects options that WBA and RFC 9421 already define. It adds no headers, tags, key fields, or error codes to the wire. Any implementation of [draft-ietf-webbotauth-httpsig-protocol-00](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/00/) can therefore sign and verify AdCP requests once it is configured with the rules on this page. Section numbers in this page refer to that draft unless they name RFC 9421. The `Signature-Agent` form follows the working group's [editor's copy of the draft at commit `be12662f`](https://github.com/webbotauth/draft-ietf-webbotauth-httpsig-protocol/blob/be12662f3c5cc97e10e65a37355bdb33ba0d2fc4/draft-ietf-webbotauth-httpsig-protocol.md) instead of -00. The editor's copy is unpublished, so the profile pins it by commit and cites its sections by title.
+The profile selects options that WBA and RFC 9421 already define. It adds no headers, tags, key fields, or error codes to the wire. Any implementation of [draft-ietf-webbotauth-httpsig-protocol-00](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/00/) can therefore sign and verify AdCP requests once it is configured with the rules on this page. Section numbers in this page refer to that draft unless they name RFC 9421.
 
 ## What the profile changes for a seller
 
@@ -22,18 +22,16 @@ Under the AdCP RFC 9421 profile, a seller verifies a signature only from an agen
 A verifier resolves a signer's keys in one step:
 
 ```text
-Signature-Agent member value  =  https://<origin>/.well-known/http-message-signatures-directory
+Signature-Agent member  ->  origin  ->  https://<origin>/.well-known/http-message-signatures-directory
 ```
 
-The verifier reads the `Signature-Agent` member keyed to the signature label. Its value is an `https` URL that the verifier fetches as sent and reads as a JWK Set (editor's copy, "Key Distribution and Discovery"). The profile requires that URL to be the well-known URI of the signer's origin, `https://<origin>/.well-known/http-message-signatures-directory`, with no other path and no query. The verifier refuses any other value with `403`. One fetch returns one file, and the verifier reads no other document to find keys.
+The verifier reads the `Signature-Agent` member keyed to the signature label and takes the origin it names. It fetches the HTTP Message Signatures Directory at that origin's well-known path (section 5.5). One fetch returns one file, and the verifier reads no other document to find keys. The directory is the only key location the profile recognizes. The verifier ignores a `Signature-Agent` member with a `type` parameter other than `directory`, as section 5.2.1 permits for a type the verifier does not support.
 
-A member carries no parameters. A verifier ignores a member that carries any, as the editor's copy requires ("Signature-Agent"), so a signature that covers such a member covers no member the verifier reads.
-
-The editor's copy explains why the well-known URI matters ("Binding a Key to a Web Origin"): when the value is the well-known URI, the URL "names a domain rather than an arbitrary path on one". Section 5.5 of -00 says the same: "TLS authenticates the host but not the path", and "The well-known URI is reserved, so directory additionally names a domain".
+Section 5.5 explains why the well-known path matters: "TLS authenticates the host but not the path", and "The well-known URI is reserved, so directory additionally names a domain".
 
 ## Identity
 
-Under the profile, an identity is an origin, for example `https://buyer-7k3q.com`. The `Signature-Agent` value is that origin's well-known URI, `https://buyer-7k3q.com/.well-known/http-message-signatures-directory`, and the identity is the origin of that URL. The identity has one key directory, and every key it signs with is published there. The verifier attributes a verified request to that origin and to nothing else.
+Under the profile, an identity is an origin, for example `https://buyer-7k3q.com`. The identity has one key directory, and every key it signs with is published there. The verifier attributes a verified request to that origin and to nothing else.
 
 Two agents cannot share an origin. An operator that runs several agents gives each its own origin, for example one subdomain per agent. Section 6.5 recommends this for agents that need to be told apart: "these should use distinct signing keys and signing key directories". The same rule covers purposes: a governance agent is an agent like any other, on its own origin (see [One agent per purpose](#one-agent-per-purpose)).
 
@@ -53,7 +51,7 @@ RFC 9421 section 3.2.1 lets an application impose requirements beyond the base s
 
 | Rule | Profile choice | Basis |
 |---|---|---|
-| Signature | RFC 9421 with `tag="web-bot-auth"`, `keyid` set to the key's JWK thumbprint, and a covered `Signature-Agent` member whose value is the well-known URI of the signer's origin. The member carries no parameters | Sections 5.2 and 5.5; editor's copy, "Signature-Agent" and "Binding a Key to a Web Origin" |
+| Signature | RFC 9421 with `tag="web-bot-auth"`, `keyid` set to the key's JWK thumbprint, and a covered `Signature-Agent` member naming an origin | Sections 5.2, 5.2.1, 5.5 |
 | Components, every request | `@method`, `@target-uri`, `@authority`, `"signature-agent";key=<label>` | Section 5.2 |
 | Components, requests with a body | Also `content-type` and `content-digest` | Section 5.2: an agent that needs body integrity "MUST send and cover Content-Digest" |
 | Parameters | `created`, `expires`, `keyid`, `alg`, and a `nonce` on every signed request. The nonce is 64 random bytes, encoded as unpadded base64url or as canonical padded base64 | RFC 9421 sections 2.3, 3.2.1, 7.2.2; sections 5.2 and 5.2.3; Appendix C.6; WBA architecture draft section 4.2.2 and Appendix A |
@@ -86,15 +84,14 @@ POST /mcp/ HTTP/1.1
 Host: seller-7k3q.com
 Content-Type: application/json
 Content-Digest: sha-256=:yeYok+hSZEsVifM6QdAl+jXRfSJ/75y4NS4MXUWaOdU=:
-Signature-Agent: sig1="https://buyer-7k3q.com/.well-known/http-message-sig\
-    natures-directory"
+Signature-Agent: sig1="https://buyer-7k3q.com"
 Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" \
     "content-digest" "signature-agent";key="sig1");created=1790841600;expir\
     es=1790841900;nonce="Mn-ZM8SnGESx0-rmyYMuTkJFerfbwEii2C0qNkDP8ugpcuv0pc\
     rt6Da2ifr-6MTmfVeZhnFymLeAofeXJbFaxA";keyid="6WsKMCObba49V3uN0vIENnk1BK\
     Ak7c9zjBJcWKyQ9_I";alg="ed25519";tag="web-bot-auth"
-Signature: sig1=:1Pmpi+qduaRBgixQ9r45dooLUcM0eq/txkaj8lxXiFupiOqKx/wj7JhUEs\
-    mq4URVRvEgMensCIRZe1Y/arViDw==:
+Signature: sig1=:ihPGBC7XQPM6WkIYhYQvFHgwTpbssvuQzkb0FfwkuebREyF32sXhiRxXbX\
+    WRZMp0O//C4I2g1a2Kui56ffEfBQ==:
 
 {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"create_medi\
     a_buy","arguments":{"idempotency_key":"4f6c1a0e-8d2b-4b7e-9c3a-2e5d7f1b\
@@ -102,7 +99,7 @@ Signature: sig1=:1Pmpi+qduaRBgixQ9r45dooLUcM0eq/txkaj8lxXiFupiOqKx/wj7JhUEs\
     udget":{"amount":25000,"currency":"USD"}}}}
 ```
 
-The signature base the buyer signed is the one in `positive/001-single-signer-request.json` under [Conformance vectors](#conformance-vectors). The `Signature-Agent` value is the well-known URI of `https://buyer-7k3q.com`, which the verifier fetches as sent.
+The signature base the buyer signed is the one in `positive/001-single-signer-request.json` under [Conformance vectors](#conformance-vectors). The `Signature-Agent` value is an origin, so the verifier fetches `https://buyer-7k3q.com/.well-known/http-message-signatures-directory`.
 
 ## Key directories
 
@@ -146,9 +143,9 @@ Signature: key1=:QJeeYQ9E5OXMbEy89f1YjQNCB5NjRxN+ck/V+4sRoVNtF5S/446uVIECNC\
 
 A verifier applies the following procedure to a request that carries `Signature-Input`.
 
-1. Parse `Signature`, `Signature-Input`, and `Signature-Agent` as Structured Fields. Every `Signature` member value is a Byte Sequence and every `Signature-Input` member value is an Inner List (RFC 9421 sections 4.1 and 4.2), whatever the member's tag. If any header fails to parse, answer `400` (section 5.4). The bare-string `Signature-Agent` of earlier drafts does not parse as a Dictionary, so it gets `400` too. The editor's copy lets a verifier accept that form, and the profile does not.
+1. Parse `Signature`, `Signature-Input`, and `Signature-Agent` as Structured Fields. Every `Signature` member value is a Byte Sequence and every `Signature-Input` member value is an Inner List (RFC 9421 sections 4.1 and 4.2), whatever the member's tag. If any header fails to parse, answer `400` (section 5.4).
 2. Read the one `Signature-Input` member whose `tag` is `web-bot-auth` and the `Signature-Agent` member with the same label. The verifier does not read members with other tags. A request that carries more than one `web-bot-auth` member or more than one `Signature-Agent` member is rejected with `403`. If the `Signature-Agent` member is absent, or the signature does not cover `"signature-agent";key=<label>`, reject the signature. An uncovered member is a claim the verifier must not attach policy to (section 4.1).
-3. Check that the member value is the well-known URI of an origin, and reject the signature with `403` if it is not. Fetch the value as sent, or read it from cache, and select the key whose `kid` equals `keyid`. If the directory holds no such key, the request is unverified.
+3. Resolve the origin the member names to its key directory, from cache or by fetching it, and select the key whose `kid` equals `keyid`. If the directory holds no such key, the request is unverified.
 4. Verify the signature with the selected key, and check its covered components, parameters, and window against the rules in [Profile rules](#profile-rules).
 5. Check the `nonce` against the identity's replay state, and record it (see [Replay protection](#replay-protection)).
 6. If the signature fails verification or the profile rules, answer `403`, as described in [Error responses](#error-responses).
@@ -198,7 +195,7 @@ An unsigned request to an operation in `required_for`, from a caller with no oth
 
 ## Webhooks
 
-A webhook signed under this profile is an ordinary signed request from the seller's identity. The seller signs the delivery with the rules in [Profile rules](#profile-rules). Its `Signature-Agent` value is the well-known URI of the seller's origin, and the signature covers `content-type` and `content-digest`. The receiver resolves the seller's keys from the seller's key directory with the same one resolution rule, and applies [Verification](#verification) and [Replay protection](#replay-protection) as a seller does.
+A webhook signed under this profile is an ordinary signed request from the seller's identity. The seller signs the delivery with the rules in [Profile rules](#profile-rules). Its `Signature-Agent` member names the seller's origin, and the signature covers `content-type` and `content-digest`. The receiver resolves the seller's keys from the seller's key directory with the same one resolution rule, and applies [Verification](#verification) and [Replay protection](#replay-protection) as a seller does.
 
 A subscriber states which profile it verifies when it registers a notification configuration, in the optional `signing_profile` field of `push_notification_config`, `accounts[].notification_configs[]`, and the agent-level notification configuration. The default is `adcp/webhook-signing/v1`, the AdCP webhook profile; `web-bot-auth` selects this profile. The seller signs every delivery to that registration with the one selected profile and never signs a delivery both ways. This keeps the mode-selection rule of [Webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks). The two profiles encode binary header values differently: the AdCP webhook profile uses unpadded Base64URL, and this profile uses RFC 8941 Base64. A receiver therefore selects one parser from the registration and never tries both.
 
@@ -250,12 +247,9 @@ Account authorization, the signed revocation list, and principal boundaries do n
 
 ## Differences from the reference library
 
-The conformance tooling judges implementations with Cloudflare's `web-bot-auth` 0.2.0, which implements -00. The profile differs from that library in the following ways, and AdCP accepts both differences:
+The conformance tooling judges implementations with Cloudflare's `web-bot-auth` 0.2.0, which implements -00. The profile differs from that library in one way, and AdCP accepts the difference:
 
-- **Member form.** The library reads a `Signature-Agent` member as -00 defines it: a URL with an optional `type` parameter, and it accepts an `http` URL. The profile follows the editor's copy: the member value is the `https` URL the verifier fetches, a member with parameters is ignored, and the profile allows only the well-known URI of an origin.
-- **Member keyed to the label.** The library accepts a signature that covers any one `Signature-Agent` member, whatever its key. The profile requires the member keyed to the signature's label, as the editor's copy states: "Its member keyed to the signature label MUST be signed as a component."
-
-A verifier built on the library adds both rules through the library's hooks. The scenarios for them in `scenarios.json` are tier `adcp`.
+- **Member keyed to the label.** The library accepts a signature that covers any one `Signature-Agent` member, whatever its key. The profile requires the member keyed to the signature's label, as section 5.2.1 states: "Its member keyed to the signature label MUST be signed as a component." A verifier built on the library adds this rule through the library's `validate` hook. Scenario `R19` in `scenarios.json` grades it, with tier `adcp`.
 
 ## Conformance vectors
 

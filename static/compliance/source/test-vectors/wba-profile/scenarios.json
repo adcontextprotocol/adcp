@@ -4,7 +4,6 @@
   "signing_profile": "web-bot-auth",
   "signer": {
     "identity": "https://buyer-7k3q.com",
-    "url": "https://buyer-7k3q.com/.well-known/http-message-signatures-directory",
     "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
   },
   "requests": {
@@ -280,7 +279,7 @@
       "id": "R15",
       "name": "Bare-string Signature-Agent",
       "base": "post",
-      "signature_agent": "\"https://buyer-7k3q.com/.well-known/http-message-signatures-directory\"",
+      "signature_agent": "\"https://buyer-7k3q.com\"",
       "components": [
         "@method",
         "@target-uri",
@@ -294,15 +293,15 @@
         "status": 400
       },
       "tier": "adcp",
-      "basis": "Profile: dictionary form only, so the field does not parse; the editor's copy lets a verifier accept the bare string"
+      "basis": "Profile: dictionary form only, so the field does not parse; WBA section 5.2.1 lets a verifier accept the bare string"
     },
     {
       "id": "R16",
-      "name": "http:// Signature-Agent URL",
+      "name": "http:// Signature-Agent",
       "base": "post",
-      "signature_agent": "sig1=\"http://buyer-7k3q.com/.well-known/http-message-signatures-directory\"",
+      "signature_agent": "sig1=\"http://buyer-7k3q.com\"",
       "directories": {
-        "http://buyer-7k3q.com/.well-known/http-message-signatures-directory": [
+        "http://buyer-7k3q.com": [
           "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
         ]
       },
@@ -311,15 +310,15 @@
         "status": 403
       },
       "tier": "adcp",
-      "basis": "Editor's copy, \"Signature-Agent\": the scheme MUST be https; the library accepts http"
+      "basis": "WBA section 5.2.1: the origin MUST be https; the library accepts http (cloudflare/web-bot-auth#162)"
     },
     {
       "id": "R17",
-      "name": "Signature-Agent URL other than the well-known URI",
+      "name": "Signature-Agent with a path",
       "base": "post",
-      "signature_agent": "sig1=\"https://buyer-7k3q.com/keys/jwks.json\"",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com/agents/a\"",
       "directories": {
-        "https://buyer-7k3q.com/keys/jwks.json": [
+        "https://buyer-7k3q.com/agents/a": [
           "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
         ]
       },
@@ -328,24 +327,7 @@
         "status": 403
       },
       "tier": "adcp",
-      "basis": "Profile: the value is the well-known URI of the origin, with no other path; the editor's copy permits any https URL"
-    },
-    {
-      "id": "R17b",
-      "name": "Bare origin as the Signature-Agent value (the -00 form)",
-      "base": "post",
-      "signature_agent": "sig1=\"https://buyer-7k3q.com\"",
-      "directories": {
-        "https://buyer-7k3q.com": [
-          "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
-        ]
-      },
-      "expected": {
-        "success": false,
-        "status": 403
-      },
-      "tier": "adcp",
-      "basis": "Profile: the value is the well-known URI, not the origin; -00 named the origin and the editor's copy fetches the value as sent"
+      "basis": "WBA section 5.5: a directory member MUST be an origin; the library does not check it"
     },
     {
       "id": "R18",
@@ -362,25 +344,13 @@
         "status": 403
       },
       "tier": "adcp",
-      "basis": "Editor's copy, \"Signature-Agent\": a verifier MUST ignore a member that carries parameters, so the covered member is missing"
-    },
-    {
-      "id": "R18b",
-      "name": "Signature-Agent member with type=directory",
-      "base": "post",
-      "signature_agent": "sig1=\"https://buyer-7k3q.com/.well-known/http-message-signatures-directory\";type=directory",
-      "expected": {
-        "success": false,
-        "status": 403
-      },
-      "tier": "adcp",
-      "basis": "Editor's copy, \"Signature-Agent\": a verifier MUST ignore a member that carries parameters, whatever they are, so the covered member is missing"
+      "basis": "Profile: only type=directory; WBA section 5.2.1 lets a verifier ignore other types"
     },
     {
       "id": "R19",
       "name": "Signature-Agent member keyed differently from the label",
       "base": "post",
-      "signature_agent": "agent1=\"https://buyer-7k3q.com/.well-known/http-message-signatures-directory\"",
+      "signature_agent": "agent1=\"https://buyer-7k3q.com\"",
       "components": [
         "@method",
         "@target-uri",
@@ -394,7 +364,7 @@
         "status": 403
       },
       "tier": "adcp",
-      "basis": "Editor's copy, \"Signature-Agent\": the member keyed to the signature label MUST be signed; the library accepts any one covered member"
+      "basis": "WBA section 5.2.1: the member keyed to the label; the library does not check it"
     },
     {
       "id": "R20",
@@ -442,7 +412,7 @@
       "id": "R21",
       "name": "Two Signature-Agent members, one signature",
       "base": "post",
-      "signature_agent": "sig1=\"https://buyer-7k3q.com/.well-known/http-message-signatures-directory\", sig2=\"https://agent.brand-7k3q.com/.well-known/http-message-signatures-directory\"",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com\", sig2=\"https://agent.brand-7k3q.com\"",
       "expected": {
         "success": false,
         "status": 403
