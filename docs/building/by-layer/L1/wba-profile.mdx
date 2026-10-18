@@ -1,7 +1,7 @@
 ---
 title: Web Bot Auth request-signing profile
 sidebarTitle: Web Bot Auth profile
-description: "Proposed AdCP 3.3 profile of Web Bot Auth for request and webhook signing: keys resolved from Signature-Agent, identity as an origin, nonce checks, one web-bot-auth signature per request."
+description: "Proposed AdCP 3.3 Web Bot Auth profile for request and webhook signing: keys from Signature-Agent, an origin as the identity, and one web-bot-auth signature."
 "og:title": "AdCP — Web Bot Auth request-signing profile"
 ---
 
@@ -66,9 +66,11 @@ RFC 9421 section 3.2.1 lets an application impose requirements beyond the base s
 | Directory responses | Served with the media type `application/http-message-signatures-directory+json`. Signed, one signature per Ed25519 key, covering `"@authority";req` and `content-digest`, with `created`, `expires`, the key's thumbprint as `keyid`, and `tag="http-message-signatures-directory"`. A verifier ignores keys the profile does not use, and signatures made by them | Section 5.5.1; Appendix B.1; RFC 7517 section 5 |
 | Fetches | Directory and revocation-list fetches follow AdCP's fetch rules: HTTPS only, resolved-address checks, no redirects, and size and time limits | Sections 5.5 and 6.7; [Webhook URL validation (SSRF)](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf) |
 | One signature | A request carries exactly one `web-bot-auth` signature and exactly one `Signature-Agent` member, keyed to that signature's label. A verifier does not read `Signature-Input` members with other tags. An intermediary that signs a request is its signer; whether it may act for another party is an authorization question answered by that party's `brand.json` or `trust.json`, not by a second signature | RFC 9421 section 3.2.1 lets an application add a requirement of this kind. Section 5.2.2 permits more than one signature ("A request MAY contain more than one Web Bot Auth signature") and does not require a verifier to accept one |
-| Failure responses | `400`; `403` with `Accept-Signature`; `429` with `Accept-Signature` for a reused signature or nonce | Sections 5.3 and 5.4 |
+| Failure responses | `400` when a signature header does not parse, `403` when verification or a profile rule fails, and `429` for a reused signature or nonce | Sections 5.3 and 5.4 |
 
-A request that follows the profile is a valid WBA request. A WBA verifier configured with these rules accepts it and rejects a request that falls short. Because the rules are fixed in the profile, a signer knows them before its first request; `Accept-Signature` is the recovery path when a request falls short (see [Error responses](#error-responses)).
+A request that follows the profile is a valid WBA request. A WBA verifier configured with these rules accepts it and rejects a request that falls short. Because the rules are fixed in the profile, a signer knows them before its first request.
+
+AdCP adds two checks that run outside the WBA verifier, after it returns: the revocation-list check on a verified request, and the contents of `Accept-Signature` on a refusal. [AdCP checks after Web Bot Auth verification](/docs/building/by-layer/L1/security#adcp-checks-after-web-bot-auth-verification) defines both. A standard WBA library does not perform them, and the WBA conformance vectors do not grade them.
 
 The profile uses one algorithm. Every WBA library signs and verifies Ed25519, and several WBA tools support no other algorithm.
 
@@ -140,20 +142,22 @@ Signature: key1=:QJeeYQ9E5OXMbEy89f1YjQNCB5NjRxN+ck/V+4sRoVNtF5S/446uVIECNC\
 
 **Fetch rules.** The verifier fetches a directory over HTTPS only, checks the resolved address before connecting, and follows no redirects (section 5.5). It applies the size, key-count, and time limits of section 6.7 and AdCP's fetch budgets: a 256 KiB body cap, 5 s connect and 10 s total deadlines, and negative caching of at most 60 s. The verifier treats any status other than `200` as a discovery failure. It rejects a directory response whose media type is not `application/http-message-signatures-directory+json`, which section 5.5.1 requires of a directory served at the well-known path.
 
-**Caching.** A directory that resolves and does not contain the key is evidence that the key was removed, and it replaces the cached entry. A directory that fails to resolve is not evidence and does not evict a cached entry (section 6.10). Negative cache entries expire after at most five minutes (Appendix C.5). A cached directory verifies until the earliest `expires` among its signatures. During a discovery failure, the fail-closed rule of the revocation list bounds spend-committing requests (see [Transport revocation](/docs/building/by-layer/L1/security#transport-revocation)). A compromised key is revoked, not removed.
+**Caching.** A directory that resolves and does not contain the key is evidence that the key was removed, and it replaces the cached entry. A directory that fails to resolve is not evidence and does not evict a cached entry (section 6.10). Negative cache entries expire after at most five minutes (Appendix C.5). A cached directory verifies until the earliest `expires` among its signatures. During a discovery failure, the fail-closed rule of the revocation list bounds spend-committing requests (see [AdCP checks after Web Bot Auth verification](/docs/building/by-layer/L1/security#adcp-checks-after-web-bot-auth-verification)). A compromised key is revoked, not removed.
 
 ## Verification
 
 A verifier applies the following procedure to a request that carries `Signature-Input`.
 
 1. Parse `Signature`, `Signature-Input`, and `Signature-Agent` as Structured Fields. If any header fails to parse, answer `400` (section 5.4).
-2. Read the one `Signature-Input` member whose `tag` is `web-bot-auth` and the `Signature-Agent` member with the same label. The verifier does not read members with other tags. A request that carries more than one `web-bot-auth` member or more than one `Signature-Agent` member is rejected with `403` and `Accept-Signature`. If the `Signature-Agent` member is absent, or the signature does not cover `"signature-agent";key=<label>`, reject the signature. An uncovered member is a claim the verifier must not attach policy to (section 4.1).
+2. Read the one `Signature-Input` member whose `tag` is `web-bot-auth` and the `Signature-Agent` member with the same label. The verifier does not read members with other tags. A request that carries more than one `web-bot-auth` member or more than one `Signature-Agent` member is rejected with `403`. If the `Signature-Agent` member is absent, or the signature does not cover `"signature-agent";key=<label>`, reject the signature. An uncovered member is a claim the verifier must not attach policy to (section 4.1).
 3. Resolve the origin the member names to its key directory, from cache or by fetching it, and select the key whose `kid` equals `keyid`. If the directory holds no such key, the request is unverified.
 4. Verify the signature with the selected key, and check its covered components, parameters, and window against the rules in [Profile rules](#profile-rules).
 5. Check the `nonce` against the identity's replay state, and record it (see [Replay protection](#replay-protection)).
-6. If the signature fails verification or the profile rules, answer `403` with `Accept-Signature`, as described in [Error responses](#error-responses).
-7. Check the identity's revocation list under [Transport revocation](/docs/building/by-layer/L1/security#transport-revocation), with key entries matched by thumbprint. A revoked key gets the generic authentication error, without `Accept-Signature`.
+6. If the signature fails verification or the profile rules, answer `403`, as described in [Error responses](#error-responses).
+7. Run the AdCP checks in [AdCP checks after Web Bot Auth verification](/docs/building/by-layer/L1/security#adcp-checks-after-web-bot-auth-verification), starting with the identity's revocation list.
 8. Pass the verified identity to the AdCP layer, which applies [Onboarding](#onboarding) and the account authorization rules that apply to every request, signed or not.
+
+Steps 1 to 6 are WBA verification with the profile's rules, and a WBA library configured with those rules performs them. Steps 7 and 8 belong to the AdCP layer.
 
 When a deployment verifies at the edge, Appendix C.10 applies: the edge "can instead verify at the proxy and pass the result to the origin through a deployment-local trusted channel". The edge removes any copy of that result a client sends, and the origin accepts the result only over its authenticated channel to its own edge. The edge forwards the signature fields unchanged, because the seller's own verifier enforces nonce uniqueness whatever the edge does.
 
@@ -185,23 +189,14 @@ The profile reports signature failures with HTTP status codes, as WBA does (sect
 | Status | Meaning for the caller | Basis |
 |---|---|---|
 | `400` | The signature headers cannot be parsed. Fix the signer. | Section 5.4 |
-| `403` with `Accept-Signature` | Sign again with the listed components and parameters. | Section 5.3; RFC 9421 section 5.1 |
-| `429` with `Accept-Signature` | The signature or its nonce was used before. Sign again with the fresh `nonce` the field carries. | Section 5.3; RFC 9421 sections 5.1 and 7.2.2 |
+| `403` | The signature failed verification or a profile rule. Sign again under the profile rules. | Section 5.3 |
+| `429` | The signature or its nonce was used before. Sign again with a fresh `nonce`. | Section 5.3; RFC 9421 section 7.2.2 |
 
-`Accept-Signature` (RFC 9421 section 5.1) names the label, the covered components, and the parameters the profile requires:
+On a `403` or `429`, the AdCP layer SHOULD add an `Accept-Signature` field that names the components and parameters the profile requires. [AdCP checks after Web Bot Auth verification](/docs/building/by-layer/L1/security#adcp-checks-after-web-bot-auth-verification) states its contents. The conformance vectors grade the status, not that field.
 
-```http
-NOTE: '\' line wrapping per RFC 8792
+A request signed with a revoked key gets the generic authentication error, as that section describes. An identity without the needed onboarding entry gets an AdCP authorization error, without `Accept-Signature`. Those errors use the AdCP error envelope and codes, not the transport status codes in the table.
 
-HTTP/1.1 403 Forbidden
-Accept-Signature: sig1=("@method" "@target-uri" "@authority" "content-type" \
-    "content-digest" "signature-agent";key="sig1");created;expires;nonce;ke\
-    yid;alg;tag="web-bot-auth"
-```
-
-A request signed with a revoked key gets the generic authentication error without `Accept-Signature`: the signer must stop using that key, so a hint to sign again is wrong. An identity without the needed onboarding entry gets an AdCP authorization error, also without `Accept-Signature`. Those errors use the AdCP error envelope and codes, not the transport status codes in the table.
-
-An unsigned request to an operation in `required_for`, from a caller with no other credential the verifier accepts, gets an answer that depends on what the verifier advertises. A verifier that advertises only `web-bot-auth` answers `403` with `Accept-Signature`. A verifier that also advertises the AdCP RFC 9421 profile answers as that profile does, `401` with `request_signature_required`, and adds `Accept-Signature` for this profile.
+An unsigned request to an operation in `required_for`, from a caller with no other credential the verifier accepts, gets an answer that depends on what the verifier advertises. A verifier that advertises only `web-bot-auth` answers `403`. A verifier that also advertises the AdCP RFC 9421 profile answers as that profile does: `401` with `request_signature_required`. In both cases the AdCP layer SHOULD add `Accept-Signature` for this profile.
 
 ## Webhooks
 
@@ -250,10 +245,10 @@ The two profiles share the signature base, the covered request components, the p
 | `adcp_use` key purposes | One agent per purpose, each on its own origin |
 | "Exactly one `Signature-Input` label" | One `web-bot-auth` signature and one `Signature-Agent` member. `Signature-Input` members with other tags are not read |
 | AdCP nonce rules and replay codes | RFC 9421 `nonce` on every signed request, enforced by the seller's verifier |
-| `request_signature_*` and `webhook_signature_*` codes in `WWW-Authenticate` | `400`, `403` or `429` with `Accept-Signature`, the generic authentication error for a revoked key, and AdCP authorization errors |
+| `request_signature_*` and `webhook_signature_*` codes in `WWW-Authenticate` | `400`, `403`, or `429`, with `Accept-Signature` added by the AdCP layer; the generic authentication error for a revoked key; and AdCP authorization errors |
 | Separate webhook profile and encoding | Webhooks are ordinary signed requests |
 
-Account authorization, the signed revocation list, and principal boundaries do not change. The revocation list keeps its path and media type; its key entries are thumbprints under this profile, and the list is accepted only from the identity's origin.
+Account authorization, the signed revocation list, and principal boundaries do not change. [AdCP checks after Web Bot Auth verification](/docs/building/by-layer/L1/security#adcp-checks-after-web-bot-auth-verification) states how the revocation list applies under this profile.
 
 ## Conformance vectors
 
@@ -261,8 +256,8 @@ The vectors live at `static/compliance/source/test-vectors/wba-profile/` and are
 
 - `positive/001-single-signer-request`: the request on this page, signed by `https://buyer-7k3q.com`.
 - `positive/002-signed-directory-response`: the directory response on this page, signed per Appendix B.1.
-- `negative/001-missing-nonce`: `403` with `Accept-Signature`.
-- `negative/002-replayed-nonce`: `429` with `Accept-Signature` carrying a fresh nonce; needs preloaded replay state.
+- `negative/001-missing-nonce`: `403`.
+- `negative/002-replayed-nonce`: `429`; needs preloaded replay state.
 - `negative/003-signature-agent-not-covered`: `403`; the header is present but not a covered component.
 - `negative/004-key-not-in-named-directory`: `403`; the signing key is published by a different origin than the one `Signature-Agent` names.
 - `negative/005-malformed-signature-agent`: `400`; the header does not parse.

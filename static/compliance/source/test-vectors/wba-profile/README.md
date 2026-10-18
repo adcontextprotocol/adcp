@@ -28,8 +28,8 @@ test-vectors/wba-profile/
 │   ├── 001-single-signer-request.json             buyer agent signs create_media_buy
 │   └── 002-signed-directory-response.json         directory response signed per key (WBA Appendix B.1)
 ├── negative/                                      requests a verifier MUST reject, with the expected status
-│   ├── 001-missing-nonce.json                     → 403 with Accept-Signature (nonce required on every signed request)
-│   ├── 002-replayed-nonce.json                    → 429 with Accept-Signature carrying a fresh nonce (needs test_harness_state)
+│   ├── 001-missing-nonce.json                     → 403 (nonce required on every signed request)
+│   ├── 002-replayed-nonce.json                    → 429 (needs test_harness_state)
 │   ├── 003-signature-agent-not-covered.json       → 403 (Signature-Agent present but not a covered component)
 │   ├── 004-key-not-in-named-directory.json        → 403 (key is published by an origin other than the one named)
 │   ├── 005-malformed-signature-agent.json         → 400 (Signature-Agent does not parse)
@@ -98,7 +98,7 @@ Every request vector has this shape:
 - **`expected_outcome.success`**: `true` for positive vectors, `false` for negative.
 - **`expected_outcome.identities`**: positive vectors only. Keyed by the signature's label, the origin the verifier attributes the signature to.
 - **`expected_outcome.status`**: negative vectors only. The HTTP status the verifier answers: `400` when the signature headers do not parse, `403` when a signature or the profile's checks fail, and `429` when the signature or its nonce was used before. Conformance requires this status.
-- **`expected_outcome.accept_signature`**: negative vectors with `403` or `429`. The `Accept-Signature` member the verifier sends (RFC 9421 section 5.1): the label, the covered components, and the parameters the profile requires. `"nonce": "verifier-chosen"` marks the replay case, where the verifier supplies a fresh nonce value that this vector does not pin. The exact serialization is RFC 9421 section 5.1; conformance grades the status, and a harness MAY check that `Accept-Signature` names at least these components and parameters.
+- **`expected_outcome.accept_signature`**: negative vectors with `403` or `429`. The `Accept-Signature` member that the AdCP layer SHOULD send ([AdCP checks after Web Bot Auth verification](https://adcontextprotocol.org/docs/building/by-layer/L1/security#adcp-checks-after-web-bot-auth-verification); RFC 9421 section 5.1): the label, the covered components, and the parameters the profile requires. `"nonce": "verifier-chosen"` marks the replay case, where the verifier supplies a fresh nonce value that this vector does not pin. The exact serialization is RFC 9421 section 5.1; conformance grades the status, and a harness MAY check that `Accept-Signature` names at least these components and parameters.
 - **`expected_outcome.reason`**: the profile rule the request breaks. Informational.
 - **`$comment`**: free-form notes, including which non-conformant verifier behavior the vector catches.
 
@@ -120,7 +120,7 @@ An implementation is conformant when, for every vector:
 
 1. **Positive request vectors** verify the `web-bot-auth` signature and attribute it to the origin in `expected_outcome.identities`.
 2. **The directory-response vector** verifies the response signature with the key the directory body provides and matches `Content-Digest` against the body.
-3. **Negative vectors** answer `expected_outcome.status`. A `403` carries `Accept-Signature`.
+3. **Negative vectors** answer `expected_outcome.status`. `Accept-Signature` is an AdCP-layer SHOULD, and conformance does not grade it.
 4. **Governance vectors** verify `001` and attribute it to `expected_outcome.issuer`, and reject `002` and `003` with `expected_outcome.error_code`.
 5. **Signature bytes on positive vectors** match the committed `Signature` values byte for byte when the implementation signs the committed `expected_signature_base` with the corresponding private seed. Ed25519 is deterministic.
 

@@ -158,7 +158,7 @@ function acceptSignature(label, components, freshNonce = false) {
 }
 
 const REFUSAL_NOTE =
-  'The profile reports signature failures with HTTP status codes (Web Bot Auth sections 5.3 and 5.4). A 403 or 429 carries Accept-Signature naming the components and parameters the profile requires, so the signer can sign again. Conformance grades the status code; the accept_signature object describes the header the verifier sends, and the exact serialization is RFC 9421 section 5.1.';
+  'The profile reports signature failures with HTTP status codes (Web Bot Auth sections 5.3 and 5.4). Conformance grades the status code. On a 403 or 429, the AdCP layer SHOULD add Accept-Signature naming the components and parameters the profile requires, so the signer can sign again (security.mdx, AdCP checks after Web Bot Auth verification); the accept_signature object describes that header, and the exact serialization is RFC 9421 section 5.1.';
 
 // ── Positive 001: single signer ───────────────────────────────────────────
 const c1 = compList('sig1');
@@ -228,7 +228,7 @@ write('negative/001-missing-nonce.json', {
     accept_signature: acceptSignature('sig1', c1),
     reason: 'The profile requires an RFC 9421 nonce on every signed request. Without one the verifier cannot detect replay.',
   },
-  $comment: `The signature is cryptographically valid over its covered components, so a verifier that does not enforce the nonce requirement accepts it. The verifier answers 403 with Accept-Signature listing nonce among the required parameters. ${REFUSAL_NOTE}`,
+  $comment: `The signature is cryptographically valid over its covered components, so a verifier that does not enforce the nonce requirement accepts it. The verifier answers 403, and the Accept-Signature hint lists nonce among the required parameters. ${REFUSAL_NOTE}`,
 });
 
 // ── Negative 002: replayed nonce ──────────────────────────────────────────
@@ -251,7 +251,7 @@ write('negative/002-replayed-nonce.json', {
     accept_signature: acceptSignature('sig1', c1, true),
     reason: "The verifier MUST reject a nonce it has already seen for the same identity within the signature's lifetime.",
   },
-  $comment: `The request is byte-identical to positive/001-single-signer-request.json. The verifier checks the nonce per signature and per identity, whether or not an edge verifier ran first. The 429 carries Accept-Signature with a verifier-chosen nonce value (Web Bot Auth section 5.3; RFC 9421 sections 5.1 and 7.2.2), which the signer uses on its next attempt; the value is not pinned by this vector. ${REFUSAL_NOTE}`,
+  $comment: `The request is byte-identical to positive/001-single-signer-request.json. The verifier checks the nonce per signature and per identity, whether or not an edge verifier ran first. The Accept-Signature hint on the 429 carries a verifier-chosen nonce value (Web Bot Auth section 5.3; RFC 9421 sections 5.1 and 7.2.2), which the signer uses on its next attempt; the value is not pinned by this vector. ${REFUSAL_NOTE}`,
 });
 
 // ── Negative 003: Signature-Agent present but not covered ─────────────────
