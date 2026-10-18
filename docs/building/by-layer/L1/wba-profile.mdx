@@ -108,7 +108,7 @@ A key directory is a JWK Set served at `/.well-known/http-message-signatures-dir
 
 The directory server signs its response once per Ed25519 key (Appendix B.1). Each signature covers `"@authority";req` and `content-digest`, carries `created` and `expires`, uses the key's thumbprint as `keyid`, and uses `tag="http-message-signatures-directory"`. Covering the request authority stops the key set from being served again from another domain. A verifier validates each signature with the key the directory itself provides and validates `Content-Digest` against the body; it rejects a response signature whose `created` is in the future. The verifier stores the signed response as its record of the fetch.
 
-A directory can also hold keys the profile does not use, such as a P-256 key for another WBA use, and their signatures (section 5.5.1 permits any registered algorithm). A verifier ignores those keys and the signatures they make, as RFC 7517 section 5 advises for keys an implementation does not understand. Every Ed25519 key in the directory signs the response, and the verifier rejects a directory in which one does not.
+A directory can also hold keys the profile does not use, such as a P-256 key for another WBA use, and their signatures (section 5.5.1 permits any registered algorithm). A verifier ignores those keys and the signatures they make, as RFC 7517 section 5 advises for keys an implementation does not understand. Every Ed25519 key in the directory signs the response. The verifier rejects a directory in which one does not, and a directory that carries no signature.
 
 ```http
 NOTE: '\' line wrapping per RFC 8792
