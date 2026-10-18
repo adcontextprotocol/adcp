@@ -180,8 +180,11 @@ function verifyRequest(vector, { skipNonce = false, skipAgentCoverage = false, s
   }
   const identities = {};
   for (const label of labels) {
-    const origin = parsed.agent.get(label)?.value;
-    if (!origin) throw new ProfileError(403, 'signature', `no Signature-Agent member for ${label}`);
+    const value = parsed.agent.get(label)?.value;
+    if (!value) throw new ProfileError(403, 'signature', `no Signature-Agent member for ${label}`);
+    // The member value is the well-known URI of the signer's origin, and the identity is that origin.
+    const origin = new URL(value).origin;
+    if (value !== `${origin}/.well-known/http-message-signatures-directory`) throw new ProfileError(403, 'signature', `${value} is not a well-known URI`);
     const { value: components, params } = parsed.input.get(label);
     const covered = components.map(componentId);
     const requiredComponents = skipAgentCoverage ? REQUIRED_COMPONENTS : [...REQUIRED_COMPONENTS, `"signature-agent";key="${label}"`];

@@ -2,7 +2,7 @@
 
 Test vectors for the proposed AdCP profile of Web Bot Auth (WBA) for request and webhook signing. The profile is proposed for AdCP 3.3 in [RFC #7878](https://github.com/adcontextprotocol/adcp/issues/7878) and is published alongside the AdCP RFC 9421 request-signing profile. These fixtures let a signer written with one WBA or RFC 9421 library and a verifier written with another agree on the wire format and on what a verifier rejects.
 
-Specification: [Web Bot Auth request-signing profile](https://adcontextprotocol.org/docs/building/by-layer/L1/wba-profile) in `docs/building/by-layer/L1/wba-profile.mdx`. Section numbers in vector comments refer to [draft-ietf-webbotauth-httpsig-protocol-00](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/00/) unless they name RFC 9421.
+Specification: [Web Bot Auth request-signing profile](https://adcontextprotocol.org/docs/building/by-layer/L1/wba-profile) in `docs/building/by-layer/L1/wba-profile.mdx`. Section numbers in vector comments refer to [draft-ietf-webbotauth-httpsig-protocol-00](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/00/) unless they name RFC 9421. The `Signature-Agent` form follows the [editor's copy of the draft at commit `be12662f`](https://github.com/webbotauth/draft-ietf-webbotauth-httpsig-protocol/blob/be12662f3c5cc97e10e65a37355bdb33ba0d2fc4/draft-ietf-webbotauth-httpsig-protocol.md): each value is the well-known URI of the signer's origin, `https://<origin>/.well-known/http-message-signatures-directory`.
 
 **Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/compliance/{version}/test-vectors/wba-profile/`, with `{version}` either an immutable release or `latest`. Tree preserved: `keys.json`, `scenarios.json`, `positive/*.json`, and `negative/*.json` are all resolvable.
 
@@ -53,7 +53,7 @@ Every request vector has this shape:
     "headers": {
       "Content-Type": "application/json",
       "Content-Digest": "sha-256=:...:",
-      "Signature-Agent": "sig1=\"https://buyer-7k3q.com\"",
+      "Signature-Agent": "sig1=\"https://buyer-7k3q.com/.well-known/http-message-signatures-directory\"",
       "Signature-Input": "sig1=(...);created=...;expires=...;nonce=\"...\";keyid=\"...\";alg=\"ed25519\";tag=\"web-bot-auth\"",
       "Signature": "sig1=:...:"
     },
@@ -103,9 +103,9 @@ Every request vector has this shape:
 
 `scenarios.json` holds failure scenarios as data instead of signed requests. A harness signs each scenario at run time with the reference library, so no committed signature expires, and grades the verifier on the scenario's expected outcome. The file has the following fields:
 
-- **`signer`**: the identity and `kid` from `keys.json` that sign every scenario.
+- **`signer`**: the identity, its `Signature-Agent` URL (the well-known URI of the identity's origin), and the `kid` from `keys.json` that signs every scenario.
 - **`requests`**, **`components`**, and **`parameters`**: the base requests (`post` and `get`), the components each one covers, and the default signature parameters. `{label}` in a component stands for the signature's label. `created` and `expires` are offsets in seconds from the harness's clock. A `nonce` object asks for that many random bytes in that encoding: `base64url` (unpadded), `base64` (canonical padded), or `base64url-padded`.
-- **`request_scenarios`**: each entry names a `base` request and overrides any of `label`, `components`, `parameters` (a `null` value omits the parameter), and `signature_agent` (the header value). `extra_signature` adds a second signature with its own label, key, components, and parameters. `after_signing` changes `headers`, appends `append_to_body` to the body, or appends raw `append_members` to `Signature-Input` and `Signature` after signing. `directories` lists the `kid` values each origin serves; it defaults to the signer's own directory.
+- **`request_scenarios`**: each entry names a `base` request and overrides any of `label`, `components`, `parameters` (a `null` value omits the parameter), and `signature_agent` (the header value). `extra_signature` adds a second signature with its own label, key, components, and parameters. `after_signing` changes `headers`, appends `append_to_body` to the body, or appends raw `append_members` to `Signature-Input` and `Signature` after signing. `directories` lists the `kid` values that each URL serves, keyed by the exact URL a verifier fetches; it defaults to the signer's own well-known URI.
 - **`directory_scenarios`**: each entry overrides how the signer's directory response is signed: `keys` (the kids that sign), `unsigned_keys` (public keys in the body that do not sign), `authority`, `parameters`, `components`, `content_type`, and `after_signing`.
 - **`expected`**: `success` and `identity` for a scenario that verifies, or `success: false` and the `status` for a request scenario that a verifier rejects. A directory scenario that a verifier rejects has no status of its own: the request that needed its key gets `403`.
 - **`tier`**: `wba` when the reference library alone, with no AdCP rules, gives the expected outcome; `adcp` when the bare library gives the opposite outcome and only the profile's rules give the expected one. A WBA MUST that the library does not enforce, such as an `https` origin (`R16`), is `adcp` until the library enforces it. A harness checks every tier against the bare library on every run.

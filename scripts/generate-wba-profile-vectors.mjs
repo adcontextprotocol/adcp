@@ -60,6 +60,8 @@ function signBase(privateKey, lines, params) {
 // ── Identities and keys ───────────────────────────────────────────────────
 const BUYER = 'https://buyer-7k3q.com';
 const BRAND = 'https://agent.brand-7k3q.com';
+// A Signature-Agent value is the well-known URI of the signer's origin (editor's copy, "Key Distribution and Discovery").
+const wk = origin => `${origin}/.well-known/http-message-signatures-directory`;
 const buyer = key('buyer-request');
 const brand = key('brand-request');
 
@@ -117,7 +119,7 @@ function requestLines(label, agentUrl, includeAgent = true) {
     '"content-type": application/json',
     `"content-digest": ${bodyDigest}`,
   ];
-  if (includeAgent) lines.push(`"signature-agent";key="${label}": "${agentUrl}"`);
+  if (includeAgent) lines.push(`"signature-agent";key="${label}": "${wk(agentUrl)}"`);
   return lines;
 }
 
@@ -151,7 +153,7 @@ const REFUSAL_NOTE =
 const c1 = compList('sig1');
 const p1 = params(c1, buyer.jwk.kid, nonce('buyer'));
 const [base1, sig1] = signBase(buyer.privateKey, requestLines('sig1', BUYER), p1);
-const h1 = headers(`sig1="${BUYER}"`, `sig1=${p1}`, `sig1=:${sig1}:`);
+const h1 = headers(`sig1="${wk(BUYER)}"`, `sig1=${p1}`, `sig1=:${sig1}:`);
 write('positive/001-single-signer-request.json', {
   name: 'Single signer: buyer agent at https://buyer-7k3q.com sends create_media_buy over MCP',
   spec_reference: `${SPEC}#profile-rules`,
@@ -206,7 +208,7 @@ write('negative/001-missing-nonce.json', {
   spec_reference: `${SPEC}#replay-protection`,
   signing_profile: 'web-bot-auth',
   reference_now: NOW,
-  request: request(headers(`sig1="${BUYER}"`, `sig1=${pNn}`, `sig1=:${sigNn}:`)),
+  request: request(headers(`sig1="${wk(BUYER)}"`, `sig1=${pNn}`, `sig1=:${sigNn}:`)),
   directories: { [BUYER]: { keys_ref: [buyer.jwk.kid] } },
   expected_signature_base: { sig1: baseNn },
   expected_outcome: {
@@ -250,7 +252,7 @@ write('negative/003-signature-agent-not-covered.json', {
   spec_reference: `${SPEC}#profile-rules`,
   signing_profile: 'web-bot-auth',
   reference_now: NOW,
-  request: request(headers(`sig1="${BUYER}"`, `sig1=${pUnc}`, `sig1=:${sigUnc}:`)),
+  request: request(headers(`sig1="${wk(BUYER)}"`, `sig1=${pUnc}`, `sig1=:${sigUnc}:`)),
   directories: { [BUYER]: { keys_ref: [buyer.jwk.kid] } },
   expected_signature_base: { sig1: baseUnc },
   expected_outcome: {
@@ -271,7 +273,7 @@ write('negative/004-key-not-in-named-directory.json', {
   spec_reference: `${SPEC}#identity`,
   signing_profile: 'web-bot-auth',
   reference_now: NOW,
-  request: request(headers(`sig1="${BRAND}"`, `sig1=${pWrong}`, `sig1=:${sigWrong}:`)),
+  request: request(headers(`sig1="${wk(BRAND)}"`, `sig1=${pWrong}`, `sig1=:${sigWrong}:`)),
   directories: { [BRAND]: { keys_ref: [brand.jwk.kid] }, [BUYER]: { keys_ref: [buyer.jwk.kid] } },
   expected_signature_base: { sig1: baseWrong },
   expected_outcome: {
@@ -290,7 +292,7 @@ write('negative/005-malformed-signature-agent.json', {
   spec_reference: `${SPEC}#error-responses`,
   signing_profile: 'web-bot-auth',
   reference_now: NOW,
-  request: request(headers(`sig1="${BUYER}`, `sig1=${p1}`, `sig1=:${ZERO_SIG}:`)),
+  request: request(headers(`sig1="${wk(BUYER)}`, `sig1=${p1}`, `sig1=:${ZERO_SIG}:`)),
   directories: { [BUYER]: { keys_ref: [buyer.jwk.kid] } },
   expected_outcome: {
     success: false,
@@ -310,7 +312,7 @@ write('negative/006-two-signatures.json', {
   spec_reference: `${SPEC}#verification`,
   signing_profile: 'web-bot-auth',
   reference_now: NOW,
-  request: request(headers(`sig1="${BUYER}", sig2="${BRAND}"`, `sig1=${p1}, sig2=${p2}`, `sig1=:${sig1}:, sig2=:${sig2}:`)),
+  request: request(headers(`sig1="${wk(BUYER)}", sig2="${wk(BRAND)}"`, `sig1=${p1}, sig2=${p2}`, `sig1=:${sig1}:, sig2=:${sig2}:`)),
   directories: { [BUYER]: { keys_ref: [buyer.jwk.kid] }, [BRAND]: { keys_ref: [brand.jwk.kid] } },
   expected_signature_base: { sig1: base1, sig2: base2 },
   expected_outcome: {
@@ -354,7 +356,7 @@ write('scenarios.json', {
     'Failure scenarios for the Web Bot Auth profile, as data. A harness signs each request and directory scenario at run time with the reference library (http-message-sig signs any component and parameter set), applies after_signing, and grades the verifier on expected. created and expires are offsets in seconds from the harness clock; a null parameter is omitted; a nonce object asks for that many random bytes in that encoding. tier "wba": the reference library with no AdCP policy already gives the expected outcome. tier "adcp": the bare library gives the opposite outcome and only the profile rules give the expected one; a WBA MUST the library does not enforce stays "adcp" until it does. See README.md.',
   spec_reference: `${SPEC}#profile-rules`,
   signing_profile: 'web-bot-auth',
-  signer: { identity: BUYER, kid: buyer.jwk.kid },
+  signer: { identity: BUYER, url: wk(BUYER), kid: buyer.jwk.kid },
   requests: {
     post: { method: 'POST', url: TARGET, headers: { 'content-type': 'application/json' }, body },
     get: { method: 'GET', url: `${TARGET}tasks?id=a%7Eb&x=1`, headers: {}, body: '' },
@@ -377,18 +379,20 @@ write('scenarios.json', {
     req('R12', 'GET covering only @authority and the Signature-Agent member', 'adcp', status(403), 'Profile: cover @method, @target-uri, and @authority; WBA section 5.2 needs one of @authority or @target-uri', { base: 'get', components: ['@authority', 'signature-agent;key=sig1'] }),
     req('R13', 'Body without content-digest covered', 'adcp', status(403), 'Profile: a request with a body covers content-type and content-digest; WBA section 5.2', { components: ['@method', '@target-uri', '@authority', 'content-type', 'signature-agent;key=sig1'] }),
     req('R14', 'tag other than web-bot-auth', 'wba', status(403), 'WBA section 5.2: tag MUST be web-bot-auth', { parameters: { tag: 'adcp/request-signing/v1' } }),
-    req('R15', 'Bare-string Signature-Agent', 'adcp', status(400), 'Profile: dictionary form only, so the field does not parse; WBA section 5.2.1 lets a verifier accept the bare string', { signature_agent: `"${BUYER}"`, components: [...FULL.slice(0, 5), 'signature-agent'] }),
-    req('R16', 'http:// Signature-Agent', 'adcp', status(403), 'WBA section 5.2.1: the origin MUST be https; the library does not check it', { signature_agent: 'sig1="http://buyer-7k3q.com"', directories: { 'http://buyer-7k3q.com': [buyer.jwk.kid] } }),
-    req('R17', 'Signature-Agent with a path', 'adcp', status(403), 'WBA section 5.5: a directory member MUST be an origin; the library does not check it', { signature_agent: `sig1="${BUYER}/agents/a"`, directories: { [`${BUYER}/agents/a`]: [buyer.jwk.kid] } }),
-    req('R18', 'Signature-Agent member with type=jwks_uri', 'adcp', status(403), 'Profile: only type=directory; WBA section 5.2.1 lets a verifier ignore other types', { signature_agent: `sig1="${BUYER}/jwks.json";type=jwks_uri`, directories: { [`${BUYER}/jwks.json`]: [buyer.jwk.kid] } }),
-    req('R19', 'Signature-Agent member keyed differently from the label', 'adcp', status(403), 'WBA section 5.2.1: the member keyed to the label; the library does not check it', { signature_agent: `agent1="${BUYER}"`, components: [...FULL.slice(0, 5), 'signature-agent;key=agent1'] }),
+    req('R15', 'Bare-string Signature-Agent', 'adcp', status(400), 'Profile: dictionary form only, so the field does not parse; the editor\'s copy lets a verifier accept the bare string', { signature_agent: `"${wk(BUYER)}"`, components: [...FULL.slice(0, 5), 'signature-agent'] }),
+    req('R16', 'http:// Signature-Agent URL', 'adcp', status(403), 'Editor\'s copy, "Signature-Agent": the scheme MUST be https; the library accepts http', { signature_agent: 'sig1="http://buyer-7k3q.com/.well-known/http-message-signatures-directory"', directories: { 'http://buyer-7k3q.com/.well-known/http-message-signatures-directory': [buyer.jwk.kid] } }),
+    req('R17', 'Signature-Agent URL other than the well-known URI', 'adcp', status(403), 'Profile: the value is the well-known URI of the origin, with no other path; the editor\'s copy permits any https URL', { signature_agent: `sig1="${BUYER}/keys/jwks.json"`, directories: { [`${BUYER}/keys/jwks.json`]: [buyer.jwk.kid] } }),
+    req('R17b', 'Bare origin as the Signature-Agent value (the -00 form)', 'adcp', status(403), 'Profile: the value is the well-known URI, not the origin; -00 named the origin and the editor\'s copy fetches the value as sent', { signature_agent: `sig1="${BUYER}"`, directories: { [BUYER]: [buyer.jwk.kid] } }),
+    req('R18', 'Signature-Agent member with type=jwks_uri', 'adcp', status(403), 'Editor\'s copy, "Signature-Agent": a verifier MUST ignore a member that carries parameters, so the covered member is missing', { signature_agent: `sig1="${BUYER}/jwks.json";type=jwks_uri`, directories: { [`${BUYER}/jwks.json`]: [buyer.jwk.kid] } }),
+    req('R18b', 'Signature-Agent member with type=directory', 'adcp', status(403), 'Editor\'s copy, "Signature-Agent": a verifier MUST ignore a member that carries parameters, whatever they are, so the covered member is missing', { signature_agent: `sig1="${wk(BUYER)}";type=directory` }),
+    req('R19', 'Signature-Agent member keyed differently from the label', 'adcp', status(403), 'Editor\'s copy, "Signature-Agent": the member keyed to the signature label MUST be signed; the library accepts any one covered member', { signature_agent: `agent1="${wk(BUYER)}"`, components: [...FULL.slice(0, 5), 'signature-agent;key=agent1'] }),
     req('R20', 'Second signature with tag cdn-edge', 'adcp', ok, 'Profile: Signature-Input members with other tags are not read; the library requires a label when a request carries two signatures', {
       extra_signature: { label: 'cdn', kid: brand.jwk.kid, components: ['@method', '@authority'], parameters: { created: -5, expires: 295, nonce: null, tag: 'cdn-edge' } },
     }),
     req('R20b', 'Second member with tag cdn-edge whose Signature value is a token', 'wba', status(400), 'RFC 9421 section 4.2: every Signature member value is a Byte Sequence, so the field is malformed whatever the member\'s tag; members with other tags are not read, but the field is still parsed', {
       after_signing: { append_members: { 'signature-input': 'cdn=("@method" "@authority");tag="cdn-edge"', signature: 'cdn=edge-token' } },
     }),
-    req('R21', 'Two Signature-Agent members, one signature', 'adcp', status(403), 'Profile: exactly one Signature-Agent member', { signature_agent: `sig1="${BUYER}", sig2="${BRAND}"` }),
+    req('R21', 'Two Signature-Agent members, one signature', 'adcp', status(403), 'Profile: exactly one Signature-Agent member', { signature_agent: `sig1="${wk(BUYER)}", sig2="${wk(BRAND)}"` }),
     req('R22', 'Label other than sig1', 'wba', ok, 'RFC 9421: the signer chooses the label', { label: 'wba' }),
     req('R23', 'Components in another order', 'wba', ok, "RFC 9421: the order is the signer's", { components: ['signature-agent;key=sig1', '@authority', 'content-digest', '@target-uri', 'content-type', '@method'] }),
   ],
