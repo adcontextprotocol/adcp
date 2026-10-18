@@ -42,12 +42,13 @@ const componentName = c => (typeof c === 'string' ? c : c.name);
 // member is the one keyed to the signature label (WBA 5.2.1), and recognizes
 // only `type=directory`, which the library reads as a Token or a String.
 
-/** The covered member is the one keyed to the signature's label (WBA 5.2.1). */
+/**
+ * The covered member the library resolved the key from is the one keyed to the
+ * signature's label (WBA 5.2.1). Covering the whole field as well is allowed.
+ */
 function checkMemberKeyedToLabel(result) {
-  const member = result.components.find(c => componentName(c) === 'signature-agent');
-  if (member?.parameters?.key !== result.label) {
-    refuse('signature-agent-label', `covered Signature-Agent member ${member?.parameters?.key} is not keyed to label ${result.label}`);
-  }
+  const key = result.signatureAgent.label;
+  if (key !== result.label) refuse('signature-agent-label', `covered Signature-Agent member ${key} is not keyed to label ${result.label}`);
 }
 
 // ── Row "Signature-Agent value" ───────────────────────────────────────────

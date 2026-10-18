@@ -417,6 +417,26 @@
       "basis": "WBA section 5.2.1: the member keyed to the label; the library does not check it"
     },
     {
+      "id": "R19b",
+      "name": "Whole Signature-Agent field covered before the member",
+      "base": "post",
+      "components": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-type",
+        "content-digest",
+        "signature-agent",
+        "signature-agent;key=sig1"
+      ],
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "wba",
+      "basis": "RFC 9421 section 2.1: the field and its member are separate components; WBA section 5.2.1 requires only the member keyed to the label"
+    },
+    {
       "id": "R20",
       "name": "Second signature with tag cdn-edge",
       "base": "post",

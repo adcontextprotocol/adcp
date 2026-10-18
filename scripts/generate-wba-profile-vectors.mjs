@@ -387,6 +387,7 @@ write('scenarios.json', {
     req('R18c', 'Signature-Agent member with type=directory as a Token', 'wba', ok, 'WBA section 5.2.1: type is a Token, and directory is the default', { signature_agent: `sig1="${BUYER}";type=directory` }),
     req('R18d', 'Signature-Agent member with type="directory" as a String', 'wba', ok, 'Profile: a verifier accepts type=directory as a Token or a String, as the reference library does; WBA section 5.2.1 defines a Token', { signature_agent: `sig1="${BUYER}";type="directory"` }),
     req('R19', 'Signature-Agent member keyed differently from the label', 'adcp', status(403), 'WBA section 5.2.1: the member keyed to the label; the library does not check it', { signature_agent: `agent1="${BUYER}"`, components: [...FULL.slice(0, 5), 'signature-agent;key=agent1'] }),
+    req('R19b', 'Whole Signature-Agent field covered before the member', 'wba', ok, 'RFC 9421 section 2.1: the field and its member are separate components; WBA section 5.2.1 requires only the member keyed to the label', { components: [...FULL.slice(0, 5), 'signature-agent', 'signature-agent;key=sig1'] }),
     req('R20', 'Second signature with tag cdn-edge', 'adcp', ok, 'Profile: Signature-Input members with other tags are not read; the library requires a label when a request carries two signatures', {
       extra_signature: { label: 'cdn', kid: brand.jwk.kid, components: ['@method', '@authority'], parameters: { created: -5, expires: 295, nonce: null, tag: 'cdn-edge' } },
     }),
