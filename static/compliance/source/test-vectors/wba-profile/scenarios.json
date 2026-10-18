@@ -373,6 +373,30 @@
       "basis": "Profile: only type=directory; WBA section 5.2.1 lets a verifier ignore other types"
     },
     {
+      "id": "R18c",
+      "name": "Signature-Agent member with type=directory as a Token",
+      "base": "post",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com\";type=directory",
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "wba",
+      "basis": "WBA section 5.2.1: type is a Token, and directory is the default"
+    },
+    {
+      "id": "R18d",
+      "name": "Signature-Agent member with type=\"directory\" as a String",
+      "base": "post",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com\";type=\"directory\"",
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "wba",
+      "basis": "Profile: a verifier accepts type=directory as a Token or a String, as the reference library does; WBA section 5.2.1 defines a Token"
+    },
+    {
       "id": "R19",
       "name": "Signature-Agent member keyed differently from the label",
       "base": "post",
