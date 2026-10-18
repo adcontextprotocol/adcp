@@ -113,7 +113,7 @@ const componentId = c => `"${c.value}"${serializeParams(c.params)}`;
 
 const REQUIRED_COMPONENTS = ['"@method"', '"@target-uri"', '"@authority"', '"content-type"', '"content-digest"'];
 const REQUIRED_PARAMETERS = ['created', 'expires', 'nonce', 'keyid', 'alg', 'tag'];
-const PROFILE_ALGORITHMS = ['ed25519', 'rsa-pss-sha512'];
+const PROFILE_ALGORITHMS = ['ed25519'];
 const NONCE_BYTES = 64;
 const MAX_LIFETIME = 300;
 const CLOCK_SKEW = 60;
@@ -192,7 +192,7 @@ function verifyRequest(vector, { skipNonce = false, skipAgentCoverage = false, s
       if (p === 'nonce' && skipNonce) continue;
       if (!params.has(p)) throw new ProfileError(403, 'signature', `${label} has no ${p} parameter`);
     }
-    if (!PROFILE_ALGORITHMS.includes(params.get('alg'))) throw new ProfileError(403, 'signature', `${label} alg is not ed25519 or rsa-pss-sha512`);
+    if (!PROFILE_ALGORITHMS.includes(params.get('alg'))) throw new ProfileError(403, 'signature', `${label} alg is not ed25519`);
     if (!skipNonce) {
       const nonce = params.get('nonce');
       const decoded = /^[A-Za-z0-9_-]+$/.test(nonce) ? Buffer.from(nonce, 'base64url') : null;

@@ -60,15 +60,17 @@ RFC 9421 section 3.2.1 lets an application impose requirements beyond the base s
 | Components, every request | `@method`, `@target-uri`, `@authority`, `"signature-agent";key=<label>` | Section 5.2 |
 | Components, requests with a body | Also `content-type` and `content-digest` | Section 5.2: an agent that needs body integrity "MUST send and cover Content-Digest" |
 | Parameters | `created`, `expires`, `keyid`, `alg`, and a `nonce` of 64 random bytes, base64url-encoded, on every signed request | RFC 9421 sections 2.3, 3.2.1, 7.2.2; sections 5.2 and 5.2.3; Appendix C.6; WBA architecture draft section 4.2.2 |
-| Algorithm | `ed25519` or `rsa-pss-sha512`, named in `alg`, which must match the key | RFC 9421 sections 2.3, 3.2.1, 7.3.6 |
+| Algorithm | `ed25519`, named in `alg`, which must match the key | RFC 9421 sections 2.3, 3.2.1, 7.3.6 |
 | Lifetime and clock skew | `expires` at most 300 seconds after `created`. The verifier allows 60 seconds of clock skew | RFC 9421 section 3.2.1 |
-| Key publication | Each identity publishes its keys only in its key directory. `kid` is the thumbprint, so a verifier selects a key by matching `keyid` against `kid` | Sections 5.5, 5.5.1, 6.5 |
+| Key publication | Each identity publishes its keys only in its key directory. Each signing key is an Ed25519 key (`kty` `OKP`, `crv` `Ed25519`). `kid` is the thumbprint, so a verifier selects a key by matching `keyid` against `kid` | Sections 5.5, 5.5.1, 6.5; RFC 8037 |
 | Directory responses | Signed, one signature per key, covering `"@authority";req` and `content-digest`, with `created`, `expires`, the key's thumbprint as `keyid`, and `tag="http-message-signatures-directory"` | Appendix B.1 |
 | Fetches | Directory and revocation-list fetches follow AdCP's fetch rules: HTTPS only, resolved-address checks, no redirects, and size and time limits | Sections 5.5 and 6.7; [Webhook URL validation (SSRF)](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf) |
 | One signature | A request carries exactly one `web-bot-auth` signature and exactly one `Signature-Agent` member, keyed to that signature's label. An intermediary that signs a request is its signer; whether it may act for another party is an authorization question answered by that party's `brand.json` or `trust.json`, not by a second signature | RFC 9421 section 3.2.1 lets an application add a requirement of this kind. Section 5.2.2 permits more than one signature ("A request MAY contain more than one Web Bot Auth signature") and does not require a verifier to accept one |
 | Failure responses | `400`; `403` with `Accept-Signature`; `429` with `Accept-Signature` for a reused signature or nonce | Sections 5.3 and 5.4 |
 
 A request that follows the profile is a valid WBA request. A WBA verifier configured with these rules accepts it and rejects a request that falls short. Because the rules are fixed in the profile, a signer knows them before its first request; `Accept-Signature` is the recovery path when a request falls short (see [Error responses](#error-responses)).
+
+The profile uses one algorithm. Every WBA library signs and verifies Ed25519, and several WBA tools support no other algorithm.
 
 The 300-second ceiling on `expires` is provisional. WBA section 5.2 recommends no more than 24 hours for general automated traffic, and the RFC asks the working group to confirm the shorter value for spend-committing traffic.
 
