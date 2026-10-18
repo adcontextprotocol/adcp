@@ -213,7 +213,14 @@ const NONCE_ENCODINGS = {
   base64: bytes => bytes.toString('base64'),
   'base64url-padded': bytes => `${bytes.toString('base64url')}${'='.repeat((4 - (bytes.toString('base64url').length % 4)) % 4)}`,
 };
-const nonceValue = spec => (spec && typeof spec === 'object' ? NONCE_ENCODINGS[spec.encoding](randomBytes(spec.bytes)) : spec);
+function nonceValue(spec) {
+  if (!spec || typeof spec !== 'object') return spec;
+  for (;;) {
+    const value = NONCE_ENCODINGS[spec.encoding](randomBytes(spec.bytes));
+    // Padded base64url with no '-' or '_' is also canonical padded base64, which the profile accepts.
+    if (spec.encoding !== 'base64url-padded' || /[-_]/.test(value)) return value;
+  }
+}
 
 /**
  * Signs one request scenario from scenarios.json at `now`. http-message-sig
@@ -285,7 +292,7 @@ const OPERATIONS = {
   verify_directory: op => verifyDirectory(op),
 };
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   let input = '';
   for await (const chunk of process.stdin) input += chunk;
   const op = JSON.parse(input);
