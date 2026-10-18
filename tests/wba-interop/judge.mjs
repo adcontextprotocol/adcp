@@ -174,7 +174,6 @@ export async function signRequest({ key, origin, request, now, label = 'sig1' })
  * changes the body after signing.
  */
 export async function signDirectory({ keys, origin, now, authority, parameters = {}, components, unsigned_keys = [], content_type, status = 200, after_signing = {} }) {
-  const host = new URL(origin).host;
   const published = [];
   for (const key of keys) published.push({ ...publicJwk(key), kid: (await signerFromJWK(key)).keyid, use: 'sig' });
   const body = JSON.stringify({ keys: [...published, ...unsigned_keys] }, null, 2);
