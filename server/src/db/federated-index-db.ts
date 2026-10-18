@@ -1,7 +1,10 @@
 import { getClient, query, queryWithTimeout } from './client.js';
 import type { PoolClient } from 'pg';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
-import { registryAgentUrlLookupKey } from './registry-agent-url-key.js';
+import {
+  isSpecExactAgentMatch,
+  registryAgentUrlLookupKey,
+} from './registry-agent-url-key.js';
 
 /**
  * Discovered agent from adagents.json or list_authorized_properties
@@ -189,6 +192,34 @@ export class FederatedIndexDatabase {
   }
 
   /**
+   * The raw `agent_url` values stored under this agent's identity key that
+   * are SPEC-EXACTLY the same agent (#7829 semantics, trailing slash
+   * significant).
+   *
+   * The key folds a trailing slash so one agent has one row (#7830). The
+   * directory must not: if a publisher authorized `https://a.example/mcp/`,
+   * a listing for `https://a.example/mcp` must not report it. So every
+   * per-agent authorization read looks rows up by key — which is what the
+   * indexes are on — and then restricts to these raw values.
+   *
+   * Cheap: the key lookup is indexed and a single agent has a handful of
+   * distinct raw spellings, so this is one small indexed read regardless of
+   * registry size. Returns `[]` when nothing matches, which makes every
+   * caller's `= ANY($n)` correctly match nothing.
+   */
+  private async specExactAgentUrls(agentUrl: string): Promise<string[]> {
+    const key = registryAgentUrlLookupKey(agentUrl);
+    const result = await query<{ agent_url: string }>(
+      `SELECT DISTINCT agent_url FROM v_effective_agent_authorizations
+        WHERE agent_url_canonical = $1`,
+      [key],
+    );
+    return result.rows
+      .map(row => row.agent_url)
+      .filter(rowUrl => isSpecExactAgentMatch(rowUrl, agentUrl));
+  }
+
+  /**
    * Get all publisher domains for a specific agent.
    *
    * UNION over legacy + catalog (publisher-wide rows). See
@@ -200,6 +231,7 @@ export class FederatedIndexDatabase {
    * legacy data.
    */
   async getDomainsForAgent(agentUrl: string): Promise<AgentPublisherAuthorization[]> {
+    const specExact = await this.specExactAgentUrls(agentUrl);
     const result = await query<AgentPublisherAuthorization>(
       `WITH unioned AS (
          SELECT agent_url, publisher_domain, authorized_for, property_ids,
@@ -224,6 +256,7 @@ export class FederatedIndexDatabase {
            1 AS src_priority
            FROM v_effective_agent_authorizations v
           WHERE v.agent_url_canonical = $2
+            AND v.agent_url = ANY($3::text[])
             AND v.property_rid IS NULL
             AND v.property_id_slug IS NULL
        ), deduped AS (
@@ -234,7 +267,7 @@ export class FederatedIndexDatabase {
           ORDER BY agent_url, publisher_domain, source, src_priority
        )
        SELECT * FROM deduped ORDER BY source, publisher_domain`,
-      [agentUrl, registryAgentUrlLookupKey(agentUrl)]
+      [agentUrl, registryAgentUrlLookupKey(agentUrl), specExact]
     );
     return result.rows;
   }
@@ -276,6 +309,7 @@ export class FederatedIndexDatabase {
     // freshest. The catalog arm matches on the registry key the app computed
     // ($7); the legacy arm stays keyed on the raw input.
     const agentKey = registryAgentUrlLookupKey(agentUrl);
+    const specExact = await this.specExactAgentUrls(agentUrl);
     const result = await query<AgentPublisherDetailRow>(
       `WITH authz_unioned AS (
          SELECT publisher_domain, source, last_validated AS authz_last_validated, 0 AS src_priority
@@ -295,6 +329,7 @@ export class FederatedIndexDatabase {
            1 AS src_priority
            FROM v_effective_agent_authorizations v
           WHERE v.agent_url_canonical = $7
+            AND v.agent_url = ANY($8::text[])
             AND v.property_rid IS NULL
             AND v.property_id_slug IS NULL
        ), dedup AS (
@@ -390,7 +425,7 @@ export class FederatedIndexDatabase {
          AND ($4::boolean OR NOT e.is_revoked)
        ORDER BY e.publisher_domain
        LIMIT $5`,
-      [agentUrl, cursor, since, includeRevoked, limit, includePropertyIds, agentKey],
+      [agentUrl, cursor, since, includeRevoked, limit, includePropertyIds, agentKey, specExact],
     );
     const pinned = await this.signingKeysPinnedByPublisher(
       agentKey,
@@ -464,6 +499,10 @@ export class FederatedIndexDatabase {
       // legacy data, and gets its dedup key from the same app-side mapping
       // ($1/$3 unnest side by side) rather than re-deriving it in SQL.
       const batchKeys = batch.map(registryAgentUrlLookupKey);
+      // Spec-exact raw spellings across the whole batch: the catalog arm is
+      // restricted to them so the directory cannot report an authorization
+      // the #7829 validator would deny.
+      const specExact = (await Promise.all(batch.map(url => this.specExactAgentUrls(url)))).flat();
       const canonicalToInput = new Map<string, string>();
       // First-wins: if multiple inputs share a key, the first one in the
       // batch is the lookup key. Callers don't pass duplicates today.
@@ -507,6 +546,7 @@ export class FederatedIndexDatabase {
              1 AS src_priority
              FROM v_effective_agent_authorizations v
             WHERE v.agent_url_canonical = ANY($2)
+              AND v.agent_url = ANY($4::text[])
               AND v.property_rid IS NULL
               AND v.property_id_slug IS NULL
          )
@@ -516,7 +556,7 @@ export class FederatedIndexDatabase {
                 source, discovered_at, last_validated
            FROM unioned
           ORDER BY dedup_canonical, src_priority, source, publisher_domain`,
-        [batch, canonical, batchKeys]
+        [batch, canonical, batchKeys, specExact]
       );
       for (const row of result.rows) {
         // Re-key the result to the input verbatim the caller asked
@@ -989,6 +1029,7 @@ export class FederatedIndexDatabase {
    * pattern as `getPropertiesForDomain` (PR 4a).
    */
   async getPropertiesForAgent(agentUrl: string): Promise<DiscoveredProperty[]> {
+    const specExact = await this.specExactAgentUrls(agentUrl);
     const result = await query<DiscoveredProperty>(
       `WITH unioned AS (
          SELECT p.id, p.property_id, p.publisher_domain, p.property_type, p.name,
@@ -1029,6 +1070,7 @@ export class FederatedIndexDatabase {
                  ELSE '[]'::jsonb END
           ) AS prop
           WHERE v.agent_url_canonical = $2
+            AND v.agent_url = ANY($3::text[])
             AND v.property_rid IS NOT NULL
             -- Slug-match catalog row to manifest entry. Slugless catalog
             -- rows (cp.property_id IS NULL) can't be uniquely tied to a
@@ -1059,7 +1101,7 @@ export class FederatedIndexDatabase {
           ORDER BY publisher_domain, name, property_type, src_priority
        )
        SELECT * FROM deduped ORDER BY publisher_domain, property_type, name`,
-      [agentUrl, registryAgentUrlLookupKey(agentUrl)]
+      [agentUrl, registryAgentUrlLookupKey(agentUrl), specExact]
     );
     return result.rows.map(row => this.deserializeProperty(row));
   }
@@ -1078,6 +1120,7 @@ export class FederatedIndexDatabase {
     publisherDomain: string,
   ): Promise<DiscoveredProperty[]> {
     const canonicalDomain = canonicalizePublisherDomain(publisherDomain);
+    const specExact = await this.specExactAgentUrls(agentUrl);
     const result = await queryWithTimeout<DiscoveredProperty>(
       `WITH unioned AS (
          SELECT p.id, p.property_id, p.publisher_domain, p.property_type, p.name,
@@ -1120,6 +1163,7 @@ export class FederatedIndexDatabase {
                  ELSE '[]'::jsonb END
           ) AS prop
           WHERE v.agent_url_canonical = $3
+            AND v.agent_url = ANY($4::text[])
             AND v.publisher_domain = $2
             AND v.property_rid IS NOT NULL
             AND prop->>'property_id' IS NOT NULL
@@ -1145,7 +1189,7 @@ export class FederatedIndexDatabase {
           ORDER BY publisher_domain, name, property_type, src_priority
        )
        SELECT * FROM deduped ORDER BY publisher_domain, property_type, name`,
-      [agentUrl, canonicalDomain, registryAgentUrlLookupKey(agentUrl)],
+      [agentUrl, canonicalDomain, registryAgentUrlLookupKey(agentUrl), specExact],
       5_000,
     );
     return result.rows.map(row => this.deserializeProperty(row));
@@ -1258,6 +1302,7 @@ export class FederatedIndexDatabase {
    * catalog row surfaces once).
    */
   async getPublisherDomainsForAgent(agentUrl: string): Promise<string[]> {
+    const specExact = await this.specExactAgentUrls(agentUrl);
     const result = await query<{ publisher_domain: string }>(
       `SELECT DISTINCT publisher_domain FROM (
          SELECT p.publisher_domain
@@ -1268,10 +1313,11 @@ export class FederatedIndexDatabase {
          SELECT v.publisher_domain
            FROM v_effective_agent_authorizations v
           WHERE v.agent_url_canonical = $2
+            AND v.agent_url = ANY($3::text[])
             AND v.property_rid IS NOT NULL
        ) sub
        ORDER BY publisher_domain`,
-      [agentUrl, registryAgentUrlLookupKey(agentUrl)]
+      [agentUrl, registryAgentUrlLookupKey(agentUrl), specExact]
     );
     return result.rows.map(r => r.publisher_domain);
   }
@@ -1572,6 +1618,7 @@ export class FederatedIndexDatabase {
     publisherDomain: string
   ): Promise<'adagents_json' | 'agent_claim' | 'none'> {
     const canonicalDomain = canonicalizePublisherDomain(publisherDomain);
+    const specExact = await this.specExactAgentUrls(agentUrl);
     const authResult = await query<{ source: string }>(
       `WITH unioned AS (
          SELECT source, 0 AS src_priority
@@ -1589,6 +1636,7 @@ export class FederatedIndexDatabase {
            1 AS src_priority
            FROM v_effective_agent_authorizations v
           WHERE v.agent_url_canonical = $3
+            AND v.agent_url = ANY($4::text[])
             AND v.publisher_domain = $2
             AND v.property_rid IS NULL
             AND v.property_id_slug IS NULL
@@ -1597,7 +1645,7 @@ export class FederatedIndexDatabase {
         ORDER BY src_priority,
                  CASE source WHEN 'adagents_json' THEN 0 ELSE 1 END
         LIMIT 1`,
-      [agentUrl, canonicalDomain, registryAgentUrlLookupKey(agentUrl)]
+      [agentUrl, canonicalDomain, registryAgentUrlLookupKey(agentUrl), specExact]
     );
 
     if (authResult.rows.length === 0) return 'none';
@@ -1730,6 +1778,7 @@ export class FederatedIndexDatabase {
     property_id?: string;
     publisher_domain?: string;
   }> {
+    const specExact = await this.specExactAgentUrls(agentUrl);
     const result = await query<{
       id: string;
       publisher_domain: string;
@@ -1750,6 +1799,7 @@ export class FederatedIndexDatabase {
           WHERE ci.identifier_type = $3
             AND ci.identifier_value = LOWER($4)
             AND v.agent_url_canonical = $5
+            AND v.agent_url = ANY($6::text[])
             AND v.property_rid IS NOT NULL
        )
        SELECT id, publisher_domain FROM unioned LIMIT 1`,
@@ -1759,6 +1809,7 @@ export class FederatedIndexDatabase {
         identifierType,
         identifierValue,
         registryAgentUrlLookupKey(agentUrl),
+        specExact,
       ]
     );
 

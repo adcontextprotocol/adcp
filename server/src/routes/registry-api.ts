@@ -12796,6 +12796,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
 
         const { rows, cursor } = await authSnapshotDb.getNarrow({
+          // The URL asked about decides the authorization answer; the key
+          // decides which index is used (#7829 / #7830).
+          agentUrl: rawAgentUrl,
           agentUrlCanonical,
           evidence,
           include,

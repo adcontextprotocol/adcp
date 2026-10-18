@@ -224,6 +224,46 @@ export function registryAgentUrlLookupKey(raw: string): string {
 }
 
 /**
+ * The spec-exact identity of an agent URL: AdCP URL canonicalization with
+ * NOTHING folded that the spec keeps — a trailing slash is significant.
+ * Returns null for a URL the algorithm rejects, which then matches nothing.
+ *
+ * This is the comparison `AgentValidator` makes against a publisher's
+ * `adagents.json` (#7829), and `validator.ts` calls straight through to it so
+ * the two can never drift. The registry's directory reads use it to filter
+ * the rows an identity-key lookup returned, so the directory can never
+ * report an authorization the validator would deny.
+ *
+ * Contrast `registryAgentUrlKey`, which folds the trailing slash so one agent
+ * has one row. Key for the index, this for the answer.
+ */
+export function specExactAgentUrl(raw: string): string | null {
+  try {
+    return canonicalTargetUri(raw);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `rowAgentUrl` — a raw, publisher- or member-declared URL stored
+ * next to an identity key — is spec-exactly the same agent as `callerUrl`.
+ *
+ * The `'*'` wildcard is an exact-match sentinel, not a URL: it is the same
+ * agent as `'*'` and nothing else. An identity-key lookup never returns
+ * wildcard rows for a non-wildcard caller anyway, since their key is `'*'`.
+ */
+export function isSpecExactAgentMatch(rowAgentUrl: string, callerUrl: string): boolean {
+  const left = rowAgentUrl.trim();
+  const right = callerUrl.trim();
+  if (left === REGISTRY_AGENT_URL_WILDCARD || right === REGISTRY_AGENT_URL_WILDCARD) {
+    return left === right;
+  }
+  const canonicalLeft = specExactAgentUrl(left);
+  return canonicalLeft !== null && canonicalLeft === specExactAgentUrl(right);
+}
+
+/**
  * The URL to hand to anything that decides AUTHORIZATION — the spec-exact
  * comparison in `AgentValidator`, where a trailing slash is significant
  * (#7829). Never the registry key: the key folds the trailing slash for
