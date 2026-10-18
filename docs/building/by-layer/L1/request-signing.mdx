@@ -837,28 +837,25 @@ Buyers call `get_adcp_capabilities` and read `request_signing.required_for` and 
 
 ## Web Bot Auth profile (3.3, experimental)
 
-The Web Bot Auth profile follows the IETF Web Bot Auth draft as written, so any conforming Web Bot Auth library can sign for AdCP. It differs from the RFC 9421 profile above in four ways:
+The Web Bot Auth profile follows the IETF Web Bot Auth draft as written, so any conforming Web Bot Auth library can sign for AdCP. Its wire rules (signature parameters and algorithms, the key directory, nonce and replay, and failure responses) are on the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) page ([#7894](https://github.com/adcontextprotocol/adcp/pull/7894)), which also compares it with the RFC 9421 profile above. Identity, trust records, binding, and authorization are in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities). This section lists the setup steps only.
 
-| | RFC 9421 profile (deprecated) | Web Bot Auth profile |
-|---|---|---|
-| Identity | The canonical agent URL in the operator's brand.json | The agent's [canonical origin](/docs/reference/url-canonicalization#canonical-origin), one agent per origin |
-| Where keys live | brand.json `agents[].jwks_uri` | The origin's key directory, `/.well-known/http-message-signatures-directory` |
-| How a verifier finds them | Calls the agent's `get_adcp_capabilities` for `identity.brand_json_url` | Reads the covered `Signature-Agent` header; no capabilities call |
-| Key IDs | Chosen by the operator | The key's RFC 7638 thumbprint |
-
-**Signer setup:**
+**Signer setup.** These steps let a seller verify which origin is calling:
 1. Give each agent its own origin. An agency hosting several agents on one host moves each to a subdomain.
-2. Serve the key directory at that origin: a JWK Set with thumbprint `kid` values, signed per key (WBA Appendix B.1). Regenerate it before its signatures expire.
-3. List the origin in `https://{registrable domain}/.well-known/trust.json` with its role (`adcp:buying` for a buyer). The record carries no keys.
-4. Sign each request and webhook with a covered `Signature-Agent` member naming the origin, `tag="web-bot-auth"`, and a nonce.
+2. Serve the key directory at that origin, as [Key directories](/docs/building/by-layer/L1/wba-profile#key-directories) specifies. Regenerate it before its signatures expire.
+3. Sign each request and webhook as [Profile rules](/docs/building/by-layer/L1/wba-profile#profile-rules) specifies, for sellers that advertise `web-bot-auth` in `request_signing.profiles` (added by [#7894](https://github.com/adcontextprotocol/adcp/pull/7894)).
+
+**To be bound by a seller:**
+
+4. Serve a signed revocation list at the origin, `/.well-known/governance-revocations.json` ([Transport revocation](/docs/building/by-layer/L1/security#transport-revocation)), even while it revokes nothing. Without it, a seller can verify you but cannot bind you for spend.
+5. List the origin in `https://{registrable domain}/.well-known/trust.json` with its role (`adcp:buying` for a buyer). The record carries no keys.
 
 **Verifier setup:**
-1. Verify against the directory at the origin the covered `Signature-Agent` names. Check the origin's revocation list.
+1. Verify signatures with the profile's [Verification](/docs/building/by-layer/L1/wba-profile#verification) procedure, and answer failures as its [Error responses](/docs/building/by-layer/L1/wba-profile#error-responses) section says.
 2. Treat a verified origin you have not bound as identity-established: no account access. Evaluate the operator's trust record only when you bind a principal, check a grant, or apply an `open` onboarding mode.
-3. Report signature failures with the profile's HTTP status and headers: `403` with `Accept-Signature`, `400`, or `429`. A request signed with a revoked key gets the generic authentication error without `Accept-Signature`. A request you can't attribute to the origin, for example because its directory can't be fetched, is unverified: handle it as an anonymous caller's, or answer `403` with `Accept-Signature` (WBA §6.10). Once the signature verifies, authorization failures (scope, binding, grants) use the AdCP error envelope, never these statuses.
-4. Once you have bound an origin, refuse RFC 9421 signatures for it.
+3. Once you have bound an origin, refuse RFC 9421 signatures for it.
+4. Advertise `web-bot-auth` in `request_signing.profiles` (added by [#7894](https://github.com/adcontextprotocol/adcp/pull/7894)).
 
-The normative rules are in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities). For the end-to-end buyer flow, see [A buyer agent onboards itself](/docs/accounts/buyer-agent-self-onboarding). For moving from the RFC 9421 profile, see the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
+For the end-to-end buyer flow, see [A buyer agent onboards itself](/docs/accounts/buyer-agent-self-onboarding). For moving from the RFC 9421 profile, see the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
 
 ## Key rotation
 

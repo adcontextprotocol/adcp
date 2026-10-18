@@ -20,7 +20,7 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 | **Where keys live** | brand.json `agents[].jwks_uri` | The origin's key directory, `/.well-known/http-message-signatures-directory` |
 | **Finding the operator record** | `identity.brand_json_url` on the agent's `get_adcp_capabilities` | Derived: `https://{registrable domain}/.well-known/trust.json`. No capabilities call. |
 | **First contact** | Out-of-band credential or onboarding record | The covered `Signature-Agent` header identifies a signer the seller has never seen. Identity grants no authority until the seller binds it. |
-| **Acts-for authority** | brand.json `authorized_operators[]`, or the seller's onboarding record | trust.json `grants[]` from the brand's house, experimental. `authorized_operators` stays valid for a brand that has never published a trust.json. |
+| **Acts-for authority** | brand.json `authorized_operators[]`, or the seller's onboarding record | trust.json `grants[]` from the brand's house, experimental. `authorized_operators` stays valid for a brand whose house has never published a trust.json. |
 | **Onboarding** | Out of band | `account.agent_onboarding` on capabilities, experimental: a mode per billing party and sandbox |
 | **Relationship status** | Discovered on failure (`AGENT_SUSPENDED`) | `get_principal` `relationship` with `expires_at`; `principal.changed` warns before a lapse |
 | **Revocation detail** | `revoked_kids` only | Optional RFC 5280 `revocation_details` (`reason`, `invalidity_date`). Committed work stands on revocation. |
@@ -30,29 +30,20 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 | Release | What happens |
 |---|---|
 | **3.3** | Web Bot Auth, trust.json evaluation, grants, onboarding posture, and relationship status ship as experimental. The RFC 9421 profile is deprecated (6-month notice). JWS document signing (governance context, response signing, rights attestations) stays on the RFC 9421 chain. |
-| **3.4 (planned)** | JWS document signing moves to origin identities, with relying-party consent and a governance-key provenance contract. Experimental surfaces graduate once they meet the [graduation criteria](/docs/reference/experimental-status). |
+| **3.4 (direction, not decided)** | JWS document signing moves to origin identities, with relying-party consent and a governance-key provenance contract. Experimental surfaces graduate once they meet the [graduation criteria](/docs/reference/experimental-status). |
 | **4.0** | The RFC 9421 profile, the brand.json trust fields (`agents[].jwks_uri`, `authorized_operators`), and `identity.brand_json_url` are removed. |
 
 ## By role
 
 ### Buyer agent that signs requests
 
-**Do now (optional),** ordered by what each step buys you.
+**Do now (optional),** ordered by what each step buys you. The steps are in [Web Bot Auth signer setup](/docs/building/by-layer/L1/request-signing#web-bot-auth-profile-33-experimental); this section says what each group gets you while you migrate.
 
-**Identity.** These are the Web Bot Auth part. With them, a seller can verify which origin is calling; a verified origin the seller has not bound is identity-established and gets what an anonymous caller gets.
+**Identity** (signer setup steps 1–3). A seller can verify which origin is calling. A verified origin the seller has not bound is identity-established and gets what an anonymous caller gets.
 
-1. Give the agent its own origin, for example `https://buyer.pinnacle-agency.example`.
-2. Serve the key directory there: a JWK Set with RFC 7638 thumbprint `kid` values, signed per key. Schedule its regeneration before the signatures expire.
-3. Sign with the Web Bot Auth profile for sellers that advertise it (`web-bot-auth` in `request_signing.profiles`).
+**To be bound by a seller** (signer setup steps 4–5: the revocation list and the trust.json listing). A seller reads your trust.json listing only when it binds a principal or applies an `open` onboarding mode. Where a seller already has a principal for your agent, also get its explicit out-of-band approval to bind the new origin onto it (see **Existing seller relationships** below).
 
-**To be bound by a seller.** A seller reads your trust.json listing only when it binds a principal or applies an `open` onboarding mode.
-
-4. List the origin in your registrable domain's `trust.json` with role `adcp:buying`.
-5. Where a seller already has a principal for your agent, get its explicit out-of-band approval to bind the new origin onto it (see **Existing seller relationships** below).
-
-**To move authority off brand.json.** Optional through 3.x, while `authorized_operators[]` stays valid for a brand that has never published a trust.json.
-
-6. Ask your advertisers to publish grants in their trust.json records (see "Agency or operator" below).
+**To move authority off brand.json.** Optional through 3.x, while `authorized_operators[]` stays valid for a brand whose house has never published a trust.json. Ask your advertisers to publish grants in their houses' trust.json records (see "Agency or operator" below).
 
 **Keep:** your brand.json `agents[]` entry, its `jwks_uri`, and your `get_adcp_capabilities` `identity.brand_json_url` for sellers still on the RFC 9421 profile. The same key material can appear in both places, but the entries differ: Web Bot Auth `kid` values are thumbprints, and the brand.json JWKs carry `adcp_use`.
 
@@ -62,12 +53,9 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 
 ### Seller that verifies requests
 
-**Do now (optional):**
-1. Verify Web Bot Auth signatures: read the covered `Signature-Agent`, fetch the origin's key directory, find the key by thumbprint, check the origin's revocation list.
-2. Treat a verified but unbound origin as identity-established: no account access. Return `unconfigured` from `get_principal`.
-3. Evaluate the operator's trust record only when you bind a principal, check a grant, or apply an `open` onboarding mode. Never evaluate it on the signature path.
-4. Advertise `web-bot-auth` in `request_signing.profiles`.
-5. Answer signature failures with the profile's HTTP status and headers (`403` with `Accept-Signature`, `400`, `429`). Signature-specific `request_signature_*` codes stay with the RFC 9421 profile. Authorization failures after the signature verifies use the AdCP error envelope with existing codes, such as `PERMISSION_DENIED` with `grant_absent`.
+**Do now (optional):** follow [Web Bot Auth verifier setup](/docs/building/by-layer/L1/request-signing#web-bot-auth-profile-33-experimental). For a migrating seller:
+- A verified but unbound origin gets `unconfigured` from `get_principal`.
+- Signature-specific `request_signature_*` codes stay with the RFC 9421 profile. Authorization failures after a Web Bot Auth signature verifies use the AdCP error envelope with existing codes, such as `PERMISSION_DENIED` with `grant_absent`.
 
 **Keep:** RFC 9421 verification through 3.x. Once you bind an origin, refuse RFC 9421 signatures from it.
 
@@ -78,20 +66,20 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 
 **On revocation:**
 - Don't unwind accepted buys.
-- Keep the `verified_signer` and receipt time for each verified request, so you can show a buyer which buys came from requests made after a key's `invalidity_date`.
+- Record the verified origin, `keyid`, and receipt time for each verified request, so you can show a buyer which buys came from requests made after a key's `invalidity_date`.
 
 ### Agency or operator
 
-**Identity:** run each agent on its own origin, with its own key directory, and sign with the Web Bot Auth profile, as for a buyer agent above. An agency hosting several agents on one host moves each to a subdomain before adopting the profile. Until then, those agents stay on the RFC 9421 profile.
+**Identity:** run each agent on its own origin, with its own key directory and revocation list, and sign with the Web Bot Auth profile, as for a buyer agent above. An agency hosting several agents on one host moves each to a subdomain before adopting the profile. Until then, those agents stay on the RFC 9421 profile.
 
 **To be bound by a seller:** publish `/.well-known/trust.json` at your registrable domain, listing your agents by origin with their roles, and arrange each seller's approval where you have existing principals. **Revoke an agent** by removing its origin from your trust.json. Sellers drop it within one cache lifetime.
 
-**To move authority off brand.json (optional through 3.x):** move acts-for authority to grants. Each advertiser you buy for publishes a grant to your domain in its house's trust.json. When your own agent buys, the grant is ideally narrowed to that agent. When you use an intermediary or a hosted platform, the advertiser's grant to you stays unnarrowed, and you grant the intermediary in your own trust.json, narrowed to its agent; the two grants form the chain. See [Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental).
+**To move authority off brand.json (optional through 3.x):** move acts-for authority to grants. Each advertiser you buy for publishes a grant to your domain in its house's trust.json. When your own agent buys, the grant is ideally narrowed to that agent. When you use an intermediary or a hosted platform, the advertiser's grant to you stays unnarrowed, and you grant the intermediary in your own trust.json, narrowed to its agent; the two grants form the chain. See [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental).
 
 ### Brand or advertiser
 
-- **Publish grants** in your trust.json for the operators that buy for you, with the `adcp:media_buying` scope and your brand IDs.
-- **Opt in to fail-closed** with `exclusive_grants: true` when the list is complete. When your trust.json exists, sellers ignore `authorized_operators` in your brand.json, so move every entry over before publishing it.
+- **Publish grants** in your house's trust.json (your own, when your brand.json names no house) for the operators that buy for you, with the `adcp:media_buying` scope and your brand IDs.
+- **Opt in to fail-closed** with `exclusive_grants: true` when the list is complete. When your house's trust.json exists, sellers ignore `authorized_operators` in your brand.json, so move every entry over before publishing it.
 
 ### Multi-tenant platform
 
@@ -119,9 +107,9 @@ SDK support for the Web Bot Auth profile, trust.json evaluation, and grants is i
 
 ## Rollback
 
-Every 3.3 identity change is optional, so rolling back means turning it off:
-- **Signers:** keep your brand.json keys and capabilities pointer until the sellers you use have bound your origin. Signing with the RFC 9421 profile again works with any seller that has not bound your origin. A seller that has bound it refuses RFC 9421 signatures from it until it unbinds.
-- **Sellers:** stop advertising `web-bot-auth` and stop accepting it. Bindings you created stay in your records. Unbind them before falling back, or those agents lose access.
+Most 3.3 identity changes roll back by turning them off. A binding is the exception.
+- **Signers:** keep your brand.json keys and capabilities pointer until the sellers you use have bound your origin. A seller that has bound your origin keeps refusing RFC 9421 signatures from it; rollback is available only with sellers that have not bound you.
+- **Sellers:** stop advertising `web-bot-auth` for new signers. Origins you have bound stay bound and cannot return to RFC 9421 signatures with you, so keep verifying Web Bot Auth for them.
 - **Brands:** a seller that has read your trust.json never falls back to brand.json for you. There is no rollback by deletion; keep the record complete.
 
 ## Related
@@ -129,7 +117,7 @@ Every 3.3 identity change is optional, so rolling back means turning it off:
 - [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)
 - [A buyer agent onboards itself](/docs/accounts/buyer-agent-self-onboarding)
 - [First contact and binding](/docs/building/by-layer/L2/accounts-and-agents#first-contact-and-binding)
-- [Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental)
+- [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental)
 - [`account.agent_onboarding`](/docs/protocol/get_adcp_capabilities#accountagent_onboarding)
 - [trust.json](/docs/reference/trust-json)
 - [URL canonicalization: canonical origin](/docs/reference/url-canonicalization#canonical-origin)

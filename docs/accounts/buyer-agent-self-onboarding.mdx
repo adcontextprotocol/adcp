@@ -11,7 +11,7 @@ This walkthrough follows one buyer agent from nothing to a working account with 
 **Experimental, AdCP 3.3.** This flow uses several experimental surfaces:
 - the Web Bot Auth signing profile ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities));
 - trust.json ([trust.json](/docs/reference/trust-json));
-- demand-side grants ([Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental));
+- demand-side grants ([Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental));
 - seller onboarding posture ([`account.agent_onboarding`](/docs/protocol/get_adcp_capabilities#accountagent_onboarding));
 - relationship status on [`get_principal`](/docs/protocol/get_principal#relationship-status).
 
@@ -34,7 +34,7 @@ Self-onboarding automates becoming known. Under an `open` mode, a buyer agent ge
 
 ## 0. Publish your identity
 
-The agent's identity is its **origin**, one agent per origin. Two files make it verifiable.
+The agent's identity is its **origin**, one agent per origin. Three files make it verifiable.
 
 **The key directory**, at the agent's origin, holds its signing keys. It is a JWK Set; each `kid` is the key's RFC 7638 thumbprint, and keys carry no AdCP-specific members:
 
@@ -64,6 +64,20 @@ The response is signed with each key and carries an `expires`, so publishing it 
 ```
 
 served at `https://pinnacle-agency.example/.well-known/trust.json`. Sellers derive this location from the agent's origin, so nothing points to it.
+
+**The revocation list**, at the agent's origin, is where the agent revokes a key. It is served at `/.well-known/governance-revocations.json` as a JWS of type `adcp-gov-revocation+jws`, signed with a key from the directory, even while it revokes nothing. Its payload:
+
+```json
+{
+  "version": 1,
+  "issuer": "https://buyer.pinnacle-agency.example",
+  "updated": "2026-10-02T09:00:00Z",
+  "next_update": "2026-10-02T09:15:00Z",
+  "revoked_kids": []
+}
+```
+
+The format and polling rules are in [Transport revocation](/docs/building/by-layer/L1/security#transport-revocation). Without it, a seller can verify you but cannot bind you for spend.
 
 **Grants from the advertisers.** Nova Motors grants Pinnacle authority to buy for it, in Nova Motors' own trust.json:
 
@@ -124,7 +138,7 @@ A seller marked `invite_only` would be dropped from the plan with the reason rec
 
 ## 4. First contact
 
-The agent signs a `get_principal` request with the Web Bot Auth profile. The covered `Signature-Agent` member names its origin:
+The agent signs a `get_principal` request with the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile). The covered `Signature-Agent` member names its origin:
 
 ```http
 POST /mcp HTTP/1.1
@@ -132,7 +146,7 @@ Host: ads.streamhaus.example
 Content-Type: application/json
 Content-Digest: sha-256=:...:
 Signature-Agent: sig1="https://buyer.pinnacle-agency.example"
-Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" "content-digest" "signature-agent";key="sig1");created=1791903600;expires=1791903900;nonce="b3k2pp5k7z";keyid="NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs";tag="web-bot-auth"
+Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" "content-digest" "signature-agent";key="sig1");created=1791903600;expires=1791903900;nonce="feeG8NGBMs3K7BOSl6_Fw3kb1-bupF1WT-1iCRLNPaqfALoUmG8A0ZqhHWEck3K65l1JLYdv0BFklWhPKO0c-Q";keyid="NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs";alg="ed25519";tag="web-bot-auth"
 Signature: sig1=:...:
 ```
 
@@ -159,7 +173,7 @@ The agent calls `sync_accounts` for Nova Motors, operator-billed:
 {
   "accounts": [
     {
-      "brand": { "domain": "novamotors.example" },
+      "brand": { "domain": "novamotors.example", "brand_id": "nova_motors" },
       "operator": "pinnacle-agency.example",
       "billing": "operator"
     }
@@ -181,18 +195,18 @@ The agent subscribes to `principal.changed`. When StreamHaus approves agent bill
 | The mode is `application` | The posture's `url` and requirements | Hand the URL and unmet list to a human. Watch `get_principal` for `relationship`. |
 | The trust record doesn't list the origin | `PERMISSION_DENIED` with no `details` | Add the origin to `trust.json` with role `adcp:buying`. |
 | No grant covers the brand | `PERMISSION_DENIED`, `reason: "grant_absent"` | Ask the advertiser, or the agency acting for it, to publish the grant. |
-| The origin hosts two agents | The trust record is invalid | Give each agent its own subdomain. |
-| Pinnacle revokes a key with `reason: keyCompromise` | Requests under that key are rejected; buys stand | Review the buys the seller shows you; pause or cancel the ones you didn't intend with `control_media_buy`. |
+| The origin hosts two agents | `PERMISSION_DENIED` with no `details`, because the trust record fails the match | Give each agent its own subdomain. |
+| Pinnacle revokes a key with `reason: keyCompromise` | Requests under that key get `AUTH_INVALID`; buys stand | Review the buys the seller shows you; pause or cancel the ones you didn't intend with `control_media_buy`. |
 
 ## If you sign with the RFC 9421 profile today
 
-The RFC 9421 profile (`adcp/request-signing/v1`, keys through brand.json) is deprecated in 3.3 and works through 3.x. A buyer moving to Web Bot Auth publishes the directory and trust record above and keeps its brand.json keys until the sellers it uses have moved. A seller binds the new origin onto an existing principal only with explicit approval, so arrange that with each seller. See the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
+The RFC 9421 profile (`adcp/request-signing/v1`, keys through brand.json) is deprecated in 3.3 and works through 3.x. A buyer moving to Web Bot Auth publishes the directory, trust record, and revocation list above and keeps its brand.json keys until the sellers it uses have moved. A seller binds the new origin onto an existing principal only with explicit approval, so arrange that with each seller. See the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
 
 ## Related reference
 
 - [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)
 - [First contact and binding](/docs/building/by-layer/L2/accounts-and-agents#first-contact-and-binding)
-- [Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental)
+- [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental)
 - [`account.agent_onboarding`](/docs/protocol/get_adcp_capabilities#accountagent_onboarding)
 - [Relationship status](/docs/protocol/get_principal#relationship-status)
 - [trust.json](/docs/reference/trust-json)
