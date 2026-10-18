@@ -61,6 +61,15 @@
  * `https://x.example/mcp` satisfies the new predicate perfectly. Completeness
  * is the dry run reporting zero rewrites.
  *
+ * PAUSING THE WORKERS DOES NOT SURVIVE THE DEPLOY. Observed in the #7830
+ * production run on 2026-10-18: `flyctl deploy --process-groups worker`
+ * recreated the worker group with 2 machines (HA) even though it had been
+ * scaled to 0 beforehand. The crawler and compliance runner were therefore
+ * live again before the rewrite started. Re-apply the pause AFTER the worker
+ * rollout finishes — or stop the workers by some means a deploy cannot undo —
+ * and re-run the dry run before `--apply`, because writes landing in that
+ * window create collisions that were not in the reviewed plan.
+ *
  * `--only=<store>` narrows the run to one store. The default — and the only
  * way to finish the migration — is all of them: readers and writers switch
  * together, so a store left on the old key is a store whose rows no reader
