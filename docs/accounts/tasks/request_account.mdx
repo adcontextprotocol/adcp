@@ -1,0 +1,189 @@
+---
+title: request_account
+description: "request_account asks a seller for an advertiser account: the seller matches an existing account or creates one, possibly after human review on either side."
+"og:title": "AdCP — request_account"
+testable: false
+---
+
+`request_account` asks a seller for an advertiser account for one brand and operator. The seller looks for an existing account first, creates one if it should, or tells the buyer what a human has to do before it can.
+
+<Note>
+**Experimental.** Account requests ([`request_account`](/docs/accounts/tasks/request_account), [`get_account_requests`](/docs/accounts/tasks/get_account_requests), the `account_request.changed` webhook, the `account.requests` capability block, and the `request_id`, `resolution`, `setup.waiting_on`, and `setup.kind` fields on [`sync_accounts`](/docs/accounts/tasks/sync_accounts) results) are an experimental AdCP 3.3 surface ([#8280](https://github.com/adcontextprotocol/adcp/issues/8280)). They may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any part of it MUST declare `account.requests` in `experimental_features`. See [experimental status](/docs/reference/experimental-status).
+</Note>
+
+**Request schema:** [`account/request-account-request.json`](https://adcontextprotocol.org/schemas/v3/account/request-account-request.json)
+**Response schema:** [`account/request-account-response.json`](https://adcontextprotocol.org/schemas/v3/account/request-account-response.json)
+
+## Why a request, not an account
+
+Getting an account usually involves a person. When a storefront receives "WPP Media FR for Renault," someone in sales ops checks the CRM, where the record is named something like "Renault SAS – France," not keyed on a domain. The review can end four ways: the seller already has a relationship and links it, creates a new account, asks a human on the buyer side to sign up first, or declines.
+
+[`sync_accounts`](/docs/accounts/tasks/sync_accounts) models this as a placeholder account in `pending_approval`. A placeholder can't become an existing account without changing its `account_id`, and a rejected placeholder keeps holding the brand and operator. A request is its own object instead: no account exists until the request resolves, so a match never changes an ID and a rejection never blocks a retry.
+
+## When to call
+
+Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) advertises `account.requests.supported: true` and lists `account.requests` in `experimental_features`. Otherwise, provision through [`sync_accounts`](/docs/accounts/tasks/sync_accounts).
+
+- **Agent-declared sellers** (storefronts, inventory sources, house seats): `request_account` is the way to get an account.
+- **Sellers that own their account namespace** (platforms where the credential's access decides which accounts exist): `request_account` is optional. When offered, it matches among accounts the credential already reaches, or returns a buyer action such as creating an ad account or asking the brand to grant access. Sellers that don't offer it rely on [`list_accounts`](/docs/accounts/tasks/list_accounts), and the brand-to-account mapping stays on the buyer side.
+
+## Lifecycle
+
+| `state` | Carries | What the buyer does |
+| --- | --- | --- |
+| `in_review` | `pending_action` | `waiting_on: seller`: wait for `account_request.changed` or poll [`get_account_requests`](/docs/accounts/tasks/get_account_requests). `waiting_on: buyer`: show `pending_action.url` to a human, then keep waiting. |
+| `resolved` | `account_id`, `resolution` (`matched` or `created`) | Store `account_id` and send it on every account-scoped task. |
+| `ambiguous` | `candidates[]` | A human picks one; call `request_account` again with that `account_id`. |
+| `rejected` | `errors[]` | Tell a human. A new request for the same key opens a new request. |
+
+`in_review` and `ambiguous` are open; `resolved` and `rejected` are terminal for that request. A seller that approves automatically resolves in the same response. A seller that reviews starts `in_review` with `waiting_on: seller`.
+
+`pending_action.kind` says what is needed: `review`, `sign_up`, `accept_terms`, `credit_application`, `add_payment`, `grant`, or `connect_credentials`. The list is extensible; for an unknown kind, fall back to `message` and `url`.
+
+## Request
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `idempotency_key` | Yes | Makes retries of this call safe. Separate from deduplication, which is keyed on the account (below). |
+| `brand` | Unless `account_id` | BrandKey: `domain`, optional `brand_id`, optional `countries[]`. |
+| `operator` | Unless `account_id` | Domain of the entity operating for the brand; the brand's own domain when it buys direct. |
+| `operator_unit` | No | Operator-owned unit or seat. `id` is part of the key; `name` is not. |
+| `currency` | No | Immutable ISO 4217 currency for a currency-bound advertiser object. Part of the key. |
+| `timezone` | Conditional | Buyer-selected immutable timezone, as in [`sync_accounts`](/docs/accounts/tasks/sync_accounts). Part of the key. |
+| `sandbox` | No | Request a sandbox account. Part of the key. |
+| `billing` | No | Requested invoiced party: `operator`, `agent`, or `advertiser`. Accepted exactly or rejected. |
+| `billing_entity` | No | Requested business entity for the invoiced party. Bank details are write-only. |
+| `payment_terms` | No | Requested terms. Accepted or rejected, never silently remapped. |
+| `account_id` | No | Instead of `brand` and `operator`: pick a candidate from an `ambiguous` result, or ask for access to an account the credential doesn't reach yet. |
+
+Send either `account_id`, or `brand` and `operator`. A request with both, or neither, fails with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request).
+
+```json
+{
+  "adcp_version": "3.3",
+  "idempotency_key": "3f1d2a8c-6b0e-4c7a-9d51-8e2f4a6b9c10",
+  "brand": { "domain": "renault.fr", "countries": ["FR"] },
+  "operator": "wppmedia.fr",
+  "currency": "EUR",
+  "billing": "operator",
+  "billing_entity": { "legal_name": "WPP Media France SAS" }
+}
+```
+
+## Response
+
+A completed response always carries the request, whatever its state. `in_review` and `rejected` are normal outcomes, not task failures; `status: "failed"` is reserved for calls the seller couldn't process.
+
+```json
+{
+  "status": "completed",
+  "request": {
+    "request_id": "areq_01K4F8M2Q7",
+    "state": "in_review",
+    "requested": {
+      "brand": { "domain": "renault.fr", "countries": ["FR"] },
+      "operator": "wppmedia.fr",
+      "currency": "EUR",
+      "billing": "operator"
+    },
+    "pending_action": {
+      "waiting_on": "seller",
+      "kind": "review",
+      "message": "Checking for an existing Renault France relationship."
+    },
+    "created_at": "2026-10-18T09:00:00Z",
+    "updated_at": "2026-10-18T09:00:00Z"
+  }
+}
+```
+
+A day later, sales ops finds no relationship and hands the next step to the buyer:
+
+```json
+{
+  "request_id": "areq_01K4F8M2Q7",
+  "state": "in_review",
+  "pending_action": {
+    "waiting_on": "buyer",
+    "kind": "sign_up",
+    "url": "https://advertisers.streamhaus.example/register?ref=areq_01K4F8M2Q7",
+    "message": "No existing relationship found. Register WPP Media France as an advertiser.",
+    "expires_at": "2026-11-15T00:00:00Z"
+  }
+}
+```
+
+Once the human registers, the request resolves:
+
+```json
+{
+  "request_id": "areq_01K4F8M2Q7",
+  "state": "resolved",
+  "account_id": "acc_renault_fr_wpp",
+  "resolution": "created"
+}
+```
+
+## Deduplication
+
+A request is identified by who asked and which account they asked for:
+
+1. **Per calling agent.** Requests are scoped to the authenticated caller. Two agents asking for the same advertiser get two requests, and both may resolve to the same account (`matched`), each with its own grant.
+2. **On the account's natural key.** The key is exactly the [`sync_accounts`](/docs/accounts/tasks/sync_accounts) natural key: `brand.domain`, `brand.brand_id`, canonical `brand.countries[]`, `operator`, `operator_unit.id`, `currency`, `timezone`, `sandbox`. A request naming `account_id` is keyed on that ID.
+3. **Terms are not identity.** `billing`, `billing_entity`, and `payment_terms` are requested terms. One advertiser identity maps to one account whoever is invoiced.
+
+When the same key arrives again:
+
+| Existing request | Result |
+| --- | --- |
+| `in_review` or `ambiguous` | The same request. Changed terms replace the requested terms; the seller MAY restart review. |
+| `resolved` | The same request and account, with the account's actual terms. Changing terms is a settings update through `sync_accounts`, never a silent re-review. |
+| `rejected` | A new request. The seller MAY reject it again at once, for example during a cool-down. |
+| `resolved`, account since closed | A new request, which may create a new account. |
+
+`idempotency_key` only makes retries of one call safe. Replaying a key with a different body returns [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict), as on every AdCP mutation.
+
+## Seller rules
+
+- **No placeholder accounts.** Issue an `account_id` only when the request resolves. Open requests are visible through [`get_account_requests`](/docs/accounts/tasks/get_account_requests), not [`list_accounts`](/docs/accounts/tasks/list_accounts).
+- **No existence oracle.** `matched` and `candidates[]` disclose only accounts the calling agent is, or is now, granted. When the only match is an account another operator or agent holds, every state, pending-action kind, and error the caller sees MUST be one the seller could also return when nothing matches: for example, `review` followed by `sign_up`, a new account, or a rejection with a generic reason.
+- **Unreachable `account_id`s look like unknown ones.** For an `account_id` the caller can't reach, answer the same way whether or not the account exists: always `rejected` with [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found), or, for sellers that support access requests, always `in_review` with `waiting_on: buyer` and `kind: grant`.
+- **Action URLs aren't bearer links.** Possession of `pending_action.url`, or of a `request_id` in it, MUST NOT by itself be enough to complete the action; the human authenticates with the seller first.
+- **Grant the caller on resolution.** A resolved account appears in the caller's `list_accounts` with its [caller authorization](/docs/accounts/overview#caller-authorization).
+- **Check authority while reviewing.** Verify the operator against the brand's `authorized_operators`, and, where supported, the operator's grant to the calling agent. A missing grant is `waiting_on: buyer` with `kind: grant`, not a bare error.
+- **Expire buyer actions.** A request still waiting on the buyer at `pending_action.expires_at` moves to `rejected` with an error explaining the expiry.
+- **Fire `account_request.changed` on every seller-driven transition,** after the new state is readable through `get_account_requests`, when the capability declares `event_type`. Sellers that don't fire it leave buyers to poll.
+- **Fold in the agent application.** If the calling agent's own relationship with the seller is not yet active, the seller MAY review it together with its first account request, so the buyer makes one call and the seller one review.
+
+## Relation to `sync_accounts`
+
+Sellers keep one internal request record, and [`sync_accounts`](/docs/accounts/tasks/sync_accounts) provisioning rows become a projection of it. Buyers that don't know about requests keep working.
+
+| Request state | `sync_accounts` row |
+| --- | --- |
+| `in_review` | `status: pending_approval`, `setup` with `waiting_on` and `kind`, `request_id`. A seller that may match omits `account_id`. |
+| `resolved` / `created` | `action: created` (then `unchanged` on repeats), `account_id`, `resolution: created` |
+| `resolved` / `matched` | `action: unchanged`, `account_id`, `resolution: matched` |
+| `ambiguous` | `action: failed`, [`ACCOUNT_AMBIGUOUS`](/docs/building/verification/compliance-catalog#error-code-account-ambiguous) with `error.details.candidates[]` |
+| `rejected` | `status: rejected` with the reason in `warnings`, as `sync_accounts` already reports a declined account. `action: failed` with `errors[]` stays reserved for entries the seller couldn't process. |
+
+**Buyers that predate account requests.** They ignore `request_id`, `resolution`, and the new `setup` fields, and learn the outcome the way they do today: by replaying `sync_accounts` with the same natural key, from the one-shot `push_notification_config`, or from `account.status_changed`. When a request resolves, the seller activates the row's account-level `notification_configs` first and then fires `account.status_changed` from `pending_approval` with the resolved `account_id`. The one visible difference is that a request-mode seller's pending rows don't appear in [`list_accounts`](/docs/accounts/tasks/list_accounts) until they resolve.
+
+**Placeholder accounts or request mode.** A seller declaring `account.stable_account_id: true` that may resolve a request to an existing account MUST NOT issue `account_id` while the account is pending; in practice, that is request mode. A seller that only ever creates accounts MAY keep placeholder accounts in `pending_approval`. New implementations SHOULD use request mode.
+
+## Buyer handling
+
+1. If the seller advertises `account.requests`, call `request_account`. Otherwise use [`sync_accounts`](/docs/accounts/tasks/sync_accounts).
+2. Store `request_id` against (seller, key).
+3. While the request is open, if the seller declares `account.requests.event_type`, register for `account_request.changed` through [`sync_principal`](/docs/protocol/sync_principal) or [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs), or poll [`get_account_requests`](/docs/accounts/tasks/get_account_requests) with backoff.
+4. Until it resolves, call discovery tasks without `account`, which returns the seller's public view.
+5. After a cold start, `get_account_requests` (open states) plus [`list_accounts`](/docs/accounts/tasks/list_accounts) recover everything.
+
+## Errors
+
+| Code | When |
+| --- | --- |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | Both or neither of `account_id` and `brand` + `operator`; malformed key. |
+| [`BILLING_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-billing-not-supported) | The requested `billing` isn't in the seller's `supported_billing`. Sellers MAY instead record the request and reject it. |
+| [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict) | The `idempotency_key` was replayed with a different body. |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | The seller doesn't support account requests. |
