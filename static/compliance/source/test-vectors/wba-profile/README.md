@@ -10,7 +10,7 @@ Specification: [Web Bot Auth request-signing profile](https://adcontextprotocol.
 
 `keys.json` publishes the private seed of every test key in `_private_d_for_test_only`, so implementations can reproduce every signature. Each seed is SHA-256 of the ASCII string `rfc004-test/<seed_name>`, used as the Ed25519 private key. Each `kid` is the key's JWK thumbprint (RFC 7638; RFC 8037 Appendix A.3 for Ed25519), and each entry's `identity` is the origin whose key directory publishes the key.
 
-**These keys are valid only for grading against this suite.** WBA section 6.8: test keys "MUST NOT be used in production", and verifiers SHOULD reject them when detected. A production verifier that accepts a directory containing `6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I`, or `hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI` is exploitable.
+**These keys are valid only for grading against this suite.** WBA section 6.8: test keys "MUST NOT be used in production", and verifiers SHOULD reject them when detected. A production verifier that accepts a directory containing `6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I` or `hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI` is exploitable.
 
 The domains in the vectors (`buyer-7k3q.com`, `agent.brand-7k3q.com`, `seller-7k3q.com`) are placeholders that resolve to nothing. A harness serves each directory from the vector's `directories` object instead of fetching it.
 
