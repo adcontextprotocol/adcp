@@ -1,0 +1,196 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string"
+    },
+    "adcp_major_version": {
+      "type": "integer"
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+    },
+    "view": {
+      "enum": [
+        "summary",
+        "periods",
+        "revision"
+      ]
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "delivery_config_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "feed_purposes": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "pacing",
+          "analytics",
+          "billing"
+        ]
+      }
+    },
+    "period": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string"
+        },
+        "end": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ]
+    },
+    "health": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:enums~1reporting-health.json"
+      }
+    },
+    "finality": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:enums~1reporting-finality.json"
+      }
+    },
+    "reporting_revision_id": {
+      "type": "string"
+    },
+    "changes_after": {
+      "type": "string"
+    },
+    "pagination": {
+      "$ref": "#/$defs/external:core~1pagination-request.json"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    }
+  },
+  "required": [
+    "account",
+    "view"
+  ],
+  "$defs": {
+    "external:core/canonical-account-ref.json": {
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "account_id"
+          ]
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "timezone": {
+              "type": "string"
+            },
+            "sandbox": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ]
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "domain"
+      ]
+    },
+    "external:core/brand-id.json": {
+      "type": "string"
+    },
+    "external:core/operator-unit.json": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "external:enums/reporting-finality.json": {
+      "enum": [
+        "snapshot",
+        "official"
+      ]
+    },
+    "external:enums/reporting-health.json": {
+      "enum": [
+        "healthy",
+        "waiting",
+        "delayed",
+        "action_required",
+        "complete"
+      ]
+    },
+    "external:core/pagination-request.json": {
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer"
+        },
+        "cursor": {
+          "type": "string"
+        }
+      }
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

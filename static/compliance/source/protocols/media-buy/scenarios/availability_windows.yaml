@@ -134,6 +134,10 @@ phases:
             description: "Context correlation_id returned unchanged"
 
   - id: mirror_read
+    # The availability promise does not require the optional wholesale path.
+    requires_capability:
+      path: media_buy.lifecycle_tools
+      contains: list_products
     title: "Capture the feed version without forecast"
     depends_on: [setup]
     narrative: |
@@ -189,6 +193,9 @@ phases:
             description: "Context correlation_id returned unchanged"
 
   - id: flexible_window_read
+    requires_capability:
+      path: media_buy.lifecycle_tools
+      contains: list_products
     title: "Flexible-window availability discovery"
     depends_on: [mirror_read]
     narrative: |
@@ -298,6 +305,9 @@ phases:
             description: "Context correlation_id returned unchanged"
 
   - id: conditional_read
+    requires_capability:
+      path: media_buy.lifecycle_tools
+      contains: list_products
     title: "Forecast is a per-read overlay, never feed content"
     depends_on: [mirror_read]
     narrative: |
@@ -349,8 +359,12 @@ phases:
             description: "Context correlation_id returned unchanged"
 
   - id: buy_rejections
+    # Keep forecast reads applicable for sellers without compact direct buying.
+    requires_capability:
+      path: media_buy.lifecycle_tools
+      contains: buy_products
     title: "The buy is the authoritative availability check"
-    depends_on: [flexible_window_read]
+    depends_on: [mirror_read, flexible_window_read]
     narrative: |
       availability_status is a snapshot, never a hold. The seller re-checks the
       calendar at buy time and rejects both a flight inside a booked span and a
