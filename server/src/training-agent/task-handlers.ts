@@ -7669,12 +7669,16 @@ function compactReportingCapabilityFields(): ReadonlySet<string> {
   return canonicalReportingCapabilityFields;
 }
 
-const COMPACT_FORMAT_OPTION_FIELDS = new Set([
-  'format_option_id', 'format_kind', 'display_name', 'publisher_domain',
-  'applies_to_channels', 'params', 'format_schema', 'format_shape',
-  'locale_policy', 'seller_preference', 'canonical_formats_only',
-  'experimental', 'sample_render_url',
-]);
+let canonicalFormatOptionFields: ReadonlySet<string> | undefined;
+
+/** Keep binding creative metadata as the closed compact schema evolves,
+ * while stripping legacy-only links and seller-internal fields. */
+function compactFormatOptionFields(): ReadonlySet<string> {
+  canonicalFormatOptionFields ??= new Set(Object.keys(
+    (loadSourceSchema('core/canonical-format-option.json').properties ?? {}) as Record<string, unknown>,
+  ));
+  return canonicalFormatOptionFields;
+}
 
 function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<string>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(source)
@@ -7705,7 +7709,7 @@ function compactLifecycleProduct(
   if (selectedFields.has('format_options') && Array.isArray(product.format_options)) {
     projected.format_options = product.format_options
       .filter(isRecord)
-      .map(option => pickCompactFields(option, COMPACT_FORMAT_OPTION_FIELDS));
+      .map(option => pickCompactFields(option, compactFormatOptionFields()));
   }
   if (selectedFields.has('pricing_options') && Array.isArray(product.pricing_options)) {
     projected.pricing_options = product.pricing_options

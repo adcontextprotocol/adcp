@@ -2860,6 +2860,68 @@ describe('tenant routing smoke', () => {
     }
   }, 15000);
 
+  it('preserves binding creative format metadata through list_products', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'compact-creative-metadata.example' },
+        operator: 'compact-creative-metadata.example',
+        sandbox: true,
+      };
+      const productId = 'compact_creative_metadata_product';
+      const format = {
+        format_option_id: 'homepage_image', format_kind: 'image',
+        params: { width: 300, height: 250 },
+        technical_requirements_complete: true,
+        tracker_execution_contract: { complete: true, honored: [] },
+        macro_resolution_capabilities: [{
+          dialect: 'adcp', dialect_semantic: 'AD_WIDTH',
+          mapping_status: 'verified_universal', universal_semantic: 'AD_WIDTH',
+          operation: 'resolve_value', performed_by: 'seller',
+          supported_contexts: ['url_query_value'],
+          supported_encodings: [{ kind: 'none', depth: 0 }],
+        }],
+      };
+      const seeded = await callTenantTool(url, 70, 'comply_test_controller', {
+        account, scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            name: 'Compact creative metadata product', channels: ['display'],
+            delivery_type: 'guaranteed',
+            format_options: [{
+              ...format,
+              v1_format_ref: [{
+                agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_300x250_image',
+              }],
+              seller_internal_note: 'Never returned on the compact wire.',
+            }],
+          },
+        },
+      }) as { result?: { structuredContent?: { success?: boolean } } };
+      expect(seeded.result?.structuredContent?.success, JSON.stringify(seeded)).toBe(true);
+      await provisionAccount(url, account);
+
+      for (const [index, fields] of [undefined, ['format_options']].entries()) {
+        const listed = await callTenantTool(url, 72 + index, 'list_products', {
+          account, criteria: { product_ids: [productId] }, ...(fields && { fields }),
+        }) as { result?: { structuredContent?: {
+          products?: Array<{ product_id?: string; format_options?: Array<Record<string, unknown>> }>;
+        } } };
+        const result = listed.result?.structuredContent;
+        expect(result?.products, JSON.stringify(listed)).toHaveLength(1);
+        expect(result?.products?.[0].product_id).toBe(productId);
+        expect(result?.products?.[0].format_options).toEqual([format]);
+        const validation = validateSourceSchema('media-buy/list-products-response.json', result);
+        expect(validation.valid, JSON.stringify(validation.errors)).toBe(true);
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('serves the AdCP 3.1 dual product shape through the explicit legacy facade', async () => {
     const { baseUrl, close } = await bootServer();
     try {
