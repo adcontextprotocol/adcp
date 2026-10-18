@@ -67,6 +67,7 @@ export async function verifyDirectory({ origin, response, now }, { bare = false 
     }
     policy.checkDirectoryStatus(response);
     policy.checkDirectoryMediaType(response);
+    policy.checkPublicKeysOnly(keys);
     const input = parseDictionary(header(response.headers, 'signature-input') ?? '');
     for (const verifier of await Promise.all(keys.map(verifierOrUndefined))) {
       if (!policy.usable(verifier)) continue;
@@ -170,12 +171,13 @@ export async function signRequest({ key, origin, request, now, label = 'sig1' })
  * `parameters` moves `created` and `expires` (offsets from `now`) or sets
  * `tag`, `components` replaces the covered components, `unsigned_keys` adds
  * public keys that do not sign, `content_type` changes the media type,
- * `status` changes the response status, and `after_signing.append_to_body`
+ * `status` changes the response status, `publish_private_members` publishes
+ * each signing key with its private members, and `after_signing.append_to_body`
  * changes the body after signing.
  */
-export async function signDirectory({ keys, origin, now, authority, parameters = {}, components, unsigned_keys = [], content_type, status = 200, after_signing = {} }) {
+export async function signDirectory({ keys, origin, now, authority, parameters = {}, components, unsigned_keys = [], content_type, status = 200, publish_private_members = false, after_signing = {} }) {
   const published = [];
-  for (const key of keys) published.push({ ...publicJwk(key), kid: (await signerFromJWK(key)).keyid, use: 'sig' });
+  for (const key of keys) published.push({ ...(publish_private_members ? key : publicJwk(key)), kid: (await signerFromJWK(key)).keyid, use: 'sig' });
   const body = JSON.stringify({ keys: [...published, ...unsigned_keys] }, null, 2);
   const base = {
     'content-type': content_type ?? policy.DIRECTORY_MEDIA_TYPE,

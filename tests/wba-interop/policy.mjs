@@ -145,8 +145,9 @@ export function checkNotTestKey(keyid, rejectKids = []) {
 // ── Row "Directory responses" ─────────────────────────────────────────────
 // Served with the directory media type. One signature per Ed25519 key, covering
 // "@authority";req and content-digest, with created, expires, keyid, and the
-// directory tag. Keys the profile does not use, and their signatures, are
-// ignored (RFC 7517 section 5). Content-Digest matches the body (Appendix B.1).
+// directory tag. No key carries a private member. Keys the profile does not
+// use, and their signatures, are ignored (RFC 7517 section 5). Content-Digest
+// matches the body (Appendix B.1).
 
 export const DIRECTORY_MEDIA_TYPE = 'application/http-message-signatures-directory+json';
 export const DIRECTORY_TAG = 'http-message-signatures-directory';
@@ -154,6 +155,21 @@ export const DIRECTORY_TAG = 'http-message-signatures-directory';
 export function checkDirectoryMediaType(response) {
   const type = header(response.headers, 'content-type')?.split(';')[0].trim().toLowerCase();
   if (type !== DIRECTORY_MEDIA_TYPE) refuse('directory-media-type', `directory media type ${type}`);
+}
+
+// The private members of a JWK (RFC 7518 sections 6.2.2, 6.3.2, and 6.4.1).
+export const PRIVATE_MEMBERS = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth', 'k'];
+
+/**
+ * A directory publishes public keys only. Every key is checked, whatever its
+ * type, before the keys the profile does not use are skipped (WBA 5.5.1: a
+ * verifier SHOULD reject malformed entries).
+ */
+export function checkPublicKeysOnly(keys) {
+  for (const key of keys) {
+    const members = PRIVATE_MEMBERS.filter(m => Object.hasOwn(key, m));
+    if (members.length > 0) refuse('directory-private-key', `directory key ${key.kid} carries private members ${members.join(', ')}`);
+  }
 }
 
 /** The `verifySignature` policy for one directory signature (WBA Appendix B.1). */
