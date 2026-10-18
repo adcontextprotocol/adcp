@@ -11194,9 +11194,9 @@ paths:
       parameters:
         - schema:
             type: string
-            description: Agent URL to look up. Canonicalized server-side (lowercased, trailing slashes trimmed).
+            description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not."
           required: true
-          description: Agent URL to look up. Canonicalized server-side (lowercased, trailing slashes trimmed).
+          description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not."
           name: agent_url
           in: query
         - schema:

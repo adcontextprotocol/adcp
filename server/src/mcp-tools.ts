@@ -32,6 +32,7 @@ import { isRegistryDomain } from "./services/registry-domain.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { serializeInlineScriptJson } from './utils/inline-script-json.js';
 import { getBrandPrimaryDomain } from './services/brand-domain-resolver.js';
+import { declaredAgentUrl } from './db/registry-agent-url-key.js';
 
 const logger = createLogger('mcp-tools');
 
@@ -913,8 +914,12 @@ export class MCPToolHandler {
         const matchingAgents = [];
 
         for (const agent of allAgents) {
-          // Check if agent is authorized for this property
-          const validation = await this.validator.validate(propertyValue, agent.url);
+          // Authorization is spec-exact (#7829): a publisher that lists
+          // `/mcp/` authorizes `/mcp/`, not `/mcp`. Match on the URL the
+          // member registered, not on the identity key, which folds the
+          // trailing slash away (#7830).
+          const validation = await this.validator.validate(
+            propertyValue, declaredAgentUrl(agent));
           if (validation.authorized) {
             matchingAgents.push({
               url: agent.url,

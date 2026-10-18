@@ -3360,7 +3360,7 @@ registry.registerPath({
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     query: z.object({
-      agent_url: z.string().openapi({ description: "Agent URL to look up. Canonicalized server-side (lowercased, trailing slashes trimmed)." }),
+      agent_url: z.string().openapi({ description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not." }),
       include: z.enum(["raw", "effective"]).optional().openapi({ description: "`effective` (default) applies override layer; `raw` reads base table." }),
       evidence: z.string().optional().openapi({ description: "Comma-separated evidence allowlist. Defaults to `adagents_json`.", example: "adagents_json,agent_claim" }),
     }),
@@ -12809,6 +12809,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
 
         const { rows, cursor } = await authSnapshotDb.getNarrow({
+          // The URL asked about decides the authorization answer; the key
+          // decides which index is used (#7829 / #7830).
+          agentUrl: rawAgentUrl,
           agentUrlCanonical,
           evidence,
           include,
