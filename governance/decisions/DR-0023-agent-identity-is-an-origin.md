@@ -24,7 +24,7 @@ For AdCP 3.3, first-contact signer identity uses an optional, experimental, capa
 
 **Errors** follow WBA: HTTP status and headers. Any AdCP error body is the generic authentication error.
 
-**Scope.** In 3.3 the profile covers HTTP requests and webhooks. JWS document signing moves in 3.4.
+**Scope.** In 3.3 the profile covers HTTP requests and webhooks. JWS document signing moves in 3.4. *Amended by DR-XXXX: JWS document signing moves in 3.3, under `specs/agent-identity-3-3.md` R4.*
 
 **The 3.2 profile** (brand.json, `identity.brand_json_url`, `jwks_uri`) is deprecated in 3.3. It stays fully functional through 3.x and is removed in 4.0. This decision supersedes `adcp-agent-url` (#7817) and the client-only bootstrap (#7942).
 
@@ -50,6 +50,6 @@ The design spec is `specs/agent-identity-3-3.md`. It defines the rules (R0–R8)
 - the deprecation of the 3.2 profile in 3.3, with removal in 4.0.
 
 **This record does not settle:**
-- JWS document signing and governance-key provenance (3.4);
+- JWS document signing and governance-key provenance (3.4). *Amended by DR-XXXX, which settles both for 3.3: JWS artifacts from a WBA identity use its key directory, and provenance is the existing governance key archive.*
 - transparency logs;
 - demand-side grants (#6033), onboarding posture (#8113, #8114), and relationship status, which are features of their own that the self-onboarding flow builds on.
