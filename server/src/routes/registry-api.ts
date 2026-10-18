@@ -7061,10 +7061,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   router.get("/registry/agents/:encodedUrl/compliance", agentReadRateLimiter, optAuth, async (req, res) => {
     try {
       res.setHeader("Cache-Control", "no-store");
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       const metadata = await complianceDb.getRegistryMetadata(agentUrl);
       let statusWithCounts: Awaited<ReturnType<typeof complianceDb.getComplianceStatusWithStoryboardCounts>> = null;
       try {
@@ -7618,10 +7622,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     async (req, res) => {
       const principal = captureRegistryPrincipal(req);
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateExternalUrl(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateExternalUrl(rawAgentUrl)) {
           return res.status(400).json({ error: 'Invalid agent URL' });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
         if (!req.user?.id || isStaticAdminRequest(req)) {
           return res.status(401).json({ error: 'An authenticated user is required' });
         }
@@ -7745,10 +7753,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/compliance/history", agentReadRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       // If opted out, return empty history (no ownership check needed —
       // the opt-out preference is enforced uniformly for public endpoints)
       const metadata = await complianceDb.getRegistryMetadata(agentUrl);
@@ -7809,10 +7821,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/verification", bulkResolveRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       let badges: Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>> = [];
       try {
@@ -7875,11 +7891,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/badge/:role.svg", agentReadRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
-      if (!validateAgentUrlParam(agentUrl)) {
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!VALID_BADGE_ROLES.includes(role as any)) {
         return res.status(400).json(invalidBadgeRoleBody(role));
       }
@@ -7927,12 +7947,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   // or "Not Verified" if the agent never earned a badge at this version.
   router.get("/registry/agents/:encodedUrl/badge/:role/:version.svg", agentReadRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
       const version = req.params.version;
-      if (!validateAgentUrlParam(agentUrl)) {
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!VALID_BADGE_ROLES.includes(role as any)) {
         return res.status(400).json(invalidBadgeRoleBody(role));
       }
@@ -8014,11 +8038,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/badge/:role/embed", agentReadRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
-      if (!validateAgentUrlParam(agentUrl)) {
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!VALID_BADGE_ROLES.includes(role as any)) {
         return res.status(400).json(invalidBadgeRoleBody(role));
       }
@@ -8058,12 +8086,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   // this instead of the legacy `/badge/:role/embed`.
   router.get("/registry/agents/:encodedUrl/badge/:role/:version/embed", agentReadRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
       const version = req.params.version;
-      if (!validateAgentUrlParam(agentUrl)) {
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!VALID_BADGE_ROLES.includes(role as any)) {
         return res.status(400).json(invalidBadgeRoleBody(role));
       }
@@ -8137,10 +8169,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...memberReadMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required. Storyboard detail is available to members." });
@@ -8353,10 +8389,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.put("/registry/agents/:encodedUrl/lifecycle", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
@@ -8453,10 +8493,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/monitoring/settings", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -8475,10 +8519,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.put("/registry/agents/:encodedUrl/monitoring/pause", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -8503,10 +8551,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.put("/registry/agents/:encodedUrl/monitoring/interval", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -8545,10 +8597,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.post("/registry/agents/:encodedUrl/monitoring/requeue", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -9288,10 +9344,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
         }
@@ -9342,10 +9402,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/monitoring/requests", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -9930,10 +9994,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
@@ -10069,10 +10137,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
@@ -10246,10 +10318,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
@@ -11263,6 +11339,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   router.get("/registry/lookup/agent/:agentUrl/domains", registryReadRateLimiter, async (req, res) => {
     try {
       const federatedIndex = crawler.getFederatedIndex();
+      // AUTHORIZATION route — deliberately NOT keyed here. "Which publishers
+      // authorize this agent" is decided spec-exactly, trailing slash
+      // significant (#7829); getDomainsForAgent keys internally for the
+      // index and then filters on the raw agent_url. Keying the parameter
+      // here would make /mcp/ inherit /mcp's authorizations.
       const agentUrl = decodeURIComponent(req.params.agentUrl);
       const domains = await federatedIndex.getDomainsForAgent(agentUrl);
       res.json({ agent_url: agentUrl, domains, count: domains.length });
