@@ -466,6 +466,15 @@ test('served 3.2 catalog retains legal entry extensions with provisioned input',
   }
 });
 
+// Canonical CI shards run this suite in a fresh checkout independently of the
+// build job. Build the mutable candidate bundle before exercising its loader;
+// immutable release bundles remain untouched.
+test.before(() => {
+  require('node:child_process').execFileSync(process.execPath, [path.resolve(__dirname, '../scripts/build-compliance.cjs')], {
+    cwd: path.resolve(__dirname, '..'), stdio: 'inherit', maxBuffer: 16 * 1024 * 1024,
+  });
+});
+
 for (const [label, options] of [
   ['supporting-good', {}],
   ['direct-outbound', { attack: { form: 'direct', endpoint: 'GET https://unaccepted-evaluator.example/probe' } }],
