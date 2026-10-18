@@ -64,6 +64,7 @@ print(brand["brand_name"], brand["canonical_domain"])
 |----------|-------|
 | Brand bulk resolve (`/api/brands/resolve/bulk`) | 20 requests and 100 unique domain resolutions/minute per IP; 25 domains and 16 KB per request |
 | Property bulk resolve (`/api/properties/resolve/bulk`) | 20 requests/minute per IP |
+| Identifier contribution (`/api/registry/resolve`) | Up to 10,000 identifiers/request; no endpoint-specific request rate limit currently enforced |
 | Brand reads (`/api/brands/resolve`, `/api/brands/brand-json`) | 60 requests/minute per IP |
 | Save endpoints (`/api/brands/save`, `/api/properties/save`) | 60 requests/hour per user |
 | Crawl request (`/api/registry/crawl-request`) | 5 minutes per domain, 30 requests/hour per user |
@@ -203,6 +204,70 @@ An absent `relationship_trust` in a list result means trust has not yet been com
 | GET | `/api/properties/validate` | Validate a domain's adagents.json |
 | GET | `/api/properties/history` | Edit history for a property |
 | POST | `/api/properties/save` | Save or update a hosted property (auth required) |
+
+#### Bulk identifier contributions
+
+Use `resolveIdentifiers` (`POST /api/registry/resolve`) with `mode: "resolve"`
+to contribute a list of identifiers in batches of up to 10,000. Authentication
+and a `provenance` envelope are required. The operation returns existing catalog
+handles, creates unknown properties, and records demand activity in one bulk
+operation. Repeating a request preserves identifier-to-handle mappings but adds
+activity. `mode: "lookup"` is a public read with no writes or activity logging.
+
+`saveProperty` (`POST /api/properties/save`) is for individual hosted publisher
+documents and edits, with a limit of 60 requests/hour per user (IP fallback).
+It is not the bulk identifier contribution path. The similarly named
+`/api/properties/resolve/bulk` resolves publisher documents and does not contribute
+an identifier list. Clients SHOULD batch contributions rather than loop over
+`saveProperty`, and honor `429` and `Retry-After` responses when present.
+
+#### Test traffic and sandbox mode
+
+For staging, CI, and acceptance tests, explicitly include the JSON boolean
+`sandbox: true` in requests to `POST /api/registry/resolve` or
+`POST /api/properties/save` at the same base URL. This is a non-persistent sandbox
+simulation: requests exercise validation and return `sandbox: true`, but do not
+write properties, identifiers, facts, or demand activity into the public catalog.
+Authentication requirements and save rate limits still apply. Omitting the flag
+means production behavior; the string `"true"` is rejected.
+
+Example sandbox contribution request:
+
+```json
+{
+  "identifiers": [
+    { "type": "domain", "value": "publisher.example" },
+    { "type": "domain", "value": "news.publisher.test" }
+  ],
+  "provenance": { "type": "agency_allowlist", "context": "staging acceptance test" },
+  "mode": "resolve",
+  "sandbox": true
+}
+```
+
+Sandbox resolution may read existing catalog entries; unknown identifiers return
+simulated `created` entries with ephemeral handles. Those handles are not stored
+and cannot be used for later catalog reads. Sandbox saves validate the domain and
+return a simulated success without reading or editing a hosted document. This
+mode does not provide persistent, isolated test state. To test read-after-write
+workflows, run a registry instance with a separate test database. If a client
+library cannot send the flag, send the REST request directly or use read-only
+`lookup` mode with production-valid identifiers; never fall back to production
+contributions for synthetic data.
+
+`/api/registry/resolve` and `/api/properties/save` reject malformed `domain`,
+`subdomain`, and `publisher_domain` values before normalization or writes. Values must be lowercase
+ASCII hostnames, with no scheme, path, port, whitespace, trailing dot, empty label,
+or IP literal. Only `domain` identifiers permit a leading `*.` selector;
+`publisher_domain` and `subdomain` do not. Production also rejects `.example`,
+`.test`, `.invalid`, `.localhost`, `.local`, and `.onion`, plus `example.com`,
+`example.net`, `example.org`, and their subdomains. Reserved test names are allowed
+in sandbox mode; malformed hostnames are always rejected. The same production
+restrictions apply to hosted/community property writes and Addie/MCP property
+contributions. The sandbox flag is available on the two REST endpoints above. A bad identifier rejects
+the whole batch with HTTP `400` and an indexed validation error; valid entries in
+that batch are not contributed. The reserved example names follow
+[RFC 2606](https://www.rfc-editor.org/rfc/rfc2606.html).
 
 ### Agent Discovery
 

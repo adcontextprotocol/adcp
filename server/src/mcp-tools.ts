@@ -28,6 +28,7 @@ import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review
 import type { MCPAuthContext } from "./mcp/auth.js";
 import { createLogger } from "./logger.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
+import { isRegistryDomain } from "./services/registry-domain.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { serializeInlineScriptJson } from './utils/inline-script-json.js';
 import { getBrandPrimaryDomain } from './services/brand-domain-resolver.js';
@@ -1860,10 +1861,10 @@ export class MCPToolHandler {
           };
         }
 
-        const publisherDomain = sanitizeDomain(args?.publisher_domain as string);
-        if (!publisherDomain) {
+        const publisherDomain = args?.publisher_domain;
+        if (typeof publisherDomain !== 'string' || !isRegistryDomain(publisherDomain)) {
           return {
-            content: [{ type: "text", text: JSON.stringify({ error: "publisher_domain is required or invalid format" }) }],
+            content: [{ type: "text", text: JSON.stringify({ error: "Invalid publisher_domain: expected a lowercase hostname; reserved test domains are not allowed" }) }],
             isError: true,
           };
         }

@@ -39,6 +39,7 @@ import { query, withDatabaseDeadline } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
+import { isRegistryDomain } from "../services/registry-domain.js";
 import { AsyncSemaphore, SemaphoreOverloadedError } from "../utils/async-semaphore.js";
 import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, capabilityProbeRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { compareAdcpVersions, listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
@@ -1527,7 +1528,7 @@ registry.registerPath({
   operationId: "saveProperty",
   summary: "Save property",
   description:
-    "Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.\n\nThis is an identity-only write surface: the stored document always carries `authorized_agents: []`. Sales authorization lives solely in the publisher's own origin `adagents.json`; the community registry cannot mint or carry it. Any `authorized_agents` sent in the request body is ignored.",
+    "Save or update a hosted property in the registry. Requires authentication. For bulk identifier contributions use resolveIdentifiers instead (up to 10,000 identifiers per request). This endpoint is limited to 60 requests/hour per user/IP. publisher_domain must be a lowercase hostname without a URL, port, whitespace, wildcard, or trailing dot. Reserved test domains are rejected unless sandbox is true. With sandbox: true the request is validated and a simulated result is returned without reading or writing a hosted property; the ID is ephemeral. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.\n\nThis is an identity-only write surface: the stored document always carries `authorized_agents: []`. Sales authorization lives solely in the publisher's own origin `adagents.json`; the community registry cannot mint or carry it. Any `authorized_agents` sent in the request body is ignored.",
   tags: ["Property Resolution"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -1536,6 +1537,7 @@ registry.registerPath({
         "application/json": {
           schema: z.object({
             publisher_domain: z.string().openapi({ example: "examplepub.com" }),
+            sandbox: z.boolean().default(false).openapi({ description: "Validate and simulate a save without persisting it. Allows reserved test hostnames." }),
             authorized_agents: z.array(z.object({ url: z.string(), authorized_for: z.string().optional() })).optional().openapi({
               description:
                 "Ignored. Community-registry rows never assert sales authorization — the owner's origin adagents.json is the sole authorization source — so any value here is dropped and the stored document carries authorized_agents:[].",
@@ -1557,6 +1559,7 @@ registry.registerPath({
             success: z.literal(true),
             message: z.string(),
             id: z.string(),
+            sandbox: z.literal(true).optional(),
             revision_number: z.number().int().optional(),
           }),
         },
@@ -6203,17 +6206,27 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.post("/properties/save", ...saveMiddleware, async (req, res) => {
     try {
-      const { properties, contact } = req.body;
-      const rawDomain = req.body.publisher_domain as string;
+      const { properties, contact, publisher_domain, sandbox = false } = req.body ?? {};
 
-      if (!rawDomain || typeof rawDomain !== "string") {
+      if (typeof sandbox !== "boolean") {
+        return res.status(400).json({ error: "sandbox must be a boolean" });
+      }
+
+      if (!publisher_domain || typeof publisher_domain !== "string") {
         return res.status(400).json({ error: "publisher_domain is required" });
       }
 
-      const publisher_domain = extractDomain(rawDomain);
-      const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-      if (!domainPattern.test(publisher_domain)) {
-        return res.status(400).json({ error: "Invalid domain format" });
+      if (!isRegistryDomain(publisher_domain, { sandbox })) {
+        return res.status(400).json({ error: "Invalid publisher_domain: expected a lowercase hostname; reserved test domains require sandbox: true" });
+      }
+
+      if (sandbox) {
+        return res.json({
+          success: true,
+          sandbox: true,
+          message: `Sandbox: validated property for ${publisher_domain}; nothing was saved`,
+          id: randomUUID(),
+        });
       }
 
       // Identity, not authorization: a community-registry row never asserts
