@@ -163,7 +163,7 @@ export const directorySignaturePolicy = now => ({
   clockSkew: 0,
   requiredComponents: [component('@authority', { req: true }), 'content-digest'],
   requiredParameters: ['created', 'expires', 'keyid', 'tag'],
-  validate: v => v.parameters.tag === DIRECTORY_TAG,
+  validate: v => v.parameters.tag === DIRECTORY_TAG || refuse('directory-tag', `directory signature tag ${v.parameters.tag}`),
 });
 
 /** The label of the one signature by `keyid`, or a refusal. Labels by other keys are never read. */

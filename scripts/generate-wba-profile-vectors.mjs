@@ -408,6 +408,9 @@ write('scenarios.json', {
     dirScenario('D06', 'Expired signature', 'wba', refused, 'RFC 9421 section 3.2.1', { parameters: { created: -7200, expires: -3600 } }),
     dirScenario('D07', 'Extra P-256 key that does not sign', 'wba', { success: true }, 'Profile: ignore keys the profile does not use (RFC 7517 section 5)', { unsigned_keys: [p256] }),
     dirScenario('D08', 'Media type application/json', 'adcp', refused, 'WBA section 5.5.1: the well-known directory MUST be served with application/http-message-signatures-directory+json', { content_type: 'application/json' }),
+    dirScenario('D09', 'Status 203', 'adcp', refused, 'WBA section 5.5: a resource fetched for discovery MUST be served with 200, and any other status is a discovery failure', { status: 203 }),
+    dirScenario('D10', 'Signature tag web-bot-auth', 'adcp', refused, 'WBA Appendix B.1: tag MUST be http-message-signatures-directory', { parameters: { tag: 'web-bot-auth' } }),
+    dirScenario('D11', 'Second Ed25519 key that does not sign', 'adcp', refused, 'Profile: every Ed25519 key signs (Appendix B.1 recommends it)', { unsigned_keys: [brand.jwk] }),
   ],
 });
 

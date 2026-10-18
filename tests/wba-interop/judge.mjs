@@ -167,12 +167,13 @@ export async function signRequest({ key, origin, request, now, label = 'sig1' })
 /**
  * Signs a key directory response per WBA Appendix B.1. The options build the
  * directory scenarios in scenarios.json: `authority` signs for another host,
- * `parameters` moves `created` and `expires` (offsets from `now`),
- * `components` replaces the covered components, `unsigned_keys` adds public
- * keys that do not sign, `content_type` changes the media type, and
- * `after_signing.append_to_body` changes the body after signing.
+ * `parameters` moves `created` and `expires` (offsets from `now`) or sets
+ * `tag`, `components` replaces the covered components, `unsigned_keys` adds
+ * public keys that do not sign, `content_type` changes the media type,
+ * `status` changes the response status, and `after_signing.append_to_body`
+ * changes the body after signing.
  */
-export async function signDirectory({ keys, origin, now, authority, parameters = {}, components, unsigned_keys = [], content_type, after_signing = {} }) {
+export async function signDirectory({ keys, origin, now, authority, parameters = {}, components, unsigned_keys = [], content_type, status = 200, after_signing = {} }) {
   const host = new URL(origin).host;
   const published = [];
   for (const key of keys) published.push({ ...publicJwk(key), kid: (await signerFromJWK(key)).keyid, use: 'sig' });
@@ -194,7 +195,7 @@ export async function signDirectory({ keys, origin, now, authority, parameters =
         expires: now + (parameters.expires ?? 86400),
         keyid: signer.keyid,
         alg: signer.algorithm,
-        tag: policy.DIRECTORY_TAG,
+        tag: parameters.tag ?? policy.DIRECTORY_TAG,
       },
       signer,
     });
@@ -202,7 +203,7 @@ export async function signDirectory({ keys, origin, now, authority, parameters =
     signatures.push(out.signature);
   }
   const headers = keys.length === 0 ? base : { ...base, 'signature-input': inputs.join(', '), signature: signatures.join(', ') };
-  return { url: policy.directoryUrl(origin), status: 200, headers, body: body + (after_signing.append_to_body ?? '') };
+  return { url: policy.directoryUrl(origin), status, headers, body: body + (after_signing.append_to_body ?? '') };
 }
 
 /** `@authority;req` or `signature-agent;key=sig1`, as scenarios.json spells a component. */
