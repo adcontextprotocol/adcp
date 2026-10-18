@@ -11,7 +11,7 @@
 
 It also supersedes the client-only bootstrap in #7942 and option B (`adcp-agent-url`) in #7817.
 
-**Scope of 3.3**: the WBA profile covers signed **HTTP requests and webhooks**. JWS artifacts (governance context `iss`, designated-task response signing, rights attestations) stay on the 3.2 chain in 3.3. They move in 3.4 with a provenance contract for governance keys, because a retained directory response proves key possession, not publication at a point in time (#7878 gates 3 and 4). The [appendix](#appendix-34-direction-for-jws-surfaces-non-normative) records the intended direction, non-normatively.
+**Scope of 3.3**: the WBA profile covers signed **HTTP requests and webhooks**. JWS artifacts (governance context `iss`, designated-task response signing, rights attestations) from a WBA identity are signed with keys from that identity's key directory ([R4](#r4-coexistence-with-the-32-profile-p3)). Historical verification uses the existing governance key archive.
 
 **Not in scope**: TMP, whose match-time signatures use publisher keys from the property registry, as `security.mdx` §Agent resolution already says.
 
@@ -139,7 +139,15 @@ Evaluated when something is gated on it: binding a principal (R5), evaluating a 
 
 ### R4. Coexistence with the 3.2 profile (P3)
 
-- Signed messages without `Signature-Agent` or the `web-bot-auth` tag, and every JWS artifact in 3.3, are verified under the 3.2 profile.
+- Signed messages without `Signature-Agent` or the `web-bot-auth` tag are verified under the 3.2 profile.
+- **JWS artifacts.** For a JWS artifact (governance context, designated-task response signing, rights attestations), `O` is the canonical origin of `iss`, or of `agent_url` where the surface uses it. When the trust record derived from `O` (R3a step 1) lists `O`, the verifier verifies the JWS with a key from `O`'s key directory, never under the 3.2 profile:
+  - `alg` is `EdDSA`, and `kid` is the key's JWK thumbprint;
+  - purpose separation is by origin (D2), so the 3.2 `adcp_use` check does not apply;
+  - revocation is `O`'s list (R3);
+  - for historical verification, the verifier uses the existing governance key archive at `O` (`security.mdx` §Revocation);
+  - every other check of the surface is unchanged.
+
+  Profile selection never reads an unsigned field. Any other JWS artifact is verified under the 3.2 profile.
 - **The 3.2 profile is deprecated in 3.3**, with a notice in `security.mdx` and the release notes. It remains fully functional through 3.x and is removed in 4.0, together with the brand.json trust fields and `identity.brand_json_url` (`brand-identity-trust-split.md` §Migration).
 - **No downgrade, keyed by origin.** Once a verifier has bound `O` (R5), it refuses the 3.2 profile for any agent URL whose origin is `O`. Before binding, an operator ends 3.2 use for an agent by removing its brand.json entry and keys, which reaches every verifier within the JWKS cache bound.
 - **Grants** follow `brand-identity-trust-split.md` §No downgrade and §Grants. A 200 from the grantor's trust.json makes it the only source of grants, and brand.json `authorized_operators[]` is ignored. `exclusive_grants` keeps its schema meaning: with `false`, an uncovered claim stays at the relying party's discretion, which is its own onboarding records and never the grantor's brand.json.
@@ -270,7 +278,7 @@ The window of exposure is the time between compromise and the revocation reachin
 | **Edge verifiers.** Deployed CDN verifiers lag the draft. | Sellers verify at their origin with the SDKs (WBA Appendix C.10). The interop matrix is tracked separately. |
 | **One agent per origin.** Path-hosted agents must move to subdomains. Multi-tenant sales platforms whose path-based URLs appear in many publishers' `adagents.json` files cannot move without those files changing. | The problem being solved is buyer to seller, and buyers can add subdomains cheaply. Path-hosted sellers keep 3.2 webhook signing until they migrate. |
 | **Directory upkeep.** Signed directory responses expire, so publishing keys is a scheduled job. | SDK CLIs provide a regenerate command; the walkthrough (P8) shows a scheduled job. |
-| **Document signing.** Governance and rights JWS need key-purpose isolation and historical provenance. | Deferred to 3.4 (Scope of 3.3, above). |
+| **Document signing.** Governance and rights JWS need key-purpose isolation and historical provenance. | Purpose isolation is by origin (D2). Historical verification uses the existing governance key archive (R4). |
 
 ## Compatibility and migration
 
@@ -316,18 +324,3 @@ Tracking: adcp-client#3098, adcp-client-python#1283, adcp-go#548 and #109. Each 
 1. **Revocation path.** One list per origin, at the existing `/.well-known/governance-revocations.json` path and `adcp-gov-revocation+jws` type, covering all of the identity's keys (#7878 §Revocation).
 2. **Lead time for `relationship_expiring`.** Seller-declared, following `setup_expiring`. A protocol minimum can wait for adoption data.
 3. **`authoritative_location` binding.** None added. The operator is derived from `O` and the match is on `O`, so a shared hosted document cannot make one domain's agents another's. `brand-identity-trust-split.md` §Hosting covers grants.
-
-## Appendix: 3.4 direction for JWS surfaces (non-normative)
-
-Recorded so the 3.4 work starts from the reviewed design. Nothing here applies in 3.3.
-
-- For a JWS (governance context, designated-task response signing, rights attestations), `O` would be the canonical origin of `iss`, or of `agent_url` where the surface uses it. The verifier would use the WBA path when the trust record derived from `O` lists `O`, and profile selection would never read an unsigned field.
-- A role in the agent's own record is the operator's claim about itself. On these surfaces the relying party would also consent:
-
-| Surface | Relying-party record | Required |
-|---|---|---|
-| Governance context `iss` | the buyer's | the buyer's operator is `eTLD+1(host(O))`, or holds a grant to it with `adcp:governance` |
-| Designated-task response signing | the brand's | the brand's operator is `eTLD+1(host(O))`, or holds a grant to it with `adcp:brand_identity` |
-| Rights attestations | the rights holder's | the rights holder's operator is `eTLD+1(host(O))`, or holds a grant to it with `adcp:rights_clearance` |
-
-- Historical verification needs a provenance contract: the existing governance key archive until transparency logs are required.
