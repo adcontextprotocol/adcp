@@ -317,11 +317,6 @@
       "name": "Signature-Agent with a path",
       "base": "post",
       "signature_agent": "sig1=\"https://buyer-7k3q.com/agents/a\"",
-      "directories": {
-        "https://buyer-7k3q.com/agents/a": [
-          "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
-        ]
-      },
       "expected": {
         "success": false,
         "status": 403
@@ -330,15 +325,46 @@
       "basis": "WBA section 5.5: a directory member MUST be an origin; the library does not check it"
     },
     {
+      "id": "R17c",
+      "name": "Signature-Agent origin with a trailing /",
+      "base": "post",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com/\"",
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Profile: the value is exactly the serialized origin (RFC 6454 section 6.2), compared without normalizing"
+    },
+    {
+      "id": "R17d",
+      "name": "Signature-Agent origin with an uppercase host",
+      "base": "post",
+      "signature_agent": "sig1=\"https://BUYER-7k3q.com\"",
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Profile: the value is exactly the serialized origin, with a lowercase host, compared without normalizing"
+    },
+    {
+      "id": "R17e",
+      "name": "Signature-Agent origin with an explicit :443",
+      "base": "post",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com:443\"",
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Profile: the value is exactly the serialized origin, with no default port, compared without normalizing"
+    },
+    {
       "id": "R18",
       "name": "Signature-Agent member with type=jwks_uri",
       "base": "post",
       "signature_agent": "sig1=\"https://buyer-7k3q.com/jwks.json\";type=jwks_uri",
-      "directories": {
-        "https://buyer-7k3q.com/jwks.json": [
-          "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
-        ]
-      },
       "expected": {
         "success": false,
         "status": 403
