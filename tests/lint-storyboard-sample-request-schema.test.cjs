@@ -380,6 +380,97 @@ test('normalizeSubstitutions synthesizes shape-valid placeholders at object-type
   assert.ok('id' in oneOfSynth);
 });
 
+function cancellationCreativeAuthoringFixture() {
+  const storyboard = yaml.load(fs.readFileSync(path.join(STORYBOARD_DIR,
+    'protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml'), 'utf8'));
+  const testKit = yaml.load(fs.readFileSync(path.join(STORYBOARD_DIR,
+    storyboard.prerequisites.test_kit), 'utf8'));
+  return { storyboard, testKit, steps: storyboard.phases.flatMap(phase => phase.steps || [])
+    .filter(step => step.task === 'sync_creatives') };
+}
+
+test('static authoring excludes only valid runtime asset directives while wire requests remain strict', async () => {
+  const { storyboard, steps } = cancellationCreativeAuthoringFixture();
+  assert.equal(steps.length, 2);
+  for (const step of steps) {
+    const original = structuredClone(step.sample_request);
+    const schema = loadSchema(step.schema_ref);
+    assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: original })).ok, false,
+      'a literal execution directive must never be accepted as a wire asset');
+    for (const payload of normalizeStoryboardSampleRequests(storyboard, step, schema)) {
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload })).ok, true);
+      assert.deepEqual(payload.creatives[0].assets, {});
+      assert.equal(payload.assignments.length, 1, 'static preparation preserves assignment validation');
+    }
+    assert.deepEqual(step.sample_request, original, 'static preparation does not rewrite the authored fixture');
+
+    for (const malformed of [42, null, '$context.', 'format_params']) {
+      const broken = structuredClone(step);
+      broken.sample_request.creatives[0].assets.$build_assets_from_format = malformed;
+      for (const payload of normalizeStoryboardSampleRequests(storyboard, broken, schema)) {
+        assert.equal((await validateStep({ schemaRef: broken.schema_ref, payload })).ok, false,
+          `malformed directive ${JSON.stringify(malformed)} must not be excluded`);
+      }
+    }
+    const badSibling = structuredClone(step);
+    badSibling.sample_request.creatives[0].assets.broken_asset = 'not an asset';
+    for (const payload of normalizeStoryboardSampleRequests(storyboard, badSibling, schema)) {
+      assert.equal((await validateStep({ schemaRef: badSibling.schema_ref, payload })).ok, false,
+        'ordinary sibling slots must still be validated');
+    }
+    const badAssignment = structuredClone(step);
+    badAssignment.sample_request.assignments[0].creative_id = 42;
+    for (const payload of normalizeStoryboardSampleRequests(storyboard, badAssignment, schema)) {
+      assert.equal((await validateStep({ schemaRef: badAssignment.schema_ref, payload })).ok, false,
+        'execution syntax must not skip validation of the rest of the request');
+    }
+  }
+});
+
+test('cancellation directives materialize real test-kit assets before strict request validation', async () => {
+  const { expandCreativeAssetDirectives, findUnresolvedCreativeAssetDirectives, injectContext } = require('@adcp/sdk/testing');
+  const { testKit, steps } = cancellationCreativeAuthoringFixture();
+  for (const width of [300, 728]) {
+    const height = width === 300 ? 250 : 90;
+    const context = {
+      format_kind: 'image', format_option_id: `image_${width}x${height}`,
+      package_id: 'package_initial', second_package_id: 'package_reuse',
+      format_params: { width, height, slots: [
+        { asset_group_id: 'image_main', asset_type: 'image', required: true },
+        { asset_group_id: 'landing_page_url', asset_type: 'url', required: true },
+        { asset_group_id: 'headline', asset_type: 'text', required: true },
+      ] },
+    };
+    for (const step of steps) {
+      const injected = injectContext(step.sample_request, context);
+      const materialized = expandCreativeAssetDirectives(injected, context, testKit);
+      assert.deepEqual(findUnresolvedCreativeAssetDirectives(materialized), []);
+      const assets = materialized.creatives[0].assets;
+      assert.equal(assets.image_main.asset_type, 'image');
+      assert.equal(assets.image_main.width, width);
+      assert.equal(assets.image_main.height, height);
+      assert.ok(testKit.assets.images.some(image => image.url === assets.image_main.url));
+      assert.equal(assets.landing_page_url.url, testKit.assets.click_url);
+      assert.equal(assets.headline.asset_type, 'text');
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: materialized })).ok, true);
+
+      const corrupt = structuredClone(materialized);
+      delete corrupt.creatives[0].assets.image_main.width;
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: corrupt })).ok, false,
+        'materialized images still require their wire dimensions');
+
+      const unsupported = structuredClone(context);
+      unsupported.format_params.slots = [{ asset_group_id: 'legal', asset_type: 'text', required: true }];
+      const unavailable = expandCreativeAssetDirectives(
+        injectContext(step.sample_request, unsupported), unsupported, testKit);
+      assert.notDeepEqual(findUnresolvedCreativeAssetDirectives(unavailable), [],
+        'missing fixture semantics are not repaired with arbitrary assets');
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: unavailable })).ok, false,
+        'an unexpanded fixture-coverage failure cannot become a valid wire request');
+    }
+  }
+});
+
 function evaluatorBuildAuthoringFixture() {
   const storyboard = yaml.load(fs.readFileSync(path.join(STORYBOARD_DIR,
     'protocols/creative/scenarios/evaluator_auth.yaml'), 'utf8'));

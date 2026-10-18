@@ -274,6 +274,28 @@ function normalizeSubstitutions(value, schema) {
 }
 
 /**
+ * A well-formed creative-asset directive is runner syntax, not an asset slot.
+ * Exclude only that instruction from the static authoring view: its format is
+ * captured during execution, and the runner expands and validates the concrete
+ * assets before transport (storyboard-schema.yaml, Creative asset expansion).
+ * Keep ordinary slots, malformed instructions, and every other request field
+ * visible to schema validation. Direct validateStep calls remain wire-strict.
+ */
+function normalizeExecutionOnlyAssetDirectives(value, isAssetMap = false) {
+  if (Array.isArray(value)) return value.map(item => normalizeExecutionOnlyAssetDirectives(item));
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isAssetMap && key === '$build_assets_from_format'
+        && typeof item === 'string' && /^\$context\.[A-Za-z_][A-Za-z0-9_]*$/.test(item)) {
+      continue;
+    }
+    out[key] = normalizeExecutionOnlyAssetDirectives(item, key === 'assets');
+  }
+  return out;
+}
+
+/**
  * Materialize the opt-in build probe's context inputs before static schema
  * checks, just as the runner does before dispatch. This synthetic catalog is
  * only a representative authoring fixture, never a live producer prerequisite.
@@ -281,9 +303,10 @@ function normalizeSubstitutions(value, schema) {
  * coverage; this lint must still catch broken bindings and authored payloads.
  */
 function normalizeStoryboardSampleRequests(storyboard, step, schema) {
+  const sampleRequest = normalizeExecutionOnlyAssetDirectives(step.sample_request);
   if (!storyboard.creative_build_probe || step.task !== 'build_creative'
       || step.requires_contract !== 'creative_build_probe_runner') {
-    return [normalizeSubstitutions(step.sample_request, schema)];
+    return [normalizeSubstitutions(sampleRequest, schema)];
   }
   const { resolveCreativeBuildProbe } = require('@adcp/sdk/testing');
   // Exercise every bound source key and both selector paths, without assuming
@@ -312,7 +335,7 @@ function normalizeStoryboardSampleRequests(storyboard, step, schema) {
     if (resolution.status !== 'resolved') {
       throw new Error(`Cannot prepare creative build authoring fixture: ${resolution.detail}`);
     }
-    const request = structuredClone(step.sample_request);
+    const request = structuredClone(sampleRequest);
     for (const binding of step.context_inputs || []) {
       if (!Object.hasOwn(resolution.context, binding.key)) continue;
       // This contract binds top-level build request fields. Do not silently

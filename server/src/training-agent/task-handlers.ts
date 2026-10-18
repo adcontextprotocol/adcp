@@ -481,6 +481,9 @@ const CANONICAL_ALLOWED_SLOT_ASSET_TYPES: Record<string, string[]> = {
 // Canonical-specific additive slot types that are valid for declared
 // refinements without belonging in the canonical's default slot set.
 const CANONICAL_ADDITIONAL_SLOT_ASSET_TYPES: Record<string, string[]> = {
+  // Generative hosted-video refinements can accept structured timed prompts
+  // instead of a rendered video file.
+  video_hosted: ['video_brief'],
   // Copy-bearing CTV activations add character-limited text slots such as
   // activation_message; they are not part of every VAST manifest by default.
   video_vast: ['text'],
