@@ -24,7 +24,7 @@ This document is the design record: threat model, requirement table, capability 
 | T3 | A seller that advertises the profile and still accepts unsigned spend | P1, P2, the downgrade rules, and eventually registry verification |
 | T4 | A buyer silently falling back to bearer when the profile disappears | Downgrade rules D1 and D2 |
 | T5 | A stolen key that binds the attacker's own governance agent | P5 |
-| T6 | A relay or intermediary that claims authority for a party upstream of it | P4 single-hop, non-transitive |
+| T6 | A relay or intermediary that claims authority for a party upstream of it | P4: a re-signing relay is the signer and gets no upstream authority; the only multi-link authority is a trust.json grant chain (#8169) |
 | T7 | A rolled-back or cached revocation list that un-revokes a key | P3 monotonic `updated`, accumulate-only |
 | T8 | Server-side request forgery through buyer-supplied URLs | P8 |
 | T9 | Attacker-controlled free text in a well-formed tool response steering an LLM | Context fencing (practice) |
@@ -57,7 +57,7 @@ This document is the design record: threat model, requirement table, capability 
 | E2 | Security review | Revocation propagation with a ceiling | 3.3-additive-declaration | storyboard | yes (P3) |
 | E3 | Protocol review | Spend ceiling as a circuit breaker | 3.3-additive-declaration | storyboard | no: SHOULD (decision 6) |
 | E4 | Protocol review | Hard-refuse downgrade | 3.3-additive-declaration | storyboard (buyer side) | yes (D1, D2) |
-| E5 | Protocol review, #2324 | Acts-for validated across relay hops | single-hop: 3.3-additive-declaration. Multi-hop chains: 4.0-mandatory | storyboard | yes (P4) |
+| E5 | Protocol review, #2324 | Acts-for validated across relay hops | trust.json grant chains (#8169): 3.3-additive-declaration. Re-signing relay chains: 4.0-mandatory | storyboard | yes (P4) |
 
 Departures from the triage memo, all in the conservative direction. R4 is split because its normative contract is #5669, which is a 4.0 item. R1 is `4.0-mandatory` as a universal floor but is reachable in 3.3 through fields that already exist. "Per-session" spend ceiling became a per-principal ceiling, because DR-0022 (proposed) says an MCP session carries no authority, so a session-keyed ceiling would reset on reconnect.
 
@@ -105,7 +105,7 @@ The triage memo named four mechanisms. After review:
 - **Storyboards and SDK helpers.** Seller storyboards for P1 to P8 land with the 3.3 conformance work (#8118 P7); additive storyboards are patch-eligible, so any that miss 3.3.0 ship in a 3.3.x patch. The buyer downgrade storyboard waits on the buyer-track harness. SDK helpers follow.
 - **Registry verification** of the claim.
 - **Publisher-side requirement** that authorized agents hold the profile.
-- **Multi-hop signature chains** (#7878 decision 6).
+- **Multi-hop signature chains** (#7878 decision 6). P4 admits the other kind of chain, a trust.json grant chain through `account.operator` (#8169, L2 Grants in trust records), and defers re-signing relays to 4.0.
 - **External security review** before the profile graduates from proposed to registered.
 
 ## 4.0
