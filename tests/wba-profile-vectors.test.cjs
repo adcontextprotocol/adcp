@@ -138,7 +138,7 @@ function parseRequestHeaders(headers) {
       signature: parseDictionary(headerOf(headers, 'signature')),
     };
     for (const [, { value }] of parsed.agent) {
-      if (typeof value !== 'string' || !value.startsWith('https://')) throw new Error('Signature-Agent member is not an https URI string');
+      if (typeof value !== 'string') throw new Error('Signature-Agent member is not a String');
     }
     return parsed;
   } catch (e) {
@@ -182,6 +182,10 @@ function verifyRequest(vector, { skipNonce = false, skipAgentCoverage = false, s
   for (const label of labels) {
     const origin = parsed.agent.get(label)?.value;
     if (!origin) throw new ProfileError(403, 'signature', `no Signature-Agent member for ${label}`);
+    // Exactly the ASCII serialization of an https origin, compared as a string without normalizing.
+    if (!origin.startsWith('https://') || URL.parse(origin)?.origin !== origin) {
+      throw new ProfileError(403, 'signature', `Signature-Agent ${origin} is not an https origin`);
+    }
     const { value: components, params } = parsed.input.get(label);
     const covered = components.map(componentId);
     const requiredComponents = skipAgentCoverage ? REQUIRED_COMPONENTS : [...REQUIRED_COMPONENTS, `"signature-agent";key="${label}"`];
@@ -343,6 +347,21 @@ describe('Web Bot Auth profile negative vectors', () => {
     const vector = { ...original, request: { ...original.request, headers } };
     assert.throws(() => verifyRequest(vector), e => e instanceof ProfileError && e.status === 403 && e.stage === 'count');
     assert.deepEqual(verifyRequest(vector, { skipSignatureCount: true }), original.expected_outcome.identities);
+  });
+
+  it('a Signature-Agent value that is not exactly an https origin is refused with 403', () => {
+    const { vector: original } = positive.find(e => e.file === '001-single-signer-request.json');
+    const kid = parseRequestHeaders(original.request.headers).input.get('sig1').params.get('keyid');
+    const jwk = keys.find(k => k.kid === kid);
+    const privateKey = crypto.createPrivateKey({ key: { kty: 'OKP', crv: 'Ed25519', x: jwk.x, d: jwk._private_d_for_test_only }, format: 'jwk' });
+    for (const value of ['http://buyer-7k3q.com', 'https://buyer-7k3q.com/', 'https://Buyer-7k3q.com', 'https://buyer-7k3q.com:443', 'https://buyer-7k3q.com/agent']) {
+      // Re-sign with the published seed, so the origin rule is the only one the request breaks.
+      const unsigned = { ...original.request, headers: { ...original.request.headers, 'Signature-Agent': `sig1="${value}"` } };
+      const signature = crypto.sign(null, Buffer.from(requestBase(unsigned, parseRequestHeaders(unsigned.headers), 'sig1')), privateKey);
+      const request = { ...unsigned, headers: { ...unsigned.headers, Signature: `sig1=:${signature.toString('base64')}:` } };
+      const vector = { ...original, request, directories: { [value]: original.directories['https://buyer-7k3q.com'] } };
+      assert.throws(() => verifyRequest(vector), e => e instanceof ProfileError && e.status === 403 && /not an https origin/.test(e.message), value);
+    }
   });
 
   it('a Signature-Input member with another tag is not read', () => {
