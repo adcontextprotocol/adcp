@@ -95,6 +95,36 @@ A property list contains:
 }
 ```
 
+### Domain identifier format
+
+For `domain` and `subdomain` identifiers, `value` MUST be a lowercase ASCII
+hostname with at least two labels. Internationalized names MUST use lowercase
+IDNA A-label (punycode) form. Each label has 1–63 letters, digits, or hyphens,
+starts and ends with a letter or digit, and labels are separated by dots. The
+hostname is at most 253 characters, excluding an optional wildcard prefix.
+Schemes, paths, query strings, fragments, ports, whitespace, underscores, and
+trailing dots are invalid. These constraints are enforced by
+[`core/identifier.json`](https://adcontextprotocol.org/schemas/latest/core/identifier.json).
+
+| Type | Valid examples | Matching |
+|------|----------------|----------|
+| `domain` | `example.com`, `edition.example.com`, `*.example.com` | A base domain matches itself plus its `www` and `m` variants; a named subdomain matches that subdomain; a leading `*.` matches all subdomains, excluding the base. |
+| `subdomain` | `edition.example.com` | Matches the exact hostname. Wildcards are invalid. |
+
+The optional `*.` is permitted only once, at the start of a `domain` value.
+It is a matching selector, not part of the hostname. The format check does not
+perform DNS resolution or establish ownership. Reserved test hostnames such as
+`publisher.example` are valid protocol identifiers; the public registry applies
+additional [contribution restrictions](/docs/registry/index#test-traffic-and-sandbox-mode).
+
+A receiver MUST reject a create, update, or other request containing an invalid
+identifier with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request), identifying the offending field. It MUST NOT
+silently skip or reinterpret the value. A sender MAY offer explicit URL-to-hostname
+conversion before submission, but MUST validate the resulting identifier. This
+applies to inclusion lists, exclusion lists, and `filters.exclude_identifiers`.
+If an invalid identifier arrives in a fetched list, the receiver MUST reject that
+snapshot and report the failure to its caller; it MUST NOT apply a partial list.
+
 ## Brand
 
 Instead of manually specifying all filters, provide a brand reference and let the governance agent apply appropriate rules based on who you are:
@@ -443,6 +473,46 @@ Modify an existing property list.
 ## get_property_list
 
 Retrieve a property list with optional resolution of filters.
+
+### Resolving a property list reference
+
+A receiver given a `PropertyListReference` MUST invoke [`get_property_list`](/docs/governance/property/tasks/property_lists#get_property_list) on
+the managing agent at `agent_url`, with `list_id` from the reference and
+`resolve: true` (or its default). The issuer MUST expose this task over MCP at
+`agent_url`, and receivers MUST support MCP resolution. Another AdCP task
+transport advertised by the managing agent, such as A2A, MAY be used by agreement
+using that transport's normal task envelope. Implementations MAY also offer
+custom HTTP download routes, but those are extensions: serving only
+`GET {agent_url}/lists/{list_id}` does not satisfy this contract, and receivers
+MUST NOT infer that path from a reference.
+
+When `auth_token` is present, the receiver MUST send it as
+`Authorization: Bearer <auth_token>` on the task transport, including session
+initialization and every paginated fetch. The managing agent MUST accept this
+credential in place of its normal authentication. A recipient does not need an
+existing account or a second credential. The token MUST authorize read-only
+`get_property_list` access to that `list_id` and its continuation pages; it MUST
+NOT authorize other lists, list enumeration, or mutations. The issuer MUST make
+the reference unambiguous without requiring an `account` argument that the
+reference does not carry. An omitted token requires a public list or independent
+authorization already available to the receiver.
+
+The sender delivers `auth_token` inside the `PropertyListReference` passed to
+the intended receiver, including when that reference is a seller task argument.
+When authenticating `get_property_list` requests, receivers MUST send the token
+only in the Authorization header to the managing agent; it MUST NOT appear in
+those task arguments, URL paths, query strings, or logs. Receivers MUST NOT
+forward the credential to another origin on redirect. An expired, revoked, or
+invalid token is an authorization failure, not an empty list. The receiver MUST
+report resolution failure to its caller and MUST NOT silently remove the
+associated targeting constraint.
+
+The receiver MUST follow `pagination.cursor` while `pagination.has_more` is
+true, passing the same `list_id`, `resolve`, and credential on each request.
+It MUST validate every page and assemble the complete list before replacing
+its cached snapshot. An incomplete fetch or invalid page MUST NOT become an
+active partial inclusion or exclusion list. Refresh the complete snapshot
+after `cache_valid_until` or a change notification.
 
 ### Request - Get Resolved Properties
 

@@ -78,6 +78,7 @@ export interface ResolvedEntry {
 }
 
 export interface ResolveResult {
+  sandbox?: true;
   resolved: ResolvedEntry[];
   summary: {
     total: number;
@@ -133,7 +134,8 @@ export class CatalogDatabase {
     identifiers: ResolveInput[],
     mode: ResolveMode,
     memberId: string,
-    provenance: Provenance
+    provenance: Provenance,
+    options: { sandbox?: boolean } = {},
   ): Promise<ResolveResult> {
     const normalized = identifiers.map(({ type, value }) => normalizeIdentifier(type, value));
     const results: ResolvedEntry[] = [];
@@ -232,7 +234,9 @@ export class CatalogDatabase {
     }
 
     // Second pass: batch writes in a single transaction
-    const client = mode === 'resolve' ? await getClient() : null;
+    // Sandbox runs exercise the same classification/resolve path but never
+    // acquire a write transaction, including activity and corroboration facts.
+    const client = mode === 'resolve' && !options.sandbox ? await getClient() : null;
     try {
       if (client) await client.query('BEGIN');
 
@@ -296,6 +300,7 @@ export class CatalogDatabase {
     const resolved = results.filter(r => r.status === 'existing').length;
 
     return {
+      ...(options.sandbox && { sandbox: true as const }),
       resolved: results,
       summary: {
         total: identifiers.length,

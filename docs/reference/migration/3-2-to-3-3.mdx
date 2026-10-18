@@ -1,7 +1,7 @@
 ---
 title: Migrating from 3.2 to 3.3
 sidebarTitle: 3.2 to 3.3
-description: "Role-based migration checklist for adopting the AdCP 3.3 beta while preserving 3.2 compatibility: two behavior tightenings, optional new declarations, and no deprecations."
+description: "Role-based migration checklist for adopting the AdCP 3.3 beta while preserving 3.2 compatibility: behavior tightenings, property list interoperability, and optional new declarations."
 "og:title": "AdCP — Migrating from 3.2 to 3.3"
 ---
 
@@ -11,9 +11,9 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 **3.3 is in its beta cycle.** Keep production traffic pinned to `"3.2"` while validating 3.3 in staging. See the [3.3 beta program](/docs/reference/3-3-beta) for artifact and SDK timing.
 </Warning>
 
-3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated; one usage is (see [Deprecations](#deprecations)). Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
+3.3 is a minor release over 3.2. 3.3 adds optional fields and one optional capability object. No stable field, enum value, or task is removed, renamed, or deprecated; one usage is (see [Deprecations](#deprecations)). Schema-valid 3.2 messages stay schema-valid except for the [domain identifier constraints](#property-domain-identifiers-have-an-enforceable-format) and names 3.3 now defines: `media_buy.features.catalog_ingestion` (previously any boolean was admissible; it is now an object that requires `catalog_management: true`), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points, now strict shapes; `lon`, not `lng`), and the now-reserved `ext.adcp`. A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
-Two changes narrow what a conformant implementation may do, so they are the part of this guide to read first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account) and [signature verification tightens](#signature-verification-tightens). Two changes loosen a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib) and the [client response-size default rises to 4 MiB](#client-response-size-default-rises-to-4-mib). One new recommendation tightens a limit in the other direction, so a 3.3 buyer can reject what a 3.2 buyer accepted: [clients bound agent response size](#recommended-bound-agent-response-size). Everything else is an optional declaration or a clarification.
+Read the required behavior changes first: [discovery never provisions an account](#discovery-tasks-never-provision-an-account), [signature verification tightens](#signature-verification-tightens), [domain identifiers have an enforceable format](#property-domain-identifiers-have-an-enforceable-format), and [property list references resolve through AdCP tasks](#property-list-references-resolve-through-adcp-tasks). Two changes loosen a limit, so a peer still on 3.2 can reject what a 3.3 peer accepts: the [brand.json size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib) and the [client response-size default rises to 4 MiB](#client-response-size-default-rises-to-4-mib). One new recommendation tightens a limit in the other direction, so a 3.3 buyer can reject what a 3.2 buyer accepted: [clients bound agent response size](#recommended-bound-agent-response-size).
 
 For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3). For prerelease artifacts and SDK timing, use the [3.3 beta program](/docs/reference/3-3-beta).
 
@@ -34,6 +34,7 @@ For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/w
 | 11 | Reliable Reporting buyers | Stop relying on exact reads of older superseded snapshots; persist any snapshot rows you need. |
 | 12 | Buyers, SDK maintainers, and every agent operator | Adopt the client response-size bound (4 MiB default); keep `tools/list`, `get_adcp_capabilities`, and the agent card small, and paginate rather than asking buyers to raise their limits. |
 | 13 | Media-buy sellers and signals resellers | Stop mirroring counterparty `adagents.json` into `publisher_domains` / `data_provider_domains`; truncate and flag incomplete rather than exceed the new bounds. Buyers: never deny on absence from either list. |
+| 14 | Property list issuers, receivers, and SDK maintainers | Validate domain identifiers, support MCP reference resolution with list-scoped bearer credentials, and fetch every page before applying a list. |
 
 ## Required to claim 3.3 behavior
 
@@ -64,6 +65,63 @@ Request signing, webhook signing, governance JWS `iss`, designated-task response
 - Cached or onboarding mappings must be confirmed against the agent's `brand_json_url` and re-confirmed within the brand.json cache lifetime.
 
 TMP keeps its own publisher-key model. Verifiers take the publishers that apply from their own record of the media buy, never from the payload.
+
+### Property domain identifiers have an enforceable format
+
+`core/identifier.json` now validates `domain` and `subdomain` values as lowercase
+ASCII hostnames with at least two labels, labels of at most 63 characters, and
+a hostname of at most 253 characters. IDNs use lowercase A-label/punycode form.
+Only `domain` permits a leading `*.`. Existing matching rules are unchanged.
+
+**Before:** the bare string schema accepted `Example.com`, `example.com.`, and
+`https://www.example.com/path`, so a buyer could submit an exclusion the seller
+could not match. **After:** each value is rejected with `INVALID_REQUEST`; the
+receiver rejects the containing request rather than dropping the identifier.
+An invalid identifier in a fetched page invalidates the complete snapshot.
+
+**Senders.** Validate stored lists before adopting the 3.3 artifact that includes
+these constraints. Offer explicit conversion before submission when needed:
+`Example.com` or `example.com.` becomes `example.com`, and a pasted
+`https://www.example.com/path` can become `www.example.com` after the sender
+confirms that hostname selection is intended. Validate the converted value;
+receivers MUST NOT silently reinterpret it. Apply this to inclusion lists,
+exclusion lists, and `filters.exclude_identifiers`.
+
+This tightens validation without removing a field or changing its type. The
+[invalid-input rejection precedent in DR-0012](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0012-reject-native-control-characters.md)
+supports rejecting junk input; the newly required lowercase and trailing-dot
+rules also require migration of previously schema-valid hostname spellings.
+See [domain identifier format](/docs/governance/property/tasks/property_lists#domain-identifier-format).
+
+### Property list references resolve through AdCP tasks
+
+**Before:** the spec left the fetch operation and credential use unspecified;
+an issuer could offer only a custom `GET /lists/{list_id}` route while a seller
+called `get_property_list` over MCP. **After:** issuers expose `get_property_list`
+over MCP at `agent_url`, and receivers support that resolution path. Another
+advertised AdCP task transport may be used by agreement. A custom HTTP download
+route may remain available, but serving it alone does not satisfy the reference
+contract, and receivers do not infer its path from `agent_url`.
+
+**Issuers and receivers.** When a reference carries `auth_token`, send it as
+`Authorization: Bearer <auth_token>` to the managing agent for initialization
+and every page. The issuer accepts it without a recipient account or second
+credential and binds it to read-only access to that `list_id` and its continuation
+pages. It grants no access to other lists, enumeration, or mutations. Fetch and
+validate every page before replacing a cached snapshot; authorization or fetch
+failure must not remove an inclusion or exclusion constraint.
+
+No reference field is removed or changes type, and Bearer authentication already
+exists in AdCP. The new requirements define how the existing list credential is
+used and scoped; they do not introduce a replacement authentication scheme.
+Issuers, receivers, and SDKs must implement this contract when adopting the 3.3
+artifact that includes it; upgrading the schema bundle alone does not supply the
+runtime support. [DR-0008](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0008-sdk-canon-for-wire-contracts.md)
+preserves shipping SDK wire shapes under ambiguity, not unspecified semantic
+contracts. Compliance checks follow the normative resolution requirements under
+[DR-0001](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0001-conformance-assertions-normative-basis.md).
+See [reference resolution](/docs/governance/property/tasks/property_lists#resolving-a-property-list-reference)
+for the complete credential and caching requirements.
 
 ### Brand JSON size cap rises to 2 MiB
 

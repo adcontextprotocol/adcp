@@ -19,6 +19,8 @@ import { fileDispute } from '../../services/catalog-governance.js';
 import type { DisputeType } from '../../db/catalog-disputes-db.js';
 import { AAO_HOST } from '../../config/aao.js';
 import { scrubCommunityAuthorizedAgents } from '../../utils/community-adagents.js';
+import { isRegistryDomain } from '../../services/registry-domain.js';
+import { CatalogResolveRequestSchema } from '../../schemas/catalog-resolve.js';
 
 const adagentsManager = new AdAgentsManager();
 const propertyDb = new PropertyDatabase();
@@ -383,9 +385,9 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
   });
 
   handlers.set('save_property', async (args) => {
-    const publisherDomain = args.publisher_domain as string;
-    if (!publisherDomain) {
-      return JSON.stringify({ error: 'publisher_domain is required' });
+    const publisherDomain = args.publisher_domain;
+    if (typeof publisherDomain !== 'string' || !isRegistryDomain(publisherDomain)) {
+      return JSON.stringify({ error: 'Invalid publisher_domain: expected a lowercase hostname; reserved test domains are not allowed' });
     }
 
     const properties = args.properties as Array<{ type: string; name: string }> || [];
@@ -588,28 +590,16 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
     }, null, 2);
   });
 
-  const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-
   handlers.set('enhance_property', async (args) => {
-    const rawDomain = args.domain as string;
-    if (!rawDomain) {
-      return JSON.stringify({ error: 'domain is required' });
+    const rawDomain = args.domain;
+    if (typeof rawDomain !== 'string' || !isRegistryDomain(rawDomain)) {
+      return JSON.stringify({ error: 'Invalid domain: expected a lowercase hostname; reserved test domains are not allowed' });
     }
 
-    // Normalize and validate format before any external calls
+    // Validate the received value before normalization can hide a pasted URL.
     const domain = rawDomain
-      .trim()
-      .replace(/^https?:\/\//i, '')
-      .replace(/[/?#].*$/, '')
-      .replace(/\.$/, '')
-      .replace(/\/$/, '')
-      .toLowerCase()
       .replace(/^www\./, '')
       .replace(/^m\./, '');
-
-    if (!domain || !DOMAIN_RE.test(domain)) {
-      return JSON.stringify({ error: 'Invalid domain format', hint: 'Provide a bare domain like "example.com"' });
-    }
 
     const result = await enhanceProperty(domain);
 
@@ -639,25 +629,18 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
   // ── Catalog tools ──────────────────────────────────────────────
 
   handlers.set('resolve_catalog', async (args) => {
-    const identifiers = args.identifiers as Array<{ type: string; value: string }>;
-    if (!Array.isArray(identifiers) || identifiers.length === 0) {
-      return JSON.stringify({ error: 'identifiers array is required' });
-    }
-    if (identifiers.length > 10000) {
-      return JSON.stringify({ error: 'Maximum 10,000 identifiers per request' });
+    const parsed = CatalogResolveRequestSchema.safeParse(args);
+    if (!parsed.success) {
+      return JSON.stringify({ error: 'Invalid request', details: parsed.error.issues });
     }
 
-    const provenance = args.provenance as { type: string; context?: string };
-    if (!provenance?.type) {
-      return JSON.stringify({ error: 'provenance.type is required' });
-    }
-
-    const mode = (args.mode as string) === 'lookup' ? 'lookup' as const : 'resolve' as const;
+    const { identifiers, provenance, mode, sandbox } = parsed.data;
     const memberId = 'system:addie';
 
-    const result = await catalogDb.resolveIdentifiers(identifiers, mode, memberId, provenance);
+    const result = await catalogDb.resolveIdentifiers(identifiers, mode, memberId, provenance, { sandbox });
 
     return JSON.stringify({
+      ...(result.sandbox && { sandbox: true }),
       summary: result.summary,
       resolved: result.resolved.slice(0, 50), // Limit context window impact
       server_timestamp: result.server_timestamp,
