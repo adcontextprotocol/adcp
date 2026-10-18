@@ -248,6 +248,18 @@ describe('Web Bot Auth profile test keys', () => {
   });
 });
 
+describe('Web Bot Auth profile schema fields', () => {
+  it('signing_profile has no default, so filling in defaults never adds it next to authentication', () => {
+    for (const name of ['push-notification-config', 'notification-config', 'agent-notification-config']) {
+      const schema = JSON.parse(fs.readFileSync(path.join(__dirname, `../static/schemas/source/core/${name}.json`), 'utf8'));
+      const field = schema.properties.signing_profile;
+      assert.equal(field.$ref, '/schemas/enums/webhook-signing-profile.json', name);
+      assert.ok(!('default' in field), `${name}.signing_profile declares a default`);
+      assert.ok(schema.properties.authentication, `${name} has no authentication field`);
+    }
+  });
+});
+
 describe('Web Bot Auth profile positive vectors', () => {
   for (const { file, vector } of positive.filter(e => !e.vector.response)) {
     it(`${file}: the signature verifies and names the expected identity`, () => {

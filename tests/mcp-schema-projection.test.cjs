@@ -142,7 +142,7 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // and response-collection descriptions (1_266_010 → 1_270_050 bytes measured
 // against main), bounded at 1_272_000. The Web Bot Auth signing_profile on
 // push-notification and notification configurations reaches it as well
-// (1_270_050 → 1_271_321 bytes measured against main), within that bound.
+// (1_270_050 → 1_271_507 bytes measured against main), within that bound.
 const PARITY_COMPILE_LIMIT = 1_272_000;
 
 function readJson(filename) {
