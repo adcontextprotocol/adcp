@@ -266,6 +266,8 @@ The vectors live at `static/compliance/source/test-vectors/wba-profile/` and are
 - `governance/002-governance-token-key-not-in-issuer-directory`: `governance_key_unknown`; the key is published by another agent, not by the issuer.
 - `governance/003-governance-token-from-non-governance-agent`: `governance_issuer_not_authorized`; the key and signature are consistent, and the issuer is not the buyer's governance agent.
 
+`scenarios.json` holds failure scenarios as data: a base request, the covered components, parameter overrides, a change after signing, and the expected status. A harness signs each scenario at run time, so no committed signature expires. Each scenario names a tier: `wba` when a WBA library with no AdCP rules already gives the expected outcome, and `adcp` when only the profile's rules do.
+
 The keys in `keys.json` are public test keys with published private seeds. Section 6.8 says test keys "MUST NOT be used in production", and verifiers SHOULD reject them when detected. The README in the vector directory describes the file format and the harness state each vector needs.
 
 ## References

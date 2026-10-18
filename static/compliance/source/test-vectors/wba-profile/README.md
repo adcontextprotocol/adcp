@@ -4,7 +4,7 @@ Test vectors for the proposed AdCP profile of Web Bot Auth (WBA) for request and
 
 Specification: [Web Bot Auth request-signing profile](https://adcontextprotocol.org/docs/building/by-layer/L1/wba-profile) in `docs/building/by-layer/L1/wba-profile.mdx`. Section numbers in vector comments refer to [draft-ietf-webbotauth-httpsig-protocol-00](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/00/) unless they name RFC 9421.
 
-**Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/compliance/{version}/test-vectors/wba-profile/`, with `{version}` either an immutable release or `latest`. Tree preserved: `keys.json`, `positive/*.json`, `negative/*.json`, and `governance/*.json` are all resolvable.
+**Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/compliance/{version}/test-vectors/wba-profile/`, with `{version}` either an immutable release or `latest`. Tree preserved: `keys.json`, `scenarios.json`, `positive/*.json`, `negative/*.json`, and `governance/*.json` are all resolvable.
 
 ## Test keys are public
 
@@ -24,6 +24,7 @@ The vectors exercise the profile rules: the covered `Signature-Agent` member, ke
 test-vectors/wba-profile/
 ├── README.md                                      this file
 ├── keys.json                                      three Ed25519 test keys, one per identity, with private seeds
+├── scenarios.json                                 failure scenarios as data, signed by a harness at run time
 ├── positive/                                      requests and responses that MUST verify
 │   ├── 001-single-signer-request.json             buyer agent signs create_media_buy
 │   └── 002-signed-directory-response.json         directory response signed per key (WBA Appendix B.1)
@@ -114,6 +115,18 @@ Each vector under `governance/` carries a compact JWS instead of a request:
 
 The vectors grade the two governance checks. The two negative vectors each fail one check: `002` the key lookup in the `iss` origin's directory, and `003` the check that the issuer is the buyer's governance agent. The positive vector passes the remaining checks a verifier runs on the way (`alg`, `typ`, `jku` equal to the `iss` origin's directory, the signature, `exp` and `iat`), but no vector here fails them. The other checklist steps (`aud`, `phase`, `sub`, action binding, revocation, replay) are out of scope.
 
+### Failure scenarios
+
+`scenarios.json` holds failure scenarios as data instead of signed requests. A harness signs each scenario at run time with the reference library, so no committed signature expires, and grades the verifier on the scenario's expected outcome. The file has the following fields:
+
+- **`signer`**: the identity and `kid` from `keys.json` that sign every scenario.
+- **`requests`**, **`components`**, and **`parameters`**: the base requests (`post` and `get`), the components each one covers, and the default signature parameters. `{label}` in a component stands for the signature's label. `created` and `expires` are offsets in seconds from the harness's clock. A `nonce` object asks for that many random bytes in that encoding: `base64url` (unpadded), `base64` (canonical padded), or `base64url-padded`.
+- **`request_scenarios`**: each entry names a `base` request and overrides any of `label`, `components`, `parameters` (a `null` value omits the parameter), and `signature_agent` (the header value). `extra_signature` adds a second signature with its own label, key, components, and parameters. `after_signing` changes `headers` or appends `append_to_body` to the body after signing. `directories` lists the `kid` values each origin serves; it defaults to the signer's own directory.
+- **`directory_scenarios`**: each entry overrides how the signer's directory response is signed: `keys` (the kids that sign), `unsigned_keys` (public keys in the body that do not sign), `authority`, `parameters`, `components`, `content_type`, and `after_signing`.
+- **`expected`**: `success` and `identity` for a scenario that verifies, or `success: false` and the `status` for a request scenario that a verifier rejects. A directory scenario that a verifier rejects has no status of its own: the request that needed its key gets `403`.
+- **`tier`**: `wba` when the reference library alone, with no AdCP rules, gives the expected outcome; `adcp` when the bare library gives the opposite outcome and only the profile's rules give the expected one. A WBA MUST that the library does not enforce, such as an `https` origin (`R16`), is `adcp` until the library enforces it. A harness checks every tier against the bare library on every run.
+- **`basis`**: the rule the scenario grades. Informational.
+
 ## Conformance expectations
 
 An implementation is conformant when, for every vector:
@@ -121,8 +134,9 @@ An implementation is conformant when, for every vector:
 1. **Positive request vectors** verify the `web-bot-auth` signature and attribute it to the origin in `expected_outcome.identities`.
 2. **The directory-response vector** verifies the response signature with the key the directory body provides and matches `Content-Digest` against the body.
 3. **Negative vectors** answer `expected_outcome.status`. `Accept-Signature` is an AdCP-layer SHOULD, and conformance does not grade it.
-4. **Governance vectors** verify `001` and attribute it to `expected_outcome.issuer`, and reject `002` and `003` with `expected_outcome.error_code`.
-5. **Signature bytes on positive vectors** match the committed `Signature` values byte for byte when the implementation signs the committed `expected_signature_base` with the corresponding private seed. Ed25519 is deterministic.
+4. **Failure scenarios** answer `expected` for every entry in `scenarios.json`.
+5. **Governance vectors** verify `001` and attribute it to `expected_outcome.issuer`, and reject `002` and `003` with `expected_outcome.error_code`.
+6. **Signature bytes on positive vectors** match the committed `Signature` values byte for byte when the implementation signs the committed `expected_signature_base` with the corresponding private seed. Ed25519 is deterministic.
 
 Several negative vectors carry cryptographically valid signatures on purpose. `001-missing-nonce`, `003-signature-agent-not-covered`, and `006-two-signatures` verify once the targeted check is removed, and `004-key-not-in-named-directory` verifies under a verifier that looks keys up by thumbprint alone. Both governance negatives carry valid signatures too: `002` verifies under a thumbprint-only lookup, and `003` verifies when the governance-agent check is skipped. A verifier that accepts any of them has skipped a profile rule, not failed at cryptography.
 

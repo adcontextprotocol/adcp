@@ -28,7 +28,7 @@
  * The keys are public test keys (Web Bot Auth section 6.8). Never use them in production.
  */
 
-import { createHash, createPrivateKey, createPublicKey, sign } from 'node:crypto';
+import { createECDH, createHash, createPrivateKey, createPublicKey, sign } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -405,6 +405,85 @@ governanceVector('governance/003-governance-token-from-non-governance-agent.json
   },
   comment:
     'Every check up to the governance-agent check passes: jku is the iss origin\'s directory, the kid is in it, and the signature verifies. A token is accepted for who issued it, not for which key signed it. A verifier that checks only that the key sits in the iss directory accepts this token.',
+});
+
+// ── Failure scenarios ─────────────────────────────────────────────────────
+// Scenarios are data, not signatures: a harness signs each one at run time
+// with the reference library, so nothing committed here expires. Times are
+// offsets in seconds from the harness's clock.
+//
+// tier "wba": the reference library with no AdCP policy already gives the
+// expected outcome. tier "adcp": it gives the opposite outcome, and only the
+// profile's rules give the expected one. A WBA MUST that the library does not
+// enforce is tier "adcp" until it does; the harness reports the change.
+const P256_SEED = sha('sha256', 'rfc004-test/p256-unused');
+const p256 = (() => {
+  const ecdh = createECDH('prime256v1');
+  ecdh.setPrivateKey(P256_SEED);
+  const point = ecdh.getPublicKey();
+  const jwk = { kty: 'EC', crv: 'P-256', x: b64u(point.subarray(1, 33)), y: b64u(point.subarray(33)) };
+  return { ...jwk, kid: b64u(sha('sha256', JSON.stringify({ crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y }))), use: 'sig' };
+})();
+
+const FULL = ['@method', '@target-uri', '@authority', 'content-type', 'content-digest', 'signature-agent;key={label}'];
+const ok = { success: true, identity: BUYER };
+const status = s => ({ success: false, status: s });
+// A directory refusal has no status of its own: the request that needed the key gets 403.
+const refused = { success: false };
+const req = (id, name, tier, expected, basis, fields = {}) => ({ id, name, base: 'post', ...fields, expected, tier, basis });
+const dirScenario = (id, name, tier, expected, basis, fields = {}) => ({ id, name, ...fields, expected, tier, basis });
+
+write('scenarios.json', {
+  $comment:
+    'Failure scenarios for the Web Bot Auth profile, as data. A harness signs each request and directory scenario at run time with the reference library (http-message-sig signs any component and parameter set), applies after_signing, and grades the verifier on expected. created and expires are offsets in seconds from the harness clock; a null parameter is omitted; a nonce object asks for that many random bytes in that encoding. tier "wba": the reference library with no AdCP policy already gives the expected outcome. tier "adcp": the bare library gives the opposite outcome and only the profile rules give the expected one; a WBA MUST the library does not enforce stays "adcp" until it does. See README.md.',
+  spec_reference: `${SPEC}#profile-rules`,
+  signing_profile: 'web-bot-auth',
+  signer: { identity: BUYER, kid: buyer.jwk.kid },
+  requests: {
+    post: { method: 'POST', url: TARGET, headers: { 'content-type': 'application/json' }, body },
+    get: { method: 'GET', url: `${TARGET}tasks?id=a%7Eb&x=1`, headers: {}, body: '' },
+  },
+  components: { post: FULL, get: ['@method', '@target-uri', '@authority', 'signature-agent;key={label}'] },
+  parameters: { created: -5, expires: 295, nonce: { bytes: 64, encoding: 'base64url' }, tag: 'web-bot-auth' },
+  request_scenarios: [
+    req('R00', 'Baseline', 'wba', ok, 'Profile rules'),
+    req('R01', 'Body changed after signing', 'adcp', status(403), 'Content-Digest matches the body: RFC 9530; WBA section 5.2', { after_signing: { append_to_body: '\n' } }),
+    req('R02', 'Covered header changed after signing', 'wba', status(403), 'RFC 9421 section 3.2', { after_signing: { headers: { 'content-type': 'text/plain' } } }),
+    req('R03', 'Expired', 'wba', status(403), 'RFC 9421 section 3.2.1', { parameters: { created: -400, expires: -100 } }),
+    req('R04', 'created 120 seconds in the future', 'wba', status(403), 'Profile: 60 seconds of clock skew', { parameters: { created: 120, expires: 400 } }),
+    req('R05', 'created 30 seconds in the future', 'adcp', ok, 'Profile: 60 seconds of clock skew; the library allows none by default', { parameters: { created: 30, expires: 300 } }),
+    req('R06', 'Lifetime of 3600 seconds', 'adcp', status(403), 'Profile: expires at most 300 seconds after created', { parameters: { created: -5, expires: 3595 } }),
+    req('R07', 'Nonce of 32 bytes', 'wba', status(403), 'Profile: 64-byte nonce; validateNonce', { parameters: { nonce: { bytes: 32, encoding: 'base64url' } } }),
+    req('R08', 'Nonce in canonical padded base64', 'wba', ok, 'Profile: unpadded base64url or canonical padded base64', { parameters: { nonce: { bytes: 64, encoding: 'base64' } } }),
+    req('R09', 'Nonce in padded base64url', 'wba', status(403), 'Profile: unpadded base64url or canonical padded base64', { parameters: { nonce: { bytes: 64, encoding: 'base64url-padded' } } }),
+    req('R10', 'No alg parameter', 'wba', status(403), 'Profile: alg required', { parameters: { alg: null } }),
+    req('R11', 'alg other than ed25519', 'wba', status(403), 'Profile: alg is ed25519 and matches the key; RFC 9421 section 3.2', { parameters: { alg: 'ecdsa-p256-sha256' } }),
+    req('R12', 'GET covering only @authority and the Signature-Agent member', 'adcp', status(403), 'Profile: cover @method, @target-uri, and @authority; WBA section 5.2 needs one of @authority or @target-uri', { base: 'get', components: ['@authority', 'signature-agent;key=sig1'] }),
+    req('R13', 'Body without content-digest covered', 'adcp', status(403), 'Profile: a request with a body covers content-type and content-digest; WBA section 5.2', { components: ['@method', '@target-uri', '@authority', 'content-type', 'signature-agent;key=sig1'] }),
+    req('R14', 'tag other than web-bot-auth', 'wba', status(403), 'WBA section 5.2: tag MUST be web-bot-auth', { parameters: { tag: 'adcp/request-signing/v1' } }),
+    req('R15', 'Bare-string Signature-Agent', 'adcp', status(400), 'Profile: dictionary form only, so the field does not parse; WBA section 5.2.1 lets a verifier accept the bare string', { signature_agent: `"${BUYER}"`, components: [...FULL.slice(0, 5), 'signature-agent'] }),
+    req('R16', 'http:// Signature-Agent', 'adcp', status(403), 'WBA section 5.2.1: the origin MUST be https; the library does not check it', { signature_agent: 'sig1="http://buyer-7k3q.com"', directories: { 'http://buyer-7k3q.com': [buyer.jwk.kid] } }),
+    req('R17', 'Signature-Agent with a path', 'adcp', status(403), 'WBA section 5.5: a directory member MUST be an origin; the library does not check it', { signature_agent: `sig1="${BUYER}/agents/a"`, directories: { [`${BUYER}/agents/a`]: [buyer.jwk.kid] } }),
+    req('R18', 'Signature-Agent member with type=jwks_uri', 'adcp', status(403), 'Profile: only type=directory; WBA section 5.2.1 lets a verifier ignore other types', { signature_agent: `sig1="${BUYER}/jwks.json";type=jwks_uri`, directories: { [`${BUYER}/jwks.json`]: [buyer.jwk.kid] } }),
+    req('R19', 'Signature-Agent member keyed differently from the label', 'adcp', status(403), 'WBA section 5.2.1: the member keyed to the label; the library does not check it', { signature_agent: `agent1="${BUYER}"`, components: [...FULL.slice(0, 5), 'signature-agent;key=agent1'] }),
+    req('R20', 'Second signature with tag cdn-edge', 'adcp', ok, 'Profile: Signature-Input members with other tags are not read; the library requires a label when a request carries two signatures', {
+      extra_signature: { label: 'cdn', kid: brand.jwk.kid, components: ['@method', '@authority'], parameters: { created: -5, expires: 295, nonce: null, tag: 'cdn-edge' } },
+    }),
+    req('R21', 'Two Signature-Agent members, one signature', 'adcp', status(403), 'Profile: exactly one Signature-Agent member', { signature_agent: `sig1="${BUYER}", sig2="${BRAND}"` }),
+    req('R22', 'Label other than sig1', 'wba', ok, 'RFC 9421: the signer chooses the label', { label: 'wba' }),
+    req('R23', 'Components in another order', 'wba', ok, "RFC 9421: the order is the signer's", { components: ['signature-agent;key=sig1', '@authority', 'content-digest', '@target-uri', 'content-type', '@method'] }),
+  ],
+  directory_scenarios: [
+    dirScenario('D00', 'Baseline', 'wba', { success: true }, 'WBA Appendix B.1'),
+    dirScenario('D01', 'Signed for another authority', 'wba', refused, 'WBA Appendix B.1: covers "@authority";req', { authority: 'agent.brand-7k3q.com' }),
+    dirScenario('D02', 'Body changed after signing', 'adcp', refused, 'WBA Appendix B.1: the verifier MUST validate Content-Digest; the library does not compare it with the body', { after_signing: { append_to_body: '\n' } }),
+    dirScenario('D03', 'Unsigned', 'wba', refused, 'Profile: every Ed25519 key signs (Appendix B.1 recommends it)', { keys: [], unsigned_keys: [buyer.jwk] }),
+    dirScenario('D04', 'Signature created in the future', 'wba', refused, 'WBA Appendix B.1: reject a future created', { parameters: { created: 3600, expires: 90000 } }),
+    dirScenario('D05', 'Covers "@authority";req only', 'adcp', refused, 'WBA Appendix B.1: covers content-digest', { components: ['@authority;req'] }),
+    dirScenario('D06', 'Expired signature', 'wba', refused, 'RFC 9421 section 3.2.1', { parameters: { created: -7200, expires: -3600 } }),
+    dirScenario('D07', 'Extra P-256 key that does not sign', 'wba', { success: true }, 'Profile: ignore keys the profile does not use (RFC 7517 section 5)', { unsigned_keys: [p256] }),
+    dirScenario('D08', 'Media type application/json', 'adcp', refused, 'WBA section 5.5.1: the well-known directory MUST be served with application/http-message-signatures-directory+json', { content_type: 'application/json' }),
+  ],
 });
 
 // ── Write or check ────────────────────────────────────────────────────────
