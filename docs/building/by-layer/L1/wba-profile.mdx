@@ -43,12 +43,7 @@ Key lookup is keyed on the pair of origin and key, never on the key alone (secti
 
 ## One agent per purpose
 
-Purpose belongs to the agent, not to the key. A governance agent is its own identity on its own origin, with its own key directory, so no key and no directory states a purpose. A verifier accepts a governance token when both of the following hold:
-
-1. The token's `kid` is in the key directory of the `iss` origin, and `jku` is that directory's URL.
-2. The `iss` origin is the buyer's governance agent: the governance-typed `agents[]` entry in the buyer's `brand.json`, or the agent with the `adcp:governance` role in the buyer's [`trust.json`](/docs/reference/trust-json).
-
-Neither check is new. The first is this profile's key lookup, and the second is the governance-agent check AdCP already makes. How documents are signed is a separate decision (RFC #7878, D11). The vectors under `governance/` grade these two checks, and the rest of the token follows the existing [governance verification checklist](/docs/building/by-layer/L1/security#signed-governance-context).
+Purpose belongs to the agent, not to the key. A governance agent is an identity like any other, on its own origin, with its own key directory, so no key and no directory states a purpose. JWS artifacts, such as governance tokens, are outside this profile.
 
 ## Profile rules
 
@@ -262,9 +257,6 @@ The vectors live at `static/compliance/source/test-vectors/wba-profile/` and are
 - `negative/004-key-not-in-named-directory`: `403`; the signing key is published by a different origin than the one `Signature-Agent` names.
 - `negative/005-malformed-signature-agent`: `400`; the header does not parse.
 - `negative/006-two-signatures`: `403`; the request carries two `web-bot-auth` signatures, each valid on its own.
-- `governance/001-governance-token`: a governance token from the governance identity, with its own key; it verifies.
-- `governance/002-governance-token-key-not-in-issuer-directory`: `governance_key_unknown`; the key is published by another agent, not by the issuer.
-- `governance/003-governance-token-from-non-governance-agent`: `governance_issuer_not_authorized`; the key and signature are consistent, and the issuer is not the buyer's governance agent.
 
 `scenarios.json` holds failure scenarios as data: a base request, the covered components, parameter overrides, a change after signing, and the expected status. A harness signs each scenario at run time, so no committed signature expires. Each scenario names a tier: `wba` when a WBA library with no AdCP rules already gives the expected outcome, and `adcp` when only the profile's rules do.
 
