@@ -385,6 +385,9 @@ write('scenarios.json', {
     req('R20', 'Second signature with tag cdn-edge', 'adcp', ok, 'Profile: Signature-Input members with other tags are not read; the library requires a label when a request carries two signatures', {
       extra_signature: { label: 'cdn', kid: brand.jwk.kid, components: ['@method', '@authority'], parameters: { created: -5, expires: 295, nonce: null, tag: 'cdn-edge' } },
     }),
+    req('R20b', 'Second member with tag cdn-edge whose Signature value is a token', 'wba', status(400), 'RFC 9421 section 4.2: every Signature member value is a Byte Sequence, so the field is malformed whatever the member\'s tag; members with other tags are not read, but the field is still parsed', {
+      after_signing: { append_members: { 'signature-input': 'cdn=("@method" "@authority");tag="cdn-edge"', signature: 'cdn=edge-token' } },
+    }),
     req('R21', 'Two Signature-Agent members, one signature', 'adcp', status(403), 'Profile: exactly one Signature-Agent member', { signature_agent: `sig1="${BUYER}", sig2="${BRAND}"` }),
     req('R22', 'Label other than sig1', 'wba', ok, 'RFC 9421: the signer chooses the label', { label: 'wba' }),
     req('R23', 'Components in another order', 'wba', ok, "RFC 9421: the order is the signer's", { components: ['signature-agent;key=sig1', '@authority', 'content-digest', '@target-uri', 'content-type', '@method'] }),

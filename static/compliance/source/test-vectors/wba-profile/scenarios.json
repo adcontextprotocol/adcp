@@ -392,6 +392,23 @@
       "basis": "Profile: Signature-Input members with other tags are not read; the library requires a label when a request carries two signatures"
     },
     {
+      "id": "R20b",
+      "name": "Second member with tag cdn-edge whose Signature value is a token",
+      "base": "post",
+      "after_signing": {
+        "append_members": {
+          "signature-input": "cdn=(\"@method\" \"@authority\");tag=\"cdn-edge\"",
+          "signature": "cdn=edge-token"
+        }
+      },
+      "expected": {
+        "success": false,
+        "status": 400
+      },
+      "tier": "wba",
+      "basis": "RFC 9421 section 4.2: every Signature member value is a Byte Sequence, so the field is malformed whatever the member's tag; members with other tags are not read, but the field is still parsed"
+    },
+    {
       "id": "R21",
       "name": "Two Signature-Agent members, one signature",
       "base": "post",

@@ -143,7 +143,7 @@ Signature: key1=:QJeeYQ9E5OXMbEy89f1YjQNCB5NjRxN+ck/V+4sRoVNtF5S/446uVIECNC\
 
 A verifier applies the following procedure to a request that carries `Signature-Input`.
 
-1. Parse `Signature`, `Signature-Input`, and `Signature-Agent` as Structured Fields. If any header fails to parse, answer `400` (section 5.4).
+1. Parse `Signature`, `Signature-Input`, and `Signature-Agent` as Structured Fields. Every `Signature` member value is a Byte Sequence and every `Signature-Input` member value is an Inner List (RFC 9421 sections 4.1 and 4.2), whatever the member's tag. If any header fails to parse, answer `400` (section 5.4).
 2. Read the one `Signature-Input` member whose `tag` is `web-bot-auth` and the `Signature-Agent` member with the same label. The verifier does not read members with other tags. A request that carries more than one `web-bot-auth` member or more than one `Signature-Agent` member is rejected with `403`. If the `Signature-Agent` member is absent, or the signature does not cover `"signature-agent";key=<label>`, reject the signature. An uncovered member is a claim the verifier must not attach policy to (section 4.1).
 3. Resolve the origin the member names to its key directory, from cache or by fetching it, and select the key whose `kid` equals `keyid`. If the directory holds no such key, the request is unverified.
 4. Verify the signature with the selected key, and check its covered components, parameters, and window against the rules in [Profile rules](#profile-rules).
