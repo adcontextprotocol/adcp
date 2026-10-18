@@ -194,10 +194,12 @@ function verifyRequest(vector, { skipNonce = false, skipAgentCoverage = false, s
     }
     if (!PROFILE_ALGORITHMS.includes(params.get('alg'))) throw new ProfileError(403, 'signature', `${label} alg is not ed25519`);
     if (!skipNonce) {
+      // Unpadded base64url or canonical padded base64, as Cloudflare's validateNonce accepts.
       const nonce = params.get('nonce');
-      const decoded = /^[A-Za-z0-9_-]+$/.test(nonce) ? Buffer.from(nonce, 'base64url') : null;
-      if (!decoded || decoded.length !== NONCE_BYTES || decoded.toString('base64url') !== nonce) {
-        throw new ProfileError(403, 'signature', `${label} nonce is not ${NONCE_BYTES} bytes, base64url-encoded`);
+      const encoding = /^[A-Za-z0-9_-]+$/.test(nonce) ? 'base64url' : /^[A-Za-z0-9+/]+={0,2}$/.test(nonce) ? 'base64' : null;
+      const decoded = encoding ? Buffer.from(nonce, encoding) : null;
+      if (!decoded || decoded.length !== NONCE_BYTES || decoded.toString(encoding) !== nonce) {
+        throw new ProfileError(403, 'signature', `${label} nonce is not ${NONCE_BYTES} bytes, base64url or padded base64`);
       }
     }
     const created = params.get('created');
