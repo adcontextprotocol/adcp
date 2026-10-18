@@ -38,9 +38,11 @@ const componentName = c => (typeof c === 'string' ? c : c.name);
 
 // ── Row "Signature" ───────────────────────────────────────────────────────
 // The library checks the tag, the thumbprint keyid, and that exactly one
-// `signature-agent` member is covered. The profile adds that the member names
-// an `https` origin with no path (WBA 5.2.1 and 5.5 MUSTs the library does not
-// check), and that only `type=directory` is recognized.
+// `signature-agent` member is covered. The profile adds that the member value
+// is the ASCII serialization of an `https` origin, with no path, query,
+// fragment, or userinfo (WBA 5.2.1 and 5.5 MUSTs the library does not check;
+// cloudflare/web-bot-auth#162 for https), and that only `type=directory` is
+// recognized.
 
 /** Checks the covered Signature-Agent member before its directory is read. */
 export function checkSignatureAgent(entry) {
@@ -52,9 +54,8 @@ export function checkSignatureAgent(entry) {
     refuse('signature-agent-origin', `Signature-Agent ${entry.uri} is not a URL`);
   }
   if (url.protocol !== 'https:') refuse('signature-agent-origin', `Signature-Agent ${entry.uri} is not https`);
-  if (url.pathname !== '/' || url.search !== '' || url.hash !== '' || ![url.origin, `${url.origin}/`].includes(entry.uri)) {
-    refuse('signature-agent-origin', `Signature-Agent ${entry.uri} is not an origin`);
-  }
+  // The value is the ASCII serialization of the origin (RFC 6454 section 6.2): no path, query, fragment, or userinfo.
+  if (entry.uri !== url.origin) refuse('signature-agent-origin', `Signature-Agent ${entry.uri} is not a serialized origin`);
 }
 
 /** The covered member is the one keyed to the signature's label (WBA 5.2.1). */
