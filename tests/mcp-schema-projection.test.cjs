@@ -14,7 +14,7 @@ const yaml = require('js-yaml');
 const semver = require('semver');
 const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 const {
-  normalizeSubstitutions,
+  normalizeStoryboardSampleRequests,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 const {
   MCP_ROLE_PROFILE_TOOLS,
@@ -242,9 +242,9 @@ function collectStoryboardRequestFixtures() {
         const sourcePath = path.join(SOURCE_DIR, relativePath);
         if (!fs.existsSync(sourcePath)) continue;
         const sourceSchema = readJson(sourcePath);
-        const fixture = normalizeSubstitutions(step.sample_request, sourceSchema);
+        const prepared = normalizeStoryboardSampleRequests(storyboard, step, sourceSchema);
         if (!fixtures.has(relativePath)) fixtures.set(relativePath, []);
-        fixtures.get(relativePath).push(fixture);
+        fixtures.get(relativePath).push(...prepared);
       }
     }
   }
