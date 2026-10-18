@@ -35,7 +35,7 @@ test("input-field weight report attributes the largest transitive schema graphs"
   const { schemas } = loadRepresentativeMediaBuyRuntime();
   const report = analyzeInputSchemaWeights(schemas);
 
-  assert.equal(report.tool_count, 19);
+  assert.equal(report.tool_count, 20);
   // Exact Reliable Reporting reads include the shared pagination closure;
   // consumer-status sync adds one compact tool and its status definition;
   // targeting reuses four named codegen-safe item and cross-field schemas.
@@ -47,11 +47,14 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // outcome_target.cost_per adds its object and strength enum schemas, each
   // reached from list_products, request_proposals, and refine_proposals.
   // Daypart time granularity adds one shared enum reached through the
-  // daypart requirement in the targeting-bearing tools.
-  // signing_profile adds the webhook-signing profile enum schema, reached from
-  // every input that carries a push-notification or notification configuration.
-  assert.equal(report.definition_instances, 689);
-  assert.equal(report.unique_definitions, 186);
+  // daypart requirement in the targeting-bearing tools. Experimental
+  // list_collections (#8183) adds one tool and the collection selector,
+  // collection kind, and genre taxonomy definitions it alone reaches, plus the
+  // shared locale tag its languages filter references. signing_profile adds
+  // the webhook-signing profile enum schema, reached from every input that
+  // carries a push-notification or notification configuration.
+  assert.equal(report.definition_instances, 701);
+  assert.equal(report.unique_definitions, 189);
   assert.equal(report.repeated_definitions, 134);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
@@ -176,7 +179,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 186);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 189);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(
@@ -235,7 +238,7 @@ test("experiment report keeps all alternatives smaller than standalone model con
   const variants = report.variants;
   assert.equal(report.status, "non-normative");
   assert.equal(report.prompt_cleanup_adapter.required, true);
-  assert.equal(report.selection.tools.length, 19);
+  assert.equal(report.selection.tools.length, 20);
   // Tolerance band, not an exact pin: every schema-touching PR shifts this
   // number, and an exact equality forced each one to re-pin the constant —
   // guaranteeing merge conflicts between any two in-flight schema PRs (#6571).
@@ -248,9 +251,14 @@ test("experiment report keeps all alternatives smaller than standalone model con
       variants.standalone.context_bytes < 400 * 1024,
     `standalone context outside [200 KiB, 400 KiB]: ${variants.standalone.context_bytes}`
   );
+  // main sat at 0.8298 of standalone against a 0.83 bound. The Web Bot Auth
+  // signing_profile adds 1,440 bytes that prompt cleanup keeps, which takes
+  // the ratio to 0.8305 (289,079 of 348,090 bytes), so the bound moves to
+  // 0.835.
   assert.ok(
     variants.prompt_cleanup.context_bytes <
-      variants.standalone.context_bytes * 0.83
+      variants.standalone.context_bytes * 0.835,
+    `prompt cleanup is not materially smaller than standalone: ${variants.prompt_cleanup.context_bytes} of ${variants.standalone.context_bytes}`
   );
   // Report both operands on failure: this bound drifts into its own limit and
   // is then re-pinned by whichever schema PR trips it first (#6571), and the

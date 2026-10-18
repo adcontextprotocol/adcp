@@ -34,6 +34,7 @@ import { TrainingCreativePlatform } from '../v6-creative-platform.js';
 import { accountScopeFromRef } from '../account-scope.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { GovernanceAgentStub } from '@adcp/sdk/testing';
+import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 import {
   clearReportingAccountBindingCacheForTesting,
   reportingMediaBuyCandidateHistoryForTesting,
@@ -3897,6 +3898,51 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 15000);
+
+  // The 3.0 capabilities schema closes compliance_testing.scenarios to six
+  // values. An explicit 3.0 caller on a normal route (not the frozen 3.0
+  // storyboard facade) must not see scenarios added in later releases.
+  it('lists only 3.0 compliance scenarios to explicit 3.0 callers on every tenant route', async () => {
+    const { baseUrl, close } = await bootServer();
+    const validateThreeZero = getCanonicalToolValidator('get_adcp_capabilities', 'sync', { adcpVersion: '3.0' });
+    expect(validateThreeZero).toBeDefined();
+    try {
+      for (const tenant of ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si']) {
+        const url = `${baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        const body = await callTenantTool(url, 2, 'get_adcp_capabilities', { adcp_version: '3.0' }) as {
+          result?: { structuredContent?: { adcp_version?: string; compliance_testing?: unknown } };
+        };
+        const structured = body.result?.structuredContent;
+        expect(structured?.adcp_version, tenant).toBe('3.0');
+        const valid = validateThreeZero!(structured);
+        expect(valid, `${tenant}: ${JSON.stringify(validateThreeZero!.errors)}`).toBe(true);
+      }
+
+      const salesUrl = `${baseUrl}/sales/mcp`;
+      const threeZero = await callTenantTool(salesUrl, 3, 'get_adcp_capabilities', { adcp_version: '3.0' }) as {
+        result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
+      };
+      expect(threeZero.result?.structuredContent?.compliance_testing?.scenarios)
+        .toEqual(SALES_THREE_ZERO_COMPAT_SCENARIOS);
+
+      // 3.2 accepts any scenario name, so it keeps every scenario the
+      // seller implements.
+      const current = await callTenantTool(salesUrl, 4, 'get_adcp_capabilities', { adcp_version: '3.2' }) as {
+        result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
+      };
+      expect(current.result?.structuredContent?.compliance_testing?.scenarios).toEqual(expect.arrayContaining([
+        ...SALES_CURRENT_SCENARIOS,
+        'force_get_products_arm',
+        'force_upstream_unavailable',
+        'evaluate_distributed_brand_resolution',
+        'reporting_core_lifecycle_probe',
+        'expire_account_change_cursor',
+      ]));
+    } finally {
+      await close();
+    }
+  }, 30000);
 
   it('advertises a schema-valid legacy compliance scenario on the 3.0 signals tenant', async () => {
     const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });

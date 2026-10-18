@@ -123,6 +123,7 @@ import type {
   RefineProposalsRequest,
 } from '@adcp/sdk';
 import { CreativeAssetSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
+import { complianceScenariosForServedVersion } from './compliance-scenarios.js';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getGovernanceSigningPublicJwk } from './governance-signing.js';
 import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
@@ -3290,14 +3291,6 @@ export function acceptancePolicyDiscoveryCapability(
     default_profile_ids: [TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE],
   };
 }
-const THREE_ZERO_COMPLIANCE_SCENARIOS = [
-  'force_creative_status',
-  'force_account_status',
-  'force_media_buy_status',
-  'force_session_status',
-  'simulate_delivery',
-  'simulate_budget_spend',
-] as const;
 const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
 
@@ -3324,6 +3317,8 @@ type VersionResolution =
 type McpRequestHandler = (request: { params?: Record<string, unknown> }, extra: unknown) => Promise<unknown> | unknown;
 
 const TASK_PROTOCOL_METHODS = ['tasks/get', 'tasks/result', 'tasks/list', 'tasks/cancel'] as const;
+// `request_signing.protocol_methods_*` item pattern in the AdCP 3.1 schemas.
+const THREE_ONE_PROTOCOL_METHOD_NAME_PATTERN = /^[a-z][a-z0-9_]*\/[a-z][a-z0-9_]*$/;
 
 function parseAdcpReleaseVersion(value: unknown): ParsedAdcpReleaseVersion | undefined {
   if (typeof value !== 'string') return undefined;
@@ -19730,35 +19725,45 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     || (parsedServedAdcpVersion?.major === 3 && parsedServedAdcpVersion.minor === 0);
   const requiredFor = signingCap.required_for.filter(op => !isProtocolMethodName(op));
   const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethodName(op));
+  // AdCP 3.1 limits protocol method names to one lowercase slash path
+  // (`tasks/cancel`); 3.2 widened the grammar to nested A2A 0.3 paths and
+  // A2A 1.0 PascalCase names. Before 3.2, advertise only names the 3.1
+  // schema accepts. The legacy strict routes serve 3.1 to a major-only pin,
+  // and a buyer may validate against the echoed release (@adcp/sdk 15.9.5).
+  const servesPreThreeTwoRelease = isThreeZeroResponse
+    || (parsedServedAdcpVersion?.major === 3 && parsedServedAdcpVersion.minor < 2);
+  const protocolMethodForServedRelease = (op: string): boolean => !servesPreThreeTwoRelease
+    || THREE_ONE_PROTOCOL_METHOD_NAME_PATTERN.test(op);
   const protocolMethodsRequiredFor = signingCap.required_for
     .filter(isProtocolMethodName)
-    .filter(op => !isThreeZeroResponse || op.includes('/'));
+    .filter(protocolMethodForServedRelease);
   const protocolMethodsSupportedFor = (signingCap.supported_for?.filter(isProtocolMethodName) ?? [])
-    .filter(op => !isThreeZeroResponse || op.includes('/'));
+    .filter(protocolMethodForServedRelease);
   const wholesaleProfile = wholesaleCapabilityProfile(ctx);
-  const complianceScenarios = isThreeZeroResponse
-    ? [...THREE_ZERO_COMPLIANCE_SCENARIOS]
-    : [
-        'force_creative_status',
-        'force_audience_status',
-        'force_account_status',
-        'force_media_buy_status',
-        'force_create_media_buy_arm',
-        'force_task_completion',
-        'force_creative_purge',
-        'force_session_status',
-        'simulate_delivery',
-        'simulate_budget_spend',
-        'seed_account',
-        'seed_product',
-        'seed_pricing_option',
-        'seed_creative',
-        'seed_plan',
-        'seed_media_buy',
-        'seed_creative_format',
-        'seed_measurement_catalog',
-        'query_provenance_audit_observations',
-      ];
+  // The served release's capabilities schema decides which scenarios may be
+  // listed: 3.0 closes the enum to its original six, later releases accept
+  // any scenario name.
+  const complianceScenarios = complianceScenariosForServedVersion([
+    'force_creative_status',
+    'force_audience_status',
+    'force_account_status',
+    'force_media_buy_status',
+    'force_create_media_buy_arm',
+    'force_task_completion',
+    'force_creative_purge',
+    'force_session_status',
+    'simulate_delivery',
+    'simulate_budget_spend',
+    'seed_account',
+    'seed_product',
+    'seed_pricing_option',
+    'seed_creative',
+    'seed_plan',
+    'seed_media_buy',
+    'seed_creative_format',
+    'seed_measurement_catalog',
+    'query_provenance_audit_observations',
+  ], isThreeZeroResponse ? '3.0' : servedAdcpVersion);
   // AdCP 3.2 requires every signing-capable endpoint to require
   // content-digest coverage and to verify under the 3.2 sf-binary profile.
   // The legacy conformance routes intentionally exercise the 3.0/3.1

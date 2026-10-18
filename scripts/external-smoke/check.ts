@@ -88,28 +88,10 @@ export async function boundedDiscovery(
   }
 }
 
-// @adcp/sdk 15.8.1 (and 15.9.1) parses a `compliance_testing` capability
-// block as protocol `compliance_testing`, but its tool cross-check keys
-// comply_test_controller under `compliance`. Every agent that correctly
-// declares the block therefore fails the step with exactly this message.
-// Waive only that exact message, and only when the agent's response carries
-// the block (the SDK also adds the protocol when the block is missing). Any
-// other cross-check issue still fails.
-const SDK_COMPLIANCE_CROSS_CHECK_STEP = 'Cross-validate protocols and tools';
-const SDK_COMPLIANCE_CROSS_CHECK_ERROR = 'Tools suggest unreported protocols: compliance (has: [comply_test_controller])';
-
-function isSdkComplianceCrossCheckFalsePositive(step: DiscoveryResult['steps'][number], result: DiscoveryResult): boolean {
-  return step.step === SDK_COMPLIANCE_CROSS_CHECK_STEP
-    && step.error === SDK_COMPLIANCE_CROSS_CHECK_ERROR
-    && result.profile?.supported_protocols?.includes('compliance_testing') === true
-    && typeof (result.profile.raw_capabilities as { compliance_testing?: unknown } | undefined)?.compliance_testing === 'object';
-}
-
 function assertDiscovery(result: DiscoveryResult): void {
   const schemaIssues = result.profile?.capabilities_schema_issues;
   if (schemaIssues?.length) throw new SmokeFailure('semantic', `Capability schema errors: ${JSON.stringify(schemaIssues)}`);
-  const failed = result.steps.filter(step => !step.passed && !step.skipped
-    && !isSdkComplianceCrossCheckFalsePositive(step, result));
+  const failed = result.steps.filter(step => !step.passed && !step.skipped);
   const failures = failed.map(step => ({
     kind: step.task === 'getAgentInfo' || step.task === 'get_adcp_capabilities'
       ? failureKind(step.error) : 'semantic' as FailureKind,
@@ -136,71 +118,45 @@ function assertDiscovery(result: DiscoveryResult): void {
 
 type ResolverOptions = Parameters<Resolver>[1];
 
-/** Probe and storyboard-resolution options pinned to one release. */
-export interface ReleaseProbe {
-  options: TestOptions;
-  resolverOptions: ResolverOptions;
-}
+/** Storyboard-resolution options for the release the agent echoed. */
+export type ResolverForRelease = (release: string) => ResolverOptions;
 
-/** Builds a probe pinned to the release the agent said it served. */
-export type RepinProbe = (release: string) => ReleaseProbe;
-
-const RELEASE_RE = /^([1-9]\d*)\.(\d+)(?:\.\d+)?(?:-([0-9A-Za-z.-]+))?$/;
-
-/** Release-precision wire value (`3.0`, `3.2-rc.7`) for a pin or an echo. */
-export function releasePrecision(version: unknown): string | undefined {
-  const match = typeof version === 'string' ? version.match(RELEASE_RE) : null;
-  return match ? `${match[1]}.${match[2]}${match[3] ? `-${match[3]}` : ''}` : undefined;
-}
-
-/** The release the agent echoed on `get_adcp_capabilities`, if any. */
-function servedRelease(result: DiscoveryResult): string | undefined {
-  const raw = result.profile?.raw_capabilities as { adcp_version?: unknown } | undefined;
-  return releasePrecision(raw?.adcp_version);
-}
+const MAJOR_RE = /^([1-9]\d*)\./;
 
 /**
- * The SDK validates capabilities against the caller's pin, not the served
- * release. A 3.0 pin cannot carry `adcp_version`, so the SDK sends only
- * `adcp_major_version: 3` and the agent may serve its highest 3.x release
- * (docs/reference/versioning.mdx, "Server resolves"). The spec says buyers
- * validate against the echoed release, not their pin ("Server echoes").
- *
- * When the echo differs from the pin, the agent must advertise the echoed
- * release. The probe then discovers again pinned to it, so the SDK validates
- * strictly against that release, and resolves storyboards from that
- * release's bundle. The pinned probe must keep serving the same release.
+ * A 3.0 pin cannot carry `adcp_version`, so the SDK sends only
+ * `adcp_major_version: 3` and the agent may serve and echo its highest 3.x
+ * release (docs/reference/versioning.mdx, "Server resolves"). The SDK
+ * validates the capabilities against that echo. This checks that the agent
+ * may serve it, and resolves storyboards from the served release's bundle:
+ * the pin's bundle does not know specialisms that later releases added.
  */
-async function negotiateServedRelease(
-  url: string,
-  probe: ReleaseProbe,
+function servedResolverOptions(
   result: DiscoveryResult,
-  discover: Discovery,
-  repin: RepinProbe | undefined,
-): Promise<{ probe: ReleaseProbe; result: DiscoveryResult }> {
-  const served = servedRelease(result);
-  const pinned = releasePrecision(probe.options.wireAdcpVersion ?? probe.options.adcpVersion);
-  if (!served || !pinned || served === pinned || !repin) return { probe, result };
+  options: TestOptions,
+  resolverOptions: ResolverOptions,
+  resolverFor: ResolverForRelease | undefined,
+): ResolverOptions {
+  const echoed = (result.profile?.raw_capabilities as { adcp_version?: unknown } | undefined)?.adcp_version;
+  if (echoed === undefined) return resolverOptions;
+  // The SDK falls back to the pin for an echo it cannot validate against, so
+  // its schema issues are context for the failures below.
   const issues = result.profile?.capabilities_schema_issues;
-  const context = issues?.length ? `; issues against the ${pinned} pin: ${JSON.stringify(issues)}` : '';
-  if (served.split('.')[0] !== pinned.split('.')[0]) {
-    throw new SmokeFailure('semantic', `Agent served AdCP ${served} to a ${pinned} pin; majors must agree${context}`);
+  const context = issues?.length ? `; capability schema errors: ${JSON.stringify(issues)}` : '';
+  const pinned = options.wireAdcpVersion ?? options.adcpVersion;
+  const pinMajor = pinned?.match(MAJOR_RE)?.[1];
+  if (typeof echoed !== 'string' || (pinMajor !== undefined && echoed.match(MAJOR_RE)?.[1] !== pinMajor)) {
+    throw new SmokeFailure('semantic', `Agent served AdCP ${JSON.stringify(echoed)} to a ${pinned} pin; majors must agree${context}`);
   }
-  if (!result.profile?.adcp_supported_versions?.includes(served)) {
-    throw new SmokeFailure('semantic', `Agent served AdCP ${served}, which its supported_versions do not list${context}`);
+  if (!result.profile?.adcp_supported_versions?.includes(echoed)) {
+    throw new SmokeFailure('semantic', `Agent served AdCP ${echoed}, which its supported_versions do not list${context}`);
   }
-  let servedProbe: ReleaseProbe;
+  if (!resolverFor) return resolverOptions;
   try {
-    servedProbe = repin(served);
+    return resolverFor(echoed);
   } catch (error) {
-    throw new SmokeFailure('semantic', `Agent served AdCP ${served}, but no hosted bundle is available to validate it: ${error instanceof Error ? error.message : String(error)}${context}`);
+    throw new SmokeFailure('semantic', `Agent served AdCP ${echoed}, but no hosted bundle is available to resolve its storyboards: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const servedResult = await discover(url, servedProbe.options);
-  const reserved = servedRelease(servedResult);
-  if (reserved !== undefined && reserved !== served) {
-    throw new SmokeFailure('semantic', `Agent served AdCP ${served} to a ${pinned} pin, but ${reserved} when pinned to ${served}`);
-  }
-  return { probe: servedProbe, result: servedResult };
 }
 
 export async function checkProbe(
@@ -211,15 +167,16 @@ export async function checkProbe(
   {
     discover = (endpoint, opts) => boundedDiscovery(endpoint, opts),
     resolve = resolveStoryboardsForCapabilities,
-    repin,
-  }: { discover?: Discovery; resolve?: Resolver; repin?: RepinProbe } = {},
+    resolverFor,
+  }: { discover?: Discovery; resolve?: Resolver; resolverFor?: ResolverForRelease } = {},
 ): Promise<'public' | 'authenticated' | 'auth-required'> {
   for (let attempt = 1; ; attempt++) {
     let result: DiscoveryResult;
-    let probe: ReleaseProbe = { options, resolverOptions };
+    let served: ResolverOptions;
     try {
-      // One discovery per negotiated release per attempt; reuse its profile.
-      ({ probe, result } = await negotiateServedRelease(url, probe, await discover(url, options), discover, repin));
+      // One discovery per attempt; reuse its profile.
+      result = await discover(url, options);
+      served = servedResolverOptions(result, options, resolverOptions, resolverFor);
       assertDiscovery(result);
     } catch (error) {
       const kind = failureKind(error);
@@ -233,7 +190,7 @@ export async function checkProbe(
       specialisms: profile.specialisms ?? [],
       major_versions: profile.adcp_major_versions,
       supported_versions: profile.adcp_supported_versions,
-    }, probe.resolverOptions);
+    }, served);
     assert(resolved.storyboards.length > 0, 'No applicable storyboards');
     assert(resolved.bundles.length > 0, 'No applicable bundles');
     return anonymous ? 'public' : 'authenticated';
