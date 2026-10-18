@@ -2,10 +2,8 @@
 id: DR-0025
 title: Demand-side acts-for grants live in trust.json, and a missing grant is a request-level denial
 class: normative
-status: ratified
+status: proposed
 date: 2026-10-12
-decided: 2026-10-15
-decided_by: lazy consensus on #6033 (objection window through 2026-10-15)
 refs: ["#6033", "#8118", "PR #8119", "PR #8157", "PR #8169", "#7809"]
 dissent: none recorded
 ---
@@ -33,8 +31,8 @@ Treating a missing grant as a request-level failure keeps the authorization gate
 Delivered as P5 (#8118, PR #8169). It changes:
 - `error-details/agent-permission-denied.json`: the new `reason` value `grant_absent`, and a description widened from provisioning constraints to per-agent gates generally. The `PERMISSION_DENIED` description and recovery text follow.
 - `trust/v1/trust.json`: `valid_until` and `exclusive_grants` lose their "not enforced in 3.3" markers, and the `grant` description drops "brand.json is unchanged in 3.3" and points to the evaluation rules.
-- `L2/accounts-and-agents.mdx`: the sentence that `authorized_operators` "does not model internal agency hierarchies" no longer holds, because a two-link chain models one agency hop. That page's §Grants in trust.json becomes the one normative home for evaluating grants.
-- Which record authorizes: the brand's house record, found through the `house` (or reciprocated `house_domain`) pointer in the brand's brand.json, otherwise the brand's own domain. Exactly one record authorizes, so a brand's own record and its house's never compete.
+- `L2/accounts-and-agents.mdx`: the sentence that `authorized_operators` "does not model internal agency hierarchies" no longer holds, because a two-link chain models one agency hop. That page's §Grants in trust records becomes the one normative home for evaluating grants.
+- Exactly one record authorizes an acts-for claim: the brand's house's (its own when it names no house). `L2/accounts-and-agents.mdx` §Grants in trust records says how it is found.
 
 It does not settle:
 - the out-of-domain brand rule under an `open` onboarding mode (R7), which belongs to the onboarding-posture decision;

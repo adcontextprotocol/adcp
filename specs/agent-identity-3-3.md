@@ -1,6 +1,6 @@
 # Agent identity and buyer self-onboarding (3.3)
 
-**Status**: Accepted. The WG approved D1–D6 and the WBA error contract at the working session on 2026-10-12 ([decision brief on #7878](https://github.com/adcontextprotocol/adcp/issues/7878#issuecomment-6099382406)); recorded as [DR-0023](../governance/decisions/DR-0023-agent-identity-is-an-origin.md). D7 (demand-side grants) was ratified by lazy consensus on #6033 (objection window through 2026-10-15) and is recorded as [DR-0025](../governance/decisions/DR-0025-demand-side-grants-in-trust-json.md). D8 and D9 are decided on their issues. Tracking issue: [#8118](https://github.com/adcontextprotocol/adcp/issues/8118).
+**Status**: Accepted. The WG approved D1–D6 and the WBA error contract at the working session on 2026-10-12 ([decision brief on #7878](https://github.com/adcontextprotocol/adcp/issues/7878#issuecomment-6099382406)); recorded as [DR-0023](../governance/decisions/DR-0023-agent-identity-is-an-origin.md). D7 (demand-side grants) is recorded as [DR-0025](../governance/decisions/DR-0025-demand-side-grants-in-trust-json.md), proposed for ratification by maintainer approval of PR #8157. D8 and D9 are decided on their issues. Tracking issue: [#8118](https://github.com/adcontextprotocol/adcp/issues/8118).
 
 **Related**: [#7878](https://github.com/adcontextprotocol/adcp/issues/7878) / [#7894](https://github.com/adcontextprotocol/adcp/pull/7894) (Web Bot Auth profile), [#7817](https://github.com/adcontextprotocol/adcp/issues/7817) (`adcp-agent-url`), [#7814](https://github.com/adcontextprotocol/adcp/issues/7814) (unknown signers), [`brand-identity-trust-split.md`](./brand-identity-trust-split.md) (trust.json, RFC [#7809](https://github.com/adcontextprotocol/adcp/issues/7809)), [#7942](https://github.com/adcontextprotocol/adcp/pull/7942) and [#6105](https://github.com/adcontextprotocol/adcp/issues/6105) (client-only signers), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033) (demand-side grants), [#8113](https://github.com/adcontextprotocol/adcp/issues/8113) / [#8114](https://github.com/adcontextprotocol/adcp/issues/8114) (onboarding posture), [#7015](https://github.com/adcontextprotocol/adcp/issues/7015) (principal layer).
 
@@ -8,7 +8,7 @@
 - the `identity.trust_url` back-pointer;
 - "Every discovery path is bound both ways" (§Agent resolution);
 - the acknowledgement "point back" rule (§Acknowledgements);
-- §Grants "Checking a claim", which R6 replaces with the house record, the chain through `account.operator`, and registrable-domain matching.
+- §Grants "Chain limit", "Freshness", and "Absence vs failure", and its AdCP profile's "Checking a claim" (one hop, exact matching) and "Re-verification". `L2/accounts-and-agents.mdx` §Grants in trust records replaces them with a chain through `account.operator`, registrable-domain matching, the R3a freshness schedule, and the outage rules of Web Bot Auth identities for a fetch failure. The rest of §Grants stands.
 
 It also supersedes the client-only bootstrap in #7942 and option B (`adcp-agent-url`) in #7817.
 
@@ -158,12 +158,12 @@ These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md`
 
 ### R6. Authority: grants (P5, `L2/accounts-and-agents.mdx`)
 
-- The brand's house trust record authorizes an acts-for claim. The buyer's operator record never authorizes a brand outside the operator's registrable domain.
-- Authority is implicit when `account.operator`, the brand, and the signer's operator (R3a) are the same registrable domain.
-- Otherwise a grant chain with `account.operator` on it must reach the signer's operator with a scope covering the operation. A grantee never extends a grant it received; its own grant to one intermediary is the chain's only second link.
+- The house's trust record authorizes an acts-for claim: the record of the house the brand names, or the brand's own when it names none.
+- Authority is implicit when `account.operator` and the signer's operator (R3a) are the same registrable domain as the brand's domain or its house.
+- Otherwise a grant chain with `account.operator` on it must reach the signer's operator with a scope covering the operation.
 - Effective authority is the intersection along the chain.
 
-The rules (which record, domain matching, `agents[]` narrowing, the intersection's operands, absence, fetch failure, freshness, and the error) are stated once, in `L2/accounts-and-agents.mdx` §Grants in trust.json. The decision is [DR-0025](../governance/decisions/DR-0025-demand-side-grants-in-trust-json.md) (#6033). R7 relies on R6 for the `grant` requirement kind.
+The rules (which record, domain matching, the chain forms and their limit, `agents[]` narrowing, the intersection's operands, absence, fetch failure, freshness, and the error) are stated once, in `L2/accounts-and-agents.mdx` §Grants in trust records. The decision is [DR-0025](../governance/decisions/DR-0025-demand-side-grants-in-trust-json.md) (#6033). R7 relies on R6 for the `grant` requirement kind.
 
 ### R7. Onboarding posture (P6, `get_adcp_capabilities.mdx`)
 
