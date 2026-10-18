@@ -2,9 +2,9 @@
  * The judge: Cloudflare's `web-bot-auth` and `http-message-sig` at the versions
  * pinned in package.json, run two ways.
  *
- * - Bare: the library as shipped, with only the resolver every caller writes
- *   (return the key whose thumbprint is `keyid` from the directory of the origin
- *   the covered Signature-Agent member names).
+ * - Bare: the library as shipped, with only the resolver every caller writes:
+ *   derive the origin of the covered Signature-Agent member, read that origin's
+ *   well-known directory, and return the key whose thumbprint is `keyid`.
  * - Policy: the library with the profile's rules from policy.mjs in its hooks.
  *
  * Run directly, this file is an adapter (see PROTOCOL.md) that signs with the
@@ -84,10 +84,12 @@ export async function verifyDirectory({ origin, response, now }, { bare = false 
 
 async function resolveKey(directories, entry, keyid, now, bare) {
   if (!bare) policy.checkSignatureAgent(entry);
-  const response = directories[entry.uri];
-  if (response === undefined) throw new policy.PolicyError(403, 'directory-unavailable', `no directory at ${entry.uri}`);
+  // The verifier derives the origin's well-known directory from the member value (WBA section 5.5).
+  const origin = new URL(entry.uri).origin;
+  const response = directories[origin];
+  if (response === undefined) throw new policy.PolicyError(403, 'directory-unavailable', `no directory at ${origin}`);
   if (!bare) {
-    const checked = await verifyDirectory({ origin: entry.uri, response, now });
+    const checked = await verifyDirectory({ origin, response, now });
     if (!checked.ok) throw new policy.PolicyError(403, checked.rule, `directory of ${entry.uri}: ${checked.error}`);
     policy.checkNotTestKey(keyid);
   }
