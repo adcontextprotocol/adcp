@@ -424,7 +424,7 @@ The brand-operator check runs against the seller's cached `brand.json` per [Oper
 ### First contact and binding
 
 <Note>
-**Experimental (Web Bot Auth profile, 3.3).** Under the Web Bot Auth signing profile, a seller can identify a buyer agent it has never onboarded: the signed request names the signer's origin, and the seller verifies it against that origin's key directory ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). These rules govern what happens next. They are rules R5 and R8 in `specs/agent-identity-3-3.md` ([#8118](https://github.com/adcontextprotocol/adcp/issues/8118)).
+**Experimental (Web Bot Auth profile, 3.3).** Under the Web Bot Auth signing profile, a seller can identify a buyer agent it has never onboarded: the signed request names the signer's origin, and the seller verifies it against that origin's key directory ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). These rules govern what happens next. This is rule R5 in `specs/agent-identity-3-3.md` ([#8118](https://github.com/adcontextprotocol/adcp/issues/8118)); relationship status (R8) is on [`get_principal`](/docs/protocol/get_principal#relationship-status).
 </Note>
 
 1. **Verification alone never creates a principal.** A verified origin with no binding is *identity-established*. It gets what an anonymous caller gets, reads included, plus [`get_principal`](/docs/protocol/get_principal), which returns `unconfigured`. A principal comes only from a binding under rule 2, including the binding a seller creates when it approves a new identity.
