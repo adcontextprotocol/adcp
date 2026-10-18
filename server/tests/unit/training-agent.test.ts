@@ -8094,6 +8094,39 @@ describe('create_media_buy handler', () => {
     expect(typeof result.media_buy_id).toBe('string');
   });
 
+  it('returns stable audience platform IDs and matching legacy aliases on sync and discovery', async () => {
+    const account = { brand: { domain: 'nova-platform-ids.example' }, operator: 'pinnacle-agency.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const audience = {
+      audience_id: 'nova_loyalty',
+      name: 'Nova loyalty',
+      audience_type: 'crm',
+      add: [{ external_id: 'member_1', hashed_email: 'a'.repeat(64) }],
+    };
+    const { result: synced } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      audiences: [audience],
+    });
+    const created = (synced.audiences as Array<Record<string, unknown>>)[0]!;
+    expect(created.action).toBe('created');
+    expect(typeof created.platform_id).toBe('string');
+    expect(created.seller_id).toBe(created.platform_id);
+
+    const { result: updated } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      audiences: [{ ...audience, name: 'Updated Nova loyalty' }],
+    });
+    const { result: discovered } = await simulateCallTool(server, 'sync_audiences', { account });
+    for (const [result, action] of [[updated, 'updated'], [discovered, 'unchanged']] as const) {
+      expect(result.audiences).toEqual([expect.objectContaining({
+        audience_id: 'nova_loyalty',
+        action,
+        platform_id: created.platform_id,
+        seller_id: created.platform_id,
+      })]);
+    }
+  });
+
   it('binds a declared external dataset source, preserves it in discovery, and accepts it for targeting', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
     const account = { brand: { domain: 'sourced-audience.example' }, operator: 'pinnacle-agency.example' };

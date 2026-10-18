@@ -121,7 +121,8 @@ asyncio.run(main())
 **Each event source in success response includes:**
 
 - All request fields
-- `seller_id` - Seller-assigned identifier for this event source
+- `platform_id` - ID assigned to this event source by the seller's ad platform (optional; new in AdCP 3.3)
+- `seller_id` - Deprecated compatibility alias for `platform_id`
 - `action` - What happened: `created`, `updated`, `unchanged`, `deleted`, `failed`
 - `action_source` - Type of event source (website pixel, app SDK, etc.)
 - `surface` - Structured surface this source represents, when the flat `action_source` is too coarse
@@ -132,6 +133,14 @@ asyncio.run(main())
 - `ext` - Per-source extension metadata, such as platform-native conversion IDs, attribution-window handles, or raw origin strings
 
 **See schema for complete field list**: [sync-event-sources-response.json](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-response.json)
+
+### Platform identifier migration (AdCP 3.3)
+
+`platform_id` identifies the event source in the seller's ad platform. Continue using `event_source_id` in AdCP requests, including [`log_event`](/docs/media-buy/task-reference/log_event); the platform ID is for cross-referencing the platform's object.
+
+When reporting a platform identifier in 3.3 and later 3.x responses, sellers MUST emit both `platform_id` and the deprecated `seller_id` alias with identical values, including in discovery-only responses and for seller-managed sources. Both fields remain optional when no platform identifier is available. Buyers MUST prefer `platform_id` and fall back to `seller_id` only when `platform_id` is absent. A response containing only the legacy alias remains schema-valid for compatibility with older sellers.
+
+The alias remains functional throughout 3.x. Removal is no earlier than AdCP 4.0 and follows the [six-month deprecation policy](/docs/reference/versioning#deprecation-policy). At this location, `seller_id` continues to mean the event source's platform ID; it MUST NOT be repurposed to identify the seller.
 
 ### Event Source Health
 
@@ -314,12 +323,15 @@ asyncio.run(main())
 
 Sellers may provide always-on event sources (e.g. Amazon sales attribution). These appear in the response with `managed_by: "seller"` alongside your buyer-managed sources:
 
-```json test=false
+```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/sync-event-sources-response.json",
+  "status": "completed",
   "event_sources": [
     {
       "event_source_id": "web_pixel",
       "name": "Website Pixel",
+      "platform_id": "px_abc123",
       "seller_id": "px_abc123",
       "action": "created",
       "managed_by": "buyer",
@@ -332,6 +344,7 @@ Sellers may provide always-on event sources (e.g. Amazon sales attribution). The
     {
       "event_source_id": "seller_sales_attribution",
       "name": "Sales Attribution",
+      "platform_id": "internal_attr",
       "seller_id": "internal_attr",
       "action": "unchanged",
       "managed_by": "seller",
@@ -347,12 +360,15 @@ Products with `conversion_tracking.platform_managed: true` indicate the seller p
 
 Seller-managed creator or owned-property sources use the same `event_sources` array, with a flat `action_source` for compatibility and `surface` for structured context:
 
-```json test=false
+```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/sync-event-sources-response.json",
+  "status": "completed",
   "event_sources": [
     {
       "event_source_id": "creator_channel",
       "name": "Creator Channel Events",
+      "platform_id": "creator_attr_001",
       "seller_id": "creator_attr_001",
       "event_types": ["follow", "content_view", "watch_milestone"],
       "action_source": "system_generated",
