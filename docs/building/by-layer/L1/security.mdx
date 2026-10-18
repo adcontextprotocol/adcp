@@ -1508,7 +1508,7 @@ Discovery failures and key removal follow WBA §6.10. A request the verifier can
 
 There is no capabilities fetch and no brand.json lookup, and verification creates no principal. A verified origin the seller has not bound is *identity-established*: it gets what an anonymous caller gets.
 
-**Evaluating the trust record.** The operator's trust record is evaluated when something is gated on it: binding a principal, evaluating a grant ([Grants in trust.json](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-json-experimental)), or `open` onboarding. It is never evaluated on the signature path.
+**Evaluating the trust record.** The operator's trust record is evaluated when something is gated on it: binding a principal, evaluating a grant ([Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental)), or `open` onboarding. It is never evaluated on the signature path.
 
 1. **Derive it.** `R = https://{eTLD+1(host(O))}/.well-known/trust.json`, using a pinned, dated Public Suffix List snapshot that includes the ICANN and PRIVATE sections.
    - An `O` whose host is an IP literal or a public suffix, or has no defined eTLD+1, has no trust record.
