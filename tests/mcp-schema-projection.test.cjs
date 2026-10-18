@@ -135,8 +135,12 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // webhook types (#8183) reach it through the account notification-config
 // enum, its enumDescriptions and examples, and the longer collection-selector
 // and response-collection descriptions (1_266_010 → 1_270_050 bytes measured
-// against main), bounded at 1_272_000.
-const PARITY_COMPILE_LIMIT = 1_272_000;
+// against main), bounded at 1_272_000. Explicit creative acceptance constraints
+// and verifier guidance add 5,486 bytes (1_270_981 -> 1_276_467 measured),
+// bounded at 1_280_000 to retain compilation of every storyboard fixture.
+// This is the parity-test compiler allowance; the independent 4 MiB schema,
+// 22 MiB projection, and role model-context budgets are unchanged.
+const PARITY_COMPILE_LIMIT = 1_280_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
