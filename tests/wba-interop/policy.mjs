@@ -38,11 +38,25 @@ const componentName = c => (typeof c === 'string' ? c : c.name);
 
 // ── Row "Signature" ───────────────────────────────────────────────────────
 // The library checks the tag, the thumbprint keyid, and that exactly one
-// `signature-agent` member is covered. The profile adds that the member value
-// is the ASCII serialization of an `https` origin, with no path, query,
-// fragment, or userinfo (WBA 5.2.1 and 5.5 MUSTs the library does not check;
-// cloudflare/web-bot-auth#162 for https), and that only `type=directory` is
-// recognized.
+// `signature-agent` member is covered. The profile adds that the covered
+// member is the one keyed to the signature label (WBA 5.2.1), and recognizes
+// only `type=directory`, which the library reads as a Token or a String.
+
+/** The covered member is the one keyed to the signature's label (WBA 5.2.1). */
+function checkMemberKeyedToLabel(result) {
+  const member = result.components.find(c => componentName(c) === 'signature-agent');
+  if (member?.parameters?.key !== result.label) {
+    refuse('signature-agent-label', `covered Signature-Agent member ${member?.parameters?.key} is not keyed to label ${result.label}`);
+  }
+}
+
+// ── Row "Signature-Agent value" ───────────────────────────────────────────
+// The value is exactly the ASCII serialization of an `https` origin (RFC 6454
+// section 6.2), compared as a string without normalizing, and anything else is
+// refused with 403. WBA requires `https` (5.2.1; cloudflare/web-bot-auth#162)
+// and an origin with no path (5.5), and the library checks neither. WBA permits
+// an empty path `/` and compares identifiers after normalizing (5.5), so
+// refusing a trailing `/`, an uppercase host, or `:443` is the profile's choice.
 
 /** Checks the covered Signature-Agent member before its directory is read. */
 export function checkSignatureAgent(entry) {
@@ -56,14 +70,6 @@ export function checkSignatureAgent(entry) {
   if (url.protocol !== 'https:') refuse('signature-agent-origin', `Signature-Agent ${entry.uri} is not https`);
   // The value is the ASCII serialization of the origin (RFC 6454 section 6.2): no path, query, fragment, or userinfo.
   if (entry.uri !== url.origin) refuse('signature-agent-origin', `Signature-Agent ${entry.uri} is not a serialized origin`);
-}
-
-/** The covered member is the one keyed to the signature's label (WBA 5.2.1). */
-function checkMemberKeyedToLabel(result) {
-  const member = result.components.find(c => componentName(c) === 'signature-agent');
-  if (member?.parameters?.key !== result.label) {
-    refuse('signature-agent-label', `covered Signature-Agent member ${member?.parameters?.key} is not keyed to label ${result.label}`);
-  }
 }
 
 // ── Rows "Components, every request" and "Components, requests with a body" ─
@@ -144,6 +150,11 @@ export function checkNotTestKey(keyid, rejectKids = []) {
 export const DIRECTORY_MEDIA_TYPE = 'application/http-message-signatures-directory+json';
 export const DIRECTORY_TAG = 'http-message-signatures-directory';
 
+export function checkDirectoryMediaType(response) {
+  const type = header(response.headers, 'content-type')?.split(';')[0].trim().toLowerCase();
+  if (type !== DIRECTORY_MEDIA_TYPE) refuse('directory-media-type', `directory media type ${type}`);
+}
+
 /** The `verifySignature` policy for one directory signature (WBA Appendix B.1). */
 export const directorySignaturePolicy = now => ({
   algorithms: ALGORITHMS,
@@ -171,14 +182,12 @@ export function checkDirectoryBody(response, verifiedKeyids) {
 // ── Row "Fetches" ─────────────────────────────────────────────────────────
 // The harness serves directories from data, so the network rules (HTTPS,
 // resolved-address checks, no redirects, size and time limits) and caching are
-// not exercised here. The response-level rules are.
+// not exercised here. The rule that the status is 200 is.
 
 export const directoryUrl = origin => `${new URL(origin).origin}${HTTP_MESSAGE_SIGNATURES_DIRECTORY}`;
 
-export function checkDirectoryResponse(response) {
+export function checkDirectoryStatus(response) {
   if (response.status !== 200) refuse('directory-status', `directory status ${response.status}`);
-  const type = header(response.headers, 'content-type')?.split(';')[0].trim().toLowerCase();
-  if (type !== DIRECTORY_MEDIA_TYPE) refuse('directory-media-type', `directory media type ${type}`);
 }
 
 // ── Row "One signature" ───────────────────────────────────────────────────

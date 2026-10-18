@@ -64,7 +64,8 @@ export async function verifyDirectory({ origin, response, now }, { bare = false 
       if (keyids.length === 0) throw new Error('the directory response carries no signature');
       return { ok: true, keyids };
     }
-    policy.checkDirectoryResponse(response);
+    policy.checkDirectoryStatus(response);
+    policy.checkDirectoryMediaType(response);
     const input = parseDictionary(header(response.headers, 'signature-input') ?? '');
     for (const verifier of await Promise.all(keys.map(verifierOrUndefined))) {
       if (!policy.usable(verifier)) continue;
