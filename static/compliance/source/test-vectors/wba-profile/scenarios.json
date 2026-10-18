@@ -491,6 +491,38 @@
       "basis": "Profile: exactly one Signature-Agent member"
     },
     {
+      "id": "R21b",
+      "name": "Two web-bot-auth signatures that cover one Signature-Agent member",
+      "base": "post",
+      "extra_signature": {
+        "label": "sig2",
+        "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I",
+        "components": [
+          "@method",
+          "@target-uri",
+          "@authority",
+          "content-type",
+          "content-digest",
+          "signature-agent;key=sig1"
+        ],
+        "parameters": {
+          "created": -5,
+          "expires": 295,
+          "nonce": {
+            "bytes": 64,
+            "encoding": "base64url"
+          },
+          "tag": "web-bot-auth"
+        }
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "wba",
+      "basis": "Profile: exactly one web-bot-auth signature; WBA section 5.2.2 lets a request carry more"
+    },
+    {
       "id": "R22",
       "name": "Label other than sig1",
       "base": "post",
@@ -679,6 +711,45 @@
       },
       "tier": "adcp",
       "basis": "Profile: every Ed25519 key signs (Appendix B.1 recommends it)"
+    },
+    {
+      "id": "D12",
+      "name": "Only a P-256 key, unsigned",
+      "keys": [],
+      "unsigned_keys": [
+        {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "ayhQePn14MyJGqrKHsp_A06Z0N6IZoE0-7wbn66qLLc",
+          "y": "k98dk4yymVze93JE_EpboBD6oaZbcII4Lvf_Oqu8kII",
+          "kid": "4rrLPtiRac4zmWwTBQeJlzgNyb5jai8HSOTJONOIKFY",
+          "use": "sig"
+        }
+      ],
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "Profile: the directory is signed, one signature per Ed25519 key"
+    },
+    {
+      "id": "D13",
+      "name": "Extra RSA-PSS key that does not sign",
+      "unsigned_keys": [
+        {
+          "kty": "RSA",
+          "e": "AQAB",
+          "n": "v-QEO4laYaq_rKgLuz0I8hRW_Ig58qmjv_L9cIX_2dCz6pkvMg953c3P3yNtvjl0eLiZNk1tbaWjfdwiMczGUYqhcFutwjbJpny5rMlSOuTkgJEidDpVpsSfa9OwmkRLgn_hjrAkQzKYljsqSN_U9deB6a_NwWiM03MRFLVtcCHJQMEVNCXGvqRIF0MKRVdb3287cgEQ2lvb0g1a84CYzQtbRdWcHnSjhOwF3Y2IH2A2VvQzeCSWWFy2LUr2H09Ce2pvAc-DJX6BdUF5MijFV9SRt4jbPWG28kcrLUEt1GMDynfvMT419dx03kfaZnHkh4I3xXKhcFAIMK4D1WH9bQ",
+          "alg": "PS512",
+          "kid": "ugCZP3qkO8gkwu8s71HuHjbt75oPFuBK0Tgb4WkL37k",
+          "use": "sig"
+        }
+      ],
+      "expected": {
+        "success": true
+      },
+      "tier": "wba",
+      "basis": "Profile: ignore keys the profile does not use (RFC 7517 section 5), including a key the library imports"
     }
   ]
 }

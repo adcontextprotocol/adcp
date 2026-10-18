@@ -341,6 +341,13 @@ const p256 = (() => {
   return { ...jwk, kid: b64u(sha('sha256', JSON.stringify({ crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y }))), use: 'sig' };
 })();
 
+// A fixed RSA-PSS public key, which the library imports and the profile does
+// not use. It never signs, so its private half was discarded.
+const rsaPss = (() => {
+  const jwk = { kty: 'RSA', e: 'AQAB', n: 'v-QEO4laYaq_rKgLuz0I8hRW_Ig58qmjv_L9cIX_2dCz6pkvMg953c3P3yNtvjl0eLiZNk1tbaWjfdwiMczGUYqhcFutwjbJpny5rMlSOuTkgJEidDpVpsSfa9OwmkRLgn_hjrAkQzKYljsqSN_U9deB6a_NwWiM03MRFLVtcCHJQMEVNCXGvqRIF0MKRVdb3287cgEQ2lvb0g1a84CYzQtbRdWcHnSjhOwF3Y2IH2A2VvQzeCSWWFy2LUr2H09Ce2pvAc-DJX6BdUF5MijFV9SRt4jbPWG28kcrLUEt1GMDynfvMT419dx03kfaZnHkh4I3xXKhcFAIMK4D1WH9bQ' };
+  return { ...jwk, alg: 'PS512', kid: b64u(sha('sha256', JSON.stringify({ e: jwk.e, kty: jwk.kty, n: jwk.n }))), use: 'sig' };
+})();
+
 const FULL = ['@method', '@target-uri', '@authority', 'content-type', 'content-digest', 'signature-agent;key={label}'];
 const ok = { success: true, identity: BUYER };
 const status = s => ({ success: false, status: s });
@@ -395,6 +402,9 @@ write('scenarios.json', {
       after_signing: { append_members: { 'signature-input': 'cdn=("@method" "@authority");tag="cdn-edge"', signature: 'cdn=edge-token' } },
     }),
     req('R21', 'Two Signature-Agent members, one signature', 'adcp', status(403), 'Profile: exactly one Signature-Agent member', { signature_agent: `sig1="${BUYER}", sig2="${BRAND}"` }),
+    req('R21b', 'Two web-bot-auth signatures that cover one Signature-Agent member', 'wba', status(403), 'Profile: exactly one web-bot-auth signature; WBA section 5.2.2 lets a request carry more', {
+      extra_signature: { label: 'sig2', kid: buyer.jwk.kid, components: FULL.map(c => c.replace('{label}', 'sig1')), parameters: { created: -5, expires: 295, nonce: { bytes: 64, encoding: 'base64url' }, tag: 'web-bot-auth' } },
+    }),
     req('R22', 'Label other than sig1', 'wba', ok, 'RFC 9421: the signer chooses the label', { label: 'wba' }),
     req('R23', 'Components in another order', 'wba', ok, "RFC 9421: the order is the signer's", { components: ['signature-agent;key=sig1', '@authority', 'content-digest', '@target-uri', 'content-type', '@method'] }),
   ],
@@ -411,6 +421,8 @@ write('scenarios.json', {
     dirScenario('D09', 'Status 203', 'adcp', refused, 'WBA section 5.5: a resource fetched for discovery MUST be served with 200, and any other status is a discovery failure', { status: 203 }),
     dirScenario('D10', 'Signature tag web-bot-auth', 'adcp', refused, 'WBA Appendix B.1: tag MUST be http-message-signatures-directory', { parameters: { tag: 'web-bot-auth' } }),
     dirScenario('D11', 'Second Ed25519 key that does not sign', 'adcp', refused, 'Profile: every Ed25519 key signs (Appendix B.1 recommends it)', { unsigned_keys: [brand.jwk] }),
+    dirScenario('D12', 'Only a P-256 key, unsigned', 'adcp', refused, 'Profile: the directory is signed, one signature per Ed25519 key', { keys: [], unsigned_keys: [p256] }),
+    dirScenario('D13', 'Extra RSA-PSS key that does not sign', 'wba', { success: true }, 'Profile: ignore keys the profile does not use (RFC 7517 section 5), including a key the library imports', { unsigned_keys: [rsaPss] }),
   ],
 });
 
