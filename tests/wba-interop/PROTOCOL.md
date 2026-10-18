@@ -27,7 +27,9 @@ The operations use the following shapes:
 - **Key**: a private JWK, `{ "kty": "OKP", "crv": "Ed25519", "x", "d" }`. Every key
   is a published test key from `keys.json`, which a production verifier SHOULD
   reject (WBA section 6.8). An adapter configures its implementation to accept
-  them.
+  them. For the same reason, the judge does not apply the profile's rule to
+  reject published test keys: `checkNotTestKey` in `policy.mjs` holds the rule,
+  and the harness passes it no keys.
 - **Time**: `now` is Unix seconds. The adapter uses it as the clock for signing and
   verification, never the system clock.
 - **Refusal**: `{ "ok": false, "status", "rule", "error" }`. `status` is the HTTP
