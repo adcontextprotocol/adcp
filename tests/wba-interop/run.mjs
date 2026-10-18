@@ -95,7 +95,8 @@ async function runVectors() {
       ? { success: true, identity: Object.values(v.expected_outcome.identities)[0] }
       : { success: false, status: v.expected_outcome.status };
     if (v.response) {
-      const got = adapter({ op: 'verify_directory', origin: new URL(v.request.url).origin, response: v.response, now: v.reference_now });
+      const origin = new URL(v.request.url).origin;
+      const got = adapter({ op: 'verify_directory', origin, response: { url: v.request.url, ...v.response }, now: v.reference_now });
       record('vectors', v.id, { success: expected.success }, got);
       continue;
     }
@@ -122,7 +123,7 @@ async function runLive(now) {
     const got = signed.ok === false || theirs.ok === false ? signed.ok === false ? signed : theirs : await judge.verifyRequest({ request: signed, directories: { [origin]: theirs }, now });
     record('live', `adapter signs ${name.toUpperCase()}, judge verifies`, ok, got);
     const mine = await judge.signRequest({ key, origin, request, now });
-    record('live', `judge signs ${name.toUpperCase()}, adapter verifies`, ok, adapter({ op: 'verify_request', request: mine, directories: { [origin]: ours }, now }));
+    record('live', `judge signs ${name.toUpperCase()}, adapter verifies`, ok, adapter({ op: 'verify_request', request: mine, directories: { [origin]: ours }, now, prior: [] }));
     if (name === 'post') {
       record('live', 'judge signs POST, adapter verifies it twice', { success: false, status: 429 }, adapter({ op: 'verify_request', request: mine, directories: { [origin]: ours }, now, prior: [mine] }));
     }
@@ -148,7 +149,7 @@ async function runScenarios(now) {
   for (const s of SCENARIOS.request_scenarios) {
     const request = await judge.signScenario(SCENARIOS, s, PRIVATE, now);
     const directories = await signedDirectories(s.directories ?? defaultDirectories, now);
-    const op = { request, directories, now };
+    const op = { request, directories, now, prior: [] };
     record('scenarios', `${s.id} ${s.name}`, s.expected, adapter({ op: 'verify_request', ...op }), { tier: s.tier });
     if (args.self) recordTier(s, await judge.verifyRequest(op, { bare: true }), await judge.verifyRequest(op));
   }

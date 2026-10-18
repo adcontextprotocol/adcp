@@ -70,7 +70,8 @@ Verify `request` at `now`. `directories` maps each origin to the signed director
 response its well-known path serves; an origin absent from the map serves no
 directory, and the adapter fetches nothing from the network. `prior` lists
 requests to verify first, with the same replay state, which is how the harness
-builds a replay without reaching into the implementation's replay store.
+builds a replay without reaching into the implementation's replay store. The
+harness always sends `prior`, and it is empty except in the replay checks.
 
 ```json
 { "op": "verify_request", "request": { "method": "POST", "url": "...", "headers": {}, "body": "..." },
