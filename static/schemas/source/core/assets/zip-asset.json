@@ -62,6 +62,30 @@
         }
       }
     },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Rendered width in logical pixels of the entry canvas, independent of target placement and embedded image density. For expandable units, this is the initial width. When set, height must also be set. Mutually exclusive with sizes."
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Rendered height in logical pixels of the entry canvas. For expandable units, this is the initial height. When set, width must also be set. Mutually exclusive with sizes."
+    },
+    "sizes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["width", "height"],
+        "properties": {
+          "width": { "type": "integer", "minimum": 1 },
+          "height": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "description": "Selectable entry-canvas sizes in logical pixels at which the same representation can render, rather than placement constraints or expanded states. Mutually exclusive with width/height. Omit all size fields for an unsized or responsive asset; absence does not establish compatibility with a size-constrained option."
+    },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
       "description": "Provenance metadata for this asset, overrides manifest-level provenance"
@@ -71,6 +95,16 @@
     "asset_type",
     "url"
   ],
+  "dependencies": {
+    "width": ["height"],
+    "height": ["width"]
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["width", "sizes"] },
+      { "required": ["height", "sizes"] }
+    ]
+  },
   "additionalProperties": true,
   "examples": [
     {
@@ -78,6 +112,8 @@
       "data": {
         "asset_type": "zip",
         "url": "https://cdn.acme.example/creatives/spring-300x250-html5.zip",
+        "width": 300,
+        "height": 250,
         "max_file_size_kb": 200,
         "entry_point": "index.html",
         "allowed_inner_extensions": ["html", "css", "js", "png", "jpg", "svg", "json"],
