@@ -4,7 +4,7 @@
   "title": "Principal Relationship",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "The seller's commercial relationship with the authenticated caller, returned by get_principal only to that caller. Present when a relationship or an application exists; omitted when the seller has no relationship with the caller and no application in progress, as for an identity-established caller (docs/building/by-layer/L1/security.mdx#web-bot-auth-identities). See docs/protocol/get_principal.mdx#relationship-status.",
+  "description": "The seller's commercial relationship with the authenticated caller, as get_principal reports it. Present when a relationship or an application exists; omitted when the seller has no relationship with the caller and no application in progress, as for an identity-established caller (docs/building/by-layer/L1/security.mdx#web-bot-auth-identities). See docs/protocol/get_principal.mdx#relationship-status.",
   "type": "object",
   "properties": {
     "status": {
