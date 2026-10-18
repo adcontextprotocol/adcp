@@ -100,3 +100,15 @@ test('a buying agent publishes its posture in trust.json, per agent or as a reco
   assert.equal(validate({ agents: [{ ...agent, profiles: { adcp: { onboarding: { mode: 'considers_unsolicited' } } } }] }), false, 'buyer and seller share one mode enum');
   assert.equal(validate({ agents: [agent], record_profiles: { adcp: { onboarding: posture } } }), false, 'record_profiles is a definition, not a wire field');
 });
+
+test('per-kind fields are required: aao_verified needs role; storyboard and experimental_feature need id', async () => {
+  const ajv = new Ajv({ allErrors: true, strict: false, loadSchema });
+  addFormats(ajv);
+  const validate = await ajv.compileAsync(await loadSchema('/schemas/core/agent-onboarding-requirement.json'));
+  assert.equal(validate({ kind: 'aao_verified' }), false, 'aao_verified without role');
+  assert.equal(validate({ kind: 'storyboard' }), false, 'storyboard without id');
+  assert.equal(validate({ kind: 'experimental_feature' }), false, 'experimental_feature without id');
+  assert.equal(validate({ kind: 'aao_verified', role: 'media-buy' }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ kind: 'storyboard', id: 'media_buy_seller/acceptance_policy_discovery' }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ kind: 'grant' }), true, JSON.stringify(validate.errors));
+});

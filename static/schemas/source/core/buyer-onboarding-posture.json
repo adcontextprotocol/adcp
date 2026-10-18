@@ -13,7 +13,7 @@
     "requirements": {
       "type": "array",
       "items": { "$ref": "/schemas/core/agent-onboarding-requirement.json" },
-      "description": "What a seller must satisfy. Uses the kinds that apply when a buyer gates a seller (aao_verified, storyboard, sandbox, experimental_feature); others are ignored."
+      "description": "What a seller must satisfy. Uses the kinds that apply when a buyer gates a seller (aao_verified, storyboard, sandbox, experimental_feature)."
     },
     "url": {
       "type": "string",

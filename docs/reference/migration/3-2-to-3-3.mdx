@@ -210,7 +210,7 @@ Optional. A seller declares `media_buy.features.catalog_ingestion` with accepted
 
 ### Seller onboarding posture (experimental)
 
-Optional. A seller can publish `account.agent_onboarding` on `get_adcp_capabilities`, listing `account.agent_onboarding` in `experimental_features`. It gives a mode (`open`, `application`, `invite_only`) per billing party and for sandbox, the requirements for each, and where a human starts. Buyers read it on the unauthenticated capability fetch to tell which sellers take them now, which need a human, and which are not available. The block is seller-wide and identical for every caller, so it changes no error code or oracle clamp. `open` binds identity, not spend, and needs the Web Bot Auth profile. See [account.agent_onboarding](/docs/protocol/get_adcp_capabilities#accountagent_onboarding).
+Optional. A seller can publish `account.agent_onboarding` on `get_adcp_capabilities`, listing `account.agent_onboarding` in `experimental_features`. It gives a mode (`open`, `application`, `invite_only`) per billing party and for sandbox, the requirements for each, and where a human starts. Buyers read it on the unauthenticated capability fetch to tell which sellers take them now, which need a human, and which are not available. The block is seller-wide and identical for every caller. `open` binds identity, not spend, and needs the Web Bot Auth profile. See [account.agent_onboarding](/docs/protocol/get_adcp_capabilities#accountagent_onboarding).
 
 ### Stable account IDs
 

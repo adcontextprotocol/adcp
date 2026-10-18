@@ -32,12 +32,22 @@
     },
     "id": {
       "type": "string",
-      "description": "storyboard: the storyboard or specialism id. experimental_feature: the feature id."
+      "description": "storyboard: the storyboard id. experimental_feature: the feature id."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
   "required": ["kind"],
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "aao_verified" } }, "required": ["kind"] },
+      "then": { "required": ["role"] }
+    },
+    {
+      "if": { "properties": { "kind": { "enum": ["storyboard", "experimental_feature"] } }, "required": ["kind"] },
+      "then": { "required": ["id"] }
+    }
+  ],
   "additionalProperties": true
 }
