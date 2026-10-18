@@ -4014,6 +4014,57 @@ describe('validate_input handler', () => {
     ]);
   });
 
+  it('validates typed video briefs against the generative video reference product', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'typed-video-brief.example' }, operator: 'pinnacle-agency.example' };
+    const fixture = JSON.parse(readFileSync(new URL(
+      '../../../static/examples/products/canonical/veo_generative_video_15s.json', import.meta.url,
+    ), 'utf8'));
+    const { cases } = JSON.parse(readFileSync(new URL(
+      '../../../static/test-vectors/canonical-manifest-constructibility.json', import.meta.url,
+    ), 'utf8'));
+    const { manifest } = cases.find((row: { product_fixture: string }) =>
+      row.product_fixture === 'veo_generative_video_15s.json');
+    const seed = await simulateCallTool(server, 'comply_test_controller', {
+      account, brand: account.brand, scenario: 'seed_product',
+      params: { product_id: fixture.product_id, fixture },
+    });
+    expect(seed.result.success).toBe(true);
+    const targets = [{ kind: 'product', id: fixture.product_id }];
+    const accepted = await simulateCallTool(server, 'validate_input', { account, manifest, targets });
+    expect(accepted.result.results).toEqual([{ target: targets[0], result_kind: 'unvalidatable_nondeterministic' }]);
+
+    const missing = structuredClone(manifest);
+    delete missing.assets.video_brief;
+    const rejected = await simulateCallTool(server, 'validate_input', { account, manifest: missing, targets });
+    expect(rejected.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: [expect.objectContaining({ rule: 'required_slot', field: 'assets.video_brief' })],
+    });
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      account, brand: account.brand, scenario: 'seed_product',
+      params: {
+        product_id: 'typed_brief_unsupported_image',
+        fixture: {
+          channels: ['display'], delivery_type: 'guaranteed',
+          format_options: [{ format_kind: 'image', params: {
+            slots: [{ asset_group_id: 'video_brief', asset_type: 'video_brief', required: true }],
+          } }],
+        },
+      },
+    });
+    const unrelated = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'image', assets: { video_brief: manifest.assets.video_brief } },
+      targets: [{ kind: 'product', id: 'typed_brief_unsupported_image' }],
+    });
+    expect(unrelated.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: [expect.objectContaining({ rule: 'allowed_slot_asset_types', field: 'params.slots[0].asset_type' })],
+    });
+  });
+
   it('validates required product slots before reporting nondeterministic synthesis', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'validate-input-missing-brief.example' }, operator: 'pinnacle-agency.example' };
