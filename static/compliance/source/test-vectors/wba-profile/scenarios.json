@@ -364,7 +364,7 @@
       "id": "R18",
       "name": "Signature-Agent member with type=jwks_uri",
       "base": "post",
-      "signature_agent": "sig1=\"https://buyer-7k3q.com/jwks.json\";type=jwks_uri",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com\";type=jwks_uri",
       "expected": {
         "success": false,
         "status": 403
@@ -550,7 +550,7 @@
       "expected": {
         "success": false
       },
-      "tier": "wba",
+      "tier": "adcp",
       "basis": "Profile: every Ed25519 key signs (Appendix B.1 recommends it)"
     },
     {

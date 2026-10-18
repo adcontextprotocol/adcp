@@ -48,7 +48,9 @@ export async function verifyDirectory({ origin, response, now }, { bare = false 
     const signed = directoryMessage(origin, response);
     const keyids = [];
     if (bare) {
-      // Every signature in the response verifies with the key the body gives for its keyid.
+      // Every signature in the response verifies with the key the body gives for its keyid. A
+      // response with no signature passes: WBA only recommends signing it, and a verifier may use
+      // the keys of a directory without a valid proof (Appendix B.1).
       const input = parseDictionary(header(response.headers, 'signature-input') ?? '');
       const verifiers = (await Promise.all(keys.map(verifierOrUndefined))).filter(Boolean);
       for (const [label, [, params]] of input) {
@@ -61,7 +63,6 @@ export async function verifyDirectory({ origin, response, now }, { bare = false 
         });
         keyids.push(verifier.keyid);
       }
-      if (keyids.length === 0) throw new Error('the directory response carries no signature');
       return { ok: true, keyids };
     }
     policy.checkDirectoryStatus(response);
