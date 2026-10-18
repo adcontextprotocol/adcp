@@ -421,6 +421,8 @@ write('scenarios.json', {
     dirScenario('D11', 'Second Ed25519 key that does not sign', 'adcp', refused, 'Profile: every Ed25519 key in the directory signs', { unsigned_keys: [brand.jwk] }),
     dirScenario('D12', 'Only a P-256 key, unsigned', 'adcp', refused, 'Profile: the directory is signed, one signature per Ed25519 key', { keys: [], unsigned_keys: [p256] }),
     dirScenario('D13', 'Extra RSA-PSS key that does not sign', 'wba', { success: true }, 'Profile: ignore keys the profile does not use (RFC 7517 section 5), including a key the library imports', { unsigned_keys: [rsaPss] }),
+    dirScenario('D14', 'Extra P-256 key that carries its private d', 'adcp', refused, 'Profile: refuse a directory in which any key carries a private member, checked before unused keys are skipped; WBA section 5.5.1: a verifier SHOULD reject malformed entries', { unsigned_keys: [{ ...p256, d: b64u(P256_SEED) }] }),
+    dirScenario('D14b', 'Signing Ed25519 key published with its private d', 'adcp', refused, 'Profile: refuse a directory in which any key carries a private member; WBA section 5.5.1: a verifier SHOULD reject malformed entries', { publish_private_members: true }),
   ],
 });
 
