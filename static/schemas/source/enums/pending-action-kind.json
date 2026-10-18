@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/pending-action-kind.json",
+  "title": "Pending Action Kind",
+  "x-status": "experimental",
+  "description": "What has to happen before a pending account request, account, or relationship can move on (experimental, account.requests). Receivers MUST accept unknown values and fall back to pending_action.message and pending_action.url.",
+  "type": "string",
+  "x-extensible": true,
+  "x-pattern": "^[a-z][a-z0-9_]*$",
+  "enum": [
+    "review",
+    "sign_up",
+    "accept_terms",
+    "credit_application",
+    "add_payment",
+    "grant",
+    "connect_credentials"
+  ],
+  "enumDescriptions": {
+    "review": "The seller is reviewing: matching against existing records, credit, legal, or policy checks. Normally waiting_on: seller.",
+    "sign_up": "The advertiser or operator has no relationship with the seller yet. A human registers at pending_action.url.",
+    "accept_terms": "A human accepts the seller's terms or insertion-order terms at pending_action.url.",
+    "credit_application": "A human completes a credit application at pending_action.url.",
+    "add_payment": "A human adds or confirms a payment method at pending_action.url.",
+    "grant": "The operator or brand authorizes the calling agent to act for it: a published grant, or an access grant on the seller's platform.",
+    "connect_credentials": "A human connects or re-authorizes platform credentials, for example through OAuth at pending_action.url."
+  }
+}

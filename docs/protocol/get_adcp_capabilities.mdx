@@ -467,12 +467,13 @@ Account and authentication capabilities. All sellers should declare this section
 | `timezone` | object | **Required for 3.2 advertiser-account provisioning; additive/optional on the shared 3.x wire schema for compatibility.** `seller_fixed` advertises one `fixed_timezone` for every account. `account_fixed` declares whether each immutable account timezone is `seller_assigned` or `buyer_selected`; buyer-selected mode also publishes the exact `supported_timezones`. |
 | `require_operator_auth` | boolean | Default: `false`. Declares who holds the credential the seller authorizes: the buyer agent (`false`) or each operator separately (`true`). It is not about whether the operator named in a natural key authenticates — with `false`, no operator does. It declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller/storefront-assigned `account_id` values. When `false`, the agent is trusted and calls use the advertiser natural key: `brand` + `operator` + optional `operator_unit`, fixed `currency`, optional buyer-selected `timezone`, and `sandbox`. `operator_unit.id` belongs to the operator and is not the seller's `account_id`. Buyer-declared sellers normally provision through `sync_accounts`, MUST continue accepting the natural key, and SHOULD expose `list_accounts` so all key fields can be recovered after a cold start. |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
-| `stable_account_id` | boolean | Default: `false`. When `true`, the seller-assigned `account_id` is a durable `AccountRef` for every account the caller can operate, including buyer-declared accounts: the seller MUST return it on every non-failed `sync_accounts` provisioning result, MUST accept `{ "account_id": "..." }` wherever an `AccountRef` is accepted, and MUST NOT change it for the life of the account, including across identity reconciliation. Buyer-declared sellers still accept the natural key throughout 3.x. Buyers holding an `account_id` from such a seller SHOULD send it instead of the natural key. When absent or `false`, buyers MUST NOT assume a buyer-declared seller accepts its returned `account_id`. Account-id-namespace sellers whose IDs meet these rules SHOULD declare `true`. Natural-key references after provisioning are deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare it during 3.x. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere). |
+| `stable_account_id` | boolean | Default: `false`. When `true`, the seller-assigned `account_id` is a durable `AccountRef` for every account the caller can operate, including buyer-declared accounts: the seller MUST return it on every resolved `sync_accounts` provisioning result, MUST accept `{ "account_id": "..." }` wherever an `AccountRef` is accepted, and MUST NOT change it for the life of the account, including across identity reconciliation. A row still `pending_approval` MAY carry `request_id` instead of `account_id`; a seller that may resolve such a request to an existing account MUST NOT issue an `account_id` until it resolves. Buyer-declared sellers still accept the natural key throughout 3.x. Buyers holding an `account_id` from such a seller SHOULD send it instead of the natural key. When absent or `false`, buyers MUST NOT assume a buyer-declared seller accepts its returned `account_id`. Account-id-namespace sellers whose IDs meet these rules SHOULD declare `true`. Natural-key references after provisioning are deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare it during 3.x. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling [`get_products`](/docs/media-buy/task-reference/get_products). When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. Before an account is provisioned, the buyer omits `account` rather than sending a natural key that doesn't resolve yet; see [Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning). |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
 | `identity_updates` | object | Optional capability gate for reconciling an existing account's buyer-controlled operator identity through `sync_accounts` settings-update mode. `supported_changes` declares `operator_unit_name`, `operator_unit`, and/or `operator`. |
 | `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
 | `change_feed` | object | Optional, experimental (`account.change_feed`). Declares the durable [`list_account_changes`](/docs/accounts/tasks/list_account_changes) feed and `account.change_recorded` wake-up. When supported, includes a retention floor of at least 90 days and the resource types covered. |
+| `requests` | object | Optional, experimental (`account.requests`). Declares [`request_account`](/docs/accounts/tasks/request_account), [`get_account_requests`](/docs/accounts/tasks/get_account_requests), and the caller-anchored `account_request.changed` webhook. See [account.requests](#account-requests). |
 | `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. Account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup. Buyer-declared accounts use `sandbox: true` in `sync_accounts`, or in the natural-key account reference when the seller uses unambiguous lazy provisioning — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
 | `agent_onboarding` | object | Optional, experimental (`account.agent_onboarding`). How the seller onboards buyer agents: a mode per billing party and for sandbox, requirements, and where a human starts. Seller-wide and identical for every caller. See [account.agent_onboarding](#accountagent_onboarding). |
 
@@ -617,6 +618,43 @@ A kind used in the wrong direction is ignored. An unknown kind falls back to `me
 - The block is seller-wide and identical for every caller. It is served on the unauthenticated capability fetch and never appears in error payloads, so it cannot act as a per-agent onboarding oracle.
 - It changes no error code and no clamp in [error handling](/docs/building/by-layer/L3/error-handling).
 - Per-agent state, such as an application's progress, is returned only to the authenticated caller, through `get_principal`'s `relationship`.
+
+#### account.requests
+
+Declares whether the seller supports account requests: a buyer asks for an
+account with [`request_account`](/docs/accounts/tasks/request_account), and the
+seller matches an existing account or creates one, possibly after human review
+on either side. Requests are read back with
+[`get_account_requests`](/docs/accounts/tasks/get_account_requests) and
+announced with the caller-anchored `account_request.changed` webhook, which
+buyers register through the caller-scoped `notification_configs`.
+
+Account requests are [experimental](/docs/reference/experimental-status) in
+3.3 ([#8280](https://github.com/adcontextprotocol/adcp/issues/8280)). Sellers
+advertising `supported: true` MUST also list `account.requests` in
+`experimental_features`. Buyers SHOULD prefer `request_account` over
+`sync_accounts` provisioning when it is supported.
+
+```json
+{
+  "experimental_features": ["account.requests"],
+  "account": {
+    "requests": {
+      "supported": true,
+      "request_task": "request_account",
+      "read_task": "get_account_requests",
+      "event_type": "account_request.changed",
+      "pending_action_kinds": ["review", "sign_up", "credit_application"]
+    }
+  }
+}
+```
+
+`event_type` is present only when the seller fires `account_request.changed`; a seller that declares it also declares `adcp.capability_changes.notifications.supported: true`, because buyers subscribe through the caller-scoped `notification_configs`. Without it, buyers poll `get_account_requests`.
+
+`pending_action_kinds` is advisory: it lets buyers prepare the people who will
+act. Sellers may issue other kinds, and buyers handle unknown kinds through the
+pending action's `message` and `url`.
 
 #### account.timezone
 

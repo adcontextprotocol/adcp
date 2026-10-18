@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/request-account-request.json",
+  "title": "Request Account Request",
+  "x-status": "experimental",
+  "description": "Ask the seller for an advertiser account: find an existing one or create one, possibly after human review on either side. Experimental in 3.3 (#8280): sellers implementing this task MUST list account.requests in experimental_features. Requests deduplicate per authenticated caller on the account's natural key (brand.domain, brand.brand_id, canonical brand.countries, operator, operator_unit.id, currency, timezone, sandbox), or on account_id when one is named. Send either account_id, or brand and operator; sellers enforce this at runtime so the MCP input schema stays a plain root object, and reject a request carrying both, or neither, with INVALID_REQUEST.",
+  "x-tool-summary": "Request an advertiser account: the seller matches an existing account or creates one, possibly after human review.",
+  "type": "object",
+  "allOf": [{ "$ref": "/schemas/core/version-envelope.json" }],
+  "properties": {
+    "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
+    "adcp_major_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version" },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key that makes retries of this call safe, with the standard replay semantics. It is separate from request deduplication, which is keyed on the account's natural key. Use a fresh UUID v4 for each logical call.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Request an account the seller already identified: one of the candidates from an ambiguous request, or, on a platform that owns its account namespace, an account the caller's credential does not reach yet. For an account_id the caller cannot reach, the seller MUST answer the same way whether or not the account exists: either always rejected with ACCOUNT_NOT_FOUND, or, for sellers that support access requests, always in_review with waiting_on: buyer and kind: grant. Mutually exclusive with brand and operator.",
+      "x-entity": "account"
+    },
+    "brand": {
+      "$ref": "/schemas/core/brand-key.json",
+      "description": "Advertiser identity. Only BrandKey fields participate in the dedup key. Required unless account_id is sent."
+    },
+    "operator": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, the brand's domain. The seller verifies it against the brand's authorized_operators and, where grants are supported, the operator's grant to the calling agent. Required unless account_id is sent."
+    },
+    "operator_unit": {
+      "$ref": "/schemas/core/operator-unit.json",
+      "description": "Optional operator-owned business unit or seat. operator_unit.id participates in the dedup key; name does not."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "Immutable ISO 4217 currency for a currency-bound advertiser object, as in sync_accounts. Participates in the dedup key."
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Buyer-selected immutable timezone when the seller declares account_fixed, buyer_selected timezones, as in sync_accounts. Participates in the dedup key."
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "Request a sandbox account. Participates in the dedup key, so a sandbox request never matches a production account."
+    },
+    "billing": {
+      "$ref": "/schemas/enums/billing-party.json",
+      "description": "Requested invoiced party. A term, not part of the dedup key. The seller accepts it exactly or rejects the request; billing is never silently remapped."
+    },
+    "billing_entity": {
+      "$ref": "/schemas/core/business-entity.json",
+      "description": "Requested business entity for the invoiced party. A term, not part of the dedup key. Bank details are write-only."
+    },
+    "payment_terms": {
+      "$ref": "/schemas/enums/payment-terms.json",
+      "description": "Requested payment terms. A term, not part of the dedup key. The seller accepts them or rejects the request."
+    },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["idempotency_key"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Agency requests an operator-billed account for one advertiser",
+      "data": {
+        "adcp_version": "3.3",
+        "idempotency_key": "3f1d2a8c-6b0e-4c7a-9d51-8e2f4a6b9c10",
+        "brand": { "domain": "renault.fr", "countries": ["FR"] },
+        "operator": "wppmedia.fr",
+        "currency": "EUR",
+        "billing": "operator",
+        "billing_entity": { "legal_name": "WPP Media France SAS" }
+      }
+    },
+    {
+      "description": "Pick one candidate after an ambiguous result",
+      "data": {
+        "adcp_version": "3.3",
+        "idempotency_key": "8c2e7d41-0a9b-4f63-b5d8-1e4c7a2f9b30",
+        "account_id": "act_1029384756"
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/account-request-resolution.json",
+  "title": "Account Request Resolution",
+  "x-status": "experimental",
+  "description": "How a resolved account request produced its account (experimental, account.requests).",
+  "type": "string",
+  "enum": ["matched", "created"],
+  "enumDescriptions": {
+    "matched": "The seller linked the request to an account that already existed, such as an existing direct relationship with the advertiser, and granted the caller access to it. No seller account object was created.",
+    "created": "The seller created a new account for the request."
+  }
+}

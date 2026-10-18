@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/pending-action-party.json",
+  "title": "Pending Action Party",
+  "x-status": "experimental",
+  "description": "Whose turn it is on a pending account request or account (experimental, account.requests).",
+  "type": "string",
+  "enum": ["seller", "buyer"],
+  "enumDescriptions": {
+    "seller": "The seller is reviewing. The buyer waits for the webhook or polls.",
+    "buyer": "A buyer-side human must complete the action, normally at the pending action's url."
+  }
+}
