@@ -146,10 +146,10 @@ A verifier applies the following procedure to a request that carries `Signature-
 
 1. Parse `Signature`, `Signature-Input`, and `Signature-Agent` as Structured Fields. Every `Signature` member value is a Byte Sequence and every `Signature-Input` member value is an Inner List (RFC 9421 sections 4.1 and 4.2), whatever the member's tag. If any header fails to parse, answer `400` (section 5.4).
 2. Read the one `Signature-Input` member whose `tag` is `web-bot-auth` and the `Signature-Agent` member with the same label. The verifier does not read members with other tags. A request that carries more than one `web-bot-auth` member or more than one `Signature-Agent` member is rejected with `403`. If the `Signature-Agent` member is absent, or the signature does not cover `"signature-agent";key=<label>`, reject the signature. An uncovered member is a claim the verifier must not attach policy to (section 4.1).
-3. Resolve the origin the member names to its key directory, from cache or by fetching it, and select the key whose `kid` equals `keyid`. If the directory holds no such key, the request is unverified.
-4. Verify the signature with the selected key, and check its covered components, parameters, and window against the rules in [Profile rules](#profile-rules).
-5. Check the `nonce` against the identity's replay state, and record it (see [Replay protection](#replay-protection)).
-6. If the signature fails verification or the profile rules, answer `403`, as described in [Error responses](#error-responses).
+3. Resolve the origin the member names to its key directory, from cache or by fetching it, and select the key whose `kid` equals `keyid`. If the directory holds no such key, answer `403`.
+4. Verify the signature with the selected key, and check its covered components, parameters, and window against the rules in [Profile rules](#profile-rules). If the signature fails verification or the profile rules, answer `403`, as described in [Error responses](#error-responses).
+5. Check the `nonce` against the identity's replay state (see [Replay protection](#replay-protection)). If the identity used it within the signature's lifetime, answer `429`.
+6. Record the `nonce` in the identity's replay state. The verifier records a nonce only after steps 1 to 5 pass, so a request that fails verification can't use up a nonce that its legitimate signer hasn't sent yet.
 7. Run the AdCP checks in [AdCP checks after Web Bot Auth verification](/docs/building/by-layer/L1/security#adcp-checks-after-web-bot-auth-verification), starting with the identity's revocation list.
 8. Pass the verified identity to the AdCP layer, which applies [Onboarding](#onboarding) and the account authorization rules that apply to every request, signed or not.
 
