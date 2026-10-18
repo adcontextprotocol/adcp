@@ -95,9 +95,16 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // 443.3 → 445.4 KiB), bounded at 446 KiB. The experimental extend_hold action
 // adds one action enum value and one revise-field-forbidding refinement arm to
 // refine_proposals (+501 bytes measured on top of hold_policy, 445.7 → 446.2
-// KiB), bounded at 447 KiB.
+// KiB), bounded at 447 KiB. Assignment-scoped trackers add a shared event/URL
+// row and assignment arrays to create/update/sync (+766 bytes measured against
+// main, 457,150 → 457,916 bytes / 447.2 KiB), bounded at 448 KiB.
+// Experimental list_collections (#8183) adds one compact read to the
+// media-buy role profile (3,159 bytes of model-context input), and the
+// collection card event types widen the notification enums on sync_accounts
+// and sync_principal (458,185 → 461,599 bytes / 450.8 KiB measured against
+// main), bounded at 451 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 447,
+  'media-buy': 451,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -122,8 +129,14 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // closure to that collection copy (1_251_212 bytes measured), bounded at
 // 1_255_000. Experimental hold_policy (#7661) reaches it through the seeded
 // Product and the committed proposal (1_259_242 bytes measured), bounded at
-// 1_265_000.
-const PARITY_COMPILE_LIMIT = 1_265_000;
+// 1_265_000. Experimental hold ranking (#8086) adds hold_policy.rankable and
+// the committed proposal's hold_rank (1_264_154 → 1_266_010 bytes measured
+// against main), bounded at 1_268_000. The experimental collection card
+// webhook types (#8183) reach it through the account notification-config
+// enum, its enumDescriptions and examples, and the longer collection-selector
+// and response-collection descriptions (1_266_010 → 1_270_050 bytes measured
+// against main), bounded at 1_272_000.
+const PARITY_COMPILE_LIMIT = 1_272_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1146,7 +1159,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // Whole-projection sanity cap against runaway bundling. main sat at
   // 20_945_219 bytes under the original 20 MiB cap; experimental hold_policy
   // (#7661), bundled into every product- and proposal-bearing tool, brings it
-  // to 21_021_886 bytes, so the cap moves to 22 MiB.
+  // to 21_021_886 bytes, so the cap moves to 22 MiB. Experimental
+  // list_collections and the collection card webhooks (#8183) take it from
+  // 21_151_775 to 21_294_989 bytes, still under the cap.
   assert.ok(totalBytes < 22 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);

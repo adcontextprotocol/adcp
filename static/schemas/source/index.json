@@ -414,6 +414,10 @@
           "$ref": "/schemas/core/creative-item.json",
           "description": "Item within a multi-asset creative format"
         },
+        "assignment-tracker": {
+          "$ref": "/schemas/core/assignment-tracker.json",
+          "description": "Assignment-scoped measurement tracker fired in addition to creative trackers"
+        },
         "creative-assignment": {
           "$ref": "/schemas/core/creative-assignment.json",
           "description": "Assignment of a creative asset to a package"
@@ -1265,6 +1269,10 @@
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
         },
+        "creative-merge-rejection-reason": {
+          "$ref": "/schemas/enums/creative-merge-rejection-reason.json",
+          "description": "Why a seller rejected a sync_creatives merge assignment operation"
+        },
         "audience-size-precision": {
           "$ref": "/schemas/enums/audience-size-precision.json",
           "description": "How precisely an audience size range is reported (exact, approximate, bucketed)"
@@ -1915,6 +1923,16 @@
           "response": {
             "$ref": "/schemas/media-buy/list-products-response.json",
             "description": "Response payload for list_products"
+          }
+        },
+        "list-collections": {
+          "request": {
+            "$ref": "/schemas/media-buy/list-collections-request.json",
+            "description": "Experimental: request parameters for reading a seller's collection card catalog by key or with filters"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/list-collections-response.json",
+            "description": "Experimental: response payload for list_collections"
           }
         },
         "request-proposals": {
