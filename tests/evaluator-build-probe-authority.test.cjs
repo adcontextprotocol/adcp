@@ -439,6 +439,393 @@ test('non-opted no-echo, unlisted and unavailable-root response validation stays
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+function governanceCatalog() {
+  return {
+    status: 'completed', adcp_version: '3.2-rc.7',
+    adcp: {
+      major_versions: [3], supported_versions: ['3.2-rc.7', '3.2'], idempotency: { supported: false },
+      governance_enforcement: { tasks: [
+        { task: 'buy_products', modes: ['signed_context'] },
+        { task: 'accept_proposal', modes: ['signed_context'] },
+        { task: 'control_media_buy', modes: ['signed_context'] },
+        { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
+      ] },
+    },
+    supported_protocols: ['media_buy'], experimental_features: ['governance.campaign'],
+  };
+}
+
+function reconstructStock(t) {
+  const { createHash } = require('node:crypto');
+  const manifest = require('../patches/sdk-creative-build-probe/manifest.json');
+  const dir = fs.mkdtempSync(path.join(__dirname, '../.context/sdk14-scoped-stock-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const stock = path.join(dir, 'node_modules/@adcp/sdk');
+  fs.cpSync(sdkRoot, stock, { recursive: true });
+  for (const entry of manifest.files) {
+    const file = path.join(stock, entry.path);
+    if (entry.before === null) { fs.rmSync(file); continue; }
+    let text = fs.readFileSync(file, 'utf8');
+    assert.equal(createHash('sha256').update(text).digest('hex'), entry.after);
+    for (const edit of [...entry.replacements].reverse()) {
+      assert.equal(text.split(edit.to).length - 1, 1);
+      text = text.replace(edit.to, () => edit.from);
+    }
+    assert.equal(createHash('sha256').update(text).digest('hex'), entry.before);
+    fs.writeFileSync(file, text);
+  }
+  return stock;
+}
+
+// This parent compiles both real module systems and a reconstructed stock SDK;
+// child assertions remain bounded and the process must exit naturally.
+test('paired authority scope preserves stock14 and distinguishes actual JSON from generated Zod in CJS/ESM', { timeout: 90000 }, async t => {
+  const stock = reconstructStock(t);
+  const { pathToFileURL } = require('node:url');
+  for (const ext of ['js', 'mjs']) {
+    const load = file => ext === 'js' ? require(file) : import(pathToFileURL(file).href);
+    const loader = await load(path.join(sdkRoot, `dist/lib/validation/schema-loader.${ext}`));
+    const validations = await load(path.join(sdkRoot, `dist/lib/testing/storyboard/validations.${ext}`));
+    const originalLoader = await load(path.join(stock, `dist/lib/validation/schema-loader.${ext}`));
+    const originalValidations = await load(path.join(stock, `dist/lib/testing/storyboard/validations.${ext}`));
+    const clientModule = await load(path.join(sdkRoot, `dist/lib/testing/client.${ext}`));
+    const originalClientModule = await load(path.join(stock, `dist/lib/testing/client.${ext}`));
+    const check = (module, data = governanceCatalog(), extra = {}) => module.runValidations(
+      [{ check: 'response_schema', description: 'Capability catalog' }], {
+        taskName: 'get_adcp_capabilities', adcpVersion: '3.2.5',
+        responseSchemaRef: 'protocol/get-adcp-capabilities-response.json',
+        taskResult: { success: true, data }, ...extra,
+      },
+    )[0];
+    const source = fn => loader.withExternalSchemaRoot('3.2.5', path.join(schemaData, '3.2.5'), fn);
+    const stockSource = fn => originalLoader.withExternalSchemaRoot('3.2.5', path.join(schemaData, '3.2.5'), fn);
+
+    await t.test(`${ext}: non-opted RC/source-root mismatch exactly matches real stock14`, () => {
+      assert.deepEqual(source(() => check(validations)), stockSource(() => check(originalValidations)));
+      assert.equal(source(() => check(validations)).passed, true);
+      assert.equal(loader.isCreativeBuildProbeSchemaScopeActive(), false);
+    });
+    await t.test(`${ext}: opted builtin JSON-valid catalog survives stale Zod with truthful warning`, () => {
+      const result = source(() => loader.withCreativeBuildProbeSchemaScope(true, () => check(validations)));
+      assert.equal(result.passed, true);
+      assert.equal(result.strict.valid, true);
+      assert.equal(result.strict.lenient_valid, false);
+      assert.match(result.schema_url, /3\.2-rc\.7/);
+      assert.match(result.warning, /JSON schema.*generated Zod/);
+    });
+    await t.test(`${ext}: implicit SDK request pin uses the same served selection as the probe helper`, () => {
+      const data = governanceCatalog(); data.adcp_version = '3.1'; data.adcp.supported_versions = ['3.1', '3.2-rc.7'];
+      data.adcp.governance_enforcement.tasks = [{ task: 'create_media_buy', modes: ['online_execution_check'] }];
+      const result = loader.withCreativeBuildProbeSchemaScope(true, () => check(validations, data, {
+        adcpVersion: undefined, responseAdcpVersion: '3.2.0-rc.7',
+      }));
+      assert.match(result.schema_url, /schemas\/3\.1\//);
+      assert.equal(result.strict.valid, true);
+      assert.equal(result.passed, true);
+    });
+    await t.test(`${ext}: external served JSON is authoritative and actual JSON-invalid stays failed`, () => {
+      const poisoned = path.join(temporaryRoot, `invalid-capabilities-${ext}`);
+      fs.cpSync(path.join(schemaData, '3.2.5'), poisoned, { recursive: true });
+      const file = path.join(poisoned, 'protocol/get-adcp-capabilities-response.json');
+      const document = JSON.parse(fs.readFileSync(file, 'utf8')); document.not = {};
+      fs.writeFileSync(file, JSON.stringify(document));
+      // This owned root uses raw JSON rather than its precompiled bundle, whose
+      // independent snapshot would otherwise correctly retain the old schema.
+      fs.rmSync(path.join(poisoned, 'bundled'), { recursive: true, force: true });
+      const data = governanceCatalog(); data.adcp_version = '3.2';
+      data.adcp.governance_enforcement.tasks[3].modes = ['signed_context'];
+      const result = loader.withCreativeBuildProbeSchemaScope(true, () =>
+        loader.withServedReleaseSchemaRoots({ '3.2.5': poisoned }, () => check(validations, data, { adcpVersion: runtimePin })),
+      );
+      assert.equal(result.passed, false);
+      assert.equal(result.strict.valid, false);
+      assert.equal(result.strict.lenient_valid, true, 'actual JSON rejection must override generated-Zod acceptance');
+      assert.match(result.schema_url, /schemas\/3\.2\//);
+      assert.ok(result.actual.some(issue => issue.keyword === 'not'));
+    });
+    await t.test(`${ext}: actual builtin JSON-invalid catalog cannot receive passing credit`, () => {
+      const data = governanceCatalog(); data.adcp.idempotency = { supported: true, replay_ttl_seconds: 1 };
+      const result = loader.withCreativeBuildProbeSchemaScope(true, () => check(validations, data));
+      assert.equal(result.passed, false);
+      assert.equal(result.strict.valid, false);
+      assert.ok(result.actual.length > 0);
+    });
+    await t.test(`${ext}: absent strict schema is a failing harness diagnostic, never pass/skip`, () => {
+      const missing = path.join(temporaryRoot, `missing-capabilities-${ext}`);
+      fs.cpSync(path.join(schemaData, '3.2.5'), missing, { recursive: true });
+      fs.rmSync(path.join(missing, 'bundled'), { recursive: true, force: true });
+      fs.rmSync(path.join(missing, 'protocol/get-adcp-capabilities-response.json'));
+      const data = governanceCatalog(); data.adcp_version = '3.2';
+      const result = loader.withExternalSchemaRoot('3.2.5', missing, () =>
+        loader.withCreativeBuildProbeSchemaScope(true, () => check(validations, data)));
+      assert.equal(result.passed, false);
+      assert.equal(result.not_applicable, undefined);
+      assert.equal(result.actual.reason, 'no_schema_registered');
+    });
+    await t.test(`${ext}: ordinary nested/concurrent runs shadow opt-in and scope unwinds on errors`, async () => {
+      const before = source(() => check(validations));
+      await source(() => loader.withCreativeBuildProbeSchemaScope(true, async () => {
+        const results = await Promise.all([
+          Promise.resolve().then(() => check(validations)),
+          loader.withCreativeBuildProbeSchemaScope(false, async () => {
+            await new Promise(resolve => setImmediate(resolve));
+            return check(validations);
+          }),
+        ]);
+        assert.equal(results[0].strict.lenient_valid, false);
+        assert.deepEqual(results[1], before);
+        assert.equal(loader.isCreativeBuildProbeSchemaScopeActive(), true);
+      }));
+      assert.throws(() => loader.withCreativeBuildProbeSchemaScope(true, () => { throw new Error('scope cleanup'); }), /scope cleanup/);
+      assert.equal(loader.isCreativeBuildProbeSchemaScopeActive(), false);
+      assert.deepEqual(source(() => check(validations)), before);
+    });
+    await t.test(`${ext}: actual capability preflight honors scope before validating borrowed client facts`, async () => {
+      const mock = {
+        getAgentInfo: async () => ({ name: 'Sandbox', tools: [{ name: 'get_adcp_capabilities' }] }),
+        getAdcpCapabilities: async () => ({ success: true, data: governanceCatalog() }),
+        getAdcpVersion: () => '3.2.5',
+      };
+      const original = await stockSource(() => originalClientModule.discoverAgentProfile(mock, undefined, '3.2.5'));
+      const ordinary = await source(() => clientModule.discoverAgentProfile(mock, undefined, '3.2.5'));
+      assert.deepEqual(ordinary.profile, original.profile);
+      const opted = await source(() => loader.withCreativeBuildProbeSchemaScope(true,
+        () => clientModule.discoverAgentProfile(mock, undefined, '3.2.5')));
+      assert.equal(opted.profile.capabilities_schema_issues, undefined);
+      assert.deepEqual(opted.profile.raw_capabilities, governanceCatalog());
+      const invalid = governanceCatalog(); invalid.adcp.idempotency = { supported: true, replay_ttl_seconds: 1 };
+      const rejected = await source(() => loader.withCreativeBuildProbeSchemaScope(true,
+        () => clientModule.discoverAgentProfile({ ...mock, getAdcpCapabilities: async () => ({ success: true, data: invalid }) }, undefined, '3.2.5')));
+      assert.ok(rejected.profile.capabilities_schema_issues.length > 0);
+      assert.match(rejected.profile.capabilities_schema_issues[0].message, /Capability catalog JSON schema 3.2-rc.7/);
+    });
+    await t.test(`${ext}: unauthorized echoes retain pinned authority inside opted scope`, () => {
+      source(() => loader.withCreativeBuildProbeSchemaScope(true, () => {
+        for (const echo of ['4.0', 'latest', '../../etc', '3.1.29', '3.2-..']) {
+          const data = governanceCatalog(); data.adcp_version = echo; data.adcp.supported_versions = [echo];
+          const result = check(validations, data);
+          assert.match(result.schema_url, /schemas\/3\.2\.5\//, echo);
+        }
+        const data = governanceCatalog(); data.adcp.supported_versions = ['3.2'];
+        assert.match(check(validations, data).schema_url, /schemas\/3\.2\.5\//);
+      }));
+    });
+    await t.test(`${ext}: non-capability checks preserve stock14 even inside opted scope`, () => {
+      const context = { taskName: 'get_products', responseSchemaRef: 'media-buy/get-products-response.json',
+        taskResult: { success: true, data: { status: 'completed', products: [] } } };
+      const original = stockSource(() => check(originalValidations, undefined, context));
+      const actual = source(() => loader.withCreativeBuildProbeSchemaScope(true, () => check(validations, undefined, context)));
+      assert.deepEqual(actual, original);
+    });
+    await t.test(`${ext}: direct helper explicitly resolves served facts without scope or inside false scope`, async () => {
+      const helper = await load(path.join(sdkRoot, `dist/lib/testing/storyboard/creative-build-probe.${ext}`));
+      const caps = { adcp_version: '3.2', adcp: { supported_versions: ['3.1', '3.2'] }, creative: {
+        supports_transformation: true,
+        supported_formats: [{ capability_id: 'audio-build', operations: ['build'],
+          format: { format_kind: 'audio_vast', params: {}, v1_format_ref: [named] } }],
+      } };
+      const kit = { creative_build_probes: [{
+        match: [{ path: '/format/format_kind', operator: 'equals', value: 'audio_vast' }],
+        input: { target_format_id: named, creative_manifest: { format_id: named, assets: {} } },
+      }] };
+      loader.withExternalSchemaRoot('3.1.29', path.join(schemaData, '3.1.29'), () =>
+        loader.withServedReleaseSchemaRoots({ '3.2.5': hostedRoot }, () => {
+          const call = () => helper.prepareCreativeBuildProbe(caps, { context_prefix: 'build', message: 'Make a sandbox creative' }, kit, '3.1.29');
+          const direct = call();
+          assert.equal(direct.status, 'resolved');
+          assert.deepEqual(loader.withCreativeBuildProbeSchemaScope(false, call), direct);
+          assert.deepEqual(loader.withCreativeBuildProbeSchemaScope(true, call), direct);
+          assert.equal(loader.isCreativeBuildProbeSchemaScopeActive(), false);
+        }));
+    });
+  }
+});
+
+for (const ext of ['js', 'mjs']) {
+  test(`${ext}: public full/standalone preserve stock acceptance-catalog behavior and defer probe-only roots`, async t => {
+    const stock = reconstructStock(t);
+    const { pathToFileURL } = require('node:url');
+    const load = file => ext === 'js' ? require(file) : import(pathToFileURL(file).href);
+    const api = await load(path.join(sdkRoot, `dist/lib/testing/index.${ext}`));
+    const original = await load(path.join(stock, `dist/lib/testing/index.${ext}`));
+    const data = governanceCatalog();
+    data.media_buy = { acceptance_policy_discovery: {
+      catalog_url: 'https://catalog.example/policy.json', catalog_digest: `sha256:${'a'.repeat(64)}`,
+    } };
+    const source = `
+id: media_buy_seller/acceptance_policy_discovery
+version: "1.0.0"
+title: Acceptance authority control
+category: media_buy_seller
+summary: Preserve real catalog verification after capability validation
+phases:
+  - id: catalog
+    title: Catalog
+    steps:
+      - id: get_acceptance_policy_capability
+        title: Capability metadata
+        task: get_adcp_capabilities
+        response_schema_ref: protocol/get-adcp-capabilities-response.json
+        sample_request: {}
+        validations:
+          - check: response_schema
+  - id: products
+    title: Product profiles
+    steps:
+      - id: get_contextual_products
+        title: Product profiles
+        task: get_products
+        sample_request: {}
+        validations: []
+`;
+    async function execute(module, standalone = false) {
+      const storyboard = module.parseStoryboard(source);
+      const client = module.withExternalSchemaRoot('3.2.5', path.join(schemaData, '3.2.5'),
+        () => module.createTestClient('https://agent.example/mcp', 'mcp', { adcpVersion: '3.2.5' }));
+      client.resetContext = () => {};
+      client.executeTask = async task => ({ success: true, data: task === 'get_adcp_capabilities' ? structuredClone(data) : { status: 'completed', products: [] } });
+      client.getAdcpCapabilities = () => client.executeTask('get_adcp_capabilities');
+      client.getProducts = () => client.executeTask('get_products');
+      let resolved = 0;
+      const profile = { tools: ['get_adcp_capabilities', 'get_products'], raw_capabilities: data,
+        capabilities_schema_issues: [{ pointer: '/adcp', message: 'Capability catalog JSON schema 3.2-rc.7: prior opted discovery diagnostic' }] };
+      const snapshot = structuredClone(profile);
+      const opts = {
+        adcpVersion: '3.2.5', schemaRoot: path.join(schemaData, '3.2.5'), _client: client,
+        _profile: profile, agentTools: profile.tools,
+        // Probe-only configuration must not be validated or registered here.
+        servedReleaseSchemaRoots: { invalid: '/nonexistent-probe-only-root' },
+        _controllerCapabilities: { detected: false, scenarios: [] },
+        _acceptancePolicyDiscoveryDependencies: {
+          resolveCatalog: async () => { resolved++; return { ok: true, catalog: { profiles: [] } }; },
+        },
+      };
+      const result = standalone
+        ? await module.runStoryboardStep('https://agent.example/mcp', storyboard, 'get_acceptance_policy_capability', opts)
+        : await module.runStoryboard('https://agent.example/mcp', storyboard, opts);
+      assert.deepEqual(profile, snapshot, 'caller profile remains caller-owned');
+      const steps = standalone ? [result] : result.phases.flatMap(phase => phase.steps);
+      assert.ok(steps.every(step => step.passed && !step.skipped), JSON.stringify(result));
+      assert.equal(resolved, 1, 'actual acceptance verifier must run after valid discovery');
+      assert.ok(steps[0].validations.some(validation => validation.check === 'acceptance_policy_discovery' && validation.passed));
+      if (!standalone) assert.ok(steps[1].validations.some(validation => validation.check === 'acceptance_policy_discovery' && validation.passed));
+      return steps.map(step => ({ passed: step.passed, validations: step.validations }));
+    }
+    for (const standalone of [false, true]) assert.deepEqual(await execute(api, standalone), await execute(original, standalone));
+  });
+
+  test(`${ext}: real mixed comply batch defers probe roots and clears inherited opt-in before discovery`, { timeout: 60000 }, async t => {
+    const { pathToFileURL } = require('node:url');
+    const load = file => ext === 'js' ? require(file) : import(pathToFileURL(file).href);
+    const api = await load(path.join(sdkRoot, `dist/lib/testing/index.${ext}`));
+    const loader = await load(path.join(sdkRoot, `dist/lib/validation/schema-loader.${ext}`));
+    const http = require('node:http');
+    const tools = ['get_adcp_capabilities', 'build_creative', 'comply_test_controller'];
+    const data = governanceCatalog();
+    data.supported_protocols = ['creative'];
+    data.creative = { supports_evaluator: true, supports_generation: true, supported_formats: [
+      { capability_id: 'sandbox-build', format: { format_kind: 'image', params: {}, technical_requirements_complete: true } },
+    ] };
+    data.experimental_features.push('creative.evaluator');
+    const server = http.createServer(async (request, response) => {
+      if (request.method !== 'POST') { response.writeHead(404).end(); return; }
+      let body = ''; for await (const chunk of request) body += chunk;
+      const rpc = JSON.parse(body);
+      if (rpc.id === undefined) { response.writeHead(202).end(); return; }
+      let result;
+      if (rpc.method === 'initialize') result = { protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'Sandbox', version: '1.0.0' } };
+      else if (rpc.method === 'tools/list') result = { tools: tools.map(name => ({ name, inputSchema: { type: 'object', properties: {} } })) };
+      else if (rpc.method === 'tools/call') {
+        const payload = rpc.params.name === 'get_adcp_capabilities' ? data : { success: true, scenarios: ['query_upstream_traffic'] };
+        result = { content: [{ type: 'text', text: JSON.stringify(payload) }], structuredContent: payload };
+      } else result = {};
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    t.after(async () => {
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    });
+    const endpoint = `http://127.0.0.1:${server.address().port}/mcp`;
+    const calls = [];
+    // Observe the existing SDK transport hook; requests still traverse the
+    // real MCP client/server and are never dispatched by a runner fallback.
+    const observeFetch = async (...args) => {
+      const request = args[0] instanceof Request ? args[0] : new Request(...args);
+      if (request.url.startsWith(endpoint) && request.method === 'POST') {
+        const body = await request.clone().text();
+        if (body) {
+          const rpc = JSON.parse(body);
+          calls.push({ method: rpc.method, tool: rpc.params?.name, opted: loader.isCreativeBuildProbeSchemaScopeActive() });
+        }
+      }
+      return fetch(...args);
+    };
+    const transport = { trustedFetchFn: observeFetch, allowPrivateIp: true };
+    // These use owned SDK clients and the actual MCP TaskExecutor. Inspect
+    // fetch at dispatch time, so server callback context cannot fake ALS proof.
+    for (const opted of [false, true]) {
+      for (const standalone of [false, true]) {
+        const fixture = api.parseStoryboard(`
+id: scope_preflight_control
+version: "1.0.0"
+title: Scope preflight control
+category: creative
+summary: Validate the actual client preflight and response authority
+${opted ? 'creative_build_probe:\n  context_prefix: build\n  message: Make a sandbox image' : ''}
+phases:
+  - id: discovery
+    title: Discovery
+    steps:
+      - id: capabilities
+        title: Capability schema
+        task: get_adcp_capabilities
+        response_schema_ref: protocol/get-adcp-capabilities-response.json
+        sample_request: {}
+        validations:
+          - check: response_schema
+`);
+        const start = calls.length;
+        const options = { allow_http: true, transport, adcpVersion: '3.2.5',
+          schemaRoot: path.join(schemaData, '3.2.5'), skip_controller_seeding: true,
+          _serverAdcpVersion: '3.1.29',
+          ...!opted && { servedReleaseSchemaRoots: { invalid: '/nonexistent-probe-only-root' } },
+        };
+        const result = standalone
+          ? await api.runStoryboardStep(endpoint, fixture, 'capabilities', options)
+          : await api.runStoryboard(endpoint, fixture, options);
+        const steps = standalone ? [result] : result.phases.flatMap(phase => phase.steps);
+        assert.ok(steps.every(step => step.passed && !step.skipped), JSON.stringify(result));
+        const schema = steps[0].validations.find(validation => validation.check === 'response_schema');
+        assert.equal(schema.passed, true);
+        assert.equal(schema.strict.valid, true);
+        assert.match(schema.schema_url, opted ? /3\.2-rc\.7/ : /3\.2\.5/);
+        const dispatched = calls.slice(start).filter(call => call.tool === 'get_adcp_capabilities');
+        assert.ok(dispatched.length >= 2, 'owned client performs preflight before the authored capability step');
+        assert.ok(dispatched.every(call => call.opted === opted), JSON.stringify(dispatched));
+      }
+    }
+    calls.length = 0;
+    await loader.withCreativeBuildProbeSchemaScope(true, async () => {
+      await assert.rejects(api.comply(endpoint, {
+        allow_http: true,
+        transport,
+        complianceDir: path.join(__dirname, '../dist/compliance/latest'),
+        schemaRoot: path.join(schemaData, '3.2.5'),
+        storyboards: ['capability_discovery', 'creative/evaluator_auth'],
+        servedReleaseSchemaRoots: { invalid: '/nonexistent-probe-only-root' },
+      }), /invalid|version|bundle|schema root/i);
+      assert.equal(loader.isCreativeBuildProbeSchemaScopeActive(), true, 'caller scope remains caller-owned');
+    });
+    const capabilities = calls.filter(call => call.tool === 'get_adcp_capabilities');
+    assert.ok(capabilities.length >= 2, JSON.stringify(calls));
+    assert.ok(capabilities.every(call => call.opted === false), 'outer discovery and ordinary storyboard shadow the parent opt-in');
+    assert.ok(!calls.some(call => call.tool === 'build_creative'), 'invalid probe root is rejected before probe dispatch');
+    assert.equal(loader.isCreativeBuildProbeSchemaScopeActive(), false);
+  });
+}
+
 test('RC selection ignores unlisted, cross-major, semver and malformed echoes even with a stable root available', () => {
   schemaLoader.withServedReleaseSchemaRoots({ '3.2.5': path.join(schemaData, '3.2.5') }, () => {
     for (const echo of ['4.0', '9.9', 'latest', '../../etc', '3.2-..', '3.1.29']) {

@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseStoryboard, runStoryboard, buildComplianceBundleResults, createTestClient, withExternalSchemaRoot, getComplianceStoryboardById, applyStoryboardVersionOptions } = require('@adcp/sdk/testing');
+const { getComplianceStoryboardById } = require('@adcp/sdk/testing');
 const { resolveDeclaredTestKit } = require(path.resolve(require.resolve('@adcp/sdk/testing'), '../storyboard/test-kit.js'));
 const creativeScenariosPath = path.join(__dirname, '..', 'static', 'compliance', 'source', 'protocols', 'creative', 'scenarios');
 
@@ -33,7 +33,10 @@ async function runEvaluatorBoundary({
   servedReleaseSchemaRoots,
   expectedTarget = 'display-build',
   expectedManifest = { format_kind: 'image', assets: {} },
+  sdkApi,
+  cachedCapabilityIssues,
 } = {}) {
+  const { parseStoryboard, runStoryboard, buildComplianceBundleResults, createTestClient, withExternalSchemaRoot, applyStoryboardVersionOptions } = sdkApi ?? require('@adcp/sdk/testing');
   const storyboard = loadedStoryboard ?? parseStoryboard(fs.readFileSync(path.join(creativeScenariosPath, 'evaluator_auth.yaml'), 'utf8'));
   const capabilities = {
     ...(capabilitiesVersion && { status: 'completed', adcp_version: capabilitiesVersion }),
@@ -82,7 +85,8 @@ async function runEvaluatorBoundary({
     context,
   });
   let runOptions = {
-    _profile: preflightFailure ? undefined : { tools, raw_capabilities: capabilities },
+    _profile: preflightFailure ? undefined : { tools, raw_capabilities: capabilities,
+      ...(cachedCapabilityIssues && { capabilities_schema_issues: cachedCapabilityIssues }) },
     _controllerCapabilities: { detected: true, scenarios: ['query_upstream_traffic', 'force_upstream_unavailable'] },
     agentTools: preflightFailure ? undefined : tools,
     skip_controller_seeding: true,
@@ -177,7 +181,10 @@ async function runEvaluatorBoundary({
     runOptions._client = Object.assign(client, runOptions._client);
     runOptions._client.buildCreativeLegacy = input => runOptions._client.executeTask('build_creative', input);
   }
+  const callerProfile = runOptions._profile;
+  const profileBefore = callerProfile && structuredClone(callerProfile);
   const result = await runStoryboard('https://agent.example/mcp', storyboard, runOptions);
+  if (callerProfile) assert.deepEqual(callerProfile, profileBefore, 'reused capability facts and discovery diagnostics remain caller-owned');
   const [bundle] = buildComplianceBundleResults([{ ref: { kind: 'protocol', id: 'creative', path: '/fixture' }, storyboards: [storyboard] }], [result]);
   return { result, bundle, requests, trafficQueries, capabilityAttempts, steps: result.phases.flatMap(phase => phase.steps) };
 }
@@ -503,4 +510,40 @@ for (const [label, options] of [
       assert.ok(!requests.some(request => request.task === 'build_creative'));
     } else assert.equal(result.overall_passed, true, JSON.stringify(result));
   });
+}
+
+for (const [label, attack] of [
+  ['supporting-good', undefined],
+  ['direct-outbound', { form: 'direct', endpoint: 'POST https://unaccepted-evaluator.example/probe' }],
+  ['feature-outbound', { form: 'feature_agent', endpoint: 'GET https://unaccepted-evaluator.example/probe' }],
+  ['direct-wrong-acceptance', { form: 'direct', accept: true }],
+  ['feature-wrong-acceptance', { form: 'feature_agent', accept: true }],
+]) {
+ for (const mode of ['cjs', 'esm']) {
+  test(`actual ${mode} opted bundle uses builtin RC JSON authority despite stale generated Zod: ${label}`, async () => {
+    const sdkApi = mode === 'esm' ? await import('@adcp/sdk/testing') : require('@adcp/sdk/testing');
+    const loadedStoryboard = sdkApi.getComplianceStoryboardById('creative/evaluator_auth', {
+      complianceDir: path.resolve(__dirname, '../dist/compliance/latest'),
+    });
+    const { result, bundle, steps } = await runEvaluatorBoundary({
+      sdkApi, loadedStoryboard, attack, adcpVersion: '3.2.5', capabilitiesVersion: '3.2-rc.7',
+      schemaRoot: path.resolve(__dirname, '../dist/schemas/3.2.5'),
+      governanceEnforcement: { tasks: [{ task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] }] },
+      cachedCapabilityIssues: [{ pointer: '/adcp/governance_enforcement', message: 'Prior discovery schema authority was not recorded' }],
+    });
+    const discovery = steps.find(step => step.step_id === 'get_capabilities');
+    const schema = discovery.validations.find(validation => validation.check === 'response_schema');
+    assert.equal(schema.passed, true);
+    assert.equal(schema.strict.valid, true);
+    assert.equal(schema.strict.lenient_valid, false);
+    assert.match(schema.warning, /JSON schema.*generated Zod/);
+    assert.ok(result.notices.some(notice => notice.code === 'capabilities_response_schema_invalid'
+      && notice.message.includes('Cached capability-discovery diagnostic (not this run\'s response_schema verdict)')));
+    if (attack) {
+      assert.equal(bundle.status, 'failing');
+      const id = attack.form === 'direct' ? 'reject_unaccepted_agent_url' : 'reject_unaccepted_feature_agent';
+      assert.ok(steps.some(step => step.step_id === id && !step.passed && !step.skipped));
+    } else assert.equal(result.overall_passed, true, JSON.stringify(result));
+  });
+ }
 }

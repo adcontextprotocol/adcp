@@ -34,14 +34,24 @@ blocks and SHA-256 pre/postimage hashes against a pristine npm SDK 14.0.0-rc.53 
 Review the resulting manifest and rerun integrity/public-entry regressions.
 
 Maintenance prerequisite: SDK 14 does not export served-release schema selection.
-The manifest ports the SDK 15.9.5 schema-loader and response-validation additions
-(the resulting two CJS/ESM module pairs match that published SDK exactly), plus
-only the capability preflight hook, scoped full/standalone/bundle entry wrappers,
-and matching options declarations. Unrelated OAuth or error changes are excluded.
+The manifest ports the SDK 15.9.5 selection additions with a reviewed maintenance
+delta: an AsyncLocalStorage scope enabled only by the locally authored
+`creative_build_probe` directive, before capability preflight. Catalog selection
+and its capability response-schema backstop use that same scope. Within it, the
+actual authorized JSON schema governs even for builtin roots; stale generated
+Zod disagreement remains visible as a warning. Invalid JSON fails and unavailable
+schema produces the existing failing `no_schema_registered` harness diagnostic.
+These modules are not byte-identical to SDK 15.9.5. Unrelated OAuth or error changes
+are excluded.
 The four evaluator helper payloads remain byte-identical to main. All 25 target
 preimages/postimages are qualified against the exact locked npm SDK 14 tarball.
 The branch lockfile and dependency pin are unchanged. No newer runner is copied.
 
-Scope: only testing capability preflight and storyboard response-schema checks
-use the ported policy. SDK 14's general TaskExecutor is untouched and remains
-pin-only. This is not a claim of whole-SDK parity with 15.9.5.
+Scope: only opted creative-probe capability preflight and capability response
+checks use the added policy. Other storyboards and non-capability checks retain
+stock SDK 14 semantics, including external-root authority. Explicit false scopes
+shadow parent opt-in. `servedReleaseSchemaRoots` is deferred/inert for other
+storyboards and outer bundle discovery; mixed bundles forward it to each opted
+storyboard. A direct call of the new probe helper is itself an explicit opt-in.
+SDK 14's general TaskExecutor is untouched and remains pin-only. This is not a
+claim of whole-SDK parity with 15.9.5.
