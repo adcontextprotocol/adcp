@@ -352,7 +352,7 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.equal(projected.properties.exactMode.const, 'direct');
   assert.equal(projected.properties.exactMode.type, undefined);
   assert.equal(projected.properties.strict.additionalProperties, undefined);
-  assert.equal(projected.properties.extensions.additionalProperties, true);
+  assert.equal(projected.properties.extensions.additionalProperties, undefined);
   assert.equal(projected.properties.ext, undefined);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');
 
@@ -368,8 +368,40 @@ test('model-context presentation keeps request shape and omits validation-only d
   });
   assert.deepEqual(negotiated.properties.ext, {
     type: 'object',
-    additionalProperties: true,
   });
+});
+
+test('model-context omits default object openness while retaining typed maps and payload values', () => {
+  const source = {
+    type: 'object',
+    properties: {
+      label: { type: 'string' },
+      open: { type: 'object', additionalProperties: true },
+      counts: { type: 'object', additionalProperties: { type: 'integer' } },
+      exact: { const: { additionalProperties: true } },
+    },
+    additionalProperties: true,
+  };
+  const projected = stripModelContextAnnotations(source);
+  assert.equal(source.additionalProperties, true, 'the source validation contract is unchanged');
+  assert.equal(projected.additionalProperties, undefined);
+  assert.equal(projected.properties.open.additionalProperties, undefined);
+  assert.deepEqual(projected.properties.counts.additionalProperties, { type: 'integer' });
+  assert.deepEqual(projected.properties.exact.const, { additionalProperties: true });
+
+  const ajv = new AjvDraft07({ strict: false });
+  const original = ajv.compile(source);
+  const prompt = ajv.compile(projected);
+  for (const value of [
+    {},
+    { open: { arbitrary: ['value'] }, counts: { impressions: 10 }, extra: 'allowed' },
+    { counts: { impressions: 'ten' } },
+    { exact: { additionalProperties: true } },
+    { exact: { additionalProperties: false } },
+    { label: 5 },
+  ]) {
+    assert.equal(prompt(value), original(value), JSON.stringify(value));
+  }
 });
 
 test('model-context pruning removes only unreachable root definitions', () => {
