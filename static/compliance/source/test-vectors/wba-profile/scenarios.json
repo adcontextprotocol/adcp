@@ -750,6 +750,36 @@
       },
       "tier": "wba",
       "basis": "Profile: ignore keys the profile does not use (RFC 7517 section 5), including a key the library imports"
+    },
+    {
+      "id": "D14",
+      "name": "Extra P-256 key that carries its private d",
+      "unsigned_keys": [
+        {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "ayhQePn14MyJGqrKHsp_A06Z0N6IZoE0-7wbn66qLLc",
+          "y": "k98dk4yymVze93JE_EpboBD6oaZbcII4Lvf_Oqu8kII",
+          "kid": "4rrLPtiRac4zmWwTBQeJlzgNyb5jai8HSOTJONOIKFY",
+          "use": "sig",
+          "d": "IyiPVggq91xZTs3CxpETaAbK6Qca0DuuD9-DZx7ueHs"
+        }
+      ],
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "Profile: refuse a directory in which any key carries a private member, checked before unused keys are skipped; WBA section 5.5.1: a verifier SHOULD reject malformed entries"
+    },
+    {
+      "id": "D14b",
+      "name": "Signing Ed25519 key published with its private d",
+      "publish_private_members": true,
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "Profile: refuse a directory in which any key carries a private member; WBA section 5.5.1: a verifier SHOULD reject malformed entries"
     }
   ]
 }
