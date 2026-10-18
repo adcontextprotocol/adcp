@@ -157,6 +157,59 @@ describe('storyboard runner option helpers', () => {
     });
   });
 
+  const creativeBuildProbes: NonNullable<LoadedTestKit['creative_build_probes']> = [{
+    match: [{ path: '/capability_id', operator: 'equals', value: 'sandbox-transformer-output' }],
+    input: {
+      transformer_id: 'sandbox-transformer',
+      config: { headline: 'Winter offer' },
+    },
+  }];
+
+  it('retains provisioned creative build recipes with auth and the tenant probe override', () => {
+    const kit = {
+      creative_build_probes: creativeBuildProbes,
+      auth: { api_key: 'kit-api-key', probe_task: 'list_creatives' },
+      brand: { house: { domain: 'acmeoutdoor.example' } },
+      unrelated: 'not a runner input',
+    };
+
+    const options = testKitOptionsFromKit(kit, 'signals');
+
+    expect(options).toEqual({
+      creative_build_probes: creativeBuildProbes,
+      auth: { api_key: 'kit-api-key', probe_task: 'get_signals' },
+    });
+    expect(options?.creative_build_probes).toBe(creativeBuildProbes);
+  });
+
+  it('retains provisioned creative build recipes without auth and excludes unrelated kit fields', () => {
+    const kit = {
+      creative_build_probes: creativeBuildProbes,
+      brand: { house: { domain: 'acmeoutdoor.example' } },
+      unrelated: 'not a runner input',
+    };
+
+    const options = testKitOptionsFromKit(kit, 'creative');
+
+    expect(options).toEqual({ creative_build_probes: creativeBuildProbes });
+    expect(options?.creative_build_probes).toBe(creativeBuildProbes);
+    expect(options).not.toHaveProperty('auth');
+  });
+
+  it('keeps kits without auth or creative recipes out of runner options', () => {
+    expect(testKitOptionsFromKit(undefined, 'creative')).toBeUndefined();
+    expect(testKitOptionsFromKit({ brand: { house: { domain: 'acmeoutdoor.example' } } }, 'creative'))
+      .toBeUndefined();
+  });
+
+  it.each([
+    { api_key: 'kit-api-key' },
+    { basic: { username: 'agent-user', password: 'agent-pass' } },
+  ])('still rejects auth without a probe_task when creative recipes are present: %j', auth => {
+    expect(() => testKitOptionsFromKit({ creative_build_probes: creativeBuildProbes, auth }, 'creative'))
+      .toThrow(/without auth\.probe_task/);
+  });
+
   it('requires probe_task when a test kit declares auth credentials', () => {
     const kit: LoadedTestKit = { auth: { api_key: 'kit-api-key' } };
 

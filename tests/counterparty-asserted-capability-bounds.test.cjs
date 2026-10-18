@@ -351,7 +351,7 @@ describe('adopter-facing guidance', () => {
       read(VERSIONING),
       '### 3.3 exceptions to 3.x compatibility (beta)',
     );
-    assert.match(body, /Counterparty-asserted lists are bounded/);
+    assert.match(body, /^\| Counterparty-asserted lists are bounded \|/m);
     assert.match(body, /publisher_domains/);
     assert.match(body, /data_provider_domains/);
     assert.match(body, /8,192 bytes/);

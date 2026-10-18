@@ -24,6 +24,9 @@ const {
   entryKey,
   isNegativeStep,
   normalizeSubstitutions,
+  normalizeStoryboardSampleRequests,
+  loadSchema,
+  validateStep,
   STORYBOARD_DIR,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 
@@ -375,4 +378,69 @@ test('normalizeSubstitutions synthesizes shape-valid placeholders at object-type
   assert.equal(oneOfSynth.source, 'catalog');
   assert.ok('data_provider_domain' in oneOfSynth);
   assert.ok('id' in oneOfSynth);
+});
+
+function evaluatorBuildAuthoringFixture() {
+  const storyboard = yaml.load(fs.readFileSync(path.join(STORYBOARD_DIR,
+    'protocols/creative/scenarios/evaluator_auth.yaml'), 'utf8'));
+  return { storyboard, steps: storyboard.phases.flatMap(phase => phase.steps || [])
+    .filter(step => step.task === 'build_creative') };
+}
+
+test('all authored evaluator builds materialize valid generation, source, library, transformer and legacy requests', async () => {
+  const { storyboard, steps } = evaluatorBuildAuthoringFixture();
+  assert.equal(steps.length, 5);
+  for (const step of steps) {
+    const original = structuredClone(step.sample_request);
+    const schema = loadSchema(step.schema_ref);
+    const fixtures = normalizeStoryboardSampleRequests(storyboard, step, schema);
+    assert.equal(fixtures.length, 5);
+    for (const [index, payload] of fixtures.entries()) {
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload })).ok, true,
+        `${step.id} mode ${index} must pass canonical call validation`);
+      assert.deepEqual(payload.evaluator, normalizeSubstitutions(original.evaluator, schema.properties.evaluator));
+      assert.equal(Object.hasOwn(payload, 'target_capability_id'), index !== 4);
+      assert.equal(Object.hasOwn(payload, 'target_format_id'), index === 4);
+      assert.equal(Object.hasOwn(payload, 'message'), index === 0);
+      assert.equal(Object.hasOwn(payload, 'creative_manifest'), index === 0 || index === 1);
+      assert.equal(Object.hasOwn(payload, 'creative_id'), index === 2 || index === 4);
+      assert.equal(Object.hasOwn(payload, 'transformer_id'), index === 3);
+      assert.equal(Object.hasOwn(payload, 'config'), index === 3);
+    }
+    assert.deepEqual(step.sample_request, original, 'static preparation must not rewrite authored samples');
+  }
+});
+
+test('build authoring validation rejects missing selector bindings and retains malformed evaluator negatives', async () => {
+  const { storyboard, steps } = evaluatorBuildAuthoringFixture();
+  for (const original of steps.slice(0, 2)) {
+    const step = structuredClone(original);
+    const schema = loadSchema(step.schema_ref);
+    assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: step.sample_request })).ok, false,
+      'the incomplete pre-injection request must remain invalid');
+    step.context_inputs = step.context_inputs.filter(input => !['target_capability_id', 'target_format_id'].includes(input.inject_at));
+    for (const payload of normalizeStoryboardSampleRequests(storyboard, step, schema)) {
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload })).ok, false,
+        'the materializer must honor missing authored bindings rather than repair them');
+    }
+    step.context_inputs = original.context_inputs;
+    const evaluator = step.sample_request.evaluator;
+    (evaluator.feature_agent || evaluator).agent_url = 42;
+    for (const payload of normalizeStoryboardSampleRequests(storyboard, step, schema)) {
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload })).ok, false,
+        'preparation must not repair malformed direct or nested evaluator fields');
+    }
+  }
+});
+
+test('static build preparation requires the authored opt-in contract and rejects invalid injection paths', () => {
+  const { storyboard, steps: [step] } = evaluatorBuildAuthoringFixture();
+  const schema = loadSchema(step.schema_ref);
+  const withoutContract = { ...step, requires_contract: undefined };
+  assert.deepEqual(normalizeStoryboardSampleRequests(storyboard, withoutContract, schema),
+    [normalizeSubstitutions(step.sample_request, schema)]);
+  const malformed = structuredClone(step);
+  malformed.context_inputs.find(input => input.key === 'build_capability_id').inject_at = '__proto__.polluted';
+  assert.throws(() => normalizeStoryboardSampleRequests(storyboard, malformed, schema),
+    /Invalid creative build authoring fixture path/);
 });

@@ -1,5 +1,5 @@
 id: creative/evaluator_auth
-version: "1.0.3"
+version: "1.0.5"
 title: "Creative evaluator authentication boundary"
 category: creative
 summary: "Verifies that build_creative evaluator pointers use the verifier allowlist, keep credentials out of payloads, and invoke accepted evaluator agents through get_creative_features."
@@ -11,9 +11,17 @@ introduced_in: "3.1"
 required_tools:
   - build_creative
 
-requires_capability:
-  path: creative.supports_evaluator
-  equals: true
+# The compound gate requires an established positive profile. A single
+# requires_capability permits unknown raw capabilities after a failed probe.
+requires_all_capabilities:
+  - path: creative
+    present: true
+  - path: creative.supports_evaluator
+    equals: true
+
+creative_build_probe:
+  context_prefix: build
+  message: "Create one creative for Acme Outdoor's winter trip offer."
 
 narrative: |
   `build_creative.evaluator` is an experimental buyer-attached pointer for
@@ -43,6 +51,18 @@ narrative: |
   are not cryptographic proof of transport authentication. Authentication proof
   remains a normative obligation on the producing agent and evaluator.
 
+  Applicability requires the established positive capability profile above;
+  unknown capability evidence receives no executed security coverage. For a
+  supporting agent, both off-list rejection phases are required independently: the
+  evaluator spec and build_creative reference require rejection before any
+  outbound call. A later discovery response cannot opt out of these checks.
+  The creative-build-probe runner resolves a real build route and its input as
+  one binding before seeding or transport. It honors explicit operations and
+  legacy omitted operations; an unavailable input fixture is a visible
+  fixture_unsatisfied coverage gap, not producer nonconformance or security
+  coverage. Ranking, feature vocabulary and variant support are not prerequisites
+  for the two required boundary probes.
+
 agent:
   interaction_model: creative_agent
   capabilities:
@@ -61,9 +81,19 @@ prerequisites:
   description: |
     The creative agent advertises `creative.supports_evaluator: true`, lists
     `creative.evaluator` in `experimental_features`, exposes at least one
-    targetable `creative.supported_formats[].capability_id`, and exposes at
-    least one `governance.creative_features[].feature_id` for the account under
-    test. Its sandbox `creative_policy.accepted_verifiers[]` includes
+    usable build entry in `creative.supported_formats[]`. For 3.1, provision a
+    matched legacy `target_format_id` recipe; do not derive it from a capability ID. The runner contract
+    `test-kits/creative-build-probe-runner.yaml` documents preparation of that
+    entry. Add operator recipes to the brand kit named below, or supply your
+    kit through the runner test_kit option/--test-kit. Provision account-specific transformation/library/transformer inputs
+    in `test_kit.creative_build_probes` when a unique generation route cannot be
+    inferred. The provisioned sandbox account must be authorized and entitled
+    to build with the selected route/input, including any required governance
+    authorization. This runner contract currently requires a build fixture
+    without per-request signed governance_context; advertised signed-context
+    build enforcement yields a zero-credit fixture gap. Optional ranking probes
+    additionally use creative feature
+    vocabulary. Its sandbox `creative_policy.accepted_verifiers[]` includes
     `https://quality-evaluator.example/adcp`.
 
     The evaluator fixture exposes the standard `get_creative_features` contract.
@@ -101,8 +131,8 @@ phases:
     narrative: |
       The buyer reads capabilities before sending evaluator inputs. Agents that
       do not advertise evaluator support skip the remaining evaluator-specific
-      phases. Supporting agents also need a build capability id and a creative
-      feature id so later phases do not hardcode fixture-specific values.
+      phases. The runner binds an actual build route and valid input before execution;
+      optional ranking phases additionally discover a creative feature id.
 
     steps:
       - id: get_capabilities
@@ -116,7 +146,7 @@ phases:
         expected: |
           Return the creative capability block. When `creative.supports_evaluator`
           is true, the following phases validate the evaluator boundary using
-          discovered build and feature identifiers.
+          the route and valid input bound by the runner.
         sample_request:
           protocols:
             - "creative"
@@ -126,10 +156,6 @@ phases:
         context_outputs:
           - name: "supports_evaluator"
             path: "creative.supports_evaluator"
-          - name: "build_capability_id"
-            path: "creative.supported_formats[0].capability_id"
-          - name: "creative_feature_id"
-            path: "governance.creative_features[0].feature_id"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -170,6 +196,9 @@ phases:
             - "governance"
           context:
             correlation_id: "creative_evaluator_auth--feature_contract"
+        context_outputs:
+          - name: "creative_feature_id"
+            path: "governance.creative_features[0].feature_id"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -182,9 +211,6 @@ phases:
             value: "creative.evaluator"
             description: "Experimental evaluator feature id is declared"
           - check: field_present
-            path: "creative.supported_formats[0].capability_id"
-            description: "A targetable build capability id is discoverable"
-          - check: field_present
             path: "governance.creative_features[0].feature_id"
             description: "Creative feature vocabulary is discoverable for evaluator rank_by/eval.features"
           - check: field_value
@@ -194,11 +220,9 @@ phases:
 
   - id: reject_off_list_evaluator
     title: "Reject an off-list evaluator URL"
-    optional: true
     requires_capability:
       path: "creative.supports_evaluator"
       equals: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
     narrative: |
       The buyer supplies a well-formed external evaluator URL that is not in the
       seller's accepted verifier allowlist. The creative agent must reject it
@@ -208,6 +232,7 @@ phases:
       - id: reject_unaccepted_agent_url
         title: "Build with an unaccepted evaluator URL"
         task: build_creative
+        requires_contract: creative_build_probe_runner
         schema_ref: "media-buy/build-creative-request.json"
         response_schema_ref: "media-buy/build-creative-response.json"
         doc_ref: "/creative/task-reference/build_creative"
@@ -220,17 +245,8 @@ phases:
           off-list URL before any outbound call to the supplied evaluator.
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_off_list"
-          message: "Create two best-of-N display variants for Acme Outdoor's winter trip offer."
-          target_capability_id: "$context.build_capability_id"
-          max_variants: 2
-          variant_axis:
-            dimension: "best_of_n"
-          keep_mode: "keep_one"
           evaluator:
             agent_url: "https://unaccepted-evaluator.example/adcp"
-            rank_by:
-              - feature_id: "$context.creative_feature_id"
-                direction: "maximize"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -241,6 +257,21 @@ phases:
             domain: "acmeoutdoor.example"
           context:
             correlation_id: "creative_evaluator_auth--off_list"
+        context_inputs:
+          - key: build_capability_id
+            inject_at: target_capability_id
+          - key: build_target_format_id
+            inject_at: target_format_id
+          - key: build_message
+            inject_at: message
+          - key: build_creative_manifest
+            inject_at: creative_manifest
+          - key: build_creative_id
+            inject_at: creative_id
+          - key: build_transformer_id
+            inject_at: transformer_id
+          - key: build_config
+            inject_at: config
         validations:
           - check: response_schema
             description: "Response matches build-creative-response.json schema"
@@ -250,25 +281,24 @@ phases:
           - check: upstream_traffic
             description: "Off-list direct evaluator URL is never called"
             min_count: 0
-            endpoint_pattern: "POST https://unaccepted-evaluator.example/adcp*"
+            endpoint_pattern: "* https://unaccepted-evaluator.example/*"
 
   - id: reject_off_list_feature_agent
     title: "Reject an off-list feature_agent URL"
-    optional: true
     requires_capability:
       path: "creative.supports_evaluator"
       equals: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
     narrative: |
-      The buyer supplies a well-formed `feature_agent.agent_url` alongside an
-      account-arranged evaluator id. The nested feature agent uses the same
-      accepted-verifier allowlist and must be rejected before any outbound call
+      The buyer supplies a well-formed `feature_agent.agent_url` alongside the
+      accepted external evaluator source configured in the prerequisites. The
+      nested feature agent uses the same accepted-verifier allowlist and must be rejected before any outbound call
       when it is off-list.
 
     steps:
       - id: reject_unaccepted_feature_agent
         title: "Build with an unaccepted feature_agent URL"
         task: build_creative
+        requires_contract: creative_build_probe_runner
         schema_ref: "media-buy/build-creative-request.json"
         response_schema_ref: "media-buy/build-creative-response.json"
         doc_ref: "/creative/task-reference/build_creative"
@@ -282,20 +312,10 @@ phases:
           endpoint.
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_feature_agent_off_list"
-          message: "Create two best-of-N display variants for Acme Outdoor's winter trip offer."
-          target_capability_id: "$context.build_capability_id"
-          max_variants: 2
-          variant_axis:
-            dimension: "best_of_n"
-          keep_mode: "keep_one"
           evaluator:
-            evaluator_id: "quality-default"
+            agent_url: "https://quality-evaluator.example/adcp"
             feature_agent:
               agent_url: "https://unaccepted-evaluator.example/adcp"
-              feature_id: "$context.creative_feature_id"
-            rank_by:
-              - feature_id: "$context.creative_feature_id"
-                direction: "maximize"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -306,6 +326,21 @@ phases:
             domain: "acmeoutdoor.example"
           context:
             correlation_id: "creative_evaluator_auth--feature_agent_off_list"
+        context_inputs:
+          - key: build_capability_id
+            inject_at: target_capability_id
+          - key: build_target_format_id
+            inject_at: target_format_id
+          - key: build_message
+            inject_at: message
+          - key: build_creative_manifest
+            inject_at: creative_manifest
+          - key: build_creative_id
+            inject_at: creative_id
+          - key: build_transformer_id
+            inject_at: transformer_id
+          - key: build_config
+            inject_at: config
         validations:
           - check: response_schema
             description: "Response matches build-creative-response.json schema"
@@ -315,7 +350,7 @@ phases:
           - check: upstream_traffic
             description: "Off-list nested feature_agent URL is never called"
             min_count: 0
-            endpoint_pattern: "POST https://unaccepted-evaluator.example/adcp*"
+            endpoint_pattern: "* https://unaccepted-evaluator.example/*"
 
   - id: payload_credentials_advisory
     title: "Keep evaluator credentials out of the payload"
@@ -323,7 +358,7 @@ phases:
     requires_capability:
       path: "creative.supports_evaluator"
       equals: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "context.supports_evaluator != true || !context.creative_feature_id"
     narrative: |
       The buyer attempts to pass an evaluator API key inside the evaluator
       object. The payload is schema-valid but non-conforming: evaluator
@@ -337,6 +372,7 @@ phases:
       - id: evaluator_api_key_payload
         title: "Build with a credential-shaped evaluator field"
         task: build_creative
+        requires_contract: creative_build_probe_runner
         schema_ref: "media-buy/build-creative-request.json"
         response_schema_ref: "media-buy/build-creative-response.json"
         doc_ref: "/creative/task-reference/build_creative"
@@ -349,8 +385,6 @@ phases:
           must not forward the smuggled credential to the evaluator.
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_payload_credential"
-          message: "Create two best-of-N display variants for Acme Outdoor's winter trip offer."
-          target_capability_id: "$context.build_capability_id"
           max_variants: 2
           variant_axis:
             dimension: "best_of_n"
@@ -372,6 +406,21 @@ phases:
             domain: "acmeoutdoor.example"
           context:
             correlation_id: "creative_evaluator_auth--payload_credential"
+        context_inputs:
+          - key: build_capability_id
+            inject_at: target_capability_id
+          - key: build_target_format_id
+            inject_at: target_format_id
+          - key: build_message
+            inject_at: message
+          - key: build_creative_manifest
+            inject_at: creative_manifest
+          - key: build_creative_id
+            inject_at: creative_id
+          - key: build_transformer_id
+            inject_at: transformer_id
+          - key: build_config
+            inject_at: config
         validations:
           - check: response_schema
             description: "Response matches build-creative-response.json schema"
@@ -401,7 +450,7 @@ phases:
     requires_capability:
       path: "creative.supports_evaluator"
       equals: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "context.supports_evaluator != true || !context.creative_feature_id"
     narrative: |
       The buyer supplies an accepted external evaluator URL. The creative agent
       builds variants, calls the evaluator through the `get_creative_features`
@@ -412,6 +461,7 @@ phases:
       - id: build_with_accepted_evaluator
         title: "Build and rank with an accepted evaluator"
         task: build_creative
+        requires_contract: creative_build_probe_runner
         schema_ref: "media-buy/build-creative-request.json"
         response_schema_ref: "media-buy/build-creative-response.json"
         doc_ref: "/creative/task-reference/build_creative"
@@ -426,8 +476,6 @@ phases:
           authentication mechanism.
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_accepted"
-          message: "Create two best-of-N display variants for Acme Outdoor's winter trip offer."
-          target_capability_id: "$context.build_capability_id"
           max_variants: 2
           variant_axis:
             dimension: "best_of_n"
@@ -450,6 +498,21 @@ phases:
             domain: "acmeoutdoor.example"
           context:
             correlation_id: "creative_evaluator_auth--accepted"
+        context_inputs:
+          - key: build_capability_id
+            inject_at: target_capability_id
+          - key: build_target_format_id
+            inject_at: target_format_id
+          - key: build_message
+            inject_at: message
+          - key: build_creative_manifest
+            inject_at: creative_manifest
+          - key: build_creative_id
+            inject_at: creative_id
+          - key: build_transformer_id
+            inject_at: transformer_id
+          - key: build_config
+            inject_at: config
         validations:
           - check: response_schema
             description: "Response matches build-creative-response.json schema"
@@ -481,7 +544,7 @@ phases:
     requires_capability:
       path: "creative.supports_evaluator"
       equals: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "context.supports_evaluator != true || !context.creative_feature_id"
     narrative: |
       An accepted evaluator can be unreachable or can reject the producing
       agent's transport authentication. The buyer-visible build should not fail
@@ -494,6 +557,7 @@ phases:
       - id: force_evaluator_unavailable
         title: "Force accepted evaluator unavailable"
         task: comply_test_controller
+        requires_contract: creative_build_probe_runner
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
         doc_ref: "/building/by-layer/L3/comply-test-controller"
@@ -529,6 +593,7 @@ phases:
       - id: build_with_unavailable_evaluator
         title: "Build falls back to seller-default ranking"
         task: build_creative
+        requires_contract: creative_build_probe_runner
         schema_ref: "media-buy/build-creative-request.json"
         response_schema_ref: "media-buy/build-creative-response.json"
         doc_ref: "/creative/task-reference/build_creative"
@@ -541,8 +606,6 @@ phases:
           evaluator ranking was unavailable and seller-default ranking was used.
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_unavailable"
-          message: "Create two best-of-N display variants for Acme Outdoor's winter trip offer."
-          target_capability_id: "$context.build_capability_id"
           max_variants: 2
           variant_axis:
             dimension: "best_of_n"
@@ -562,6 +625,21 @@ phases:
             domain: "acmeoutdoor.example"
           context:
             correlation_id: "creative_evaluator_auth--unavailable_degrade"
+        context_inputs:
+          - key: build_capability_id
+            inject_at: target_capability_id
+          - key: build_target_format_id
+            inject_at: target_format_id
+          - key: build_message
+            inject_at: message
+          - key: build_creative_manifest
+            inject_at: creative_manifest
+          - key: build_creative_id
+            inject_at: creative_id
+          - key: build_transformer_id
+            inject_at: transformer_id
+          - key: build_config
+            inject_at: config
         validations:
           - check: response_schema
             description: "Response matches build-creative-response.json schema despite evaluator unavailability"

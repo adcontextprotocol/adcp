@@ -655,6 +655,62 @@
 #   See runner-output-contract.yaml > fixture_resolution_result for evidence and
 #   `fixture_unsatisfied` grading. See governance decision DR-0010.
 #
+# creative_build_probe: object (optional; runner preparation, not agent capability)
+#   context_prefix: lowercase context namespace for the atomic route/input binding
+#   message: brief used only by the bounded automatic generation recipe
+#
+#   Requires the creative_build_probe_runner implementation described in
+#   test-kits/creative-build-probe-runner.yaml. Build steps use requires_contract:
+#   creative_build_probe_runner. Unsupported engines keep existing contract and
+#   vacuous-pass guards; discovery steps need no build-preparation contract.
+#
+#   Operator recipes belong in the brand kit selected by prerequisites.test_kit,
+#   or in the runner's explicit test_kit/--test-kit override, for example:
+#
+#     creative_build_probes:
+#       - match:
+#           - path: /capability_id
+#             operator: equals
+#             value: provisioned_image_transform
+#         input:
+#           creative_manifest:
+#             format_kind: image
+#             assets:
+#               image_main:
+#                 asset_type: image
+#                 url: https://test-assets.example/provisioned.jpg
+#                 width: 300
+#                 height: 250
+#
+#   Match clauses use the existing fixture-resolution DSL against the complete
+#   supported_formats entry. Operators assert valid input for every matched route.
+#   Input fields: message (brief/guidance), creative_manifest (generation or
+#   transformation), creative_id (has_creative_library), transformer_id/config
+#   (supports_transformers), and a provisioned target_format_id when the selected
+#   request supports legacy routing. FormatID is an object, for example
+#   {agent_url: https://formats.example, id: sandbox_named_format}.
+#   For this probe contract, config is transformer-bound
+#   and library/inline sources are unambiguous; these are fixture authoring rules,
+#   not new restrictions on build_creative wire requests. Omitted recipe fields
+#   stay absent, including message. Never embed credentials or trust material.
+#
+#   Automatic generation needs a unique routable build operation, generation
+#   support, complete understood constraints and a schema-valid minimal source
+#   manifest. Legacy omitted operations mean build; absent IDs remain legal but
+#   unaddressable through capability-ID routing. A provisioned selected-version
+#   target_format_id recipe can use existing legacy routing instead. Catalog order
+#   is not an operation/input contract. Inert metadata
+#   does not disable the probe. Other declared/unknown constraints need a recipe.
+#
+#   Bind exactly one <prefix>_capability_id or <prefix>_target_format_id plus
+#   supplied <prefix>_message, _creative_manifest,
+#   _creative_id, _transformer_id and _config; inject optional fields through
+#   context_inputs. Resolved evidence includes creative_format:<prefix>, selected
+#   capability or named-format identity and exact match clauses. Missing fixtures/preconditions
+#   report fixture_unsatisfied with zero security credit. Invalid advertised
+#   catalogs produce a structured failed validation; malformed operator recipes
+#   are authoring errors. No global contribution/accounting rules change.
+#
 # --- Test kit flavors ---
 #
 # Files under `static/compliance/source/test-kits/` come in two shapes. The
