@@ -12,7 +12,7 @@
     "reason": {
       "type": "string",
       "enum": ["sandbox_only", "grant_absent"],
-      "description": "Registered per-agent gate that fired. `\"sandbox_only\"` — the agent is provisioned for sandbox traffic only and the request was against a non-sandbox account. `\"grant_absent\"` (added in 3.3, experimental with demand-side grants) — the agent's identity is established but no grant authorizes it to act for the account's brand: no demand-side grant chain from the brand house's trust.json reaches the agent's operator with a covering scope and with `account.operator` on the chain, evaluated as docs/building/by-layer/L2/accounts-and-agents.mdx §Grants in trust.json describes (DR-0025). A request-level authorization failure: no account is created and no account changes status. A withdrawn grant produces it on later calls from that agent while the account keeps its status. New `reason` values MUST be added here (the enum is closed by `additionalProperties: false`) so cross-language SDKs can dispatch without parsing prose."
+      "description": "Registered per-agent gate that fired. `\"sandbox_only\"` — the agent is provisioned for sandbox traffic only and the request was against a non-sandbox account. `\"grant_absent\"` (added in 3.3, experimental with demand-side grants) — the agent's identity is established but no grant authorizes it to act for the account's brand, as docs/building/by-layer/L2/accounts-and-agents.mdx §Grants in trust records describes (DR-0025). New `reason` values MUST be added here (the enum is closed by `additionalProperties: false`) so cross-language SDKs can dispatch without parsing prose."
     }
   },
   "required": ["scope", "reason"],

@@ -353,7 +353,7 @@ A `brand.json` listing is sufficient, not necessary. Finding the operator lets t
 
 `authorized_operators` models the interface between the brand and whoever operates on its behalf. Grants in trust.json model one agency hop; see below.
 
-### Grants in trust.json (experimental)
+### Grants in trust records (experimental)
 
 From 3.3, a brand's house can publish demand-side grants in its `/.well-known/trust.json` ([trust.json](/docs/reference/trust-json), [DR-0025](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0025-demand-side-grants-in-trust-json.md), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033)). A grant says "this organization, optionally only these of its agents, may act for us, for these scopes, in these countries, during this window". It is the trust.json successor to `authorized_operators`.
 
@@ -376,22 +376,22 @@ This section is the normative home for evaluating grants. Spec R6 and DR-0025 re
 
 **How a seller evaluates acts-for authority:**
 - **Domains compare as registrable domains.** `grantee`, `account.operator`, and the brand's domain are compared with the signer's operator, and with each other, as registrable domains under the pinned Public Suffix List snapshot from step 1 of [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) (spec R3a step 1).
-- **One record authorizes: the house's.** The seller reads `https://{house}/.well-known/trust.json`. The house is the domain the brand's brand.json names as its house (`house` on a house redirect, or a `house_domain` that the house's `brand_refs[]` reciprocates), and otherwise `account.brand.domain` itself. Grants in any other record are not consulted, including a record at the brand's own domain when the brand names a house, so the two never compete. The buyer's operator record never authorizes a brand outside the operator's registrable domain.
-- **Implicit authority.** When `account.operator`, the brand's domain, and the signer's operator are the same registrable domain, authority is implicit and no grant is needed. This extends self-authorization above, which compares the `operator` domain with the brand's domain exactly, to the registrable domain, because the signer's operator is a registrable domain.
+- **One record authorizes: the house's.** The house is the one the brand's brand.json names, as the [mutual-assertion trust model](/docs/brand-protocol/brand-json#mutual-assertion-trust-model) resolves it, and otherwise the brand's domain itself. The seller reads the house's record at its registrable domain, `https://{eTLD+1(house)}/.well-known/trust.json`, as step 1 of [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) derives the operator's record. Grants in any other record are not consulted, including a record at the brand's own domain when the brand names a house, so the two never compete. The buyer's operator record never authorizes a brand outside the operator's registrable domain.
+- **Implicit authority.** When `account.operator` and the signer's operator are the same registrable domain as the brand's domain or its house, authority is implicit and no grant is needed. This extends self-authorization above, which compares the `operator` domain with the brand's domain exactly, to the registrable domain, because the signer's operator is a registrable domain, and to the house, because the house's record is the one that authorizes and an organization's own agents act for it without a grant.
 - **Otherwise a grant chain must reach the signer's operator** with a scope covering the operation (`adcp:media_buying` for buys). Any of these satisfies it:
   - the house grants the signer's operator, and `account.operator` is the signer's operator;
   - the brand is `account.operator` and its house grants the signer's operator (a brand that runs its own account through an agent a platform hosts);
-  - the house grants `account.operator`, and `account.operator`'s own trust.json grants the signer's operator (an agency using an intermediary, or a platform hosting the agency's agent).
+  - the house grants `account.operator`, and `account.operator`'s own trust.json, read at its registrable domain, grants the signer's operator (an agency using an intermediary, or a platform hosting the agency's agent).
 
   `account.operator` MUST be on the chain. A grantee never extends a grant it received: the second link is its own grant, and the intermediary cannot grant further.
 - **`agents[]` narrows the link that reaches the signer.** On any link that carries `agents[]`, the signer's [canonical origin](/docs/reference/url-canonicalization#canonical-origin) MUST be listed, or the chain ends at that link. A grant's `agents[]` names agents its grantee runs, so a house grant to `account.operator` that is narrowed to the agency's own agents never covers an intermediary's agent: a two-link chain needs an unnarrowed first link, and the narrowing goes on `account.operator`'s grant to the intermediary.
 - **Every link must cover the account, and effective authority is the intersection along the chain:**
-  - `profiles.adcp.brands` covers `account.brand.brand_id` (`["*"]` or an omitted list covers every brand the grantor owns);
+  - `profiles.adcp.brands` covers `account.brand.brand_id` (`["*"]` or an omitted list covers every brand the grantor owns). A brand reference with no `brand_id` is covered only by `["*"]` or an omitted list;
   - `countries` covers every value in `account.brand.countries`. A grant with no `countries` is global; a brand reference with no `countries` is covered only by a global grant;
   - `scopes` covers the operation;
   - the window runs from the latest `valid_from` to the earliest `valid_until` along the chain, and the check time falls inside it.
 - **Absence.** `exclusive_grants: true` makes `grants[]` exhaustive for the scopes it names. Without it, an acts-for claim no grant covers stays at the seller's discretion: its own onboarding records, never the house's brand.json.
-- **Fetch failure.** A grantor's trust record that can't be fetched is never absence and never `grant_absent`: a spend-committing call fails with the retryable `SERVICE_UNAVAILABLE`.
+- **Fetch failure.** A grantor's trust record that can't be fetched is never absence and never `grant_absent`; the outage rules in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) apply to a grantor's record as to the operator's.
 - **No downgrade.** A 200 from the house's trust.json makes it the only source of grants, as the Coexistence rules in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) set out. Through 3.x, `authorized_operators` in brand.json stays a valid source only for a house that has never published a trust.json.
 - **Freshness.** Grants are checked at `sync_accounts` and on the freshness schedule in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities).
 
@@ -424,7 +424,7 @@ The brand-operator check runs against the seller's cached `brand.json` per [Oper
 ### First contact and binding
 
 <Note>
-**Experimental (Web Bot Auth profile, 3.3).** Under the Web Bot Auth signing profile, a seller can identify a buyer agent it has never onboarded: the signed request names the signer's origin, and the seller verifies it against that origin's key directory ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). These rules govern what happens next. They are rules R5 and R8 in `specs/agent-identity-3-3.md` ([#8118](https://github.com/adcontextprotocol/adcp/issues/8118)).
+**Experimental (Web Bot Auth profile, 3.3).** Under the Web Bot Auth signing profile, a seller can identify a buyer agent it has never onboarded: the signed request names the signer's origin, and the seller verifies it against that origin's key directory ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). These rules govern what happens next. This is rule R5 in `specs/agent-identity-3-3.md` ([#8118](https://github.com/adcontextprotocol/adcp/issues/8118)); relationship status (R8) is on [`get_principal`](/docs/protocol/get_principal#relationship-status).
 </Note>
 
 1. **Verification alone never creates a principal.** A verified origin with no binding is *identity-established*. It gets what an anonymous caller gets, reads included, plus [`get_principal`](/docs/protocol/get_principal), which returns `unconfigured`. A principal comes only from a binding under rule 2, including the binding a seller creates when it approves a new identity.
