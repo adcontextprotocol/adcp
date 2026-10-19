@@ -3,7 +3,8 @@
   "title": "PROPOSED additions to media_buy.features; not published",
   "type": "object",
   "properties": {
-    "supports_collection_selection": { "type": "boolean", "description": "Opt-in native selectable-collection support and qualified sandbox fixture commitment, including default materialization; not every product." },
+    "supports_collection_selection": { "type": "boolean", "description": "Opt-in native strict-subset selection and qualified sandbox fixture commitment with at least two distinct domain-qualified pairs; existing product default-readback obligations still bind." },
+    "supports_collection_default_materialization": { "type": "boolean", "description": "Opt-in native full-bundle default materialization and qualified sandbox fixture commitment with at least one distinct domain-qualified pair; independent of strict-subset fixtures." },
     "supports_fixed_collection_bundles": { "type": "boolean", "description": "Opt-in native fixed-collection bundle support and qualified sandbox fixture commitment; independent of selectable products." },
     "supports_owner_sold_channel_carriage": { "type": "boolean", "description": "Opt-in native owner-sold channel carriage support and qualified sandbox fixture commitment; no entitlement or authorization assertion." },
     "supports_format_breakdown": { "type": "boolean", "description": "Opt-in native format-grain reporting support and qualified sandbox fixture commitment; no required observed rows." },

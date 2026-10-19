@@ -13,7 +13,7 @@ SDK 15.9.5 and lockfile:
 node --test --test-timeout=30000 specs/optional-product-feature-declarations/probes.test.cjs
 ```
 
-The isolated suite has **54 tests**, including all 32 independent feature subsets.
+The isolated suite has **67 tests**, including all 64 independent feature subsets.
 It compiles actual current product/selection/reporting schemas and the actual
 immutable 3.2.5 feature schema for old-reader acceptance, without editing them.
 Three tests execute the real pinned SDK: two runner probes with injected clients
@@ -36,7 +36,7 @@ empty contracted time arrays, arbitrary positive thresholds, and requested-metri
 narrowing. These are schema-backed assertion oracles over isolated vectors,
 not executed source storyboards or a new reference-seller implementation.
 
-## Independent review synthesis
+## Initial review synthesis (head `2b4908b2`)
 
 The WG panel instructions require source-code, protocol and buyer/seller workflow
 review. Three independent reviewers were run in one parallel batch, with
@@ -69,6 +69,38 @@ and typecheck; its server-unit scope check correctly skipped unrelated server
 coverage. No full source-storyboard matrix or hosted implementation run is claimed.
 No reviewer can approve
 the normative field/fixture semantics for the WG or waive gated-path approval.
+
+## Reconciliation with independent default coverage
+
+The revised candidate adds a sixth proposed default-materialization field and
+controller scope. One schema-valid distinct pair qualifies independently from
+the two pairs required for genuine strict-subset selection. Six new probes
+cover default-only coverage, a broken subset promise alongside a valid default,
+all fixed/selectable one-pair modes, namespace-preserving normalization of
+schema-valid redundant/empty IDs, and regrouping versus schema-invalid duplicate
+selected objects, plus lossless ordering of schema-valid distinct IDs whose
+UTF-8 replacement bytes tie. All 64 declaration subsets execute; generic per-feature probes
+also cover the sixth scope. This is isolated evidence, not an SDK/DSL change.
+
+The proposal now cites #8259 at `ce8a65d6bd192c105ef3175091f29c7f296e47b9`
+and held reporting #8336 at `8ccc1d62194b9b8e2a9b8d3b2543b20d145f67f6`.
+Upstream counts and reviews are explicitly owner/reviewer reports; this workspace
+has not rerun those suites. The declared relation, same-selected snapshot,
+protected write/delete/metadata funnel, alias-safe prepared state and authenticated
+every-lookup grant/revocation requirements remain proposed foundation surfaces,
+with implementation assignment NONE RECORDED / unconfirmed. Reporting IDs are
+limited to the two actual-source reporting scenarios; new collection IDs remain
+provisional. Green draft CI or counterexample tests do not qualify shipping.
+
+Fresh independent protocol and product/docs reviews each reran **66/66** and
+found no blocking/actionable findings in the scope correction. Final independent
+code review inspected all seven changed files (the existing scoped workflow is
+unchanged), corrected a schema-valid Unicode ordering edge case, and reran
+**67/67**, zero failures/skips, plus `git diff --check`: **Ready to push**, with no
+remaining findings. The new regression preserves distinct IDs when UTF-8
+replacement bytes tie; it adds no schema restriction. The current isolated suite
+passes 67/67 locally; new exact-head CI will be observed separately. These fresh
+reviews support continued draft human review, not ratification or runtime safety.
 
 ## Still required for adoption
 

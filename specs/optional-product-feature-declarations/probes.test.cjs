@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Ajv = require('ajv');
 const { runStoryboard } = require('@adcp/sdk/testing');
-const { features, validators, qualifies, evaluate } = require('./model.cjs');
+const { features, validators, collectionPairs, qualifies, evaluate } = require('./model.cjs');
 let validate;
 test.before(async () => { validate = await validators(); });
 
@@ -18,9 +18,10 @@ function product(feature, extra = {}) {
     reporting_capabilities: { available_reporting_frequencies: ['daily'], expected_delay_minutes: 0,
       timezone: 'UTC', supports_webhooks: false, available_metrics: ['impressions', 'spend'], date_range_support: 'date_range' },
   };
-  if (['collection_selection', 'fixed_collection_bundles', 'owner_sold_channel_carriage'].includes(feature)) {
+  if (['collection_selection', 'collection_default_materialization', 'fixed_collection_bundles', 'owner_sold_channel_carriage'].includes(feature)) {
     value.collections = [{ publisher_domain: 'owner.example', collection_ids: ['news', 'music'] }];
-    if (feature === 'collection_selection') value.collection_targeting_allowed = true;
+    if (feature === 'collection_selection' || feature === 'collection_default_materialization') value.collection_targeting_allowed = true;
+    if (feature === 'collection_default_materialization') value.collections[0].collection_ids = ['news'];
   }
   if (feature === 'format_breakdown') value.reporting_capabilities.supports_format_breakdown = true;
   if (feature === 'time_based_views') value.reporting_capabilities.available_metrics.push('time_based_views');
@@ -94,8 +95,8 @@ for (const feature of features) {
   });
 }
 
-test('all 32 independent declaration combinations select only the promised empty-catalog paths', async () => {
-  for (let mask = 0; mask < 32; mask++) {
+test('all 64 independent declaration combinations select only the promised empty-catalog paths', async () => {
+  for (let mask = 0; mask < 2 ** features.length; mask++) {
     const declarations = Object.fromEntries(features.map((feature, i) => [`supports_${feature}`, Boolean(mask & (1 << i))]));
     for (let i = 0; i < features.length; i++) {
       const { args, calls } = setup(features[i], { capabilities: { media_buy: { features: declarations } } });
@@ -203,13 +204,13 @@ test('SDK 15.9.5: old catalog path remains runnable with unknown declaration key
 });
 
 const examples = require('./examples.json');
-const identities = selectors => selectors.flatMap(s => s.collection_ids.map(id => `${s.publisher_domain}\0${id}`)).sort();
+const identities = selectors => collectionPairs(selectors);
 // An isolated assertion oracle over concrete vectors, not a seller implementation.
 function selectionEvidence(vector) {
   if (!validate.collectionSelection(vector.request)) return 'INVALID_REQUEST';
-  const full = ['owner.example\0music', 'owner.example\0news'];
+  const full = [['owner.example', 'music'], ['owner.example', 'news']];
   const selected = vector.request.mode === 'default' ? full : identities(vector.request.collections);
-  if (selected.some(id => !full.includes(id))) return 'REFERENCE_NOT_FOUND';
+  if (selected.some(pair => !full.some(expected => JSON.stringify(pair) === JSON.stringify(expected)))) return 'REFERENCE_NOT_FOUND';
   if (!vector.selectable && JSON.stringify(selected) !== JSON.stringify(full)) return 'UNSUPPORTED_FEATURE';
   if (!validate.collectionSelection(vector.readback) || vector.readback.mode !== 'selected') return 'broken_readback';
   return JSON.stringify(identities(vector.readback.collections)) === JSON.stringify(selected) ? 'valid' : 'broken_readback';
@@ -269,4 +270,71 @@ test('SDK 15.9.5: an old controller returns UNKNOWN_SCENARIO for the proposed op
   const response = await handleTestControllerRequest(store, { scenario: 'prepare_product_feature', params: examples.prepare_params });
   assert.equal(response.success, false); assert.equal(response.error, 'UNKNOWN_SCENARIO');
   assert.deepEqual(store, {});
+});
+
+test('one-pair default-only catalog coverage survives an unavailable strict-subset fixture', async () => {
+  const single = product('collection_default_materialization');
+  assert.equal(validate.product(single), true);
+  const capabilities = { media_buy: { features: examples.default_only_declarations } };
+  const defaults = setup('collection_default_materialization', { capabilities, catalog: [single] });
+  const subsets = setup('collection_selection', { capabilities, catalog: [single] });
+  assert.equal((await evaluate(defaults.args)).state, 'applicable');
+  assert.equal((await evaluate(subsets.args)).state, 'coverage_gap');
+  assert.equal(defaults.calls.length, 0); assert.equal(subsets.calls.length, 0);
+});
+test('a broken promised subset fixture does not suppress a separately qualifying default path', async () => {
+  const single = product('collection_default_materialization');
+  const capabilities = { media_buy: { features: { supports_collection_selection: true, supports_collection_default_materialization: true } } };
+  const subsets = setup('collection_selection', { capabilities, catalog: [single],
+    prepare: async params => ({ success: true, simulated: { ...params, product: single } }) });
+  assert.equal((await evaluate(subsets.args)).reason, 'invalid_qualified_setup');
+  const defaults = setup('collection_default_materialization', { capabilities, catalog: [single] });
+  assert.equal((await evaluate(defaults.args)).state, 'applicable');
+});
+test('one-pair defaults qualify in selectable and omitted-or-false fixed modes', () => {
+  for (const mode of [undefined, false, true]) {
+    const single = product('collection_default_materialization');
+    if (mode === undefined) delete single.collection_targeting_allowed;
+    else single.collection_targeting_allowed = mode;
+    assert.equal(validate.product(single), true);
+    assert.equal(qualifies('collection_default_materialization', single), true);
+    assert.equal(qualifies('collection_selection', single), false);
+    assert.equal(qualifies('fixed_collection_bundles', single), false);
+  }
+});
+test('one evidence normalizer preserves namespaces and schema-valid redundant/empty IDs without inventing pairs', () => {
+  const repeated = product('collection_selection', { collections: [
+    { publisher_domain: 'owner.example', collection_ids: ['shared', 'shared', ''] },
+    { publisher_domain: 'owner.example', collection_ids: ['', 'shared'] },
+    { publisher_domain: 'other.example', collection_ids: ['shared'] },
+  ] });
+  assert.equal(validate.product(repeated), true);
+  const normalized = collectionPairs(repeated.collections);
+  assert.deepEqual(normalized, [['other.example', 'shared'], ['owner.example', ''], ['owner.example', 'shared']]);
+  assert.equal(qualifies('collection_selection', repeated), true);
+  const one = product('collection_selection', { collections: [
+    { publisher_domain: 'owner.example', collection_ids: ['news', 'news'] },
+    { publisher_domain: 'owner.example', collection_ids: ['news'] },
+  ] });
+  assert.equal(validate.product(one), true);
+  assert.equal(qualifies('collection_selection', one), false);
+  assert.equal(qualifies('collection_default_materialization', one), true);
+});
+test('set-equivalent regrouping passes semantic equality while schema-invalid duplicate selected objects fail', () => {
+  const grouped = [{ publisher_domain: 'owner.example', collection_ids: ['news', 'music'] }];
+  const regrouped = [{ publisher_domain: 'owner.example', collection_ids: ['music', 'news', 'news'] },
+    { publisher_domain: 'owner.example', collection_ids: ['news'] }];
+  assert.equal(validate.collectionSelection({ mode: 'selected', collections: regrouped }), true);
+  assert.deepEqual(collectionPairs(grouped), collectionPairs(regrouped));
+  assert.equal(validate.collectionSelection({ mode: 'selected', collections: [grouped[0], grouped[0]] }), false);
+  assert.notDeepEqual(collectionPairs(grouped), collectionPairs([{ publisher_domain: 'other.example', collection_ids: ['news', 'music'] }]));
+});
+
+test('schema-valid distinct IDs with equal UTF-8 replacement bytes normalize losslessly in either order', () => {
+  const a = [{ publisher_domain: 'owner.example', collection_ids: ['\ud800', '\ud801'] }];
+  const b = [{ publisher_domain: 'owner.example', collection_ids: ['\ud801', '\ud800'] }];
+  assert.equal(validate.collectionSelection({ mode: 'selected', collections: a }), true);
+  assert.equal(validate.collectionSelection({ mode: 'selected', collections: b }), true);
+  assert.deepEqual(collectionPairs(a), collectionPairs(b));
+  assert.equal(collectionPairs(a).length, 2);
 });

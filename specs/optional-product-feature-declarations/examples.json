@@ -2,11 +2,13 @@
   "note": "Isolated proposal vectors; fields are not published or certified. Collection readbacks below are semantic fragments, not complete task envelopes.",
   "declarations": {
     "supports_collection_selection": true,
+    "supports_collection_default_materialization": true,
     "supports_fixed_collection_bundles": false,
     "supports_owner_sold_channel_carriage": true,
     "supports_format_breakdown": false,
     "supports_time_based_views": true
   },
+  "default_only_declarations": { "supports_collection_default_materialization": true, "supports_collection_selection": false },
   "prepare_params": { "feature": "collection_selection", "fixture_id": "run-example-selectable" },
   "collection_vectors": [
     { "name": "selected subset", "selectable": true, "request": { "mode": "selected", "collections": [{ "publisher_domain": "owner.example", "collection_ids": ["news"] }] }, "readback": { "mode": "selected", "collections": [{ "publisher_domain": "owner.example", "collection_ids": ["news"] }] } },

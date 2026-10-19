@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "PROPOSED prepare_product_feature payload fragments; not published",
   "definitions": {
-    "feature": { "type": "string", "enum": ["collection_selection", "fixed_collection_bundles", "owner_sold_channel_carriage", "format_breakdown", "time_based_views"] },
+    "feature": { "type": "string", "enum": ["collection_selection", "collection_default_materialization", "fixed_collection_bundles", "owner_sold_channel_carriage", "format_breakdown", "time_based_views"] },
     "fixture_id": { "type": "string", "minLength": 1, "maxLength": 128, "x-entity": "product_feature_fixture" },
     "params": {
       "type": "object",

@@ -3,8 +3,8 @@ title: Seller-wide optional product-feature commitments
 class: normative
 status: proposed
 date: 2026-10-19
-refs: ["#8254", "PR #8259", "PR #7982", "PR #7973", "DR-0001", "DR-0009", "DR-0010"]
-dissent: Pending independent review; human/WG decision outstanding
+refs: ["#8254", "PR #8259", "PR #8336", "PR #7982", "PR #7973", "DR-0001", "DR-0009", "DR-0010"]
+dissent: Human/WG decision outstanding; agent review is not ratification
 ---
 
 ## Decision
@@ -15,21 +15,25 @@ a DR number and decision provenance are assigned only through human review.
 No production schema, storyboard, hosted disposition, or released artifact is
 changed. The isolated schemas and executable model below are proposal evidence.
 
-Recommend five optional booleans under `media_buy.features`, with no defaults:
+Recommend six optional booleans under `media_buy.features`, with no defaults:
 
 | Field | Commitment and qualifying product | Independent consumers |
 | --- | --- | --- |
-| `supports_collection_selection` | At least one product with nonempty explicit `collections`, `collection_targeting_allowed: true`, and at least two distinct collection identities so proper-subset selection can be tested. | Direct structured selection, default full-bundle materialization, persisted readback, invalid-selector rejection. |
+| `supports_collection_selection` | At least one product with nonempty explicit `collections`, `collection_targeting_allowed: true`, and at least two distinct domain-qualified collection pairs so proper-subset selection can be tested. | Strict-subset structured selection, persisted readback and invalid-selector rejection. Existing default obligations still bind on the product. |
+| `supports_collection_default_materialization` | At least one product with one distinct `(publisher_domain, collection_id)` pair in explicit `collections`, regardless of selectable/fixed mode. | `mode: default` full-bundle materialization and persisted concrete readback; independent of a strict-subset fixture. |
 | `supports_fixed_collection_bundles` | At least one multi-collection product with `collection_targeting_allowed` false or omitted (existing default false). | Exact full-bundle restatement, default materialization, proper-subset rejection. |
 | `supports_owner_sold_channel_carriage` | At least one channel-owner offer referencing that owner's canonical channel collection and a different host publisher's property. | Owner/host selector boundary checks; buyer-side host authorization verification remains separate. |
 | `supports_format_breakdown` | At least one product with `reporting_capabilities.supports_format_breakdown: true`. | Requested `format` dimension, `by_format`, truncation and applied-sort echoes; no required observations. |
 | `supports_time_based_views` | At least one product listing `time_based_views` in `reporting_capabilities.available_metrics`. | Metric availability and narrowing, schema-valid threshold entries when observed, committed-array presence when contracted. |
 
 These are existential seller support commitments, never assertions about every
-product. Selection/default belong together because the existing targeting
-contract already requires concrete default readback on a selectable product;
-there is no meaningful conformant "selects but cannot materialize default"
-path to declare independently. Fixed products have their own default path and
+product. Default materialization and strict-subset selection qualify
+independently: one distinct pair suffices for default coverage, while a genuine
+strict subset needs two distinct pairs. Missing a two-pair fixture MUST NOT
+suppress a one-pair default path. The two declarations do not make existing
+readback obligations optional: a selected product's default/readback contract
+still binds even when the separate seller-wide default commitment is absent or
+false. Fixed-bundle subset enforcement needs its own two-pair fixed product and
 must not depend on a selectable companion. Owner-sold offers can be fixed or
 selectable: declaring owner-sold does not imply either of the other flags.
 The owner-sold fixture uses the product's actual fixed/selectable behavior.
@@ -89,11 +93,69 @@ owner and root coordinator were contacted directly in their existing sessions;
 this PR touches only its own proposal namespace and scoped evidence workflow.
 Any later source overlap requires renewed file coordination with those owners.
 
+### Reconciled catalog prerequisites (nonoperative)
+
+The current foundation review packet is [#8259 at
+`ce8a65d6bd192c105ef3175091f29c7f296e47b9`](https://github.com/adcontextprotocol/adcp/blob/ce8a65d6bd192c105ef3175091f29c7f296e47b9/specs/optional-product-feature-applicability/collection-prerequisite.md).
+It supersedes earlier proposal-head references for this reconciliation; its new
+exact-head CI must be observed separately. The owner reports 70 local probes,
+code-review rerun of 70 and protocol rerun of 36. Those are owner/reviewer reports,
+not reruns by this declarations workspace or implemented SDK qualification.
+
+The selected-fixture contract must normalize schema-valid atomic
+`(publisher_domain, collection_id)` pairs before eligibility and deterministic
+parent selection. Default/full-bundle materialization needs one distinct pair;
+strict-subset and fixed-subset enforcement need two. Fixed accepts literal false
+or the existing omitted-false default, not null/wrong types. Optional declared
+cross-domain owner/host relations must qualify before selection and retain the
+same selected product, scoped price and relation witness. Full concrete bundle,
+real singleton strict subset and collision-checked absent-ID/absent-domain
+negatives must derive from that complete selected set. One normalizer serves
+eligibility, witnesses and namespace-set validation; schema-valid redundant pairs
+normalize as a set, while schema-invalid duplicate outer selected objects fail.
+Empty string collection IDs remain legal under current schemas. Wire-declared
+relations do not verify ownership or host authorization. Added collection
+scenario IDs remain provisional; this proposal adopts no new source filename.
+
+Protected captures need the proposed atomic write/delete/metadata funnel across
+all context-write paths, detached immutable preparation state and deep-cloned
+views against alias mutation, plus authenticated every-lookup tenant/caller/run/
+grant/revocation checks. These are separate, **unimplemented foundation
+surfaces**. Main-line implementation assignment is **NONE RECORDED / unconfirmed**;
+reviewer-only work is not an assignment. This PR implements no SDK/DSL, protected
+state or authenticated lookup. Its small pair normalizer is an isolated model
+helper, not a foundation API or evidence of implemented capture/state safety.
+
+Held reporting [#8336 at
+`8ccc1d62194b9b8e2a9b8d3b2543b20d145f67f6`](https://github.com/adcontextprotocol/adcp/pull/8336)
+has exactly two current actual-source IDs: `media_buy_seller/advanced_delivery_reporting`
+(format-only, literal product format-support true) and
+`media_buy_seller/time_based_delivery_reporting` (time metric independently present).
+Both discover native non-guaranteed products with compatible fixed CPM options,
+resolve pricing from the same product graph, and fully validate/paginate before
+selection. Only the isolated account is seeded; no feature products/prices are
+seeded. No-match is an explicit coverage gap, never a pass or nonsupport proof.
+Seeded-only, brief-only and commercial coverage limits remain disclosed.
+
+Commercial snapshot/minimum-spend, mature committed-time value-or-disclosure,
+caller-brand, full/standalone and hosted disposition limits keep that draft held.
+The owner reports 48 actual-source/public/hosted tests and 38 successful exact-head
+checks plus five skips; the draft storyboard matrix is skipped. These counts do
+not qualify runtime behavior or authorize shipping. The later #8259 public
+evidence shows bounded same-read returned-row ordering and time value-or-disclosure
+are already downstream-authorable, with timestamp/measurability/live-fallback,
+standalone-flow and unobserved-population limits. They are not reasons to invent
+new reporting observations or deterministic grain injection. Main 15.9.5 and a
+disposable pristine 15.9.6 comparison remain separately scoped; no dependency
+adoption follows. #8254 stays open. Maintenance qualification/merge, draft Version
+Packages refresh (including #8274), publication and production actions remain held;
+the #8302-only refresh exception does not extend to these drafts.
+
 ## Proposed normative language
 
 The following MUST/SHOULD text is conditional on adoption in an assigned minor.
 
-1. A seller MAY emit any subset of the five fields. Every emitted known value
+1. A seller MAY emit any subset of the six fields. Every emitted known value
    MUST be a boolean. Omitted fields, including an omitted `features` or
    `media_buy` parent, mean **no seller-wide claim / unknown**, not unsupported.
    `false` explicitly declines the seller-wide commitment; it does not deny
@@ -187,7 +249,7 @@ is not an executable escape hatch here.
 Propose one additional sandbox scenario, **`prepare_product_feature`**, within
 `comply_test_controller`, using its existing account and success/error envelope:
 
-- Params: `feature` (one of the five scope identifiers below) and `fixture_id`
+- Params: `feature` (one of the six scope identifiers below) and `fixture_id`
   (nonempty run-scoped idempotency key, maximum 128 characters). No authored
   product fields, selector strings, observed metrics, or credentials.
 - Success: `success: true`, `simulated: {feature, fixture_id, product}`. `product`
@@ -216,7 +278,8 @@ Propose one additional sandbox scenario, **`prepare_product_feature`**, within
   precondition, never "feature unsupported." A true feature's valid setup refusal
   is evidence of a violated promise, not a new interpretation of the error.
   An uncommitted feature is not probed through this operation.
-- Scope identifiers: `collection_selection`, `fixed_collection_bundles`,
+- Scope identifiers: `collection_selection`, `collection_default_materialization`,
+  `fixed_collection_bundles`,
   `owner_sold_channel_carriage`, `format_breakdown`, `time_based_views`.
 
 The isolated [declaration schema](optional-product-feature-declarations/features.schema.json)
@@ -245,9 +308,12 @@ are recommendations. A valid three-second `in_view` entry is acceptable. Check
 unique `(threshold_seconds, basis)` pairs when entries exist and do not sum
 bases. `available_metrics` alone does not guarantee every uncommitted metric
 is measurable on every report. Missing values follow existing omission and
-`missing_metrics` rules. Contracting `time_based_views` binds array presence,
-including an empty observed array; it does not bind particular thresholds.
-The two reporting probes below exercise these limits without injecting grains.
+`missing_metrics` rules. Contracting `time_based_views` binds accountability for its array carrier or
+the applicable `missing_metrics` disclosure under existing maturity/measurability
+rules; it does not force observations or bind particular thresholds. An empty
+observed array remains valid where the carrier is appropriate. A feature
+declaration alone supplies neither a matured commitment nor its timestamp.
+The isolated reporting probes exercise these limits without injecting grains.
 
 If the WG wants deterministic nonempty observations, it needs a **separate**
 controller amendment specifying package attribution, accepted format/threshold
@@ -273,7 +339,8 @@ are not retroactively certified; older implementations with a colliding custom
 boolean name must remove it or adopt this contract before opting in. An old
 schema accepting that boolean is not itself semantic certification.
 
-1. Keep the separately owned catalog fix and any qualified 3.2.x backport moving.
+1. Preserve the separately owned held catalog drafts and their qualification holds;
+   a 3.2.x backport requires a qualified main merge and separate actual-pin review.
    Retain its independent feature graphs, seller-derived selectors/pricing,
    omitted-false bundle handling and current reporting guarantees.
 2. Ratify exact fields, existential semantics and setup commitment. Assign a
@@ -281,7 +348,7 @@ schema accepting that boolean is not itself semantic certification.
    3.4 hold as a release assignment for this design. New stable optional fields
    plus new opt-in MUSTs are Normative/minor, not patch errata. Sellers making
    no claim keep their existing contracts.
-3. In a coordinated implementation PR add five properties to
+3. In a coordinated implementation PR add six properties to
    `static/schemas/source/core/media-buy-features.json`, document the clauses in
    `docs/protocol/get_adcp_capabilities.mdx`, add the controller scenario/params
    and docs, implement native fixture preparation in the reference seller, and
@@ -297,7 +364,8 @@ schema accepting that boolean is not itself semantic certification.
 
    That changeset is intentionally **not active in this proposal-only PR**;
    policy forbids versioning a nonoperative spec experiment as shipped protocol.
-4. Add the runner setup/evidence contract in its owning SDK, qualify the actual
+4. After explicit implementation assignment and contract approval, add the
+   runner setup/evidence contract in its owning SDK and qualify the actual
    pinned SDK and real source storyboards, and integrate a declaration assertion
    that cannot be hidden by controller prerequisites. Coordinate shared files
    with #8254 before promotion. Do not create equals-true or compound gates that
@@ -344,8 +412,9 @@ commands are recorded in [review evidence](optional-product-feature-declarations
 
 ## Unresolved normative choices for human/WG review
 
-1. Adopt the five field names and grouping, including default materialization
-   within selectable/fixed paths and owner-sold independent of selectability?
+1. Adopt the six field names and independent qualification, including a one-pair
+   default path separate from two-pair subset selection and owner-sold independent
+   of selectability?
 2. Adopt existential native support **plus** mandatory feature-qualified sandbox
    preparation for true declarations, or split technical-support rollups from
    an independently advertised fixture commitment? Recommendation: one explicit
