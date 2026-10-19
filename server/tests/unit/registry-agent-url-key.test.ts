@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
   legacyRegistryAgentUrlKey,
   registryAgentUrlKey,
+  registryAgentUrlKeySpellings,
   registryAgentUrlLookupKey,
 } from '../../src/db/registry-agent-url-key.js';
 import { canonicalizeAgentUrl } from '../../src/db/publisher-db.js';
@@ -156,5 +157,73 @@ describe('legacyRegistryAgentUrlKey', () => {
     // It accepted values that are not URLs at all — the reason unkeyable rows
     // exist in the registry today.
     expect(legacyRegistryAgentUrlKey('agent.example/mcp')).toBe('agent.example/mcp');
+  });
+});
+
+describe('registryAgentUrlKeySpellings', () => {
+  it('returns the folded key and the trailing-slash spelling of one agent', () => {
+    expect(new Set(registryAgentUrlKeySpellings('https://agent.example/mcp')))
+      .toEqual(new Set(['https://agent.example/mcp', 'https://agent.example/mcp/']));
+    expect(new Set(registryAgentUrlKeySpellings('https://agent.example/mcp/')))
+      .toEqual(new Set(['https://agent.example/mcp', 'https://agent.example/mcp/']));
+  });
+
+  it('keeps the caller spelling when canonicalization changed more than the slash', () => {
+    expect(new Set(registryAgentUrlKeySpellings(' HTTPS://Agent.Example:443/MCP/ ')))
+      .toEqual(new Set([
+        'https://agent.example/MCP',
+        'HTTPS://Agent.Example:443/MCP/',
+        'https://agent.example/MCP/',
+      ]));
+  });
+
+  it('covers the root path, whose key carries no slash at all', () => {
+    expect(new Set(registryAgentUrlKeySpellings('https://agent.example/')))
+      .toEqual(new Set(['https://agent.example', 'https://agent.example/']));
+  });
+
+  it('never widens past one agent: every spelling keys back to the same identity', () => {
+    for (const raw of [
+      'https://agent.example/mcp',
+      'https://agent.example/mcp/',
+      'https://agent.example',
+      'https://agent.example/?t=1',
+      'https://agent.example?t=1',
+      'https://agent.example/mcp?t=1',
+      'https://agent.example/mcp//',
+      'https://agent.example/a/../mcp',
+      'https://bücher.example/mcp/',
+      '*',
+    ]) {
+      const key = registryAgentUrlKey(raw);
+      const spellings = registryAgentUrlKeySpellings(raw);
+      expect(spellings.length).toBeGreaterThan(0);
+      expect(new Set(spellings).size).toBe(spellings.length);
+      for (const spelling of spellings) {
+        expect(registryAgentUrlKey(spelling)).toBe(key);
+      }
+    }
+  });
+
+  it('puts the slash back on the path, never inside the query', () => {
+    expect(new Set(registryAgentUrlKeySpellings('https://agent.example/mcp?t=1')))
+      .toEqual(new Set(['https://agent.example/mcp?t=1', 'https://agent.example/mcp/?t=1']));
+    expect(registryAgentUrlKeySpellings('https://agent.example/mcp?t=1'))
+      .not.toContain('https://agent.example/mcp?t=1/');
+  });
+
+  it('inverts the root-with-query case, whose key keeps the slash for the query', () => {
+    expect(new Set(registryAgentUrlKeySpellings('https://agent.example/?t=1')))
+      .toEqual(new Set(['https://agent.example/?t=1', 'https://agent.example?t=1']));
+  });
+
+  it('grows no second spelling for the wildcard sentinel', () => {
+    expect(registryAgentUrlKeySpellings('*')).toEqual(['*']);
+  });
+
+  it('falls back to the raw input for a URL the key rejects, like the lookup key', () => {
+    expect(registryAgentUrlKeySpellings('agent.example/mcp')).toEqual(['agent.example/mcp']);
+    expect(registryAgentUrlKeySpellings('agent.example/mcp'))
+      .toContain(registryAgentUrlLookupKey('agent.example/mcp'));
   });
 });
