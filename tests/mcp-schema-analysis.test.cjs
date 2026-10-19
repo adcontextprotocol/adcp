@@ -51,7 +51,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // list_collections (#8183) adds one tool and the collection selector,
   // collection kind, and genre taxonomy definitions it alone reaches, plus the
   // shared locale tag its languages filter references.
-  assert.equal(report.definition_instances, 701);
+  // opportunity.later_proposals adds a Duration reference to the shared
+  // opportunity context reached from the proposal and purchase tools (+2).
+  assert.equal(report.definition_instances, 703);
   assert.equal(report.unique_definitions, 189);
   assert.equal(report.repeated_definitions, 134);
   assert.ok(report.repeated_definition_bytes > 180_000);
