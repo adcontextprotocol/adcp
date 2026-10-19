@@ -26,4 +26,4 @@ jobs:
       - run: npm ci
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
-      - run: node --test --test-timeout=30000 specs/optional-product-feature-applicability/probes.test.cjs specs/optional-product-feature-applicability/collection-prerequisite.test.cjs
+      - run: node --test --test-timeout=30000 specs/optional-product-feature-applicability/probes.test.cjs specs/optional-product-feature-applicability/collection-prerequisite.test.cjs specs/optional-product-feature-applicability/context-write-boundaries.test.cjs specs/optional-product-feature-applicability/format-sort-authorability.test.cjs specs/optional-product-feature-applicability/time-accountability-authorability.test.cjs

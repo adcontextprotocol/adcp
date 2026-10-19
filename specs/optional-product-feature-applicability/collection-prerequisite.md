@@ -162,6 +162,8 @@ preparation-produced captures. Use a reserved immutable namespace: later
 convention extraction, authored step captures and seller-returned context must
 not replace preparation snapshots, witnesses or their provenance either.
 
+See [the concrete protected-capture enforcement plan](protected-capture-enforcement.md) for the proposed internal write helper, every installed write/delete/metadata/adoption funnel, alias-bypass protection and separate every-lookup grant/revocation checks. There is no current arbitrary seller-context merge; fixed convention extraction and authored captures are the actual promotion paths. A reserved-prefix convention alone is insufficient.
+
 Existing scalar capture plus ordinary YAML object construction is enough for a
 simple singleton request. A general subset/map/slice language is unnecessary.
 For arbitrary multi-selector products and carriage, provide a bounded
@@ -230,7 +232,7 @@ the standalone runner must prepare it on first use and return it for subsequent
 steps. Neither proposed API exists today.
 
 State binds to storyboard identity/content, resolved seller route and URL,
-schema/AdCP target, account/sandbox/auth scope, and run identity. It includes
+schema/AdCP target (exact immutable bundle/artifact identity or verified digest), contract version, account/sandbox/auth scope, and run identity. It includes
 the pinned identities, snapshots/witnesses, capture provenance, and any terminal
 preparation disposition. Steps cannot change or reinterpret those bindings.
 No-match yields `fixture_unsatisfied` before a stateful call; failed supported
@@ -244,7 +246,7 @@ same authenticated preparation with explicit run pinning. An opaque reference is
 authenticated tenant/org, caller and run scope, and recheck current grant and
 revocation state. Bind auth scope using a nonsecret principal/credential generation
 identity; never include bearer tokens or other credentials in evidence. Existing
-arbitrary `context` input is insufficient proof. If durable/multi-process state is deferred,
+arbitrary `context` input is insufficient proof. Preparation parity must also be distinguished from enclosing-phase conditional-flow parity; the existing standalone entry point does not apply `phase.skip_if`. Qualify/orchestrate that separately. If durable/multi-process state is deferred,
 say exactly which interactive surface remains unsupported and do not claim
 full/standalone parity.
 
@@ -291,7 +293,9 @@ smallest cohesive ownership boundaries, not a request to edit them here.
 | `src/lib/testing/storyboard/fixture-resolution.ts` | Closed predicate/capture validation; bounded eligibility; preserve deterministic identity binding. |
 | Proposed `src/lib/testing/storyboard/collection-selection.ts` | One pair normalizer, relation/subset/negative-witness builder, set equality with bounded diagnostics. |
 | `src/lib/testing/storyboard/seeding.ts` | Capture the selected product/pricing/witness once; commit context only after graph success; expose reusable preparation without changing seed semantics. |
-| `src/lib/testing/storyboard/context.ts` | Reuse/provenance for declaration-local fixed-path captures. No general transform language or nested-token expansion is required. |
+| `src/lib/testing/storyboard/context.ts` | Reuse/provenance for declaration-local fixed-path captures; detached views prevent object-alias mutation. No general transform language or nested-token expansion is required. |
+| Proposed `src/lib/testing/storyboard/protected-context.ts` | Central atomic value/deletion/metadata write policy and protected state lifecycle across every context write funnel; see the enforcement plan. |
+| `src/lib/testing/compliance/comply.ts` | Validate routed caller inputs and explicit trusted-brand orchestration; route JSON cannot import prepared-state authority. |
 | `src/lib/testing/storyboard/validations.ts` | Shared namespace-aware set validator with mandatory expected context. |
 | `src/lib/testing/storyboard/runner.ts` | Full/standalone preparation, pinned-state lifecycle, propagation of capture evidence and failures. |
 | `src/lib/testing/storyboard/index.ts`, `src/lib/testing/index.ts` | Public preparation/state exports where needed. |
@@ -359,10 +363,7 @@ Read-only GitHub searches on 2026-10-19 found no open issue/PR specifically
 covering `fixture_resolution` or collection fixture predicates. The original
 foundation is [adcp-client#2456](https://github.com/adcontextprotocol/adcp-client/issues/2456),
 closed, no current assignee; its history implements the intentionally closed
-first slice for seed/discover products and scoped prices. The existing owner is
-therefore the upstream SDK project/maintainers, not an open implementation PR
-that should be duplicated. Recheck immediately before creating any upstream
-work and coordinate with a newly discovered owner. No external message or issue
+first slice for seed/discover products and scoped prices. The upstream project/maintainers own the code, but this does **not** establish a currently assigned fixture/runner implementation owner. Root and the P0 Reports coordinator confirm **NONE RECORDED / implementation assignment unconfirmed**. This is a bounded recorded-ownership answer, not a global assertion about unrecorded work. Recheck and coordinate through root before assigning upstream work. No external message or issue
 was posted by this analysis.
 
 1. Review/approve the concrete focused contract (including carriage's
@@ -371,7 +372,7 @@ was posted by this analysis.
    existing SDK primitives.
 2. Open/coordinate one upstream foundation issue and implementation PR after
    authorization; implement/tests against those contracts. No server-only DSL.
-3. Adopt an approved released SDK in a separate authorized dependency change.
+3. Classify new public SDK declarations/preparation APIs as an SDK **minor** change. This does not itself change a downstream protocol patch classification for repairing existing MUSTs; assess the actual adopted surface and compatibility separately. Adopt an approved released SDK in a separate authorized dependency change.
    The current task keeps both manifest and lockfile untouched.
 4. Rewrite collection storyboards as independent graphs using real selectors
    and pricing; retain rejection/readback checks, meaningful nonsupporting and
@@ -395,7 +396,7 @@ these failures on SDK 15.9.5:
   within an explicitly qualified commercial scope. Do not silently choose a new
   product after setup failure.
 - An accepted package explicitly commits `time_based_views`; its commitment
-  timestamp and final reporting window are mature. The candidate accepts a
+  timestamp and reporting window are stipulated mature in the counterexample fixture; finality/zero delay alone are not general per-metric maturity evidence. The candidate accepts a
   report omitting both the metric and its applicable `missing_metrics` entry.
   This false pass is a durable counterexample, not acceptable final grading.
   Reconcile the accepted `committed_metrics`, `committed_at`, reporting period,
@@ -429,23 +430,59 @@ from an unobserved larger population. Broader sort coverage needs a faithful
 existing-contract implementation or a separately reviewed shared validation
 prerequisite, not fabricated observations.
 
+## Reconciled downstream reporting feasibility
+
+The stable reviewer's request to prove existing-YAML authorability was a hypothesis,
+not a reason to weaken any held runtime counterexample. Independent public
+15.9.5 executions now split that question precisely:
+
+| Scope | Executable result and remaining limit |
+| --- | --- |
+| Returned format-row ordering | [15 sort probes and analysis](format-sort-authorability.md) prove a bounded same-response pair can be audited today through exact opaque-context echoes plus existing numeric comparison. Legal empty/one-row full runs skip only that comparison. This is a downstream source opportunity, not proof that every sort assertion requires a new SDK validator. |
+| Selection from a hidden larger population | An ordered limited pair does not reveal omitted better rows. Comparing another live GET detects one stable defect but falsely fails truthful changed nonfinal observations. No same-observation population oracle follows from injected totals or a new comparator. Keep the coverage limit explicit; deterministic grain/snapshot guarantees are separate contract work. |
+| Time value-or-disclosure | [21 time probes and analysis](time-accountability-authorability.md) prove accepted/report snapshot captures and scoped `refs_resolve` with **both roots in context** can audit the same absent carrier at arbitrary commitment indexes. A follow-up response gaining data no longer falsely fails the earlier snapshot. This bounded downstream construction is already authorable. |
+| General time eligibility | Strict ISO `committed_at < reporting_period.end` filtering is not supplied by the current numeric/phase grammar. Per-metric measurability cannot be inferred merely from a stage named final or `is_final`; product window metadata lacks a per-metric eligibility map. Absent-ledger fallback needs **current** same-product metadata, rather than the initial selected snapshot; ordinary refresh/read captures are authorable, correct selection remains separately required. |
+| Standalone conditional flow | Both suites reproduce `runStoryboardStep` ignoring enclosing `phase.skip_if`, even with caller-supplied snapshots. Prepared IDs/snapshots alone do not establish conditional parity. Qualify explicit orchestration or a scoped shared correction independently from fixture preparation. |
+
+These 36 new probes preserve the held YAML's actual mature-time false pass and
+legal-case counterexamples. They implement no source correction. The saved
+reporting YAMLs under `reporting-snapshots/` are byte-identical evidence from
+held #8336 head `8ccc1d62194b9b8e2a9b8d3b2543b20d145f67f6`, not operative
+compliance assets or publication. The sort experiments project the source report
+step after an already-created buy; the time suite additionally executes the
+whole saved held time graph. Actual revised-source qualification still belongs
+to #8336's 48 tests and its unresolved runtime holds.
+
+The commercial selected snapshot and reusable standalone fixture state are SDK
+foundation prerequisites in the recommended route. Conditional accountability,
+metric narrowing and actual returned-row sort remain **downstream source
+obligations**. A focused timestamp comparator or qualified in-scope capture
+might help; it must not claim authority to decide metric measurability. The
+implementation location for the remaining reporting limits is not assigned by
+this packet. Hosted synthetic discovery classification remains a separate
+accounting/policy-owner question, with raw failure evidence retained.
+
+[Three public context-boundary probes](context-write-boundaries.test.cjs) also
+reproduce whole-object alias mutation, no implicit opaque seller-context merge,
+and explicit authored promotion of seller context. They support the concrete
+[write-funnel enforcement plan](protected-capture-enforcement.md), not a claim
+that protections exist today. [The SDK pin comparison](sdk-pin-comparison.md)
+corrects the intervening-release claim and separately attributes root's registry/
+Git verification and owner's pristine/disposable reruns. Exact installed 15.9.5
+main evidence is not stale merely because 15.9.6 exists; no adoption follows.
+
 ## Coordination and decision still required
 
 The catalog-versus-declarations choice is **not being reopened**. Brian approved
 catalog-based applicability with its explicit limitations and separately started
 future-minor declarations, now draft #8333. Human/WG/path gates remain real.
 
-Root located the existing Stable SDK CLI fixes workspace
-`efec54f3-57cf-4d31-8908-56e193147e5c`, session
-`b750f233-30f4-46b3-a930-a8ce537badfd`, and requested ownership confirmation and
-read-only feasibility review. That is not an implementation assignment. Route
-this contract through root and the confirmed fixture/runner owner; do not start
-another SDK worker or source implementation here.
+Root confirms the Stable SDK CLI fixes workspace `efec54f3-57cf-4d31-8908-56e193147e5c`, session `b750f233-30f4-46b3-a930-a8ce537badfd`, is **reviewer only**. Its review used a 15.9.4 tree and fetched proposals and did not rerun these suites; it supports the focused upstream direction, not executable qualification. The former signed-bundle workspace `65ea76e5-109d-4384-883b-06444e562a2f`, session `0b6be8f6-daa7-4477-86ff-3d47be707999`, is archived. Root and P0 report no currently assigned main-line foundation implementation owner in their preserved records. No unarchive, new worker/session, implementation assignment or adoption is authorized. Route the concrete contract through root before assigning work; reviewer status and bounded evaluator/release work do not imply ownership.
 
 The exact next engineering decision is whether the confirmed SDK owner accepts
 the focused matcher + same-selection captures/witnesses + shared namespace-set
-validation + prepared-state parity contract (and the existing-field reporting
-accountability/caller qualification work), or identifies a faithful smaller
+validation + prepared-state parity contract (with the separately scoped downstream reporting obligations,
+caller orchestration and hosted accounting decisions preserved), or identifies a faithful smaller
 existing public mechanism. Generic OR/relations and a local duplicate resolver
 remain the alternatives and carry the risks above. No SDK/DSL implementation,
 installer/shim, dependency adoption, publication or maintenance merge is authorized

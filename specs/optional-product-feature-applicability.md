@@ -41,9 +41,7 @@ express all collection qualification/capture/validation/state requirements. The
 [concrete prerequisite proposal](optional-product-feature-applicability/collection-prerequisite.md)
 compares existing public mechanisms, a local foundation preserving the pin, and
 a focused upstream prerequisite; it recommends the upstream route through the
-confirmed owner. Names shown there are proposed contracts, not existing APIs.
-Root is coordinating read-only feasibility/ownership review with the existing SDK
-workspace. No SDK/DSL implementation or dependency adoption is authorized here.
+upstream project after root confirms an implementation assignment. Names shown there are proposed contracts, not existing APIs. Main-line foundation implementation ownership is **NONE RECORDED / unconfirmed**; the stable workspace is reviewer only and the former signed-bundle workspace is archived. No SDK/DSL implementation or dependency adoption is authorized here.
 
 A separately held reporting source draft executes actual revised storyboards and
 hosted disposition. It preserves minimum-spend rejection, public default-brand
@@ -142,23 +140,25 @@ versioned artifacts or cut a release as part of this issue.
 Run all decision and public-runner prerequisite evidence with:
 
 ```bash
-node --test --test-timeout=30000 specs/optional-product-feature-applicability/*.test.cjs
+node --test --test-timeout=30000 specs/optional-product-feature-applicability/probes.test.cjs specs/optional-product-feature-applicability/collection-prerequisite.test.cjs specs/optional-product-feature-applicability/context-write-boundaries.test.cjs specs/optional-product-feature-applicability/format-sort-authorability.test.cjs specs/optional-product-feature-applicability/time-accountability-authorability.test.cjs
 ```
 
 The probes use the installed, pinned SDK and schema-validated fixture discovery
-with injected clients. They execute independent no-match and supporting-product
+in the 12 original model probes. The 58 public probes use intercepted public MCP transport and actual public APIs. They execute independent no-match and supporting-product
 paths, preserve failures after selection, reject failed discovery without seed
 fallback, demonstrate that seed-first never discovers the native catalog, and
 demonstrate all-or-nothing companion suppression. These are decision evidence,
 not regression coverage of repaired published storyboards. CI runs them
 separately from the source-storyboard matrix. The 12 original decision probes
-plus 19 public-runner prerequisite probes pass on the unchanged SDK 15.9.5 pin.
+plus 19 collection prerequisite, 3 context-boundary, 15 format-sort and 21 time-accountability public probes pass: **70 total** on the unchanged installed SDK 15.9.5 pin.
 The latter use public full/standalone/extraction APIs and real MCP transport
 intercepted through public `trustedFetchFn`, with no private runner seams. They
 demonstrate omitted/false eligibility, later paginated qualification, selected
 identity versus unrelated selectors/commercial metadata, owner/host relation,
 namespace-set validation and standalone limitations. They intentionally preserve
 limitations; they do not qualify repaired collection storyboards.
+
+The [reconciled reporting feasibility](optional-product-feature-applicability/collection-prerequisite.md#reconciled-downstream-reporting-feasibility) separates existing-YAML bounded same-snapshot checks from timestamp/measurability, population-oracle and standalone-flow limits. The [concrete protected-context plan](optional-product-feature-applicability/protected-capture-enforcement.md) identifies all write/delete/metadata funnels and reference-alias protection, with authenticated every-lookup grant/revocation checks separate. The [pin comparison](optional-product-feature-applicability/sdk-pin-comparison.md) records root-corroborated registry/source facts and separately attributed owner pristine/disposable evidence; no adoption or maintenance qualification follows.
 
 Before an implementation may merge, execute the actual revised source
 storyboards and hosted disposition policy against this acceptance matrix:
