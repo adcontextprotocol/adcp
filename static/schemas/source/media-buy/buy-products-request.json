@@ -130,7 +130,6 @@
       "allOf": [
         { "$ref": "/schemas/core/opportunity-context.json" },
         {
-          "properties": { "status": { "const": "closed" } },
           "if": {
             "properties": { "status": { "const": "closed" } },
             "required": ["status"]
@@ -138,9 +137,18 @@
           "then": {
             "properties": { "close_reason": { "const": "accepted_with_seller" } }
           }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": { "status": { "const": "open" } },
+              "required": ["status"]
+            }
+          },
+          "then": { "not": { "required": ["later_proposals"] } }
         }
       ],
-      "description": "Optional planning-cycle closure for a direct product purchase. Success infers closed with accepted_with_seller when status is omitted; an explicit status MUST carry that same closure."
+      "description": "Optional planning-cycle closure for a direct product purchase. Success infers closed with accepted_with_seller when status is omitted; an explicit closed status MUST carry that same closure. Experimental (media_buy.open_opportunities): explicit status open keeps the opportunity open, only when the seller advertises keep_open_after_purchase, and resets later_proposals consent unless restated."
     },
     "context": {
       "$ref": "/schemas/core/context.json"
