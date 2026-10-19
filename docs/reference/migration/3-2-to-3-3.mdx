@@ -286,6 +286,28 @@ Optional. Cooperating `get_products` integrations can carry an opportunity bindi
 
 Optional and experimental (`media_buy.open_opportunities`). Advertise the parts you implement under `media_buy.open_opportunities` and list the feature id in `experimental_features`. `list_proposals: true` is the read; it is required before `later_proposals.supported: true`, which also requires `max_open_duration`. `keep_open_after_purchase: true` lets `accept_proposal` and `buy_products` accept `opportunity.status: "open"`. A seller creating later proposals needs the buyer's `opportunity.later_proposals` consent and an open window, honors `max_count` and `min_interval`, issues drafts with `opportunity_id`, `expires_at`, and a `later_reason`, and announces them with `proposal.created` on account `notification_configs[]`, never on a task's `push_notification_config`. Buyers send none of these fields, nor an empty `decline_proposals` `declines` array, to a seller that does not advertise the matching part; 3.2 sellers reject them. See [Open opportunities and later proposals](/docs/media-buy/product-discovery/proposal-negotiation#open-opportunities-and-later-proposals).
 
+### `age_determination_bases` on signals
+
+Optional. Signal listings, definitions, and definition enrichment can carry `age_determination_bases` (`verified`, `declared`, `inferred`), a sibling of `demographic_predicate` that says how the signal's members' ages were established. It is valid only when `demographic_predicate.age` is present. A buyer whose request names `accepted_bases` treats a signal listing as passing the basis test only when its age range is within the request and every one of its bases is accepted; an absent field makes no basis claim. See [Age determination basis on included signals](/docs/media-buy/advanced-topics/targeting#age-determination-basis-on-included-signals).
+
+The field is stable in 3.3, not experimental. It completes the basis vocabulary already stable as `accepted_bases`, `supported_bases`, and `applied_bases`.
+
+**Interim on 3.2.** Until you claim 3.3, carry the value as `ext.adcp.age_determination_bases` on the signal-listing entry. This is the AdCP-owned `ext.adcp` namespace, the same precedent as `ext.adcp.opportunity`, not a vendor extension, so migrating is a rename: move the value from `ext.adcp.age_determination_bases` to a top-level `age_determination_bases` and drop the `ext` copy. Apply the same matching rule on 3.2. If a listing carries both, the top-level field wins. Buyers cannot infer 3.2 support from absence, and an absent value already means no basis claim, so the interim is safe to omit.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/signal-listing.json",
+  "signal_ref": { "scope": "product", "signal_id": "verified_adults_25_34" },
+  "name": "Verified adults 25–34",
+  "value_type": "binary",
+  "restricted_attributes": ["age"],
+  "demographic_predicate": {
+    "age": { "min": 25, "max": 34, "include_unknown": false }
+  },
+  "ext": { "adcp": { "age_determination_bases": ["verified"] } }
+}
+```
+
 ## Deprecations
 
 3.3 deprecates two result fields and one usage; all remain functional throughout 3.x:

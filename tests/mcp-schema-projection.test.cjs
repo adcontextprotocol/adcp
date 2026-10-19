@@ -138,9 +138,12 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // against main), bounded at 1_272_000. Explicit creative acceptance constraints
 // and verifier guidance add 5,486 bytes (1_270_981 -> 1_276_467 measured),
 // bounded at 1_280_000 to retain compilation of every storyboard fixture.
+// The experimental proposal.created notification type in the account
+// notification-config enums and the simulate_later_proposal scenario reach it (1_281_908 bytes measured after
+// merging main), bounded at 1_285_000.
 // This is the parity-test compiler allowance; the independent 4 MiB schema,
 // 22 MiB projection, and role model-context budgets are unchanged.
-const PARITY_COMPILE_LIMIT = 1_280_000;
+const PARITY_COMPILE_LIMIT = 1_285_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
