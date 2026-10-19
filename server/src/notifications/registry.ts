@@ -638,3 +638,149 @@ export async function notifyAddieReview(review: {
     logger.error({ error, domain: review.domain }, 'Failed to send Addie review notification');
   }
 }
+
+/**
+ * Notify the moderator channel that a human closed a queued registry
+ * review (adcp#8338).
+ *
+ * The channel was the only queue before the admin view existed, so a
+ * decision taken in the UI has to land back in the room — otherwise two
+ * moderators work the same card. The moderator's own identity is the one
+ * platform-authored thing here; everything else (domain, note) is
+ * member- or moderator-typed free text and goes through the helpers.
+ */
+export async function notifyRegistryReviewResolved(resolution: {
+  entity_type: 'brand' | 'property';
+  domain: string;
+  /**
+   * Whether the decision was about publishing the record or about one
+   * of its edits. "Approved" means different things to the next
+   * moderator reading the channel, and this is the message they use to
+   * avoid double-working an item.
+   */
+  subject?: 'record' | 'edit';
+  /** What the moderator did, not what they set out to do. */
+  action: 'approved' | 'rejected' | 'reverted' | 'dismissed';
+  moderator_email?: string;
+  moderator_name?: string;
+  /** For a revert: the revision that was restored (adcp#8337). */
+  restored_revision?: number;
+  /** For a revert that covered later stacked edits as well. */
+  reverted_edits?: number;
+  note?: string;
+}): Promise<void> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured()) return;
+
+  const typeLabel = resolution.entity_type === 'brand' ? 'Brand' : 'Property';
+  const domainLabel = sanitizeSlackLine(resolution.domain, FIELD_MAX);
+  const moderator = sanitizeSlackLine(
+    resolution.moderator_name || resolution.moderator_email || 'Admin',
+    FIELD_MAX,
+  );
+
+  const isEdit = resolution.subject === 'edit';
+  const emoji = resolution.action === 'approved' ? '✅'
+    : resolution.action === 'rejected' ? '🗑️'
+    : resolution.action === 'dismissed' ? '🙈'
+    : '⏪';
+  const verb = resolution.action === 'approved'
+    ? (isEdit ? 'edit kept as submitted' : 'record published')
+    : resolution.action === 'rejected' ? 'record rejected and removed'
+    : resolution.action === 'dismissed'
+      ? 'edit closed without a revert — nothing to roll back to'
+      : Number.isInteger(resolution.restored_revision)
+        ? `edit reverted to revision ${resolution.restored_revision}`
+        : 'edit reverted';
+
+  const lines = [
+    `${emoji} *${typeLabel} ${verb} from the review queue:* \`${domainLabel}\``,
+    `_By ${moderator}_`,
+  ];
+  if (resolution.action === 'reverted' && (resolution.reverted_edits ?? 0) > 1) {
+    lines.push(`_Covered ${resolution.reverted_edits} stacked edits on this record._`);
+  }
+  if (resolution.note) {
+    lines.push(`_Note: ${sanitizeSlackLine(resolution.note, FREE_TEXT_MAX)}_`);
+  }
+
+  const message: SlackBlockMessage = {
+    text: `Registry review resolved: ${domainLabel}`,
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: lines.join('\n') },
+      },
+    ],
+  };
+
+  try {
+    await sendChannelMessage(channelId, message);
+  } catch (error) {
+    logger.error({ error, domain: resolution.domain }, 'Failed to send registry review resolution notification');
+  }
+}
+
+/**
+ * Daily backlog signal for the moderator channel (adcp#8338).
+ *
+ * Since #8337 an inconclusive automated review leaves the submission
+ * waiting rather than publishing it, so an Anthropic outage or a missing
+ * `ANTHROPIC_API_KEY` builds a backlog. Count and oldest age are the two
+ * numbers that make that visible before a member notices their record
+ * never appeared.
+ *
+ * Every value here is platform-computed — counts, ages, a fixed link — so
+ * there is nothing submitter-authored in the message at all. Keep it that
+ * way: the per-record detail belongs on the admin page, not in a line the
+ * room reads as ours.
+ */
+export async function notifyRegistryReviewBacklog(backlog: {
+  /** Decisions waiting, which is what the admin queue lists. */
+  total: number;
+  pending_records: number;
+  /** Records carrying flagged edits — one decision each, however many edits. */
+  flagged_edit_records: number;
+  flagged_edits: number;
+  oldest_age_hours: number | null;
+}): Promise<boolean> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured()) return false;
+
+  const oldest = backlog.oldest_age_hours === null
+    ? 'unknown'
+    : backlog.oldest_age_hours < 48
+      ? `${Math.round(backlog.oldest_age_hours)}h`
+      : `${Math.round(backlog.oldest_age_hours / 24)}d`;
+
+  // Count decisions, not rows: the queue shows one row per record, and
+  // a number here that the page cannot reproduce is worse than none.
+  const headline = `${backlog.total} registry decision${backlog.total === 1 ? '' : 's'} waiting on a moderator`;
+  const editDetail = backlog.flagged_edits > backlog.flagged_edit_records
+    ? ` (${backlog.flagged_edits} edits in total)`
+    : '';
+  const lines = [
+    `🙋 *${headline}*`,
+    `• ${backlog.pending_records} pending record${backlog.pending_records === 1 ? '' : 's'} (not visible in the registry until approved)`,
+    `• ${backlog.flagged_edit_records} record${backlog.flagged_edit_records === 1 ? '' : 's'} with live edits flagged for a human${editDetail}`,
+    `• Oldest has waited *${oldest}*`,
+    '',
+    `<${APP_URL}/admin/registry-review|Open the review queue>`,
+  ];
+
+  try {
+    await sendChannelMessage(channelId, {
+      text: headline,
+      blocks: [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: lines.join('\n') },
+        },
+      ],
+    });
+    return true;
+  } catch (error) {
+    logger.error({ error }, 'Failed to send registry review backlog digest');
+    return false;
+  }
+}
