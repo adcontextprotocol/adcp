@@ -1,0 +1,92 @@
+---
+title: "Creative agent workflows"
+sidebarTitle: "Creative workflows"
+description: "How creative agents implement build_creative, preview_creative, sync_creatives, and human approval workflows."
+"og:title": "AdCP - Creative agent workflows"
+---
+
+# Creative agent workflows
+
+This supplement prepares creative-agent implementers to model the full creative lifecycle: build, preview, approve, sync, and recover.
+
+Creative agents differ in how much state they own. A template transformer may return assets directly. A generative agent may need async production. An ad server may return a preview first and withhold a live tag until approval.
+
+## Core lifecycle
+
+1. Discover capabilities and supported formats.
+2. Build or transform the creative with `build_creative`.
+3. Preview the creative with `preview_creative`.
+4. Collect human approval when the agent or publisher requires it.
+5. Sync approved creatives with `sync_creatives`.
+6. Report usage or delivery where the workflow requires it.
+
+## build_creative
+
+Use `build_creative` to produce a creative manifest or start production.
+
+The request should carry:
+
+- the target format or canonical `format_kind`
+- assets or creative brief inputs
+- brand context
+- any product-specific narrowing from `format_options[]`
+- pricing option selection when the creative agent charges for production
+
+The response should be explicit about whether the creative is ready, still working, failed, or waiting for input.
+
+## preview_creative
+
+Use `preview_creative` for reviewable renderings. A preview is not necessarily the live tag.
+
+Common patterns:
+
+- Static asset preview: image, video, audio, or HTML preview.
+- Batch preview: many variations from the same manifest.
+- Historical preview: render a prior variant from delivery records.
+- Vendor preview: expiring preview link while the live tag remains withheld.
+
+If a vendor withholds a live tag until approval, model that as preview plus approval state. Do not invent a separate "get tag" task.
+
+## sync_creatives
+
+Use `sync_creatives` to push approved creative assets or tags into the seller or publisher environment.
+
+Implementation rules:
+
+- Accept async `working` states when upstream trafficking is not immediate.
+- Return stable creative IDs and platform IDs when available.
+- Preserve idempotency across retries.
+- Report validation failures with field-level detail.
+- Keep buyer-owned creative identity separate from seller platform IDs.
+
+## Human approval
+
+Human approval is part of the workflow when the creative has policy, brand, legal, publisher, or vendor review requirements.
+
+Model approval as state, not silence:
+
+- `pending_review`: someone must approve before sync or live tag release.
+- `approved`: sync may proceed or live tag may be released.
+- `rejected`: the buyer or creative agent must revise before resubmitting with `sync_creatives`.
+
+## Recovery patterns
+
+| Failure | Recovery |
+|---|---|
+| Format mismatch | Re-read product `format_options[]`, choose the correct `format_kind`, rebuild |
+| Missing required asset | Ask for only the missing asset; do not restart discovery |
+| Preview expired | Re-run `preview_creative` or request a fresh preview link |
+| Human approval stalled | Surface the pending approval state and owner |
+| Sync returns async working | Poll task status or subscribe to notifications |
+| Seller rejects creative | Preserve rejection reason, revise manifest, retry with a new logical revision |
+
+## Practice prompt
+
+A vendor creative agent returns a preview URL but no live display tag. The buyer asks the orchestrator to traffic the campaign immediately.
+
+Expected answer:
+
+- The orchestrator treats the creative as previewed but not approved/live.
+- The buyer or reviewer approves the preview.
+- The creative agent releases or syncs the live tag through the approved workflow.
+- The seller receives the synced creative only after the approval state permits execution.

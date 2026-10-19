@@ -45,16 +45,11 @@ Response:
 }
 ```
 
-Embed the primary render in an iframe:
+URL previews require a cross-origin iframe with `sandbox=""` and a caller-enforced restrictive CSP. A host page's `frame-src` policy alone does not constrain resource loading inside a third-party document. Use URL embedding only where the caller can enforce the framed document's policy; otherwise request HTML and use the `srcdoc` pattern below. Never add sandbox permissions to make a preview render.
 
-```html
-<iframe src="https://creative-agent.example.com/preview/abc123"
-        width="600" height="400"></iframe>
-```
+### HTML in a sandboxed frame
 
-### Direct HTML Embedding
-
-For faster rendering without iframe overhead, request HTML directly:
+Request HTML to construct an isolated preview document under the caller's policy:
 
 ```json
 {
@@ -91,6 +86,44 @@ Response contains raw HTML:
 <Warning>
 Treat `preview_html` and `preview_url` as untrusted even when the provider is publisher-designated. Never inject returned HTML into the host DOM. Render HTML via iframe `srcdoc` and URLs in a cross-origin iframe, in both cases with an empty sandbox token set and caller-enforced restrictive CSP. Provider-supplied embedding recommendations are advisory and MUST NOT loosen that policy.
 </Warning>
+
+This browser helper places the caller's policy before any provider markup. The baseline permits inline styles and embedded data images, fonts, and media, while blocking scripts, remote resources, forms, and nested frames. It does not execute HTML5 or display-tag code. For URL embedding, [CSP Embedded Enforcement](https://w3c.github.io/webappsec-cspee/) is a work-in-progress mechanism; a browser that cannot enforce the required policy must use the HTML path instead.
+
+```javascript test=true
+const PREVIEW_CSP = [
+  "default-src 'none'",
+  "script-src 'none'",
+  "style-src 'unsafe-inline'",
+  "img-src data:",
+  "media-src data:",
+  "font-src data:",
+  "connect-src 'none'",
+  "frame-src 'none'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'"
+].join('; ');
+
+function previewSrcdoc(previewHtml) {
+  return '<!doctype html><html><head>' +
+    '<meta http-equiv="Content-Security-Policy" content="' + PREVIEW_CSP + '">' +
+    '<meta name="referrer" content="no-referrer">' +
+    '</head><body>' + previewHtml + '</body></html>';
+}
+```
+
+The following browser integration assumes a schema-validated HTML render and an existing container element; it is illustrative application code.
+
+```javascript test=false
+const frame = document.createElement('iframe');
+frame.title = 'Creative preview';
+frame.setAttribute('sandbox', '');
+frame.referrerPolicy = 'no-referrer';
+frame.srcdoc = previewSrcdoc(render.preview_html);
+container.replaceChildren(frame);
+```
+
+Keep approval controls outside the frame. Sandbox isolation and CSP are separate from the provider's `tracking_suppressed` claim; they do not establish that serving or tracking occurred. Restrict preview-frame navigation in the host's CSP as well. If the policy blocks content needed for review, show that limitation and obtain an inert, self-contained render from the provider. A blocked or incomplete display cannot substantiate production fidelity, even when the response says `quality_used: "production"`.
 
 ### Batch Preview (Multiple Creatives)
 
@@ -168,7 +201,7 @@ Response:
 }
 ```
 
-Since each variant from `get_creative_delivery` includes its full `manifest`, you can also pass the manifest directly to `preview_creative` as a standard single request to re-render it.
+When a variant from `get_creative_delivery` includes its optional `manifest`, you can also pass it to `preview_creative` as a standard single request. That re-renders the supplied manifest; it does not independently establish that referenced asset bytes are unchanged or that the result matches the historical execution.
 
 ## Request Parameters
 
@@ -324,9 +357,9 @@ Before the campaign runs, use single or batch mode to preview what the agent *co
 
 These previews are *representative*, not definitive. Real serve-time output depends on live signals (actual page content, user device, time of day) that can't be fully simulated. Use draft quality for fast iteration on the brief and creative direction, then production quality for stakeholder review.
 
-### Post-flight: exact replay
+### Post-flight: replay retained output
 
-After the campaign runs, use variant mode to see exactly what was served. Pass a `variant_id` from [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery):
+After the campaign runs, use variant mode to replay the retained output for a served execution. Pass a `variant_id` from [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery):
 
 ```json
 {
@@ -335,14 +368,14 @@ After the campaign runs, use variant mode to see exactly what was served. Pass a
 }
 ```
 
-The response includes the variant's actual manifest — the specific headline, image, and layout the agent generated for that context. This is a faithful replay, not a re-generation.
+The response includes the variant's retained manifest. Exact replay requires the actual generated content and its asset bytes to remain available; a stable URL or buyer revision alone does not establish that. Agents MUST NOT silently re-generate missing output and present it as the historical execution. When the retained variant is unavailable, return the existing structured error response. Buyers must distinguish a complete retained execution from a summary or redacted record before relying on it for an audit. Portable content-integrity and per-record retention contracts remain follow-up work in [#6506](https://github.com/adcontextprotocol/adcp/issues/6506) and [#6507](https://github.com/adcontextprotocol/adcp/issues/6507); this task adds no evidence fields or retention guarantee.
 
 ### Setting expectations
 
 | Aspect | Standard creative | Generative creative |
 |---|---|---|
 | Pre-flight preview | At production quality, fidelity-accurate within the selected renderer's presentation; draft may approximate | Representative — shows the agent's interpretation of the brief under simulated conditions |
-| Post-flight preview | Same as pre-flight | Exact — faithful replay of served output via variant mode |
+| Post-flight preview | Replay of retained execution; mutable asset URLs may prevent exact reconstruction | Faithful replay when the actual generated content and asset bytes are retained; summaries are incomplete evidence |
 | `quality: "draft"` | Iteration render; final fidelity is not guaranteed | Lower-fidelity sample for reviewing creative direction |
 | `quality: "production"` | Fidelity-accurate review render | Fidelity-accurate sample of serve-time presentation |
 | Number of variants | Typically 1 (or a few device variants) | Potentially thousands — one per context |
@@ -353,8 +386,8 @@ For generative formats where every impression produces a different creative (lik
 
 For formats where the ad is stateful — AI chat, interactive experiences, conversational native — preview takes on additional meaning:
 
-- **Pre-flight** renders a representative first interaction or simulated conversation. The `interactive_url` field in the preview response (when present) provides a sandbox where reviewers can interact with the experience directly. Use `context_description` to simulate different conversation entry points.
-- **Post-flight** variant replay shows the actual exchange that occurred. For multi-turn formats, the variant manifest captures the full content the agent produced (message sequence, responses, media assets shown). The level of detail depends on the agent — some provide full transcripts, others provide summarized content with anonymized user signals.
+- **Pre-flight** renders a representative first interaction or simulated conversation. The `interactive_url` field in the preview response (when present) provides a testing page for reviewers to interact with the experience. It remains untrusted and does not authorize adding permissions to a preview iframe; a separate testing integration needs its own isolation and credential controls. Use `context_description` to simulate different conversation entry points.
+- **Post-flight** evidence may contain a full retained exchange, a redacted transcript, or summarized content with anonymized user signals. Only a complete retained record can support exact reconstruction of message sequences, responses, and media shown. A summary does not establish the wording, disclosure persistence, or behavior of omitted turns. Providers should explain those limitations, and buyer review tools should label incomplete evidence rather than present it as an exact replay. AdCP 3.x does not define a transcript-completeness field.
 
 These formats have the widest gap between pre-flight and post-flight: a pre-flight preview can only approximate one possible conversation path, while the live experience adapts to each user. Preview enough scenarios to verify tone, guardrails, and brand consistency.
 
@@ -470,7 +503,7 @@ Preview multiple creatives for a grid layout:
 ## Key Points
 
 - Every render's `preview_url` returns an untrusted HTML page for cross-origin iframe embedding with an empty sandbox token set
-- Use `output_format: "html"` for grids of 10+ previews (no iframe overhead)
+- Use the same empty-sandbox and caller-controlled CSP policy for HTML and URL output, including review grids
 - Batch mode is 5-10x faster than individual requests
 - Preview URLs expire only when `expires_at` is present; omitted `expires_at` means no protocol-level expiration
 - Back preview URLs with storage that survives the URL's advertised lifetime; process-local maps are only appropriate for single-process demos or shorter-than-process-lifetime URLs

@@ -249,7 +249,9 @@ Different creative contracts support different macros. Read macro support from t
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
 | `{GDPR}` | GDPR applicability flag | `1` (applies), `0` (doesn't apply) |
-| `{GDPR_CONSENT}` | IAB TCF 2.0 consent string | `CPc7TgPPc7TgPAGABC...` |
+| `{GDPR_CONSENT}` | IAB TCF consent string for a resolver that does not require a vendor ID | `CPc7TgPPc7TgPAGABC...` |
+| `{GDPR_CONSENT_<gvl_id>}` | IAB TCF consent string scoped to the receiving vendor's Global Vendor List ID, for example `{GDPR_CONSENT_755}` | `CPc7TgPPc7TgPAGABC...`, or `""` when unavailable |
+| `{ADDTL_CONSENT}` | CMP-provided Google Additional Consent string accompanying the TCF string | `2~1.35.41~dv.9.21` |
 | `{US_PRIVACY}` | US Privacy (CCPA) string | `1YNN` |
 | `{GPP_STRING}` | Global Privacy Platform consent string | `DBABMA~CPXxRfAPXxRfAAfKABENB-CgAAAAAAAAAAYgAAAAAAAA` |
 | `{GPP_SID}` | GPP Section ID(s) indicating applicable sections | `7`, `7,8` (US National, US National + California) |
@@ -267,6 +269,89 @@ if (GDPR == 1 && GDPR_CONSENT == '') {
   // Load tracking
 }
 ```
+
+#### Vendor-scoped TCF consent
+
+`{GDPR_CONSENT_<gvl_id>}` carries the IAB Global Vendor List (GVL) ID of the
+vendor receiving the consent string. The suffix MUST be a positive decimal
+integer without leading zeros. `XXX`, zero, signed values, and an empty suffix
+are invalid. `{GDPR_CONSENT}` remains available when the resolver does not
+require a vendor ID.
+
+Translators MUST preserve the receiving vendor ID in both directions. For
+example, a verified mapping from `${GDPR_CONSENT_755}` to AdCP produces
+`{GDPR_CONSENT_755}`; translating back produces `${GDPR_CONSENT_755}`, including
+the dollar sign. Translators MUST NOT collapse the scoped token to
+`{GDPR_CONSENT}` or substitute another vendor's ID. The ID scopes the resolver's
+consent check; it does not assert that consent has been granted.
+
+Declarations, translation targets, and capabilities use the full scoped name
+(`GDPR_CONSENT_755`) as `universal_semantic`. An AdCP declaration also uses that
+name as `dialect_semantic`. An unscoped `GDPR_CONSENT` capability does not match
+`GDPR_CONSENT_755`, and a capability for one vendor does not match another.
+Vendor dialect mappings still require the governed namespace and revision;
+recognizing the token's spelling alone does not verify its meaning.
+
+When a target requires a vendor ID and none is known, the translator MUST NOT
+guess an ID or emit a placeholder such as `${GDPR_CONSENT_XXX}`. On the
+undeclared compatibility path, it MUST substitute an empty consent value and
+continue translating `{GDPR}` independently. With declarations, the existing
+capability checks and required/unavailable behavior still apply; an empty value
+does not bypass a required operation. At impression time, a resolver MUST NOT
+release a scoped consent string when the receiving vendor lacks the required
+consent.
+
+An emitted URL MUST contain at most one vendor-scoped consent macro across all
+vendor IDs and token occurrences, including native tokens already present in
+the URL. Count verified source and target semantics regardless of native
+spelling: two scoped occurrences translated to `%%CONSENT_755%%` still count
+as two. Recognized pre-existing native `${GDPR_CONSENT_<id>}` tokens also count;
+an unfamiliar native token's semantics require its declaration or verified
+mapping rather than inference from spelling.
+Translation that would produce multiple occurrences MUST fail without
+emitting a URL; the 3.3 helper contract reports `multiple_vendor_consent_macros`, with
+`macro` identifying the second scoped consent token in AdCP form, even when
+its output spelling is native. It MUST NOT silently choose a vendor or discard
+an occurrence. An existing native `${GDPR_CONSENT_<id>}` token is byte-preserved;
+its braced interior MUST NOT be translated as an AdCP occurrence. Count the final
+output, after dropping unsupported parameters; this limit does not apply across
+separate URLs.
+
+[Google Ad Manager's macro reference](https://support.google.com/admanager/answer/2376981)
+documents the vendor consent check and one-occurrence limit for its
+`${GDPR_CONSENT_<id>}` macro. Its native tokens must remain unencoded so the ad
+server can expand them.
+
+#### Additional Consent
+
+`{ADDTL_CONSENT}` carries the Google Additional Consent (AC) string produced by
+the consent management platform (CMP). It accompanies the TCF consent string
+and identifies consented and/or disclosed providers on Google's ad technology
+provider list that are outside the IAB Global Vendor List. These are Google
+provider IDs, distinct from the GVL IDs in `{GDPR_CONSENT_<gvl_id>}`. Disclosure
+alone does not indicate consent. See
+[Google's Additional Consent specification](https://support.google.com/admanager/answer/9681920?hl=en).
+
+The macro is optional. Translators MUST treat its CMP-provided value as opaque
+and preserve it byte-for-byte before applying the occurrence's encoding. They
+MUST NOT generate an AC string, infer one from the TCF string, or modify its
+provider lists. An AC string supplements the TCF string; it does not replace it.
+
+A verified mapping translates `{ADDTL_CONSENT}` to `${ADDTL_CONSENT}` and back
+without changing the semantic. Existing native `${ADDTL_CONSENT}` occurrences
+remain byte-preserved; their braced interiors MUST NOT be translated again.
+Declarations, targets, and capabilities use `ADDTL_CONSENT` as the universal
+semantic, with the existing dialect and resolver requirements. The token has no
+vendor suffix because the AC string itself contains the provider IDs. It does
+not count toward the one-vendor-scoped-TCF-macro limit.
+
+The helper MUST include `{ADDTL_CONSENT}` in its consent diagnostics: an unmapped
+occurrence follows the existing parameter-dropping behavior and is reported in
+`dropped_consent_macros`; a `value` mapping is reported in
+`frozen_consent_macros`. An unavailable value MUST NOT be replaced with invented
+consent. An explicit empty `value` mapping retains the empty parameter and is
+still reported as frozen. Declared occurrences continue to follow their
+required/unavailable behavior.
 
 ### Device & Environment Macros
 
@@ -707,7 +792,9 @@ URL's query-parameter values. Each macro maps to either a **native** ad-server t
 (left raw, filled by the ad server at impression time) or a concrete **value** the
 agent already knows (substituted now, percent-encoded per RFC 3986):
 
-The behavior below is the established undeclared-token compatibility path. With occurrence declarations, a `native` mapping implements `translate_to_native` and emits the target declaration, while a concrete value follows the declaration's exact encoding profile. The helper's safety and privacy diagnostics are unchanged in either mode.
+The behavior below is the undeclared-token compatibility path. With occurrence declarations, a `native` mapping implements `translate_to_native` and emits the target declaration, while a concrete value follows the declaration's exact encoding profile. The vendor-scope safety rules apply to both paths.
+
+The vendor-scoped TCF consent and Additional Consent additions are part of the AdCP 3.3 contract.
 
 ```typescript
 import { translateUniversalMacros } from '@adcp/sdk';
@@ -753,6 +840,20 @@ Behavior:
 - A consent/privacy macro supplied through **`value`** is still encoded, but it is
   also surfaced in **`frozen_consent_macros`**. Inspect this advisory field: fixing a
   consent string at translation time can produce a stale-consent pixel.
+- **Additional Consent is a separate consent macro**:
+  `'{ADDTL_CONSENT}': { native: '${ADDTL_CONSENT}' }` preserves the native
+  placeholder alongside the TCF token. Treat its CMP-provided value as opaque
+  and include it in both dropped- and frozen-consent diagnostics as applicable.
+- **Vendor-scoped consent is matched by the complete token**, for example
+  `'{GDPR_CONSENT_755}': { native: '${GDPR_CONSENT_755}' }`. Every valid
+  `{GDPR_CONSENT_<gvl_id>}` is a consent macro for `dropped_consent_macros` and
+  `frozen_consent_macros`. For an unscoped token targeting a resolver that needs
+  an unknown vendor ID, supply `'{GDPR_CONSENT}': { value: '' }`; this preserves
+  the empty parameter and reports the value mapping in `frozen_consent_macros`.
+  Omitting a mapping follows the ordinary parameter-dropping rule. The helper
+  MUST reject multiple vendor-scoped consent occurrences in the final URL with
+  `multiple_vendor_consent_macros`, including occurrences inserted through
+  another mapping or already present as native tokens.
 - **A parameter whose universal macro the agent does not support is dropped entirely**
   (its key is reported in `dropped_params`, the macro in `unmapped_macros`) — better to
   omit a tracker the agent can't fill than to emit a broken one. A dropped
@@ -873,6 +974,8 @@ if (LIMIT_AD_TRACKING == 1 || DEVICE_ID == '' || DEVICE_ID == '00000000-0000-000
 **Empty Values**: Privacy-restricted macros return empty strings or zeros:
 - `{DEVICE_ID}` → `""` or `00000000-0000-0000-0000-000000000000` when LAT enabled
 - `{GDPR_CONSENT}` → `""` when no consent provided
+- `{GDPR_CONSENT_<gvl_id>}` → `""` when consent is unavailable for that receiving vendor
+- `{ADDTL_CONSENT}` → `""` when the CMP-provided Additional Consent string is unavailable
 - `{IP_ADDRESS}` → `""` or masked/truncated IP when privacy restricted
 
 **Always test for empty values** before using privacy-sensitive macros.

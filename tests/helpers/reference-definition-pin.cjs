@@ -20,7 +20,8 @@ function compareUtf8(a, b) {
 }
 
 // Project one published entry per the kind's rules. `rules` is the entry of
-// projection_rules[kind]; `rulesByName` resolves nested projections by name.
+// projection_rules[kind]. A `nested` value is either the name of another kind,
+// resolved through `rulesByName`, or an inline rules object of the same shape.
 function project(entry, rules, rulesByName) {
   if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
     throw new Error('entry and nested elements must be objects');
@@ -36,7 +37,7 @@ function project(entry, rules, rulesByName) {
   }
   for (const [key, nested] of Object.entries(rules.nested || {})) {
     if (!Array.isArray(out[key])) continue;
-    const nestedRules = rulesByName[nested];
+    const nestedRules = typeof nested === 'string' ? rulesByName[nested] : nested;
     out[key] = normalizeSet(
       out[key].map(item => project(item, nestedRules, rulesByName)),
     );

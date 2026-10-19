@@ -8,9 +8,11 @@
  * advertises `covers_content_digest: "required"` — the only posture a 3.2
  * signing peer may advertise — cannot grade them. This script derives a
  * 3.2 counterpart for each legacy positive vector and for each legacy negative
- * that tests checklist steps 2–12, under `profile-3.2/{positive,negative}/`.
- * Each counterpart keeps the SAME number and slug as the root vector it
- * mirrors; root vectors that are not mirrored leave gaps. Root positive/001
+ * that tests checklist steps 2–12, plus the step-0 and step-1 negatives
+ * (adcp#7733), under `profile-3.2/{positive,negative}/`. Each counterpart keeps
+ * the SAME number and slug as the root vector it mirrors; root vectors that
+ * are not mirrored leave gaps (negative/018 is the only intentional one:
+ * `forbidden` is illegal in 3.2). Root positive/001
  * and positive/002 are both covered by the pre-existing hand-authored
  * profile-3.2/positive/001-post-with-content-digest (in 3.2 a basic POST is a
  * POST with content-digest), so they are not generated here.
@@ -31,6 +33,21 @@
  *   negatives keep the legacy 64-zero-byte placeholder so a verifier that runs
  *   crypto before the targeted check fails with `request_signature_invalid`
  *   (step-ordering canary), exactly like their 3.1 originals.
+ * - Step-0/1 mirrors (adcp#7733) are single-fault: covering `content-digest`
+ *   removes the step-6 fault a `required` verifier would otherwise find first.
+ *   Where the fault does not depend on the signature bytes (021–024, 026,
+ *   029–031) the Signature is real, so a signature the verifier can validate
+ *   is not a second fault; 019 is a real Signature whose Signature-Input was
+ *   stripped. 011 (unparseable Signature-Input, so no base exists) keeps the
+ *   placeholder. Unsigned vectors (001, 027, 028) stay unsigned and carry only
+ *   a correct Content-Digest. Duplicated members (021, 023, 029, 030) repeat the
+ *   same correct value so that keeping either member finds no second fault.
+ * - Per-definition overrides: `paramsFrom` reads sig-params from another
+ *   legacy vector (019 has no Signature-Input of its own), `keepHeaders`
+ *   carries a legacy header such as Host, and `kind` selects unsigned /
+ *   malformed-input / signature-only shapes. The test suite recomputes the
+ *   base independently where a Signature-Input exists and otherwise checks
+ *   the committed base.
  *
  * Ed25519 is deterministic. ES256 (ECDSA) is not, so an existing ES256
  * signature is kept whenever it still verifies over the regenerated base;
@@ -57,6 +74,10 @@ const DIGEST_COMPONENTS = ['@method', '@target-uri', '@authority', 'content-type
 const ZERO_SIGNATURE = Buffer.alloc(64).toString('base64');
 const PROFILE_NOTE =
   'AdCP 3.2 profile: the signature covers content-digest, binary values use RFC 8941 sf-binary (standard padded Base64), and the verifier advertises covers_content_digest=\'required\'.';
+const UNSIGNED_PROFILE_NOTE =
+  'AdCP 3.2 profile: the verifier advertises covers_content_digest=\'required\' and the request carries a correct Content-Digest, but no usable signature is presented, so the step-0 fault is the only fault.';
+const MALFORMED_PROFILE_NOTE =
+  'AdCP 3.2 profile: the verifier advertises covers_content_digest=\'required\' and the request carries a correct Content-Digest.';
 const PLACEHOLDER_NOTE =
   'Signature is the 64-zero-byte placeholder (step-ordering canary): the targeted check runs before cryptographic verification, so a verifier that verifies first returns request_signature_invalid instead of the expected code.';
 
@@ -115,6 +136,31 @@ const DEFINITIONS = [
   {
     from: 'positive/012-ipv6-authority-default-port-stripped.json',
     name: 'AdCP 3.2 IPv6 literal authority with explicit :443; port stripped, brackets preserved (content-digest covered)',
+  },
+
+  {
+    from: 'positive/013-two-signature-labels-distinct.json',
+    name: 'AdCP 3.2 two distinct labels on both Signature-Input and Signature — verifier processes sig1 and does not reject the dictionaries (content-digest covered)',
+    extraLabel: {
+      label: 'sig2',
+      components: ['@method', '@target-uri', '@authority'],
+      nonce: 'm4Fq2xYt9ZbCwLJd7sVn8g',
+      signatureFromLegacy: true,
+    },
+    expectedOutcome: { success: true, verified_label: 'sig1' },
+    comment: 'False-positive guard for negative/029 and 021. sig1 is a valid signature covering content-digest. sig2 has a different covered-components set, a different nonce, and a well-formed 64-byte value (the root vector\'s bytes, re-encoded as standard padded Base64) that does not verify. Verifiers MUST process exactly one label (conventionally sig1) and ignore the rest; attempting sig2 and rejecting is non-conformant.',
+  },
+  {
+    from: 'positive/014-content-digest-two-algorithms.json',
+    name: 'AdCP 3.2 Content-Digest carries sha-256 and sha-512, both correct — distinct algorithm keys are legal (content-digest covered)',
+    contentDigest: body => `${contentDigestFor(body)}, ${contentDigestFor(body, 'sha512')}`,
+    comment: 'False-positive guard for negative/023 and 030. Both members are the correct digest of the body in standard padded Base64, and the Signature is a real Ed25519 signature over expected_signature_base, which carries the Content-Digest value verbatim.',
+  },
+  {
+    from: 'positive/015-bracketed-ipv6-host-with-port.json',
+    name: 'AdCP 3.2 bracketed IPv6 literal with non-default port in both the URL and the Host header (content-digest covered)',
+    keepHeaders: ['Host'],
+    comment: 'False-positive guard for negative/031. The Host header byte-matches the authority of the canonical @target-uri, so @authority is [2001:db8::1]:8443 and the request verifies.',
   },
 
   // ── Negative (checklist steps 2–12) ─────────────────────────────────────
@@ -223,6 +269,86 @@ const DEFINITIONS = [
     name: 'AdCP 3.2 JWK declares alg=EdDSA but crv=P-256, parameter mismatch on presented key (content-digest covered)',
     placeholder: true,
   },
+  // ── Negative (pre-check 0 and checklist step 1, adcp#7733) ─────────────
+  // These are single-fault under `required`: content-digest is covered (where
+  // a Signature-Input exists), so the step-0/1 fault is the only one.
+  {
+    from: 'negative/001-no-signature-header.json',
+    name: 'AdCP 3.2 unsigned request to an operation in required_for (Content-Digest sent, nothing signed)',
+    kind: 'unsigned',
+  },
+  {
+    from: 'negative/011-malformed-header.json',
+    name: 'AdCP 3.2 Signature-Input present but syntactically invalid (downgrade protection; Content-Digest sent)',
+    kind: 'malformed-input',
+    comment: 'The Signature-Input value is not parseable, so there is no covered-components list in which content-digest could be covered and no signature base to sign.',
+  },
+  {
+    from: 'negative/019-signature-without-signature-input.json',
+    name: 'AdCP 3.2 Signature header present but Signature-Input header absent (downgrade loophole; content-digest covered in the stripped shape)',
+    kind: 'signature-only',
+    paramsFrom: 'positive/001-basic-post.json',
+    // Pre-check bullets are ordered in the spec (required_for with no credential, then the header pair), so an
+    // operation outside required_for keeps the header-pair rule the only rule that applies.
+    requiredFor: [],
+    comment: 'The operation is not in required_for, so the unpaired Signature is the only fault whatever order the pre-check bullets are read in. The request is a correctly signed 3.2 request (content-digest covered) whose Signature-Input a proxy stripped. The Signature is a real Ed25519 signature by test-ed25519-2026 over expected_signature_base, the base the stripped Signature-Input would have described; no other fault is present, so rejecting at step 1 is the only conformant outcome.',
+  },
+  {
+    from: 'negative/021-duplicate-signature-input-label.json',
+    name: 'AdCP 3.2 Signature-Input header declares label \'sig1\' twice (malformed structured dictionary, content-digest covered)',
+    dupLabel: true,
+    comment: 'The Signature-Input header repeats the same sig1 member twice, byte for byte; it covers content-digest and its Signature is a valid Ed25519 signature over expected_signature_base. A verifier that keeps either member therefore verifies the request, so the duplicate label is the only fault. (The root vector\'s second member is weaker; the 3.2 mirror repeats the first so that no second fault is reachable by keeping the last one.)',
+  },
+  {
+    from: 'negative/022-multi-valued-content-type.json',
+    name: 'AdCP 3.2 Content-Type header sent as multiple field values (malformed — covered field must be single-valued, content-digest covered)',
+    comment: 'The Signature is a valid Ed25519 signature over expected_signature_base, which carries the Content-Type value exactly as sent, so the multi-valued field is the only fault.',
+  },
+  {
+    from: 'negative/023-multi-valued-content-digest.json',
+    name: 'AdCP 3.2 Content-Digest header sent as multiple field values (malformed, content-digest covered)',
+    contentDigest: body => `${contentDigestFor(body)}, ${contentDigestFor(body)}`,
+    comment: 'Both Content-Digest members are the correct sha-256 of the body, so a verifier that keeps either one finds a matching digest. The Signature is a valid Ed25519 signature over expected_signature_base, which carries the Content-Digest value exactly as sent, so the repeated algorithm is the only fault.',
+  },
+  {
+    from: 'negative/024-unquoted-string-param.json',
+    name: 'AdCP 3.2 Signature-Input sig-param string value sent unquoted (keyid=foo instead of keyid="foo", content-digest covered)',
+    unquotedParams: ['keyid'],
+    comment: 'The Signature is a valid Ed25519 signature over expected_signature_base, which carries the sig-params exactly as sent (unquoted keyid), so the unquoted string is the only fault.',
+  },
+  {
+    from: 'negative/026-non-ascii-host.json',
+    name: 'AdCP 3.2 URL authority contains raw IDN U-label (non-ASCII bytes in host, content-digest covered)',
+    comment: 'The Signature is a valid Ed25519 signature over the base for the A-label form of the host (xn--bcher-kva.example.com), the base a signer that canonicalized correctly would produce. A verifier that silently re-normalizes the U-label would therefore verify the signature; docs/reference/url-canonicalization.mdx requires the comparer to reject a raw non-ASCII host instead, so the raw U-label on the wire is the only fault. The expected code follows root 026 (request_target_uri_malformed at step 10, per the maintainer decision on adcp#7905).',
+  },
+  {
+    from: 'negative/027-webhook-registration-authentication-unsigned.json',
+    name: 'AdCP 3.2 webhook registration with push_notification_config.authentication over bearer (unsigned); operation NOT in required_for (Content-Digest sent)',
+    kind: 'unsigned',
+  },
+  {
+    from: 'negative/028-unsigned-protocol-method-required.json',
+    name: 'AdCP 3.2 unsigned tasks/cancel JSON-RPC POST; method is in protocol_methods_required_for (Content-Digest sent)',
+    kind: 'unsigned',
+  },
+  {
+    from: 'negative/029-duplicate-signature-label.json',
+    name: 'AdCP 3.2 Signature header declares label \'sig1\' twice (malformed structured dictionary, content-digest covered)',
+    duplicateSignature: true,
+    comment: 'Signature-Input carries sig1 exactly once, covers content-digest, and is well formed; only the Signature header repeats the label. Both Signature members are the same valid Ed25519 signature over expected_signature_base, so a verifier that keeps either one verifies it and the repeated label is the only fault.',
+  },
+  {
+    from: 'negative/030-content-digest-key-case.json',
+    name: 'AdCP 3.2 Content-Digest carries SHA-256 and sha-256 (uppercase dictionary key is not a case-insensitive synonym, content-digest covered)',
+    contentDigest: body => `${contentDigestFor(body).replace(/^sha-256/, 'SHA-256')}, ${contentDigestFor(body)}`,
+    comment: 'Both members are the correct digest of the body in standard padded Base64, and the Signature is a valid Ed25519 signature over expected_signature_base, which carries the Content-Digest value exactly as sent, so the uppercase key is the only fault.',
+  },
+  {
+    from: 'negative/031-malformed-host-authority.json',
+    name: 'AdCP 3.2 Host header carries an unbracketed IPv6 literal (malformed authority) while the URL is clean (content-digest covered)',
+    keepHeaders: ['Host'],
+    comment: 'The URL is the valid bracketed form and the Signature is a real Ed25519 signature over the base computed from the URL authority [::1], so the Host header is the only fault. A verifier that derives @authority from the URL alone verifies it.',
+  },
 ];
 
 function keyByKid(kid) {
@@ -253,8 +379,9 @@ function verifyBase(jwk, base, signature) {
   return verify('sha256', data, { key: publicKeyFor(jwk), dsaEncoding: 'ieee-p1363' }, signature);
 }
 
-function contentDigestFor(body) {
-  return `sha-256=:${createHash('sha256').update(body, 'utf8').digest('base64')}:`;
+function contentDigestFor(body, algorithm = 'sha256') {
+  const label = algorithm === 'sha512' ? 'sha-512' : 'sha-256';
+  return `${label}=:${createHash(algorithm).update(body, 'utf8').digest('base64')}:`;
 }
 
 /** Parse the legacy sig1 parameters into an ordered map. */
@@ -267,17 +394,26 @@ function legacySigParams(legacy) {
     const eq = part.indexOf('=');
     const name = part.slice(0, eq);
     const raw = part.slice(eq + 1);
-    params.set(name, raw.startsWith('"') ? JSON.parse(raw) : Number(raw));
+    params.set(name, raw.startsWith('"') ? JSON.parse(raw) : Number.isNaN(Number(raw)) ? raw : Number(raw));
   }
   return params;
 }
 
-function serializeParams(components, params) {
+/** Decode a legacy Base64URL (or Base64) sf-binary member of the Signature header. */
+function legacySignatureBytes(legacy, label) {
+  const token = new RegExp(`${label}=:([^:]+):`).exec(legacy.request.headers.Signature)?.[1];
+  if (!token) throw new Error(`${legacy.__file}: no ${label} Signature member`);
+  const bytes = Buffer.from(token.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+  if (bytes.length !== 64) throw new Error(`${legacy.__file}: ${label} is ${bytes.length} bytes, expected 64`);
+  return bytes;
+}
+
+function serializeParams(components, params, unquoted = []) {
   const list = `(${components.map(c => `"${c}"`).join(' ')})`;
   const parts = [];
   for (const [name, value] of params) {
     if (value === null || value === undefined) continue;
-    parts.push(typeof value === 'number' ? `${name}=${value}` : `${name}="${value}"`);
+    parts.push(typeof value === 'number' || unquoted.includes(name) ? `${name}=${value}` : `${name}="${value}"`);
   }
   return `${list}${parts.length ? `;${parts.join(';')}` : ''}`;
 }
@@ -344,61 +480,96 @@ function buildVector(def) {
   }
 
   const body = rekeyBody(legacy.request.body, def.from, def.out);
-  const components = def.components ?? DIGEST_COMPONENTS;
-  const params = legacySigParams(legacy);
-  for (const [name, value] of Object.entries(def.params ?? {})) {
-    if (!params.has(name) && value !== null) throw new Error(`${def.out}: unknown param ${name}`);
-    params.set(name, value);
-  }
-  const serialized = serializeParams(components, params);
-  const canonical = canonicalFromLegacy(legacy);
+  const kind = def.kind ?? 'signed';
+  const contentDigest =
+    typeof def.contentDigest === 'function' ? def.contentDigest(body) : (def.contentDigest ?? contentDigestFor(body));
+  let request;
+  let base;
 
-  const request = {
-    method: legacy.request.method,
-    url: legacy.request.url,
-    headers: {
-      'Content-Type': legacy.request.headers['Content-Type'],
-      'Content-Digest': def.contentDigest ?? contentDigestFor(body),
-      'Signature-Input': `sig1=${serialized}`,
-      Signature: '',
-    },
-    body,
-  };
-  const base = signatureBase(components, serialized, request, canonical);
-
-  let signature;
-  if (def.placeholder) {
-    signature = ZERO_SIGNATURE;
+  if (kind === 'unsigned' || kind === 'malformed-input') {
+    // Nothing is signed: the legacy headers are kept and a correct Content-Digest is added.
+    request = {
+      method: legacy.request.method,
+      url: legacy.request.url,
+      headers: { ...legacy.request.headers, 'Content-Digest': contentDigest },
+      body,
+    };
+    if (kind === 'malformed-input') {
+      // The legacy placeholder is 66 zero bytes; the 3.2 corpus uses the 64-byte Ed25519 placeholder everywhere.
+      request.headers.Signature = `sig1=:${ZERO_SIGNATURE}:`;
+    }
   } else {
-    const jwk = keyByKid(params.get('keyid'));
-    const existing = readExisting(def.out);
-    const existingSig = existing?.request?.headers?.Signature?.match(/^sig1=:([^:]+):/)?.[1];
-    if (jwk.kty !== 'OKP' && existingSig && verifyBase(jwk, base, Buffer.from(existingSig, 'base64'))) {
-      signature = existingSig; // keep a still-valid non-deterministic ECDSA signature
+    const components = def.components ?? DIGEST_COMPONENTS;
+    const paramsSource = def.paramsFrom
+      ? JSON.parse(readFileSync(join(VECTOR_DIR, def.paramsFrom), 'utf8'))
+      : legacy;
+    const params = legacySigParams(paramsSource);
+    for (const [name, value] of Object.entries(def.params ?? {})) {
+      if (!params.has(name) && value !== null) throw new Error(`${def.out}: unknown param ${name}`);
+      params.set(name, value);
+    }
+    const serialized = serializeParams(components, params, def.unquotedParams);
+    const canonical = canonicalFromLegacy(legacy);
+
+    request = {
+      method: legacy.request.method,
+      url: legacy.request.url,
+      headers: {
+        ...Object.fromEntries((def.keepHeaders ?? []).map(name => [name, legacy.request.headers[name]])),
+        'Content-Type': legacy.request.headers['Content-Type'],
+        'Content-Digest': contentDigest,
+        'Signature-Input': `sig1=${serialized}`,
+        Signature: '',
+      },
+      body,
+    };
+    base = signatureBase(components, serialized, request, canonical);
+
+    let signature;
+    if (def.placeholder) {
+      signature = ZERO_SIGNATURE;
     } else {
-      signature = signBase(jwk, base).toString('base64');
+      const jwk = keyByKid(params.get('keyid'));
+      const existing = readExisting(def.out);
+      const existingSig = existing?.request?.headers?.Signature?.match(/^sig1=:([^:]+):/)?.[1];
+      if (jwk.kty !== 'OKP' && existingSig && verifyBase(jwk, base, Buffer.from(existingSig, 'base64'))) {
+        signature = existingSig; // keep a still-valid non-deterministic ECDSA signature
+      } else {
+        signature = signBase(jwk, base).toString('base64');
+      }
+      if (!verifyBase(jwk, base, Buffer.from(signature, 'base64'))) {
+        throw new Error(`${def.out}: generated signature does not verify`);
+      }
     }
-    if (!verifyBase(jwk, base, Buffer.from(signature, 'base64'))) {
-      throw new Error(`${def.out}: generated signature does not verify`);
+
+    request.headers.Signature = `sig1=:${signature}:`;
+    if (def.extraLabel) {
+      const extra = def.extraLabel;
+      const extraParams = new Map(params);
+      extraParams.set('nonce', extra.nonce);
+      request.headers['Signature-Input'] += `, ${extra.label}=${serializeParams(extra.components, extraParams)}`;
+      const extraSignature = extra.signatureFromLegacy
+        ? legacySignatureBytes(legacy, extra.label).toString('base64')
+        : ZERO_SIGNATURE;
+      request.headers.Signature += `, ${extra.label}=:${extraSignature}:`;
     }
+    if (def.duplicateSignature) request.headers.Signature += `, sig1=:${signature}:`;
+    if (def.dupLabel) {
+      // A second member under the SAME label, identical to the first; the Signature header carries one member.
+      request.headers['Signature-Input'] += `, sig1=${serialized}`;
+    }
+    if (kind === 'signature-only') delete request.headers['Signature-Input'];
   }
 
-  request.headers.Signature = `sig1=:${signature}:`;
-  if (def.extraLabel) {
-    const extra = def.extraLabel;
-    const extraParams = new Map(params);
-    extraParams.set('nonce', extra.nonce);
-    request.headers['Signature-Input'] += `, ${extra.label}=${serializeParams(extra.components, extraParams)}`;
-    request.headers.Signature += `, ${extra.label}=:${ZERO_SIGNATURE}:`;
-  }
-
+  const capability = { ...legacy.verifier_capability, covers_content_digest: 'required' };
+  if (def.requiredFor) capability.required_for = def.requiredFor;
   const vector = {
     name: def.name,
     spec_reference: `${legacy.spec_reference}; AdCP 3.2 profile per #content-digest-and-proxy-compatibility and #adcp-rfc-9421-profile binary value encoding`,
     signing_profile_version: '3.2',
     reference_now: legacy.reference_now,
     request,
-    verifier_capability: { ...legacy.verifier_capability, covers_content_digest: 'required' },
+    verifier_capability: capability,
   };
   if (legacy.jwks_override) vector.jwks_override = legacy.jwks_override;
   else vector.jwks_ref = legacy.jwks_ref;
@@ -406,7 +577,7 @@ function buildVector(def) {
     vector.test_harness_state = { ...legacy.test_harness_state };
     if (def.harnessComment) vector.test_harness_state.$comment = def.harnessComment;
   }
-  const includeBase = def.includeBase || !def.placeholder;
+  const includeBase = base !== undefined && (def.includeBase || !def.placeholder);
   if (includeBase) vector.expected_signature_base = base;
   vector.expected_outcome = def.expectedOutcome ?? legacy.expected_outcome;
   if (legacy.requires_contract) vector.requires_contract = legacy.requires_contract;
@@ -414,9 +585,9 @@ function buildVector(def) {
 
   const notes = [
     `3.2-profile counterpart of ${def.from}.`,
-    PROFILE_NOTE,
+    { unsigned: UNSIGNED_PROFILE_NOTE, 'malformed-input': MALFORMED_PROFILE_NOTE }[kind] ?? PROFILE_NOTE,
     def.comment,
-    def.placeholder && def.out !== 'negative/015-signature-invalid.json' ? PLACEHOLDER_NOTE : undefined,
+    (def.placeholder && def.out !== 'negative/015-signature-invalid.json') || kind === 'malformed-input' ? PLACEHOLDER_NOTE : undefined,
     `Generated by ${SCRIPT} from the test keys in keys.json; do not hand-edit.`,
   ].filter(Boolean);
   vector.$comment = notes.join(' ');

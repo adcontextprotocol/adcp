@@ -35,6 +35,10 @@ vi.mock('@adcp/sdk/testing', () => ({
 
 vi.mock('../../src/services/hosted-compliance-version.js', () => ({
   hostedComplianceTarget: () => mocks.fallbackTarget,
+  // Read by the forward-introduced-specialism overlay; the fixture targets are
+  // synthetic, so no bundled release can define a specialism after them.
+  bundledComplianceVersions: () => [],
+  compareComplianceVersions: () => 0,
   hostedAuthProbeTaskForProfile: vi.fn(),
   hostedStaticApiKeyForProfile: vi.fn(),
   agentAdvertisesBadgeEligibleHostedComplianceTarget: vi.fn().mockReturnValue(false),
@@ -78,8 +82,31 @@ import {
   HOSTED_TARGET_DISCOVERY_TIMEOUT_MS,
   classifyCapabilityResolutionErrorWithDeclaredProtocols,
   comply,
+  hostedCapabilityDiscoveryOptions,
   selectComplianceTargetForAgentSelection,
 } from '../../src/addie/services/compliance-testing.js';
+
+describe('hosted capability probe versions', () => {
+  it('pins explicit recommendation targets and preserves auth and safe transport', () => {
+    const options = hostedCapabilityDiscoveryOptions(
+      { auth: { type: 'bearer', token: 'secret' } },
+      { requested: '3.1.20', version: '3.1.20', complianceDir: '/compliance/3.1.20', schemaRoot: '/schemas/3.1.20' },
+    );
+    expect(options).toMatchObject({
+      adcpVersion: '3.1.20',
+      versionEnvelope: 'auto',
+      auth: { type: 'bearer', token: 'secret' },
+      transport: { fetchFn: mocks.safeFetch },
+    });
+  });
+
+  it('uses major-only recovery before a target is selected', () => {
+    const options = hostedCapabilityDiscoveryOptions({ adcpVersion: '3.2.0-rc.7' });
+    expect(options.versionEnvelope).toBe('major-only');
+    expect(options.adcpVersion).toBeUndefined();
+    expect(options.transport?.fetchFn).toBe(mocks.safeFetch);
+  });
+});
 
 describe('hosted compliance target discovery deadline', () => {
   afterEach(() => {
@@ -121,6 +148,7 @@ describe('hosted compliance target discovery deadline', () => {
       test_session_id: 'heartbeat-test',
       userAgent: 'heartbeat-agent',
       auth: { type: 'bearer', token: 'secret' },
+      versionEnvelope: 'major-only',
       signal: expect.any(AbortSignal),
       transport: { fetchFn: expect.any(Function) },
     });
@@ -189,7 +217,7 @@ describe('hosted compliance target discovery deadline', () => {
 
     const options = mocks.discovery.mock.calls[0][1];
     expect(options.adcpVersion).toBe(mocks.selectedTarget.version);
-    expect(options.versionEnvelope).toBeUndefined();
+    expect(options.versionEnvelope).toBe('auto');
   });
 
   it('hard-stops even when discovery ignores its signal and never settles', async () => {

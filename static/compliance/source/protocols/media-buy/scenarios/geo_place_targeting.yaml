@@ -1,5 +1,5 @@
 id: media_buy_seller/geo_place_targeting
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller resolves, validates, and echoes identifier-based place targeting"
 category: media_buy_seller
 summary: "Verifies known-now place discovery, declared-later place permission, create/update persistence, package-state echo, and deterministic semantic rejection cases."
@@ -158,6 +158,8 @@ phases:
         context_outputs:
           - key: "place_system_version"
             path: "media_buy.execution.targeting.geo_places.geonames.catalog.current_version"
+          - key: "place_supported_versions"
+            path: "media_buy.execution.targeting.geo_places.geonames.catalog.supported_versions"
           - key: "place_supported_version_0"
             path: "media_buy.execution.targeting.geo_places.geonames.catalog.supported_versions[0]"
           - key: "place_supported_version_1"
@@ -172,9 +174,43 @@ phases:
           - check: field_present
             path: "media_buy.execution.targeting.geo_places.geonames.catalog.resolver.url"
             description: "Seller exposes a machine-readable resolver"
-          - check: field_contains
-            path: "media_buy.execution.targeting.geo_places.geonames.catalog.supported_versions[*]"
+
+      # geo-place-catalog-capability.json carries
+      # `x-adcp-validation.member_of: {field: current_version, array_field:
+      # supported_versions}` — draft-07 cannot express scalar membership in a
+      # sibling array, so conformance tooling has to check it. It cannot be
+      # checked on get_place_capabilities itself: the runner resolves a
+      # validation comparand from the context as it stood *before* the step,
+      # and that step's own context_outputs land after its validations run, so
+      # both operands would still be unresolved `$context.` tokens (#8328).
+      # A second capabilities read is free (stateless, no side effects) and
+      # settles the invariant unconditionally, before any product or buy state
+      # exists to make it conditional on.
+      - id: confirm_place_catalog_membership
+        title: "Confirm the catalog version is one the seller accepts"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        expected: |
+          Return the same GeoNames catalog current_version as the previous read,
+          and list that version in supported_versions. A current_version the
+          seller does not accept for new targeting is not a version a buyer can
+          pin, and this scenario pins it on every later request.
+        sample_request:
+          context:
+            correlation_id: "geo_place_targeting--confirm_place_catalog_membership"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_value
+            path: "media_buy.execution.targeting.geo_places.geonames.catalog.current_version"
             value: "$context.place_system_version"
+            description: "Catalog current_version is stable across the run"
+          - check: field_in_context_array
+            path: "media_buy.execution.targeting.geo_places.geonames.catalog.current_version"
+            context_key: "place_supported_versions"
             description: "current_version is included in supported_versions"
 
       - id: get_place_targetable_product
