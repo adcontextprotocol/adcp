@@ -7820,8 +7820,11 @@ export function compactLifecycleProduct(
       ? []
       : source.map(entry => compactInstallment(entry, collectionIds, source));
     // All or nothing: a shortened set would claim the buyer can only buy the
-    // slots that happened to project, and an omitted one claims
-    // run-of-collection. Neither is true of a partially projectable product.
+    // slots that happened to project. Omitting instead is the lesser of two
+    // wrong answers, not a neutral one — inside a projection that asked for
+    // installments, absence reads as run-of-collection. A seller whose
+    // catalog can reach this must add collection_ref rather than ship either
+    // claim; see the migration note for 3.3.
     if (installments.length > 0 && installments.every(entry => entry !== undefined)) {
       projected.installments = installments as Record<string, unknown>[];
       if (projected.collections === undefined && product.collections !== undefined) {
