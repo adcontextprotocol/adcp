@@ -20,12 +20,14 @@ import { everyEntitledOrgHasResolvableTierInvariant } from './every-entitled-org
 import { uniqueOrgPerEmailDomainInvariant } from './unique-org-per-email-domain.js';
 import { workosVerifiedDomainsMirroredInvariant } from './workos-verified-domains-mirrored.js';
 import { personalMemberCompanyOrgSplitInvariant } from './personal-member-company-org-split.js';
+import { registryReviewQueueDrainedInvariant } from './registry-review-queue-drained.js';
 
 export const ALL_INVARIANTS: readonly Invariant[] = [
   // DB-only checks first (no external API calls).
   usersHavePrimaryOrganizationInvariant,
   uniqueOrgPerEmailDomainInvariant,
   personalMemberCompanyOrgSplitInvariant,
+  registryReviewQueueDrainedInvariant,
   everyEntitledOrgHasResolvableTierInvariant,
   stripeCustomerOrgMetadataBidirectionalInvariant,
   oneActiveStripeSubPerOrgInvariant,
