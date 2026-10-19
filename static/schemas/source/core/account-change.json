@@ -170,6 +170,15 @@
       "maxLength": 100,
       "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
     },
+    "allowance_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "seller_adjustment_allowance",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.seller_adjustment_allowances). The seller_adjustable_terms entry that authorized this change when the seller applied it unilaterally. origin.kind is seller_system, or seller_operator when a person applied it, and reason is present. The media buy history entry for the same revision carries the same allowance_id."
+    },
     "summary": {
       "type": "string",
       "description": "Optional brief, untrusted human-readable summary. MUST NOT contain secrets or sensitive payload data.",

@@ -8,11 +8,16 @@
     "proposal_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "proposal" },
     "proposal_kind": { "type": "string", "enum": ["new_media_buy", "media_buy_update", "media_buy_cancellation"] },
     "proposal_initiator": {
-      "type": "string",
-      "enum": ["buyer", "seller"],
+      "$ref": "/schemas/enums/proposal-initiator.json",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.seller_offers). Absent means buyer. seller marks a seller-initiated offer against an accepted media buy, which list_proposals returns with origin seller_offer. The offer's required fields, kinds, and notification are defined with media_buy.seller_offers; this property exists so list_proposals can discriminate seller offers from later proposals."
+      "description": "Experimental (media_buy.seller_offers). Absent means buyer. A seller proposal is an offer to amend or cancel an accepted media buy: it requires offer_reason, a media_buy_update or media_buy_cancellation kind, status committed (accepted once the buyer accepts) and a proposal_id matching the proposal.offered notification_id pattern. Sellers MUST NOT emit it to callers pinned below AdCP 3.3; no declared pin counts as below 3.3."
+    },
+    "offer_reason": {
+      "$ref": "/schemas/enums/offer-reason.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.seller_offers). Why the seller made this offer. Present exactly when proposal_initiator is seller."
     },
     "parent_proposal_id": {
       "type": "string",
@@ -39,7 +44,7 @@
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "For a draft, the indicative-terms freshness deadline. For a committed proposal, the inventory-hold deadline under inventory_hold semantics, or the acceptance-window deadline under terms_only semantics (get_adcp_capabilities media_buy.proposal_refinement.hold_semantics, or hold_policy.available false)."
+      "description": "For a draft, the indicative-terms freshness deadline. For a committed proposal, the inventory-hold deadline under inventory_hold semantics, or the acceptance-window deadline under terms_only semantics (get_adcp_capabilities media_buy.proposal_refinement.hold_semantics, or hold_policy.available false). For a seller offer it is also the buyer's response deadline."
     },
     "hold_policy": {
       "$ref": "/schemas/core/hold-policy.json",
@@ -121,6 +126,19 @@
   "required": ["proposal_id", "proposal_kind", "proposal_status", "name", "commercial_terms", "terms_digest"],
   "allOf": [
     {
+      "if": { "properties": { "proposal_initiator": { "const": "seller" } }, "required": ["proposal_initiator"] },
+      "then": {
+        "required": ["offer_reason"],
+        "not": { "required": ["opportunity_id"] },
+        "properties": {
+          "proposal_id": { "pattern": "^[A-Za-z0-9_.:-]{1,255}$" },
+          "proposal_kind": { "enum": ["media_buy_update", "media_buy_cancellation"] },
+          "proposal_status": { "enum": ["committed", "accepted"] }
+        }
+      },
+      "else": { "not": { "required": ["offer_reason"] } }
+    },
+    {
       "if": { "properties": { "proposal_kind": { "enum": ["media_buy_update", "media_buy_cancellation"] } }, "required": ["proposal_kind"] },
       "then": { "required": ["parent_proposal_id", "media_buy_id", "base_media_buy_revision"] }
     },
@@ -201,7 +219,7 @@
     },
     {
       "if": { "properties": { "proposal_kind": { "const": "media_buy_cancellation" } }, "required": ["proposal_kind"] },
-      "then": { "properties": { "commercial_terms": { "required": ["cancellation_terms"], "not": { "required": ["definition_pins"] } } } }
+      "then": { "properties": { "commercial_terms": { "required": ["cancellation_terms"], "not": { "anyOf": [{ "required": ["definition_pins"] }, { "required": ["seller_adjustable_terms"] }] } } } }
     }
   ],
   "additionalProperties": false
