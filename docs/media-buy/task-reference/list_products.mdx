@@ -32,6 +32,8 @@ Wholesale support is optional. A seller that omits `list_products` from `media_b
 }
 ```
 
+`include_collections` (experimental, `media_buy.collection_cards`, default `false`) asks for the response-level `collections` array described below. This request rejects unknown fields, so send it only to a seller that lists `media_buy.collection_cards` in `experimental_features`. The flag is part of the selection that `feed_version` is scoped to; see [availability forecasts](#availability-forecasts-are-a-per-read-overlay) below.
+
 `brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs); discovery accepts only a compact catalog selection under `criteria.catalog`.
 
 `offer_filters` select commercial offers. `targeting_overlay` instead constrains the inventory or impressions that may deliver, so every returned price and forecast must account for the effective overlay. `required_overlay_support` asks for targeting dimensions the buyer can select independently on packages later. For aggregate frequency capping, use `criteria.required_media_buy_support` to require product participation and `criteria.media_buy_frequency_cap` to preflight an exact shared cap.
@@ -59,6 +61,7 @@ Every response has an explicit `outcome`:
 |-------|------|-------------|
 | `outcome` | string | `listed` when the response contains a product page; `unchanged` when a conditional request matches the current feed. |
 | `products` | Product[] | Product offers for this page. Required for `listed`, even when the array is empty; omitted for `unchanged`. |
+| `collections` | ResponseCollection[] | Optional, experimental (`media_buy.collection_cards`). Full collection objects for collections referenced by products on this page, one entry per `(publisher_domain, collection_id)`. Returned only when the request set `include_collections: true`. Omitted with `products`, and when `fields` omits `collections`. Not authorization evidence; see [Collections in responses](/docs/media-buy/product-discovery/collections-and-installments#collections-in-responses). |
 | `next_cursor` | string | Cursor for the next page. Omitted on the final page. Pass it as `cursor` in the next request. |
 | `feed_version` | string | Opaque version of the selected offer feed. Pass it as `if_feed_version` on a later request to avoid downloading an unchanged feed. |
 | `pricing_version` | string | Opaque version of the selected pricing layer. Pass it as `if_pricing_version` together with `if_feed_version` when checking both versions. |
@@ -115,6 +118,7 @@ For calendar-shaped guaranteed inventory (homepage takeovers, sponsorships), `li
 Availability is volatile — every booking changes it — so it is never part of the versioned feed content:
 
 - `feed_version` covers the durable offer definition only. Forecast data (including availability windows) does not participate in feed-version scoping and carries its own freshness via the forecast's `generated_at` and `valid_until`.
+- `include_collections` is part of the selection a `feed_version` is scoped to, for both `public` and `account` `cache_scope`; absent and `false` are the same scope. Without it, [collection copies](/docs/media-buy/product-discovery/collections-and-installments#collections-in-responses) are outside the version, so a card change alone does not make buyers who never asked for cards refetch. With `include_collections: true`, `feed_version` also changes whenever any collection copy the selection would return changes, so an `unchanged` outcome never hides a fresher card. A token issued under one setting and presented with the other is a mismatch and gets a full `listed` response; sellers MUST issue distinct tokens for the two settings. Product webhooks carry no collections and their versions belong to the scope without the flag. A webhook-fed mirror keeps cards current through the experimental [`collection_card.*` events](/docs/media-buy/task-reference/list_collections#collection-card-webhooks), repaired through [`list_collections`](/docs/media-buy/task-reference/list_collections); against a seller without them, it refreshes cards through a full read with `include_collections: true`.
 - A request whose `fields` includes `forecast` MUST NOT be answered with `outcome: "unchanged"` — that arm omits `products`, so it cannot carry the volatile data the buyer explicitly asked for. Sellers return a full `listed` response even when the feed token matches.
 - Wholesale feed webhooks fire on definition and pricing changes, not on booking-state changes. Broadcasting window closures to all subscribers would leak demand signals; buyers who need current availability read it on demand, and buyers who need a guarantee take an inventory hold by finalizing a proposal.
 

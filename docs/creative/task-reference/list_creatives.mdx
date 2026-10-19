@@ -85,7 +85,7 @@ The `filters` object supports these optional, composable filters:
 | `media_buy_ids` | string[] | Filter by media buy assignments * |
 | `unassigned` | boolean | Filter for unassigned creatives * |
 | `has_served` | boolean | Filter for creatives that have served at least one impression * |
-| `indicator_types` | `IndicatorType[]` | Filter for creatives with at least one package assignment carrying any requested current indicator type. See the [standard indicator catalog](/docs/media-buy/media-buys/indicators#standard-indicator-types). * |
+| `indicator_types` | `IndicatorType[]` | Filter for creatives with at least one package assignment carrying any requested current indicator type. See the [standard indicator catalog](/docs/media-buy/media-buys/indicators#standard-indicator-catalog). * |
 
 \* Assignment-related filters are specific to sales agents. Standalone creative agents ignore these.
 
@@ -185,6 +185,7 @@ The response provides creative data with optional enrichment:
   "creatives": [
     {
       "creative_id": "ft_88201",
+      "platform_id": "cr_400918",
       "revision_id": "rev_2026_08_23_01",
       "name": "Holiday Sale - Medium Rectangle",
       "format_kind": "image",
@@ -222,13 +223,15 @@ transcode version. Older creatives without revision identity may omit it.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `creative_id` | string | Unique creative identifier |
+| `creative_id` | string | Unique creative identifier. Assigned by the seller for creatives created outside AdCP. |
+| `platform_id` | string | The seller's identifier for the creative in its source of truth. Same value `sync_creatives` returns. |
 | `revision_id` | string | Current buyer-authored input revision when the current content is revision-bound. Omitted for legacy/unversioned current content. |
 | `name` | string | Human-readable name |
 | `format_kind` | string | Canonical format kind |
 | `format_option_ref` | object | Optional exact publisher/product option reference |
 | `format_id` | object | Deprecated 3.x named-format compatibility field |
 | `status` | string | Approval status |
+| `status_as_of` | string | When the seller last refreshed `status` from its source of truth. Optional; omission makes no freshness assertion. A value earlier than your last accepted write for this creative means the seller has not yet confirmed that write. See [creative state freshness](/docs/media-buy/specification#creative-state-freshness). |
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
 | `assets` | object | Creative assets (images, text, URLs, etc.) |
@@ -246,9 +249,27 @@ transcode version. Older creatives without revision identity may omit it.
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
 | `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as [`get_signals`](/docs/signals/tasks/get_signals) and [`list_content_standards`](/docs/governance/content-standards/tasks/list_content_standards). |
 
+### Creatives created outside AdCP
+
+A creative can enter the seller's library without `sync_creatives`: through a seller UI or API, seller automation, or another system. That happens, for example, when a buyer connects to an advertiser that already has live buys and creatives. Those creatives have no buyer-assigned ID, so the seller assigns their `creative_id`, and the buyer uses it to reference them in later requests.
+
+- Sellers SHOULD keep that ID stable for the creative's lifetime and unique within the account, and SHOULD use UUIDs or a stable prefix (for example, `slr_`) so it does not collide with buyer-chosen IDs. It MAY equal `platform_id`.
+- A seller that declares [`creative.stable_creative_ids`](/docs/protocol/get_adcp_capabilities#creative) MUST keep it stable and unique, and MUST NOT reuse a `creative_id` a buyer has used on the account. Buyers MUST NOT rely on a seller-assigned ID staying the same unless the seller declares it.
+- Sellers MUST NOT mint a `revision_id` for such a creative. `revision_id` is buyer-authored; it appears only after a buyer supplies one through `sync_creatives`.
+
+To manage one of these creatives, a buyer uses its `creative_id` as-is. See [seller-assigned creative IDs](/docs/creative/task-reference/sync_creatives#seller-assigned-creative-ids). A buyer tells its own creatives apart by the IDs it synced.
+
+`platform_id` is the seller's identifier for the creative in its source of truth, the same value `sync_creatives` returns. It lets operators match a creative to the seller's own UI and reports without keeping the sync response. Buyers address creatives by `creative_id`, never by `platform_id`.
+
 ### Assignment indicators
 
+In AdCP 3.3, sellers advertising `creative.supports_assignment_trackers` MUST return `assignments.assigned_packages[].trackers`: the complete assignment-scoped tracker list, or `[]` when none are attached. Preserve event names, URL templates, order, and duplicate occurrences. The list excludes the creative's own trackers in `assets`; both sets fire on this placement. See [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers).
+
+In AdCP 3.3, `assignments.assigned_packages[].landing_page_url` reports the effective serving destination for that creative on that package. Sellers advertising `creative.supports_assignment_landing_page` return the assignment override, or the creative's own destination when unique. Macro-bearing URLs retain the effective template. Omit the scalar when no destination exists or an unoverridden creative has multiple destinations; read those from the creative's `assets` rather than treating an arbitrary destination as applying to every click. The creative's own `status` and assignment `approval_status` remain separate. See [assignment landing pages](/docs/creative/task-reference/sync_creatives#assignment-landing-pages).
+
 Creative-library sellers that advertise `list_creatives` in `media_buy.relationship_notifications.projection_tasks` attach evaluated indicator state to `assignments.assigned_packages[]` and include `media_buy_id` plus `approval_status` on every row, including unknown rows. These fields mirror [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for the same relationship. A mixed publisher/placement outcome uses `approval_status: "partially_approved"` plus complete `approval_scopes[]`; the assignment webhook remains a compact invalidation and buyers reread these scopes. Each evaluated row includes `indicator_types_evaluated`, `indicators_as_of`, and `indicators[]`; omitted types remain unknown.
+
+An assignment row MAY carry `approval_status_as_of`: when the seller last refreshed `approval_status`, `rejection_reason`, and `approval_scopes` for that relationship from its source of truth. It follows the same rules as `creative_approvals[].approval_status_as_of` on `get_media_buys`. When both reads carry it for the same relationship, the values agree. See [creative state freshness](/docs/media-buy/specification#creative-state-freshness).
 
 ```json
 {

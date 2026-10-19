@@ -35,7 +35,6 @@
       "required": [
         "geo_level",
         "geo_code",
-        "impressions",
         "spend"
       ],
       "allOf": [

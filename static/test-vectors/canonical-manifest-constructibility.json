@@ -1,0 +1,1056 @@
+{
+  "description": "Saved manifest examples for structural constructibility of every local canonical reference product option. These verify asset shapes and declared slot bindings; external extension acceptance, policy, and live bytes require separate validation. Custom contracts unavailable locally remain explicitly unresolved.",
+  "cases": [
+    {
+      "product_fixture": "acme_retina_mrec.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "image",
+        "assets": {
+          "image_main": [
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 300,
+              "height": 250,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "pixel_ratio": 1
+            },
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 600,
+              "height": 500,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "pixel_ratio": 2
+            }
+          ]
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "acme_homepage_mrec_image"
+        }
+      }
+    },
+    {
+      "product_fixture": "amazon_sponsored_products.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "sponsored_placement",
+        "assets": {
+          "source_catalog": {
+            "asset_type": "catalog",
+            "type": "product",
+            "catalog_id": "acme-products"
+          }
+        }
+      }
+    },
+    {
+      "product_fixture": "chatgpt_brand_mention.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "agent_placement",
+        "assets": {}
+      }
+    },
+    {
+      "product_fixture": "gam_3p_display_tag.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "display_tag",
+        "assets": {
+          "tag_url": {
+            "asset_type": "url",
+            "url": "https://ads.acme.example/render",
+            "url_type": "ad_request"
+          },
+          "backup_image": {
+            "asset_type": "image",
+            "url": "https://cdn.acme.example/creative.jpg",
+            "width": 300,
+            "height": 250,
+            "file_size_bytes": 1000,
+            "format": "jpg"
+          }
+        }
+      }
+    },
+    {
+      "product_fixture": "google_performance_max.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "responsive_creative",
+        "assets": {
+          "headlines": [
+            {
+              "asset_type": "text",
+              "content": "Explore Acme"
+            },
+            {
+              "asset_type": "text",
+              "content": "Explore Acme"
+            },
+            {
+              "asset_type": "text",
+              "content": "Explore Acme"
+            }
+          ],
+          "long_headlines": [
+            {
+              "asset_type": "text",
+              "content": "Explore Acme"
+            }
+          ],
+          "descriptions": [
+            {
+              "asset_type": "text",
+              "content": "Explore Acme"
+            },
+            {
+              "asset_type": "text",
+              "content": "Explore Acme"
+            }
+          ],
+          "images_landscape": [
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 1910,
+              "height": 1000,
+              "file_size_bytes": 1000,
+              "format": "jpg"
+            }
+          ],
+          "images_square": [
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 300,
+              "height": 300,
+              "file_size_bytes": 1000,
+              "format": "jpg"
+            }
+          ],
+          "logo": [
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 300,
+              "height": 300,
+              "file_size_bytes": 1000,
+              "format": "jpg"
+            }
+          ],
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          }
+        }
+      }
+    },
+    {
+      "product_fixture": "meta_carousel.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "image_carousel",
+        "assets": {
+          "cards": [
+            {
+              "asset_type": "card",
+              "media": {
+                "asset_type": "image",
+                "url": "https://cdn.acme.example/creative.jpg",
+                "width": 1080,
+                "height": 1080,
+                "file_size_bytes": 1000,
+                "format": "jpg"
+              },
+              "headline": "Explore Acme",
+              "landing_page_url": {
+                "asset_type": "url",
+                "url": "https://acme.example/spring",
+                "url_type": "clickthrough"
+              }
+            },
+            {
+              "asset_type": "card",
+              "media": {
+                "asset_type": "image",
+                "url": "https://cdn.acme.example/creative.jpg",
+                "width": 1080,
+                "height": 1080,
+                "file_size_bytes": 1000,
+                "format": "jpg"
+              },
+              "headline": "Explore Acme",
+              "landing_page_url": {
+                "asset_type": "url",
+                "url": "https://acme.example/spring",
+                "url_type": "clickthrough"
+              }
+            }
+          ],
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          }
+        }
+      }
+    },
+    {
+      "product_fixture": "meta_reels_us.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "video_hosted",
+        "assets": {
+          "video_main": {
+            "asset_type": "video",
+            "url": "https://cdn.acme.example/creative.mp4",
+            "width": 1080,
+            "height": 1920,
+            "duration_ms": 15000,
+            "container_format": "mp4",
+            "video_codec": "h264",
+            "frame_rate": "30",
+            "file_size_bytes": 1000000
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "meta_reels"
+        }
+      }
+    },
+    {
+      "product_fixture": "nytimes_homepage_html5.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "html5",
+        "assets": {
+          "html5_bundle": {
+            "asset_type": "zip",
+            "url": "https://cdn.acme.example/creative.zip",
+            "width": 300,
+            "height": 250
+          },
+          "backup_image": {
+            "asset_type": "image",
+            "url": "https://cdn.acme.example/creative.jpg",
+            "width": 300,
+            "height": 250,
+            "file_size_bytes": 1000,
+            "format": "jpg"
+          }
+        }
+      }
+    },
+    {
+      "product_fixture": "nytimes_homepage_mrec.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "image",
+        "assets": {
+          "image_main": {
+            "asset_type": "image",
+            "url": "https://cdn.acme.example/creative.jpg",
+            "width": 300,
+            "height": 250,
+            "file_size_bytes": 1000,
+            "format": "jpg"
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "nytimes_homepage_image"
+        }
+      }
+    },
+    {
+      "product_fixture": "nytimes_homepage_mrec.json",
+      "option_index": 1,
+      "manifest": {
+        "format_kind": "html5",
+        "assets": {
+          "html5_bundle": {
+            "asset_type": "zip",
+            "url": "https://cdn.acme.example/creative.zip",
+            "width": 300,
+            "height": 250
+          },
+          "backup_image": {
+            "asset_type": "image",
+            "url": "https://cdn.acme.example/creative.jpg",
+            "width": 300,
+            "height": 250,
+            "file_size_bytes": 1000,
+            "format": "jpg"
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "nytimes_homepage_html5"
+        }
+      }
+    },
+    {
+      "product_fixture": "nytimes_homepage_mrec.json",
+      "option_index": 2,
+      "manifest": {
+        "format_kind": "display_tag",
+        "assets": {
+          "tag_url": {
+            "asset_type": "url",
+            "url": "https://ads.acme.example/render",
+            "url_type": "ad_request"
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "nytimes_homepage_3p_tag"
+        }
+      }
+    },
+    {
+      "product_fixture": "nytimes_homepage_takeover_custom.json",
+      "option_index": 0,
+      "unresolved_custom_schema": "This illustrative external custom-schema reference is not bundled locally. Structural canonical coverage cannot establish its acceptance contract."
+    },
+    {
+      "product_fixture": "streamhaus_buyer_rendered_takeover.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "seller_rendered_stateful_display",
+        "assets": {
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          },
+          "state_canvases": [
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 970,
+              "height": 250,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "frame_a",
+              "breakpoint_id": "desktop"
+            },
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 320,
+              "height": 100,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "frame_a",
+              "breakpoint_id": "mobile"
+            },
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 970,
+              "height": 90,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "frame_b",
+              "breakpoint_id": "desktop"
+            },
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 320,
+              "height": 50,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "frame_b",
+              "breakpoint_id": "mobile"
+            }
+          ]
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "buyer_rendered_takeover"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_coordinated_placements.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "seller_rendered_stateful_display",
+        "assets": {
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          },
+          "state_canvases": [
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 640,
+              "height": 210,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "expanded",
+              "breakpoint_id": "desktop"
+            },
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 320,
+              "height": 210,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "expanded",
+              "breakpoint_id": "mobile"
+            },
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 640,
+              "height": 70,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "collapsed",
+              "breakpoint_id": "desktop"
+            },
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 320,
+              "height": 70,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "collapsed",
+              "breakpoint_id": "mobile"
+            }
+          ]
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "coordinated_sticky_leaderboard"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_coordinated_placements.json",
+      "option_index": 1,
+      "manifest": {
+        "format_kind": "coordinated_placements",
+        "assets": {},
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "homepage_coordinated_placements"
+        },
+        "component_assets": {
+          "leaderboard": {
+            "landing_page_url": {
+              "asset_type": "url",
+              "url": "https://acme.example/spring",
+              "url_type": "clickthrough"
+            },
+            "state_canvases": [
+              {
+                "asset_type": "image",
+                "url": "https://cdn.acme.example/creative.jpg",
+                "width": 640,
+                "height": 210,
+                "file_size_bytes": 1000,
+                "format": "jpg",
+                "state_id": "expanded",
+                "breakpoint_id": "desktop"
+              },
+              {
+                "asset_type": "image",
+                "url": "https://cdn.acme.example/creative.jpg",
+                "width": 320,
+                "height": 210,
+                "file_size_bytes": 1000,
+                "format": "jpg",
+                "state_id": "expanded",
+                "breakpoint_id": "mobile"
+              },
+              {
+                "asset_type": "image",
+                "url": "https://cdn.acme.example/creative.jpg",
+                "width": 640,
+                "height": 70,
+                "file_size_bytes": 1000,
+                "format": "jpg",
+                "state_id": "collapsed",
+                "breakpoint_id": "desktop"
+              },
+              {
+                "asset_type": "image",
+                "url": "https://cdn.acme.example/creative.jpg",
+                "width": 320,
+                "height": 70,
+                "file_size_bytes": 1000,
+                "format": "jpg",
+                "state_id": "collapsed",
+                "breakpoint_id": "mobile"
+              }
+            ]
+          },
+          "skin": {
+            "image_main": {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 2560,
+              "height": 1440,
+              "file_size_bytes": 1000,
+              "format": "jpg"
+            }
+          }
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_coordinated_takeover_sequenced.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "seller_rendered_stateful_display",
+        "assets": {
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          },
+          "imagery": [
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 300,
+              "height": 250,
+              "file_size_bytes": 1000,
+              "format": "jpg"
+            }
+          ]
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "takeover_skin_format"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_coordinated_takeover_sequenced.json",
+      "option_index": 1,
+      "manifest": {
+        "format_kind": "seller_rendered_stateful_display",
+        "assets": {
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          },
+          "imagery": [
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 300,
+              "height": 250,
+              "file_size_bytes": 1000,
+              "format": "jpg"
+            }
+          ],
+          "video_main": {
+            "asset_type": "video",
+            "url": "https://cdn.acme.example/creative.mp4",
+            "width": 1080,
+            "height": 1920,
+            "duration_ms": 15000,
+            "container_format": "mp4",
+            "video_codec": "h264",
+            "frame_rate": "30",
+            "file_size_bytes": 1000000
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "takeover_leaderboard_format"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_coordinated_takeover_sequenced.json",
+      "option_index": 2,
+      "manifest": {
+        "format_kind": "image",
+        "assets": {
+          "image_main": {
+            "asset_type": "image",
+            "url": "https://cdn.acme.example/creative.jpg",
+            "width": 300,
+            "height": 250,
+            "file_size_bytes": 1000,
+            "format": "jpg"
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "takeover_message_format"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_coordinated_takeover_sequenced.json",
+      "option_index": 3,
+      "manifest": {
+        "format_kind": "coordinated_placements",
+        "assets": {},
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "sequenced_takeover"
+        },
+        "component_assets": {
+          "skin": {
+            "landing_page_url": {
+              "asset_type": "url",
+              "url": "https://acme.example/spring",
+              "url_type": "clickthrough"
+            },
+            "imagery": [
+              {
+                "asset_type": "image",
+                "url": "https://cdn.acme.example/creative.jpg",
+                "width": 300,
+                "height": 250,
+                "file_size_bytes": 1000,
+                "format": "jpg"
+              }
+            ]
+          },
+          "leaderboard": {
+            "landing_page_url": {
+              "asset_type": "url",
+              "url": "https://acme.example/spring",
+              "url_type": "clickthrough"
+            },
+            "imagery": [
+              {
+                "asset_type": "image",
+                "url": "https://cdn.acme.example/creative.jpg",
+                "width": 300,
+                "height": 250,
+                "file_size_bytes": 1000,
+                "format": "jpg"
+              }
+            ],
+            "video_main": {
+              "asset_type": "video",
+              "url": "https://cdn.acme.example/creative.mp4",
+              "width": 1080,
+              "height": 1920,
+              "duration_ms": 15000,
+              "container_format": "mp4",
+              "video_codec": "h264",
+              "frame_rate": "30",
+              "file_size_bytes": 1000000
+            }
+          }
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_ctv_menu_banner.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "native_in_feed",
+        "assets": {
+          "title": {
+            "asset_type": "text",
+            "content": "Explore Acme"
+          },
+          "main_image": {
+            "asset_type": "image",
+            "url": "https://cdn.acme.example/creative.jpg",
+            "width": 300,
+            "height": 250,
+            "file_size_bytes": 1000,
+            "format": "jpg"
+          },
+          "advertiser_name": {
+            "asset_type": "text",
+            "content": "Explore Acme"
+          },
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "streamhaus_menu_headline_banner"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_ctv_menu_tile.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "native_in_feed",
+        "assets": {
+          "title": {
+            "asset_type": "text",
+            "content": "Explore Acme"
+          },
+          "main_image": {
+            "asset_type": "image",
+            "url": "https://cdn.acme.example/creative.jpg",
+            "width": 300,
+            "height": 250,
+            "file_size_bytes": 1000,
+            "format": "jpg"
+          },
+          "icon": {
+            "asset_type": "image",
+            "url": "https://cdn.acme.example/creative.jpg",
+            "width": 300,
+            "height": 250,
+            "file_size_bytes": 1000,
+            "format": "jpg"
+          },
+          "advertiser_name": {
+            "asset_type": "text",
+            "content": "Explore Acme"
+          },
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          },
+          "video": {
+            "asset_type": "vast",
+            "delivery_type": "url",
+            "url": "https://ads.acme.example/vast",
+            "vast_version": "4.2"
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "streamhaus_menu_tile_hero"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_ctv_overlay_vast.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "video_vast",
+        "assets": {
+          "vast_tag": {
+            "asset_type": "vast",
+            "delivery_type": "url",
+            "url": "https://ads.acme.example/vast",
+            "vast_version": "4.2"
+          },
+          "activation_message": {
+            "asset_type": "text",
+            "content": "Explore Acme"
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "streamhaus_overlay_nonlinear"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_ctv_pause_image.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "image",
+        "assets": {
+          "image_main": {
+            "asset_type": "image",
+            "url": "https://cdn.acme.example/creative.jpg",
+            "width": 1920,
+            "height": 1080,
+            "file_size_bytes": 1000,
+            "format": "jpg"
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "streamhaus_pause_frame"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_expandable_sticky_leaderboard.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "seller_rendered_stateful_display",
+        "assets": {
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          },
+          "state_canvases": [
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 640,
+              "height": 210,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "expanded",
+              "breakpoint_id": "desktop"
+            },
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 320,
+              "height": 210,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "expanded",
+              "breakpoint_id": "mobile"
+            },
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 640,
+              "height": 70,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "collapsed",
+              "breakpoint_id": "desktop"
+            },
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 320,
+              "height": 70,
+              "file_size_bytes": 1000,
+              "format": "jpg",
+              "state_id": "collapsed",
+              "breakpoint_id": "mobile"
+            }
+          ]
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "expandable_sticky_leaderboard"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_flex_frame_components.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "seller_rendered_stateful_display",
+        "assets": {
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          },
+          "cta": {
+            "asset_type": "text",
+            "content": "Explore Acme"
+          },
+          "headline": {
+            "asset_type": "text",
+            "content": "Explore Acme"
+          },
+          "imagery": [
+            {
+              "asset_type": "image",
+              "url": "https://cdn.acme.example/creative.jpg",
+              "width": 300,
+              "height": 250,
+              "file_size_bytes": 1000,
+              "format": "jpg"
+            }
+          ],
+          "logo": {
+            "asset_type": "image",
+            "url": "https://cdn.acme.example/creative.jpg",
+            "width": 300,
+            "height": 300,
+            "file_size_bytes": 1000,
+            "format": "jpg"
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "flex_frame_components"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_topscroll_reveal.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "seller_rendered_stateful_display",
+        "assets": {
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          },
+          "video_main": {
+            "asset_type": "video",
+            "url": "https://cdn.acme.example/creative.mp4",
+            "width": 1080,
+            "height": 1920,
+            "duration_ms": 6000,
+            "container_format": "mp4",
+            "video_codec": "h264",
+            "frame_rate": "30",
+            "file_size_bytes": 1000000
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "topscroll_reveal"
+        }
+      }
+    },
+    {
+      "product_fixture": "streamhaus_vast_audio_30s.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "audio_vast",
+        "assets": {
+          "vast_tag": {
+            "asset_type": "vast",
+            "delivery_type": "url",
+            "url": "https://ads.acme.example/vast",
+            "vast_version": "4.2"
+          }
+        },
+        "format_option_ref": {
+          "scope": "product",
+          "format_option_id": "streaming_audio_vast_30s"
+        }
+      }
+    },
+    {
+      "product_fixture": "taboola_content_recommendation.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "native_in_feed",
+        "assets": {
+          "title": {
+            "asset_type": "text",
+            "content": "Explore Acme"
+          },
+          "main_image": {
+            "asset_type": "image",
+            "url": "https://cdn.acme.example/creative.jpg",
+            "width": 1200,
+            "height": 627,
+            "file_size_bytes": 1000,
+            "format": "jpg"
+          },
+          "advertiser_name": {
+            "asset_type": "text",
+            "content": "Explore Acme"
+          },
+          "landing_page_url": {
+            "asset_type": "url",
+            "url": "https://acme.example/spring",
+            "url_type": "clickthrough"
+          }
+        }
+      }
+    },
+    {
+      "product_fixture": "the_daily_30s_host_read.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "audio_hosted",
+        "assets": {
+          "script": {
+            "asset_type": "text",
+            "content": "Explore Acme"
+          }
+        }
+      }
+    },
+    {
+      "product_fixture": "triton_daast_audio_30s.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "audio_daast",
+        "assets": {
+          "daast_tag": {
+            "asset_type": "daast",
+            "delivery_type": "url",
+            "url": "https://ads.acme.example/daast",
+            "daast_version": "1.1"
+          }
+        }
+      }
+    },
+    {
+      "product_fixture": "veo_generative_video_15s.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "video_hosted",
+        "assets": {
+          "creative_brief": {
+            "asset_type": "brief",
+            "name": "Acme trail launch",
+            "objective": "awareness",
+            "messaging": {
+              "key_messages": [
+                "Explore Acme on the trail"
+              ]
+            }
+          },
+          "video_brief": [
+            {
+              "asset_type": "video_brief",
+              "segments": [
+                {
+                  "order": 1,
+                  "duration_ms": 5000,
+                  "prompt": "An Acme hiking boot on a forest trail."
+                },
+                {
+                  "order": 2,
+                  "duration_ms": 5000,
+                  "prompt": "The boot crosses a shallow stream."
+                },
+                {
+                  "order": 3,
+                  "duration_ms": 5000,
+                  "prompt": "Acme logo and a clear call to action."
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "product_fixture": "youtube_vast_preroll.json",
+      "option_index": 0,
+      "manifest": {
+        "format_kind": "video_vast",
+        "assets": {
+          "vast_tag": {
+            "asset_type": "vast",
+            "delivery_type": "url",
+            "url": "https://ads.acme.example/vast",
+            "vast_version": "4.2"
+          }
+        }
+      }
+    }
+  ]
+}
