@@ -576,10 +576,23 @@ function exactServer(f, options = {}) {
     // produce R2's ETag.
     etagFor = (body) => `"${crypto.createHash("md5").update(body).digest("hex")}"`,
   } = options;
+  const servedRoot = path.resolve(f.dir, "dist");
   return (request, response) => {
-    const key = decodeURIComponent(request.url.split("?")[0]).slice(1);
-    const file = path.join(f.dir, "dist", key);
-    if (!fs.existsSync(file)) {
+    const key = decodeURIComponent(request.url.split("?")[0]).replace(
+      /^\/+/,
+      "",
+    );
+    // Serve only from inside the fixture's released tree, so a traversing
+    // request gets a 404 rather than reading the rest of the sandbox.
+    const file = path.resolve(servedRoot, key);
+    if (
+      file !== servedRoot &&
+      !file.startsWith(servedRoot + path.sep)
+    ) {
+      response.writeHead(404).end();
+      return;
+    }
+    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
       response.writeHead(404).end();
       return;
     }
