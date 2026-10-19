@@ -1095,47 +1095,56 @@ test('a brief filter failure blocks dependent refine but leaves wholesale covera
 });
 
 test('advanced delivery reporting dispatches wholesale discovery only to opted-in sellers', async () => {
-  const storyboard = loadMediaBuyStoryboard('advanced_delivery_reporting');
-  const discovery = storyboard.phases[0].steps.find(step => step.id === 'discover_product');
-  const executable = {
-    ...storyboard,
-    prerequisites: undefined,
-    fixtures: undefined,
-    phases: [{
-      ...storyboard.phases[0],
-      steps: [{ ...discovery, context_outputs: [], validations: [] }],
-    }],
-  };
-  const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
+  for (const name of ['advanced_delivery_reporting', 'time_based_delivery_reporting']) {
+    const storyboard = loadMediaBuyStoryboard(name);
+    const executable = {
+      ...storyboard,
+      // Isolate the buying-mode gate from unrelated account setup. Retain
+      // the actual product/pricing declarations and resolver, whose catalog
+      // discovery replaced the old authored discover_product step.
+      prerequisites: undefined,
+      fixtures: { ...storyboard.fixtures, accounts: undefined },
+    };
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools, 'comply_test_controller'];
 
-  for (const buyingModes of [undefined, ['brief'], ['brief', 'wholesale']]) {
-    const requests = [];
-    const result = await runStoryboard('https://agent.example/mcp', executable, {
-      _profile: {
-        tools,
-        raw_capabilities: {
-          media_buy: buyingModes ? { buying_modes: buyingModes } : {},
+    for (const buyingModes of [undefined, ['brief'], ['brief', 'wholesale']]) {
+      const requests = [];
+      const result = await runStoryboard('https://agent.example/mcp', executable, {
+        _profile: {
+          tools,
+          raw_capabilities: {
+            media_buy: buyingModes ? { buying_modes: buyingModes } : {},
+          },
         },
-      },
-      agentTools: tools,
-      _client: {
-        resetContext() {},
-        async getProducts(request) {
-          requests.push(request);
-          return { success: true, data: { products: [] } };
+        _controllerCapabilities: { detected: true, scenarios: [] },
+        agentTools: tools,
+        _client: {
+          resetContext() {},
+          async executeTask(task, request) {
+            assert.equal(task, 'get_products', name);
+            assert.ok(buyingModes?.includes('wholesale'), 'an unadvertised wholesale read must never dispatch');
+            requests.push(request);
+            return { success: true, status: 'completed', data: {
+              products: [], cache_scope: 'account', wholesale_feed_version: 'gate-test',
+            } };
+          },
         },
-      },
-    });
+      });
 
-    assert.equal(result.overall_passed, true);
-    if (buyingModes?.includes('wholesale')) {
-      assert.equal(requests.length, 1);
-      assert.equal(requests[0].buying_mode, 'wholesale');
-      assert.equal(result.passed_count, 1);
-    } else {
-      assert.deepEqual(requests, []);
-      assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported');
-      assert.equal(result.passed_count, 0);
+      assert.equal(result.overall_passed, true, JSON.stringify(result));
+      if (buyingModes?.includes('wholesale')) {
+        assert.equal(requests.length, 1, name);
+        assert.equal(requests[0].buying_mode, 'wholesale', name);
+        assert.equal(result.failed_count, 0, name);
+        assert.equal(result.passed_count, 0, 'a valid catalog no-match is not a feature pass');
+        assert.equal(result.skipped_count, 1, name);
+        assert.ok(result.coverage_gaps?.some(gap => gap.reason === 'fixture_unsatisfied'), name);
+        assert.equal(result.fixture_resolutions[0].status, 'unsatisfied', name);
+      } else {
+        assert.deepEqual(requests, [], name);
+        assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported', name);
+        assert.equal(result.passed_count, 0, name);
+      }
     }
   }
 });
