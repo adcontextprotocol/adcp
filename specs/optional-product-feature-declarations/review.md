@@ -87,8 +87,14 @@ and held reporting #8336 at `8ccc1d62194b9b8e2a9b8d3b2543b20d145f67f6`.
 Upstream counts and reviews are explicitly owner/reviewer reports; this workspace
 has not rerun those suites. The declared relation, same-selected snapshot,
 protected write/delete/metadata funnel, alias-safe prepared state and authenticated
-every-lookup grant/revocation requirements remain proposed foundation surfaces,
-with implementation assignment NONE RECORDED / unconfirmed. Reporting IDs are
+every-lookup grant/revocation requirements remain separately qualified foundation
+surfaces. At that reconciliation, assignment was NONE RECORDED / unconfirmed;
+root has since assigned the focused #8259 SDK implementation to workspace
+`9bed7f0a-da60-44d8-a102-3586db378a8a`, session
+`7d85de47-008e-484b-8f14-2601c34f5725`. This ownership update supersedes that status
+only; no candidate source head has been reviewed or qualified by this proposal.
+The metadata-only correction changes no field, fixture or model semantics.
+Reporting IDs are
 limited to the two actual-source reporting scenarios; new collection IDs remain
 provisional. Green draft CI or counterexample tests do not qualify shipping.
 

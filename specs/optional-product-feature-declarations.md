@@ -120,11 +120,25 @@ scenario IDs remain provisional; this proposal adopts no new source filename.
 Protected captures need the proposed atomic write/delete/metadata funnel across
 all context-write paths, detached immutable preparation state and deep-cloned
 views against alias mutation, plus authenticated every-lookup tenant/caller/run/
-grant/revocation checks. These are separate, **unimplemented foundation
-surfaces**. Main-line implementation assignment is **NONE RECORDED / unconfirmed**;
-reviewer-only work is not an assignment. This PR implements no SDK/DSL, protected
-state or authenticated lookup. Its small pair normalizer is an isolated model
-helper, not a foundation API or evidence of implemented capture/state safety.
+grant/revocation checks. These are separate foundation surfaces. The earlier
+**NONE RECORDED / unconfirmed** ownership status is superseded by root's explicit
+assignment of the focused #8259 implementation in `adcontextprotocol/adcp-client`
+to [SDK catalog fixture foundation #8259](conductor://workspace?id=9bed7f0a-da60-44d8-a102-3586db378a8a),
+session `7d85de47-008e-484b-8f14-2601c34f5725`, based on fresh main. Its authorized
+output is a reviewed draft SDK source implementation for the contract at
+`ce8a65d6bd192c105ef3175091f29c7f296e47b9`, with public integration and exact-head
+contract/security evidence. Assignment is not implementation qualification:
+this proposal has not reviewed an actual candidate implementation head. The
+existing stable session remains reviewer-only; other owners retain their scopes.
+
+That focused foundation assignment does not authorize this proposal's capability
+fields, `prepare_product_feature` controller wire contract, final collection IDs,
+protocol dependency/lock/bridge adoption, maintenance changes, merge, publication
+or release. Those remain separate decisions and qualification work. This PR
+implements no SDK/DSL, protected state or authenticated lookup. Its small pair
+normalizer is an isolated model helper, not a foundation API or evidence of
+implemented capture/state safety. The declarations owner contacted the new SDK
+owner directly to preserve this boundary before any shared API finalization.
 
 Held reporting [#8336 at
 `8ccc1d62194b9b8e2a9b8d3b2543b20d145f67f6`](https://github.com/adcontextprotocol/adcp/pull/8336)
