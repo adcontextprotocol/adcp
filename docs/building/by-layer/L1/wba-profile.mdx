@@ -189,7 +189,7 @@ The profile reports signature failures with HTTP status codes, as WBA does (sect
 
 On a `403` or `429`, the AdCP layer SHOULD add an `Accept-Signature` field that names the components and parameters the profile requires. [AdCP checks after Web Bot Auth verification](/docs/building/by-layer/L1/security#adcp-checks-after-web-bot-auth-verification) states its contents. The conformance vectors grade the status, not that field.
 
-A request signed with a revoked key gets the generic authentication error, `AUTH_INVALID`, as that section describes. An identity without the needed onboarding entry gets an AdCP authorization error, without `Accept-Signature`. Those errors use the AdCP error envelope and codes, not the transport status codes in the table.
+A request signed with a revoked key gets the error that [Transport revocation](/docs/building/by-layer/L1/security#transport-revocation) states. An identity without the needed onboarding entry gets an AdCP authorization error, without `Accept-Signature`. Those errors use the AdCP error envelope and codes, not the transport status codes in the table.
 
 An unsigned request to an operation in `required_for`, from a caller with no other credential the verifier accepts, gets an answer that depends on what the verifier advertises. A verifier that advertises only `web-bot-auth` answers `403`. A verifier that also advertises the AdCP RFC 9421 profile answers as that profile does: `401` with `request_signature_required`. In both cases the AdCP layer SHOULD add `Accept-Signature` for this profile.
 

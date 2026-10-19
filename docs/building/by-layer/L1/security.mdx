@@ -1619,8 +1619,8 @@ A Web Bot Auth (WBA) verifier configured with the profile's rules decides whethe
 - The identity's origin serves the list, with the path and media type that Transport revocation uses. The verifier accepts the list only from that origin.
 - A key in the identity's key directory signs the list, with the JWS `alg` `EdDSA`.
 - Entries in `revoked_kids` are JWK thumbprints. The verifier matches them against the signature's `keyid`.
-- A request signed with a revoked key gets the generic authentication error, `AUTH_INVALID`, without `Accept-Signature`. The signer must stop using that key, so a hint to sign again is wrong.
-- The polling cadence and the fetch-failure safe default of Transport revocation apply unchanged. A verifier that has not refreshed the list within `next_update` plus the grace rejects new request-signed mutations until it refreshes the list.
+
+[Transport revocation](#transport-revocation) states the polling cadence and what a request gets when its key is revoked or the list is missing or stale.
 
 The list lives on the same origin as the key directory. An outage that keeps a stale directory in use also leaves the list unrefreshed, so the safe default bounds how long a removed key commits spend during a discovery failure.
 
