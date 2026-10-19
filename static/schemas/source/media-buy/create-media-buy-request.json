@@ -71,6 +71,7 @@
       "type": "string",
       "description": "DEPRECATED on seller-facing requests. New buyers send the approved governance_context on the protocol envelope; the seller forwards that opaque context and does not need the plan identifier. If both are present, the governance agent MUST reject a mismatch. Removed in 4.0.",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "x-entity": "governance_plan"
     },
     "account": {
