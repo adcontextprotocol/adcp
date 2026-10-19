@@ -95,6 +95,6 @@ jobs:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           app-id: ${{ secrets.SECRETARIAT_APP_ID }}
           app-private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
-          # Optional; defaults to the review action's pinned model.
-          model: claude-opus-4-8
+          # Shared development-agent default; see .agents/playbook.md.
+          model: claude-sonnet-5-5
           skip-bot-authors: dependabot[bot],renovate[bot],github-actions[bot],aao-release-bot[bot]
