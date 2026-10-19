@@ -63,7 +63,9 @@ function buyerDecision(error) {
     effective,
     may_report_failed: !uncertain && effective !== 'absent',
     may_new_key_or_changed_payload: effective === 'not_applied' || (effective === 'absent' && error.recovery !== 'transient'),
-    same_key_resend_allowed: error.recovery === 'transient' && effective !== 'applied',
+    // An exact-bytes, same-key resend is always permitted after an uncertain or applied
+    // outcome (the fence replays the stored result); automatic retry still follows `recovery`.
+    same_key_resend_allowed: uncertain || error.recovery === 'transient',
     read_state_first: uncertain || (effective === 'absent' && error.recovery === 'transient'),
   };
 }
@@ -75,7 +77,7 @@ test('buyer decision vectors', () => {
     [{ ...t, mutation_outcome: 'unknown' }, 'unknown', false, false, true, true],
     [{ ...t, mutation_outcome: 'x_future_value' }, 'unknown', false, false, true, true],
     [{ ...t, mutation_outcome: '' }, 'unknown', false, false, true, true],
-    [{ ...t, mutation_outcome: 'applied' }, 'applied', false, false, false, true],
+    [{ ...t, mutation_outcome: 'applied' }, 'applied', false, false, true, true],
     [t, 'absent', false, false, true, true],
   ];
   for (const [error, effective, report, replan, resend, read] of cases) {
