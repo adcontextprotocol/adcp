@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   getBacklog: vi.fn(),
   claimItem: vi.fn(),
   releaseClaim: vi.fn(),
+  rollbackLandedAfter: vi.fn(),
   getModerationState: vi.fn(),
   listOpenEdits: vi.fn(),
   resolveEditsForRecord: vi.fn(),
@@ -82,6 +83,7 @@ vi.mock('../../src/db/registry-review-queue-db.js', () => ({
   getRegistryReviewBacklog: mocks.getBacklog,
   claimRegistryReviewItem: mocks.claimItem,
   releaseRegistryReviewItemClaim: mocks.releaseClaim,
+  rollbackLandedAfter: mocks.rollbackLandedAfter,
   getRegistryRecordModerationState: mocks.getModerationState,
   listOpenRegistryEditItemsForRecord: mocks.listOpenEdits,
   resolveOpenRegistryEditItemsForRecord: mocks.resolveEditsForRecord,
@@ -145,6 +147,10 @@ describe('admin registry review routes', () => {
     mocks.rollbackBrand.mockResolvedValue({ brand: {}, revision_number: 8 });
     mocks.rollbackProperty.mockResolvedValue({ property: {}, revision_number: 8 });
     mocks.listOpenEdits.mockResolvedValue([]);
+    mocks.releaseClaim.mockResolvedValue(undefined);
+    mocks.rollbackLandedAfter.mockResolvedValue(false);
+    mocks.resolveEditsForRecord.mockResolvedValue(1);
+    mocks.resolveReverted.mockResolvedValue(1);
   });
 
   describe('authorization', () => {
@@ -468,6 +474,41 @@ describe('admin registry review routes', () => {
       expect(mocks.resolveEditsForRecord).toHaveBeenCalledWith(
         'brand', 'acme.example', 'dismissed', expect.anything(), 'nothing to roll back to',
       );
+    });
+
+    it('refuses a revert target the record was already rolled back past', async () => {
+      // The review is asynchronous, so an item can name a revision
+      // whose snapshot is the pre-revert state. Restoring it would put
+      // back exactly what the first revert removed.
+      const item = editItem({ revision_number: 5 });
+      mocks.claimItem.mockResolvedValue(item);
+      mocks.listOpenEdits.mockResolvedValue([item]);
+      mocks.rollbackLandedAfter.mockResolvedValue(true);
+
+      const res = await request(makeApp())
+        .post(`/api/admin/registry-review/items/${ITEM_ID}`)
+        .send({ action: 'revert' })
+        .expect(409);
+
+      expect(res.body.error).toMatch(/already rolled back/i);
+      expect(mocks.rollbackBrand).not.toHaveBeenCalled();
+      expect(mocks.releaseClaim).toHaveBeenCalledWith(ITEM_ID);
+    });
+
+    it('refuses to keep edits another moderator is acting on', async () => {
+      mocks.claimItem.mockResolvedValue(editItem());
+      mocks.listOpenEdits.mockResolvedValue([editItem({ revision_number: 7 })]);
+      // The all-or-nothing UPDATE closed nothing: somebody holds one.
+      mocks.resolveEditsForRecord.mockResolvedValue(0);
+
+      const res = await request(makeApp())
+        .post(`/api/admin/registry-review/items/${ITEM_ID}`)
+        .send({ action: 'approve' })
+        .expect(409);
+
+      expect(res.body.message).toMatch(/another moderator/i);
+      expect(mocks.notifyResolved).not.toHaveBeenCalled();
+      expect(mocks.releaseClaim).toHaveBeenCalledWith(ITEM_ID);
     });
 
     it('releases the claim and resolves nothing when the revert fails', async () => {

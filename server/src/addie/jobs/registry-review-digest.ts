@@ -30,6 +30,7 @@ export const STALE_THRESHOLD_HOURS = 12;
 export interface RegistryReviewDigestResult {
   total: number;
   pendingRecords: number;
+  flaggedEditRecords: number;
   flaggedEdits: number;
   oldestAgeHours: number | null;
   posted: boolean;
@@ -40,6 +41,7 @@ export async function runRegistryReviewDigestJob(): Promise<RegistryReviewDigest
   const result: RegistryReviewDigestResult = {
     total: backlog.total,
     pendingRecords: backlog.pending_records,
+    flaggedEditRecords: backlog.flagged_edit_records,
     flaggedEdits: backlog.flagged_edits,
     oldestAgeHours: backlog.oldest_age_hours,
     posted: false,
@@ -58,6 +60,7 @@ export async function runRegistryReviewDigestJob(): Promise<RegistryReviewDigest
   result.posted = await notifyRegistryReviewBacklog({
     total: backlog.total,
     pending_records: backlog.pending_records,
+    flagged_edit_records: backlog.flagged_edit_records,
     flagged_edits: backlog.flagged_edits,
     oldest_age_hours: backlog.oldest_age_hours,
   });
@@ -66,6 +69,7 @@ export async function runRegistryReviewDigestJob(): Promise<RegistryReviewDigest
     {
       total: backlog.total,
       pendingRecords: backlog.pending_records,
+      flaggedEditRecords: backlog.flagged_edit_records,
       flaggedEdits: backlog.flagged_edits,
       oldestAgeHours: backlog.oldest_age_hours,
       posted: result.posted,

@@ -1334,6 +1334,7 @@ describe('registry-review-queue-drained', () => {
         pending_brands: '0',
         pending_properties: '0',
         flagged_edits: '0',
+        flagged_edit_records: '0',
         oldest_created_at: null,
         ...over,
       }],
@@ -1364,7 +1365,8 @@ describe('registry-review-queue-drained', () => {
     mockPoolQuery.mockResolvedValueOnce(backlogRow({
       pending_brands: '4',
       pending_properties: '1',
-      flagged_edits: '2',
+      flagged_edits: '3',
+      flagged_edit_records: '2',
       oldest_created_at: new Date(Date.now() - 100 * 3_600_000),
     }));
 
@@ -1385,7 +1387,7 @@ describe('registry-review-queue-drained', () => {
       total: 7,
       pending_brands: 4,
       pending_properties: 1,
-      flagged_edits: 2,
+      flagged_edits: 3,
       sla_hours: REGISTRY_REVIEW_SLA_HOURS,
     });
     expect((violation.details as { oldest_age_hours: number }).oldest_age_hours)
@@ -1407,7 +1409,9 @@ describe('registry-review-queue-drained', () => {
   });
 
   it('counts both pending records and flagged edits through one aggregate', async () => {
-    mockPoolQuery.mockResolvedValueOnce(backlogRow({ pending_brands: '1', flagged_edits: '1' }));
+    mockPoolQuery.mockResolvedValueOnce(backlogRow({
+      pending_brands: '1', flagged_edits: '1', flagged_edit_records: '1',
+    }));
 
     await registryReviewQueueDrainedInvariant.check(makeCtx());
 

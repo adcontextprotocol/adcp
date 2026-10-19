@@ -39,7 +39,8 @@ function backlog(overrides: Record<string, unknown> = {}) {
     pending_brands: 3,
     pending_properties: 1,
     pending_records: 4,
-    flagged_edits: 2,
+    flagged_edits: 3,
+    flagged_edit_records: 2,
     total: 6,
     oldest_created_at: '2026-10-01T00:00:00.000Z',
     oldest_age_hours: 96,
@@ -66,7 +67,8 @@ describe('registry review backlog digest', () => {
   it('stays quiet when nothing is waiting', async () => {
     mocks.getBacklog.mockResolvedValue(backlog({
       pending_brands: 0, pending_properties: 0, pending_records: 0,
-      flagged_edits: 0, total: 0, oldest_created_at: null, oldest_age_hours: null,
+      flagged_edits: 0, flagged_edit_records: 0, total: 0,
+      oldest_created_at: null, oldest_age_hours: null,
     }));
 
     const result = await runRegistryReviewDigestJob();
@@ -92,15 +94,19 @@ describe('registry review backlog digest', () => {
     expect(result).toMatchObject({
       total: 6,
       pendingRecords: 4,
-      flaggedEdits: 2,
+      flaggedEditRecords: 2,
+      flaggedEdits: 3,
       oldestAgeHours: 96,
       posted: true,
     });
 
     const text = postedText();
-    expect(text).toContain('6 registry submissions waiting on a moderator');
+    expect(text).toContain('6 registry decisions waiting on a moderator');
     expect(text).toContain('4 pending records');
-    expect(text).toContain('2 live edits');
+    // Counts decisions, not rows: the queue shows one row per record,
+    // so a number here the page cannot reproduce is worse than none.
+    expect(text).toContain('2 records with live edits');
+    expect(text).toContain('3 edits in total');
     // 96h reads as days, which is the number that makes an outage obvious.
     expect(text).toContain('*4d*');
     expect(text).toContain('/admin/registry-review');
@@ -109,13 +115,13 @@ describe('registry review backlog digest', () => {
   it('reports a single waiting submission in the singular', async () => {
     mocks.getBacklog.mockResolvedValue(backlog({
       pending_brands: 1, pending_properties: 0, pending_records: 1,
-      flagged_edits: 0, total: 1, oldest_age_hours: 50,
+      flagged_edits: 0, flagged_edit_records: 0, total: 1, oldest_age_hours: 50,
     }));
 
     await runRegistryReviewDigestJob();
 
     const text = postedText();
-    expect(text).toContain('1 registry submission waiting on a moderator');
+    expect(text).toContain('1 registry decision waiting on a moderator');
     expect(text).toContain('1 pending record ');
   });
 
@@ -131,7 +137,7 @@ describe('registry review backlog digest', () => {
     const [, message] = mocks.sendChannelMessage.mock.calls.at(-1) as [string, { text: string }];
     const body = JSON.stringify(message);
     expect(body).not.toMatch(/<!channel>|<!here>|<@U/);
-    expect(message.text).toBe('6 registry submissions waiting on a moderator');
+    expect(message.text).toBe('6 registry decisions waiting on a moderator');
   });
 
   it('reports not-posted when Slack is unconfigured rather than throwing', async () => {

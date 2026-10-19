@@ -40,6 +40,7 @@ import {
   listOpenRegistryEditItemsForRecord,
   listRegistryReviewQueue,
   releaseRegistryReviewItemClaim,
+  rollbackLandedAfter,
   resolveOpenRegistryEditItemsForRecord,
   resolveOpenRegistryReviewItemsForRecord,
   resolveRevertedRegistryEditItems,
@@ -315,7 +316,15 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
           item.entity_type, item.domain, resolution, moderator, note,
         );
         if (resolvedItems === 0) {
-          return res.status(409).json({ error: 'Queue item was already resolved' });
+          // All-or-nothing: either everything was already resolved, or
+          // another moderator holds one of these edits and is acting on
+          // it right now. Closing the rest would record "kept" over a
+          // rollback in flight.
+          await releaseClaim(itemId);
+          return res.status(409).json({
+            error: 'Nothing to close',
+            message: 'These edits were already resolved, or another moderator is acting on one of them.',
+          });
         }
         logger.info(
           {
@@ -369,6 +378,19 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
       // Ordered `revision_number ASC NULLS LAST`, so this is the
       // earliest open revision for the record.
       const toRevision = Number(revertable[0].revision_number);
+
+      // Belt and braces for the asynchronous review: an item written
+      // after a revert can name a revision whose snapshot is the
+      // pre-revert state. `recordRegistryReviewOutcome` drops the
+      // revert target in that case; re-check here, because the rollback
+      // could also have landed between the enqueue and this click.
+      if (await rollbackLandedAfter(item.entity_type, item.domain, toRevision)) {
+        await releaseClaim(itemId);
+        return res.status(409).json({
+          error: 'This record was already rolled back past that revision',
+          message: 'Restoring it now would undo the revert. Reload the queue and review the record directly.',
+        });
+      }
 
       let rollbackRevision: number;
       try {

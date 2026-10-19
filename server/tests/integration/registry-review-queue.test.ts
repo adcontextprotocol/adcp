@@ -30,9 +30,9 @@ import {
   listRegistryReviewQueue,
   recordRegistryReviewOutcome,
   releaseRegistryReviewItemClaim,
+  rollbackLandedAfter,
   resolveOpenRegistryEditItemsForRecord,
   resolveOpenRegistryReviewItemsForRecord,
-  resolveRegistryReviewItem,
   resolveRevertedRegistryEditItems,
 } from '../../src/db/registry-review-queue-db.js';
 import { registryReviewQueueDrainedInvariant } from '../../src/audit/integrity/invariants/registry-review-queue-drained.js';
@@ -236,44 +236,6 @@ describe('registry review queue (Postgres)', () => {
     )).rejects.toThrow();
   });
 
-  it('resolves an item exactly once, recording the moderator', async () => {
-    const item = await recordRegistryReviewOutcome({
-      entity_type: 'brand',
-      domain: EDIT_DOMAIN,
-      submission_kind: 'edit',
-      revision_number: 2,
-      submitter_user_id: 'user_editor',
-      verdict: 'needs_human_review',
-    });
-
-    const resolved = await resolveRegistryReviewItem(item.id, 'reverted', MODERATOR, 'vandalism');
-    expect(resolved).toMatchObject({
-      resolution: 'reverted',
-      resolved_by_user_id: 'user_moderator',
-      resolved_by_email: 'moderator@example.com',
-      resolution_note: 'vandalism',
-    });
-
-    // The second moderator loses the race rather than reverting twice.
-    expect(await resolveRegistryReviewItem(item.id, 'reverted', MODERATOR)).toBeNull();
-    expect(await ourQueue()).toHaveLength(0);
-  });
-
-  it('will not let a moderator resolve an item somebody else holds', async () => {
-    const item = await recordRegistryReviewOutcome({
-      entity_type: 'brand',
-      domain: EDIT_DOMAIN,
-      submission_kind: 'edit',
-      revision_number: 2,
-      submitter_user_id: 'user_editor',
-      verdict: 'needs_human_review',
-    });
-    await claimRegistryReviewItem(item.id, { user_id: 'user_other' });
-
-    expect(await resolveRegistryReviewItem(item.id, 'approved', MODERATOR)).toBeNull();
-    expect(await resolveRegistryReviewItem(item.id, 'approved', { user_id: 'user_other' })).not.toBeNull();
-  });
-
   it('keeps a claimed item in the queue until an action completes', async () => {
     const item = await recordRegistryReviewOutcome({
       entity_type: 'brand',
@@ -403,6 +365,104 @@ describe('registry review queue (Postgres)', () => {
     expect(await ourQueue()).toHaveLength(0);
   });
 
+  it('carries every covered edit on the collapsed row', async () => {
+    // A benign first edit and a payload second must not render as a
+    // card whose single summary looks harmless.
+    await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: 2,
+      submitter_user_id: 'user_editor',
+      submitter_email: 'editor@example.com',
+      edit_summary: 'fix a typo',
+      verdict: 'needs_human_review',
+      reason: 'could not decide',
+    });
+    await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: 3,
+      submitter_user_id: 'user_editor',
+      submitter_email: 'editor@example.com',
+      edit_summary: 'replace the whole description',
+      verdict: 'malicious',
+      reason: 'looks like vandalism',
+    });
+
+    const [entry] = await ourQueue();
+
+    expect(entry.covers_edits).toBe(2);
+    expect(entry.covered_edits.map((edit) => edit.revision_number)).toEqual([2, 3]);
+    expect(entry.covered_edits.map((edit) => edit.edit_summary)).toEqual([
+      'fix a typo',
+      'replace the whole description',
+    ]);
+    expect(entry.covered_edits[1].verdict).toBe('malicious');
+  });
+
+  it('stores no revert target for an edit reviewed after the record was rolled back', async () => {
+    // The review runs behind a Slack round-trip and a model call, so
+    // its queue row can land after a moderator already reverted. The
+    // revision it names now snapshots the pre-revert state, and
+    // restoring it would put the vandalism straight back.
+    await brandDb.createDiscoveredBrand(
+      { domain: EDIT_DOMAIN, brand_name: 'Acme Corp', source_type: 'community' },
+      { user_id: 'user_submitter', email: 'submitter@example.com' },
+    );
+    await brandDb.approveBrand(EDIT_DOMAIN);
+    await brandDb.editDiscoveredBrand(EDIT_DOMAIN, {
+      brand_name: 'Vandalised',
+      edit_summary: 'vandalism',
+      editor_user_id: 'user_editor',
+    });
+    await brandDb.rollbackBrand(EDIT_DOMAIN, 1, { user_id: 'user_moderator' });
+
+    const item = await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: 1,
+      submitter_user_id: 'user_editor',
+      verdict: 'needs_human_review',
+    });
+
+    expect(item.revision_number).toBeNull();
+    expect(await rollbackLandedAfter('brand', EDIT_DOMAIN, 1)).toBe(true);
+  });
+
+  it('closes nothing when another moderator holds one of the record\'s edits', async () => {
+    const first = await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: 2,
+      submitter_user_id: 'user_editor',
+      verdict: 'needs_human_review',
+    });
+    await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: 3,
+      submitter_user_id: 'user_editor',
+      verdict: 'needs_human_review',
+    });
+    await claimRegistryReviewItem(first.id, { user_id: 'user_other' });
+
+    // Keeping is a decision not to act, and it can race one that does.
+    expect(await resolveOpenRegistryEditItemsForRecord(
+      'brand', EDIT_DOMAIN, 'approved', MODERATOR,
+    )).toBe(0);
+    expect(await listOpenRegistryEditItemsForRecord('brand', EDIT_DOMAIN)).toHaveLength(2);
+
+    // The moderator holding the claim can still close them.
+    expect(await resolveOpenRegistryEditItemsForRecord(
+      'brand', EDIT_DOMAIN, 'approved', { user_id: 'user_other' },
+    )).toBe(2);
+  });
+
   it('queues an edit with no revision to restore, and offers no revert', async () => {
     await recordRegistryReviewOutcome({
       entity_type: 'brand',
@@ -512,7 +572,7 @@ describe('registry review queue (Postgres)', () => {
   });
 
 
-it('only approves or deletes a record that is still pending', async () => {
+  it('only approves or deletes a record that is still pending', async () => {
     await brandDb.createDiscoveredBrand(
       { domain: BRAND_DOMAIN, brand_name: 'Acme Corp', source_type: 'community' },
       { user_id: 'user_submitter', email: 'submitter@example.com' },
@@ -585,7 +645,7 @@ it('only approves or deletes a record that is still pending', async () => {
     expect(JSON.stringify(entry)).not.toContain('secret-verification-token');
   });
 
-it('refuses to roll a property back once the real publisher owns it', async () => {
+  it('refuses to roll a property back once the real publisher owns it', async () => {
     // A flagged edit can sit in the queue for weeks. If the publisher
     // claims the domain and publishes their own adagents.json in the
     // meantime, the stale community revision is not a state to restore.

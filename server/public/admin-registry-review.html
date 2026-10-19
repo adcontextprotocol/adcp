@@ -150,6 +150,28 @@
       color: var(--color-warning-700);
       font-size: var(--text-xs);
     }
+    .covered {
+      display: grid;
+      gap: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-sm);
+    }
+    .covered-edit {
+      display: grid;
+      gap: var(--space-1);
+      padding-top: var(--space-2);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+    .covered-edit:first-of-type { border-top: none; padding-top: 0; }
+    .covered-head {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      word-break: break-word;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .pager {
       display: flex;
       justify-content: space-between;
@@ -251,9 +273,16 @@
       if (!backlog) return;
 
       const stats = [
-        { label: 'Waiting on a moderator', value: backlog.total, alert: backlog.total > 0 },
+        { label: 'Decisions waiting', value: backlog.total, alert: backlog.total > 0 },
         { label: 'Pending records', value: backlog.pending_records },
-        { label: 'Flagged live edits', value: backlog.flagged_edits },
+        {
+          label: 'Records with flagged edits',
+          value: backlog.flagged_edit_records,
+          // Stacked edits on one record are one decision and one row.
+          note: backlog.flagged_edits > backlog.flagged_edit_records
+            ? backlog.flagged_edits + ' edits in total'
+            : null,
+        },
         { label: 'Oldest has waited', value: ageLabel(backlog.oldest_age_hours), alert: backlog.oldest_age_hours >= 48 },
       ];
 
@@ -261,8 +290,18 @@
         const card = el('div', 'stat' + (stat.alert ? ' alert' : ''));
         card.appendChild(el('div', 'stat-value', stat.value));
         card.appendChild(el('div', 'stat-label', stat.label));
+        if (stat.note) card.appendChild(el('div', 'subtitle', stat.note));
         host.appendChild(card);
       });
+    }
+
+    // Matches the server's claim TTL.
+    var CLAIM_TTL_MS = 5 * 60 * 1000;
+
+    function isClaimLive(item) {
+      if (!item.claimed_at) return false;
+      const at = new Date(item.claimed_at).getTime();
+      return Number.isFinite(at) && Date.now() - at < CLAIM_TTL_MS;
     }
 
     function editCount(item) {
@@ -331,14 +370,40 @@
       ));
       meta.appendChild(submitter);
 
-      if (item.edit_summary) {
-        meta.appendChild(labelled('Summary:', item.edit_summary));
-      }
-      if (item.reason) {
-        const note = el('div', 'meta-note');
-        note.appendChild(el('span', 'meta-label', 'Review reason:'));
-        note.appendChild(document.createTextNode(' ' + item.reason));
-        meta.appendChild(note);
+      const covered = Array.isArray(item.covered_edits) ? item.covered_edits : [];
+      if (item.kind === 'flagged_edit' && covered.length > 1) {
+        // One verdict covers all of them, so show all of them. A
+        // benign first edit and a payload second must not render as a
+        // harmless card.
+        const list = el('div', 'covered');
+        list.appendChild(el('div', 'meta-label', 'Every edit this decision covers'));
+        covered.forEach(function (edit) {
+          const entry = el('div', 'covered-edit');
+          entry.appendChild(el(
+            'div',
+            'covered-head',
+            'Revision ' + (edit.revision_number === null ? '—' : edit.revision_number)
+              + ' · ' + (edit.submitter_email || 'unknown submitter')
+              + ' · ' + (edit.verdict ? String(edit.verdict).replace(/_/g, ' ') : 'no verdict'),
+          ));
+          if (edit.edit_summary) entry.appendChild(labelled('Summary:', edit.edit_summary));
+          if (edit.reason) entry.appendChild(labelled('Review reason:', edit.reason));
+          list.appendChild(entry);
+        });
+        if (covered.length < editCount(item)) {
+          list.appendChild(el('div', 'subtitle', '…and ' + (editCount(item) - covered.length) + ' more.'));
+        }
+        meta.appendChild(list);
+      } else {
+        if (item.edit_summary) {
+          meta.appendChild(labelled('Summary:', item.edit_summary));
+        }
+        if (item.reason) {
+          const note = el('div', 'meta-note');
+          note.appendChild(el('span', 'meta-label', 'Review reason:'));
+          note.appendChild(document.createTextNode(' ' + item.reason));
+          meta.appendChild(note);
+        }
       }
       if (item.action_taken) {
         meta.appendChild(labelled('Automated action:', item.action_taken));
@@ -368,12 +433,13 @@
         meta.appendChild(hint);
       }
 
-      if (item.claimed_at) {
+      const claimed = isClaimLive(item);
+      if (claimed) {
         meta.appendChild(el(
           'div',
           'claimed',
-          'Another moderator claimed this at ' + new Date(item.claimed_at).toLocaleString()
-            + '. Claims expire after a few minutes.',
+          'A moderator is acting on this (claimed ' + new Date(item.claimed_at).toLocaleString()
+            + '). Claims expire after a few minutes — refresh to take it over.',
         ));
       }
 
@@ -395,7 +461,13 @@
           'btn btn-small ' + (action === 'approve' ? 'btn-success' : action === 'reject' ? 'btn-danger' : 'btn-secondary'),
           actionLabel(item, action, canRevert),
         );
-        button.addEventListener('click', function () { act(row, item, action); });
+        if (claimed) {
+          // The server refuses a held item anyway; don't invite the click.
+          button.disabled = true;
+          button.title = 'Another moderator is acting on this record.';
+        } else {
+          button.addEventListener('click', function () { act(row, item, action); });
+        }
         actions.appendChild(button);
       });
       row.appendChild(actions);
@@ -406,6 +478,7 @@
     var PAGE_SIZE = 50;
     var loadedCount = 0;
     var lastBacklogTotal = 0;
+    var lastPageWasFull = false;
 
     function showEmptyState(message) {
       const empty = document.getElementById('empty');
@@ -428,11 +501,14 @@
         return;
       }
       pager.style.display = 'flex';
-      // The header counts everything waiting; the list is one page of
-      // it. During the outage this page exists for, those numbers differ
-      // and the page has to say so.
+      // The header counts every decision waiting; the list is one page
+      // of it. During the outage this page exists for those numbers
+      // differ, and the page has to say so.
       summary.textContent = 'Showing ' + loadedCount + ' of ' + lastBacklogTotal + ' waiting.';
-      more.style.display = loadedCount < lastBacklogTotal ? 'inline-block' : 'none';
+      // Drive the button off the page that came back, not off the
+      // count: a full page means there is probably another one, and a
+      // short page means there is not — whatever the header says.
+      more.style.display = lastPageWasFull ? 'inline-block' : 'none';
     }
 
     async function loadQueue(options) {
@@ -471,6 +547,7 @@
         }
         items.forEach(function (item) { queue.appendChild(renderRow(item)); });
         loadedCount += items.length;
+        lastPageWasFull = items.length === PAGE_SIZE;
 
         if (loadedCount === 0) {
           showEmptyState();

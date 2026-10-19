@@ -736,8 +736,11 @@ export async function notifyRegistryReviewResolved(resolution: {
  * room reads as ours.
  */
 export async function notifyRegistryReviewBacklog(backlog: {
+  /** Decisions waiting, which is what the admin queue lists. */
   total: number;
   pending_records: number;
+  /** Records carrying flagged edits — one decision each, however many edits. */
+  flagged_edit_records: number;
   flagged_edits: number;
   oldest_age_hours: number | null;
 }): Promise<boolean> {
@@ -750,11 +753,16 @@ export async function notifyRegistryReviewBacklog(backlog: {
       ? `${Math.round(backlog.oldest_age_hours)}h`
       : `${Math.round(backlog.oldest_age_hours / 24)}d`;
 
-  const headline = `${backlog.total} registry submission${backlog.total === 1 ? '' : 's'} waiting on a moderator`;
+  // Count decisions, not rows: the queue shows one row per record, and
+  // a number here that the page cannot reproduce is worse than none.
+  const headline = `${backlog.total} registry decision${backlog.total === 1 ? '' : 's'} waiting on a moderator`;
+  const editDetail = backlog.flagged_edits > backlog.flagged_edit_records
+    ? ` (${backlog.flagged_edits} edits in total)`
+    : '';
   const lines = [
     `🙋 *${headline}*`,
     `• ${backlog.pending_records} pending record${backlog.pending_records === 1 ? '' : 's'} (not visible in the registry until approved)`,
-    `• ${backlog.flagged_edits} live edit${backlog.flagged_edits === 1 ? '' : 's'} flagged for a human`,
+    `• ${backlog.flagged_edit_records} record${backlog.flagged_edit_records === 1 ? '' : 's'} with live edits flagged for a human${editDetail}`,
     `• Oldest has waited *${oldest}*`,
     '',
     `<${APP_URL}/admin/registry-review|Open the review queue>`,

@@ -86,11 +86,30 @@ export interface RegistryReviewBacklog {
   pending_records: number;
   /** Live edits an inconclusive review left for a human. */
   flagged_edits: number;
-  /** `pending_records + flagged_edits`. */
+  /**
+   * Records carrying at least one such edit. Stacked edits on one
+   * record are one decision, so this — not `flagged_edits` — is what
+   * the queue shows a row for.
+   */
+  flagged_edit_records: number;
+  /**
+   * Decisions waiting: `pending_records + flagged_edit_records`. Equal
+   * to the number of rows the queue lists, so the page's "showing N of
+   * M" cannot disagree with its own list.
+   */
   total: number;
   oldest_created_at: string | null;
   oldest_age_hours: number | null;
   generated_at: string;
+}
+
+/** One of the edits a collapsed flagged-edit row stands for. */
+export interface CoveredEdit {
+  revision_number: number | null;
+  submitter_email: string | null;
+  edit_summary: string | null;
+  verdict: RegistryReviewVerdict | null;
+  reason: string | null;
 }
 
 /** A row of the moderator-facing queue. */
@@ -130,6 +149,15 @@ export interface RegistryReviewQueueEntry {
    * stands for. Stacked edits are one decision, not several.
    */
   covers_edits: number;
+  /**
+   * Every edit the row stands for, oldest revision first.
+   *
+   * The collapsed row asks for one verdict over all of them, so it has
+   * to show all of them: landing a benign edit first and the payload
+   * second would otherwise put a harmless summary on a card whose
+   * "keep" button approves both.
+   */
+  covered_edits: CoveredEdit[];
   /** When the submission landed — what the age column measures. */
   created_at: string;
   age_hours: number;
@@ -231,6 +259,30 @@ export async function getRegistryRecordModerationState(
 }
 
 /**
+ * Whether a rollback has landed on this record since `revision`.
+ *
+ * The automated review is asynchronous — it runs behind a Slack
+ * round-trip and a model call — so an edit's queue item can be written
+ * *after* a moderator has already reverted the record. Revision N's
+ * snapshot is then the pre-rollback state, and "undo edit N" would put
+ * back exactly what the revert removed. An item in that position has no
+ * safe revert target and is stored without one.
+ */
+export async function rollbackLandedAfter(
+  entity_type: RegistryEntityType,
+  domain: string,
+  revision: number,
+): Promise<boolean> {
+  const sql = entity_type === 'brand'
+    ? `SELECT 1 FROM brand_revisions
+        WHERE brand_domain = $1 AND is_rollback AND revision_number > $2 LIMIT 1`
+    : `SELECT 1 FROM property_revisions
+        WHERE publisher_domain = $1 AND is_rollback AND revision_number > $2 LIMIT 1`;
+  const result = await query(sql, [domain.toLowerCase(), revision]);
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
  * Record that a submission needs a human, or refresh the row if one is
  * already open for it.
  *
@@ -253,6 +305,10 @@ export async function recordRegistryReviewOutcome(
   if (revision !== null && !(Number.isInteger(revision) && revision >= 1)) {
     throw new Error('revision_number must be a positive integer when present');
   }
+  const revertTo = revision !== null
+    && !(await rollbackLandedAfter(input.entity_type, input.domain, revision))
+    ? revision
+    : null;
 
   const result = await query<RegistryReviewQueueItem>(
     `INSERT INTO registry_review_queue (
@@ -275,7 +331,7 @@ export async function recordRegistryReviewOutcome(
       input.entity_type,
       input.domain.toLowerCase(),
       input.submission_kind,
-      revision,
+      revertTo,
       input.submitter_user_id,
       cap(input.submitter_email, 255),
       cap(input.edit_summary, EDIT_SUMMARY_MAX),
@@ -332,39 +388,6 @@ export async function releaseRegistryReviewItemClaim(id: string): Promise<void> 
 }
 
 /**
- * Record a completed moderator decision on one item.
- *
- * Called only after the underlying action succeeded, so `resolved_at`
- * always means the work happened.
- */
-export async function resolveRegistryReviewItem(
-  id: string,
-  resolution: RegistryReviewResolution,
-  moderator: RegistryReviewModerator,
-  note?: string | null,
-): Promise<RegistryReviewQueueItem | null> {
-  const result = await query<RegistryReviewQueueItem>(
-    `UPDATE registry_review_queue
-        SET resolved_at = NOW(),
-            updated_at = NOW(),
-            resolution = $2,
-            resolved_by_user_id = $3,
-            resolved_by_email = $4,
-            resolution_note = $5,
-            claimed_at = NULL,
-            claimed_by_user_id = NULL
-      WHERE id = $1
-        AND resolved_at IS NULL
-        -- Honour the claim: if this moderator's hold lapsed and somebody
-        -- else took the item, their decision is the one on the record.
-        AND (claimed_by_user_id IS NULL OR claimed_by_user_id = $3)
-      RETURNING ${SELECT_COLUMNS}`,
-    [id, resolution, moderator.user_id, cap(moderator.email, 255), cap(note, NOTE_MAX)],
-  );
-  return result.rows[0] ?? null;
-}
-
-/**
  * The open flagged edits for one record, oldest revision first.
  *
  * A revert has to be a decision about the *record*, not about one row.
@@ -400,6 +423,18 @@ export async function listOpenRegistryEditItemsForRecord(
  * row per record, so "keep" is a decision about all of that record's
  * flagged edits, not about whichever one the moderator happened to
  * click.
+ *
+ * Unlike the revert, this honours a live claim held by somebody else,
+ * and closes nothing when one exists. A revert is a fact about the
+ * record — those items are decided whoever was holding them. Keeping is
+ * a decision *not* to act, and it can race one that does: without this,
+ * a moderator could close the rows under an in-flight rollback and
+ * leave an audit trail saying the edits were kept while the record was
+ * being reverted.
+ *
+ * Returns 0 when another moderator holds one of the record's open
+ * edits; the caller should treat that as a conflict rather than as
+ * "already resolved".
  */
 export async function resolveOpenRegistryEditItemsForRecord(
   entity_type: RegistryEntityType,
@@ -420,7 +455,16 @@ export async function resolveOpenRegistryEditItemsForRecord(
             claimed_by_user_id = NULL
       WHERE entity_type = $1 AND domain = $2
         AND submission_kind = 'edit'
-        AND resolved_at IS NULL`,
+        AND resolved_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM registry_review_queue held
+           WHERE held.entity_type = $1 AND held.domain = $2
+             AND held.submission_kind = 'edit'
+             AND held.resolved_at IS NULL
+             AND held.claimed_by_user_id IS NOT NULL
+             AND held.claimed_by_user_id <> $4
+             AND held.claimed_at > NOW() - ($7 || ' milliseconds')::interval
+        )`,
     [
       entity_type,
       domain.toLowerCase(),
@@ -428,6 +472,7 @@ export async function resolveOpenRegistryEditItemsForRecord(
       moderator.user_id,
       cap(moderator.email, 255),
       cap(note, NOTE_MAX),
+      String(CLAIM_TTL_MS),
     ],
   );
   return result.rowCount ?? 0;
@@ -547,6 +592,7 @@ interface QueueRow {
   claimed_at: Date | null;
   claimed_by_user_id: string | null;
   covers_edits: number | null;
+  covered_edits: unknown;
 }
 
 /**
@@ -579,6 +625,7 @@ const QUEUE_SQL = `
       q.claimed_at AS claimed_at,
       q.claimed_by_user_id AS claimed_by_user_id,
       1 AS covers_edits,
+      NULL::jsonb AS covered_edits,
       -- A pending record IS the submission, so read the content from the
       -- row rather than from revision 1: enhanceProperty writes no
       -- revision, and a property revision snapshot carries the row's
@@ -636,6 +683,7 @@ const QUEUE_SQL = `
       q.claimed_at AS claimed_at,
       q.claimed_by_user_id AS claimed_by_user_id,
       1 AS covers_edits,
+      NULL::jsonb AS covered_edits,
       p.adagents_json AS submitted_content
     FROM hosted_properties p
     LEFT JOIN LATERAL (
@@ -690,6 +738,18 @@ const QUEUE_SQL = `
       e.claimed_at AS claimed_at,
       e.claimed_by_user_id AS claimed_by_user_id,
       COUNT(*) OVER (PARTITION BY e.entity_type, e.domain)::int AS covers_edits,
+      -- One verdict covers them all, so the card has to carry them all.
+      jsonb_agg(jsonb_build_object(
+        'revision_number', e.revision_number,
+        'submitter_email', e.submitter_email,
+        'edit_summary', e.edit_summary,
+        'verdict', e.verdict,
+        'reason', e.reason
+      )) OVER (
+        PARTITION BY e.entity_type, e.domain
+        ORDER BY e.revision_number ASC NULLS LAST, e.created_at ASC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+      ) AS covered_edits,
       NULL::jsonb AS submitted_content
       FROM registry_review_queue e
       WHERE e.resolved_at IS NULL AND e.submission_kind = 'edit'
@@ -698,6 +758,25 @@ const QUEUE_SQL = `
   ) queue
   ORDER BY created_at ASC, kind ASC, entity_type ASC, domain ASC
   LIMIT $1 OFFSET $2`;
+
+/** How many covered edits a single card renders before it says so. */
+const MAX_COVERED_EDITS = 25;
+
+/** Normalise and bound the edits a collapsed row stands for. */
+function renderCoveredEdits(value: unknown): CoveredEdit[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, MAX_COVERED_EDITS).map((entry) => {
+    const row = (entry ?? {}) as Record<string, unknown>;
+    const revision = Number(row.revision_number);
+    return {
+      revision_number: Number.isInteger(revision) ? revision : null,
+      submitter_email: cap(row.submitter_email as string | null, 255),
+      edit_summary: cap(row.edit_summary as string | null, EDIT_SUMMARY_MAX),
+      verdict: (row.verdict as RegistryReviewVerdict | null) ?? null,
+      reason: cap(row.reason as string | null, REASON_MAX),
+    };
+  });
+}
 
 /** Pretty-print the submitted record for the queue, capped. */
 function renderSubmittedContent(value: unknown): {
@@ -741,6 +820,7 @@ function toQueueEntry(row: QueueRow): RegistryReviewQueueEntry {
     claimed_at: row.claimed_at ? new Date(row.claimed_at).toISOString() : null,
     claimed_by_user_id: row.claimed_by_user_id,
     covers_edits: Number(row.covers_edits ?? 1),
+    covered_edits: renderCoveredEdits(row.covered_edits),
     // The queue's age column measures how long the member has waited.
     // For a pending record that is the row's own `created_at`, which is
     // the same instant it entered review: community records are born
@@ -774,6 +854,7 @@ interface BacklogRow {
   pending_brands: string | number;
   pending_properties: string | number;
   flagged_edits: string | number;
+  flagged_edit_records: string | number;
   oldest_created_at: Date | null;
 }
 
@@ -800,11 +881,18 @@ export async function getRegistryReviewBacklog(pool?: Pool): Promise<RegistryRev
       UNION ALL
       SELECT 'edit'::text AS kind, created_at FROM registry_review_queue
         WHERE resolved_at IS NULL AND submission_kind = 'edit'
+    ),
+    -- Stacked edits on one record are one decision and one queue row.
+    flagged_records AS (
+      SELECT COUNT(DISTINCT (entity_type, domain)) AS n
+      FROM registry_review_queue
+      WHERE resolved_at IS NULL AND submission_kind = 'edit'
     )
     SELECT
       COUNT(*) FILTER (WHERE kind = 'brand')    AS pending_brands,
       COUNT(*) FILTER (WHERE kind = 'property') AS pending_properties,
       COUNT(*) FILTER (WHERE kind = 'edit')     AS flagged_edits,
+      (SELECT n FROM flagged_records)           AS flagged_edit_records,
       MIN(created_at)                           AS oldest_created_at
     FROM waiting`);
 
@@ -812,6 +900,7 @@ export async function getRegistryReviewBacklog(pool?: Pool): Promise<RegistryRev
   const pendingBrands = Number(row?.pending_brands ?? 0);
   const pendingProperties = Number(row?.pending_properties ?? 0);
   const flaggedEdits = Number(row?.flagged_edits ?? 0);
+  const flaggedEditRecords = Number(row?.flagged_edit_records ?? 0);
   const oldest = row?.oldest_created_at ?? null;
 
   return {
@@ -819,7 +908,8 @@ export async function getRegistryReviewBacklog(pool?: Pool): Promise<RegistryRev
     pending_properties: pendingProperties,
     pending_records: pendingBrands + pendingProperties,
     flagged_edits: flaggedEdits,
-    total: pendingBrands + pendingProperties + flaggedEdits,
+    flagged_edit_records: flaggedEditRecords,
+    total: pendingBrands + pendingProperties + flaggedEditRecords,
     oldest_created_at: oldest ? new Date(oldest).toISOString() : null,
     oldest_age_hours: oldest ? hoursSince(oldest) : null,
     generated_at: new Date().toISOString(),
