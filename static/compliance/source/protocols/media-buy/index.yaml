@@ -15,6 +15,7 @@ requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/advanced_delivery_reporting
+  - media_buy_seller/time_based_delivery_reporting
   - media_buy_seller/property_delivery_reporting
   - media_buy_seller/installment_property_delivery_reporting
   - media_buy_seller/audience_activation_discovery

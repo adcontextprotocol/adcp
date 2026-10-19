@@ -1,0 +1,208 @@
+id: media_buy_seller/time_based_delivery_reporting
+version: 1.0.0
+introduced_in: "3.2"
+title: Seller reports legal time-based view measurements on a catalog product
+category: media_buy_seller
+summary: Exercises independent time-based-view support, schema-valid seller thresholds, and
+  requested-metric narrowing without inventing observations.
+track: reporting
+requires:
+  - controller
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buy_delivery
+  - comply_test_controller
+requires_capability:
+  path: media_buy.buying_modes
+  contains: wholesale
+narrative: >-
+  Applicability comes from a schema-valid, fully paginated wholesale sandbox catalog, not from
+  accepting a seeded product. This scope discovers its own qualifying product and fixed CPM option;
+  the other reporting feature is not required. A valid no-match is an explicit fixture_unsatisfied
+  coverage gap, not a pass or proof of nonsupport. Seeded-only and brief-only feature support is
+  outside this catalog evidence.
+
+
+  Time-based views may use any seller-defined threshold and either permitted basis. Simulating
+  impressions and clicks does not establish observed time views; an unavailable metric may be
+  omitted with the applicable reporting-contract disclosures. The response schema grades entries
+  that are returned.
+
+
+  Baseline requested-metric narrowing remains independently graded by metric_container_subsumption.
+  No feature fixture is seeded and discovery or selected-path failures remain failures.
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - reports_delivery
+  examples:
+    - A seller with time-based video view reporting
+caller:
+  role: buyer_agent
+  example: Pinnacle Agency (buyer)
+prerequisites:
+  description: The controller establishes one isolated sandbox account before fully paginated catalog
+    discovery. Each scope binds its own native reporting product and fixed CPM option; no product or
+    price is seeded. The controller only injects impression/click totals after buy creation.
+    Minimum-spend and standalone binding qualification remain explicit draft merge holds.
+  test_kit: test-kits/acme-outdoor.yaml
+  controller_seeding: true
+fixtures:
+  accounts:
+    - account_id: sandbox_time_based_delivery_reporting
+      fixture:
+        brand: &a2
+          domain: acmeoutdoor.example
+        operator: pinnacle-agency.example
+        operator_unit: &a3
+          id: compliance-media_buy_seller_time_based_delivery-df8300c2
+        sandbox: true
+        billing: operator
+        status: active
+  products:
+    - product_id: catalog_time_reporting
+  pricing_options:
+    - product_id: catalog_time_reporting
+      pricing_option_id: catalog_fixed_cpm
+phases:
+  - id: setup
+    title: Create a buy on the discovered reporting product
+    steps:
+      - id: create_buy
+        title: Create the reporting buy using seller-issued identities
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        sample_request:
+          brand: $context.sandbox_brand
+          account: $context.sandbox_account
+          start_time: asap
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: catalog_time_reporting
+              pricing_option_id: catalog_fixed_cpm
+              budget: 1000
+          idempotency_key: $generate:uuid_v4#time_based_delivery_reporting_create_buy
+        context_outputs:
+          - name: advanced_media_buy_id
+            path: media_buy_id
+          - name: advanced_package_id
+            path: packages[0].package_id
+        validations:
+          - check: response_schema
+            description: Create response matches the protocol schema
+          - check: field_present
+            path: media_buy_id
+            description: The seller assigns a media-buy identity
+  - id: report
+    title: Inject totals and grade the selected reporting feature
+    steps:
+      - id: simulate_delivery
+        title: Inject deterministic delivery
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account: $context.sandbox_account
+          scenario: simulate_delivery
+          params:
+            media_buy_id: $context.advanced_media_buy_id
+            impressions: 1001
+            clicks: 101
+        validations:
+          - check: field_value
+            path: success
+            allowed_values:
+              - true
+            description: The controller accepts the deterministic delivery fixture
+      - id: get_narrowed_time_delivery
+        title: Request time-based views without imposing a threshold
+        task: get_media_buy_delivery
+        schema_ref: media-buy/get-media-buy-delivery-request.json
+        response_schema_ref: media-buy/get-media-buy-delivery-response.json
+        doc_ref: /media-buy/task-reference/get_media_buy_delivery
+        stateful: true
+        sample_request:
+          account: $context.sandbox_account
+          media_buy_ids:
+            - $context.advanced_media_buy_id
+          requested_metrics:
+            - time_based_views
+        validations:
+          - check: response_schema
+            description: Delivery response and every returned measurement match the protocol schema
+          - check: array_length
+            path: media_buy_deliveries
+            value: 1
+            description: The response reports exactly the one requested media buy
+          - check: field_equals_context
+            path: media_buy_deliveries[0].media_buy_id
+            context_key: advanced_media_buy_id
+            description: The report belongs to the buy created on the discovered product
+          - check: field_equals_context
+            path: media_buy_deliveries[0].by_package[0].package_id
+            context_key: advanced_package_id
+            description: The report belongs to the package created on the discovered product
+          - check: array_length
+            path: media_buy_deliveries[0].by_package
+            value: 1
+            description: The single-package buy reports exactly its committed package
+          - check: field_present
+            path: media_buy_deliveries[0].totals.impressions
+            description: Injected impressions remain present under metric narrowing
+          - check: field_present
+            path: media_buy_deliveries[0].totals.spend
+            description: Always-present spend remains under metric narrowing
+          - check: field_absent
+            path: media_buy_deliveries[0].totals.clicks
+            description: Unrequested clicks are omitted from totals
+          - check: field_absent
+            path: media_buy_deliveries[0].by_package[0].clicks
+            description: Unrequested clicks are omitted from package metrics
+fixture_resolution:
+  products:
+    - handle: catalog_time_reporting
+      strategies:
+        - discover
+      match:
+        - path: /reporting_capabilities/available_metrics
+          operator: contains_all
+          value:
+            - time_based_views
+        - path: /delivery_type
+          operator: equals
+          value: non_guaranteed
+        - path: /pricing_options
+          operator: any_match
+          where: &a1
+            - path: /pricing_model
+              operator: equals
+              value: cpm
+            - path: /fixed_price
+              operator: present
+  pricing_options:
+    - handle: catalog_fixed_cpm
+      product_handle: catalog_time_reporting
+      strategies:
+        - discover
+      match: *a1
+context:
+  brand: *a2
+  account:
+    brand: *a2
+    operator: pinnacle-agency.example
+    operator_unit: *a3
+    sandbox: true
+  sandbox_account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: pinnacle-agency.example
+    operator_unit:
+      id: compliance-media_buy_seller_time_based_delivery-df8300c2
+    sandbox: true
+  sandbox_brand:
+    domain: acmeoutdoor.example
