@@ -576,23 +576,23 @@ function exactServer(f, options = {}) {
     // produce R2's ETag.
     etagFor = (body) => `"${crypto.createHash("md5").update(body).digest("hex")}"`,
   } = options;
+  // The served set is enumerated once, up front. A request only ever selects
+  // an entry from it, so no request value reaches the filesystem and an
+  // unknown or traversing path simply has no entry.
   const servedRoot = path.resolve(f.dir, "dist");
+  const served = new Map(
+    listFiles(servedRoot).map((relative) => [
+      relative,
+      path.join(servedRoot, relative),
+    ]),
+  );
   return (request, response) => {
     const key = decodeURIComponent(request.url.split("?")[0]).replace(
       /^\/+/,
       "",
     );
-    // Serve only from inside the fixture's released tree, so a traversing
-    // request gets a 404 rather than reading the rest of the sandbox.
-    const file = path.resolve(servedRoot, key);
-    if (
-      file !== servedRoot &&
-      !file.startsWith(servedRoot + path.sep)
-    ) {
-      response.writeHead(404).end();
-      return;
-    }
-    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    const file = served.get(key);
+    if (file === undefined) {
       response.writeHead(404).end();
       return;
     }
