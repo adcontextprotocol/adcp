@@ -1102,5 +1102,92 @@ describe('Agent visibility E2E', () => {
         .send({ visibility: 'private' });
       expect(privateRes.status).toBe(200);
     });
+
+    it('PUT /api/me/member-profile: keeps the registered spelling in declared_url (#8322)', async () => {
+      // The identity key folds a trailing slash; AUTHORIZATION matching
+      // against a publisher's adagents.json does not (#7829). Without
+      // `declared_url`, a member who registers `/mcp/` through the bulk
+      // path loses an authorization they still hold — while the same bytes
+      // through `POST /api/me/agents` keep it.
+      const orgId = `${TEST_PREFIX}_declared_url`;
+      const userId = `${TEST_PREFIX}_declared_url_user`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Declared URL',
+        slug: 'declaredurl',
+        is_public: false,
+        agents: [],
+      });
+      await seedBrandPrimary(orgId, 'declaredurl.example');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app)
+        .put('/api/me/member-profile')
+        .send({
+          agents: [
+            { url: 'https://declaredurl.example/mcp/', visibility: 'private' },
+            { url: 'https://declaredurl.example/plain', visibility: 'private' },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      const stored = await pool.query<{ agents: Array<{ url: string; declared_url?: string }> }>(
+        'SELECT agents FROM member_profiles WHERE workos_organization_id = $1',
+        [orgId],
+      );
+      expect(stored.rows[0].agents[0]).toMatchObject({
+        url: 'https://declaredurl.example/mcp',
+        declared_url: 'https://declaredurl.example/mcp/',
+      });
+      // Nothing was folded away for the second entry, so it carries none.
+      expect(stored.rows[0].agents[1]).not.toHaveProperty('declared_url');
+    });
+
+    it('PATCH /agents/:index/visibility: demotes every spelling of the same agent (#8322)', async () => {
+      // A legacy profile can hold two spellings of one agent, and the
+      // public-effect gates (`setComplianceOptOut`, `isAgentPublic`) ask by
+      // registry identity. Flipping only the indexed row would leave the
+      // sibling public after the owner demoted the agent to private, so the
+      // owner's "make it private" would not take effect anywhere it matters.
+      const orgId = `${TEST_PREFIX}_flip_identity`;
+      const userId = `${TEST_PREFIX}_flip_identity_user`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      await pool.query(
+        `INSERT INTO member_profiles
+           (workos_organization_id, display_name, slug, is_public, agents, created_at, updated_at)
+         VALUES ($1, $2, $3, false, $4::jsonb, NOW(), NOW())`,
+        [
+          orgId,
+          'Flip identity',
+          'flipidentity',
+          JSON.stringify([
+            { url: 'https://flipidentity.example/mcp', visibility: 'public' },
+            { url: 'https://flipidentity.example/mcp/', visibility: 'public' },
+            { url: 'https://flipidentity.example/other', visibility: 'public' },
+          ]),
+        ],
+      );
+      await seedBrandPrimary(orgId, 'flipidentity.example');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app)
+        .patch('/api/me/member-profile/agents/0/visibility')
+        .send({ visibility: 'private' });
+      expect(res.status).toBe(200);
+
+      const stored = await pool.query<{ agents: Array<{ url: string; visibility: string }> }>(
+        'SELECT agents FROM member_profiles WHERE workos_organization_id = $1',
+        [orgId],
+      );
+      expect(stored.rows[0].agents.map(a => a.visibility)).toEqual([
+        'private',
+        'private',
+        // A different agent is untouched.
+        'public',
+      ]);
+    });
   });
 });
