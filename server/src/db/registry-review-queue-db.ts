@@ -277,15 +277,6 @@ export async function recordRegistryReviewOutcome(
   return result.rows[0];
 }
 
-/** One open item by id. Returns null when it is missing or already resolved. */
-export async function getOpenRegistryReviewItem(id: string): Promise<RegistryReviewQueueItem | null> {
-  const result = await query<RegistryReviewQueueItem>(
-    `SELECT ${SELECT_COLUMNS} FROM registry_review_queue WHERE id = $1 AND resolved_at IS NULL`,
-    [id],
-  );
-  return result.rows[0] ?? null;
-}
-
 /**
  * Take an open item so one moderator at a time acts on it.
  *
