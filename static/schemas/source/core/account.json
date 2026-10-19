@@ -43,7 +43,7 @@
     "revision": {
       "type": "integer",
       "minimum": 1,
-      "description": "Monotonically increasing optimistic-concurrency token for this account. Incremented on every persisted settings change, identity-change request, and identity-change disposition, whatever its origin (an AdCP task, a seller operator, seller automation, or a connected platform); reads, dry runs, validation failures, and exact idempotency replays do not increment it. Pass the latest observed value in a sync_accounts settings-update entry to prevent lost updates."
+      "description": "Monotonically increasing optimistic-concurrency token for this account. Incremented on every persisted settings change, identity-change request, and identity-change disposition; reads, dry runs, validation failures, and exact idempotency replays do not increment it. Pass the latest observed value in a sync_accounts settings-update entry to prevent lost updates."
     },
     "identity_change": {
       "$ref": "/schemas/core/account-identity-change.json",
