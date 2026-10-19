@@ -50,9 +50,7 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // daypart requirement in the targeting-bearing tools. Experimental
   // list_collections (#8183) adds one tool and the collection selector,
   // collection kind, and genre taxonomy definitions it alone reaches, plus the
-  // shared locale tag its languages filter references. signing_profile adds
-  // the webhook-signing profile enum schema, reached from every input that
-  // carries a push-notification or notification configuration.
+  // shared locale tag its languages filter references.
   assert.equal(report.definition_instances, 701);
   assert.equal(report.unique_definitions, 189);
   assert.equal(report.repeated_definitions, 134);
@@ -254,8 +252,6 @@ test("experiment report keeps all alternatives smaller than standalone model con
   // Baseline projection improvements also shrink the denominator, so a fixed
   // additional percentage is not stable. Require a material absolute saving:
   // default-boolean compaction leaves 339,678 -> 282,067 bytes (56.3 KiB saved).
-  // The Web Bot Auth signing_profile adds 1,440 bytes to both (341,118 ->
-  // 283,507), so the saving is unchanged.
   const cleanupSavings = variants.standalone.context_bytes - variants.prompt_cleanup.context_bytes;
   assert.ok(
     cleanupSavings > 50 * 1024,

@@ -102,16 +102,9 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // media-buy role profile (3,159 bytes of model-context input), and the
 // collection card event types widen the notification enums on sync_accounts
 // and sync_principal (458,185 → 461,599 bytes / 450.8 KiB measured against
-// main), bounded at 451 KiB. The Web Bot Auth webhook profile adds
-// signing_profile to the push-notification and notification configurations,
-// as one enum schema of its own (enums/webhook-signing-profile.json) that keeps
-// generated SDK type names from colliding. It reaches 11 media-buy inputs
-// (461,681 → 463,743 bytes / 452.9 KiB measured against main), bounded at
-// 453 KiB. Default-boolean compaction then brought main's media-buy context to
-// 454,296 bytes (443.6 KiB) under the 451 KiB bound; with signing_profile it
-// measures 456,358 bytes (445.7 KiB), bounded at 446 KiB.
+// main), bounded at 451 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 446,
+  'media-buy': 451,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -146,10 +139,7 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // and verifier guidance add 5,486 bytes (1_270_981 -> 1_276_467 measured),
 // bounded at 1_280_000 to retain compilation of every storyboard fixture.
 // This is the parity-test compiler allowance; the independent 4 MiB schema,
-// 22 MiB projection, and role model-context budgets are unchanged. The Web Bot
-// Auth signing_profile on push-notification and notification configurations
-// reaches it as well (1_276_467 → 1_277_924 bytes measured against main),
-// within that bound.
+// 22 MiB projection, and role model-context budgets are unchanged.
 const PARITY_COMPILE_LIMIT = 1_280_000;
 
 function readJson(filename) {
