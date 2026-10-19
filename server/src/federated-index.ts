@@ -1,6 +1,7 @@
 import { FederatedIndexDatabase, type AgentPublisherAuthorization, type AgentPublisherDetailRow, type DiscoveredAgent, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
 import { MemberDatabase } from './db/member-db.js';
 import { canonicalizeAgentUrl } from './db/publisher-db.js';
+import { declaredAgentUrl } from './db/registry-agent-url-key.js';
 import type { FederatedAgent, FederatedPublisher, DomainLookupResult, AgentType } from './types.js';
 import type { PoolClient } from 'pg';
 
@@ -103,8 +104,14 @@ export class FederatedIndexService {
         // Fall back to the raw url if canonicalization rejects (legacy
         // whitespace etc.) so we never silently drop a stored agent.
         const key = canonicalizeAgentUrl(agentConfig.url) ?? agentConfig.url;
+        // The registered spelling, when the key folded something away. The
+        // directory matches spec-exactly (#7829, #8314), so a caller asking
+        // "which publishers authorize this agent" needs this spelling, not
+        // just the key.
+        const declared = declaredAgentUrl(agentConfig);
         registeredAgents.set(key, {
           url: key,
+          ...(declared !== key ? { declared_url: declared } : {}),
           name: agentConfig.name || profile.display_name,
           type: agentType as FederatedAgent['type'],
           protocol: 'mcp',
@@ -233,6 +240,16 @@ export class FederatedIndexService {
    */
   async getAuthorizationsForAgent(agentUrl: string): Promise<AgentPublisherAuthorization[]> {
     return this.db.getDomainsForAgent(agentUrl);
+  }
+
+  /**
+   * Every raw `agent_url` spelling the directory has indexed under each of
+   * `agentUrls`, keyed by identity key. Lets a caller holding only the
+   * folded registry URL (#7830) ask the spec-exact directory (#7829,
+   * #8314) about each spelling a publisher actually declared.
+   */
+  async bulkDeclaredAgentUrls(agentUrls: string[]): Promise<Map<string, string[]>> {
+    return this.db.bulkDeclaredAgentUrls(agentUrls);
   }
 
   /**

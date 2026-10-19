@@ -4,6 +4,7 @@ import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 import {
   isSpecExactAgentMatch,
   registryAgentUrlLookupKey,
+  REGISTRY_AGENT_URL_WILDCARD,
 } from './registry-agent-url-key.js';
 
 /**
@@ -189,6 +190,54 @@ export class FederatedIndexDatabase {
       [domain]
     );
     return result.rows;
+  }
+
+  /**
+   * Every raw `agent_url` spelling the directory has indexed under each of
+   * `agentUrls`, keyed by identity key.
+   *
+   * The registry lists an agent once, under its folded identity key
+   * (#7830), but the directory answers authorization questions
+   * spec-exactly, with a non-root trailing slash significant (#7829,
+   * #8314). So a caller that only knows the folded URL cannot ask the
+   * directory the right question for an agent whose publishers declared it
+   * as `/mcp/`: it would ask about `/mcp` and correctly be told nothing.
+   * This returns the spellings that actually exist, so the caller can ask
+   * about each one and merge.
+   *
+   * Source is `v_effective_agent_authorizations` — the relation the
+   * directory reads. The legacy `agent_publisher_authorizations` arm is not
+   * consulted: it is raw-matched (#3177) with no canonical column, so rows
+   * under it can only be found by the exact spelling asked for, which
+   * callers already have.
+   *
+   * One indexed read for the whole page regardless of agent count. The
+   * wildcard sentinel is excluded — it is not a URL and cannot be looked up.
+   */
+  async bulkDeclaredAgentUrls(agentUrls: string[]): Promise<Map<string, string[]>> {
+    const keys = [...new Set(
+      agentUrls
+        .map(url => registryAgentUrlLookupKey(url))
+        .filter(key => key !== REGISTRY_AGENT_URL_WILDCARD),
+    )];
+    const byKey = new Map<string, string[]>();
+    if (keys.length === 0) return byKey;
+
+    const result = await query<{ agent_url_canonical: string; agent_url: string }>(
+      `SELECT DISTINCT agent_url_canonical, agent_url
+         FROM v_effective_agent_authorizations
+        WHERE agent_url_canonical = ANY($1::text[])
+          AND agent_url <> $2`,
+      [keys, REGISTRY_AGENT_URL_WILDCARD],
+    );
+
+    for (const row of result.rows) {
+      const spellings = byKey.get(row.agent_url_canonical) ?? [];
+      spellings.push(row.agent_url);
+      byKey.set(row.agent_url_canonical, spellings);
+    }
+    for (const spellings of byKey.values()) spellings.sort();
+    return byKey;
   }
 
   /**

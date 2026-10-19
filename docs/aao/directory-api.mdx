@@ -37,6 +37,13 @@ the publisher's `adagents.json` lists. The registry's own per-agent
 two spellings — identity and authorization are separate questions.
 </Note>
 
+A client that only holds an agent's registry identity URL cannot know which
+spelling to ask for. The AAO registry listing answers that: each agent in
+`GET /api/registry/agents` carries `declared_urls[]`, every spelling the
+directory has indexed under that identity, with the listed (folded) URL
+first. Query this endpoint once per spelling and merge the results — which
+is what the public agent page does.
+
 ### Query parameters
 
 | Parameter | Type | Default | Semantics |
