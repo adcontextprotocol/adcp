@@ -2,6 +2,7 @@ import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js'
 import { AgentService } from "../agent-service.js";
 import type { SupplyPathInput } from '../services/supply-path-contract.js';
 import { domain as supplyPathDomain, agentIdentity as supplyPathAgentIdentity } from '../services/supply-path-input.js';
+import { declaredSpecialismsNotApplicableForTarget } from '../compliance/forward-introduced-specialisms.js';
 import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
 import { withStoryboardSkipDetails } from '../compliance/storyboard-skip-details.js';
 import {
@@ -67,6 +68,7 @@ import {
   redactForDiagnostics,
   isNonExecutableCoverageGapScenario,
   classifyCapabilityResolutionError,
+  complianceDirToleratingUnknownSpecialism,
   presentCapabilityResolutionError,
   computeSpecialismStatus,
   derivePublicComplianceEligibility,
@@ -4780,6 +4782,7 @@ registry.registerPath({
               })),
             })),
             total_storyboards: z.number().int(),
+            specialisms_not_applicable: z.array(z.string()).optional().openapi({ description: "Declared specialisms AdCP introduced after this compliance release. They have no bundle to run here, so they are listed separately instead of failing resolution." }),
           }),
         },
       },
@@ -7331,6 +7334,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
             steps_passed: s.steps_passed,
             steps_total: s.steps_total,
           })),
+          // Lets a specialism the graded release predates render as
+          // "not applicable" rather than as an untested agent defect (#8269).
+          status.adcp_version,
         );
       }
 
@@ -7371,7 +7377,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const serializedStoryboardStatuses = storyboardStatuses.map(s =>
         serializeStoryboardStatus(s, { includeDiagnostics: canReadStoryboardRunDiagnostics(s, attemptOrgId) }),
       );
-      const eligibility = derivePublicComplianceEligibility(declaredSpecialisms, storyboardStatuses);
+      const eligibility = derivePublicComplianceEligibility(
+        declaredSpecialisms,
+        storyboardStatuses,
+        status.adcp_version,
+      );
       const eligibilityOwner = {
         criteria_version: ELIGIBILITY_CRITERIA_VERSION,
         eligible: ownerMembership.is_owner ? ownerMembership.is_api_access_tier : null,
@@ -9985,16 +9995,38 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const runTarget = selectCanonicalHostedComplianceTargetForProfile(profile, complianceTarget);
       const runOptions = hostedComplianceOptions(runTarget);
 
-      let resolved;
+      const caps = {
+        supported_protocols: supportedProtocols,
+        specialisms,
+        major_versions: profile?.adcp_major_versions,
+        supported_versions: profile?.adcp_supported_versions,
+      };
+      const specialismsNotApplicable = declaredSpecialismsNotApplicableForTarget(
+        runTarget.version,
+        specialisms,
+      );
+      let resolved: ReturnType<typeof resolveStoryboardsForCapabilities> | undefined;
+      let resolveErr: unknown;
       try {
-        const caps = {
-          supported_protocols: supportedProtocols,
-          specialisms,
-          major_versions: profile?.adcp_major_versions,
-          supported_versions: profile?.adcp_supported_versions,
-        };
         resolved = resolveStoryboardsForCapabilities(caps, runOptions);
-      } catch (resolveErr) {
+      } catch (initialErr) {
+        resolveErr = initialErr;
+        // A specialism AdCP introduced after this target's release has nothing
+        // to list, but it must not 422 the whole listing (#8269). Re-resolve
+        // against the overlay that treats it as not applicable; any other
+        // resolution fault still falls through to the fail-closed response.
+        const overlayDir = await complianceDirToleratingUnknownSpecialism(initialErr, runTarget);
+        if (overlayDir) {
+          try {
+            resolved = resolveStoryboardsForCapabilities(caps, { ...runOptions, complianceDir: overlayDir });
+            resolveErr = undefined;
+          } catch (overlayErr) {
+            resolveErr = overlayErr;
+          }
+        }
+      }
+
+      if (!resolved) {
         // Fail-closed: agent capabilities are malformed. Distinguish the two
         // concrete cases the resolver throws for — parent-protocol-missing vs
         // unknown-specialism — via the shared presenter so the response
@@ -10061,6 +10093,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         adcp_version: runTarget.version,
         bundles,
         total_storyboards: bundles.reduce((n, b) => n + b.storyboards.length, 0),
+        ...(specialismsNotApplicable.length > 0 && { specialisms_not_applicable: specialismsNotApplicable }),
       };
       if (profile?.capabilities_probe_error) {
         // Cap length + strip control chars. The string is agent-reported and
