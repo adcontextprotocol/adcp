@@ -138,6 +138,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // against main), bounded at 1_272_000. Explicit creative acceptance constraints
 // and verifier guidance add 5,486 bytes (1_270_981 -> 1_276_467 measured),
 // bounded at 1_280_000 to retain compilation of every storyboard fixture.
+// The experimental proposal.created notification type in the account
+// notification-config enums and the simulate_later_proposal scenario reach it
+// (1_281_908 bytes measured), within the beta.0 merge-window bound below.
 // Pre-beta.0 headroom: about 20 approved 3.3 PRs (consent rounds 1 and 2,
 // WG Session B items) each add a few KB through the seeded Product, proposal
 // and capability closures, and would otherwise conflict on this one line.
@@ -1871,6 +1874,9 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
   const mediaBuyTools = new Set(MCP_ROLE_PROFILE_TOOLS['media-buy']);
   const activeMediaBuyTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'media-buy')
+    // Tools added for the next minor join the role catalog when the package
+    // enters that line; the build rejects inactive tools in role profiles.
+    .filter(([, tool]) => !tool.added_in || semver.lte(tool.added_in, ACTIVE_SURFACE_VERSION))
     .filter(([, tool]) => !tool.deprecated_in || semver.gt(tool.deprecated_in, ACTIVE_SURFACE_VERSION))
     .map(([toolName]) => toolName)
     .filter(toolName => toolName !== 'build_creative');
