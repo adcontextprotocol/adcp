@@ -78,7 +78,8 @@ async function isAgentPublic(agentUrl: string): Promise<boolean> {
 // owner reads as platform-authored, and in a shared channel whose readers
 // treat it as a moderator surface.
 //
-// The rule, enforced by `compliance-notification-sanitization.test.ts`:
+// The rule, enforced by `compliance-notification-sanitization.test.ts`
+// (and written up for the rest of the repo in adcp#8331):
 //
 //   * A title (DM headline, channel `text` fallback, first block line) is a
 //     fixed template plus *short, sanitized* identifiers — never free text.
