@@ -158,7 +158,7 @@ These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md`
 
 ### R6. Authority: grants (P5, `L2/accounts-and-agents.mdx`)
 
-- The house's trust record authorizes an acts-for claim: the record of the house the brand names, or the brand's own when it names none.
+- The house's trust record authorizes an acts-for claim: the record of the house that brand.json's mutual-assertion model resolves, or the brand's own when the model resolves none, as L2 says.
 - Authority is implicit when `account.operator` and the signer's operator (R3a) are the same registrable domain as the brand's domain or its house.
 - Otherwise a grant chain with `account.operator` on it must reach the signer's operator with a scope covering the operation.
 - Effective authority is the intersection along the chain.
