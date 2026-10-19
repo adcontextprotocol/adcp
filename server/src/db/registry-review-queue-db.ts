@@ -27,7 +27,12 @@ import { query } from './client.js';
 export type RegistryEntityType = 'brand' | 'property';
 export type RegistrySubmissionKind = 'new_record' | 'edit';
 export type RegistryReviewVerdict = 'ok' | 'suspicious' | 'malicious' | 'needs_human_review';
-export type RegistryReviewResolution = 'approved' | 'rejected' | 'reverted';
+export type RegistryReviewResolution =
+  | 'approved'
+  | 'rejected'
+  | 'reverted'
+  /** Closed without being undone — vandalism with no revision to restore. */
+  | 'dismissed';
 
 /** A row of `registry_review_queue`. */
 export interface RegistryReviewQueueItem {
@@ -120,6 +125,11 @@ export interface RegistryReviewQueueEntry {
   /** Set while another moderator is mid-action on this item. */
   claimed_at: string | null;
   claimed_by_user_id: string | null;
+  /**
+   * For a flagged edit: how many open edits to this record the row
+   * stands for. Stacked edits are one decision, not several.
+   */
+  covers_edits: number;
   /** When the submission landed — what the age column measures. */
   created_at: string;
   age_hours: number;
@@ -340,8 +350,14 @@ export async function resolveRegistryReviewItem(
             resolution = $2,
             resolved_by_user_id = $3,
             resolved_by_email = $4,
-            resolution_note = $5
-      WHERE id = $1 AND resolved_at IS NULL
+            resolution_note = $5,
+            claimed_at = NULL,
+            claimed_by_user_id = NULL
+      WHERE id = $1
+        AND resolved_at IS NULL
+        -- Honour the claim: if this moderator's hold lapsed and somebody
+        -- else took the item, their decision is the one on the record.
+        AND (claimed_by_user_id IS NULL OR claimed_by_user_id = $3)
       RETURNING ${SELECT_COLUMNS}`,
     [id, resolution, moderator.user_id, cap(moderator.email, 255), cap(note, NOTE_MAX)],
   );
@@ -357,6 +373,10 @@ export async function resolveRegistryReviewItem(
  * item. Undoing edit 5 also undoes 6 and 7 — and a moderator who then
  * clicks "revert" on item 7 would restore the state *before* edit 7,
  * which is the vandalism from 5 and 6 put straight back.
+ *
+ * Items with no revision number come back too, but a rollback cannot be
+ * said to have covered them — see
+ * {@link resolveRevertedRegistryEditItems}.
  */
 export async function listOpenRegistryEditItemsForRecord(
   entity_type: RegistryEntityType,
@@ -372,24 +392,96 @@ export async function listOpenRegistryEditItemsForRecord(
   return result.rows;
 }
 
-/** Resolve several items in one statement, for a decision that covered them all. */
-export async function resolveRegistryReviewItems(
-  ids: string[],
-  resolution: RegistryReviewResolution,
+/**
+ * Close every open edit on a record because the moderator accepted the
+ * record as it stands.
+ *
+ * Record-scoped for the same reason the revert is: the queue shows one
+ * row per record, so "keep" is a decision about all of that record's
+ * flagged edits, not about whichever one the moderator happened to
+ * click.
+ */
+export async function resolveOpenRegistryEditItemsForRecord(
+  entity_type: RegistryEntityType,
+  domain: string,
+  resolution: Extract<RegistryReviewResolution, 'approved' | 'dismissed'>,
   moderator: RegistryReviewModerator,
   note?: string | null,
 ): Promise<number> {
-  if (ids.length === 0) return 0;
   const result = await query(
     `UPDATE registry_review_queue
         SET resolved_at = NOW(),
             updated_at = NOW(),
-            resolution = $2,
-            resolved_by_user_id = $3,
-            resolved_by_email = $4,
-            resolution_note = $5
-      WHERE id = ANY($1::uuid[]) AND resolved_at IS NULL`,
-    [ids, resolution, moderator.user_id, cap(moderator.email, 255), cap(note, NOTE_MAX)],
+            resolution = $3,
+            resolved_by_user_id = $4,
+            resolved_by_email = $5,
+            resolution_note = $6,
+            claimed_at = NULL,
+            claimed_by_user_id = NULL
+      WHERE entity_type = $1 AND domain = $2
+        AND submission_kind = 'edit'
+        AND resolved_at IS NULL`,
+    [
+      entity_type,
+      domain.toLowerCase(),
+      resolution,
+      moderator.user_id,
+      cap(moderator.email, 255),
+      cap(note, NOTE_MAX),
+    ],
+  );
+  return result.rowCount ?? 0;
+}
+
+/**
+ * Close every open edit on a record that a completed rollback undid.
+ *
+ * `belowRevision` is the revision number the rollback itself created.
+ * Every edit recorded before it has had its content restored away, so
+ * every open item below it is decided — including one that arrived
+ * between reading the queue and the rollback committing. That is why
+ * the bound comes from the rollback's own result rather than from a
+ * list read beforehand: an edit that lands in that window would
+ * otherwise stay open carrying a revert target that now restores the
+ * vandalism.
+ *
+ * Items with no revision number stay open: nothing can assert what
+ * state an unknown revision belongs to.
+ *
+ * Deliberately ignores claims. The rollback is a fact about the record,
+ * so an item another moderator was holding is decided whether or not
+ * they were the one who decided it.
+ */
+export async function resolveRevertedRegistryEditItems(
+  entity_type: RegistryEntityType,
+  domain: string,
+  belowRevision: number,
+  moderator: RegistryReviewModerator,
+  note?: string | null,
+): Promise<number> {
+  const result = await query(
+    `UPDATE registry_review_queue
+        SET resolved_at = NOW(),
+            updated_at = NOW(),
+            resolution = 'reverted',
+            resolved_by_user_id = $4,
+            resolved_by_email = $5,
+            resolution_note = $6,
+            claimed_at = NULL,
+            claimed_by_user_id = NULL
+      WHERE entity_type = $1 AND domain = $2
+        AND submission_kind = 'edit'
+        AND resolved_at IS NULL
+        AND revision_number IS NOT NULL
+        AND revision_number < $3`,
+    [
+      entity_type,
+      domain.toLowerCase(),
+      belowRevision,
+      moderator.user_id,
+      cap(moderator.email, 255),
+      cap(note, NOTE_MAX),
+    ],
   );
   return result.rowCount ?? 0;
 }
@@ -454,6 +546,7 @@ interface QueueRow {
   submitted_content: unknown;
   claimed_at: Date | null;
   claimed_by_user_id: string | null;
+  covers_edits: number | null;
 }
 
 /**
@@ -485,6 +578,7 @@ const QUEUE_SQL = `
       q.action_taken AS action_taken,
       q.claimed_at AS claimed_at,
       q.claimed_by_user_id AS claimed_by_user_id,
+      1 AS covers_edits,
       -- A pending record IS the submission, so read the content from the
       -- row rather than from revision 1: enhanceProperty writes no
       -- revision, and a property revision snapshot carries the row's
@@ -541,6 +635,7 @@ const QUEUE_SQL = `
       q.action_taken AS action_taken,
       q.claimed_at AS claimed_at,
       q.claimed_by_user_id AS claimed_by_user_id,
+      1 AS covers_edits,
       p.adagents_json AS submitted_content
     FROM hosted_properties p
     LEFT JOIN LATERAL (
@@ -567,13 +662,22 @@ const QUEUE_SQL = `
 
     UNION ALL
 
-    SELECT
+    -- One row per record, not per edit. Nothing bans or locks the editor
+    -- after an inconclusive verdict, so one member can leave edits 5, 6
+    -- and 7 all flagged — and those are not separable decisions:
+    -- restoring revision 5 undoes 6 and 7 as well. Three rows with
+    -- their own buttons would invite a moderator to keep one and then
+    -- revert another, silently discarding the edit they just kept. The
+    -- row carries the earliest open revision, which is what a revert
+    -- restores, and a count of what it stands for.
+    SELECT * FROM (
+      SELECT DISTINCT ON (e.entity_type, e.domain)
       'flagged_edit'::text AS kind,
       e.entity_type AS entity_type,
       e.domain AS domain,
       NULL::text AS record_name,
       NULL::text AS source_type,
-      e.created_at AS created_at,
+      MIN(e.created_at) OVER (PARTITION BY e.entity_type, e.domain) AS created_at,
       e.submitter_user_id AS submitter_user_id,
       e.submitter_email AS submitter_email,
       e.edit_summary AS edit_summary,
@@ -585,9 +689,12 @@ const QUEUE_SQL = `
       e.action_taken AS action_taken,
       e.claimed_at AS claimed_at,
       e.claimed_by_user_id AS claimed_by_user_id,
+      COUNT(*) OVER (PARTITION BY e.entity_type, e.domain)::int AS covers_edits,
       NULL::jsonb AS submitted_content
-    FROM registry_review_queue e
-    WHERE e.resolved_at IS NULL AND e.submission_kind = 'edit'
+      FROM registry_review_queue e
+      WHERE e.resolved_at IS NULL AND e.submission_kind = 'edit'
+      ORDER BY e.entity_type, e.domain, e.revision_number ASC NULLS LAST, e.created_at ASC
+    ) collapsed_edits
   ) queue
   ORDER BY created_at ASC, kind ASC, entity_type ASC, domain ASC
   LIMIT $1 OFFSET $2`;
@@ -606,7 +713,7 @@ function renderSubmittedContent(value: unknown): {
   } catch {
     return { submitted_content: null, submitted_content_truncated: false };
   }
-  if (!rendered || rendered === '{}') {
+  if (!rendered || /^\{\s*\}$/.test(rendered)) {
     return { submitted_content: null, submitted_content_truncated: false };
   }
   return rendered.length > SUBMITTED_CONTENT_MAX
@@ -633,6 +740,7 @@ function toQueueEntry(row: QueueRow): RegistryReviewQueueEntry {
     ...renderSubmittedContent(row.submitted_content),
     claimed_at: row.claimed_at ? new Date(row.claimed_at).toISOString() : null,
     claimed_by_user_id: row.claimed_by_user_id,
+    covers_edits: Number(row.covers_edits ?? 1),
     // The queue's age column measures how long the member has waited.
     // For a pending record that is the row's own `created_at`, which is
     // the same instant it entered review: community records are born

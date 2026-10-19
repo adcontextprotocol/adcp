@@ -265,6 +265,18 @@
       });
     }
 
+    function editCount(item) {
+      return Math.max(1, Number(item.covers_edits) || 1);
+    }
+
+    function actionLabel(item, action, canRevert) {
+      if (action === 'reject') return 'Reject';
+      if (action === 'revert') return editCount(item) > 1 ? 'Revert all edits' : 'Revert edit';
+      if (item.kind === 'pending_record') return 'Approve';
+      if (!canRevert) return 'Mark handled';
+      return editCount(item) > 1 ? 'Keep all edits' : 'Keep edit';
+    }
+
     function renderRow(item) {
       const row = el('div', 'queue-row');
       const meta = el('div', 'meta');
@@ -300,6 +312,12 @@
         item.kind === 'flagged_edit' ? 'Reverts to revision:' : 'Revision:',
         item.revision_number === null || item.revision_number === undefined ? '—' : item.revision_number,
       ));
+      if (item.kind === 'flagged_edit' && editCount(item) > 1) {
+        // Stacked edits are one decision: restoring the earliest open
+        // revision undoes the later ones too, so the queue shows them
+        // as a single row rather than inviting separate verdicts.
+        detail.appendChild(labelled('Flagged edits on this record:', editCount(item)));
+      }
       if (item.revision_count) detail.appendChild(labelled('Revisions:', item.revision_count));
       detail.appendChild(labelled('Age:', ageLabel(item.age_hours)));
       detail.appendChild(el('span', 'timestamp', new Date(item.created_at).toLocaleString()));
@@ -363,7 +381,8 @@
 
       const actions = el('div', 'actions');
       const actionList = item.available_actions || [];
-      if (item.kind === 'flagged_edit' && actionList.indexOf('revert') === -1) {
+      const canRevert = actionList.indexOf('revert') !== -1;
+      if (item.kind === 'flagged_edit' && !canRevert) {
         actions.appendChild(el(
           'div',
           'subtitle',
@@ -374,9 +393,7 @@
         const button = el(
           'button',
           'btn btn-small ' + (action === 'approve' ? 'btn-success' : action === 'reject' ? 'btn-danger' : 'btn-secondary'),
-          action === 'approve'
-            ? (item.kind === 'pending_record' ? 'Approve' : 'Keep edit')
-            : action === 'reject' ? 'Reject' : 'Revert edit',
+          actionLabel(item, action, canRevert),
         );
         button.addEventListener('click', function () { act(row, item, action); });
         actions.appendChild(button);
@@ -473,12 +490,21 @@
     }
 
     async function act(row, item, action) {
+      // Say what the server will actually do. A revert restores the
+      // earliest open revision for the record, which undoes every
+      // flagged edit above it — not just the one that was clicked.
+      const edits = editCount(item);
       const prompts = {
         approve: item.kind === 'pending_record'
           ? 'Publish ' + item.domain + ' in the registry?'
-          : 'Keep this edit to ' + item.domain + ' as-is?',
+          : edits > 1
+            ? 'Keep all ' + edits + ' flagged edits to ' + item.domain + ' as submitted?'
+            : 'Keep this edit to ' + item.domain + ' as submitted?',
         reject: 'Reject and permanently remove the pending record for ' + item.domain + '?',
-        revert: 'Revert ' + item.domain + ' to revision ' + item.revision_number + '?',
+        revert: edits > 1
+          ? 'Undo all ' + edits + ' flagged edits to ' + item.domain
+            + ', restoring revision ' + item.revision_number + '?'
+          : 'Revert ' + item.domain + ' to revision ' + item.revision_number + '?',
       };
       if (!window.confirm(prompts[action])) return;
 
@@ -503,7 +529,12 @@
           const err = await resp.json().catch(function () { return { error: 'HTTP ' + resp.status }; });
           throw new Error(err.error || 'HTTP ' + resp.status);
         }
-        showStatus('Recorded: ' + action + ' for ' + item.domain + '.', 'success');
+        const result = await resp.json().catch(function () { return {}; });
+        // Report what happened, not what was asked for.
+        let done = 'Recorded ' + (result.resolution || action) + ' for ' + item.domain;
+        if (result.restored_revision) done += ' (restored revision ' + result.restored_revision + ')';
+        if (result.resolved_items > 1) done += ', closing ' + result.resolved_items + ' queued edits';
+        showStatus(done + '.', 'success');
         await loadQueue();
       } catch (err) {
         row.classList.remove('acting');

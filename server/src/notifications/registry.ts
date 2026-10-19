@@ -660,7 +660,7 @@ export async function notifyRegistryReviewResolved(resolution: {
    */
   subject?: 'record' | 'edit';
   /** What the moderator did, not what they set out to do. */
-  action: 'approved' | 'rejected' | 'reverted';
+  action: 'approved' | 'rejected' | 'reverted' | 'dismissed';
   moderator_email?: string;
   moderator_name?: string;
   /** For a revert: the revision that was restored (adcp#8337). */
@@ -682,13 +682,16 @@ export async function notifyRegistryReviewResolved(resolution: {
   const isEdit = resolution.subject === 'edit';
   const emoji = resolution.action === 'approved' ? '✅'
     : resolution.action === 'rejected' ? '🗑️'
+    : resolution.action === 'dismissed' ? '🙈'
     : '⏪';
   const verb = resolution.action === 'approved'
     ? (isEdit ? 'edit kept as submitted' : 'record published')
     : resolution.action === 'rejected' ? 'record rejected and removed'
-    : Number.isInteger(resolution.restored_revision)
-      ? `edit reverted to revision ${resolution.restored_revision}`
-      : 'edit reverted';
+    : resolution.action === 'dismissed'
+      ? 'edit closed without a revert — nothing to roll back to'
+      : Number.isInteger(resolution.restored_revision)
+        ? `edit reverted to revision ${resolution.restored_revision}`
+        : 'edit reverted';
 
   const lines = [
     `${emoji} *${typeLabel} ${verb} from the review queue:* \`${domainLabel}\``,

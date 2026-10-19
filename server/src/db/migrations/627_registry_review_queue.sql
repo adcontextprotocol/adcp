@@ -59,7 +59,10 @@ CREATE TABLE IF NOT EXISTS registry_review_queue (
 
   -- Moderator decision. Identity is required whenever the row is resolved.
   resolved_at TIMESTAMPTZ,
-  resolution TEXT CHECK (resolution IN ('approved', 'rejected', 'reverted')),
+  -- `dismissed` is for an edit a moderator closed without being able to
+  -- undo it: vandalism with no revision to restore. Recording that as
+  -- `approved` against their name would be a false audit trail.
+  resolution TEXT CHECK (resolution IN ('approved', 'rejected', 'reverted', 'dismissed')),
   resolved_by_user_id VARCHAR(255),
   resolved_by_email VARCHAR(255),
   resolution_note TEXT,

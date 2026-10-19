@@ -30,9 +30,10 @@ import {
   listRegistryReviewQueue,
   recordRegistryReviewOutcome,
   releaseRegistryReviewItemClaim,
+  resolveOpenRegistryEditItemsForRecord,
   resolveOpenRegistryReviewItemsForRecord,
   resolveRegistryReviewItem,
-  resolveRegistryReviewItems,
+  resolveRevertedRegistryEditItems,
 } from '../../src/db/registry-review-queue-db.js';
 import { registryReviewQueueDrainedInvariant } from '../../src/audit/integrity/invariants/registry-review-queue-drained.js';
 import type { InvariantContext } from '../../src/audit/integrity/types.js';
@@ -64,16 +65,17 @@ describe('registry review queue (Postgres)', () => {
    * Only this test's fixtures. Paging the whole queue and filtering
    * afterwards would make "no fixtures returned" pass for the wrong
    * reason on a database that already holds 200 waiting rows, so the
-   * fixtures are backdated to the front of the oldest-first ordering.
+   * fixtures are dated to 2001 — before anything a real registry can
+   * hold — to pin them at the front of the oldest-first ordering.
    */
   async function ourQueue() {
     const ourDomains = [BRAND_DOMAIN, EDIT_DOMAIN, PROPERTY_DOMAIN, CLAIM_DOMAIN];
     await pool.query(
-      `UPDATE brands SET created_at = NOW() - INTERVAL '365 days' WHERE domain = ANY($1)`,
+      `UPDATE brands SET created_at = TIMESTAMPTZ '2001-01-01' WHERE domain = ANY($1)`,
       [ourDomains],
     );
     await pool.query(
-      `UPDATE hosted_properties SET created_at = NOW() - INTERVAL '365 days'
+      `UPDATE hosted_properties SET created_at = TIMESTAMPTZ '2001-01-01'
         WHERE publisher_domain = ANY($1)`,
       [ourDomains],
     );
@@ -257,6 +259,21 @@ describe('registry review queue (Postgres)', () => {
     expect(await ourQueue()).toHaveLength(0);
   });
 
+  it('will not let a moderator resolve an item somebody else holds', async () => {
+    const item = await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: 2,
+      submitter_user_id: 'user_editor',
+      verdict: 'needs_human_review',
+    });
+    await claimRegistryReviewItem(item.id, { user_id: 'user_other' });
+
+    expect(await resolveRegistryReviewItem(item.id, 'approved', MODERATOR)).toBeNull();
+    expect(await resolveRegistryReviewItem(item.id, 'approved', { user_id: 'user_other' })).not.toBeNull();
+  });
+
   it('keeps a claimed item in the queue until an action completes', async () => {
     const item = await recordRegistryReviewOutcome({
       entity_type: 'brand',
@@ -293,7 +310,29 @@ describe('registry review queue (Postgres)', () => {
     expect(released.claimed_at).toBeNull();
   });
 
-  it('closes every stacked edit a single revert covers', async () => {
+  it('collapses a record\'s stacked edits into one queue row', async () => {
+    for (const revision of [5, 6, 7]) {
+      await recordRegistryReviewOutcome({
+        entity_type: 'brand',
+        domain: EDIT_DOMAIN,
+        submission_kind: 'edit',
+        revision_number: revision,
+        submitter_user_id: 'user_editor',
+        verdict: 'needs_human_review',
+      });
+    }
+
+    const open = await listOpenRegistryEditItemsForRecord('brand', EDIT_DOMAIN);
+    // Oldest revision first: restoring revision 5 undoes 6 and 7 too,
+    // and "reverting" 7 afterwards would put 5 and 6 straight back.
+    expect(open.map((row) => row.revision_number)).toEqual([5, 6, 7]);
+
+    const queue = await ourQueue();
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({ kind: 'flagged_edit', revision_number: 5, covers_edits: 3 });
+  });
+
+  it('closes the edits a completed rollback undid, bounded by the revision it created', async () => {
     const ids: string[] = [];
     for (const revision of [5, 6, 7]) {
       const row = await recordRegistryReviewOutcome({
@@ -306,15 +345,61 @@ describe('registry review queue (Postgres)', () => {
       });
       ids.push(row.id);
     }
+    // An edit recorded after the rollback is not covered by it.
+    await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: 12,
+      submitter_user_id: 'user_editor',
+      verdict: 'needs_human_review',
+    });
 
-    const open = await listOpenRegistryEditItemsForRecord('brand', EDIT_DOMAIN);
-    // Oldest revision first: restoring revision 5 undoes 6 and 7 too,
-    // and "reverting" 7 afterwards would put 5 and 6 straight back.
-    expect(open.map((row) => row.revision_number)).toEqual([5, 6, 7]);
+    const closed = await resolveRevertedRegistryEditItems('brand', EDIT_DOMAIN, 10, MODERATOR);
 
-    const closed = await resolveRegistryReviewItems(ids, 'reverted', MODERATOR);
     expect(closed).toBe(3);
-    expect(await listOpenRegistryEditItemsForRecord('brand', EDIT_DOMAIN)).toHaveLength(0);
+    const stillOpen = await listOpenRegistryEditItemsForRecord('brand', EDIT_DOMAIN);
+    expect(stillOpen.map((row) => row.revision_number)).toEqual([12]);
+  });
+
+  it('leaves a revision-less edit open when a rollback closes the rest', async () => {
+    await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: 3,
+      submitter_user_id: 'user_editor',
+      verdict: 'needs_human_review',
+    });
+    await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: null,
+      submitter_user_id: 'user_editor',
+      verdict: 'malicious',
+    });
+
+    // Nothing can assert what state an unknown revision belongs to.
+    expect(await resolveRevertedRegistryEditItems('brand', EDIT_DOMAIN, 9, MODERATOR)).toBe(1);
+    const stillOpen = await listOpenRegistryEditItemsForRecord('brand', EDIT_DOMAIN);
+    expect(stillOpen).toHaveLength(1);
+    expect(stillOpen[0].revision_number).toBeNull();
+  });
+
+  it('closes a record\'s flagged edits together when the moderator keeps them', async () => {
+    for (const revision of [2, 3]) {
+      await recordRegistryReviewOutcome({
+        entity_type: 'brand',
+        domain: EDIT_DOMAIN,
+        submission_kind: 'edit',
+        revision_number: revision,
+        submitter_user_id: 'user_editor',
+        verdict: 'needs_human_review',
+      });
+    }
+
+    expect(await resolveOpenRegistryEditItemsForRecord('brand', EDIT_DOMAIN, 'approved', MODERATOR)).toBe(2);
     expect(await ourQueue()).toHaveLength(0);
   });
 
@@ -347,13 +432,25 @@ describe('registry review queue (Postgres)', () => {
       verdict: 'needs_human_review',
     });
 
+    // A flagged edit on the same record is a different decision, and
+    // closing it under a moderator who never saw it would be a false
+    // audit trail.
+    await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: BRAND_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: 4,
+      submitter_user_id: 'user_editor',
+      verdict: 'needs_human_review',
+    });
+
     await brandDb.approveBrand(BRAND_DOMAIN);
     const closed = await resolveOpenRegistryReviewItemsForRecord(
       'brand', BRAND_DOMAIN, 'approved', MODERATOR,
     );
 
     expect(closed).toBe(1);
-    expect(await ourQueue()).toHaveLength(0);
+    expect(await listOpenRegistryEditItemsForRecord('brand', BRAND_DOMAIN)).toHaveLength(1);
   });
 
 

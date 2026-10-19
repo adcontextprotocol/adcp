@@ -25,7 +25,6 @@
  * Severity is `warning`, not `critical`: work waiting is not data
  * corruption, and the critical path pages a human.
  */
-import type { Pool } from 'pg';
 import { getRegistryReviewBacklog } from '../../../db/registry-review-queue-db.js';
 import type { Invariant, InvariantContext, InvariantResult } from '../types.js';
 
@@ -47,7 +46,7 @@ export const registryReviewQueueDrainedInvariant: Invariant = {
   async check(ctx: InvariantContext): Promise<InvariantResult> {
     // Reads the same aggregate the admin page and the digest read, so the
     // three surfaces cannot disagree about what is waiting.
-    const backlog = await getRegistryReviewBacklog(ctx.pool as Pool);
+    const backlog = await getRegistryReviewBacklog(ctx.pool);
 
     if (backlog.total === 0 || (backlog.oldest_age_hours ?? 0) <= REGISTRY_REVIEW_SLA_HOURS) {
       return { checked: backlog.total, violations: [] };

@@ -40,9 +40,9 @@ import {
   listOpenRegistryEditItemsForRecord,
   listRegistryReviewQueue,
   releaseRegistryReviewItemClaim,
+  resolveOpenRegistryEditItemsForRecord,
   resolveOpenRegistryReviewItemsForRecord,
-  resolveRegistryReviewItem,
-  resolveRegistryReviewItems,
+  resolveRevertedRegistryEditItems,
   type RegistryEntityType,
   type RegistryReviewModerator,
 } from '../../db/registry-review-queue-db.js';
@@ -103,6 +103,18 @@ function parseDomain(raw: string): string | null {
 
 function parseNote(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim().slice(0, NOTE_MAX) : undefined;
+}
+
+/**
+ * Drop a claim without letting its own failure change the response the
+ * caller already decided on.
+ */
+async function releaseClaim(itemId: string): Promise<void> {
+  try {
+    await releaseRegistryReviewItemClaim(itemId);
+  } catch (err) {
+    logger.error({ err, itemId }, 'Failed to release a registry review claim');
+  }
 }
 
 function moderatorName(req: Request): string | undefined {
@@ -283,26 +295,44 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
       }
 
       if (item.submission_kind !== 'edit') {
-        await releaseRegistryReviewItemClaim(itemId);
+        await releaseClaim(itemId);
         return res.status(409).json({
           error: 'This item is a pending record. Use the record endpoint to approve or reject it.',
         });
       }
 
       if (action === 'approve') {
-        const resolved = await resolveRegistryReviewItem(itemId, 'approved', moderator, note);
-        if (!resolved) {
+        // The queue shows one row per record, so keeping is a decision
+        // about all of that record's flagged edits.
+        const openEdits = await listOpenRegistryEditItemsForRecord(item.entity_type, item.domain);
+        // Vandalism nobody could roll back is not "approved" — saying so
+        // would put a moderator's name behind content they only failed
+        // to undo.
+        const resolution = openEdits.some((candidate) => Number(candidate.revision_number) >= 1)
+          ? 'approved' as const
+          : 'dismissed' as const;
+        const resolvedItems = await resolveOpenRegistryEditItemsForRecord(
+          item.entity_type, item.domain, resolution, moderator, note,
+        );
+        if (resolvedItems === 0) {
           return res.status(409).json({ error: 'Queue item was already resolved' });
         }
         logger.info(
-          { itemId, domain: item.domain, entityType: item.entity_type, action, moderator: moderator.user_id },
-          'Registry review edit kept',
+          {
+            itemId,
+            domain: item.domain,
+            entityType: item.entity_type,
+            resolution,
+            resolvedItems,
+            moderator: moderator.user_id,
+          },
+          'Registry review edits closed without a revert',
         );
         notifyRegistryReviewResolved({
           entity_type: item.entity_type,
           domain: item.domain,
           subject: 'edit',
-          action: 'approved',
+          action: resolution,
           moderator_email: moderator.email ?? undefined,
           moderator_name: moderatorName(req),
           note,
@@ -313,9 +343,9 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
           item_id: itemId,
           entity_type: item.entity_type,
           domain: item.domain,
-          resolution: 'approved',
+          resolution,
           restored_revision: null,
-          resolved_items: 1,
+          resolved_items: resolvedItems,
         });
       }
 
@@ -324,23 +354,23 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
       // so the same member can stack edits 5, 6 and 7 and leave three
       // open items. Restoring revision 5 undoes all three; "reverting"
       // item 7 afterwards would put edits 5 and 6 straight back. So roll
-      // back to the earliest open revision and close every item the
-      // rollback covered.
+      // back to the earliest open revision, and close what the rollback
+      // actually covered.
       const open = await listOpenRegistryEditItemsForRecord(item.entity_type, item.domain);
       const revertable = open.filter((candidate) => Number(candidate.revision_number) >= 1);
       if (revertable.length === 0) {
-        await releaseRegistryReviewItemClaim(itemId);
+        await releaseClaim(itemId);
         return res.status(409).json({
           error: 'No revision is recorded for this edit, so it cannot be reverted',
           message: 'Review the record directly and roll it back by hand if it needs it.',
         });
       }
 
+      // Ordered `revision_number ASC NULLS LAST`, so this is the
+      // earliest open revision for the record.
       const toRevision = Number(revertable[0].revision_number);
-      const covered = revertable
-        .filter((candidate) => Number(candidate.revision_number) >= toRevision)
-        .map((candidate) => candidate.id);
 
+      let rollbackRevision: number;
       try {
         // Revision N holds the state before edit N, so undoing edit N
         // means restoring revision N (adcp#8337). The number comes from
@@ -350,19 +380,29 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
           email: moderator.email ?? undefined,
           name: moderatorName(req) || moderator.email || moderator.user_id,
         };
-        if (item.entity_type === 'brand') {
-          await brandDb.rollbackBrand(item.domain, toRevision, rollbackEditor);
-        } else {
-          await propertyDb.rollbackProperty(item.domain, toRevision, rollbackEditor);
-        }
+        rollbackRevision = item.entity_type === 'brand'
+          ? (await brandDb.rollbackBrand(item.domain, toRevision, rollbackEditor)).revision_number
+          : (await propertyDb.rollbackProperty(item.domain, toRevision, rollbackEditor)).revision_number;
       } catch (revertError) {
-        await releaseRegistryReviewItemClaim(itemId).catch((err: unknown) =>
-          logger.error({ err, itemId }, 'Failed to release the claim after a failed revert'));
+        await releaseClaim(itemId);
         logger.error({ err: revertError, itemId, domain: item.domain }, 'Registry review revert failed');
         return res.status(500).json({ error: 'Failed to revert the edit' });
       }
 
-      const resolvedItems = await resolveRegistryReviewItems(covered, 'reverted', moderator, note);
+      // Bound by the revision the rollback created, not by the list
+      // read above: an edit that landed between the two is also undone
+      // by the rollback, and leaving it open would leave a revert
+      // target that now restores the vandalism.
+      let resolvedItems = 0;
+      try {
+        resolvedItems = await resolveRevertedRegistryEditItems(
+          item.entity_type, item.domain, rollbackRevision, moderator, note,
+        );
+      } catch (err) {
+        // The rollback happened; saying otherwise would be worse than
+        // a stale row that a moderator can clear on the next pass.
+        logger.error({ err, itemId, domain: item.domain }, 'Failed to close reverted review items');
+      }
 
       logger.info(
         {
@@ -370,6 +410,7 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
           domain: item.domain,
           entityType: item.entity_type,
           toRevision,
+          rollbackRevision,
           resolvedItems,
           moderator: moderator.user_id,
         },
@@ -384,7 +425,7 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
         moderator_email: moderator.email ?? undefined,
         moderator_name: moderatorName(req),
         restored_revision: toRevision,
-        reverted_edits: covered.length,
+        reverted_edits: resolvedItems,
         note,
       }).catch((err: unknown) => logger.error({ err, itemId }, 'Registry review resolution notification failed'));
 
