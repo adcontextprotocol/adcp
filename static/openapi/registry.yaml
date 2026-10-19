@@ -874,6 +874,11 @@ components:
           type:
             - string
             - "null"
+        tolerated_undefined_specialisms:
+          type: array
+          items:
+            type: string
+          description: Declared specialisms the graded compliance release does not define. Capability resolution skipped them instead of voiding the run; they were not graded. Absent on ordinary runs.
       required:
         - grading_policy_version
         - compliance_bundle_version
@@ -4461,6 +4466,58 @@ components:
             - storyboards_total
             - first_blocker
           description: Owner/operator-only newest persisted full assessment, including audit-only timeouts. Null for other viewers. This does not change the public verdict.
+        heartbeat_timeout:
+          type:
+            - object
+            - "null"
+          properties:
+            run_id:
+              type: string
+              format: uuid
+            timed_out_at:
+              type: string
+              format: date-time
+            duration_ms:
+              type:
+                - integer
+                - "null"
+            timeout_ms:
+              type:
+                - integer
+                - "null"
+            storyboards_completed:
+              type:
+                - integer
+                - "null"
+            storyboards_total:
+              type:
+                - integer
+                - "null"
+            consecutive:
+              type: integer
+            consecutive_capped:
+              type: boolean
+              description: True when the streak filled the lookback window, so the real run of timeouts may be longer than `consecutive`.
+            published_at:
+              type:
+                - string
+                - "null"
+              format: date-time
+            summary:
+              type: string
+              description: Ready-to-render owner-facing sentence. Built only from platform- and runner-generated values; no agent response text.
+          required:
+            - run_id
+            - timed_out_at
+            - duration_ms
+            - timeout_ms
+            - storyboards_completed
+            - storyboards_total
+            - consecutive
+            - consecutive_capped
+            - published_at
+            - summary
+          description: Owner/operator-only. Present while the newest scheduled heartbeat ran out of time, so the owner can see that the published result is not being refreshed. Null for other viewers and once a later heartbeat completes. This does not change the public verdict.
         check_interval_hours:
           type: integer
           description: How often the heartbeat re-tests this agent, in hours
@@ -4478,7 +4535,8 @@ components:
               - failing
               - untested
               - unknown
-          description: Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status
+              - not_applicable
+          description: Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status. `not_applicable` means AdCP introduced the specialism after the compliance release this run graded, so it could not be tested.
         eligibility:
           $ref: "#/components/schemas/ComplianceEligibility"
         storyboard_statuses:
@@ -14272,6 +14330,11 @@ paths:
                         - storyboards
                   total_storyboards:
                     type: integer
+                  specialisms_not_applicable:
+                    type: array
+                    items:
+                      type: string
+                    description: Declared specialisms AdCP introduced after this compliance release. They have no bundle to run here, so they are listed separately instead of failing resolution.
                 required:
                   - agent_url
                   - requested_compliance_target

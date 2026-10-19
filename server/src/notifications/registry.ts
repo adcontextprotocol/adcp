@@ -8,6 +8,7 @@
 import { logger } from '../logger.js';
 import { sendChannelMessage, isSlackConfigured } from '../slack/client.js';
 import type { SlackBlockMessage } from '../slack/types.js';
+import { isSafeSlackLinkTarget, sanitizeSlackLine, sanitizeSlackLinkLabel } from '../utils/slack-escape.js';
 
 const CHANNEL_ID = process.env.REGISTRY_EDITS_CHANNEL_ID;
 // KYC / signup-ops channel — falls back to the registry-edits channel
@@ -16,6 +17,18 @@ const CHANNEL_ID = process.env.REGISTRY_EDITS_CHANNEL_ID;
 // (wiki edits vs. signup KYC are different reviewer flows).
 const SIGNUP_OPS_CHANNEL_ID = process.env.SIGNUP_OPS_CHANNEL_ID || CHANNEL_ID;
 const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
+
+// Every submitter-, moderator-, or model-authored value in this file is
+// flattened, capped and mrkdwn-escaped by the shared helpers in
+// `utils/slack-escape.ts` before it reaches the registry channel — the room
+// reads these messages as moderator-authored, which is what makes a planted
+// `<!channel>` or `<https://evil|agenticadvertising.org>` effective
+// (adcp#8320, #4754).
+
+/** Identifiers and short names. */
+const FIELD_MAX = 120;
+/** Submitter- or model-authored free text (summaries, notes, reasons). */
+const FREE_TEXT_MAX = 400;
 
 function getChannelId(): string | null {
   if (!CHANNEL_ID) {
@@ -50,26 +63,30 @@ export async function notifyRegistryEdit(edit: {
 
   const emoji = edit.entity_type === 'brand' ? '🏷️' : '🌐';
   const typeLabel = edit.entity_type === 'brand' ? 'Brand' : 'Property';
-  const editorDisplay = edit.editor_name || edit.editor_email || 'Unknown';
+  // `edit_summary` is free text from any member and `editor_name` is their
+  // own display name; both land in the moderator channel (adcp#8320).
+  const editorDisplay = sanitizeSlackLine(edit.editor_name || edit.editor_email || 'Unknown', FIELD_MAX);
+  const domainLabel = sanitizeSlackLinkLabel(edit.domain, FIELD_MAX);
+  const summary = sanitizeSlackLine(edit.edit_summary, FREE_TEXT_MAX);
   const viewUrl = edit.entity_type === 'brand'
-    ? `${APP_URL}/brand/view/${edit.domain}`
-    : `${APP_URL}/property/view/${edit.domain}`;
+    ? `${APP_URL}/brand/view/${encodeURIComponent(edit.domain)}`
+    : `${APP_URL}/property/view/${encodeURIComponent(edit.domain)}`;
 
   const message: SlackBlockMessage = {
-    text: `${emoji} ${typeLabel} edited: ${edit.domain} by ${editorDisplay}`,
+    text: `${emoji} ${typeLabel} edited: ${domainLabel} by ${editorDisplay}`,
     blocks: [
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `${emoji} *${typeLabel} edited:* <${viewUrl}|${edit.domain}> (rev ${edit.revision_number})`,
+          text: `${emoji} *${typeLabel} edited:* <${viewUrl}|${domainLabel}> (rev ${edit.revision_number})`,
         },
       },
       {
         type: 'section',
         fields: [
           { type: 'mrkdwn', text: `*Editor:*\n${editorDisplay}` },
-          { type: 'mrkdwn', text: `*Summary:*\n${edit.edit_summary}` },
+          { type: 'mrkdwn', text: `*Summary:*\n${summary}` },
         ],
       },
     ],
@@ -106,31 +123,37 @@ export async function notifyBrandClaimOpportunity(opportunity: {
   const channelId = getSignupOpsChannelId();
   if (!channelId || !isSlackConfigured()) return;
 
-  // All user-controlled fields go through sanitizeMrkdwn before
-  // interpolation — first_name / last_name / email arrive from WorkOS
-  // signup (user-supplied), brand_name and verified_owner_org_name flow
-  // from the discovered-brands / organizations tables which can be
-  // populated by external research. Without sanitization an attacker
-  // could plant <!channel> mentions or <https://evil|legit-text> links
-  // into the moderator-trusted channel (same threat as #4754).
-  // Link labels additionally strip `|`, `<`, `>` since those break out
-  // of mrkdwn link syntax even after standard escaping.
-  const display = sanitizeMrkdwn(
+  // All user-controlled fields are sanitized before interpolation —
+  // first_name / last_name / email arrive from WorkOS signup
+  // (user-supplied), brand_name and verified_owner_org_name flow from the
+  // discovered-brands / organizations tables which can be populated by
+  // external research. Without sanitization an attacker could plant
+  // <!channel> mentions or <https://evil|legit-text> links into the
+  // moderator-trusted channel (same threat as #4754).
+  const display = sanitizeSlackLine(
     [opportunity.user_first_name, opportunity.user_last_name]
       .filter(Boolean)
       .join(' ')
       || opportunity.user_email,
+    FIELD_MAX,
   );
-  const emailSafe = sanitizeMrkdwn(opportunity.user_email);
-  const domainSafe = sanitizeMrkdwn(opportunity.domain);
-  const brandLabel = sanitizeMrkdwnLinkLabel(
+  const emailSafe = sanitizeSlackLine(opportunity.user_email, FIELD_MAX);
+  const domainSafe = sanitizeSlackLine(opportunity.domain, FIELD_MAX);
+  const brandLabel = sanitizeSlackLinkLabel(
     opportunity.brand_name
       ? `${opportunity.brand_name} (${opportunity.domain})`
       : opportunity.domain,
+    FIELD_MAX,
   );
   const ownerLabel = opportunity.verified_owner_org_name
-    ? sanitizeMrkdwn(opportunity.verified_owner_org_name)
+    ? sanitizeSlackLine(opportunity.verified_owner_org_name, FIELD_MAX)
     : null;
+  // The target half of a Slack link cannot be escaped, so an unexpected
+  // shape drops the link rather than rendering a broken one.
+  const brandViewUrl = `${APP_URL}${opportunity.brand_view_url}`;
+  const brandViewLink = isSafeSlackLinkTarget(brandViewUrl)
+    ? `<${brandViewUrl}|${brandLabel}>`
+    : brandLabel;
   const statusLine = opportunity.brand_already_verified
     ? `_Brand is already verified-owned${ownerLabel ? ` by *${ownerLabel}*` : ''} — claim won't fire._`
     : `_Brand is unclaimed — signup will see a claim suggestion._`;
@@ -142,7 +165,7 @@ export async function notifyBrandClaimOpportunity(opportunity: {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `🪪 *New signup matches a registry brand* — <${APP_URL}${opportunity.brand_view_url}|${brandLabel}>`,
+          text: `🪪 *New signup matches a registry brand* — ${brandViewLink}`,
         },
       },
       {
@@ -167,15 +190,6 @@ export async function notifyBrandClaimOpportunity(opportunity: {
 }
 
 /**
- * Stricter sanitizer for link-label interpolation (`<url|LABEL>`). On
- * top of the standard mrkdwn escaping, strip `|`, `<`, `>` because those
- * break out of the label segment of Slack link syntax.
- */
-function sanitizeMrkdwnLinkLabel(s: string): string {
-  return sanitizeMrkdwn(s).replace(/[<>|]/g, '');
-}
-
-/**
  * Notify when a new record is created and pending Addie review.
  */
 export async function notifyRegistryCreate(record: {
@@ -189,16 +203,17 @@ export async function notifyRegistryCreate(record: {
 
   const emoji = record.entity_type === 'brand' ? '🏷️' : '🌐';
   const typeLabel = record.entity_type === 'brand' ? 'Brand' : 'Property';
-  const editorDisplay = record.editor_name || record.editor_email || 'Unknown';
+  const editorDisplay = sanitizeSlackLine(record.editor_name || record.editor_email || 'Unknown', FIELD_MAX);
+  const domain = sanitizeSlackLine(record.domain, FIELD_MAX);
 
   const message: SlackBlockMessage = {
-    text: `${emoji} New ${typeLabel.toLowerCase()}: ${record.domain} by ${editorDisplay} - awaiting review`,
+    text: `${emoji} New ${typeLabel.toLowerCase()}: ${domain} by ${editorDisplay} - awaiting review`,
     blocks: [
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `${emoji} *New ${typeLabel.toLowerCase()} record:* \`${record.domain}\`\n_Awaiting Addie review_`,
+          text: `${emoji} *New ${typeLabel.toLowerCase()} record:* \`${domain}\`\n_Awaiting Addie review_`,
         },
       },
       {
@@ -231,16 +246,17 @@ export async function notifyRegistryApproval(record: {
   if (!channelId || !isSlackConfigured()) return;
 
   const typeLabel = record.entity_type === 'brand' ? 'Brand' : 'Property';
+  const domain = sanitizeSlackLine(record.domain, FIELD_MAX);
 
   const message: SlackBlockMessage = {
-    text: `Approved: ${record.domain}`,
+    text: `Approved: ${domain}`,
     thread_ts: record.thread_ts,
     blocks: [
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `✅ *${typeLabel} approved:* \`${record.domain}\` is now visible in the registry.`,
+          text: `✅ *${typeLabel} approved:* \`${domain}\` is now visible in the registry.`,
         },
       },
     ],
@@ -268,16 +284,17 @@ export async function notifyRegistryRollback(rollback: {
   if (!channelId || !isSlackConfigured()) return;
 
   const typeLabel = rollback.entity_type === 'brand' ? 'Brand' : 'Property';
-  const editorDisplay = rollback.rolled_back_by_name || rollback.rolled_back_by_email || 'Admin';
+  const editorDisplay = sanitizeSlackLine(rollback.rolled_back_by_name || rollback.rolled_back_by_email || 'Admin', FIELD_MAX);
+  const domain = sanitizeSlackLine(rollback.domain, FIELD_MAX);
 
   const message: SlackBlockMessage = {
-    text: `Rollback: ${rollback.domain} restored to rev ${rollback.rolled_back_to}`,
+    text: `Rollback: ${domain} restored to rev ${rollback.rolled_back_to}`,
     blocks: [
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `⏪ *${typeLabel} rolled back:* \`${rollback.domain}\` restored to revision ${rollback.rolled_back_to} (now rev ${rollback.revision_number})`,
+          text: `⏪ *${typeLabel} rolled back:* \`${domain}\` restored to revision ${rollback.rolled_back_to} (now rev ${rollback.revision_number})`,
         },
       },
       {
@@ -294,22 +311,6 @@ export async function notifyRegistryRollback(rollback: {
   } catch (error) {
     logger.error({ error, domain: rollback.domain }, 'Failed to send registry rollback notification');
   }
-}
-
-/**
- * Strip Slack mrkdwn meta-characters from user-controlled strings before
- * interpolating them into a channel message. Without this, an uploader
- * could plant `<!channel>` / `<!here>` / `<@U…>` mentions to ping the
- * whole moderator channel, or `<https://evil/|legit-text>` to plant a
- * phishing link in a moderator-trusted surface. Replaces angle brackets
- * and ampersand with HTML-escaped equivalents and inserts a zero-width
- * space inside `!channel|here|everyone` so the broadcast token loses
- * its meaning while staying human-readable.
- */
-function sanitizeMrkdwn(s: string): string {
-  return s
-    .replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!))
-    .replace(/!(channel|here|everyone)/gi, '!​$1');
 }
 
 /**
@@ -337,14 +338,17 @@ export async function notifyPendingBrandLogo(upload: {
   const rawUploader = upload.source === 'addie'
     ? 'Addie (chat)'
     : (upload.uploader_name || upload.uploader_email || 'Unknown');
-  const uploaderDisplay = sanitizeMrkdwn(rawUploader);
-  const reviewUrl = `${APP_URL}/brand/view/${upload.domain}`;
-  const tagsLine = upload.tags.length ? upload.tags.join(', ') : '(none)';
+  const uploaderDisplay = sanitizeSlackLine(rawUploader, FIELD_MAX);
+  const reviewUrl = `${APP_URL}/brand/view/${encodeURIComponent(upload.domain)}`;
+  const domainLabel = sanitizeSlackLinkLabel(upload.domain, FIELD_MAX);
+  // Tags and content type come off the community upload form too.
+  const tagsLine = upload.tags.length ? sanitizeSlackLine(upload.tags.join(', '), FREE_TEXT_MAX) : '(none)';
+  const contentType = sanitizeSlackLine(upload.content_type, 80);
 
   const fields = [
     { type: 'mrkdwn', text: `*Uploader:*\n${uploaderDisplay}` },
     { type: 'mrkdwn', text: `*Tags:*\n${tagsLine}` },
-    { type: 'mrkdwn', text: `*Format:*\n${upload.content_type}` },
+    { type: 'mrkdwn', text: `*Format:*\n${contentType}` },
   ] as const;
 
   const blocks: SlackBlockMessage['blocks'] = [
@@ -352,7 +356,7 @@ export async function notifyPendingBrandLogo(upload: {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `🖼️ *Logo pending review:* <${reviewUrl}|${upload.domain}>`,
+        text: `🖼️ *Logo pending review:* <${reviewUrl}|${domainLabel}>`,
       },
     },
     { type: 'section', fields: [...fields] },
@@ -362,7 +366,7 @@ export async function notifyPendingBrandLogo(upload: {
     // Truncate to keep the Slack block under the 3000-char text limit and
     // sanitize before interpolating — the note is uploader-controlled and
     // posted into a moderator-trusted channel.
-    const note = sanitizeMrkdwn(upload.upload_note.slice(0, 500));
+    const note = sanitizeSlackLine(upload.upload_note, FREE_TEXT_MAX);
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `*Note:*\n${note}` },
@@ -370,7 +374,7 @@ export async function notifyPendingBrandLogo(upload: {
   }
 
   const message: SlackBlockMessage = {
-    text: `🖼️ Logo pending review: ${upload.domain} by ${uploaderDisplay}`,
+    text: `🖼️ Logo pending review: ${domainLabel} by ${uploaderDisplay}`,
     blocks,
   };
 
@@ -410,8 +414,9 @@ export async function notifyBrandLogoReviewed(review: {
     review.action === 'approve' ? 'Approved' :
     review.action === 'reject' ? 'Rejected' :
     'Deleted';
-  const reviewer = review.reviewer_name || review.reviewer_email || 'Moderator';
-  const noteSuffix = review.note ? `\n_${review.note.slice(0, 500)}_` : '';
+  const reviewer = sanitizeSlackLine(review.reviewer_name || review.reviewer_email || 'Moderator', FIELD_MAX);
+  const note = review.note ? sanitizeSlackLine(review.note, FREE_TEXT_MAX) : '';
+  const noteSuffix = note ? `\n_${note}_` : '';
 
   const message: SlackBlockMessage = {
     text: `${verdictEmoji} ${verdictLabel} by ${reviewer}`,
@@ -445,13 +450,14 @@ export async function notifyPendingCommunityMirrorProposal(proposal: {
   const channelId = getChannelId();
   if (!channelId || !isSlackConfigured()) return null;
 
-  const proposer = sanitizeMrkdwn(
+  const proposer = sanitizeSlackLine(
     proposal.proposer_email || proposal.organization_id || 'Authenticated organization',
+    FIELD_MAX,
   );
-  const platform = sanitizeMrkdwn(proposal.platform);
+  const platform = sanitizeSlackLine(proposal.platform, FIELD_MAX);
   const reviewUrl = `${APP_URL}/admin/community-mirrors`;
   const message: SlackBlockMessage = {
-    text: `Community mirror pending review: ${proposal.platform}`,
+    text: `Community mirror pending review: ${platform}`,
     blocks: [
       {
         type: 'section',
@@ -496,8 +502,8 @@ export async function notifyCommunityMirrorProposalReviewed(review: {
 
   const approved = review.action === 'approve';
   const label = approved ? 'Approved and published' : 'Rejected';
-  const reviewer = sanitizeMrkdwn(review.reviewer_name || review.reviewer_email || 'Moderator');
-  const note = review.note ? `\n_${sanitizeMrkdwn(review.note.slice(0, 500))}_` : '';
+  const reviewer = sanitizeSlackLine(review.reviewer_name || review.reviewer_email || 'Moderator', FIELD_MAX);
+  const note = review.note ? `\n_${sanitizeSlackLine(review.note, FREE_TEXT_MAX)}_` : '';
   try {
     await sendChannelMessage(channelId, {
       text: `${label} by ${reviewer}`,
@@ -532,24 +538,29 @@ export async function notifyRegistryBan(ban: {
   if (!channelId || !isSlackConfigured()) return;
 
   const scope = ban.entity_domain
-    ? `\`${ban.entity_domain}\``
+    ? `\`${sanitizeSlackLine(ban.entity_domain, FIELD_MAX)}\``
     : `all ${ban.entity_type}s`;
+  const bannedUser = sanitizeSlackLine(ban.banned_email || 'User', FIELD_MAX);
+  const bannedBy = sanitizeSlackLine(ban.banned_by_email || 'System', FIELD_MAX);
+  // `reason` reaches here as `Auto-ban: ${modelReason}` from the Addie
+  // review, so it is model output derived from submitter text.
+  const reason = sanitizeSlackLine(ban.reason, FREE_TEXT_MAX);
 
   const message: SlackBlockMessage = {
-    text: `Edit ban: ${ban.banned_email || 'User'} banned from editing ${scope}`,
+    text: `Edit ban: ${bannedUser} banned from editing ${scope}`,
     blocks: [
       {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `🚫 *Edit ban:* ${ban.banned_email || 'User'} banned from editing ${scope}`,
+          text: `🚫 *Edit ban:* ${bannedUser} banned from editing ${scope}`,
         },
       },
       {
         type: 'section',
         fields: [
-          { type: 'mrkdwn', text: `*Reason:*\n${ban.reason}` },
-          { type: 'mrkdwn', text: `*By:*\n${ban.banned_by_email || 'System'}` },
+          { type: 'mrkdwn', text: `*Reason:*\n${reason}` },
+          { type: 'mrkdwn', text: `*By:*\n${bannedBy}` },
         ],
       },
     ],
@@ -583,13 +594,17 @@ export async function notifyAddieReview(review: {
     : review.verdict === 'suspicious' ? 'Suspicious'
     : 'Malicious';
 
-  let text = `${verdictEmoji} *Addie review (${verdictLabel}):* ${review.reason}`;
+  // `reason` is model output, and the review prompt embeds the submitter's
+  // own edit summary — so treat it as submitter-influenced free text, not
+  // as platform copy (adcp#8320).
+  const reason = sanitizeSlackLine(review.reason, FREE_TEXT_MAX);
+  let text = `${verdictEmoji} *Addie review (${verdictLabel}):* ${reason}`;
   if (review.action_taken) {
-    text += `\n_Action: ${review.action_taken}_`;
+    text += `\n_Action: ${sanitizeSlackLine(review.action_taken, FREE_TEXT_MAX)}_`;
   }
 
   const message: SlackBlockMessage = {
-    text: `Addie review: ${verdictLabel} - ${review.domain}`,
+    text: `Addie review: ${verdictLabel} - ${sanitizeSlackLine(review.domain, FIELD_MAX)}`,
     thread_ts: review.thread_ts,
     blocks: [
       {

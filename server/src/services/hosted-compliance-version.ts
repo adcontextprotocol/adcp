@@ -154,7 +154,13 @@ function versionSortKey(version: string): number[] {
   ];
 }
 
-function compareVersions(a: string, b: string): number {
+/**
+ * Order two compliance cache versions (stable and `-beta.N`/`-rc.N` builds).
+ * Exported so callers can ask whether one bundled release is newer than
+ * another, for example when deciding whether a specialism was introduced
+ * after the release a run is graded against.
+ */
+export function compareComplianceVersions(a: string, b: string): number {
   const aParts = versionSortKey(a);
   const bParts = versionSortKey(b);
   for (let i = 0; i < aParts.length; i++) {
@@ -173,7 +179,7 @@ function publishedComplianceChannelForVersion(version: string): string | undefin
 function latestPublishedComplianceVersion(channel: string): string {
   const latest = [...PUBLISHED_COMPLIANCE_VERSIONS]
     .filter(version => publishedComplianceChannelForVersion(version) === channel)
-    .sort(compareVersions)
+    .sort(compareComplianceVersions)
     .at(-1);
   if (!latest) {
     throw new Error(
@@ -222,6 +228,11 @@ function complianceVersions(): string[] {
     .filter(name => existsSync(join(complianceRoot, name, 'index.json')));
 }
 
+/** Every compliance cache bundled on disk, published or not. Unordered. */
+export function bundledComplianceVersions(): readonly string[] {
+  return complianceVersions();
+}
+
 function latestStableComplianceVersionForLine(line: string): string {
   const complianceRoot = repoPath('dist', 'compliance');
   const releaseRe = new RegExp(`^${escapeRegex(line)}\\.\\d+$`);
@@ -229,8 +240,8 @@ function latestStableComplianceVersionForLine(line: string): string {
   const versions = complianceVersions()
     .filter(name => releaseRe.test(name))
     .filter(isPublishedComplianceVersion)
-    .filter(name => compareVersions(name, publishedCeiling) <= 0)
-    .sort(compareVersions);
+    .filter(name => compareComplianceVersions(name, publishedCeiling) <= 0)
+    .sort(compareComplianceVersions);
 
   const latest = versions.at(-1);
   if (!latest) {
@@ -248,8 +259,8 @@ function latestPrereleaseComplianceVersionForLine(line: string, label: 'beta' | 
   const versions = complianceVersions()
     .filter(name => prereleaseRe.test(name))
     .filter(isPublishedComplianceVersion)
-    .filter(name => compareVersions(name, publishedCeiling) <= 0)
-    .sort(compareVersions);
+    .filter(name => compareComplianceVersions(name, publishedCeiling) <= 0)
+    .sort(compareComplianceVersions);
 
   const latest = versions.at(-1);
   if (!latest) {
@@ -406,7 +417,7 @@ function hostedComplianceTargetCandidates(): HostedComplianceTarget[] {
 
   const bundledVersions = complianceVersions()
     .filter(isPublishedComplianceVersion)
-    .sort(compareVersions)
+    .sort(compareComplianceVersions)
     .reverse();
   for (const line of HOSTED_COMPLIANCE_PREFERRED_LINES) {
     const escapedLine = escapeRegex(line);
