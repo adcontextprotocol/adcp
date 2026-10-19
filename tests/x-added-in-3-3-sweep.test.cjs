@@ -25,6 +25,9 @@ const WHOLE_FILE_3_3 = [
   'error-details/unsupported-targeting-dimension.json',
   'trust/v1/trust.json',
   'trust/v1/trust-acknowledgements.json',
+  'media-buy/list-collections-request.json',
+  'media-buy/list-collections-response.json',
+  'core/assets/video-brief-asset.json',
 ];
 
 const PROPERTIES_3_3 = [
@@ -48,6 +51,20 @@ const PROPERTIES_3_3 = [
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'governance', 'properties', 'supports_budget_periods']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'request_signing', 'properties', 'operation_sources']],
   ['formats/canonical/video_hosted.json', ['properties', 'loudness']],
+  ['core/installment-deadlines.json', ['properties', 'change_cutoff']],
+  ['core/reporting-status-issue.json', ['properties', 'reporting_revision_id']],
+  ['governance/check-governance-request.json', ['properties', 'budget_period_id']],
+  ['governance/check-governance-response.json', ['properties', 'budget_period_id']],
+  ['media-buy/list-products-response.json', ['properties', 'adcp_version']],
+  ['media-buy/refine-proposals-response.json', ['properties', 'results', 'items', 'properties', 'drifted_pins']],
+  ['media-buy/sync-audiences-response.json', ['oneOf', 0, 'properties', 'audiences', 'items', 'properties', 'platform_id']],
+  ['media-buy/sync-event-sources-response.json', ['oneOf', 0, 'properties', 'event_sources', 'items', 'properties', 'platform_id']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'adcp', 'properties', 'implementation']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'account', 'properties', 'stable_account_id']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'vendor_metric_optimization', 'properties', 'supported_metrics']],
+  ['core/assets/zip-asset.json', ['properties', 'sizes']],
+  ['core/assets/html-asset.json', ['properties', 'sizes']],
+  ['core/assets/display-tag-asset.json', ['properties', 'sizes']],
 ];
 
 test('whole-file 3.3 schemas and enums carry x-added-in 3.3.0', () => {

@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/list-collections-response.json",
   "title": "List Collections Response",
   "description": "Experimental (media_buy.collection_catalog), added in AdCP 3.3. One page of the selling agent's collection cards, or confirmation that the selected catalog has not changed. Entries are core/response-collection.json copies under the authority rules defined there and for include_collections: adagents.json stays the root of authorization and the source for definition pins, a copy wins only on images, sample_content, url, description, season, cadence and distribution[].followers, and a copy of an undeclared collection or from an agent adagents.json does not authorize is unverified display data that never feeds carriage verification. For the same key, account and moment, the copy MUST equal the one a product or proposal read with include_collections returns. The response carries no products, pricing, availability or account terms.",
+  "x-added-in": "3.3.0",
   "x-status": "experimental",
   "type": "object",
   "discriminator": {

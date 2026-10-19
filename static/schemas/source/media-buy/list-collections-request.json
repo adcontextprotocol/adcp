@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/list-collections-request.json",
   "title": "List Collections Request",
   "description": "Experimental (media_buy.collection_catalog), added in AdCP 3.3. Read the selling agent's catalog of collection cards: look up specific collections by key, or browse with filters and pages. Returns the same core/response-collection.json copies, under the same authority rules, as include_collections on product and proposal reads, and never returns products. Not to be confused with list_collection_lists, which lists buyer-owned collection targeting lists on a governance agent. Side-effect free: the call never provisions an account. It is the bootstrap and repair read for collection_card.* and collection_catalog.bulk_change webhooks, which are registered only through sync_accounts notification_configs; the request takes no push_notification_config, so a call never creates a subscription. Sellers implementing it MUST list media_buy.collection_catalog and media_buy.collection_cards in experimental_features. A seller MUST NOT serve this task to a caller whose adcp_version is below 3.3; it fails the request with UNSUPPORTED_FEATURE.",
+  "x-added-in": "3.3.0",
   "x-tool-summary": "List a seller's collection cards (shows, creators, podcasts) by key or with filters, without products.",
   "x-status": "experimental",
   "type": "object",
