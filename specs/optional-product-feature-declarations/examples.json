@@ -1,0 +1,28 @@
+{
+  "note": "Isolated proposal vectors; fields are not published or certified. Collection readbacks below are semantic fragments, not complete task envelopes.",
+  "declarations": {
+    "supports_collection_selection": true,
+    "supports_fixed_collection_bundles": false,
+    "supports_owner_sold_channel_carriage": true,
+    "supports_format_breakdown": false,
+    "supports_time_based_views": true
+  },
+  "prepare_params": { "feature": "collection_selection", "fixture_id": "run-example-selectable" },
+  "collection_vectors": [
+    { "name": "selected subset", "selectable": true, "request": { "mode": "selected", "collections": [{ "publisher_domain": "owner.example", "collection_ids": ["news"] }] }, "readback": { "mode": "selected", "collections": [{ "publisher_domain": "owner.example", "collection_ids": ["news"] }] } },
+    { "name": "materialized default", "selectable": true, "request": { "mode": "default" }, "readback": { "mode": "selected", "collections": [{ "publisher_domain": "owner.example", "collection_ids": ["news", "music"] }] } },
+    { "name": "fixed default", "selectable": false, "request": { "mode": "default" }, "readback": { "mode": "selected", "collections": [{ "publisher_domain": "owner.example", "collection_ids": ["news", "music"] }] } },
+    { "name": "fixed exact restatement", "selectable": false, "request": { "mode": "selected", "collections": [{ "publisher_domain": "owner.example", "collection_ids": ["music", "news"] }] }, "readback": { "mode": "selected", "collections": [{ "publisher_domain": "owner.example", "collection_ids": ["news", "music"] }] } },
+    { "name": "fixed subset rejected", "selectable": false, "request": { "mode": "selected", "collections": [{ "publisher_domain": "owner.example", "collection_ids": ["news"] }] }, "error": "UNSUPPORTED_FEATURE" },
+    { "name": "unknown owner rejected", "selectable": true, "request": { "mode": "selected", "collections": [{ "publisher_domain": "other.example", "collection_ids": ["news"] }] }, "error": "REFERENCE_NOT_FOUND" },
+    { "name": "missing concrete ids", "selectable": true, "request": { "mode": "selected", "collections": [{ "publisher_domain": "owner.example" }] }, "error": "INVALID_REQUEST" }
+  ],
+  "empty_format_package": {
+    "package_id": "sandbox-package", "impressions": 0, "spend": 0, "pricing_model": "cpm", "rate": 10, "currency": "USD",
+    "by_format": [], "by_format_truncated": false, "by_format_sorted_by": "spend", "by_format_sort_direction": "desc"
+  },
+  "empty_contracted_time_metric": { "time_based_views": [] },
+  "three_second_metric": { "time_based_views": [{ "threshold_seconds": 3, "basis": "in_view", "views": 4 }] },
+  "narrowed_metrics": { "impressions": 10, "spend": 1 },
+  "format_request": { "reporting_dimensions": { "format": { "limit": 1, "sort_by": "spend" } }, "requested_metrics": ["impressions", "spend"] }
+}

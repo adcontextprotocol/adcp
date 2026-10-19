@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PROPOSED additions to media_buy.features; not published",
+  "type": "object",
+  "properties": {
+    "supports_collection_selection": { "type": "boolean", "description": "Opt-in native selectable-collection support and qualified sandbox fixture commitment, including default materialization; not every product." },
+    "supports_fixed_collection_bundles": { "type": "boolean", "description": "Opt-in native fixed-collection bundle support and qualified sandbox fixture commitment; independent of selectable products." },
+    "supports_owner_sold_channel_carriage": { "type": "boolean", "description": "Opt-in native owner-sold channel carriage support and qualified sandbox fixture commitment; no entitlement or authorization assertion." },
+    "supports_format_breakdown": { "type": "boolean", "description": "Opt-in native format-grain reporting support and qualified sandbox fixture commitment; no required observed rows." },
+    "supports_time_based_views": { "type": "boolean", "description": "Opt-in native time-threshold view reporting support and qualified sandbox fixture commitment; no prescribed thresholds or observations." }
+  },
+  "additionalProperties": true
+}
