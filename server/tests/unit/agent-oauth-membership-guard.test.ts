@@ -359,7 +359,177 @@ describe('GET /api/oauth/agent/start durable scope hint', () => {
   });
 });
 
+describe('fresh owner OAuth recovery identity', () => {
+  it.each(['inactive-membership', 'missing-context'] as const)('refuses fresh recovery for %s before SDK or adapter work', async denial => {
+    if (denial === 'inactive-membership') {
+      workosMocks.listOrganizationMemberships.mockResolvedValueOnce({ data: [] });
+    } else {
+      agentContextDbMocks.instance.getById.mockResolvedValueOnce(null);
+    }
+    await request(makeApp()).get('/api/oauth/agent/start')
+      .query({ agent_context_id: AGENT_CONTEXT_ID, fresh: '1' })
+      .expect(denial === 'inactive-membership' ? 403 : 404);
+    expect(adapterMocks.createWebOAuthAdapters).not.toHaveBeenCalled();
+    expect(adapterMocks.agentStorage.loadAgent).not.toHaveBeenCalled();
+    expect(sdkMocks.startWebOAuthFlow).not.toHaveBeenCalled();
+    expect(mcpAuthMocks.discoverOAuthProtectedResourceMetadata).not.toHaveBeenCalled();
+    expect(agentContextDbMocks.instance.clearOAuthClient).not.toHaveBeenCalled();
+    expect(agentContextDbMocks.instance.removeOAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it('captures the authorized context/org/URL without clearing the old grant for a stale redirect', async () => {
+    agentContextDbMocks.instance.getOAuthClient.mockResolvedValueOnce({
+      client_id: 'legacy-client', registered_redirect_uri: 'https://old.example.test/callback',
+    });
+    await request(makeApp()).get('/api/oauth/agent/start').query({ agent_context_id: AGENT_CONTEXT_ID, fresh: '1' }).expect(302);
+    expect(agentContextDbMocks.instance.clearOAuthClient).not.toHaveBeenCalled();
+    expect(agentContextDbMocks.instance.removeOAuthTokens).not.toHaveBeenCalled();
+    expect(adapterMocks.createWebOAuthAdapters).toHaveBeenCalledWith(expect.objectContaining({
+      userId: TEST_USER_ID,
+      ownerStart: { id: AGENT_CONTEXT_ID, organizationId: TEST_ORG_ID, agentUrl: TEST_AGENT_URL, fresh: true },
+      authorize: expect.any(Function),
+    }));
+  });
+});
+
+describe('controlled owner reauthorization recovery', () => {
+  it('offers explicit fresh recovery only for a context already authorized by the start handler', async () => {
+    sdkMocks.startWebOAuthFlow.mockRejectedValueOnce(Object.assign(new sdkMocks.OAuthError(), {
+      code: 'oauth_issuer_binding_required', message: 'Owner sign-in needed',
+    }));
+    const result = await request(makeApp()).get('/api/oauth/agent/start')
+      .query({ agent_context_id: AGENT_CONTEXT_ID, return_to: '/dashboard?tab=agents' }).expect(302);
+    const target = new URL(result.headers.location, 'https://buyer.example.test');
+    expect(target.pathname).toBe('/oauth-complete.html');
+    expect(target.searchParams.get('agent_context_id')).toBe(AGENT_CONTEXT_ID);
+    expect(target.searchParams.get('return_to')).toBe('/dashboard?tab=agents');
+    expect(agentContextDbMocks.instance.clearOAuthClient).not.toHaveBeenCalled();
+    expect(agentContextDbMocks.instance.removeOAuthTokens).not.toHaveBeenCalled();
+  });
+});
+
+describe('OAuth public failure redaction', () => {
+  const privateDetails = 'synthetic-client-secret=hidden; SELECT oauth_refresh_token FROM tenant_customer; ECONNRESET 10.0.0.23:5432';
+
+  it.each(['unexpected', 'sdk-agent', 'mcp-agent'] as const)('keeps %s start diagnostics out of the public redirect', async kind => {
+    const failure = kind === 'sdk-agent' ? new sdkMocks.OAuthError(privateDetails)
+      : kind === 'mcp-agent' ? new mcpServerAuthMocks.OAuthError(privateDetails) : new Error(privateDetails);
+    sdkMocks.startWebOAuthFlow.mockRejectedValueOnce(failure);
+    const result = await request(makeApp()).get('/api/oauth/agent/start')
+      .query({ agent_context_id: AGENT_CONTEXT_ID }).expect(302);
+    const target = new URL(result.headers.location, 'https://buyer.example.test');
+    expect(target.searchParams.get('error')).toBe(kind === 'unexpected'
+      ? 'Unable to start sign-in. Please try again.' : 'The agent authorization server could not start sign-in.');
+    expect(target.searchParams.get('code')).toBe('oauth_start_failed');
+    expect(decodeURIComponent(result.headers.location)).not.toContain(privateDetails);
+    expect(target.searchParams.has('agent_context_id')).toBe(false);
+  });
+
+  it.each(['owner_reauthorization_required', 'oauth_issuer_binding_required', 'oauth_issuer_required', 'oauth_issuer_mismatch'])('uses app-owned %s recovery copy without upstream details', async code => {
+    sdkMocks.startWebOAuthFlow.mockRejectedValueOnce(new sdkMocks.OAuthError(privateDetails, code));
+    const result = await request(makeApp()).get('/api/oauth/agent/start')
+      .query({ agent_context_id: AGENT_CONTEXT_ID, return_to: '/dashboard?tab=agents' }).expect(302);
+    const target = new URL(result.headers.location, 'https://buyer.example.test');
+    expect(target.searchParams.get('code')).toBe(code);
+    expect(target.searchParams.get('error')).toBe('Start a new sign-in to authorize this agent.');
+    expect(target.searchParams.get('agent_context_id')).toBe(AGENT_CONTEXT_ID);
+    expect(target.searchParams.get('return_to')).toBe('/dashboard?tab=agents');
+    expect(decodeURIComponent(result.headers.location)).not.toContain(privateDetails);
+  });
+
+  it.each(['owner_reauthorization_required', 'oauth_issuer_binding_required', 'oauth_issuer_required', 'oauth_issuer_mismatch'])('does not offer another fresh retry after a fresh %s failure', async code => {
+    sdkMocks.startWebOAuthFlow.mockRejectedValueOnce(new sdkMocks.OAuthError(privateDetails, code));
+    const result = await request(makeApp()).get('/api/oauth/agent/start')
+      .query({ agent_context_id: AGENT_CONTEXT_ID, fresh: '1', return_to: '/dashboard' }).expect(302);
+    const target = new URL(result.headers.location, 'https://buyer.example.test');
+    expect(target.searchParams.get('code')).toBe(code);
+    expect(target.searchParams.get('error')).toBe('Check the agent authorization server and client configuration before starting a new sign-in.');
+    expect(target.searchParams.has('agent_context_id')).toBe(false);
+    expect(target.searchParams.has('return_to')).toBe(false);
+    expect(agentContextDbMocks.instance.clearOAuthClient).not.toHaveBeenCalled();
+    expect(agentContextDbMocks.instance.removeOAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it.each(['unrecognized_oauth_error', 'oauth_issuer_required?synthetic-client-secret=hidden', 'oauth_issuer_mismatch&synthetic-client-secret=hidden'])('refuses recovery and upstream projection for an unknown start code %s', async code => {
+    sdkMocks.startWebOAuthFlow.mockRejectedValueOnce(new sdkMocks.OAuthError(privateDetails, code));
+    const result = await request(makeApp()).get('/api/oauth/agent/start')
+      .query({ agent_context_id: AGENT_CONTEXT_ID, return_to: '/dashboard?tab=agents' }).expect(302);
+    const target = new URL(result.headers.location, 'https://buyer.example.test');
+    expect(target.searchParams.get('code')).toBe('oauth_start_failed');
+    expect(target.searchParams.get('error')).toBe('The agent authorization server could not start sign-in.');
+    expect(target.searchParams.has('agent_context_id')).toBe(false);
+    expect(target.searchParams.has('return_to')).toBe(false);
+    expect(decodeURIComponent(result.headers.location)).not.toContain(privateDetails);
+    expect(result.headers.location).not.toContain('hidden');
+    expect(agentContextDbMocks.instance.clearOAuthClient).not.toHaveBeenCalled();
+    expect(agentContextDbMocks.instance.removeOAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it('keeps unexpected callback diagnostics out of the public redirect', async () => {
+    sdkMocks.completeWebOAuthFlow.mockRejectedValueOnce(new Error(privateDetails));
+    const result = await request(makeApp(stateBinding('state_123'))).get('/api/oauth/agent/callback')
+      .query({ code: 'synthetic-code', state: 'state_123' }).expect(302);
+    const target = new URL(result.headers.location, 'https://buyer.example.test');
+    expect(target.searchParams.get('code')).toBe('oauth_error');
+    expect(target.searchParams.get('error')).toBe('Unable to complete sign-in. Please start again.');
+    expect(decodeURIComponent(result.headers.location)).not.toContain(privateDetails);
+  });
+
+  it.each(['invalid_grant', 'synthetic-client-secret=hidden'])('restricts public token-exchange codes for %s', async code => {
+    const failure = new sdkMocks.TokenExchangeError(privateDetails);
+    failure.oauthErrorCode = code;
+    sdkMocks.completeWebOAuthFlow.mockRejectedValueOnce(failure);
+    const result = await request(makeApp(stateBinding('state_123'))).get('/api/oauth/agent/callback')
+      .query({ code: 'synthetic-code', state: 'state_123' }).expect(302);
+    const target = new URL(result.headers.location, 'https://buyer.example.test');
+    expect(target.searchParams.get('code')).toBe(code === 'invalid_grant' ? code : 'token_exchange_failed');
+    expect(target.searchParams.get('error')).toBe('Token exchange failed');
+    expect(result.headers.location).not.toContain('hidden');
+  });
+
+  it('does not reflect authorization-server rejection descriptions or unknown codes', async () => {
+    const result = await request(makeApp(stateBinding('state_123'))).get('/api/oauth/agent/callback')
+      .query({ error: 'synthetic-client-secret=hidden', error_description: privateDetails, state: 'state_123' }).expect(302);
+    const target = new URL(result.headers.location, 'https://buyer.example.test');
+    expect(target.searchParams.get('code')).toBe('authorization_failed');
+    expect(target.searchParams.get('error')).toBe('Authorization server rejected the sign-in.');
+    expect(result.headers.location).not.toContain('hidden');
+    expect(sdkMocks.completeWebOAuthFlow).not.toHaveBeenCalled();
+  });
+});
+
 describe('agent OAuth safe fetch injection', () => {
+  it.each([
+    { error: 'access_denied', expectedCode: 'access_denied', expectedMessage: 'Authorization was denied.' },
+    { error: ['access_denied', 'server_error'], expectedCode: 'authorization_failed', expectedMessage: 'Authorization server rejected the sign-in.' },
+  ])('refuses token exchange when a bound callback contains both code and $expectedCode provider error', async ({ error, expectedCode, expectedMessage }) => {
+    const response = await request(makeApp(stateBinding('state_123')))
+      .get('/api/oauth/agent/callback')
+      .query({ code: 'synthetic-code', error, error_description: 'synthetic-private-detail', state: 'state_123' })
+      .expect(302);
+    const target = new URL(response.headers.location, 'https://buyer.example.test');
+    expect(target.searchParams.get('success')).toBe('false');
+    expect(target.searchParams.get('code')).toBe(expectedCode);
+    expect(target.searchParams.get('error')).toBe(expectedMessage);
+    expect(response.headers.location).not.toContain('synthetic-private-detail');
+    expect(response.headers['set-cookie']?.[0]).toContain('adcp_oauth_state=;');
+    expect(sdkMocks.completeWebOAuthFlow).not.toHaveBeenCalled();
+    expect(adapterMocks.createWebOAuthAdapters).not.toHaveBeenCalled();
+    expect(adapterMocks.pendingFlowStore.consume).not.toHaveBeenCalled();
+  });
+
+  it('requires browser binding before handling a callback with both code and provider error', async () => {
+    const response = await request(makeApp(stateBinding('different_state')))
+      .get('/api/oauth/agent/callback')
+      .query({ code: 'synthetic-code', error: 'access_denied', state: 'state_123' })
+      .expect(302);
+    expect(response.headers.location).toContain('code=state_mismatch');
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect(sdkMocks.completeWebOAuthFlow).not.toHaveBeenCalled();
+    expect(adapterMocks.createWebOAuthAdapters).not.toHaveBeenCalled();
+    expect(adapterMocks.pendingFlowStore.consume).not.toHaveBeenCalled();
+  });
+
   it('passes the scoped fetcher to callback token exchange', async () => {
     sdkMocks.completeWebOAuthFlow.mockResolvedValueOnce({
       agentId: AGENT_CONTEXT_ID,
@@ -420,7 +590,10 @@ describe('agent OAuth safe fetch injection', () => {
       .expect(302);
 
     expect(response.headers.location).toContain('success=false');
-    expect(response.headers.location).toContain('User%20denied%20access');
+    const target = new URL(response.headers.location, 'https://buyer.example.test');
+    expect(target.searchParams.get('error')).toBe('Authorization was denied.');
+    expect(target.searchParams.get('code')).toBe('access_denied');
+    expect(response.headers.location).not.toContain('User');
     expect(response.headers['set-cookie']?.[0]).toContain('adcp_oauth_state=;');
     expect(sdkMocks.completeWebOAuthFlow).not.toHaveBeenCalled();
   });

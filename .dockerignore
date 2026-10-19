@@ -1,6 +1,8 @@
 # Dependencies
 node_modules
 npm-debug.log*
+# Generated Addie repository cache comes from the Docker repos stage.
+.addie-repos
 
 # Build outputs (rebuilt inside Docker)
 build
@@ -19,6 +21,10 @@ dist/docs/*
 !dist/docs/3.1.27/**
 !dist/docs/3.2.3
 !dist/docs/3.2.3/**
+!dist/docs/3.0.27
+!dist/docs/3.0.27/**
+!dist/docs/3.0.28
+!dist/docs/3.0.28/**
 !dist/schemas
 dist/schemas/latest
 dist/schemas/v*

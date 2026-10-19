@@ -835,11 +835,11 @@ function stripModelContextAnnotations(schema) {
     // Exact const values and homogeneous enums already communicate their JSON
     // types. Mixed enums retain type because it still narrows the listed values.
     if (Object.hasOwn(node, 'const')) delete node.type;
-    // Closed-object enforcement belongs to the validation profile. The
-    // declared property list already communicates the prompt shape, while
-    // retaining `additionalProperties: true` and schema-valued maps preserves
-    // meaningful extension and dictionary surfaces.
-    if (node.additionalProperties === false) delete node.additionalProperties;
+    // Closed-object enforcement belongs to the validation profile; the
+    // declared property list communicates the prompt shape. Boolean true is
+    // JSON Schema's default, so omit that redundant spelling as well. Retain
+    // schema-valued additionalProperties to describe typed dictionary values.
+    if (typeof node.additionalProperties === 'boolean') delete node.additionalProperties;
     for (const keyword of Object.keys(node)) {
       if (keyword.startsWith('x-')) delete node[keyword];
     }
@@ -985,6 +985,74 @@ function pruneUnusedRootDefinitions(schema) {
   return pruned;
 }
 
+/**
+ * In a projected schema with preserved document identities (rootId set),
+ * cross-definition $refs within bundled sub-schemas are emitted as:
+ *   rootId#/$defs/external:core~1targeting.json[/subpath]
+ * Each embedded resource already carries its own canonical $id, which Ajv
+ * and assertLocalRefsResolve/collectExternalRefs handle natively as registered
+ * sub-resources. Rewriting these long root-anchored pointers to the embedded
+ * resource's own $id URL (plus optional JSON-pointer fragment) saves ~100 bytes
+ * per ref with no semantic change — the resolved node is identical.
+ *
+ * Safety constraints (fail-closed on ambiguity):
+ *  - The def's $id must be an absolute https:// URL with no '#' character
+ *  - The $id must appear exactly once across the entire projected schema
+ *    (no duplicate or nested re-declaration of the same resource URL)
+ *  - The $id must not equal rootId (the root schema's own URL)
+ *  - The ref must begin with exactly rootId#/$defs/ (cross-def pointer form)
+ * Fragment sub-paths (e.g. /oneOf/0) are appended as #/subpath on the target URL.
+ */
+function rewriteEmbeddedResourceRefs(projected, rootId) {
+  const defs = projected.$defs;
+  if (!defs || typeof defs !== 'object' || Array.isArray(defs)) return;
+
+  // Count every absolute (fragment-free) $id occurrence in the whole schema
+  // to detect duplicates and root collisions.
+  const idCount = new Map();
+  walkSchema(projected, node => {
+    if (typeof node === 'object' && node !== null && typeof node.$id === 'string'
+      && !node.$id.includes('#')) {
+      const url = node.$id;
+      idCount.set(url, (idCount.get(url) || 0) + 1);
+    }
+  });
+
+  // Map each def name to its $id only when the $id is unambiguously unique.
+  const defIdMap = new Map();
+  for (const [defName, defSchema] of Object.entries(defs)) {
+    if (
+      defSchema && typeof defSchema === 'object'
+      && typeof defSchema.$id === 'string'
+      && defSchema.$id.startsWith('https://')
+      && !defSchema.$id.includes('#')
+      && defSchema.$id !== rootId
+      && idCount.get(defSchema.$id) === 1
+    ) {
+      defIdMap.set(defName, defSchema.$id);
+    }
+  }
+  if (defIdMap.size === 0) return;
+
+  const refPrefix = `${rootId}#/$defs/`;
+  walkSchema(projected, node => {
+    if (typeof node !== 'object' || node === null || typeof node.$ref !== 'string') return;
+    const ref = node.$ref;
+    if (!ref.startsWith(refPrefix)) return;
+
+    const rest = ref.slice(refPrefix.length);
+    const slashIdx = rest.indexOf('/');
+    const encodedKey = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
+    const subpath = slashIdx === -1 ? '' : rest.slice(slashIdx);
+
+    const defName = encodedKey.replace(/~1/g, '/').replace(/~0/g, '~');
+    const targetId = defIdMap.get(defName);
+    if (!targetId) return; // no unique $id — leave this ref unchanged
+
+    node.$ref = subpath ? `${targetId}#${subpath}` : targetId;
+  });
+}
+
 function enforceSchemaBounds(schema, label) {
   const metrics = measureSchema(schema);
   if (metrics.depth > MAX_SCHEMA_DEPTH) {
@@ -1008,6 +1076,7 @@ function projectSourceSchema(
   annotationMode = 'full',
   schemaUrlPrefix = `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}`,
   discoveryInput = false,
+  rewriteEmbeddedRefs = false,
 ) {
   const projectionId = `${SCHEMA_ORIGIN}/schemas/${schemaUrlPrefix}/${relativePath}`;
   // Prompt-only model-context views intentionally omit document metadata and
@@ -1059,6 +1128,7 @@ function projectSourceSchema(
     }
   });
   projected.$id = projectionId;
+  if (rewriteEmbeddedRefs && preserveDocumentIdentities) rewriteEmbeddedResourceRefs(projected, projectionId);
   if (annotationMode === 'model-context') {
     delete projected.$schema;
     delete projected.$id;
@@ -1190,6 +1260,7 @@ function generateMcpSchemaProjection({
   taskResultOverrideFilter = () => true,
   manifestMetadata = {},
   schemaUrlPrefix = `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}`,
+  schemaRewriteEmbeddedRefs = () => false,
 }) {
   const supportedSchemaFields = new Set(['inputSchema', 'outputSchema']);
   if (
@@ -1210,7 +1281,7 @@ function generateMcpSchemaProjection({
   fs.rmSync(targetDir, { recursive: true, force: true });
   fs.mkdirSync(targetDir, { recursive: true });
 
-  function projectSchema(relativePath, label = relativePath, discoveryInput = false) {
+  function projectSchema(relativePath, label = relativePath, discoveryInput = false, rewriteEmbeddedRefs = false) {
     const sourcePath = path.join(sourceDir, relativePath);
     if (!fs.existsSync(sourcePath)) {
       throw new Error(`Missing source schema for ${label}: ${relativePath}`);
@@ -1236,6 +1307,7 @@ function generateMcpSchemaProjection({
         annotationMode,
         schemaUrlPrefix,
         discoveryInput,
+        rewriteEmbeddedRefs,
       );
     } catch (error) {
       throw new Error(`${relativePath}: ${error.message}`);
@@ -1254,11 +1326,12 @@ function generateMcpSchemaProjection({
       protocol: tool.protocol,
       ...(tool.summary ? { summary: tool.summary } : {}),
     };
+    const toolRewriteEmbeddedRefs = schemaRewriteEmbeddedRefs(toolName, tool);
     for (const [field, relativePath] of [
       ['inputSchema', tool.request_schema],
       ['outputSchema', tool.response_schema],
     ].filter(([field]) => schemaFields.includes(field))) {
-      projectSchema(relativePath, `${toolName}.${field}`, field === 'inputSchema');
+      projectSchema(relativePath, `${toolName}.${field}`, field === 'inputSchema', toolRewriteEmbeddedRefs);
       projectedTool[field] = relativePath;
     }
     projectedTools[toolName] = projectedTool;

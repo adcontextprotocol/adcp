@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Define which Reliable Reporting revision content `status_retention_days` guarantees (#8081). Metadata stays queryable for every revision. Content stays readable through exact reads for four cases: the current revision of each logical slice, including every official revision; the snapshot that the current revision immediately supersedes; any superseded snapshot for `automated_recovery_window_seconds` or one hour (whichever is longer) after supersession; and, for the requesting caller, revisions named by that caller's own receipts or current `received`, `unreadable`, or `content_mismatch` status statements. Older superseded snapshots may be compacted to metadata only, and exact reads of them return the nondisclosing `REFERENCE_NOT_FOUND`. A revision's window starts at its `created_at`, or at its successor's once superseded. An official revision's window starts at the later of its own `created_at` and its newest adjustment's. This is an experimental breaking-change notice: compaction takes effect only in the next eligible minor after November 20, 2026. Closes #8081.

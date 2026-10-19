@@ -92,7 +92,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `revision` | Current revision number. Pass in [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) or the 3.x `update_media_buy` facade for optimistic concurrency. |
 | `valid_actions` | Actions the buyer can perform in the current state (e.g., `["pause", "cancel", "update_budget"]`). See [valid actions mapping](#valid-actions-mapping). |
 | `available_actions` | Canonical routed actions for compact-lifecycle buys. Package-scoped actions may carry `applicable_package_ids`; omission means all relevant packages. Required whenever `accepted_proposal` is present. |
-| `indicators` | Current buy-level seller indicators. In 3.2, `budget_constrained` is valid here. Sibling evaluation fields define exact type coverage and freshness. |
+| `indicators` | Current buy-level seller indicators. `budget_constrained`, `flight_extension_opportunity`, and `scale_budget_opportunity` are valid here. Sibling evaluation fields define exact type coverage and freshness. |
 | `history` | Revision history entries, most recent first. Only present when `include_history > 0`. Append-only — entries are never modified or deleted. |
 | `webhook_activity` | Recent delivery, health, `indicators.changed`, and `creative.assignment_changed` attempts relevant to this buy. Only present when requested and supported. |
 | `context` | Opaque media-buy-level correlation data echoed unchanged from `create_media_buy`. Sellers MUST include persisted context when the media buy was created through AdCP with context, and MAY omit it for media buys created outside AdCP or without context. Use it to reconcile `media_buy_id` with buyer tracking state. |
@@ -126,6 +126,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `creative_deadline` | Per-package creative deadline (ISO 8601). When absent, the media buy's `creative_deadline` applies. |
 | `context` | Opaque package-level correlation data echoed unchanged from the `create_media_buy` package request. Sellers MUST include persisted context when the package was created through AdCP with context, and MAY omit it for packages created outside AdCP or without context. Buyers targeting mixed seller populations can use the per-package correlation value they included on create, commonly `context.buyer_ref`, to map `package_id` back to their line items when a legacy create response did not echo `product_id`. |
 | `creative_approvals` | Array of creative approval states (see below) |
+| `creative_assignments_as_of` | When the seller last refreshed this package's creative assignment set (which creatives appear in `creative_approvals`) from its source of truth. A creative's absence is asserted only as of this time. Optional; omission makes no freshness assertion. See [creative state freshness](/docs/media-buy/specification#creative-state-freshness). |
 | `indicators` | Current package-level seller indicators such as diversity, audience saturation, inventory forecast, pacing, or budget constraint |
 | `formats_to_provide` | Immutable package-time `PackageFormatSnapshot` checklist. A contract-bearing snapshot remains present after creative coverage is complete and binds the effective Product declaration, product/option/placement identity, exact VAST/DAAST execution version, and contract/product digests used for assignment and serving. |
 | `formats_pending` | Canonically equal subset of `formats_to_provide` that still lacks creative coverage. It may be empty even while the retained contract-bearing snapshot remains in `formats_to_provide`; omission means readiness was not reported. |
@@ -138,9 +139,12 @@ Returns an array of media buys with current status, creative approval state, and
 | Field | Description |
 |-------|-------------|
 | `creative_id` | Creative identifier |
+| `trackers` | Added in 3.3. Complete assignment-scoped measurement tracker list, preserving events, URL templates, order, and duplicate occurrences. Supporting sellers MUST return it, using `[]` when none exist. Excludes the creative's own trackers in `assets`; both sets fire. See [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers). |
+| `landing_page_url` | Added in 3.3. Effective serving destination for this creative on this package, including an assignment override. Supporting sellers return the URL (or macro-bearing template) when unique; omit when no destination exists or an unoverridden creative has multiple destinations, whose URLs remain in its creative assets. See [assignment landing pages](/docs/creative/task-reference/sync_creatives#assignment-landing-pages). |
 | `approval_status` | `pending_review`, `approved`, `partially_approved`, or `rejected` |
 | `rejection_reason` | Explanation of rejection (when `approval_status` is `rejected`) |
 | `approval_scopes` | Complete publisher/placement outcomes when `approval_status` is `partially_approved` |
+| `approval_status_as_of` | When the seller last refreshed `approval_status`, `rejection_reason`, and `approval_scopes` from its source of truth. Optional; omission makes no freshness assertion. A value earlier than your last accepted write for this relationship means the seller has not yet confirmed that write. See [creative state freshness](/docs/media-buy/specification#creative-state-freshness). |
 | `indicators` | Current seller indicators scoped to this package–creative relationship |
 | `indicator_types_evaluated` | Exact indicator types covered by this snapshot; omitted types remain unknown |
 | `indicators_as_of` | When the seller completed the evaluation represented by `indicators` |
@@ -152,6 +156,7 @@ Indicators are deliberately attached here rather than to the creative globally. 
 {
   "creative_id": "acme_summer_video",
   "approval_status": "approved",
+  "approval_status_as_of": "2026-08-04T06:00:00Z",
   "indicator_types_evaluated": ["creative_fatigue"],
   "indicators_as_of": "2026-08-04T12:00:00Z",
   "indicators": [
@@ -163,7 +168,7 @@ Indicators are deliberately attached here rather than to the creative globally. 
 }
 ```
 
-The media buy itself may also carry `budget_constrained`; packages may carry `creative_diversity_low`, `audience_saturation`, `inventory_shortfall_forecast`, `pacing_risk`, or `budget_constrained`. Assignment types remain nested under `creative_approvals[]`. Omitted `indicators` is unknown; empty is evaluated-clear only for `indicator_types_evaluated` and declared coverage. See [Indicators and Warnings](/docs/media-buy/media-buys/indicators).
+The media buy itself may also carry `budget_constrained`, `flight_extension_opportunity`, or `scale_budget_opportunity`; packages may carry `creative_diversity_low`, `audience_saturation`, `inventory_shortfall_forecast`, `pacing_risk`, `budget_constrained`, `flight_extension_opportunity`, or `scale_budget_opportunity`. Assignment types remain nested under `creative_approvals[]`. Omitted `indicators` is unknown; empty is evaluated-clear only for `indicator_types_evaluated` and declared coverage. See [Indicators and Warnings](/docs/media-buy/media-buys/indicators).
 
 For sellers that advertise `inline_creative_management` without a creative library, `creative_approvals` is the only standardized approval-state readback surface for the package's currently assigned inline creatives. It reports `creative_id`, aggregate `approval_status`, optional `rejection_reason`, and `approval_scopes` for mixed publisher outcomes, but it does not include the full `CreativeAsset` payload, placement routing, weights, or prior revisions submitted on `create_media_buy` or `update_media_buy`. Buyers should retain their own submitted creative bodies when integrating with inline-only sellers.
 
