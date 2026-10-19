@@ -117,6 +117,8 @@ Validate a manifest against the selected product or publisher declaration:
 4. Check fixed dimensions, durations, codecs, file-size limits, and required disclosures.
 5. Reject unknown or uncovered selections; do not silently relax the target contract.
 
+In AdCP 3.3, HTML5 bundles, inline HTML, and third-party display tags can carry their own rendered dimensions on the asset. See [asset-rendered size](/docs/creative/channels/display#asset-rendered-size) for fixed sizes, multi-size assets, and matching against option constraints.
+
 Creative agents can advertise `validate` in `creative.supported_formats[].operations`. Sellers perform final acceptance during `sync_creatives` because product-, account-, and placement-specific constraints remain seller-authoritative.
 
 ## Libraries and trafficking

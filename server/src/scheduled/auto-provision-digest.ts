@@ -27,7 +27,11 @@ import {
   markAutoProvisionDigestSent,
   type NewAutoProvisionedMember,
 } from '../db/membership-db.js';
-import { sendToOrgAdmins, escapeSlackMrkdwn } from '../slack/org-group-dm.js';
+import { sendToOrgAdmins } from '../slack/org-group-dm.js';
+import { sanitizeSlackLine } from '../utils/slack-escape.js';
+
+/** Member names, emails and WorkOS org names in an admin group DM. */
+const SLACK_NAME_MAX = 160;
 import { getOrgAdminEmails } from '../utils/org-admins.js';
 
 const logger = createLogger('auto-provision-digest');
@@ -166,7 +170,7 @@ function buildSlackMessage(
   const teamUrl = `${APP_URL}/team?org=${orgId}`;
   const memberLines = members.map(m => {
     const displayName = [m.first_name, m.last_name].filter(Boolean).join(' ').trim();
-    const namePart = displayName ? `${escapeSlackMrkdwn(displayName)} (${escapeSlackMrkdwn(m.email)})` : escapeSlackMrkdwn(m.email);
+    const namePart = displayName ? `${sanitizeSlackLine(displayName, SLACK_NAME_MAX)} (${sanitizeSlackLine(m.email, SLACK_NAME_MAX)})` : sanitizeSlackLine(m.email, SLACK_NAME_MAX);
     const date = m.joined_at instanceof Date
       ? m.joined_at.toISOString().slice(0, 10)
       : String(m.joined_at).slice(0, 10);
@@ -174,11 +178,13 @@ function buildSlackMessage(
   });
 
   const summary = members.length === 1
-    ? `1 person joined *${escapeSlackMrkdwn(orgName)}* via verified-domain auto-add since the last digest.`
-    : `${members.length} people joined *${escapeSlackMrkdwn(orgName)}* via verified-domain auto-add since the last digest.`;
+    ? `1 person joined *${sanitizeSlackLine(orgName, SLACK_NAME_MAX)}* via verified-domain auto-add since the last digest.`
+    : `${members.length} people joined *${sanitizeSlackLine(orgName, SLACK_NAME_MAX)}* via verified-domain auto-add since the last digest.`;
 
   return {
-    text: `${members.length} new auto-joined member${members.length === 1 ? '' : 's'} in ${orgName}`,
+    // Slack renders `text` in the notification preview, so the org name
+    // needs the same sanitizing as the block body.
+    text: `${members.length} new auto-joined member${members.length === 1 ? '' : 's'} in ${sanitizeSlackLine(orgName, SLACK_NAME_MAX)}`,
     blocks: [
       {
         type: 'section',
