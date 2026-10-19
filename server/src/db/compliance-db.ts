@@ -35,8 +35,8 @@ export type ResolvedOwnerAuth =
   | { type: 'basic'; username: string; password: string }
   | {
       type: 'oauth';
-      tokens: { access_token: string; refresh_token: string; expires_at?: string };
-      client?: { client_id: string; client_secret?: string };
+      tokens: { access_token: string; refresh_token: string; expires_at?: string; issuer?: string };
+      client?: { client_id: string; client_secret?: string; issuer?: string };
     }
   | {
       /**
@@ -959,15 +959,21 @@ export class ComplianceDatabase {
         tracksSummary[t.track] = t.status;
       }
 
-      // 4. Upsert the materialized status and capture transition
+      // 4. Upsert the materialized status and capture transition.
+      // Owner-initiated runs publish the verdict but leave the independent
+      // heartbeat schedule and pending requeues untouched (#7680).
       const statusResult = await client.query(
         `WITH schedule_next AS (
           INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
-          VALUES ($1, NOW() + INTERVAL '12 hours')
+          VALUES ($1, CASE WHEN $7 = 'owner_test' THEN NULL ELSE NOW() + INTERVAL '12 hours' END)
           ON CONFLICT (agent_url) DO UPDATE SET
             next_compliance_check_at = NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours),
             compliance_inconclusive_streak = 0,
             requeued_at = NULL
+          -- TriggeredBy constrains $7 at compile time. Adding a trigger opts it
+          -- into cadence advancement unless this predicate and the INSERT
+          -- CASE above are updated together.
+          WHERE $7 != 'owner_test'
         )
         INSERT INTO agent_compliance_status (
           agent_url, status, last_checked_at,
@@ -1024,6 +1030,7 @@ export class ComplianceDatabase {
           input.headline ?? null,
           input.requested_compliance_target ?? null,
           input.adcp_version ?? null,
+          input.triggered_by ?? 'heartbeat',
         ],
       );
 
@@ -1344,6 +1351,50 @@ export class ComplianceDatabase {
     return result.rows[0] ?? null;
   }
 
+  /**
+   * Newest scheduled heartbeat attempts, newest first (adcp#8268).
+   *
+   * `orgId` widens rather than narrows compared with `getLatestComplianceAttempt`:
+   * a heartbeat is platform-triggered and only carries a `triggered_org_id`
+   * when the agent happens to have saved owner credentials, so an equality
+   * filter would hide exactly the credential-free agents whose timed-out
+   * heartbeats are most invisible. Unattributed runs are therefore visible to
+   * any owner of the URL, while a run charged to another organization's saved
+   * credentials stays with that organization — its coverage and duration would
+   * otherwise tell a co-claiming org that someone else holds working
+   * credentials. Pass `null` for operator/worker reads that need the whole
+   * stream.
+   *
+   * `observations_json` comes back only on the newest row. It is the only row
+   * whose storyboard coverage is projected, and failure rows store an uncapped
+   * agent error message, so fetching the rest would move unbounded text over
+   * the wire for nothing.
+   */
+  async getRecentHeartbeatAttempts(
+    agentUrl: string,
+    orgId: string | null,
+    limit = 10,
+  ): Promise<Array<Pick<ComplianceRun,
+    'id' | 'tested_at' | 'completeness' | 'headline' | 'total_duration_ms' | 'provenance_json' | 'observations_json'>>> {
+    const boundedLimit = Number.isInteger(limit) ? Math.max(1, Math.min(limit, 50)) : 10;
+    const result = await query(
+      `SELECT id, tested_at, completeness, headline, total_duration_ms, provenance_json,
+              CASE WHEN tested_at = MAX(tested_at) OVER () THEN observations_json END AS observations_json
+         FROM (
+           SELECT id, tested_at, completeness, LEFT(headline, 200) AS headline,
+                  total_duration_ms, provenance_json, observations_json
+             FROM agent_compliance_runs
+            WHERE agent_url = $1 AND triggered_by = 'heartbeat' AND dry_run = FALSE
+              AND ($3::text IS NULL OR triggered_org_id IS NULL OR triggered_org_id = $3)
+            ORDER BY tested_at DESC
+            LIMIT $2
+         ) recent
+        ORDER BY tested_at DESC`,
+      [agentUrl, boundedLimit, orgId],
+    );
+    return result.rows;
+  }
+
   /** Bounded operator snapshot, including audit-only heartbeat evidence. */
   async getRecentOperationalRuns(limit: number = 25): Promise<Array<{
     id: string;
@@ -1587,6 +1638,8 @@ export class ComplianceDatabase {
     agent_url: string;
     lifecycle_stage: LifecycleStage;
     last_checked_at: Date | null;
+    /** Times a worker process died while this agent's suite was running; 0 when healthy. */
+    heartbeat_orphan_streak: number;
     /** Total due before LIMIT; repeated on each selected row for one-query telemetry. */
     eligible_backlog: number;
   }>> {
@@ -1639,7 +1692,8 @@ export class ComplianceDatabase {
           ka.has_active_badge,
           COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
           s.last_checked_at,
-          m.requeued_at
+          m.requeued_at,
+          COALESCE(m.heartbeat_orphan_streak, 0) AS heartbeat_orphan_streak
         FROM known_agents ka
         LEFT JOIN agent_registry_metadata m ON m.agent_url = ka.agent_url
         LEFT JOIN agent_compliance_status s ON s.agent_url = ka.agent_url
@@ -1655,6 +1709,7 @@ export class ComplianceDatabase {
         agent_url,
         lifecycle_stage,
         last_checked_at,
+        heartbeat_orphan_streak,
         COUNT(*) OVER()::int AS eligible_backlog
       FROM due_agents
       ORDER BY requeued_at ASC NULLS LAST, is_member_registered DESC, has_active_badge DESC,
@@ -1965,9 +2020,9 @@ export class ComplianceDatabase {
                 ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type,
                 ac.oauth_access_token_encrypted, ac.oauth_access_token_iv,
                 ac.oauth_refresh_token_encrypted, ac.oauth_refresh_token_iv,
-                ac.oauth_token_expires_at,
+                ac.oauth_token_expires_at, ac.oauth_token_issuer,
                 ac.oauth_client_id,
-                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv,
+                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv, ac.oauth_client_issuer,
                 ac.oauth_cc_token_endpoint, ac.oauth_cc_client_id,
                 ac.oauth_cc_client_secret_encrypted, ac.oauth_cc_client_secret_iv,
                 ac.oauth_cc_scope, ac.oauth_cc_resource, ac.oauth_cc_audience, ac.oauth_cc_auth_method
@@ -2029,9 +2084,10 @@ export class ComplianceDatabase {
           return resolved({ type: 'bearer', token: accessToken });
         }
 
-        const tokens: { access_token: string; refresh_token: string; expires_at?: string } = {
+        const tokens: Extract<ResolvedOwnerAuth, { type: 'oauth' }>['tokens'] = {
           access_token: accessToken,
           refresh_token: refreshToken,
+          ...(row.oauth_token_issuer != null && { issuer: row.oauth_token_issuer }),
         };
         if (row.oauth_token_expires_at) {
           tokens.expires_at = new Date(row.oauth_token_expires_at).toISOString();
@@ -2039,7 +2095,10 @@ export class ComplianceDatabase {
 
         const oauth: Extract<ResolvedOwnerAuth, { type: 'oauth' }> = { type: 'oauth', tokens };
         if (row.oauth_client_id) {
-          const client: { client_id: string; client_secret?: string } = { client_id: row.oauth_client_id };
+          const client: NonNullable<Extract<ResolvedOwnerAuth, { type: 'oauth' }>['client']> = {
+            client_id: row.oauth_client_id,
+            ...(row.oauth_client_issuer != null && { issuer: row.oauth_client_issuer }),
+          };
           if (row.oauth_client_secret_encrypted && row.oauth_client_secret_iv) {
             client.client_secret = decryptToken(
               row.oauth_client_secret_encrypted,

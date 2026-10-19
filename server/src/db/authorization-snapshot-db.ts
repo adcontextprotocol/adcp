@@ -33,6 +33,7 @@
 import type { PoolClient } from 'pg';
 import { getClient, query } from './client.js';
 import { createLogger } from '../logger.js';
+import { isSpecExactAgentMatch } from './registry-agent-url-key.js';
 
 const log = createLogger('authorization-snapshot-db');
 
@@ -91,6 +92,9 @@ export interface AuthRow {
 }
 
 export interface NarrowOpts {
+  /** The URL the caller asked about, verbatim — the authorization question. */
+  agentUrl: string;
+  /** Its identity key — the index lookup. */
   agentUrlCanonical: string;
   evidence: ReadonlyArray<string>;
   include: IncludeMode;
@@ -255,6 +259,33 @@ async function readSyncCursor(client: PoolClient): Promise<string> {
  * triggers in migration 446 own the data. This class only formats the
  * read shape for the two endpoints.
  */
+/**
+ * Raw `agent_url` values under `key` that are spec-exactly the same agent as
+ * `agentUrl`. Mirrors FederatedIndexDatabase.specExactAgentUrls; kept here
+ * rather than shared because this class deliberately owns its own client.
+ *
+ * It must read the SAME relation the caller's `include` mode reads. An
+ * `include=effective` pull surfaces phantom rows from the override layer
+ * that have no base row at all, so resolving against the base table would
+ * filter every one of them out.
+ */
+async function specExactAgentUrls(
+  client: PoolClient,
+  include: IncludeMode,
+  key: string,
+  agentUrl: string,
+): Promise<string[]> {
+  const sql = include === 'effective'
+    ? `SELECT DISTINCT agent_url FROM v_effective_agent_authorizations
+        WHERE agent_url_canonical = $1`
+    : `SELECT DISTINCT agent_url FROM catalog_agent_authorizations
+        WHERE deleted_at IS NULL AND agent_url_canonical = $1`;
+  const { rows } = await client.query<{ agent_url: string }>(sql, [key]);
+  return rows
+    .map(row => row.agent_url)
+    .filter(rowUrl => isSpecExactAgentMatch(rowUrl, agentUrl));
+}
+
 export class AuthorizationSnapshotDatabase {
   /**
    * Narrow per-agent pull. Returns all matching rows in one shot —
@@ -264,8 +295,14 @@ export class AuthorizationSnapshotDatabase {
    * Caller has already canonicalized agentUrl through
    * publisher-db.ts:canonicalizeAgentUrl so the equality match against
    * agent_url_canonical hits the index.
+   *
+   * The key folds a trailing slash for identity (#7830); this endpoint
+   * answers an AUTHORIZATION question, so it additionally restricts to the
+   * raw `agent_url` values that are spec-exactly the same agent as what the
+   * caller asked for (#7829, trailing slash significant). The key does the
+   * index work; `specExactAgentUrls` decides the answer.
    */
-  async getNarrow({ agentUrlCanonical, evidence, include }: NarrowOpts): Promise<NarrowResult> {
+  async getNarrow({ agentUrl, agentUrlCanonical, evidence, include }: NarrowOpts): Promise<NarrowResult> {
     // Guard: defensive copy + recheck. Public callers come through
     // parseEvidenceParam / parseIncludeParam, but a programmatic caller
     // could bypass that — keep the validation here too.
@@ -278,13 +315,16 @@ export class AuthorizationSnapshotDatabase {
     try {
       const cursor = await readSyncCursor(client);
 
+      const specExact = await specExactAgentUrls(client, include, agentUrlCanonical, agentUrl);
       const sql = `
         ${selectClause(include)}
         ${whereConnector(include)} agent_url_canonical = $1
+          AND agent_url = ANY($3::text[])
           AND evidence = ANY($2::text[])
         ORDER BY publisher_domain NULLS LAST, property_id_slug NULLS LAST, id
       `;
-      const { rows } = await client.query<AuthRow>(sql, [agentUrlCanonical, [...evidence]]);
+      const { rows } = await client.query<AuthRow>(
+        sql, [agentUrlCanonical, [...evidence], specExact]);
       return { rows, cursor };
     } finally {
       client.release();

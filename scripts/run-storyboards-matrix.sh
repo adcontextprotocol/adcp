@@ -252,12 +252,15 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
   TENANTS=(
     # Capability-resolved 3.0.26 replay. N/A storyboards are selection rows,
     # not synthetic clean results, so these floors grade only executed rows.
-    "signals:24:98"
+    # SDK 15.9.5 skips webhook_emission/get_capabilities (http loopback
+    # brand_json_url under the echoed 3.2 schema): one step fewer for
+    # signals, governance and creative.
+    "signals:24:97"
     # SDK 14 beta.12 marks unsigned signing-required functional steps N/A for
     # immutable bundles that predate the functional_dispatch contract.
     "sales:39:219"
-    "governance:27:147"
-    "creative:22:109"
+    "governance:27:146"
+    "creative:22:108"
     "creative-builder:24:112"
     "brand:22:76"
     "si:21:72"
@@ -272,7 +275,7 @@ else
     # validator checks previously skipped. Only subtract those 32 false-coverage
     # steps (115 -> 83, 160 -> 128); retain every clean/other/3.0-compat floor.
     "signals:45:80"
-    "sales:135:646"
+    "sales:136:669"
     "governance:47:128"
     "creative:49:209"
     "creative-builder:50:184"

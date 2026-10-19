@@ -38,6 +38,98 @@ function makeAjv() {
 
 const ajv = makeAjv();
 
+const sizedDisplayAssets = [
+  { asset_type: 'zip', url: 'https://cdn.acme.example/banner.zip' },
+  { asset_type: 'html', content: '<div>Acme spring sale</div>' },
+  { asset_type: 'display_tag', delivery_type: 'tag_url', url: 'https://ads.acme.example/render' },
+  {
+    asset_type: 'display_tag', delivery_type: 'inline_markup', markup_type: 'iframe_javascript',
+    markup: '<iframe width="300" height="250" src="https://ads.acme.example/render"></iframe>'
+  },
+  {
+    asset_type: 'display_tag', delivery_type: 'paired_redirect',
+    ad_request_url: 'https://ads.acme.example/ad', clickthrough_url: 'https://ads.acme.example/click'
+  }
+];
+
+for (const asset of sizedDisplayAssets) {
+  const label = asset.delivery_type ?? asset.asset_type;
+  const schemaName = asset.asset_type === 'display_tag' ? 'display-tag' : asset.asset_type;
+  const validate = ajv.getSchema(`/schemas/core/assets/${schemaName}-asset.json`);
+
+  test(`${label} assets accept optional fixed or multiple rendered sizes`, () => {
+    for (const dimensions of [
+      {},
+      { width: 300, height: 250 },
+      { width: 1, height: 1 },
+      { sizes: [{ width: 300, height: 250 }] },
+      { sizes: [{ width: 300, height: 250 }, { width: 728, height: 90 }] }
+    ]) {
+      const payload = { ...asset, ...dimensions };
+      assert.equal(validate(payload), true, JSON.stringify(validate.errors));
+      const validateUnion = ajv.getSchema('/schemas/core/assets/asset-union.json');
+      assert.equal(validateUnion(payload), true, JSON.stringify(validateUnion.errors));
+    }
+  });
+
+  test(`${label} assets reject incomplete, mixed, or malformed rendered sizes`, () => {
+    const size = { width: 300, height: 250 };
+    const invalid = [
+      { width: 300 }, { height: 250 },
+      { ...size, sizes: [size] }, { width: 300, sizes: [size] }, { height: 250, sizes: [size] },
+      { sizes: [] }, { sizes: null }, { sizes: size }, { sizes: [null] },
+      { sizes: [{}] }, { sizes: [{ width: 300 }] }, { sizes: [{ height: 250 }] },
+      { sizes: [{ ...size, unit: 'px' }] },
+      { sizes: [size, { width: 728 }] }
+    ];
+    for (const field of ['width', 'height']) {
+      for (const value of [0, -1, 1.5, '300', null, true]) {
+        invalid.push({ ...size, [field]: value });
+        invalid.push({ sizes: [{ ...size, [field]: value }] });
+      }
+    }
+    const validateUnion = ajv.getSchema('/schemas/core/assets/asset-union.json');
+    for (const dimensions of invalid) {
+      const payload = { ...asset, ...dimensions };
+      assert.equal(validate(payload), false, JSON.stringify(payload));
+      assert.equal(validateUnion(payload), false, JSON.stringify(payload));
+    }
+  });
+}
+
+test('rendered display sizes survive library manifests and sync without a product option', () => {
+  const validateManifest = ajv.getSchema('/schemas/core/creative-manifest.json');
+  const validateCreative = ajv.getSchema('/schemas/core/creative-asset.json');
+  const validateAssets = ajv.getSchema('/schemas/core/creative-assets.json');
+  const validateSync = ajv.getSchema('/schemas/creative/sync-creatives-request.json');
+  for (const asset of sizedDisplayAssets) {
+    // HTML can occupy a seller-declared slot; its size rules also apply in arrays.
+    for (const slot of [{ ...asset, width: 300, height: 250 }, [{ ...asset, sizes: [{ width: 300, height: 250 }] }]]) {
+      assert.equal(validateAssets({ supplied_asset: slot }), true, JSON.stringify(validateAssets.errors));
+    }
+    const slotName = asset.asset_type === 'zip' ? 'html5_bundle' : 'serving_tag';
+    const format = asset.asset_type === 'html'
+      ? { format_id: { agent_url: 'https://creative.acme.example', id: 'inline_html' } }
+      : { format_kind: asset.asset_type === 'zip' ? 'html5' : 'display_tag' };
+    for (const dimensions of [{}, { width: 300, height: 250 }, { sizes: [{ width: 300, height: 250 }] }]) {
+      const manifest = { ...format, assets: { [slotName]: { ...asset, ...dimensions } } };
+      const creative = { creative_id: 'acme-banner', name: 'Acme banner', ...manifest };
+      const request = {
+        account: { account_id: 'acc_acme' }, idempotency_key: 'sized-display-sync', creatives: [creative]
+      };
+      assert.equal(validateManifest(manifest), true, JSON.stringify(validateManifest.errors));
+      assert.equal(validateCreative(creative), true, JSON.stringify(validateCreative.errors));
+      assert.equal(validateSync(request), true, JSON.stringify(validateSync.errors));
+
+      manifest.assets[slotName].width = 300;
+      delete manifest.assets[slotName].height;
+      assert.equal(validateManifest(manifest), false, 'manifests must enforce complete dimension pairs');
+      assert.equal(validateCreative(creative), false, 'library creatives must enforce complete dimension pairs');
+      assert.equal(validateSync(request), false, 'sync must enforce complete dimension pairs');
+    }
+  }
+});
+
 test('display tag delivery types are discriminated and paired redirects are atomic', () => {
   const validate = ajv.getSchema('/schemas/core/assets/display-tag-asset.json');
   assert.ok(validate);
@@ -245,6 +337,62 @@ test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', 
     ...canonicalVastCreative,
     assets: extensionSlotWithoutVersion.assets
   }), true, 'ordinary extension-slot sync payloads retain additive compatibility');
+});
+
+test('consent macro names validate in declarations, targets, and capabilities', () => {
+  const validateName = ajv.getSchema('/schemas/enums/universal-macro.json');
+  for (const name of ['GDPR_CONSENT', 'GDPR_CONSENT_1', 'GDPR_CONSENT_42', 'GDPR_CONSENT_755', 'ADDTL_CONSENT', 'CACHEBUSTER']) {
+    assert.equal(validateName(name), true, name);
+  }
+  for (const name of ['GDPR_CONSENT_', 'GDPR_CONSENT_XXX', 'GDPR_CONSENT_0', 'GDPR_CONSENT_0755',
+    'GDPR_CONSENT_-1', 'GDPR_CONSENT_+755', 'GDPR_CONSENT_7.55', 'GDPR_CONSENT_755_extra',
+    'GDPR_CONSENT_755\n', 'gdpr_consent_755', '{GDPR_CONSENT_755}', 'ADDTL_CONSENT_755', 'PRIVATE_MACRO']) {
+    assert.equal(validateName(name), false, name);
+  }
+  for (const semantic of ['GDPR_CONSENT_755', 'ADDTL_CONSENT']) {
+    const token = `{${semantic}}`;
+    const target = {
+      token: `$${token}`,
+      dialect: 'vendor',
+      dialect_namespace: 'https://macros.acme-example.com/registry',
+      dialect_revision: 'mapping-v1',
+      dialect_semantic: semantic,
+      mapping_status: 'verified_universal',
+      universal_semantic: semantic,
+      next_operation: 'resolve_value',
+      performed_by: 'source_ad_server',
+      encoding: { kind: 'rfc3986', depth: 1 }
+    };
+    const declaration = {
+      declaration_id: 'vendor-consent',
+      token,
+      dialect: 'adcp',
+      dialect_semantic: semantic,
+      mapping_status: 'verified_universal',
+      universal_semantic: semantic,
+      operation: 'translate_to_native',
+      performed_by: 'seller',
+      translation_target: target,
+      location: { field: 'url', occurrence: 0, context: 'url_query_value' },
+      encoding: { kind: 'none', depth: 0 },
+      required: true,
+      unavailable_behavior: 'reject'
+    };
+    const validateDeclaration = ajv.getSchema('/schemas/core/macro-declaration.json');
+    assert.equal(validateDeclaration(declaration), true, JSON.stringify(validateDeclaration.errors));
+    const validateTarget = ajv.getSchema('/schemas/core/macro-translation-target.json');
+    assert.equal(validateTarget(target), true, JSON.stringify(validateTarget.errors));
+    assert.equal(validateDeclaration({ ...declaration, universal_semantic: 'GDPR_CONSENT_XXX' }), false);
+    assert.equal(validateTarget({ ...target, universal_semantic: 'GDPR_CONSENT_XXX' }), false);
+    const capability = {
+      dialect: 'adcp', dialect_semantic: semantic, mapping_status: 'verified_universal',
+      universal_semantic: semantic, operation: 'translate_to_native', performed_by: 'seller',
+      supported_contexts: ['url_query_value'], translation_target: target
+    };
+    const validateCapability = ajv.getSchema('/schemas/core/macro-resolution-capability.json');
+    assert.equal(validateCapability(capability), true, JSON.stringify(validateCapability.errors));
+    assert.equal(validateCapability({ ...capability, universal_semantic: 'GDPR_CONSENT_XXX' }), false);
+  }
 });
 
 test('macro declarations enforce resolver ownership and exact URL encoding depth', () => {

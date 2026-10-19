@@ -1,6 +1,7 @@
 import { FederatedIndexDatabase, type AgentPublisherAuthorization, type AgentPublisherDetailRow, type DiscoveredAgent, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
 import { MemberDatabase } from './db/member-db.js';
 import { canonicalizeAgentUrl } from './db/publisher-db.js';
+import { declaredAgentUrl } from './db/registry-agent-url-key.js';
 import type { FederatedAgent, FederatedPublisher, DomainLookupResult, AgentType } from './types.js';
 import type { PoolClient } from 'pg';
 
@@ -96,13 +97,21 @@ export class FederatedIndexService {
         const agentType = agentConfig.type || 'unknown';
         if (type && agentType !== type) continue;
 
-        // Canonicalize the map key so two registrations differing only in
-        // case / trailing slash collapse to a single entry (issue #3573).
+        // Key the map so two registrations that differ only in what the
+        // registry key folds — scheme and host case, a root trailing slash,
+        // a default port — collapse to a single entry (issue #3573). Path
+        // case and a non-root trailing slash stay distinct (#7830).
         // Fall back to the raw url if canonicalization rejects (legacy
         // whitespace etc.) so we never silently drop a stored agent.
         const key = canonicalizeAgentUrl(agentConfig.url) ?? agentConfig.url;
+        // The registered spelling, when the key folded something away. The
+        // directory matches spec-exactly (#7829, #8314), so a caller asking
+        // "which publishers authorize this agent" needs this spelling, not
+        // just the key.
+        const declared = declaredAgentUrl(agentConfig);
         registeredAgents.set(key, {
           url: key,
+          ...(declared !== key ? { declared_url: declared } : {}),
           name: agentConfig.name || profile.display_name,
           type: agentType as FederatedAgent['type'],
           protocol: 'mcp',
@@ -234,6 +243,16 @@ export class FederatedIndexService {
   }
 
   /**
+   * Every raw `agent_url` spelling the directory has indexed under each of
+   * `agentUrls`, keyed by identity key. Lets a caller holding only the
+   * folded registry URL (#7830) ask the spec-exact directory (#7829,
+   * #8314) about each spelling a publisher actually declared.
+   */
+  async bulkDeclaredAgentUrls(agentUrls: string[]): Promise<Map<string, string[]>> {
+    return this.db.bulkDeclaredAgentUrls(agentUrls);
+  }
+
+  /**
    * Inverse-lookup detail rows for the AAO directory endpoint (adcp#4823).
    * Returns one row per publisher_domain authorizing the agent, with
    * provenance, per-publisher counts, and lifecycle status. The DB layer
@@ -266,9 +285,10 @@ export class FederatedIndexService {
   async getAllAgentDomainPairs(): Promise<Map<string, Set<string>>> {
     const pairs = await this.db.getAllAgentDomainPairs();
     const result = new Map<string, Set<string>>();
-    // Canonicalize so legacy raw rows in the DB (the write path stores
-    // verbatim; SQL canonicalizes on read but not on bulk fetch) collapse
-    // into one key when a caller looks up by canonical form (issue #3573).
+    // Key both arms so legacy raw rows and catalog keys collapse into one
+    // entry when a caller looks up by registry key (issue #3573). SQL dedups
+    // only what it can compare byte for byte; spec canonicalization is
+    // app-only (#7830), so the cross-arm fold happens here.
     for (const { agent_url, publisher_domain } of pairs) {
       const key = canonicalizeAgentUrl(agent_url) ?? agent_url;
       let domains = result.get(key);
@@ -322,10 +342,10 @@ export class FederatedIndexService {
    * own first-party claims of authorization elsewhere.
    *
    * The crawler must call this once per domain after the per-agent
-   * upsert loop. `currentAgentUrls` is the canonical-form (lowercased,
-   * trailing slashes stripped) list of agents in the freshly-crawled
-   * manifest; an empty list is valid and will delete every prior
-   * adagents_json row for the publisher.
+   * upsert loop. `currentAgentUrls` is the agent URL list from the
+   * freshly-crawled manifest, in any form — both sides are reduced to the
+   * registry key before comparison. An empty list is valid and will delete
+   * every prior adagents_json row for the publisher.
    */
   async reconcileAdagentsAuthorizations(
     publisherDomain: string,

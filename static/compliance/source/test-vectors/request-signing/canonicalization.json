@@ -166,6 +166,38 @@
       "expected_authority": "seller.example.com"
     },
     {
+      "name": "empty-path-no-query-becomes-slash",
+      "rule": "step 5: empty path with authority → / (no query present)",
+      "input_url": "https://seller.example.com",
+      "expected_target_uri": "https://seller.example.com/",
+      "expected_authority": "seller.example.com",
+      "$comment": "Step 5's condition is the path and the authority; the query is not part of it. The queried spelling above is step 5's illustrative example, not its trigger, and an implementation that reads it as the trigger passes that case while leaving this one unslashed. Keep both."
+    },
+    {
+      "name": "empty-path-no-query-non-default-port-becomes-slash",
+      "rule": "step 5: empty path with authority → / (port preserved from step 4)",
+      "input_url": "https://seller.example.com:8443",
+      "expected_target_uri": "https://seller.example.com:8443/",
+      "expected_authority": "seller.example.com:8443",
+      "$comment": "The slash lands after the port, not between host and port. A fix applied to the host rather than the path emits seller.example.com/:8443."
+    },
+    {
+      "name": "empty-path-no-query-ipv6-becomes-slash",
+      "rule": "step 5: empty path with authority → / (IPv6 literal)",
+      "input_url": "https://[2001:db8::1]",
+      "expected_target_uri": "https://[2001:db8::1]/",
+      "expected_authority": "[2001:db8::1]",
+      "$comment": "Brackets are preserved per step 2 and the slash goes outside them."
+    },
+    {
+      "name": "empty-path-empty-query-becomes-slash",
+      "rule": "steps 5 + 7: empty path → /, and the trailing ? is still preserved",
+      "input_url": "https://seller.example.com?",
+      "expected_target_uri": "https://seller.example.com/?",
+      "expected_authority": "seller.example.com",
+      "$comment": "The two rules compose rather than compete. This is also where a query-gated reading of step 5 fails on its own terms: the raw URL does carry a ?, but the parsed query is the empty string, so a condition written against the query reads false and emits a path-less https://seller.example.com? -- a form no RFC 3986 normalizer produces."
+    },
+    {
       "name": "percent-encoded-hex-uppercased",
       "rule": "step 6: uppercase %xx hex digits",
       "input_url": "https://seller.example.com/path%2fhere",
