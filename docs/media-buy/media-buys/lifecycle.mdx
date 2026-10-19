@@ -114,7 +114,10 @@ is `null` until the seller commits. A seller that reviews buys before
 committing returns a provisional buy: synchronous success, `media_buy_id`
 issued, `confirmed_at: null`, and the `status` the buy will have on
 confirmation. Commitment is keyed off `confirmed_at`, never off `status`, and a
-buy with `confirmed_at: null` is never `active`. See
+buy with `confirmed_at: null` is never `active`. While a buy is
+provisional, `get_media_buys` MAY carry an informational
+`expected_confirmation_at` estimate; it is absent once `confirmed_at` is set and
+never replaces `confirmed_at` as the commitment signal. See
 [provisional buys](/docs/media-buy/specification#provisional-buys-seller-review-hold).
 </Note>
 

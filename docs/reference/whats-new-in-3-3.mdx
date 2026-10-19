@@ -13,7 +13,7 @@ description: "Adopter overview of the AdCP 3.3 beta: discovery that never provis
 
 3.2 added the compact lifecycle and portable evidence. 3.3 is a minor release that so far tightens the places where two conformant 3.2 implementations could still disagree: when an account comes into existence, which agent a signature belongs to, and what a seller's catalog intake accepts.
 
-No stable field, enum value, or task is removed, renamed, or deprecated, and 3.3 adds optional fields and declarations. One usage is deprecated: the natural key as the account reference after provisioning. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `adcp.implementation` (previously an open extension point), `media_buy.features.catalog_ingestion` (previously any boolean was admissible), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points; `lon`, not `lng`), and the now-reserved `ext.adcp`. Three merged changes are normative narrowings, not additions: what a lazily provisioning seller may do on discovery tasks, which signatures verify, and that only committed buys auto-activate at flight start. A fourth loosens a required field: delivery rows may omit `impressions`, gated on the caller's pin. All four are recorded in [Versioning and governance](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta) and lead the [migration guide](/docs/reference/migration/3-2-to-3-3).
+No stable field, enum value, or task is removed, and 3.3 adds optional fields and declarations. The `seller_id` result fields on event sources and audiences are deprecated in favor of `platform_id`; natural-key account references after provisioning are also deprecated. All remain functional throughout 3.x. Schema-valid 3.2 messages stay schema-valid unless they already used a name 3.3 now defines: `adcp.implementation` (previously an open extension point), `media_buy.features.catalog_ingestion` (previously any boolean was admissible), `dooh_placement_attributes.location` and `dooh_inventory_summary` (previously open extension points; `lon`, not `lng`), and the now-reserved `ext.adcp`. Merged changes narrow what a lazily provisioning seller may do on discovery tasks, which signatures verify, that only committed buys auto-activate at flight start, the size of counterparty-asserted domain lists, and how sellers report event source and audience platform IDs. Another change loosens a required field: delivery rows may omit `impressions`, gated on the caller's pin. These are recorded in [Versioning and governance](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta) and lead the [migration guide](/docs/reference/migration/3-2-to-3-3).
 
 ## The 3.3 feature set
 
@@ -37,6 +37,10 @@ This is a verification change: some signatures that verified under 3.2 can fail,
 
 Sellers SHOULD return `account_id` from `sync_accounts`, and a seller that accepts it on every account-scoped task, for every account, and never changes it declares the optional `account.stable_account_id` capability. Buyers send the ID to those sellers instead of the natural key, so calls after onboarding look the same whichever account model the seller uses. Natural keys keep working throughout 3.x, but using them as the reference after provisioning is now deprecated and planned for removal in 4.0. They remain the way to open an account and to look up its ID. The accounts docs also now describe `require_operator_auth` as who holds the credential, and separate principals (who is calling) from accounts (which advertiser relationship). See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere).
 
+### Platform object IDs have one name
+
+`sync_event_sources` and `sync_audiences` results now use optional `platform_id` for the object's ID in the seller's ad platform, matching creatives and catalogs. A seller reporting this ID in 3.3 and later 3.x responses MUST emit both `platform_id` and the deprecated `seller_id` alias with identical values, including discovery responses. Buyers MUST prefer `platform_id` and fall back to `seller_id` only when the new field is absent. Continue using `event_source_id` and `audience_id` in AdCP requests. The aliases keep working throughout 3.x; removal is no earlier than 4.0 under the six-month notice policy. Seller identity in `adagents.json` and publisher identifiers is unchanged. See [Deprecations](/docs/reference/migration/3-2-to-3-3#deprecations).
+
 ### Catalog ingestion declarations
 
 Sellers can declare what their catalog intake accepts in an optional `media_buy.features.catalog_ingestion` object: accepted catalog types, ingestion modes (`feed_url`, `inline_items`), feed formats, content identifier types, an inline batch limit, and whether item status is reported `per_item` or at the `feed_level`. A seller that declares it must also declare `catalog_management: true`, and must reject an unlisted catalog type, ingestion mode, or feed format, and an explicitly supplied `content_id_type` outside a declared `supported_content_id_types` list, with `UNSUPPORTED_FEATURE` before changing state, including on dry runs. Inline items beyond `max_inline_items_per_request` fail with `INVALID_REQUEST`. A buyer that finds no declaration should treat ingestion limits as unknown, not unlimited. See [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs#ingestion-compatibility) and [capabilities](/docs/protocol/get_adcp_capabilities#catalog_ingestion).
@@ -57,6 +61,30 @@ This is a recommendation, not a conformance requirement, but the interop effect 
 
 The seller-side counterpart matters more than the number: keep discovery responses small. `tools/list`, `get_adcp_capabilities`, and the A2A agent card are the first bytes a counterparty reads, and an oversized one makes an agent unreachable rather than slow. `get_adcp_capabilities` is the sharpest case — above `MAX_CAPABILITIES_BYTES` your signing keys stop resolving too. See [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
 
+### Nobody else gets to write your capabilities document
+
+Two capability fields enumerate relationships a *counterparty* asserts:
+`media_buy.portfolio.publisher_domains` and `signals.data_provider_domains` are both
+populated from those counterparties' `/.well-known/adagents.json`, which any domain
+owner publishes unilaterally and without the named agent's consent. An agent that
+mirrored every publisher claiming it had handed an unauthenticated stranger a write
+primitive into its own discovery document — and since the signing-key path fetches
+that document unnarrowed under `MAX_CAPABILITIES_BYTES`, pushing it past 64 KiB cost
+the victim *signature verification*, arriving a cache cycle later with no visible
+connection to its cause.
+
+3.3 adds a normative byte budget — one eighth of the capabilities budget for any
+single counterparty-asserted field, one quarter for both together — and declares
+structural bounds (100 unique entries, 253 characters each) that the conformance
+storyboard grades in 3.x and the schema enforces in 4.0. No previously-valid
+document becomes schema-invalid; what changes is what counts as conformant. Because a bounded
+list would otherwise make a large legitimate network look unauthorized for most of
+its own inventory, the bound ships with `publisher_domains_complete` and
+`data_provider_domains_complete` — default `true`, set `false` when you truncate.
+Both lists are explicitly non-exhaustive, so a buyer must resolve the publisher named
+on a product through that publisher's own `adagents.json` and must never read absence
+from the list as a denial.
+
 ### Clarifications and conformance
 
 - `authorized_agents[].url` in `adagents.json` is the agent's full protocol endpoint URL, including its path, and one entry is needed for each agent URL. See [Agent URL matching](/docs/governance/property/adagents#agent-url-matching).
@@ -73,6 +101,8 @@ The account-reference and trust-docs clarifications already shipped in 3.2.2 ([`
 | A signing or verifying implementation | Resolve agents by canonical URL from `identity.brand_json_url`, and publish every pinned key in the agent's JWKS. |
 | A seller that returns account IDs | Return `account_id` from `sync_accounts`; declare `account.stable_account_id` once it is accepted on every account-scoped task and never changes. |
 | A buyer that sends natural keys after provisioning | Store the returned `account_id` and send it to sellers that declare `stable_account_id`; natural-key references are deprecated ahead of 4.0. |
+| A seller reporting event source or audience platform IDs | Emit `platform_id` and the deprecated `seller_id` alias with identical values, including discovery responses. |
+| A buyer consuming event source or audience platform IDs | Prefer `platform_id`, fall back to `seller_id` when absent, and keep using buyer object IDs in AdCP requests. |
 | A seller with a catalog intake | Declare `catalog_ingestion` if buyers need your limits, and reject out-of-declaration requests before mutation. |
 | A DOOH seller | Add `location` and `venue_counts` where you can disclose them; both are optional. |
 | An SDK maintainer | Generate from the signed beta.0 tarball and publish an exact support statement. |

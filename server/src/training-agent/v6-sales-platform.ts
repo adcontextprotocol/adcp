@@ -802,6 +802,14 @@ function translateV5Result<T extends object>(result: unknown, options: { allowAd
   return result as T;
 }
 
+/** Both delivery surfaces must durably publish the ordinary source read. */
+async function readDeliveryWithSourcePublication(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+  const result = await handleGetMediaBuyDelivery(args, ctx);
+  const { publishTrainingGcsSourceDelivery } = await import('./gcs-reporting-tools.js');
+  await publishTrainingGcsSourceDelivery(args as Record<string, unknown>, result, ctx.principal);
+  return result;
+}
+
 /**
  * v5 → v6 boundary for tasks whose response schema shares
  * media-buy-commitment-response.json's status-discriminated "Commitment
@@ -1725,9 +1733,7 @@ export class TrainingSalesPlatform
           this.storyboardCompat,
         )
         : withCurrentAccountScope(currentArgs as Record<string, unknown>, ctx.account);
-      const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
-      const { publishTrainingGcsSourceDelivery } = await import('./gcs-reporting-tools.js');
-      await publishTrainingGcsSourceDelivery(args as Record<string, unknown>, result, ctx.authInfo?.clientId);
+      const result = await readDeliveryWithSourcePublication(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
     // Optional read-side methods.
@@ -1962,7 +1968,7 @@ export class TrainingSalesPlatform
     },
 
     getMediaBuyDelivery: async (req, ctx) => translateV5Result(
-      await handleGetMediaBuyDelivery(
+      await readDeliveryWithSourcePublication(
         withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input),
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
       ),

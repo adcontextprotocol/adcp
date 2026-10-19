@@ -109,6 +109,12 @@ that grades their actual model. Sellers that never hold buys are graded on the
 core path alone. Future proposals should not use `status` to infer seller
 commitment, and should not add a MediaBuy status for "awaiting seller review".
 
+**Expected confirmation time.** The WG approved (Session B, 2026-10-19) an optional,
+informational `expected_confirmation_at` on the `get_media_buys` media-buy item (and
+the shared media-buy object) for a provisional buy. It is a stable generic field
+(`x-added-in: 3.3.0`), absent once `confirmed_at` is set, carries no SLA, and
+buyers key commitment off `confirmed_at`, never off it. No storyboard requires it.
+
 Not decided here: a seller-declared capability field for "this seller holds
 buys" (the hold phase is gated on the controller scenario instead), a
 `rejection_reason` field on the create response, an approval-latency SLA, a

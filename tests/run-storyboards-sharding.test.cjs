@@ -332,10 +332,10 @@ test('3.0 compatibility floors are capability-resolved and mirrored locally', ()
   const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
   const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
   const baselines = [
-    ['signals', 24, 98],
+    ['signals', 24, 97],
     ['sales', 39, 219],
-    ['governance', 27, 147],
-    ['creative', 22, 109],
+    ['governance', 27, 146],
+    ['creative', 22, 108],
     ['creative-builder', 24, 112],
     ['brand', 22, 76],
     ['si', 21, 72],

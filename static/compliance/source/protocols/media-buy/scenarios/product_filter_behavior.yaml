@@ -1,6 +1,6 @@
 id: media_buy_seller/product_filter_behavior
-version: "1.0.0"
-title: "Seller applies deterministic product filters in every buying mode"
+version: "1.0.1"
+title: "Seller applies deterministic product filters in supported buying modes"
 category: media_buy_seller
 summary: "Verifies schema-valid get_products filters affect brief curation, wholesale feeds, and refinement instead of silently no-oping."
 track: media_buy
@@ -15,6 +15,10 @@ narrative: |
   Deterministic offer filters have the same exclusion semantics in brief,
   wholesale, and refine modes. Buying mode changes curation and lifecycle
   behavior, not whether filters apply.
+
+  Brief is universally supported. Wholesale and refine are tested only when
+  advertised in media_buy.buying_modes; an absent declaration defaults to brief.
+  Refinement uses a product returned by the brief, independently of wholesale.
 
   The controller seeds one matching product plus separate channel and delivery
   type negative controls. This catches partial implementations: applying only
@@ -97,7 +101,7 @@ phases:
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
-        stateful: false
+        stateful: true
         sample_request:
           buying_mode: "brief"
           brief: "Curate premium inventory for outdoor enthusiasts."
@@ -117,6 +121,9 @@ phases:
         expected: |
           Curate only from products satisfying every deterministic predicate.
           The brief itself states neither a channel nor a delivery type.
+        context_outputs:
+          - key: "filter_behavior_product_id"
+            path: "products[0].product_id"
         validations: &matching_validations
           - check: response_schema
             description: "Response matches get-products-response.json"
@@ -134,6 +141,10 @@ phases:
 
   - id: wholesale_filters
     title: "Apply filters to the wholesale product feed"
+    requires_capability:
+      path: media_buy.buying_modes
+      contains: wholesale
+    depends_on: []
     steps:
       - id: get_filtered_wholesale_products
         title: "Exclude both negative controls from the wholesale feed"
@@ -151,9 +162,6 @@ phases:
         expected: |
           Return only the seeded non-guaranteed OLV product. Returning either
           negative control reveals that at least one accepted predicate no-oped.
-        context_outputs:
-          - key: "filter_behavior_product_id"
-            path: "products[0].product_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json"
@@ -175,6 +183,10 @@ phases:
 
   - id: refine_filters
     title: "Apply replacement filters during refinement"
+    requires_capability:
+      path: media_buy.buying_modes
+      contains: refine
+    depends_on: [brief_filters]
     steps:
       - id: filter_refined_product_out
         title: "Exclude a referenced product that fails replacement filters"
