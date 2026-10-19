@@ -1538,6 +1538,8 @@
 #                are matched as deep subsets),
 #                "array_length" (asserts exact array cardinality with `value`,
 #                or an inclusive range with `min` / `max`),
+#                "all_fields_present" (every item of an array carries a field;
+#                see "all_fields_present check" below),
 #                "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
 #                "oauth_metadata_graph",
@@ -1703,6 +1705,27 @@
 #   requested count or bounds as `expected`, and the observed cardinality as
 #   `actual`. For a missing/non-array path, failure output instead uses
 #   `expected: "array"` and the observed value as `actual` (null when absent).
+#
+# all_fields_present check:
+#   Asserts that every item of one array carries a field. `path` MUST contain
+#   exactly one `[*]` segment: the part before it names the array, the part
+#   after it (non-empty, no further wildcards) names the field on each item,
+#   e.g. `products[*].format_options` or `media_buys[*].packages`. An item
+#   carries the field when it resolves to a value other than null. The check
+#   fails when any item lacks the field; failure output uses the authored path
+#   as `expected`, the RFC 6901 pointers of the offending items' fields as
+#   `actual`, and the first of them as `json_pointer`.
+#
+#   When the array is absent, null, or empty there is nothing to inspect: the
+#   runner MUST grade the validation not_applicable, never a vacuous pass
+#   (runner-output-contract.yaml > validation_result > notes >
+#   all_fields_present_not_applicable). Pair it with `field_present` on the array when the
+#   array itself is required. A path that resolves to a non-array fails.
+#
+#   Introduced for AdCP 4.0 compatibility checks
+#   (universal/v4-compatibility.yaml), where "not observable" and "passed"
+#   are different answers. Runners older than this check grade it
+#   not_applicable under the forward-compat rule, which reports the same way.
 #
 # OAuth discovery graph — use `check: oauth_metadata_graph`:
 #   Applies only to a `protected_resource_metadata` runner task. Starting from

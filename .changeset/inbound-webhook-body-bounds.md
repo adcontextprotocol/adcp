@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Receivers of A2A push notifications and AdCP webhooks (reporting, artifact, collection-list, and account notification subscribers) SHOULD bound the inbound request body. New "Inbound body bounds" subsection in the security spec: pre-reject an over-limit `Content-Length`, count decoded bytes while streaming, apply a JSON nesting depth of 64 and a 100,000-member bound after the byte cap and before RFC 9421 or Web Bot Auth verification (verification canonicalizes and hashes the request, and a parse can precede it), apply connect, idle, and total deadlines, and reject with HTTP 413 rather than truncating, and the raw byte count is enforced alongside the decoded one. The default cap is 4 MiB, generalizing the existing attestation task-body cap rather than adding a new number; a tighter per-feature cap governs, as in the response-side Precedence paragraph. The webhook verifier checklist points at it as an unnumbered pre-step, so the 15-check count and the `webhook_*` error taxonomy are unchanged. Closes #8193.

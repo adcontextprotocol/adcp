@@ -68,6 +68,7 @@ authored_check_kinds:
   - field_equals_context
   - field_in_context_array
   - all_fields_in_context_array
+  - all_fields_present
   - upstream_traffic
   - canonical_format_satisfaction
   - request_field_present
@@ -381,6 +382,9 @@ validation_result:
                               #                          by the wildcard path MUST be a
                               #                          member. Zero terminal values
                               #                          pass vacuously.
+                              #   all_fields_present   → the authored path, with its
+                              #                          single `[*]` segment (for
+                              #                          example "products[*].format_options")
                               #   capture_path_not_resolvable → the context_outputs path
                               #                          string that failed to resolve
                               #                          (e.g. "signals[0].signal_agent_segment_id")
@@ -462,6 +466,11 @@ validation_result:
                               #   all_fields_in_context_array → array of all resolved
                               #                          terminal values (empty when
                               #                          none resolve).
+                              #   all_fields_present   → array of RFC 6901 pointers to
+                              #                          the missing field on each
+                              #                          offending item
+                              #                          (e.g. ["/products/2/format_options"]);
+                              #                          json_pointer is the first of them
                               #   capture_path_not_resolvable → the value that was
                               #                          resolved at the path, or null
                               #                          when the path did not exist.
@@ -527,6 +536,17 @@ validation_result:
       of the context_outputs path that failed to resolve (e.g. "/signals/0/
       signal_agent_segment_id"). For unresolved_substitution, json_pointer MUST
       be null (the substitution is pre-wire and no response path is implicated).
+    all_fields_present_not_applicable: |
+      all_fields_present asserts that every item of one array carries a
+      field (storyboard-schema.yaml > "all_fields_present check"). When the
+      array before the `[*]` segment is absent, null, or empty, there is no
+      item to inspect, and the runner MUST NOT report a vacuous pass: it
+      emits the validation_result with `passed: true` and a `note` naming
+      the empty array, and the result contributes to the per-step
+      not_applicable counter and to `validations_not_applicable` on
+      run_summary, exactly like an unrecognized check kind. Consumers that
+      distinguish "passed" from "not observable" (for example the AdCP 4.0
+      compatibility report, universal/v4-compatibility.yaml) rely on this.
     cross_step_comparison_checks: |
       field_less_than, field_equals_context, field_in_context_array, and
       all_fields_in_context_array are
@@ -1332,12 +1352,15 @@ notice:
   canonical_codes:
     description: |
       First-day published codes runners SHOULD emit when the underlying
-      condition holds. Additional codes are registered by adding entries
+      condition holds. Every code whose `effective_version` is "4.0" is
+      also an AdCP 4.0 compatibility check and MUST appear, under the same
+      id, in `universal/v4-compatibility.yaml`. Additional codes are registered by adding entries
       here in subsequent spec revisions; runners MAY emit codes outside
       this list (consumers must accept unknown codes per the forward-compat
       rule above), but SHOULD prefer canonical codes when one fits.
     signed_requests_specialism_deprecated:
       severity: deprecation
+      effective_version: "4.0"
       spec_source: universal/signed-requests.yaml
       capability_path: specialisms
       message_template: |
