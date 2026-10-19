@@ -59,7 +59,7 @@
     "authentication": {
       "type": "object",
       "deprecated": true,
-      "description": "Legacy authentication selector. Same precedence and semantics as `push-notification-config.authentication` — the seller's `legacy_hmac_fallback` and onboarding record select Bearer or HMAC-SHA256 versus the RFC 9421 profile, and this block only delivers the credential (presence as a mode trigger is deprecated). `webhook_hmac_not_supported` when HMAC is unavailable. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on `list_accounts` reads.",
+      "description": "Legacy authentication selector. Same precedence and semantics as `push-notification-config.authentication` — `legacy_hmac_fallback` and the onboarding record select the mode; this block only delivers the credential. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on `list_accounts` reads.",
       "properties": {
         "schemes": {
           "type": "array",
