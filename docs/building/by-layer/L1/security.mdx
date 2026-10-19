@@ -1609,7 +1609,7 @@ Verifiers accepting request-signed mutations MUST poll the revocation list on th
 #### AdCP checks after Web Bot Auth verification
 
 <Note>
-These checks belong to the [Web Bot Auth request-signing profile](/docs/building/by-layer/L1/wba-profile), which [RFC #7878](https://github.com/adcontextprotocol/adcp/issues/7878) proposes for AdCP 3.3. They are not normative until the working group records a decision on the RFC.
+These checks belong to the [Web Bot Auth request-signing profile](/docs/building/by-layer/L1/wba-profile), which is experimental in AdCP 3.3, adopted by [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md).
 </Note>
 
 A Web Bot Auth (WBA) verifier configured with the profile's rules decides whether a request is validly signed and which origin signed it. AdCP adds two checks that run after that verifier returns, each on a different outcome. The revocation-list check runs only after verification succeeds. The `Accept-Signature` field goes only on the verifier's `403` or `429` refusal. A standard WBA library does not perform them, so an implementation runs them in its AdCP layer. The WBA profile's conformance vectors do not grade them.

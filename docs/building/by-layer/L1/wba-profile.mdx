@@ -1,14 +1,14 @@
 ---
 title: Web Bot Auth request-signing profile
 sidebarTitle: Web Bot Auth profile
-description: "Proposed AdCP 3.3 Web Bot Auth profile for request and webhook signing: keys from Signature-Agent, an origin as the identity, and one web-bot-auth signature."
+description: "Experimental AdCP 3.3 Web Bot Auth profile for request and webhook signing: keys from Signature-Agent, an origin as the identity, and one web-bot-auth signature."
 "og:title": "AdCP — Web Bot Auth request-signing profile"
 ---
 
 This page defines an AdCP profile of Web Bot Auth (WBA), the IETF protocol for identifying automated HTTP clients. Under the profile, a seller identifies a signing agent from the request itself. The signer names its origin in a covered `Signature-Agent` header, and the seller fetches the signer's keys from that origin's key directory. The seller then decides, under AdCP's own rules, what the identified agent may do.
 
 <Note>
-**Status: proposed for AdCP 3.3.** This page illustrates the request and webhook profile proposed in [RFC #7878](https://github.com/adcontextprotocol/adcp/issues/7878). The proposal publishes this profile alongside the AdCP RFC 9421 profile in [Signed Requests (Transport Layer)](/docs/building/by-layer/L1/security#signed-requests-transport-layer), which stays as written. Nothing on this page is normative until the working group records a decision on the RFC. Document signing and transparency logs are separate decisions and are not part of this page.
+**Status: experimental in AdCP 3.3**, adopted by [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md). The profile is published alongside the AdCP RFC 9421 profile in [Signed Requests (Transport Layer)](/docs/building/by-layer/L1/security#signed-requests-transport-layer), which stays as written. Document signing and transparency logs are separate decisions and are not part of this page.
 </Note>
 
 The profile selects options that WBA and RFC 9421 already define. It adds no headers, tags, key fields, or error codes to the wire. Any implementation of [draft-ietf-webbotauth-httpsig-protocol-00](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/00/) can therefore sign and verify AdCP requests once it is configured with the rules on this page. Section numbers in this page refer to that draft unless they name RFC 9421.

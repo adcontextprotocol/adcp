@@ -1,6 +1,6 @@
 # Web Bot Auth profile conformance vectors
 
-Test vectors for the proposed AdCP profile of Web Bot Auth (WBA) for request and webhook signing. The profile is proposed for AdCP 3.3 in [RFC #7878](https://github.com/adcontextprotocol/adcp/issues/7878) and is published alongside the AdCP RFC 9421 request-signing profile. These fixtures let a signer written with one WBA or RFC 9421 library and a verifier written with another agree on the wire format and on what a verifier rejects.
+Test vectors for the AdCP profile of Web Bot Auth (WBA) for request and webhook signing. The profile is experimental in AdCP 3.3, adopted by [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md), and is published alongside the AdCP RFC 9421 request-signing profile. These fixtures let a signer written with one WBA or RFC 9421 library and a verifier written with another agree on the wire format and on what a verifier rejects.
 
 Specification: [Web Bot Auth request-signing profile](https://adcontextprotocol.org/docs/building/by-layer/L1/wba-profile) in `docs/building/by-layer/L1/wba-profile.mdx`. Section numbers in vector comments refer to [draft-ietf-webbotauth-httpsig-protocol-00](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/00/) unless they name RFC 9421.
 
