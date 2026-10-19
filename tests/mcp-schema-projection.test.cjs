@@ -139,11 +139,16 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // and verifier guidance add 5,486 bytes (1_270_981 -> 1_276_467 measured),
 // bounded at 1_280_000 to retain compilation of every storyboard fixture.
 // The experimental proposal.created notification type in the account
-// notification-config enums and the simulate_later_proposal scenario reach it (1_281_908 bytes measured after
-// merging main), bounded at 1_285_000.
+// notification-config enums and the simulate_later_proposal scenario reach it
+// (1_281_908 bytes measured), within the beta.0 merge-window bound below.
+// Pre-beta.0 headroom: about 20 approved 3.3 PRs (consent rounds 1 and 2,
+// WG Session B items) each add a few KB through the seeded Product, proposal
+// and capability closures, and would otherwise conflict on this one line.
+// Bounded at 1_300_000 for the 3.3.0-beta.0 merge window (measured in-flight
+// peaks 1_280_490 to 1_283_645). Resume measured per-PR bounding after the cut.
 // This is the parity-test compiler allowance; the independent 4 MiB schema,
 // 22 MiB projection, and role model-context budgets are unchanged.
-const PARITY_COMPILE_LIMIT = 1_285_000;
+const PARITY_COMPILE_LIMIT = 1_300_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
