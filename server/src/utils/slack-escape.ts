@@ -89,6 +89,24 @@ export function sanitizeSlackLine(raw: string, maxLength = 160): string {
 }
 
 /**
+ * Strictest single-line form: the value renders as inert literal text.
+ *
+ * `sanitizeSlackLine` deliberately keeps `*bold*`, `_italic_`, `~strike~`
+ * and backtick spans, and leaves a bare `https://…` alone. Slack auto-links
+ * bare URLs, so a WorkOS org renamed to `Acme https://evil.example Co` still
+ * puts a clickable attacker destination inside a line the reader reads as
+ * platform copy. Use this where the value is a name or label that has no
+ * business carrying formatting or a link at all.
+ *
+ * Both defusals insert a zero-width space rather than deleting characters,
+ * so the text still reads correctly to a human and a copy-paste of a
+ * legitimate name is unchanged apart from an invisible codepoint.
+ */
+export function sanitizeSlackLiteral(raw: string, maxLength = 160): string {
+  return breakAutoLinks(defuseFormattingTokens(sanitizeSlackLine(raw, maxLength)));
+}
+
+/**
  * Stricter form for the label half of Slack link syntax (`<url|LABEL>`).
  * Escaping leaves `|` alone, and a `|` inside the label starts another
  * field — so a submitter could still relabel the link. Angle brackets are
@@ -114,6 +132,22 @@ export function isSafeSlackLinkTarget(url: string): boolean {
  */
 function defuseBroadcastTokens(value: string): string {
   return value.replace(/!(channel|here|everyone)/gi, '!\u200b$1');
+}
+
+/**
+ * Break the `//` of a URL scheme with a zero-width space so Slack's
+ * auto-linker no longer recognises it. `https://x` renders as `https:/​/x`.
+ */
+function breakAutoLinks(value: string): string {
+  return value.replace(/(https?:)\/\//gi, '$1/\u200b/');
+}
+
+/**
+ * Prefix Slack's inline formatting tokens with a zero-width space so the
+ * parser sees them as mid-word literals rather than token boundaries.
+ */
+function defuseFormattingTokens(value: string): string {
+  return value.replace(/([*_~`])/g, '\u200b$1');
 }
 
 function collapse(value: string): string {

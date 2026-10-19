@@ -603,7 +603,7 @@
         "success": false
       },
       "tier": "adcp",
-      "basis": "Profile: every Ed25519 key signs; WBA Appendix B.1 only RECOMMENDS a signature, and a verifier MAY use an unproven key"
+      "basis": "Profile: use only keys with a valid signature, so the directory yields no usable key; WBA Appendix B.1 lets a verifier use an unproven key"
     },
     {
       "id": "D04",
@@ -707,10 +707,10 @@
         }
       ],
       "expected": {
-        "success": false
+        "success": true
       },
-      "tier": "adcp",
-      "basis": "Profile: every Ed25519 key in the directory signs"
+      "tier": "wba",
+      "basis": "Profile: ignore a key without a valid signature; WBA Appendix B.1; directory draft section 5"
     },
     {
       "id": "D12",
@@ -730,7 +730,7 @@
         "success": false
       },
       "tier": "adcp",
-      "basis": "Profile: the directory is signed, one signature per Ed25519 key"
+      "basis": "Profile: the directory yields no Ed25519 key with a valid signature"
     },
     {
       "id": "D13",

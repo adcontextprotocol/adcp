@@ -66,10 +66,19 @@
  * be a `$context.<key>` token, matching the runner's own anchored match.
  * Prose that mentions a token (narratives, comments) is ignored.
  *
- * `validations[].value` / `allowed_values` are out of scope. The runner
- * substitutes those too, but against the context as it stood *before* the
- * step, and unlike requests it does not guard them — so they need their own
- * rule, not this one.
+ * The assertion surfaces get their own rule because they fail differently.
+ * `executeStep` resolves `validations[].value` / `allowed_values` and a
+ * webhook step's `filter` against the same before-the-step context, but
+ * nothing guards them: an unresolved token becomes the *comparand*, so the
+ * check compares the response against the literal string `"$context.<key>"`
+ * instead of against a value. `field_equals_context` and friends read the
+ * same context through `context_key`, where an absent key is worse still —
+ * `resolveContextComparand`
+ * (@adcp/sdk/dist/lib/testing/storyboard/validations.js) returns
+ * `found: false` and the check *passes* with a `context_key_absent`
+ * observation. Either way the assertion stops testing what it says it tests,
+ * and the step reports no error at all. See `context_assertion_unresolved`
+ * below.
  *
  * Writers this lint deliberately does not model
  * ---------------------------------------------
@@ -93,6 +102,21 @@
  *   survives a clear today, so modelling the clears would only add a way to
  *   be wrong; revisit if a storyboard starts reading a product/proposal key
  *   across one of those tasks.
+ * - runtime skips. A step on a capability- or branch-gated path can be the
+ *   only writer of a key a later step reads; the model is static step order,
+ *   so it treats that writer as having run. Hence the rule under-reports
+ *   rather than over-reports — a `context_key` whose only writer was skipped
+ *   still fails open at runtime. No storyboard in the tree has that shape
+ *   today (every such reader shares or implies its writer's gate); revisit
+ *   when one does.
+ *
+ * Two assertion surfaces the runner never substitutes, so this rule leaves
+ * them alone: `executeProbeStep` (runner.js) grades `step.validations` without
+ * an `injectContext` pass, so for the MCP session-probe tasks a `$context.`
+ * comparand stays literal even when the key resolves; and webhook-assertion
+ * steps synthesize their own validations and never read `step.validations` at
+ * all. Nothing in the tree authors a `$context.` comparand on either kind of
+ * step today.
  *
  * The simulated context is prototype-less on purpose. The runner resolves with
  * `key in context`, which walks the prototype chain, so `$context.constructor`
@@ -105,6 +129,16 @@
  * Rules:
  *   context_placeholder_unresolved — a request reads a context key that
  *                                    nothing seeds or captures before it.
+ *   context_assertion_unresolved   — an assertion comparand
+ *                                    (`validations[].value`,
+ *                                    `validations[].allowed_values[]`,
+ *                                    `validations[].context_key`, or a
+ *                                    webhook step's `filter`) reads a context
+ *                                    key that nothing seeds or captures
+ *                                    before it. The step's own
+ *                                    `context_outputs` land after its
+ *                                    validations run, so a step cannot assert
+ *                                    against a key it captures itself.
  *   pinned_context_key_captured    — a `context_outputs` entry writes a key
  *                                    the hosted grader pins from server
  *                                    config, letting the agent under test
@@ -248,6 +282,54 @@ function capturedKeys(step) {
 }
 
 /**
+ * Report every context key a step's assertions read before the step runs.
+ *
+ * Mirrors `executeStep`: `validations[].value` is substituted when it is
+ * defined and `allowed_values` when it is an array, and mirrors `buildFilter`
+ * (@adcp/sdk/dist/lib/testing/storyboard/webhook-assertions.js, reached from
+ * `executeWebhookAssertionStep`), which substitutes a webhook step's `filter`
+ * wholesale. All three resolve against the context as it stood before the
+ * step, so the caller must invoke this *before* folding in the step's own
+ * captures.
+ *
+ * `context_key` is included even though it is a bare key rather than a
+ * `$context.` token: it is read from the same pre-step context and is the
+ * fail-open member of the family — an absent key makes the check pass.
+ *
+ * @param {object} step raw step
+ * @param {object} context simulated context as of the start of the step
+ * @param {(key: string, location: string) => void} onUnresolved
+ */
+function collectUnresolvedAssertionReads(step, context, onUnresolved) {
+  const report = (value, location) => {
+    const injected = injectContext({ __v: value }, context).__v;
+    collectContextTokens(injected, '', (key, suffix) => {
+      if (!suffix) return onUnresolved(key, location);
+      // `collectContextTokens` emits index suffixes already bracketed.
+      return onUnresolved(key, suffix.startsWith('[') ? `${location}${suffix}` : `${location}.${suffix}`);
+    });
+  };
+
+  const validations = Array.isArray(step.validations) ? step.validations : [];
+  validations.forEach((validation, index) => {
+    if (!validation || typeof validation !== 'object') return;
+    const at = `validations[${index}]`;
+    if (validation.value !== undefined) report(validation.value, `${at}.value`);
+    if (Array.isArray(validation.allowed_values)) {
+      validation.allowed_values.forEach((candidate, i) =>
+        report(candidate, `${at}.allowed_values[${i}]`),
+      );
+    }
+    const contextKey = validation.context_key;
+    if (typeof contextKey === 'string' && contextKey.length > 0 && !(contextKey in context)) {
+      onUnresolved(contextKey, `${at}.context_key`);
+    }
+  });
+
+  if (step.filter && typeof step.filter === 'object') report(step.filter, 'filter');
+}
+
+/**
  * Lint one parsed storyboard.
  *
  * @param {object} doc parsed YAML
@@ -289,7 +371,12 @@ function lintDoc(doc, filePath) {
         });
       }
 
-      // Captures land after the step's own request is built.
+      collectUnresolvedAssertionReads(step, context, (key, location) => {
+        violations.push({ ...base, rule: 'context_assertion_unresolved', key, location });
+      });
+
+      // Captures land after the step's own request is built, and after its
+      // validations run.
       for (const key of capturedKeys(step)) {
         // A rejected capture is not a writer, so a later read of the same key
         // reports too. Two violations, one fix: declare it in root `context:`.
@@ -347,6 +434,35 @@ function formatViolation(v) {
       `    Declare \`${v.key}\` in the storyboard's root \`context:\` block instead.`
     );
   }
+  if (v.rule === 'context_assertion_unresolved') {
+    const isContextKey = v.location.endsWith('.context_key');
+    const isFilter = v.location === 'filter' || v.location.startsWith('filter.');
+    const read = isContextKey ? `\`${v.key}\`` : `"$context.${v.key}"`;
+    let consequence;
+    if (isContextKey) {
+      consequence =
+        'The key is absent, so `resolveContextComparand` returns `found: false` and the check\n' +
+        '    *passes* with a `context_key_absent` observation — the assertion grades nothing.';
+    } else if (isFilter) {
+      consequence =
+        '`buildFilter` keeps the literal token, so the selector matches no delivery:\n' +
+        '    `expect_webhook` can only time out, and `expect_no_webhook` passes without having\n' +
+        '    observed anything.';
+    } else {
+      consequence =
+        'The runner cannot substitute it, so the assertion compares the response against the\n' +
+        `    literal string "$context.${v.key}" instead of against a value, and nothing reports\n` +
+        '    the unresolved token.';
+    }
+    return (
+      `${where} asserts against\n` +
+      `    ${read} at ${v.location}, but nothing seeds or captures \`${v.key}\`\n` +
+      `    before this step. ${consequence}\n` +
+      `    Declare \`${v.key}\` in the storyboard's root \`context:\` block, or capture it with a\n` +
+      '    `context_outputs` entry on an earlier step — a step\'s own captures land after its\n' +
+      '    validations run, so it cannot assert against a key it captures itself.'
+    );
+  }
   return (
     `${where} reads\n` +
     `    "$context.${v.key}" at ${v.location}, but nothing seeds or captures\n` +
@@ -386,6 +502,7 @@ module.exports = {
   STORYBOARD_DIR,
   capturedKeys,
   collectContextTokens,
+  collectUnresolvedAssertionReads,
   formatViolation,
   lintDoc,
   lintTree,
