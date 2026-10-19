@@ -317,13 +317,12 @@ function buildPublishablePointers({
     versions: entries.map(publishedEntry),
   };
 
-  assertNoRegression(publishedIndex, index, { allowBootstrap, retired: retiredVersions(source) });
-
+  const retired = retiredVersions(source);
+  assertNoRegression(publishedIndex, index, { allowBootstrap, retired });
 
   // Losing an older entry from `versions[]` is consumer-visible but not an
   // alias misdirection, and failing on it would wedge every deploy over a
   // listing wobble. Report it instead; the alias guard above stays fatal.
-  const retired = retiredVersions(source);
   const dropped = Array.isArray(publishedIndex?.versions)
     ? publishedIndex.versions
       .map((entry) => entry?.version)
