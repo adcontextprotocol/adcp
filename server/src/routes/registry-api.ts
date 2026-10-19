@@ -4,6 +4,12 @@ import type { SupplyPathInput } from '../services/supply-path-contract.js';
 import { domain as supplyPathDomain, agentIdentity as supplyPathAgentIdentity } from '../services/supply-path-input.js';
 import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
 import { withStoryboardSkipDetails } from '../compliance/storyboard-skip-details.js';
+import {
+  HEARTBEAT_TIMEOUT_STREAK_WINDOW,
+  parseStoryboardCoverage,
+  projectHeartbeatTimeout,
+  type HeartbeatTimeoutState,
+} from '../compliance/heartbeat-timeout.js';
 /**
  * Public Registry API routes.
  *
@@ -848,22 +854,11 @@ function publicComplianceHeadline(status: string, headline: string | null): stri
 /** Owner-only view of the newest attempt; never used to update the public verdict. */
 function projectLatestComplianceAttempt(run: ComplianceRun | null) {
   if (!run) return null;
-  const observations = Array.isArray(run.observations_json) ? run.observations_json : [];
-  const timeoutObservation = observations.find((value: unknown) => {
-    if (!value || typeof value !== 'object') return false;
-    const message = (value as { message?: unknown }).message;
-    return typeof message === 'string' && /Stopped starting new storyboards after \d+\/\d+ selected storyboard/.test(message);
-  }) as { message: string } | undefined;
-  const coverage = timeoutObservation?.message.match(/Stopped starting new storyboards after (\d+)\/(\d+) selected storyboard/);
-  const completed = coverage ? Number(coverage[1]) : null;
-  const total = coverage ? Number(coverage[2]) : null;
-  const hasValidCoverage = completed !== null && total !== null
-    && Number.isSafeInteger(completed) && Number.isSafeInteger(total)
-    && total > 0 && completed >= 0 && completed <= total;
+  const coverage = parseStoryboardCoverage(run.observations_json);
   const statuses = Array.isArray(run.storyboard_statuses_json) ? run.storyboard_statuses_json : [];
   const firstFailure = statuses.find(s => typeof s.first_failure_message === 'string' && s.first_failure_message.length > 0);
   const blocker = run.completeness === 'timed_out'
-    ? timeoutObservation?.message ?? 'The assessment reached its time budget.'
+    ? coverage.message ?? run.headline ?? 'The assessment reached its time budget.'
     : firstFailure?.first_failure_message ?? run.headline;
   return {
     id: run.id,
@@ -872,10 +867,41 @@ function projectLatestComplianceAttempt(run: ComplianceRun | null) {
     completeness: run.completeness,
     is_authoritative: run.is_authoritative,
     requested_compliance_target: run.requested_compliance_target,
-    storyboards_completed: hasValidCoverage ? completed : null,
-    storyboards_total: hasValidCoverage ? total : null,
+    storyboards_completed: coverage.completed,
+    storyboards_total: coverage.total,
     first_blocker: blocker ? String(redactForDiagnostics(blocker)).slice(0, 240) : null,
   };
+}
+
+/**
+ * Owner/operator view of a heartbeat that ran out of budget (adcp#8268).
+ *
+ * `latest_attempt` already shows the newest *attempt*, but only when that run
+ * carries the caller's `triggered_org_id` — heartbeats against an agent with
+ * no saved credentials have none, so the owner of a consistently slow agent
+ * sees nothing at all. This reads the heartbeat stream directly and is gated
+ * on agent ownership instead.
+ */
+async function loadHeartbeatTimeoutState(
+  agentUrl: string,
+  orgId: string | null | undefined,
+  publishedAt: Date | null,
+): Promise<HeartbeatTimeoutState | null> {
+  if (orgId === undefined) return null;
+  try {
+    const runs = await complianceDb.getRecentHeartbeatAttempts(
+      agentUrl,
+      orgId,
+      HEARTBEAT_TIMEOUT_STREAK_WINDOW,
+    );
+    return projectHeartbeatTimeout(runs, {
+      publishedAt,
+      windowLimit: HEARTBEAT_TIMEOUT_STREAK_WINDOW,
+    });
+  } catch (error) {
+    logger.warn({ err: error, agentUrl }, 'Heartbeat timeout state query failed');
+    return null;
+  }
 }
 
 async function loadOwnerLatestComplianceAttempt(agentUrl: string, orgId: string | null | undefined) {
@@ -7156,7 +7182,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       if (!status) {
         const attemptOrgId = await resolveComplianceReadScope(req, agentUrl);
-        const latestAttempt = await loadOwnerLatestComplianceAttempt(agentUrl, attemptOrgId);
+        const [latestAttempt, heartbeatTimeout] = await Promise.all([
+          loadOwnerLatestComplianceAttempt(agentUrl, attemptOrgId),
+          loadHeartbeatTimeoutState(agentUrl, attemptOrgId, null),
+        ]);
         return res.json({
           agent_url: agentUrl,
           status: "unknown",
@@ -7171,6 +7200,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           storyboards_passing: 0,
           storyboards_total: 0,
           latest_attempt: latestAttempt,
+          heartbeat_timeout: heartbeatTimeout,
         });
       }
 
@@ -7329,7 +7359,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const includeVerdictDiagnostics = attemptOrgId === null
         || (typeof attemptOrgId === 'string' && status.last_run_org_id === attemptOrgId);
       const includeComparisonDiagnostics = includeDiagnostics && includeVerdictDiagnostics;
-      const latestAttempt = await loadOwnerLatestComplianceAttempt(agentUrl, attemptOrgId);
+      // Both are owner-scoped single-row reads with no dependency on each
+      // other. Keep them concurrent — this handler already sits close to the
+      // dashboard's request budget on agents with large storyboard sets.
+      const [latestAttempt, heartbeatTimeout] = await Promise.all([
+        loadOwnerLatestComplianceAttempt(agentUrl, attemptOrgId),
+        loadHeartbeatTimeoutState(agentUrl, attemptOrgId, status.last_checked_at ?? null),
+      ]);
       const observations = rawObservations.map(obs => toPublicComplianceObservation(obs, includeVerdictDiagnostics))
         .filter((obs): obs is PublicComplianceObservation => obs !== null);
       const serializedStoryboardStatuses = storyboardStatuses.map(s =>
@@ -7600,6 +7636,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         storyboards_passing: sbCounts.passing,
         storyboards_total: sbCounts.total,
         latest_attempt: latestAttempt,
+        // Owner/operator-scoped staleness signal (adcp#8268). Non-null only
+        // while the newest scheduled heartbeat ended at its time budget, so a
+        // later complete run clears it. Publication is unchanged: the fields
+        // above still describe the last authoritative run.
+        heartbeat_timeout: heartbeatTimeout,
         check_interval_hours: metadata?.check_interval_hours ?? 12,
         declared_specialisms: declaredSpecialisms,
         specialism_status: specialismStatus,

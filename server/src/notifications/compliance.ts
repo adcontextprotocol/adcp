@@ -210,6 +210,50 @@ export async function notifyComplianceChange(input: ComplianceChangeInput): Prom
   }
 }
 
+// ── Timed-out heartbeat notifications (adcp#8268) ────────────────
+
+export interface ComplianceTimeoutInput {
+  agentUrl: string;
+  /** Pre-rendered by `describeHeartbeatTimeout` — runner-generated text only. */
+  summary: string;
+}
+
+/**
+ * Tell the agent's owners that a scheduled heartbeat ran out of budget and
+ * therefore did not refresh the published result.
+ *
+ * Edge-triggered by the caller (only the first timeout of a streak), so this
+ * deliberately does not use `notificationDb.exists` — that check is permanent
+ * and would silence every later timeout after an agent recovers and regresses
+ * again. Nothing is posted to the shared channel: an audit-only timeout is not
+ * a public verdict change, and announcing slow agents in a shared room would
+ * leak a trust signal the published grade does not carry.
+ */
+export async function notifyComplianceTimeout(input: ComplianceTimeoutInput): Promise<void> {
+  const { agentUrl, summary } = input;
+  const name = agentDisplayName(agentUrl);
+  const userIds = await resolveAgentOwnerUserIds(agentUrl);
+  if (userIds.length === 0) {
+    logger.debug({ agentUrl }, 'No owner users found for compliance timeout DM');
+    return;
+  }
+
+  for (const userId of userIds) {
+    try {
+      await notifyUser({
+        recipientUserId: userId,
+        type: 'compliance_heartbeat_timed_out',
+        referenceId: agentUrl,
+        referenceType: 'agent',
+        title: `Compliance checks for your agent ${name} are not completing. ${summary}`,
+        url: '/registry?tab=agents',
+      });
+    } catch (error) {
+      logger.error({ error, userId, agentUrl }, 'Failed to send compliance timeout DM');
+    }
+  }
+}
+
 // ── Verification Badge Notifications ─────────────────────────────
 
 interface VerificationChangeInput {

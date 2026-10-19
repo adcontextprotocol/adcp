@@ -1019,6 +1019,24 @@ export const AgentComplianceDetailSchema = z
     }).nullable().optional().openapi({
       description: 'Owner/operator-only newest persisted full assessment, including audit-only timeouts. Null for other viewers. This does not change the public verdict.',
     }),
+    heartbeat_timeout: z.object({
+      run_id: z.string().uuid(),
+      timed_out_at: z.string().datetime(),
+      duration_ms: z.number().int().nullable(),
+      timeout_ms: z.number().int().nullable(),
+      storyboards_completed: z.number().int().nullable(),
+      storyboards_total: z.number().int().nullable(),
+      consecutive: z.number().int(),
+      consecutive_capped: z.boolean().openapi({
+        description: 'True when the streak filled the lookback window, so the real run of timeouts may be longer than `consecutive`.',
+      }),
+      published_at: z.string().datetime().nullable(),
+      summary: z.string().openapi({
+        description: 'Ready-to-render owner-facing sentence. Built only from platform- and runner-generated values; no agent response text.',
+      }),
+    }).nullable().optional().openapi({
+      description: 'Owner/operator-only. Present while the newest scheduled heartbeat ran out of time, so the owner can see that the published result is not being refreshed. Null for other viewers and once a later heartbeat completes. This does not change the public verdict.',
+    }),
     check_interval_hours: z.number().int().optional().openapi({ description: "How often the heartbeat re-tests this agent, in hours" }),
     declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared in get_adcp_capabilities, from the latest run" }),
     specialism_status: z.record(z.string(), z.enum(['passing', 'failing', 'untested', 'unknown'])).optional().openapi({ description: "Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status" }),
