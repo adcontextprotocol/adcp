@@ -219,7 +219,7 @@ Shape (experimental feature `account.agent_onboarding`):
   - `blocked`.
 - While `pending_approval`, an optional `setup { url, message, expires_at }` carries an applicant-specific next step, in the same shape as `sync_accounts` `setup`.
 - It is returned only to the authenticated caller. P4 opens the closed `unconfigured` schema (`get-principal-response.json`) for this one field.
-- `principal.changed` adds the reasons `relationship_changed` and `relationship_expiring`. The second fires at a seller-declared lead time before `expires_at`, following `setup_expiring`.
+- `principal.changed` adds the reasons `relationship_changed` and `relationship_expiring`. The second fires at a seller-chosen lead time before `expires_at`.
 
 ### R9. Revocation and committed work (P3)
 
@@ -313,7 +313,7 @@ Tracking: adcp-client#3098, adcp-client-python#1283, adcp-go#548 and #109. Each 
 ## Resolved questions
 
 1. **Revocation path.** One list per origin, at the existing `/.well-known/governance-revocations.json` path and `adcp-gov-revocation+jws` type, covering all of the identity's keys (#7878 §Revocation).
-2. **Lead time for `relationship_expiring`.** Seller-declared, following `setup_expiring`. A protocol minimum can wait for adoption data.
+2. **Lead time for `relationship_expiring`.** Seller-chosen. A protocol minimum can wait for adoption data.
 3. **`authoritative_location` binding.** None added. The operator is derived from `O` and the match is on `O`, so a shared hosted document cannot make one domain's agents another's. `brand-identity-trust-split.md` §Hosting covers grants.
 
 ## Appendix: 3.4 direction for JWS surfaces (non-normative)
