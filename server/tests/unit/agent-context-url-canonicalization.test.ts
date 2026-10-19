@@ -33,9 +33,14 @@ describe('AgentContextDatabase URL canonicalization', () => {
     for (const call of queryMock.mock.calls.slice(0, 4)) {
       expect(call[1]).toEqual([ORG, CANONICAL]);
     }
+    // The owner-credential read keys `agent_contexts` exactly and folds the
+    // member-profile side across every spelling of the same agent identity
+    // (#8322), so a profile holding the trailing-slash spelling still
+    // authorizes its own saved credential.
     expect(queryMock.mock.calls[4][1]).toEqual([
       CANONICAL,
       JSON.stringify([{ url: CANONICAL }]),
+      JSON.stringify([{ url: `${CANONICAL}/` }]),
     ]);
   });
 
