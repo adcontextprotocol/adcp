@@ -1351,6 +1351,50 @@ export class ComplianceDatabase {
     return result.rows[0] ?? null;
   }
 
+  /**
+   * Newest scheduled heartbeat attempts, newest first (adcp#8268).
+   *
+   * `orgId` widens rather than narrows compared with `getLatestComplianceAttempt`:
+   * a heartbeat is platform-triggered and only carries a `triggered_org_id`
+   * when the agent happens to have saved owner credentials, so an equality
+   * filter would hide exactly the credential-free agents whose timed-out
+   * heartbeats are most invisible. Unattributed runs are therefore visible to
+   * any owner of the URL, while a run charged to another organization's saved
+   * credentials stays with that organization — its coverage and duration would
+   * otherwise tell a co-claiming org that someone else holds working
+   * credentials. Pass `null` for operator/worker reads that need the whole
+   * stream.
+   *
+   * `observations_json` comes back only on the newest row. It is the only row
+   * whose storyboard coverage is projected, and failure rows store an uncapped
+   * agent error message, so fetching the rest would move unbounded text over
+   * the wire for nothing.
+   */
+  async getRecentHeartbeatAttempts(
+    agentUrl: string,
+    orgId: string | null,
+    limit = 10,
+  ): Promise<Array<Pick<ComplianceRun,
+    'id' | 'tested_at' | 'completeness' | 'headline' | 'total_duration_ms' | 'provenance_json' | 'observations_json'>>> {
+    const boundedLimit = Number.isInteger(limit) ? Math.max(1, Math.min(limit, 50)) : 10;
+    const result = await query(
+      `SELECT id, tested_at, completeness, headline, total_duration_ms, provenance_json,
+              CASE WHEN tested_at = MAX(tested_at) OVER () THEN observations_json END AS observations_json
+         FROM (
+           SELECT id, tested_at, completeness, LEFT(headline, 200) AS headline,
+                  total_duration_ms, provenance_json, observations_json
+             FROM agent_compliance_runs
+            WHERE agent_url = $1 AND triggered_by = 'heartbeat' AND dry_run = FALSE
+              AND ($3::text IS NULL OR triggered_org_id IS NULL OR triggered_org_id = $3)
+            ORDER BY tested_at DESC
+            LIMIT $2
+         ) recent
+        ORDER BY tested_at DESC`,
+      [agentUrl, boundedLimit, orgId],
+    );
+    return result.rows;
+  }
+
   /** Bounded operator snapshot, including audit-only heartbeat evidence. */
   async getRecentOperationalRuns(limit: number = 25): Promise<Array<{
     id: string;

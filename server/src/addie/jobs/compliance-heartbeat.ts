@@ -1,6 +1,11 @@
 import { complianceRunProvenance } from '../../compliance/run-provenance.js';
 import { isAuthoritativeComplianceRun } from '../../compliance/run-publication.js';
 import { withStoryboardSkipDetails } from '../../compliance/storyboard-skip-details.js';
+import {
+  heartbeatTimeoutHeadline,
+  HEARTBEAT_TIMEOUT_STREAK_WINDOW,
+  projectHeartbeatTimeout,
+} from '../../compliance/heartbeat-timeout.js';
 /**
  * Compliance Heartbeat Job
  *
@@ -28,7 +33,7 @@ import {
   ComplianceRefreshRequestsDatabase,
   COMPLIANCE_HEARTBEAT_GLOBAL_RUNNING_LIMIT,
 } from '../../db/compliance-refresh-requests-db.js';
-import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
+import { notifyComplianceChange, notifyComplianceTimeout, notifyVerificationChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
 import { logOutboundRequest } from '../../db/outbound-log-db.js';
@@ -124,6 +129,87 @@ interface HeartbeatSkipReasons {
 }
 
 type PendingShadowAssessment = Parameters<typeof recordVerificationProfileShadowAssessment>[0];
+
+/** How long the worker waits on a best-effort timeout DM before moving on. */
+const HEARTBEAT_TIMEOUT_NOTIFY_BUDGET_MS = 15_000;
+
+/**
+ * Best-effort owner DM for a heartbeat that ran out of time (adcp#8268).
+ *
+ * Call this after the run is persisted; it decides for itself whether this is
+ * the start of a timed-out streak and says nothing otherwise.
+ *
+ * Never throws: the run is already persisted as audit-only evidence, and a
+ * Slack/notification outage must not take the rest of the batch down with it.
+ */
+async function notifyHeartbeatTimeout(agentUrl: string, runId: string): Promise<void> {
+  try {
+    // Read the heartbeat stream the owner's card reads, rather than the newest
+    // run of any trigger. An owner_test landing between two timed-out
+    // heartbeats would otherwise both re-arm the edge (a duplicate DM) and, if
+    // it timed out itself, disarm it (the real first timeout goes unsent) —
+    // and a second organization co-claiming the URL can drive either on
+    // demand. This also gives the DM the same streak count as the card.
+    const recentHeartbeats = await complianceDb.getRecentHeartbeatAttempts(
+      agentUrl,
+      null,
+      HEARTBEAT_TIMEOUT_STREAK_WINDOW,
+    );
+    const state = projectHeartbeatTimeout(recentHeartbeats, {
+      windowLimit: HEARTBEAT_TIMEOUT_STREAK_WINDOW,
+    });
+    if (!state) return;
+
+    logger.warn(
+      {
+        agentUrl,
+        runId,
+        durationMs: state.duration_ms,
+        timeoutMs: state.timeout_ms,
+        storyboardsCompleted: state.storyboards_completed,
+        storyboardsTotal: state.storyboards_total,
+        consecutive: state.consecutive,
+      },
+      'Heartbeat timed out and did not refresh the published compliance result',
+    );
+
+    // Edge-triggered: tell the owner when the agent starts timing out, not on
+    // every heartbeat of a long streak. The card carries the running count.
+    if (state.consecutive > 1) return;
+    const summary = state.summary;
+    // Absorb delivery failures on the promise itself. The worker may stop
+    // waiting below, so a later rejection would otherwise land as an
+    // unhandled rejection after the batch has moved on.
+    const delivery = notifyComplianceTimeout({ agentUrl, summary })
+      .catch(deliveryError => logger.error(
+        { deliveryError, agentUrl, runId },
+        'Failed to notify the agent owner about a timed-out compliance heartbeat',
+      ));
+
+    // Bounded wait. `slackPostRequest` has no fetch timeout and sleeps up to a
+    // minute per rate-limited retry, and this runs while the agent still holds
+    // its execution fence and heartbeat claim. Notifying is best-effort, so
+    // stop waiting and let the DM land on its own rather than letting Slack
+    // decide how long a suite slot stays occupied.
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        delivery,
+        new Promise<void>(resolve => {
+          timer = setTimeout(resolve, HEARTBEAT_TIMEOUT_NOTIFY_BUDGET_MS);
+          timer.unref();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  } catch (notifyError) {
+    logger.error(
+      { notifyError, agentUrl, runId },
+      'Failed to prepare the timed-out compliance heartbeat notification',
+    );
+  }
+}
 
 async function pruneShadowLedgerBestEffort(): Promise<void> {
   try {
@@ -240,6 +326,22 @@ export async function runComplianceHeartbeatJob(
     };
     try {
       const previousAttempt = await complianceDb.getLatestComplianceAttempt(agent.agent_url, null);
+      // adcp#8268 — timeout policy, evaluated and deliberately left as is.
+      // `perAgentBudgetMs` below and the job's `executionTimeoutMs` are both
+      // already sized from HOSTED_EXTENDED_COMPLIANCE_TIMEOUT_MS, so neither
+      // this escalation nor an extended-by-default policy would need more lock
+      // headroom. What extended-by-default would cost is cadence: a batch
+      // where every agent times out takes ~113 minutes at the extended budget
+      // against ~48 at the full one, and `job.executing` blocks re-entry for
+      // all of it. Escalating only on evidence buys the same outcome one
+      // heartbeat later at a fraction of the throughput. Per-storyboard
+      // budgets are not available here — `comply()` only accepts a whole-run
+      // `timeout_ms` — so they need an SDK change first.
+      //
+      // Note this escalates only on a runner-reported `timed_out`, never on a
+      // run the hard deadline had to abort. An agent that self-limits is slow;
+      // one that overshoots its own budget by HOSTED_COMPLIANCE_OVERRUN_MS is
+      // hung, and handing a hang 30 minutes treats it as the wrong problem.
       if (previousAttempt?.completeness === 'timed_out'
         || (previousAttempt?.completeness === 'complete'
           && (previousAttempt.total_duration_ms ?? 0) >= HOSTED_FULL_COMPLIANCE_TIMEOUT_MS * 0.8)) {
@@ -340,6 +442,12 @@ export async function runComplianceHeartbeatJob(
         skipReasons.audit_only++;
         logger.info({ agentUrl: agent.agent_url, runId: run.id, completeness: dbInput.completeness },
           'Recorded audit-only compliance evidence; authoritative grade and badges preserved');
+        // adcp#8268 — a timed-out heartbeat drops out of publication, so
+        // without this the owner's only signal is a card that silently stops
+        // advancing.
+        if (dbInput.completeness === 'timed_out') {
+          await notifyHeartbeatTimeout(agent.agent_url, run.id);
+        }
         return;
       }
 
@@ -509,7 +617,12 @@ export async function runComplianceHeartbeatJob(
       let observationSeverity: 'warning' | 'error';
       let observationMessage: string;
       if (isAgentTimeout) {
-        headline = `Timed out: assessment did not complete within ${assessmentTimeoutMs / 1000}s`;
+        // adcp#8268 — built through the shared helper so the owner-facing
+        // projection recognises a hard-deadline abort as a timeout too. These
+        // runs stay `not_completed`: the runner blew past its own budget, so
+        // they are evidence of a hang, not of slowness, and must not earn the
+        // extended budget the way a self-limited `timed_out` run does.
+        headline = heartbeatTimeoutHeadline(assessmentTimeoutMs);
         observationCategory = 'connectivity';
         observationSeverity = 'warning';
         observationMessage = headline;
@@ -550,7 +663,7 @@ export async function runComplianceHeartbeatJob(
         // concurrent owner refresh invalidated the lock. Without this guard the
         // stale heartbeat failure would race with and overwrite the fresher result.
         assertExecutionFence();
-        await complianceDb.recordComplianceRun({
+        const { run: timeoutRun } = await complianceDb.recordComplianceRun({
           agent_url: agent.agent_url,
           requested_compliance_target: runTarget.requested,
           adcp_version: runTarget.version,
@@ -567,12 +680,25 @@ export async function runComplianceHeartbeatJob(
           triggered_by: 'heartbeat',
           triggered_org_id: credentialOrgId,
           dry_run: false,
+          // Wall-clock actually spent and the budget that was asked for, so
+          // the owner-facing timeout state can say "ran 912s against a 600s
+          // budget" instead of rendering a bare timestamp.
+          total_duration_ms: Date.now() - startTime,
           completeness: 'not_completed',
-          provenance_json: complianceRunProvenance({ adcp_version: runTarget.version, agent_profile: {} as ComplianceResult['agent_profile'] }),
+          provenance_json: complianceRunProvenance(
+            { adcp_version: runTarget.version, agent_profile: {} as ComplianceResult['agent_profile'] },
+            { timeout_ms: assessmentTimeoutMs },
+          ),
           is_authoritative: false,
           replace_storyboard_statuses: true,
         });
         runsRecorded++;
+
+        // adcp#8268 — an aborted runner leaves the published grade just as
+        // stale as a self-limited timeout, so the owner hears about it too.
+        if (isAgentTimeout) {
+          await notifyHeartbeatTimeout(agent.agent_url, timeoutRun.id);
+        }
 
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url, { exponentialBackoff: true });
       } catch (recordError) {
