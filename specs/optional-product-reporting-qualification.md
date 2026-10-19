@@ -57,10 +57,14 @@ seller-wide declarations remain isolated future-minor work in
 node --test --test-timeout=30000 tests/optional-product-reporting.test.cjs tests/optional-product-reporting-public.test.cjs
 ```
 
-**44 tests pass** on the unchanged SDK 15.9.5 dependency. They execute the actual
+**48 tests pass** on the unchanged SDK 15.9.5 dependency. They execute the actual
 revised source and the actual hosted `classifyComplianceStep`, covering no-match,
 independent later-page support, advertised-but-broken paths, discovery/pagination
 failure, legal reporting variations, mandatory fields and metric narrowing.
+Four additional regressions preserve injected cumulative totals even when native
+`available_metrics` omits impressions, and fail discarded accepted injection.
+The controller already requires subsequent reads to reflect injected data; this
+does not establish native measurement support or grain observations.
 The public test file uses the real MCP transport through public
 `transport.trustedFetchFn`, including sandbox isolation and adversarial controller
 responses. Counterexample tests intentionally reproduce the held behavior:
@@ -101,7 +105,7 @@ matrix must never be described as green execution.
 
 Main first; only after a qualified main merge prepare a separate reviewed 3.2.x
 backport against its actual pinned SDK and schemas. At the audited maintenance
-head the dependency is **14.0.0-rc.53**, distinct from main's 15.9.5. The 44/19
+head the dependency is **14.0.0-rc.53**, distinct from main's 15.9.5. The 48/19
 main-pin probes are not maintenance qualification and no pin may be upgraded
 to make a backport pass. No SDK/dependency/lockfile
 upgrade, declaration field, controller refusal contract, production write,

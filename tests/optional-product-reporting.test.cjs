@@ -102,6 +102,7 @@ async function execute(kind, {
         if (kind === 'time' && missingTime) pkg.missing_metrics = [{ scope: 'standard', metric_id: 'time_based_views' }];
         if (matureTimeCommitment) Object.assign(pkg, { measurement_window: 'final', is_final: true, finalized_at: '2026-10-20T01:00:00Z' });
         if (broken === 'missing_disclosure') delete pkg.missing_metrics;
+        if (broken === 'injected_impressions') delete totals.impressions;
         if (broken === 'clicks') totals.clicks = 101;
         if (broken === 'package_clicks') pkg.clicks = 101;
         if (broken === 'format_clicks') pkg.by_format[0].clicks = 101;
@@ -174,6 +175,21 @@ for (const kind of ['format', 'time']) {
     assert.equal(result.overall_passed, false);
     assert.ok(graded.some(step => step.task === 'comply_test_controller' && step.disposition === 'failed'));
   });
+
+  for (const dropInjected of [false, true]) {
+    test(`${kind}: accepted injected totals remain accountable without native impression advertisement (${dropInjected})`, async () => {
+      const offer = product('native-without-impression-advertisement', [kind]);
+      offer.reporting_capabilities.available_metrics = offer.reporting_capabilities.available_metrics.filter(metric => metric !== 'impressions');
+      const { result, graded } = await execute(kind, {
+        catalog: [offer], ...(dropInjected && { broken: 'injected_impressions' }),
+      });
+      // The controller contract requires subsequent cumulative reads to
+      // reflect accepted injection. This does not establish native measurement
+      // support or invent format/time grain observations.
+      assert.equal(result.overall_passed, !dropInjected, JSON.stringify(result));
+      if (dropInjected) assert.ok(graded.some(step => step.task === 'get_media_buy_delivery' && step.disposition === 'failed'));
+    });
+  }
 
   test(`${kind}: qualification counterexample preserves disclosed minimum-spend rejection`, async () => {
     const { result, graded } = await execute(kind, { catalog: [product('high-minimum', [kind], { minSpend: 5000 })] });
