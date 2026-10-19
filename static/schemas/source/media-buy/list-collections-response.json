@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/list-collections-response.json",
+  "title": "List Collections Response",
+  "description": "Experimental (media_buy.collection_catalog), added in AdCP 3.3. One page of the selling agent's collection cards, or confirmation that the selected catalog has not changed. Entries are core/response-collection.json copies under the authority rules defined there and for include_collections: adagents.json stays the root of authorization and the source for definition pins, a copy wins only on images, sample_content, url, description, season, cadence and distribution[].followers, and a copy of an undeclared collection or from an agent adagents.json does not authorize is unverified display data that never feeds carriage verification. For the same key, account and moment, the copy MUST equal the one a product or proposal read with include_collections returns. The response carries no products, pricing, availability or account terms.",
+  "x-status": "experimental",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "outcome"
+  },
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": ["listed", "unchanged"],
+      "description": "listed when the response carries a page of collections; unchanged when if_collections_version matched the current version of the selected catalog."
+    },
+    "collections": {
+      "type": "array",
+      "description": "Collections matching the selectors and filters on this page, possibly empty. At most one entry per (publisher_domain, collection_id); if a key appears more than once, that collection is unresolvable from this response and buyers fall back to the publisher's adagents.json. Selector keys that are unknown or not visible to the caller are omitted without a per-key error, so not existing and not being visible look the same; buyers detect omissions by comparing their selectors with the returned entries.",
+      "items": { "$ref": "/schemas/core/response-collection.json" }
+    },
+    "pagination": { "$ref": "/schemas/core/pagination-response.json" },
+    "collections_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Opaque version of the selected catalog, scoped to the canonicalized collections selectors and filters (arrays compared as sets, pagination.cursor excluded), plus account identity when cache_scope is account. It changes whenever any copy the selection would return, or the set of collections it selects, changes. A follower refresh that leaves a count's bounds and precision unchanged is not a change. Independent of feed_version and wholesale_feed_version: a change to one says nothing about the others. The unfiltered read (no collections selectors, no filters) carries the same version token as collection_card.* and collection_catalog.bulk_change webhooks for that cache_scope."
+    },
+    "cache_scope": {
+      "type": "string",
+      "enum": ["public", "account"],
+      "description": "public when the visible set does not depend on the account, and always when the request carried no account; account when it does. A seller MAY return public to a conditional request whose earlier response was account, meaning the account no longer has a distinct visible set; the buyer drops its account-scoped copy and uses the public one."
+    },
+    "replayed": { "type": "boolean", "const": true },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "outcome": { "type": "string", "const": "listed" }
+      },
+      "required": ["outcome", "collections", "collections_version", "cache_scope"]
+    },
+    {
+      "properties": {
+        "outcome": { "type": "string", "const": "unchanged" }
+      },
+      "required": ["outcome", "collections_version", "cache_scope"],
+      "not": {
+        "anyOf": [
+          { "required": ["collections"] },
+          { "required": ["pagination"] }
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "A listed page with one creator card",
+      "data": {
+        "outcome": "listed",
+        "collections": [
+          {
+            "publisher_domain": "novacreators.example",
+            "collection_id": "kitchen_lab",
+            "name": "Kitchen Lab with Jordan Vega",
+            "kind": "series",
+            "status": "active",
+            "language": "en",
+            "cadence": "weekly",
+            "description": "Weekly food science experiments for home cooks",
+            "url": "https://novacreators.example/creators/kitchen-lab",
+            "talent": [
+              { "role": "host", "name": "Jordan Vega", "brand_ref": { "domain": "jordanvega.example" } }
+            ],
+            "distribution": [
+              {
+                "publisher_domain": "videoplatform.example",
+                "identifiers": [{ "type": "youtube_channel_id", "value": "UCexample123456" }],
+                "followers": {
+                  "lower_bound": 1230000,
+                  "upper_bound": 1239999,
+                  "precision": "approximate",
+                  "as_of": "2026-10-15T00:00:00Z"
+                }
+              }
+            ]
+          }
+        ],
+        "pagination": { "has_more": true, "cursor": "eyJvIjo1MH0=" },
+        "collections_version": "cc_2026_10_16_r88",
+        "cache_scope": "account"
+      }
+    },
+    {
+      "description": "A conditional read that matched",
+      "data": {
+        "outcome": "unchanged",
+        "collections_version": "cc_2026_10_16_r88",
+        "cache_scope": "account"
+      }
+    }
+  ]
+}

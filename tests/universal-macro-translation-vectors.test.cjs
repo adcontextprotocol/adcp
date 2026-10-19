@@ -47,6 +47,19 @@ const REQUIRED_SUCCESS_CASES = [
   'embedded-ordinary-bracketed-values-not-suspect',
   'privacy-value-mappings-are-encoded-and-reported',
   'bare-query-normalized-away',
+  'additional-consent-native-with-tcf',
+  'additional-consent-existing-native-pass-through',
+  'additional-consent-unmapped-reported',
+  'additional-consent-value-reported',
+  'additional-consent-unavailable-empty',
+  'vendor-scoped-consent-native-preserves-id',
+  'vendor-scoped-consent-existing-native-pass-through',
+  'vendor-scoped-consent-other-id-preserved',
+  'vendor-scoped-consent-missing-vendor-id-empty',
+  'vendor-scoped-consent-value-reported',
+  'vendor-scoped-consent-unmapped-reported',
+  'vendor-scoped-consent-unscoped-mapping-does-not-match',
+  'vendor-scoped-consent-counted-after-parameter-dropping',
 ];
 
 const REQUIRED_REJECTION_CASES = [
@@ -56,10 +69,74 @@ const REQUIRED_REJECTION_CASES = [
 ];
 
 describe('universal macro translation compliance fixture', () => {
-  it('is a schema-valid 3.2 fixture', () => {
+  it('is a schema-valid 3.3 fixture', () => {
     const validate = new Ajv({ allErrors: true, strict: false }).compile(fixtureSchema);
     assert.equal(validate(fixture), true, JSON.stringify(validate.errors));
-    assert.equal(fixture.version, '3.2');
+    assert.equal(fixture.version, '3.3');
+  });
+
+  it('preserves vendor scope and keeps missing-vendor consent empty', () => {
+    const vectorsByName = new Map(fixture.vectors.map((vector) => [vector.name, vector]));
+    const scoped = vectorsByName.get('vendor-scoped-consent-native-preserves-id');
+    assert.equal(scoped.mapping['{GDPR_CONSENT_755}'].native, '${GDPR_CONSENT_755}');
+    assert.equal(scoped.expected.url, 'https://pixel.example/i?gdpr=${GDPR}&gdpr_consent=${GDPR_CONSENT_755}');
+    const missing = vectorsByName.get('vendor-scoped-consent-missing-vendor-id-empty');
+    assert.equal(missing.mapping['{GDPR_CONSENT}'].value, '');
+    assert.equal(missing.expected.url, 'https://pixel.example/i?gdpr=${GDPR}&gdpr_consent=');
+    assert.deepEqual(missing.expected.frozen_consent_macros, ['{GDPR_CONSENT}']);
+    assert.deepEqual(vectorsByName.get('vendor-scoped-consent-value-reported').expected.frozen_consent_macros,
+      ['{GDPR_CONSENT_755}']);
+    assert.deepEqual(vectorsByName.get('vendor-scoped-consent-unmapped-reported').expected.dropped_consent_macros,
+      ['{GDPR_CONSENT_755}']);
+    assert.deepEqual(vectorsByName.get('vendor-scoped-consent-unscoped-mapping-does-not-match').expected.unmapped_macros,
+      ['{GDPR_CONSENT_755}']);
+  });
+
+  it('preserves Additional Consent alongside TCF and reports unavailable or frozen values', () => {
+    const vectorsByName = new Map(fixture.vectors.map((vector) => [vector.name, vector]));
+    const native = vectorsByName.get('additional-consent-native-with-tcf');
+    assert.equal(native.mapping['{ADDTL_CONSENT}'].native, '${ADDTL_CONSENT}');
+    assert.equal(native.expected.url,
+      'https://pixel.example/i?gdpr=${GDPR}&gdpr_consent=${GDPR_CONSENT_755}&addtl_consent=${ADDTL_CONSENT}');
+    const existing = vectorsByName.get('additional-consent-existing-native-pass-through');
+    assert.equal(existing.expected.url, existing.input_pixel_url);
+    const unmapped = vectorsByName.get('additional-consent-unmapped-reported').expected;
+    assert.deepEqual(unmapped.dropped_params, ['a', 'again']);
+    assert.deepEqual(unmapped.unmapped_macros, ['{ADDTL_CONSENT}']);
+    assert.deepEqual(unmapped.dropped_consent_macros, ['{ADDTL_CONSENT}']);
+    assert.equal(unmapped.url, 'https://pixel.example/i?c=${GDPR_CONSENT_755}');
+    const frozen = vectorsByName.get('additional-consent-value-reported');
+    assert.equal(frozen.mapping['{ADDTL_CONSENT}'].value, '2~41.1.35~dv.21.9');
+    assert.equal(frozen.expected.url,
+      'https://pixel.example/i?c=${GDPR_CONSENT_755}&a=2~41.1.35~dv.21.9');
+    assert.deepEqual(frozen.expected.frozen_consent_macros, ['{ADDTL_CONSENT}']);
+    const unavailable = vectorsByName.get('additional-consent-unavailable-empty');
+    assert.equal(unavailable.mapping['{ADDTL_CONSENT}'].value, '');
+    assert.equal(unavailable.expected.url, 'https://pixel.example/i?c=${GDPR_CONSENT_755}&a=');
+    assert.deepEqual(unavailable.expected.frozen_consent_macros, ['{ADDTL_CONSENT}']);
+  });
+
+  it('rejects multiple scoped occurrences, including existing and indirect native tokens', () => {
+    const vectorsByName = new Map(fixture.vectors.map((vector) => [vector.name, vector]));
+    const cases = {
+      'vendor-scoped-consent-repeated-occurrence-rejected': '{GDPR_CONSENT_755}',
+      'vendor-scoped-consent-different-vendors-rejected': '{GDPR_CONSENT_42}',
+      'vendor-scoped-consent-repeated-within-value-rejected': '{GDPR_CONSENT_755}',
+      'vendor-scoped-consent-existing-native-occurrence-rejected': '{GDPR_CONSENT_755}',
+      'vendor-scoped-consent-indirect-native-occurrence-rejected': '{GDPR_CONSENT_42}',
+      'vendor-scoped-consent-alternate-native-duplicates-rejected': '{GDPR_CONSENT_755}',
+      'vendor-scoped-consent-existing-native-duplicates-rejected': '{GDPR_CONSENT_42}',
+    };
+    for (const [name, macro] of Object.entries(cases)) {
+      assert.deepEqual(vectorsByName.get(name)?.expected_error, {
+        code: 'multiple_vendor_consent_macros', macro,
+      }, name);
+    }
+    for (const vector of fixture.vectors.filter((vector) => vector.expected)) {
+      assert.ok((vector.expected.url.match(/\$?\{GDPR_CONSENT_[1-9][0-9]*\}/g) || []).length <= 1,
+        `${vector.name} must not emit multiple scoped consent macros`);
+      assert.ok(!vector.expected.url.includes('GDPR_CONSENT_XXX'), vector.name);
+    }
   });
 
   it('pins every ratified edge case and the complete successful result shape', () => {

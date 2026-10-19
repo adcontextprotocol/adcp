@@ -129,6 +129,13 @@ vi.mock('../../src/addie/error-notifier.js', () => ({
   notifySystemError: vi.fn(),
 }));
 
+const sqlCalls = (fragment: string) => mocks.query.mock.calls.filter(([sql]) => String(sql).includes(fragment));
+const claimCalls = () => sqlCalls('INSERT INTO agent_registry_metadata');
+const reconcileCalls = () => sqlCalls('WITH orphaned');
+const startMarkerCalls = () => sqlCalls('SET heartbeat_started_at = NOW()');
+const releaseCalls = () => sqlCalls('heartbeat_orphan_streak = CASE WHEN heartbeat_started_at IS NOT NULL THEN 0');
+const unstartedReleaseCalls = () => sqlCalls('AND heartbeat_started_at IS NULL');
+
 describe('runComplianceHeartbeatJob', () => {
   const target = { requested: '3.1', version: '3.1.0' };
 
@@ -136,7 +143,7 @@ describe('runComplianceHeartbeatJob', () => {
     vi.clearAllMocks();
     mocks.hostedComplianceTarget.mockReturnValue(target);
     mocks.getAgentsDueForCheck.mockResolvedValue([
-      { agent_url: 'https://agent.example.com/mcp', lifecycle_stage: 'testing', last_checked_at: null },
+      { agent_url: 'https://agent.example.com/mcp', lifecycle_stage: 'testing', last_checked_at: null, heartbeat_orphan_streak: 0 },
     ]);
     mocks.query.mockImplementation(async (sql: string, params?: unknown[]) => ({
       rows: sql.includes('INSERT INTO agent_registry_metadata')
@@ -205,7 +212,8 @@ describe('runComplianceHeartbeatJob', () => {
 
     expect(mocks.pruneVerificationProfileShadowAssessments).toHaveBeenCalledOnce();
     expect(mocks.comply).not.toHaveBeenCalled();
-    expect(mocks.query).not.toHaveBeenCalled();
+    expect(mocks.query.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO agent_registry_metadata')))
+      .toHaveLength(0);
     expect(mocks.loggerInfo).toHaveBeenCalledWith(
       expect.objectContaining({
         queue: { eligibleBacklog: 0, selectedCount: 0, batchLimit: 1 },
@@ -359,7 +367,7 @@ describe('runComplianceHeartbeatJob', () => {
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
       .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
     expect(mocks.query.mock.calls.every(([sql]) => !String(sql).includes('last_checked_at'))).toBe(true);
-    expect(mocks.query.mock.calls[0][0]).toContain('next_compliance_check_at');
+    expect(claimCalls()[0][0]).toContain('next_compliance_check_at');
   });
 
   it.each(['record', 'defer'])('keeps a timed-out run audit-only after a transient %s failure', async failure => {
@@ -448,7 +456,7 @@ describe('runComplianceHeartbeatJob', () => {
     );
     expect(mocks.query).toHaveBeenCalledWith(
       expect.stringContaining('RETURNING agent_url'),
-      [['https://agent.example.com/mcp'], expect.any(Date)],
+      [['https://agent.example.com/mcp'], expect.any(Date), expect.any(String)],
     );
     expect(mocks.comply).toHaveBeenCalledWith(
       'https://agent.example.com/mcp',
@@ -768,6 +776,198 @@ describe('runComplianceHeartbeatJob', () => {
     expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
       .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
     expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
+  });
+
+  describe('batch claim ownership', () => {
+    const identity = { machineId: 'machine-1', owner: 'machine-1:test-process' };
+    const agentUrl = 'https://agent.example.com/mcp';
+    const dueAgent = (name: string, heartbeat_orphan_streak = 0) => ({
+      agent_url: `https://${name}.example/mcp`,
+      lifecycle_stage: 'testing',
+      last_checked_at: null,
+      heartbeat_orphan_streak,
+    });
+    const queryOrder = (calls: ReturnType<typeof sqlCalls>) =>
+      mocks.query.mock.invocationCallOrder[mocks.query.mock.calls.indexOf(calls[0])];
+    const completeRuns = () => {
+      mocks.comply.mockResolvedValue({
+        overall_status: 'passing',
+        summary: { headline: 'All good' },
+        agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
+      });
+      mocks.recordComplianceRun.mockResolvedValue({ run: { id: 'run' }, statusTransition: null, storyboardStatuses: [] });
+    };
+    const run = async (options: { limit: number }, signal?: AbortSignal) => {
+      const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+      return runComplianceHeartbeatJob({ ...options, processIdentity: identity }, signal);
+    };
+    const claimedUrls = () => claimCalls()[0][1][0] as string[];
+
+    it('reconciles orphaned claims for this machine before selecting due agents', async () => {
+      completeRuns();
+      await run({ limit: 1 });
+
+      expect(reconcileCalls()).toHaveLength(1);
+      expect(reconcileCalls()[0][1]).toEqual([identity.owner, 'machine-1:']);
+      expect(queryOrder(reconcileCalls())).toBeLessThan(mocks.getAgentsDueForCheck.mock.invocationCallOrder[0]);
+    });
+
+    it('claims selected agents under this process identity', async () => {
+      completeRuns();
+      await run({ limit: 1 });
+
+      expect(claimCalls()[0][1]).toEqual([[agentUrl], expect.any(Date), identity.owner]);
+    });
+
+    it('marks the suite started once the execution fence is held and before the suite runs', async () => {
+      completeRuns();
+      await run({ limit: 1 });
+
+      expect(startMarkerCalls()).toHaveLength(1);
+      expect(startMarkerCalls()[0][1]).toEqual([agentUrl, identity.owner]);
+      const markerOrder = queryOrder(startMarkerCalls());
+      expect(markerOrder).toBeGreaterThan(mocks.acquireHeartbeatExecutionFence.mock.invocationCallOrder[0]);
+      expect(markerOrder).toBeLessThan(mocks.comply.mock.invocationCallOrder[0]);
+    });
+
+    it('releases the claim after a normal completion without touching the schedule', async () => {
+      completeRuns();
+      await run({ limit: 1 });
+
+      expect(releaseCalls()).toHaveLength(1);
+      expect(releaseCalls()[0][1]).toEqual([agentUrl, identity.owner]);
+      expect(String(releaseCalls()[0][0])).not.toContain('next_compliance_check_at');
+      expect(queryOrder(releaseCalls())).toBeGreaterThan(mocks.comply.mock.invocationCallOrder[0]);
+    });
+
+    it.each([
+      ['the execution fence is busy', () => {
+        mocks.acquireHeartbeatExecutionFence.mockResolvedValueOnce(null);
+      }],
+      ['no trustworthy target can be selected', () => {
+        mocks.selectComplianceTargetForAgentSelection.mockResolvedValueOnce({ target, confirmed: false, source: 'default' });
+      }],
+      ['the suite throws', () => {
+        mocks.comply.mockRejectedValueOnce(new Error('connection reset'));
+      }],
+      ['the execution fence is lost', () => {
+        mocks.acquireHeartbeatExecutionFence.mockResolvedValueOnce({ isValid: () => false, release: mocks.releaseExecutionFence });
+      }],
+    ])('releases the claim when %s', async (_label, arrange) => {
+      completeRuns();
+      arrange();
+
+      await expect(run({ limit: 1 })).resolves.toMatchObject({ skipped: 1 });
+
+      expect(releaseCalls()).toHaveLength(1);
+      expect(releaseCalls()[0][1]).toEqual([agentUrl, identity.owner]);
+    });
+
+    it('does not mark the suite started when the execution fence is busy', async () => {
+      mocks.acquireHeartbeatExecutionFence.mockResolvedValueOnce(null);
+      await run({ limit: 1 });
+
+      expect(startMarkerCalls()).toHaveLength(0);
+    });
+
+    it('keeps the job result when releasing a claim fails, and reports it', async () => {
+      completeRuns();
+      mocks.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (String(sql).includes('heartbeat_orphan_streak = CASE WHEN heartbeat_started_at IS NOT NULL THEN 0')) {
+          throw new Error('database unavailable');
+        }
+        return {
+          rows: String(sql).includes('INSERT INTO agent_registry_metadata')
+            ? ((params?.[0] as string[]) ?? []).map(agent_url => ({ agent_url })) : [],
+          rowCount: 0,
+        };
+      });
+
+      await expect(run({ limit: 1 })).resolves.toMatchObject({ checked: 1 });
+      expect(mocks.loggerError).toHaveBeenCalledWith(
+        expect.objectContaining({ agentUrl }),
+        expect.stringContaining('Failed to release compliance heartbeat claim'),
+      );
+    });
+
+    it('runs a previously fatal agent alone when it is first in the selection', async () => {
+      completeRuns();
+      mocks.getAgentsDueForCheck.mockResolvedValueOnce([
+        { ...dueAgent('suspect', 2), eligible_backlog: 3 },
+        dueAgent('b'),
+        dueAgent('c'),
+      ]);
+
+      await run({ limit: 3 });
+
+      expect(claimedUrls()).toEqual(['https://suspect.example/mcp']);
+      expect(mocks.comply.mock.calls.map(([url]) => url)).toEqual(['https://suspect.example/mcp']);
+      expect(mocks.loggerInfo).toHaveBeenCalledWith(
+        expect.objectContaining({ queue: { eligibleBacklog: 3, selectedCount: 1, batchLimit: 3 } }),
+        'Compliance heartbeat shadow flush completed after public processing',
+      );
+    });
+
+    it('stops the batch before a previously fatal agent later in the selection', async () => {
+      completeRuns();
+      mocks.getAgentsDueForCheck.mockResolvedValueOnce([
+        dueAgent('a'),
+        dueAgent('b'),
+        dueAgent('suspect', 1),
+        dueAgent('d'),
+      ]);
+
+      await run({ limit: 4 });
+
+      expect(claimedUrls()).toEqual(['https://a.example/mcp', 'https://b.example/mcp']);
+      expect(mocks.comply.mock.calls.map(([url]) => url).sort()).toEqual(['https://a.example/mcp', 'https://b.example/mcp']);
+    });
+
+    it('sizes the claim lock for the isolated batch rather than the full selection', async () => {
+      completeRuns();
+      mocks.getAgentsDueForCheck.mockResolvedValueOnce([
+        dueAgent('suspect', 1), dueAgent('b'), dueAgent('c'), dueAgent('d'),
+      ]);
+      const before = Date.now();
+
+      await run({ limit: 4 });
+
+      // One agent is one wave: budget + target discovery + 5 minute margin.
+      const oneWaveMs = 1_800_000 + 300_000 + (2 * 30_000) + 300_000;
+      const lockUntil = (claimCalls()[0][1][1] as Date).getTime();
+      expect(lockUntil - before).toBeGreaterThanOrEqual(oneWaveMs);
+      expect(lockUntil - before).toBeLessThan(oneWaveMs + 10_000);
+    });
+
+    it('releases claims that never started when the batch stops on a failure', async () => {
+      completeRuns();
+      const names = ['one', 'two', 'three', 'four'];
+      const urls = names.map(name => `https://${name}.example/mcp`);
+      mocks.getAgentsDueForCheck.mockResolvedValueOnce(names.map(name => dueAgent(name)));
+      mocks.acquireHeartbeatExecutionFence.mockRejectedValueOnce(new Error('fence store unavailable'));
+
+      await expect(run({ limit: 4 })).rejects.toThrow('fence store unavailable');
+
+      expect(unstartedReleaseCalls()).toHaveLength(1);
+      expect(unstartedReleaseCalls()[0][1]).toEqual([urls, identity.owner]);
+    });
+
+    it('releases claims that never started when the scheduler aborts the batch', async () => {
+      const controller = new AbortController();
+      mocks.getAgentsDueForCheck.mockResolvedValueOnce([dueAgent('one'), dueAgent('two'), dueAgent('three')]);
+      mocks.comply.mockImplementation(async () => {
+        controller.abort(new Error('heartbeat execution timed out'));
+        throw new Error('aborted');
+      });
+
+      await expect(run({ limit: 3 }, controller.signal)).rejects.toThrow('heartbeat execution timed out');
+
+      expect(unstartedReleaseCalls()).toHaveLength(1);
+      expect(unstartedReleaseCalls()[0][1][1]).toBe(identity.owner);
+      expect(releaseCalls().map(([, params]) => params[0])).toEqual(
+        expect.arrayContaining(['https://one.example/mcp', 'https://two.example/mcp']),
+      );
+    });
   });
 });
 

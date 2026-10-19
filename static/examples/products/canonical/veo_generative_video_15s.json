@@ -73,7 +73,7 @@
           },
           {
             "asset_group_id": "video_brief",
-            "asset_type": "object",
+            "asset_type": "video_brief",
             "required": true,
             "min": 1,
             "max": 5

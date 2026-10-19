@@ -40,7 +40,7 @@ import {
 } from '../../services/hosted-compliance-version.js';
 import { classifyComplianceStep } from '../../compliance/step-disposition.js';
 import { createLogger } from '../../logger.js';
-import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
+import { withSdkSafeTransport, type SdkTransportOptions } from '../../utils/sdk-safe-fetch.js';
 import { createHostedRouteStoryboard } from '../../compliance/hosted-route-storyboard.js';
 import { getTestKitForStoryboard } from '../../services/storyboards.js';
 import { redactHostedGovernanceSecrets } from '../../compliance/hosted-multi-agent-routing.js';
@@ -59,12 +59,29 @@ import type {
 const logger = createLogger('addie-compliance-testing');
 export const HOSTED_TARGET_DISCOVERY_TIMEOUT_MS = 30_000;
 
+// Hosted compliance calls untrusted agents. The SDK's processing of a
+// multi-megabyte reply can need gigabytes of native memory, so one oversized
+// response would take down the worker running every agent's heartbeat.
+// Bounding each reply turns it into a failed step for that agent instead.
+export const HOSTED_COMPLIANCE_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+
+function withHostedComplianceTransport<T extends object>(options: T) {
+  const transport = (options as { transport?: SdkTransportOptions }).transport;
+  return withSdkSafeTransport({
+    ...options,
+    transport: {
+      ...transport,
+      maxResponseBytes: transport?.maxResponseBytes ?? HOSTED_COMPLIANCE_MAX_RESPONSE_BYTES,
+    },
+  });
+}
+
 /** Pin selected targets; bootstrap discovery must not inherit the SDK's version. */
 export function hostedCapabilityDiscoveryOptions(
   options: TestOptions,
   target?: HostedComplianceTarget,
 ): TestOptions {
-  return withSdkSafeTransport(target
+  return withHostedComplianceTransport(target
     ? withHostedTestOptions({ ...options, versionEnvelope: 'auto' }, target)
     : { ...options, adcpVersion: undefined, versionEnvelope: 'major-only' });
 }
@@ -140,7 +157,7 @@ function discoveryOptions(
   const withoutFullRunTimeout = { ...options };
   delete withoutFullRunTimeout.timeout_ms;
 
-  const safeOptions = withSdkSafeTransport({
+  const safeOptions = withHostedComplianceTransport({
     ...withoutFullRunTimeout,
     signal: deadlineSignal,
   });
@@ -265,7 +282,7 @@ export async function comply(
   options: ComplyOptions,
   target: HostedComplianceTarget,
 ): Promise<ComplianceResult> {
-  const safeOptions = withSdkSafeTransport(options);
+  const safeOptions = withHostedComplianceTransport(options);
   const authDefaults = await hostedAuthDefaultsForRun(agentUrl, safeOptions, target);
   // Per-storyboard routing (@adcp/sdk ComplyOptions.routeStoryboard): the
   // multi-agent governance storyboards (#7758) and live-mode test-kit
@@ -295,7 +312,7 @@ export async function comply(
   try {
     rawResult = await sdkComply(
       agentUrl,
-      withSdkSafeTransport(
+      withHostedComplianceTransport(
         withHostedComplianceRunOptions({
           ...safeOptions,
           routeStoryboard,
@@ -306,6 +323,9 @@ export async function comply(
   } finally {
     await receiverLease?.release();
   }
+  // An agent that echoes a newer release in the target's major has its
+  // capabilities validated against that release by the SDK, using the hosted
+  // roots withHostedComplianceOptions supplies (servedReleaseSchemaRoots).
   const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { hosted_provenance: ComplianceRunProvenance }).hosted_provenance =
@@ -337,7 +357,7 @@ export async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
 
 export function loadComplianceIndex(target: HostedComplianceTarget, options: ComplyOptions = {}) {
   return sdkLoadComplianceIndex(
-    withSdkSafeTransport(withHostedComplianceRunOptions(options, target)),
+    withHostedComplianceTransport(withHostedComplianceRunOptions(options, target)),
   );
 }
 

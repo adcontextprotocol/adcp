@@ -81,6 +81,7 @@ import { hasActiveSlackLink } from "./utils/slack-linkage.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
+import { isRegistryDomain } from "./services/registry-domain.js";
 import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
 import { decodeHtmlEntities } from "./utils/html-entities.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, resolvePageSession, type PageSession, type PageSessionUser, switchSessionOrganization, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
@@ -179,6 +180,7 @@ import { createJsonValidationRouter } from "./routes/json-validation.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
+import { initializeTrainingGcsReporting, getTrainingGcsReporting, drainTrainingGcsReporting, stopTrainingGcsReporting } from './training-agent/gcs-reporting.js';
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
 import { createHostedGraderHostRouter, HOSTED_GRADER_HOSTNAME } from "./training-agent/hosted-grader.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
@@ -3192,13 +3194,20 @@ export class HTTPServer {
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
       checks.chat = isWebChatReady();
+      if (req.path === '/ready') {
+        try {
+          const reporting = getTrainingGcsReporting();
+          if (reporting) checks.reporting = await reporting.probe();
+        } catch { checks.reporting = false; }
+      }
 
       // A listening socket and a reachable database do not mean a new web
       // instance can answer chat. Hold deployment traffic until deferred
       // indexing and tool registration finish. /health remains a DB/liveness
       // probe for workers and operational diagnostics.
       const chatRequired = !!(process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY);
-      const ready = checks.database && (req.path !== '/ready' || !chatRequired || checks.chat);
+      const ready = checks.database && (req.path !== '/ready'
+        || (checks.reporting !== false && (!chatRequired || checks.chat)));
       const status = ready ? "ok" : "unavailable";
       const body: Record<string, unknown> = {
         status,
@@ -4291,9 +4300,12 @@ export class HTTPServer {
         if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
+        if (typeof publisher_domain !== 'string' || !isRegistryDomain(publisher_domain)) {
+          return res.status(400).json({ error: 'Invalid publisher_domain: expected a lowercase hostname; reserved test domains are not allowed' });
+        }
 
         const property = await this.propertyDb.createHostedProperty({
-          publisher_domain: publisher_domain.toLowerCase(),
+          publisher_domain,
           adagents_json: adagentsJsonForStorage,
           source_type: source_type || 'community',
           created_by_user_id: req.user?.id,
@@ -4324,6 +4336,9 @@ export class HTTPServer {
         if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
+        if (typeof publisher_domain !== 'string' || !isRegistryDomain(publisher_domain)) {
+          return res.status(400).json({ error: 'Invalid publisher_domain: expected a lowercase hostname; reserved test domains are not allowed' });
+        }
 
         // Check ban
         const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_property', req.user!.id, publisher_domain.toLowerCase());
@@ -4332,7 +4347,7 @@ export class HTTPServer {
         }
 
         const property = await this.propertyDb.createCommunityProperty({
-          publisher_domain: publisher_domain.toLowerCase(),
+          publisher_domain,
           adagents_json: adagentsJsonForStorage,
           source_type: 'community',
           created_by_user_id: req.user!.id,
@@ -4414,7 +4429,10 @@ export class HTTPServer {
           return res.status(403).json({ error: 'Membership required to edit properties' });
         }
 
-        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const domain = decodeURIComponent(req.params.domain);
+        if (!isRegistryDomain(domain)) {
+          return res.status(400).json({ error: 'Invalid publisher_domain: expected a lowercase hostname; reserved test domains are not allowed' });
+        }
 
         const { edit_summary } = req.body;
         if (!edit_summary || typeof edit_summary !== 'string') {
@@ -10197,6 +10215,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+    await initializeTrainingGcsReporting();
 
     // Escalate pool-level errors to Slack
     onPoolError(() => {
@@ -10213,22 +10232,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // rather than silently passing every mutating call to a broken backend.
     // No-ops when the store falls back to memoryBackend.
     //
-    // Bounded with a 10s deadline because the pg pool has connectionTimeoutMillis=5000
-    // but no statement_timeout — without this race, a hung query (e.g., DB starting
-    // up, replica failover) would stall boot indefinitely and starve Fly's TCP healthcheck.
-    const { getIdempotencyStore } = await import("./training-agent/idempotency.js");
-    const probe = getIdempotencyStore().probe?.();
-    if (probe) {
-      await Promise.race([
-        probe,
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Idempotency backend probe timed out after 10s — check DATABASE_URL and pool reachability")),
-            10_000,
-          ),
-        ),
-      ]);
-    }
+    // Allow the configured connection timeout plus 5s query headroom (at least
+    // 10s overall). The pool has no statement_timeout, so a hung query must
+    // still fail boot rather than starve Fly's TCP healthcheck indefinitely.
+    const { getIdempotencyStore, probeIdempotencyStore } = await import("./training-agent/idempotency.js");
+    await probeIdempotencyStore(getIdempotencyStore(), dbConfig.connectionTimeoutMillis);
 
     // Sync Stripe customer IDs and seed dev data. Organizations are created
     // lazily via ensureOrganizationExists at first login and via the
@@ -10265,6 +10273,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.refreshOnlyBackground = this.options.backgroundServices === 'refresh-only';
     this.isWorker = this.refreshOnlyBackground || processRole !== 'web';
     const isWorker = this.isWorker;
+    if (isWorker && !this.refreshOnlyBackground) getTrainingGcsReporting()?.start();
     logger.info({ isWorker }, 'Process role resolved');
 
     if (this.refreshOnlyBackground) {
@@ -10362,6 +10371,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
    */
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
+    // Stop accepting new connections before draining reporting's coordinated scheduler.
+    const httpDrain = this.server ? new Promise<void>((resolve, reject) => {
+      this.server!.close(error => error ? reject(error) : resolve());
+    }) : Promise.resolve();
+    const drains = Promise.all([httpDrain, drainTrainingGcsReporting()]);
+    // Attach a rejection handler immediately while unrelated services drain.
+    void drains.catch(() => {});
 
     // Only stop background services that were started on this machine
     if (this.isWorker) {
@@ -10402,19 +10418,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     }
 
     // Close HTTP server
-    if (this.server) {
-      await new Promise<void>((resolve, reject) => {
-        this.server!.close((err) => {
-          if (err) {
-            logger.error({ err }, "Error closing HTTP server");
-            reject(err);
-          } else {
-            logger.info("HTTP server closed");
-            resolve();
-          }
-        });
-      });
-    }
+    await drains;
+    await stopTrainingGcsReporting();
 
     // Shutdown PostHog client (flush pending events)
     const { shutdownPostHog } = await import('./utils/posthog.js');

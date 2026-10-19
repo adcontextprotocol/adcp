@@ -227,6 +227,74 @@
         "properties": {
           "media_buy": {
             "properties": {
+              "proposal_refinement": {
+                "properties": { "hold_extension": { "const": true } },
+                "required": ["hold_extension"]
+              }
+            },
+            "required": ["proposal_refinement"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.hold_extension" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "description": "Listing media_buy.collection_catalog (list_collections and collection card webhooks) requires media_buy.collection_cards, because the response carries card fields.",
+      "if": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.collection_catalog" }
+          }
+        },
+        "required": ["experimental_features"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.collection_cards" }
+          }
+        }
+      }
+    },
+    {
+      "description": "Collection card webhook event types are repaired through list_collections, so listing any of them requires media_buy.collection_catalog.",
+      "if": {
+        "properties": {
+          "wholesale_feed_webhooks": {
+            "properties": {
+              "event_types": {
+                "contains": {
+                  "enum": ["collection_card.updated", "collection_card.removed", "collection_catalog.bulk_change"]
+                }
+              }
+            },
+            "required": ["event_types"]
+          }
+        },
+        "required": ["wholesale_feed_webhooks"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.collection_catalog" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
               "audience_targeting": {
                 "required": ["supported_activation_methods"]
               }
@@ -1036,6 +1104,11 @@
           "format": "uri",
           "description": "OAuth authorization endpoint for obtaining operator-level credentials. Present when the seller supports OAuth for operator authentication. The agent directs the operator to this URL to authenticate and obtain a bearer token. If absent and require_operator_auth is true, operators obtain credentials out-of-band (e.g., seller portal, API key)."
         },
+        "stable_account_id": {
+          "type": "boolean",
+          "description": "Whether the seller-assigned account_id is a durable AccountRef for every account the caller can operate, including buyer-declared accounts. When true, the seller MUST return account_id on every non-failed sync_accounts provisioning result, MUST accept { account_id } wherever an AccountRef is accepted, and MUST NOT change an account's account_id for the life of the account, including across identity reconciliation. A buyer-declared seller that declares true still accepts the account's current natural key throughout 3.x. Buyers holding an account_id from a seller that declares true SHOULD send it in place of the natural key. When false or absent, buyers follow the account model declared by require_operator_auth and MUST NOT assume a buyer-declared seller accepts its returned account_id. Sellers whose accounts already use account_id references (require_operator_auth: true) SHOULD declare true when their ids meet these rules. Using the natural key as the reference after provisioning is deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare true during 3.x to give buyers a migration path.",
+          "default": false
+        },
         "supported_billing": {
           "type": "array",
           "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. When the buyer calls sync_accounts, it must pass one of these values. A lazy-provisioning seller may omit sync_accounts only when billing can be resolved unambiguously from this capability or the authenticated agent's onboarding defaults.",
@@ -1344,11 +1417,25 @@
               },
               "uniqueItems": true
             },
+            "hold_semantics": {
+              "type": "string",
+              "enum": ["inventory_hold", "terms_only"],
+              "x-added-in": "3.3.0",
+              "x-status": "experimental",
+              "description": "Experimental (media_buy.delegated_composition). What a successful finalize commits by default, for products and drafts that do not declare hold_policy (experimental, media_buy.hold_policy); it is not one setting for the whole agent. A product or draft hold_policy overrides it: a terms_only agent can hold specific products, and an inventory_hold agent can declare non-holdable ones. The rules apply per finalize entry, according to that entry's effective policy. inventory_hold (the default when absent): the seller reserves inventory for the committed proposal and reports its hold expiry; hold_unavailable and hold-driven batch_aborted are possible outcomes. terms_only: the seller commits commercial terms without placing an inventory hold — reservation is owned by the requesting side (delegated composition, where the requester owns the sellable catalog). For an entry whose effective policy is terms-only, the seller MUST NOT return hold_unavailable, and returns batch_aborted only when a sibling failed for a non-hold reason or, in a batch that also contains holdable entries, a holdable sibling returned hold_unavailable. Buyers integrating a terms_only seller perform their own availability control at acceptance. Because committed meant inventory reserved before this field existed, a seller MUST NOT return a committed proposal whose effective policy is terms-only to a caller whose adcp_version is below 3.3; it fails the request at task level with UNSUPPORTED_FEATURE."
+            },
             "max_alternatives": {
               "type": "integer",
               "minimum": 2,
               "maximum": 10,
               "description": "Optional maximum alternatives.count the seller accepts, up to the protocol maximum of 10. Valid only when supported_dimensions includes alternatives. Requests above this ceiling fail at task level with VALIDATION_ERROR identifying refinements[i].alternatives.count; sellers MUST NOT silently clamp the request or return alternatives_unavailable for the declared ceiling violation."
+            },
+            "hold_extension": {
+              "type": "boolean",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "Whether the seller accepts action extend_hold on refine_proposals (feature id media_buy.hold_extension). This is the agent-level gate for the action: buyers MUST NOT send extend_hold unless this is true, and a seller that does not declare it fails the unknown action with VALIDATION_ERROR. extend_hold applies only to committed proposals that hold inventory; against a committed proposal with no hold (an entry whose effective policy is terms-only: hold_policy.available false, or no hold_policy at a seller declaring hold_semantics terms_only) the seller fails the request at task level with INVALID_STATE. When the committed proposal carries hold_policy, extendable false or absent (it defaults to false) means the seller declines with hold_unavailable and buyers SHOULD NOT send extend_hold; the successor's expires_at MUST NOT exceed the original hold_placed_at plus max_total_duration, which successors carry forward unchanged across the whole extension chain; a request the seller cannot extend at all returns hold_unavailable. Absent hold_policy (a seller that does not list media_buy.hold_policy), limits remain seller policy expressed through hold_unavailable.",
+              "default": false
             }
           },
           "required": ["supported_dimensions"],
@@ -1404,6 +1491,13 @@
         "supports_proposals": {
           "type": "boolean",
           "description": "Conformance declaration that this seller supports proposals through either the compact request/refine/finalize lifecycle or the legacy get_products facade. accept_proposal, or the create_media_buy compatibility facade, consumes a finalized committed proposal_id before expires_at.",
+          "default": false
+        },
+        "supports_exclusive_product_ids": {
+          "type": "boolean",
+          "x-added-in": "3.3.0",
+          "x-status": "experimental",
+          "description": "Experimental (media_buy.delegated_composition). Declares that this seller honors criteria.product_ids_exclusive: when a request sets it, the listed product_ids are the complete composable universe, and every proposal purchase, echoed product, and seller-selected signal resolves within them — a brief unsatisfiable within the universe returns rejected (request_proposals) or constraint_unsatisfiable (refine_proposals), never off-universe results. Refinements inherit the universe and may only narrow it. Buyers MUST NOT send the flag unless this is true. Sellers that do not declare this capability MUST NOT silently ignore the flag on request_proposals or refine_proposals; they reject the request at task level with UNSUPPORTED_FEATURE. Primary use is delegated composition, where the requesting platform owns the sellable catalog and the responding agent supplies only the composition judgment.",
           "default": false
         },
         "outcome_target": {
@@ -2176,12 +2270,31 @@
           "properties": {
             "publisher_domains": {
               "type": "array",
-              "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.",
+              "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.\n\n**Non-exhaustive routing hint.** Unlike the sibling `primary_channels` and `primary_countries` allowlists, this list is NOT exhaustive and a buyer MUST NOT treat a publisher's absence from it as evidence that the seller is unauthorized for that publisher, whether or not it is marked complete. Each publisher's own adagents.json remains the authority; resolve it for the publisher named on a product rather than denying anything this list omits. When the list is truncated, the seller MUST set `publisher_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each publisher's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent. A seller that mirrors \"every publisher whose adagents.json names me\" is reflecting third-party-controlled content into a document whose size gates signing-key discovery. Sellers MUST NOT mirror this list unbounded: select the publishers you actually represent, keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
               "items": {
                 "type": "string",
                 "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
               },
-              "minItems": 1
+              "minItems": 1,
+              "x-adcp-validation": {
+                "counterparty_asserted": true,
+                "completeness_flag": "publisher_domains_complete",
+                "advisory_bounds": {
+                  "max_items": 100,
+                  "item_max_length": 253,
+                  "unique_items": true,
+                  "max_serialized_bytes": 8192
+                },
+                "enforced_in_3_x": "storyboard",
+                "schema_enforced_in": "4.0",
+                "spec": "docs/building/by-layer/L1/security.mdx#response-size-bounds"
+              }
+            },
+            "publisher_domains_complete": {
+              "type": "boolean",
+              "default": true,
+              "x-added-in": "3.3.0",
+              "description": "Whether `publisher_domains` enumerates every publisher this seller represents. Absent or `true` means the list is complete as served. `false` means the seller represents more publishers than it published — because the real set exceeds the advisory item bound or the per-field byte budget — and the list is a sample. This flag is advisory and affects prefetch planning only, never an authorization decision: buyers MUST NOT treat `publisher_domains` as an allowlist whether it is marked complete or not, and MUST resolve each product's publisher through that publisher's own adagents.json. Added in 3.3 so that bounding this counterparty-asserted array cannot silently turn a large but legitimate network into a seller that looks unauthorized for most of its inventory."
             },
             "primary_channels": {
               "type": "array",
@@ -2241,6 +2354,9 @@
     "signals": {
       "type": "object",
       "description": "Signals protocol capabilities. Only present if signals is in supported_protocols.",
+      "dependencies": {
+        "data_provider_domains_complete": ["data_provider_domains"]
+      },
       "properties": {
         "anonymous_discovery": {
           "type": "boolean",
@@ -2249,12 +2365,31 @@
         },
         "data_provider_domains": {
           "type": "array",
-          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.",
+          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.\n\n**Non-exhaustive routing hint.** This list is NOT exhaustive and a buyer MUST NOT treat a provider's absence from it as evidence that the agent may not resell that provider, whether or not it is marked complete. Each provider's own adagents.json remains the authority. When the list is truncated, the agent MUST set `data_provider_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each data provider's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent — the same trust direction as `media_buy.portfolio.publisher_domains`, and the same inflation vector into a document whose size gates signing-key discovery. Agents MUST NOT mirror this list unbounded: keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
-          "minItems": 1
+          "minItems": 1,
+            "x-adcp-validation": {
+              "counterparty_asserted": true,
+              "completeness_flag": "data_provider_domains_complete",
+              "advisory_bounds": {
+                "max_items": 100,
+                "item_max_length": 253,
+                "unique_items": true,
+                "max_serialized_bytes": 8192
+              },
+              "enforced_in_3_x": "storyboard",
+              "schema_enforced_in": "4.0",
+              "spec": "docs/building/by-layer/L1/security.mdx#response-size-bounds"
+            }
+        },
+        "data_provider_domains_complete": {
+          "type": "boolean",
+          "default": true,
+          "x-added-in": "3.3.0",
+          "description": "Whether `data_provider_domains` enumerates every data provider this agent resells. Absent or `true` means the list is complete as served. `false` means the agent resells more providers than it published — because the real set exceeds the advisory item bound or the per-field byte budget — and the list is a sample. This flag is advisory and affects prefetch planning only, never an authorization decision: buyers MUST NOT treat `data_provider_domains` as an allowlist whether it is marked complete or not, and MUST resolve each signal's provider through that provider's own adagents.json. Meaningless without `data_provider_domains`, which the sibling `dependencies` rule requires."
         },
         "discovery_modes": {
           "type": "array",
@@ -2535,10 +2670,34 @@
           "description": "When true, this agent hosts a creative library and supports list_creatives and creative_id references in build_creative. Creative agents with a library should also implement the accounts protocol (sync_accounts / list_accounts) so buyers can establish access.",
           "default": false
         },
+        "stable_creative_ids": {
+          "type": "boolean",
+          "description": "When true, this agent gives every creative that entered its library outside sync_creatives (seller UI or API, automation, or another system) a creative_id that is stable for the creative's lifetime and unique within the account, so a buyer connecting to an existing advertiser can reference those creatives in later requests. The agent MUST keep such IDs stable, MUST NOT reuse a creative_id a buyer has used on the account, and under sync_creatives delete_missing MUST NOT archive those creatives. Requires has_creative_library: true. When false or absent, sellers SHOULD follow the same rules but buyers MUST NOT rely on them.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
         "supports_revisions": {
           "type": "boolean",
           "description": "When true, this agent accepts buyer-assigned revision_id on sync_creatives, enforces immutable revision content, echoes accepted revision identity, returns it from list_creatives, and attributes delivered executions to it. Revision support does not imply revision history, rollback, or staged activation.",
           "default": false
+        },
+        "supports_assignment_merge": {
+          "type": "boolean",
+          "description": "When true, this agent accepts the merge operation in sync_creatives assignment_operations: a buyer declares that a seller-assigned creative assigned to a package is the same creative as its own, and the seller moves that assignment's serving object, approval, and delivery continuity to the buyer's creative_id. Requires has_creative_library: true and stable_creative_ids: true. When false or absent, the agent rejects merge with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
+        "supports_assignment_trackers": {
+          "type": "boolean",
+          "description": "When true, this agent accepts trackers on creative assignments in create_media_buy, update_media_buy, and sync_creatives, fires them in addition to the creative's own trackers or rejects the assignment, enforces shared format tracker-slot limits, and returns the assignment-scoped tracker list in list_creatives and get_media_buys readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
+        "supports_assignment_landing_page": {
+          "type": "boolean",
+          "description": "When true, this agent accepts landing_page_url on creative assignments in create_media_buy, update_media_buy, and sync_creatives, serves that destination on the specified package or rejects the assignment, and returns the effective serving destination when unique in list_creatives and get_media_buys assignment readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "default": false,
+          "x-added-in": "3.3.0"
         },
         "supports_generation": {
           "type": "boolean",
@@ -2789,6 +2948,20 @@
         {
           "if": {
             "properties": {
+              "stable_creative_ids": { "const": true }
+            },
+            "required": ["stable_creative_ids"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
               "supports_revisions": { "const": true }
             },
             "required": ["supports_revisions"]
@@ -2798,6 +2971,49 @@
               "has_creative_library": { "type": "boolean", "const": true }
             },
             "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_assignment_landing_page": { "const": true }
+            },
+            "required": ["supports_assignment_landing_page"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_assignment_trackers": { "const": true }
+            },
+            "required": ["supports_assignment_trackers"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_assignment_merge": { "const": true }
+            },
+            "required": ["supports_assignment_merge"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true },
+              "stable_creative_ids": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library", "stable_creative_ids"]
           }
         },
         {
@@ -3345,7 +3561,7 @@
     },
     "wholesale_feed_webhooks": {
       "type": "object",
-      "description": "Per-agent wholesale product-feed and wholesale signals-feed webhook capabilities. Consumers register durable sync_accounts notification subscribers and receive actual product.*, signal.*, or wholesale_feed.bulk_change payloads without polling. Product mirrors bootstrap and repair through list_products(if_feed_version); signal mirrors use get_signals(if_wholesale_feed_version). Deprecated wholesale get_products remains the 3.x product compatibility path. Webhook emission MUST apply the same caller/account authorization and cache-scope predicate as the corresponding read.",
+      "description": "Per-agent wholesale product-feed, wholesale signals-feed, and (experimental, media_buy.collection_catalog) collection card webhook capabilities. Consumers register durable sync_accounts notification subscribers and receive actual product.*, signal.*, collection_card.*, wholesale_feed.bulk_change, or collection_catalog.bulk_change payloads without polling. Product mirrors bootstrap and repair through list_products(if_feed_version); signal mirrors use get_signals(if_wholesale_feed_version); collection card mirrors use an unfiltered list_collections(if_collections_version). Deprecated wholesale get_products remains the 3.x product compatibility path. Webhook emission MUST apply the same caller/account authorization and cache-scope predicate as the corresponding read.",
       "properties": {
         "supported": {
           "type": "boolean",
@@ -3353,7 +3569,7 @@
         },
         "event_types": {
           "type": "array",
-          "description": "Wholesale feed webhook event types this agent can emit. Sales agents emit product.* events and MUST expose list_products or the deprecated 3.x wholesale get_products compatibility path. Signals agents emit signal.* events and MUST support wholesale get_signals. wholesale_feed.bulk_change requires at least one corresponding repair path.",
+          "description": "Wholesale feed webhook event types this agent can emit. Sales agents emit product.* events and MUST expose list_products or the deprecated 3.x wholesale get_products compatibility path. Signals agents emit signal.* events and MUST support wholesale get_signals. wholesale_feed.bulk_change requires at least one corresponding repair path. collection_card.updated, collection_card.removed and collection_catalog.bulk_change (experimental) require list_collections, so listing any of them requires media_buy.collection_catalog in experimental_features; buyers MUST NOT register them with a seller that does not list them here, and sellers reject undeclared types.",
           "items": {
             "type": "string",
             "enum": [
@@ -3365,7 +3581,10 @@
               "signal.updated",
               "signal.priced",
               "signal.removed",
-              "wholesale_feed.bulk_change"
+              "wholesale_feed.bulk_change",
+              "collection_card.updated",
+              "collection_card.removed",
+              "collection_catalog.bulk_change"
             ]
           },
           "minItems": 1,
@@ -3391,7 +3610,11 @@
                     "contains_item": "wholesale"
                   }
                 ],
-                "bulk_change_affected_entity_type_must_match_declared_repair_path": true
+                "bulk_change_affected_entity_type_must_match_declared_repair_path": true,
+                "collection_events_require": {
+                  "field": "experimental_features",
+                  "contains_item": "media_buy.collection_catalog"
+                }
               }
             },
             "spec": "specs/wholesale-feed-webhooks.md#capability-declaration"

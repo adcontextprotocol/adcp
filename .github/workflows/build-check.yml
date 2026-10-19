@@ -62,6 +62,9 @@ jobs:
       - name: Assert dist/ contains every server/src runtime asset
         run: node scripts/copy-server-assets.cjs --check
 
+      - name: Check Fly runtime artifact closure
+        run: npm run test:runtime-artifacts
+
       - name: Routed tenant smoke tests
         run: npm run test:tenant-routing
 
@@ -239,6 +242,8 @@ jobs:
           GRANT USAGE, CREATE ON SCHEMA public TO addie_matched_v4_provisioner_ci WITH GRANT OPTION;
           CREATE ROLE addie_matched_v4_runtime_ci LOGIN INHERIT PASSWORD :'runtime_password';
           GRANT CONNECT, TEMPORARY ON DATABASE adcp_test TO addie_matched_v4_runtime_ci;
+          CREATE SCHEMA training_reporting_gcs AUTHORIZATION addie_matched_v4_runtime_ci;
+          REVOKE ALL ON SCHEMA training_reporting_gcs FROM PUBLIC;
           GRANT USAGE ON SCHEMA public TO addie_matched_v4_runtime;
           GRANT addie_matched_v4_runtime TO addie_matched_v4_runtime_ci WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;
           GRANT addie_matched_v4_operator TO addie_matched_v4_provisioner_ci WITH INHERIT FALSE, SET TRUE, ADMIN FALSE;

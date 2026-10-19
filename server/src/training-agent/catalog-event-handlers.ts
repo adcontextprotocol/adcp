@@ -105,7 +105,7 @@ interface CatalogState {
 interface EventSourceState {
   eventSourceId: string;
   name: string;
-  sellerId: string;
+  platformId: string;
   eventTypes: string[];
   allowedDomains: string[];
   action: string;
@@ -163,7 +163,7 @@ export function findEventSourceAnywhere(eventSourceId: string): EventSourceState
 // seller's sync_event_sources response includes its seller-managed sources.
 // The set is one closed-loop purchase attribution source, fed by the
 // network's first-party shopper data. Every account has its own instance:
-// the event_source_id is the same on every account, and seller_id is derived
+// the event_source_id is the same on every account, and platform_id is derived
 // from the account. Buyers read these sources but cannot upsert them through
 // sync_event_sources, delete them with delete_missing, or send events to them
 // through log_event (log_event carries the buyer's own conversion data for
@@ -190,7 +190,7 @@ export function isSellerManagedEventSourceId(eventSourceId: string): boolean {
 }
 
 /** Stable per-account platform id for a seller-managed source. */
-function sellerManagedSellerId(sessionKey: string, eventSourceId: string): string {
+function sellerManagedPlatformId(sessionKey: string, eventSourceId: string): string {
   return `sm_${createHash('sha256').update(`${sessionKey}\0${eventSourceId}`).digest('hex').slice(0, 12)}`;
 }
 
@@ -199,7 +199,8 @@ function sellerManagedEventSourceResults(sessionKey: string): Record<string, unk
   return SELLER_MANAGED_EVENT_SOURCES.map(source => ({
     event_source_id: source.eventSourceId,
     name: source.name,
-    seller_id: sellerManagedSellerId(sessionKey, source.eventSourceId),
+    platform_id: sellerManagedPlatformId(sessionKey, source.eventSourceId),
+    seller_id: sellerManagedPlatformId(sessionKey, source.eventSourceId),
     event_types: [...source.eventTypes],
     action_source: source.actionSource,
     managed_by: 'seller',
@@ -218,7 +219,7 @@ export function findEventSourceInSession(sessionKey: string, eventSourceId: stri
     return {
       eventSourceId: sellerManaged.eventSourceId,
       name: sellerManaged.name,
-      sellerId: sellerManagedSellerId(sessionKey, sellerManaged.eventSourceId),
+      platformId: sellerManagedPlatformId(sessionKey, sellerManaged.eventSourceId),
       eventTypes: [...sellerManaged.eventTypes],
       allowedDomains: [],
       action: 'unchanged',
@@ -753,7 +754,8 @@ export async function handleSyncEventSources(args: ToolArgs, ctx: TrainingContex
     const existing = Array.from(sources.values()).map(s => ({
       event_source_id: s.eventSourceId,
       name: s.name,
-      seller_id: s.sellerId,
+      platform_id: s.platformId,
+      seller_id: s.platformId,
       event_types: s.eventTypes,
       managed_by: 'buyer',
       action: 'unchanged',
@@ -788,12 +790,12 @@ export async function handleSyncEventSources(args: ToolArgs, ctx: TrainingContex
     }
 
     const existing = sources.get(input.event_source_id);
-    const sellerId = `es_${randomUUID().slice(0, 8)}`;
+    const platformId = `es_${randomUUID().slice(0, 8)}`;
 
     const state: EventSourceState = {
       eventSourceId: input.event_source_id,
       name: input.name,
-      sellerId: existing?.sellerId || sellerId,
+      platformId: existing?.platformId || platformId,
       eventTypes: input.event_types || ['purchase', 'add_to_cart', 'page_view', 'lead'],
       allowedDomains: input.allowed_domains || [],
       action: existing ? 'updated' : 'created',
@@ -805,12 +807,13 @@ export async function handleSyncEventSources(args: ToolArgs, ctx: TrainingContex
     results.push({
       event_source_id: state.eventSourceId,
       name: state.name,
-      seller_id: state.sellerId,
+      platform_id: state.platformId,
+      seller_id: state.platformId,
       event_types: state.eventTypes,
       action_source: 'website',
       managed_by: 'buyer',
       setup: {
-        snippet: `<!-- AdCP Event Pixel -->\n<script src="https://test-agent.adcontextprotocol.org/events/${state.sellerId}/pixel.js" async></script>`,
+        snippet: `<!-- AdCP Event Pixel -->\n<script src="https://test-agent.adcontextprotocol.org/events/${state.platformId}/pixel.js" async></script>`,
         snippet_type: 'javascript',
         instructions: `Add this snippet to every page where you want to track events. The pixel fires automatically for page_view events. For purchase and add_to_cart, call window.adcpEvent('${input.event_source_id}', { event_type: 'purchase', content_ids: ['item_123'], value: 29.99, currency: 'USD' }).`,
       },
@@ -879,7 +882,7 @@ export async function handleLogEvent(args: ToolArgs, ctx: TrainingContext) {
     sources.set(req.event_source_id, {
       eventSourceId: req.event_source_id,
       name: req.event_source_id,
-      sellerId: 'sandbox-auto',
+      platformId: 'sandbox-auto',
       eventTypes: ['page_view', 'purchase', 'add_to_cart', 'lead'],
       allowedDomains: [],
       action: 'auto_created',
