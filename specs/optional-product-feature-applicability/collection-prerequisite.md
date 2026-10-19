@@ -158,7 +158,9 @@ and commercial terms must all come from the same pinned graph. Record capture
 provenance and match witness in fixture evidence; preserve the exact seller
 snapshot rather than adding invented fields to a seller response. Declare key
 collisions as authoring errors, and prevent caller context from overriding
-preparation-produced captures.
+preparation-produced captures. Use a reserved immutable namespace: later
+convention extraction, authored step captures and seller-returned context must
+not replace preparation snapshots, witnesses or their provenance either.
 
 Existing scalar capture plus ordinary YAML object construction is enough for a
 simple singleton request. A general subset/map/slice language is unnecessary.
@@ -238,8 +240,11 @@ preparation behind freshly discovered alternatives.
 Do not treat browser-supplied JSON snapshots as independently verified catalog
 evidence. Hosted endpoints should store prepared state in their authenticated
 run/session scope and accept an opaque reference, or reconstruct it through the
-same authenticated preparation with explicit run pinning. Existing arbitrary
-`context` input is insufficient proof. If durable/multi-process state is deferred,
+same authenticated preparation with explicit run pinning. An opaque reference is never authorization: every lookup must enforce the
+authenticated tenant/org, caller and run scope, and recheck current grant and
+revocation state. Bind auth scope using a nonsecret principal/credential generation
+identity; never include bearer tokens or other credentials in evidence. Existing
+arbitrary `context` input is insufficient proof. If durable/multi-process state is deferred,
 say exactly which interactive surface remains unsupported and do not claim
 full/standalone parity.
 
