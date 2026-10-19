@@ -139,8 +139,9 @@ describe('product discovery MCP schema parity', () => {
     // Experimental installment selection (#8230) adds refine_proposals'
     // installment_changes list with its closed CanonicalInstallmentRef item
     // and one revise-field-forbidding arm per no-terms-change action
-    // (+1,108 bytes; 161,651 bytes / 157.86 KiB measured), bounded at
-    // 158 KiB. Headroom is 141 bytes, so the next contributor re-measures.
+    // (+1,110 bytes measured against main, 160,541 → 161,651 bytes /
+    // 157.86 KiB), bounded at 158 KiB. Headroom is 141 bytes, so the next
+    // contributor re-measures rather than assuming this still holds.
     expect(totalBytes).toBeLessThanOrEqual(158 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
