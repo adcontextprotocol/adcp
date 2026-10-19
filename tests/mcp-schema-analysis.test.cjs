@@ -251,14 +251,16 @@ test("experiment report keeps all alternatives smaller than standalone model con
       variants.standalone.context_bytes < 400 * 1024,
     `standalone context outside [200 KiB, 400 KiB]: ${variants.standalone.context_bytes}`
   );
-  // main sat at 0.8298 of standalone against a 0.83 bound. The Web Bot Auth
-  // signing_profile adds 1,440 bytes that prompt cleanup keeps, which takes
-  // the ratio to 0.8305 (289,079 of 348,090 bytes), so the bound moves to
-  // 0.835.
+  // Baseline projection improvements also shrink the denominator, so a fixed
+  // additional percentage is not stable. Require a material absolute saving:
+  // default-boolean compaction leaves 339,678 -> 282,067 bytes (56.3 KiB saved).
+  // The Web Bot Auth signing_profile adds 1,440 bytes to both (341,118 ->
+  // 283,507), so the saving is unchanged.
+  const cleanupSavings = variants.standalone.context_bytes - variants.prompt_cleanup.context_bytes;
   assert.ok(
-    variants.prompt_cleanup.context_bytes <
-      variants.standalone.context_bytes * 0.835,
-    `prompt cleanup is not materially smaller than standalone: ${variants.prompt_cleanup.context_bytes} of ${variants.standalone.context_bytes}`
+    cleanupSavings > 50 * 1024,
+    `prompt cleanup saves too little: ${cleanupSavings} bytes ` +
+      `(${variants.standalone.context_bytes} standalone -> ${variants.prompt_cleanup.context_bytes} cleanup)`
   );
   // Report both operands on failure: this bound drifts into its own limit and
   // is then re-pinned by whichever schema PR trips it first (#6571), and the

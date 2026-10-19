@@ -14,7 +14,7 @@ const yaml = require('js-yaml');
 const semver = require('semver');
 const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 const {
-  normalizeSubstitutions,
+  normalizeStoryboardSampleRequests,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 const {
   MCP_ROLE_PROFILE_TOOLS,
@@ -107,9 +107,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // as one enum schema of its own (enums/webhook-signing-profile.json) that keeps
 // generated SDK type names from colliding. It reaches 11 media-buy inputs
 // (461,681 → 463,743 bytes / 452.9 KiB measured against main), bounded at
-// 453 KiB.
+// 453 KiB. Default-boolean compaction then brought main's media-buy context to
+// 454,296 bytes (443.6 KiB) under the 451 KiB bound; with signing_profile it
+// measures 456,358 bytes (445.7 KiB), bounded at 446 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 453,
+  'media-buy': 446,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -140,10 +142,15 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // webhook types (#8183) reach it through the account notification-config
 // enum, its enumDescriptions and examples, and the longer collection-selector
 // and response-collection descriptions (1_266_010 → 1_270_050 bytes measured
-// against main), bounded at 1_272_000. The Web Bot Auth signing_profile on
-// push-notification and notification configurations reaches it as well
-// (1_270_050 → 1_271_507 bytes measured against main), within that bound.
-const PARITY_COMPILE_LIMIT = 1_272_000;
+// against main), bounded at 1_272_000. Explicit creative acceptance constraints
+// and verifier guidance add 5,486 bytes (1_270_981 -> 1_276_467 measured),
+// bounded at 1_280_000 to retain compilation of every storyboard fixture.
+// This is the parity-test compiler allowance; the independent 4 MiB schema,
+// 22 MiB projection, and role model-context budgets are unchanged. The Web Bot
+// Auth signing_profile on push-notification and notification configurations
+// reaches it as well (1_276_467 → 1_277_924 bytes measured against main),
+// within that bound.
+const PARITY_COMPILE_LIMIT = 1_280_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -249,9 +256,9 @@ function collectStoryboardRequestFixtures() {
         const sourcePath = path.join(SOURCE_DIR, relativePath);
         if (!fs.existsSync(sourcePath)) continue;
         const sourceSchema = readJson(sourcePath);
-        const fixture = normalizeSubstitutions(step.sample_request, sourceSchema);
+        const prepared = normalizeStoryboardSampleRequests(storyboard, step, sourceSchema);
         if (!fixtures.has(relativePath)) fixtures.set(relativePath, []);
-        fixtures.get(relativePath).push(fixture);
+        fixtures.get(relativePath).push(...prepared);
       }
     }
   }
@@ -359,7 +366,7 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.equal(projected.properties.exactMode.const, 'direct');
   assert.equal(projected.properties.exactMode.type, undefined);
   assert.equal(projected.properties.strict.additionalProperties, undefined);
-  assert.equal(projected.properties.extensions.additionalProperties, true);
+  assert.equal(projected.properties.extensions.additionalProperties, undefined);
   assert.equal(projected.properties.ext, undefined);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');
 
@@ -375,8 +382,40 @@ test('model-context presentation keeps request shape and omits validation-only d
   });
   assert.deepEqual(negotiated.properties.ext, {
     type: 'object',
-    additionalProperties: true,
   });
+});
+
+test('model-context omits default object openness while retaining typed maps and payload values', () => {
+  const source = {
+    type: 'object',
+    properties: {
+      label: { type: 'string' },
+      open: { type: 'object', additionalProperties: true },
+      counts: { type: 'object', additionalProperties: { type: 'integer' } },
+      exact: { const: { additionalProperties: true } },
+    },
+    additionalProperties: true,
+  };
+  const projected = stripModelContextAnnotations(source);
+  assert.equal(source.additionalProperties, true, 'the source validation contract is unchanged');
+  assert.equal(projected.additionalProperties, undefined);
+  assert.equal(projected.properties.open.additionalProperties, undefined);
+  assert.deepEqual(projected.properties.counts.additionalProperties, { type: 'integer' });
+  assert.deepEqual(projected.properties.exact.const, { additionalProperties: true });
+
+  const ajv = new AjvDraft07({ strict: false });
+  const original = ajv.compile(source);
+  const prompt = ajv.compile(projected);
+  for (const value of [
+    {},
+    { open: { arbitrary: ['value'] }, counts: { impressions: 10 }, extra: 'allowed' },
+    { counts: { impressions: 'ten' } },
+    { exact: { additionalProperties: true } },
+    { exact: { additionalProperties: false } },
+    { label: 5 },
+  ]) {
+    assert.equal(prompt(value), original(value), JSON.stringify(value));
+  }
 });
 
 test('model-context pruning removes only unreachable root definitions', () => {

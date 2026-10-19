@@ -47,6 +47,7 @@ test('evaluator capability contract grades individual experimental feature decla
     ...storyboard,
     prerequisites: undefined,
     fixtures: undefined,
+    creative_build_probe: undefined,
     phases: [{
       ...contract,
       steps: contract.steps.map(step => ({
@@ -70,6 +71,7 @@ test('evaluator capability contract grades individual experimental feature decla
     const result = await runStoryboard('https://agent.example/mcp', executable, {
       _profile: { tools, raw_capabilities: capabilities },
       agentTools: tools,
+      contracts: ['creative_build_probe_runner'],
       context: { supports_evaluator: true },
       skip_controller_seeding: true,
       _client: {
