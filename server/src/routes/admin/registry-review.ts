@@ -35,6 +35,7 @@ import { BrandDatabase } from '../../db/brand-db.js';
 import { PropertyDatabase } from '../../db/property-db.js';
 import {
   getOpenRegistryReviewItem,
+  getRegistryRecordModerationState,
   getRegistryReviewBacklog,
   listRegistryReviewQueue,
   reopenRegistryReviewItem,
@@ -168,19 +169,29 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
     try {
       // The pending guard is the authorization boundary for `reject`:
       // without it this endpoint would delete live registry records.
-      const record = entityType === 'brand'
-        ? await brandDb.getDiscoveredBrandByDomain(domain)
-        : await propertyDb.getHostedPropertyByDomain(domain);
+      // Read through the same predicate the listing uses, so the queue
+      // never offers an action on a row it would not show.
+      const state = await getRegistryRecordModerationState(entityType, domain);
 
-      if (!record) {
+      if (!state.exists) {
         return res.status(404).json({ error: 'Record not found' });
       }
       // A null `review_status` is a pre-#205 row, which the registry
       // treats as approved — so it is not this endpoint's to delete.
-      if (record.review_status !== 'pending') {
+      if (state.review_status !== 'pending') {
         return res.status(409).json({
           error: 'Record is not pending review',
-          review_status: record.review_status ?? 'approved',
+          review_status: state.review_status ?? 'approved',
+        });
+      }
+      // A pending row with no submitter is an in-flight domain claim, not
+      // a community submission. Publishing it would push an empty
+      // document as the publisher's own; deleting it would strand the
+      // claim token the publisher is part-way through proving.
+      if (!state.has_submitter) {
+        return res.status(409).json({
+          error: 'Record is not a community submission',
+          message: 'This row has no submitter — it is an in-flight domain claim, not a record awaiting review.',
         });
       }
 

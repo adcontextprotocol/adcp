@@ -20,6 +20,10 @@
  *
  * Work the queue at /admin/registry-review (adcp#8338).
  */
+import {
+  BRAND_HAS_SUBMITTER,
+  PROPERTY_HAS_SUBMITTER,
+} from '../../../db/registry-review-queue-db.js';
 import { flattenToSingleLine } from '../../../utils/slack-escape.js';
 import type { Invariant, InvariantContext, InvariantResult, Violation } from '../types.js';
 
@@ -60,12 +64,14 @@ export const registryReviewQueueDrainedInvariant: Invariant = {
     const stale = await pool.query<StaleRow>(
       `SELECT * FROM (
          SELECT 'pending_record'::text AS kind, 'brand'::text AS entity_type,
-                domain, created_at, NULL::text AS verdict
-         FROM brands WHERE review_status = 'pending'
+                b.domain, b.created_at, NULL::text AS verdict
+         FROM brands b
+         WHERE b.review_status = 'pending' AND ${BRAND_HAS_SUBMITTER}
          UNION ALL
          SELECT 'pending_record'::text AS kind, 'property'::text AS entity_type,
-                publisher_domain AS domain, created_at, NULL::text AS verdict
-         FROM hosted_properties WHERE review_status = 'pending'
+                p.publisher_domain AS domain, p.created_at, NULL::text AS verdict
+         FROM hosted_properties p
+         WHERE p.review_status = 'pending' AND ${PROPERTY_HAS_SUBMITTER}
          UNION ALL
          SELECT 'flagged_edit'::text AS kind, entity_type, domain, created_at, verdict
          FROM registry_review_queue

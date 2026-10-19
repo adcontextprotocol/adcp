@@ -22,14 +22,13 @@ const mocks = vi.hoisted(() => ({
   listQueue: vi.fn(),
   getBacklog: vi.fn(),
   getOpenItem: vi.fn(),
+  getModerationState: vi.fn(),
   resolveItem: vi.fn(),
   reopenItem: vi.fn(),
   resolveForRecord: vi.fn(),
-  getBrand: vi.fn(),
   approveBrand: vi.fn(),
   deleteBrand: vi.fn(),
   rollbackBrand: vi.fn(),
-  getProperty: vi.fn(),
   approveProperty: vi.fn(),
   deleteProperty: vi.fn(),
   rollbackProperty: vi.fn(),
@@ -62,7 +61,6 @@ vi.mock('../../src/utils/html-config.js', () => ({
 
 vi.mock('../../src/db/brand-db.js', () => ({
   BrandDatabase: class {
-    getDiscoveredBrandByDomain = mocks.getBrand;
     approveBrand = mocks.approveBrand;
     deleteDiscoveredBrand = mocks.deleteBrand;
     rollbackBrand = mocks.rollbackBrand;
@@ -71,7 +69,6 @@ vi.mock('../../src/db/brand-db.js', () => ({
 
 vi.mock('../../src/db/property-db.js', () => ({
   PropertyDatabase: class {
-    getHostedPropertyByDomain = mocks.getProperty;
     approveProperty = mocks.approveProperty;
     deleteHostedPropertyByDomain = mocks.deleteProperty;
     rollbackProperty = mocks.rollbackProperty;
@@ -82,6 +79,7 @@ vi.mock('../../src/db/registry-review-queue-db.js', () => ({
   listRegistryReviewQueue: mocks.listQueue,
   getRegistryReviewBacklog: mocks.getBacklog,
   getOpenRegistryReviewItem: mocks.getOpenItem,
+  getRegistryRecordModerationState: mocks.getModerationState,
   resolveRegistryReviewItem: mocks.resolveItem,
   reopenRegistryReviewItem: mocks.reopenItem,
   resolveOpenRegistryReviewItemsForRecord: mocks.resolveForRecord,
@@ -135,6 +133,7 @@ describe('admin registry review routes', () => {
       generated_at: '2026-10-05T00:00:00.000Z',
     });
     mocks.resolveForRecord.mockResolvedValue(1);
+    mocks.getModerationState.mockResolvedValue({ exists: true, review_status: 'pending', has_submitter: true });
     mocks.reopenItem.mockResolvedValue(undefined);
     mocks.approveBrand.mockResolvedValue(true);
     mocks.approveProperty.mockResolvedValue(true);
@@ -182,7 +181,7 @@ describe('admin registry review routes', () => {
         .expect(403);
       expect(res.body.error).toMatch(/Human admin session/i);
       expect(mocks.approveBrand).not.toHaveBeenCalled();
-      expect(mocks.getBrand).not.toHaveBeenCalled();
+      expect(mocks.getModerationState).not.toHaveBeenCalled();
     });
 
     it('refuses a tenant API-key session on moderation actions', async () => {
@@ -218,8 +217,6 @@ describe('admin registry review routes', () => {
 
   describe('pending record decisions', () => {
     it('approves a pending brand and records the moderator', async () => {
-      mocks.getBrand.mockResolvedValue({ domain: 'acme.example', review_status: 'pending' });
-
       const res = await request(makeApp())
         .post('/api/admin/registry-review/records/brand/acme.example')
         .send({ action: 'approve' })
@@ -238,8 +235,6 @@ describe('admin registry review routes', () => {
     });
 
     it('approves a pending property', async () => {
-      mocks.getProperty.mockResolvedValue({ publisher_domain: 'news.example', review_status: 'pending' });
-
       await request(makeApp())
         .post('/api/admin/registry-review/records/property/news.example')
         .send({ action: 'approve' })
@@ -249,8 +244,6 @@ describe('admin registry review routes', () => {
     });
 
     it('rejects a pending brand, attributing the removal to the moderator', async () => {
-      mocks.getBrand.mockResolvedValue({ domain: 'spam.example', review_status: 'pending' });
-
       await request(makeApp())
         .post('/api/admin/registry-review/records/brand/spam.example')
         .send({ action: 'reject', note: 'obvious spam' })
@@ -266,7 +259,7 @@ describe('admin registry review routes', () => {
     });
 
     it('never deletes a record that is not pending review', async () => {
-      mocks.getBrand.mockResolvedValue({ domain: 'live.example', review_status: 'approved' });
+      mocks.getModerationState.mockResolvedValue({ exists: true, review_status: 'approved', has_submitter: true });
 
       const res = await request(makeApp())
         .post('/api/admin/registry-review/records/brand/live.example')
@@ -279,7 +272,7 @@ describe('admin registry review routes', () => {
     });
 
     it('treats a legacy null review_status as approved rather than pending', async () => {
-      mocks.getBrand.mockResolvedValue({ domain: 'legacy.example', review_status: null });
+      mocks.getModerationState.mockResolvedValue({ exists: true, review_status: null, has_submitter: true });
 
       await request(makeApp())
         .post('/api/admin/registry-review/records/brand/legacy.example')
@@ -290,7 +283,7 @@ describe('admin registry review routes', () => {
     });
 
     it('404s an unknown record', async () => {
-      mocks.getBrand.mockResolvedValue(null);
+      mocks.getModerationState.mockResolvedValue({ exists: false, review_status: null, has_submitter: false });
       await request(makeApp())
         .post('/api/admin/registry-review/records/brand/missing.example')
         .send({ action: 'approve' })
@@ -310,7 +303,26 @@ describe('admin registry review routes', () => {
         .post('/api/admin/registry-review/records/brand/acme.example')
         .send({ action: 'revert' })
         .expect(400);
-      expect(mocks.getBrand).not.toHaveBeenCalled();
+      expect(mocks.getModerationState).not.toHaveBeenCalled();
+    });
+
+    it('refuses to act on a pending row that has no community submitter', async () => {
+      // `issueDomainClaim` parks a bare hosted_properties row at
+      // review_status = 'pending' while a publisher proves origin control.
+      // Approving it would publish an empty document as the publisher's
+      // own; rejecting it would strand the claim token.
+      mocks.getModerationState.mockResolvedValue({
+        exists: true, review_status: 'pending', has_submitter: false,
+      });
+
+      const res = await request(makeApp())
+        .post('/api/admin/registry-review/records/property/claiming.example')
+        .send({ action: 'reject' })
+        .expect(409);
+
+      expect(res.body.error).toMatch(/not a community submission/i);
+      expect(mocks.deleteProperty).not.toHaveBeenCalled();
+      expect(mocks.approveProperty).not.toHaveBeenCalled();
     });
   });
 

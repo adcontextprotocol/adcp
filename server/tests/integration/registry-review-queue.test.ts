@@ -24,6 +24,7 @@ import { BrandDatabase } from '../../src/db/brand-db.js';
 import { PropertyDatabase } from '../../src/db/property-db.js';
 import {
   getOpenRegistryReviewItem,
+  getRegistryRecordModerationState,
   getRegistryReviewBacklog,
   listRegistryReviewQueue,
   recordRegistryReviewOutcome,
@@ -31,11 +32,15 @@ import {
   resolveOpenRegistryReviewItemsForRecord,
   resolveRegistryReviewItem,
 } from '../../src/db/registry-review-queue-db.js';
+import { registryReviewQueueDrainedInvariant } from '../../src/audit/integrity/invariants/registry-review-queue-drained.js';
+import type { InvariantContext } from '../../src/audit/integrity/types.js';
 
 const BRAND_DOMAIN = 'queue-pending.registry-review-8338.com';
 const EDIT_DOMAIN = 'queue-edit.registry-review-8338.com';
 const PROPERTY_DOMAIN = 'queue-property.registry-review-8338.com';
+const CLAIM_DOMAIN = 'queue-claim.registry-review-8338.com';
 const MODERATOR = { user_id: 'user_moderator', email: 'moderator@example.com' };
+const CLAIMANT_ORG = 'org_registry_review_8338_claimant';
 
 describe('registry review queue (Postgres)', () => {
   let pool: Pool;
@@ -43,18 +48,19 @@ describe('registry review queue (Postgres)', () => {
   let propertyDb: PropertyDatabase;
 
   async function clearFixtures() {
-    const domains = [BRAND_DOMAIN, EDIT_DOMAIN, PROPERTY_DOMAIN];
+    const domains = [BRAND_DOMAIN, EDIT_DOMAIN, PROPERTY_DOMAIN, CLAIM_DOMAIN];
     await pool.query('DELETE FROM registry_review_queue WHERE domain = ANY($1)', [domains]);
     await pool.query('DELETE FROM brand_revisions WHERE brand_domain = ANY($1)', [domains]);
     await pool.query('DELETE FROM brands WHERE domain = ANY($1)', [domains]);
     await pool.query('DELETE FROM property_revisions WHERE publisher_domain = ANY($1)', [domains]);
     await pool.query('DELETE FROM hosted_properties WHERE publisher_domain = ANY($1)', [domains]);
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [CLAIMANT_ORG]);
   }
 
   /** Only this test's fixtures — the table is shared with real data. */
   async function ourQueue() {
     const items = await listRegistryReviewQueue({ limit: 200 });
-    return items.filter((item) => [BRAND_DOMAIN, EDIT_DOMAIN, PROPERTY_DOMAIN].includes(item.domain));
+    return items.filter((item) => [BRAND_DOMAIN, EDIT_DOMAIN, PROPERTY_DOMAIN, CLAIM_DOMAIN].includes(item.domain));
   }
 
   beforeAll(async () => {
@@ -261,6 +267,96 @@ describe('registry review queue (Postgres)', () => {
 
     expect(closed).toBe(1);
     expect(await ourQueue()).toHaveLength(0);
+  });
+
+
+  it('leaves an in-flight domain claim out of the queue and out of the backlog', async () => {
+    // `issueDomainClaim` parks a bare hosted_properties row — empty
+    // adagents.json, a claim token, no creator and no revision — at
+    // review_status = 'pending' while the publisher proves origin
+    // control. Approving it would publish an empty document as the
+    // publisher's own; rejecting it would strand the claim token.
+    const before = await getRegistryReviewBacklog();
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name) VALUES ($1, 'Claimant Co')
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [CLAIMANT_ORG],
+    );
+    const { token } = await propertyDb.issueDomainClaim(CLAIM_DOMAIN, CLAIMANT_ORG);
+    expect(token).toBeTruthy();
+
+    const claimed = await propertyDb.getHostedPropertyByDomain(CLAIM_DOMAIN);
+    expect(claimed?.review_status).toBe('pending');
+
+    expect(await ourQueue()).toHaveLength(0);
+    const after = await getRegistryReviewBacklog();
+    expect(after.pending_properties).toBe(before.pending_properties);
+
+    // And the action guard reads the same rule, so the endpoints cannot
+    // reach a row the listing would not show.
+    const state = await getRegistryRecordModerationState('property', CLAIM_DOMAIN);
+    expect(state).toMatchObject({ exists: true, review_status: 'pending', has_submitter: false });
+  });
+
+  it('keeps an Addie-submitted property in the queue even though it has no revision', async () => {
+    // `enhanceProperty` writes no revision but does set created_by_user_id.
+    await propertyDb.createHostedProperty({
+      publisher_domain: PROPERTY_DOMAIN,
+      adagents_json: { authorized_agents: [] },
+      source_type: 'community',
+      is_public: false,
+      review_status: 'pending',
+      created_by_user_id: 'system:addie',
+      created_by_email: 'addie@agenticadvertising.org',
+    });
+
+    const [entry] = await ourQueue();
+
+    expect(entry).toMatchObject({
+      kind: 'pending_record',
+      entity_type: 'property',
+      domain: PROPERTY_DOMAIN,
+      submitter_user_id: 'system:addie',
+    });
+    expect(await getRegistryRecordModerationState('property', PROPERTY_DOMAIN))
+      .toMatchObject({ exists: true, review_status: 'pending', has_submitter: true });
+  });
+
+  it('reports a missing record as absent rather than pending', async () => {
+    expect(await getRegistryRecordModerationState('brand', BRAND_DOMAIN))
+      .toEqual({ exists: false, review_status: null, has_submitter: false });
+  });
+
+
+  it('runs the operational diagnostic against the real schema', async () => {
+    // The unit test mocks the pool, so this is where the invariant's SQL
+    // — including the shared submitter predicate — is actually executed.
+    const edit = await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: 5,
+      submitter_user_id: 'user_editor',
+      verdict: 'needs_human_review',
+      reason: 'could not decide',
+    });
+    await pool.query(
+      `UPDATE registry_review_queue SET created_at = NOW() - INTERVAL '100 hours' WHERE id = $1`,
+      [edit.id],
+    );
+
+    const ctx = {
+      pool,
+      logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+      options: { sampleSize: 500 },
+    } as unknown as InvariantContext;
+
+    const result = await registryReviewQueueDrainedInvariant.check(ctx);
+    const ours = result.violations.filter((v) => v.subject_id === `brand:${EDIT_DOMAIN}`);
+
+    expect(ours).toHaveLength(1);
+    expect(ours[0].severity).toBe('warning');
+    expect((ours[0].details as { age_hours: number }).age_hours).toBeGreaterThanOrEqual(99);
   });
 
   it('counts pending brands, pending properties and flagged edits, and the oldest wait', async () => {

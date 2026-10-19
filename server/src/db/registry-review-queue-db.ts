@@ -114,6 +114,34 @@ export interface RegistryReviewQueueEntry {
   available_actions: Array<'approve' | 'reject' | 'revert'>;
 }
 
+/**
+ * A pending row is a community submission only when somebody submitted it.
+ *
+ * `review_status = 'pending'` is not by itself proof of a contribution
+ * waiting on review. `issueDomainClaim` creates a bare `hosted_properties`
+ * row — empty `adagents.json`, a claim token, no creator and no revision —
+ * for a publisher who is part-way through proving origin control. That row
+ * is pending too. Approving it would publish an empty document as if it
+ * were the publisher's own; rejecting it would delete an in-flight claim
+ * and strand its token.
+ *
+ * Both real submission paths leave a submitter: `createCommunityProperty`
+ * and `createDiscoveredBrand` write revision 1, and `enhanceProperty`
+ * (which writes no revision) sets `created_by_user_id`. A claim row has
+ * neither, and has no submitter to show in the queue either.
+ *
+ * The listing, the backlog count, the action guard and the
+ * `registry-review-queue-drained` diagnostic all read this rule from
+ * here. The fragments assume the table alias `b` (brands) / `p`
+ * (hosted_properties) — if they drift, the queue starts offering actions on rows it
+ * would not list.
+ */
+export const BRAND_HAS_SUBMITTER = `EXISTS (SELECT 1 FROM brand_revisions WHERE brand_domain = b.domain)`;
+export const PROPERTY_HAS_SUBMITTER = `(
+  p.created_by_user_id IS NOT NULL
+  OR EXISTS (SELECT 1 FROM property_revisions WHERE publisher_domain = p.publisher_domain)
+)`;
+
 const SELECT_COLUMNS = `
   id, entity_type, domain, submission_kind, revision_number,
   submitter_user_id, submitter_email, edit_summary,
@@ -136,6 +164,36 @@ function cap(value: string | null | undefined, max: number): string | null {
 function hoursSince(value: Date | string): number {
   const ms = Date.now() - new Date(value).getTime();
   return Math.max(0, Math.round((ms / 3_600_000) * 10) / 10);
+}
+
+/** What the action endpoints need to know before touching a record. */
+export interface RegistryRecordModerationState {
+  exists: boolean;
+  review_status: string | null;
+  /** False for a bare domain-claim row — see {@link PROPERTY_HAS_SUBMITTER}. */
+  has_submitter: boolean;
+}
+
+/**
+ * Whether a record is one the moderation queue may act on, read through
+ * the same predicate the listing uses.
+ */
+export async function getRegistryRecordModerationState(
+  entity_type: RegistryEntityType,
+  domain: string,
+): Promise<RegistryRecordModerationState> {
+  const sql = entity_type === 'brand'
+    ? `SELECT b.review_status, ${BRAND_HAS_SUBMITTER} AS has_submitter
+         FROM brands b WHERE b.domain = $1`
+    : `SELECT p.review_status, ${PROPERTY_HAS_SUBMITTER} AS has_submitter
+         FROM hosted_properties p WHERE p.publisher_domain = $1`;
+
+  const result = await query<{ review_status: string | null; has_submitter: boolean }>(
+    sql, [domain.toLowerCase()],
+  );
+  const row = result.rows[0];
+  if (!row) return { exists: false, review_status: null, has_submitter: false };
+  return { exists: true, review_status: row.review_status, has_submitter: row.has_submitter === true };
 }
 
 /**
@@ -345,7 +403,7 @@ const QUEUE_SQL = `
       ORDER BY created_at DESC
       LIMIT 1
     ) q ON TRUE
-    WHERE b.review_status = 'pending'
+    WHERE b.review_status = 'pending' AND ${BRAND_HAS_SUBMITTER}
 
     UNION ALL
 
@@ -386,7 +444,7 @@ const QUEUE_SQL = `
       ORDER BY created_at DESC
       LIMIT 1
     ) q ON TRUE
-    WHERE p.review_status = 'pending'
+    WHERE p.review_status = 'pending' AND ${PROPERTY_HAS_SUBMITTER}
 
     UNION ALL
 
@@ -465,9 +523,11 @@ interface BacklogRow {
 export async function getRegistryReviewBacklog(): Promise<RegistryReviewBacklog> {
   const result = await query<BacklogRow>(`
     WITH waiting AS (
-      SELECT 'brand'::text AS kind, created_at FROM brands WHERE review_status = 'pending'
+      SELECT 'brand'::text AS kind, b.created_at FROM brands b
+        WHERE b.review_status = 'pending' AND ${BRAND_HAS_SUBMITTER}
       UNION ALL
-      SELECT 'property'::text AS kind, created_at FROM hosted_properties WHERE review_status = 'pending'
+      SELECT 'property'::text AS kind, p.created_at FROM hosted_properties p
+        WHERE p.review_status = 'pending' AND ${PROPERTY_HAS_SUBMITTER}
       UNION ALL
       SELECT 'edit'::text AS kind, created_at FROM registry_review_queue
         WHERE resolved_at IS NULL AND submission_kind = 'edit'
