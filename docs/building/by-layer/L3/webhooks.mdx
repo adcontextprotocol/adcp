@@ -639,7 +639,7 @@ function detectFormat(payload) {
 ### Security requirements
 
 - **Content-Type validation**: Senders MUST send `application/json`. Receivers MUST reject other types before signature verification.
-- **Payload size limit**: Receivers SHOULD enforce a 1MB limit. Reject before signature verification — computing a digest or HMAC over large payloads is a DoS vector. Return `413 Payload Too Large`.
+- **Payload size limit**: Receivers SHOULD enforce a 1MB limit. Reject before signature verification — computing a digest or HMAC over large payloads is a DoS vector. Return `413 Content Too Large`. This is the tighter per-feature cap under the [inbound body bounds](/docs/building/by-layer/L1/security#inbound-body-bounds) precedence rule, so it governs webhook deliveries over the 4 MiB default; the depth and member bounds there apply too.
 - **Deduplication**: `idempotency_key` is the canonical dedup field. Signature verification (9421 or legacy HMAC) plus replay dedup protect the transport; `idempotency_key` protects against duplicate side effects at the application layer.
 - **Format detection**: Auto-detection is a defensive fallback. Receivers SHOULD use the known format from their transport configuration (`knownFormat` parameter) rather than relying solely on payload inspection. A compromised intermediary could craft an ambiguous payload that routes extraction to the wrong path.
 
