@@ -1135,6 +1135,10 @@ export const FederatedAgentWithDetailsSchema = z
     stats: AgentStatsSchema.optional(),
     capabilities: AgentCapabilitiesSchema.optional(),
     compliance: AgentComplianceSchema.optional(),
+    declared_urls: z.array(z.string()).optional().openapi({
+      description:
+        "Every raw agent_url spelling the directory has indexed under this agent's identity, with the listed (canonical) url first. The registry keys an agent by identity, folding a non-root trailing slash, but GET /v1/agents/{agent_url}/publishers matches spec-exactly with the slash significant — so a client answering \"which publishers authorize this agent\" must query once per spelling here and merge the results.",
+    }),
     publisher_domains: z.array(z.string()).optional(),
     property_summary: PropertySummarySchema.optional(),
   })

@@ -540,6 +540,11 @@ components:
           $ref: "#/components/schemas/AgentCapabilities"
         compliance:
           $ref: "#/components/schemas/AgentCompliance"
+        declared_urls:
+          type: array
+          items:
+            type: string
+          description: Every raw agent_url spelling the directory has indexed under this agent's identity, with the listed (canonical) url first. The registry keys an agent by identity, folding a non-root trailing slash, but GET /v1/agents/{agent_url}/publishers matches spec-exactly with the slash significant — so a client answering "which publishers authorize this agent" must query once per spelling here and merge the results.
         publisher_domains:
           type: array
           items:

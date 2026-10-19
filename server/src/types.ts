@@ -165,6 +165,14 @@ export interface PropertySummary {
 }
 
 export interface AgentWithStats extends Agent {
+  /**
+   * Every raw `agent_url` spelling the directory has indexed under this
+   * agent's identity key, the listed (folded) URL first. The registry keys
+   * agents by identity (#7830) but the directory matches spec-exactly
+   * (#7829, #8314), so a consumer asking an authorization question must ask
+   * once per spelling and merge.
+   */
+  declared_urls?: string[];
   health?: AgentHealth;
   stats?: AgentStats;
   capabilities?: AgentCapabilities;
@@ -1248,6 +1256,13 @@ export interface AgentCompliance {
  */
 export interface FederatedAgent {
   url: string;
+  /**
+   * The spelling the owner registered, when the identity key folded
+   * something away (`AgentConfig.declared_url`). Authorization questions are
+   * answered spec-exactly (#7829), so this is the spelling a publisher's
+   * adagents.json would have to list.
+   */
+  declared_url?: string;
   name?: string;
   type?: AgentType;
   protocol?: 'mcp' | 'a2a';

@@ -6870,6 +6870,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
       }
 
+      const declaredByKey = new Map<string, string>();
+      for (const fa of federatedAgents) {
+        if (fa.declared_url) declaredByKey.set(fa.url, fa.declared_url);
+      }
+
       let agents = federatedAgents.map((fa) => ({
         name: fa.name || fa.url,
         url: fa.url,
@@ -6908,6 +6913,36 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         prefetchedBadgeMap = verificationBadgeMap;
       }
 
+
+      // The registry lists an agent once, under its folded identity key
+      // (#7830), but the directory answers authorization questions
+      // spec-exactly, with a non-root trailing slash significant (#7829,
+      // #8314): a publisher that declared `https://a.example/mcp/` has not
+      // authorized `https://a.example/mcp`. A consumer holding only the
+      // listed URL therefore cannot ask the directory the right question for
+      // such an agent — it would ask about the folded spelling and correctly
+      // be told nothing. `declared_urls` is every spelling the directory has
+      // indexed under this identity, the listed URL always first, so
+      // `GET /v1/agents/{agent_url}/publishers` can be asked once per
+      // spelling and the answers merged. One bulk query for the whole page.
+      let declaredUrlsByKey = new Map<string, string[]>();
+      try {
+        declaredUrlsByKey = await federatedIndex.bulkDeclaredAgentUrls(agents.map((a) => a.url));
+      } catch (err) {
+        // Never fail the listing over this: without it every agent keeps the
+        // single-spelling behaviour the page had before.
+        logger.warn({ err }, "Declared agent URL lookup failed; listing falls back to the identity URL");
+      }
+      // Listed URL first, then the owner's registered spelling, then every
+      // spelling a publisher declared. Deduplicated, never empty.
+      const declaredUrlsFor = (url: string): string[] => [
+        ...new Set([
+          url,
+          ...(declaredByKey.has(url) ? [declaredByKey.get(url)!] : []),
+          ...(declaredUrlsByKey.get(url) ?? []),
+        ]),
+      ];
+      agents = agents.map((agent) => ({ ...agent, declared_urls: declaredUrlsFor(agent.url) }));
 
       if (!withHealth && !withCapabilities && !withProperties && !withCompliance) {
         return res.json({ agents, count: agents.length });
@@ -6982,9 +7017,24 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           const promises = [];
 
           if (withProperties && enrichedAgent.type === "sales") {
+            // Same spec-exact split as `declared_urls` above: these two
+            // reads are authorization reads, so asking with the folded URL
+            // alone would show no properties for an agent whose publishers
+            // declared it with a trailing slash. Ask per declared spelling
+            // and merge. Single-spelling agents — almost all of them — make
+            // exactly the same two calls as before.
+            const spellings = declaredUrlsFor(agent.url);
             promises.push(
-              federatedIndex.getPropertiesForAgent(agent.url),
-              federatedIndex.getPublisherDomainsForAgent(agent.url)
+              Promise.all(spellings.map((spelling) => federatedIndex.getPropertiesForAgent(spelling)))
+                .then((perSpelling) => {
+                  const byPropertyId = new Map<string, any>();
+                  for (const property of perSpelling.flat()) {
+                    byPropertyId.set(property.property_id ?? JSON.stringify(property), property);
+                  }
+                  return Array.from(byPropertyId.values());
+                }),
+              Promise.all(spellings.map((spelling) => federatedIndex.getPublisherDomainsForAgent(spelling)))
+                .then((perSpelling) => Array.from(new Set(perSpelling.flat()))),
             );
           }
 
