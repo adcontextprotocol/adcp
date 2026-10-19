@@ -111,7 +111,8 @@
             "wholesale_feed.bulk_change",
             "collection_card.updated",
             "collection_card.removed",
-            "collection_catalog.bulk_change"
+            "collection_catalog.bulk_change",
+            "proposal.created"
           ]
         }
       }
