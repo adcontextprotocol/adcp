@@ -136,7 +136,10 @@ describe('product discovery MCP schema parity', () => {
     // measured), bounded at 156 KiB. The experimental extend_hold refinement
     // action adds one enum value and one revise-field-forbidding arm to
     // refine_proposals (+836 bytes; 156.78 KiB measured), bounded at 157 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(157 * 1024);
+    // Experimental collection_lists / collection_lists_exclude add two short
+    // array properties and their requirement keys to the shared targeting
+    // graph (158.50 KiB measured), bounded at 159 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(159 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);
