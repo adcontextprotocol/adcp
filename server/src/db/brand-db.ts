@@ -1796,6 +1796,15 @@ export class BrandDatabase {
         // Content edits never add, change, or drop trust fields (agents,
         // keys, authorized_operators, brand_refs). Those have dedicated
         // writers; see services/brand-trust-fields.ts.
+        //
+        // Note for the registry reviewer's trust boundary (adcp#8326): this
+        // carries a prior party's text into *this* editor's snapshot, and
+        // `sanitizeBrandSnapshot` does not strip it. Rows that carry trust
+        // fields are domain-control-verified and therefore rejected for
+        // community edit before they get here, which is what keeps the
+        // reviewer's "only the submitter's own content" invariant true. If
+        // trust fields ever become writable on an unverified row, the
+        // review prompt has to stop quoting them.
         const contentManifest = sanitizedManifest
           ? preserveBrandTrustFields(sanitizedManifest, priorManifest)
           : sanitizedManifest;

@@ -577,8 +577,20 @@ export async function notifyRegistryBan(ban: {
  * Post Addie's review assessment as a thread reply.
  */
 export async function notifyAddieReview(review: {
-  thread_ts: string;
-  verdict: 'ok' | 'suspicious' | 'malicious';
+  /**
+   * Absent when the submission never got a card to thread onto — the
+   * property-enhancement path never opens one, and an unconfigured or
+   * failed create-notification drops it. The verdict then posts to the
+   * channel on its own, because the alternative is a locked `pending`
+   * record nobody is told about (adcp#8326).
+   */
+  thread_ts?: string;
+  /**
+   * `needs_human_review` is the fail-safe outcome: the automated review
+   * produced no verdict it trusts, so nothing was approved, reverted, or
+   * banned and the record is waiting on a moderator (adcp#8326).
+   */
+  verdict: 'ok' | 'suspicious' | 'malicious' | 'needs_human_review';
   reason: string;
   domain: string;
   action_taken?: string;
@@ -588,24 +600,30 @@ export async function notifyAddieReview(review: {
 
   const verdictEmoji = review.verdict === 'ok' ? '✅'
     : review.verdict === 'suspicious' ? '⚠️'
+    : review.verdict === 'needs_human_review' ? '🙋'
     : '🚨';
 
   const verdictLabel = review.verdict === 'ok' ? 'Looks good'
     : review.verdict === 'suspicious' ? 'Suspicious'
+    : review.verdict === 'needs_human_review' ? 'Needs human review'
     : 'Malicious';
 
   // `reason` is model output, and the review prompt embeds the submitter's
   // own edit summary — so treat it as submitter-influenced free text, not
   // as platform copy (adcp#8320).
   const reason = sanitizeSlackLine(review.reason, FREE_TEXT_MAX);
-  let text = `${verdictEmoji} *Addie review (${verdictLabel}):* ${reason}`;
+  const domainLabel = sanitizeSlackLine(review.domain, FIELD_MAX);
+  // Unthreaded, the message has to carry the domain itself — there is no
+  // parent card above it saying which record this is about.
+  const subject = review.thread_ts ? '' : ` ${domainLabel}:`;
+  let text = `${verdictEmoji} *Addie review (${verdictLabel}):*${subject} ${reason}`;
   if (review.action_taken) {
     text += `\n_Action: ${sanitizeSlackLine(review.action_taken, FREE_TEXT_MAX)}_`;
   }
 
   const message: SlackBlockMessage = {
-    text: `Addie review: ${verdictLabel} - ${sanitizeSlackLine(review.domain, FIELD_MAX)}`,
-    thread_ts: review.thread_ts,
+    text: `Addie review: ${verdictLabel} - ${domainLabel}`,
+    ...(review.thread_ts ? { thread_ts: review.thread_ts } : {}),
     blocks: [
       {
         type: 'section',
