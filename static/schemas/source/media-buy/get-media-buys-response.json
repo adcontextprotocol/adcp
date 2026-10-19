@@ -423,6 +423,12 @@
                   "$ref": "/schemas/core/context.json",
                   "description": "Opaque package-level correlation data echoed unchanged from the create_media_buy package request. Sellers MUST include persisted package context on read surfaces when the package was created through AdCP with context, so buyers can reconcile seller-assigned package_id values with their own line items; this is the legacy-safe fallback when an older seller did not echo product_id on the create response. Sellers MAY omit context for packages created outside AdCP or created without context. Sellers MUST NOT parse this object for business logic."
                 },
+                "creative_assignments_as_of": {
+                  "type": "string",
+                  "format": "date-time",
+                  "x-added-in": "3.3.0",
+                  "description": "When the seller last refreshed this package's creative assignment set (which creatives appear in creative_approvals) from its source of truth. Lets a buyer interpret a creative's absence: the set is asserted complete only as of this time. MUST NOT be later than the oldest upstream observation that could affect the set. Accepting an AdCP assignment write MUST NOT by itself advance this value; it advances only when the seller observes the resulting assignment in its source of truth (at commit time when the seller's AdCP store is that source). A value earlier than the buyer's last accepted assignment write for this package means the seller has not yet confirmed that write. Sellers SHOULD include it when assignments are served from a cache or from a source that confirms asynchronously. Omit to make no freshness assertion; buyers MUST NOT infer that the set is live. A change that only advances this value MUST NOT fire creative.assignment_changed and MUST NOT write an account change record."
+                },
                 "creative_approvals": {
                   "type": "array",
                   "description": "Approval status for each creative assigned to this package. Absent when no creatives have been assigned.",
@@ -433,6 +439,17 @@
                         "type": "string",
                         "description": "Creative identifier",
                         "x-entity": "creative"
+                      },
+                      "trackers": {
+                        "type": "array",
+                        "items": { "$ref": "/schemas/core/assignment-tracker.json" },
+                        "description": "The complete assignment-scoped tracker list for this creative on this package, retaining the accepted URL templates, events, multiplicity, and order. Sellers supporting creative.supports_assignment_trackers MUST return this array, using [] when no assignment trackers exist. Excludes the creative's own trackers, which remain in its assets and also fire for this placement; this is not a combined effective tracker list.",
+                        "x-added-in": "3.3.0"
+                      },
+                      "landing_page_url": {
+                        "$ref": "/schemas/core/macro-bearing-url.json",
+                        "description": "The landing page actually served for this creative on this package: the assignment override when present, otherwise the creative's own click-through destination when unique. Sellers supporting creative.supports_assignment_landing_page MUST return that effective destination when it is unique. Omit when no destination exists or an unoverridden creative has multiple destinations; those remain available in the creative's assets. MUST NOT select one destination arbitrarily. Macro-bearing readback retains the effective URL template under the same rules as the creative's own click-through.",
+                        "x-added-in": "3.3.0"
                       },
                       "approval_status": {
                         "$ref": "/schemas/enums/creative-approval-status.json"
@@ -456,6 +473,12 @@
                           },
                           "spec": "specs/relationship-scoped-indicators.md#placement-and-reverse-projection"
                         }
+                      },
+                      "approval_status_as_of": {
+                        "type": "string",
+                        "format": "date-time",
+                        "x-added-in": "3.3.0",
+                        "description": "When the seller last refreshed approval_status, rejection_reason, and approval_scopes for this package–creative relationship from its source of truth. MUST NOT be later than the oldest upstream observation that could affect them. Accepting an AdCP write MUST NOT by itself advance this value; it advances only when the seller observes the resulting state in its source of truth (at commit time when the seller's AdCP store is that source). A value earlier than the buyer's last accepted write for this relationship means the seller has not yet confirmed that write. Sellers SHOULD include it when approval state is served from a cache or from a source that confirms asynchronously. When list_creatives also carries it for the same relationship, the values MUST agree, like the approval fields they describe. Omit to make no freshness assertion; buyers MUST NOT infer that the state is live. A change that only advances this value MUST NOT fire creative.assignment_changed and MUST NOT write an account change record."
                       },
                       "indicators": {
                         "type": "array",

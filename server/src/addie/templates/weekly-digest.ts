@@ -1,6 +1,12 @@
 import type { DigestContent, DigestInsiderGroup, PersonaCluster, DigestEmailRecipient } from '../../db/digest-db.js';
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { trackedUrl } from '../../notifications/email.js';
+import {
+  escapeSlackText,
+  isSafeSlackLinkTarget,
+  sanitizeSlackLine,
+  sanitizeSlackLinkLabel,
+} from '../../utils/slack-escape.js';
 import { getCustomSections, getPastedContent, isSectionHidden } from '../../newsletters/config.js';
 import { markdownToEmailHtml as renderMarkdownToEmailHtml } from '../../utils/markdown.js';
 import { pickNudge } from '../services/digest-nudge.js';
@@ -189,16 +195,56 @@ function appendCustomSectionsSlack(
   for (const section of getCustomSections(content)) {
     if (!matchesCustomSectionPlacement(section.position, placement)) continue;
     blocks.push({ type: 'divider' });
-    const title = section.title ? `*${escapeSlackMrkdwn(section.title)}*\n\n` : '';
+    const title = section.title ? `*${sanitizeSlackLine(section.title, DIGEST_LINE_MAX)}*\n\n` : '';
     appendSlackMrkdwnSections(blocks, `${title}${markdownToSlackMrkdwn(section.body)}`);
   }
 }
 
-function escapeSlackMrkdwn(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+/**
+ * Digest copy is model-authored from community and third-party content, and
+ * it lands in a Slack post the room reads as the newsletter itself. The
+ * local escape-only helper this replaced left newlines intact, so a
+ * generated headline could forge an extra `> ` quote line of its own
+ * (adcp#8326).
+ *
+ * Everything the renderer composes itself — headlines, names, labels,
+ * bullets, and the one-paragraph fields (`openingTake`,
+ * `specInsight.body`) that the email render already collapses into a single
+ * `<p>` — is flattened with `sanitizeSlackLine`. Only author-written
+ * markdown bodies (the editor's note, pasted content, custom sections) keep
+ * their line breaks, because there the line structure *is* the formatting;
+ * those go through `escapeSlackMrkdwnPreserveLinks`.
+ *
+ * The email render puts `openingTake` and `specInsight.body` in a single
+ * `<p>`, where HTML collapses newlines anyway, so flattening them for Slack
+ * matches what email already shows; the plain-text render is the one surface
+ * that keeps their line breaks.
+ */
+const DIGEST_LINE_MAX = 400;
+/**
+ * Slack rejects a `section` over 3000 characters with `invalid_blocks`, which
+ * loses the whole post. The two paragraph fields are pushed as their own
+ * section without going through `appendSlackMrkdwnSections`, so they are
+ * capped just under that.
+ */
+const DIGEST_PARAGRAPH_MAX = 2_800;
+/**
+ * A bound on pathological input for the author-written markdown path, not a
+ * content bound — `appendSlackMrkdwnSections` is what chunks a long body
+ * across Slack blocks, and truncating here instead would silently drop the
+ * tail of a long editor's note.
+ */
+const DIGEST_BODY_MAX = 200_000;
+
+/**
+ * Render a Slack link only when the destination is a plain http(s) URL.
+ * Digest URLs are extracted from model-summarized content, and a link
+ * *target* cannot be escaped — a `>` closes the link and leaves the rest as
+ * top-level mrkdwn — so an unsafe target drops the link and keeps the label.
+ */
+function slackLink(url: string, label: string): string {
+  const safeLabel = sanitizeSlackLinkLabel(label, DIGEST_LINE_MAX);
+  return isSafeSlackLinkTarget(url) ? `<${url}|${safeLabel}>` : safeLabel;
 }
 
 /** Slack link pattern: <url|label> or <url> */
@@ -246,13 +292,15 @@ function escapeSlackMrkdwnPreserveLinks(text: string): string {
   const re = new RegExp(SLACK_LINK_RE.source, 'g');
   while ((match = re.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      parts.push(escapeSlackMrkdwn(text.slice(lastIndex, match.index)));
+      parts.push(escapeSlackText(text.slice(lastIndex, match.index), DIGEST_BODY_MAX));
     }
-    parts.push(match[0]);
+    // Same target check as `slackLink`: `SLACK_LINK_RE` already bars `|`
+    // and `>` from the target, but not whitespace or quotes.
+    parts.push(slackLink(match[1], match[2] ?? match[1]));
     lastIndex = re.lastIndex;
   }
   if (lastIndex < text.length) {
-    parts.push(escapeSlackMrkdwn(text.slice(lastIndex)));
+    parts.push(escapeSlackText(text.slice(lastIndex), DIGEST_BODY_MAX));
   }
   return parts.join('');
 }
@@ -829,7 +877,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
   // Opening take
   blocks.push({
     type: 'section',
-    text: { type: 'mrkdwn', text: escapeSlackMrkdwn(content.openingTake) },
+    text: { type: 'mrkdwn', text: sanitizeSlackLine(content.openingTake, DIGEST_PARAGRAPH_MAX) },
   });
 
   // Editor's note
@@ -858,7 +906,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
       text: { type: 'mrkdwn', text: `<${webUrl}|Read the full Prompt>` },
     });
 
-    const fallbackText = `The Prompt — ${formatDate(editionDate)}: ${content.openingTake}`;
+    const fallbackText = `The Prompt — ${formatDate(editionDate)}: ${sanitizeSlackLine(content.openingTake, DIGEST_LINE_MAX)}`;
     return { text: fallbackText, blocks };
   }
 
@@ -871,11 +919,11 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
   if (officialSlack.length > 0) {
     const officialText = officialSlack
       .map((item) => {
-        let text = `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*`;
+        let text = `> *${slackLink(item.url, item.title)}*`;
         if (item.takeaways && item.takeaways.length > 0) {
-          text += '\n' + item.takeaways.map((tw) => `> • ${escapeSlackMrkdwn(tw)}`).join('\n');
+          text += '\n' + item.takeaways.map((tw) => `> • ${sanitizeSlackLine(tw, DIGEST_LINE_MAX)}`).join('\n');
         } else {
-          text += `\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`;
+          text += `\n> _${sanitizeSlackLine(item.whyItMatters, DIGEST_LINE_MAX)}_`;
         }
         return text;
       })
@@ -890,7 +938,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
   // Industry intel
   if (externalSlack.length > 0) {
     const watchText = externalSlack
-      .map((item) => `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*\n> _${escapeSlackMrkdwn(item.whyItMatters)}_`)
+      .map((item) => `> *${slackLink(item.url, item.title)}*\n> _${sanitizeSlackLine(item.whyItMatters, DIGEST_LINE_MAX)}_`)
       .join('\n\n');
     blocks.push({ type: 'divider' });
     blocks.push({
@@ -903,8 +951,8 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
   if (content.fromTheInside.length > 0) {
     const insiderText = content.fromTheInside
       .map((g) => {
-        const meeting = g.nextMeeting ? `\n>    _Next: ${escapeSlackMrkdwn(g.nextMeeting)}_` : '';
-        return `> *${escapeSlackMrkdwn(g.name)}*: ${escapeSlackMrkdwn(g.summary.slice(0, 150))}${meeting}`;
+        const meeting = g.nextMeeting ? `\n>    _Next: ${sanitizeSlackLine(g.nextMeeting, DIGEST_LINE_MAX)}_` : '';
+        return `> *${sanitizeSlackLine(g.name, DIGEST_LINE_MAX)}*: ${sanitizeSlackLine(g.summary.slice(0, 150), DIGEST_LINE_MAX)}${meeting}`;
       })
       .join('\n\n');
     blocks.push({ type: 'divider' });
@@ -919,14 +967,14 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*Something worth thinking about*\n\n*${escapeSlackMrkdwn(content.specInsight.title)}*\n${escapeSlackMrkdwn(content.specInsight.body)}` },
+      text: { type: 'mrkdwn', text: `*Something worth thinking about*\n\n*${sanitizeSlackLine(content.specInsight.title, DIGEST_LINE_MAX)}*\n${sanitizeSlackLine(content.specInsight.body, DIGEST_PARAGRAPH_MAX)}` },
     });
   }
 
   // Voices
   if (content.voices.length > 0) {
     const voicesText = content.voices
-      .map((item) => `> *<${item.url}|${escapeSlackMrkdwn(item.title)}>*\n> _by ${escapeSlackMrkdwn(item.authorName)}_`)
+      .map((item) => `> *${slackLink(item.url, item.title)}*\n> _by ${sanitizeSlackLine(item.authorName, DIGEST_LINE_MAX)}_`)
       .join('\n\n');
     blocks.push({ type: 'divider' });
     blocks.push({
@@ -938,7 +986,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
   // Take action
   if (content.takeActions && content.takeActions.length > 0) {
     const actionText = content.takeActions
-      .map((a) => `• ${escapeSlackMrkdwn(a.text)} <${a.ctaUrl}|${escapeSlackMrkdwn(a.ctaLabel)}>`)
+      .map((a) => `• ${sanitizeSlackLine(a.text, DIGEST_LINE_MAX)} ${slackLink(a.ctaUrl, a.ctaLabel)}`)
       .join('\n');
     blocks.push({ type: 'divider' });
     blocks.push({
@@ -956,7 +1004,7 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     text: { type: 'mrkdwn', text: `<${webUrl}|Read the full Prompt>` },
   });
 
-  const fallbackText = `The Prompt — ${formatDate(editionDate)}: ${content.openingTake}`;
+  const fallbackText = `The Prompt — ${formatDate(editionDate)}: ${sanitizeSlackLine(content.openingTake, DIGEST_LINE_MAX)}`;
   return { text: fallbackText, blocks };
 }
 

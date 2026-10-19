@@ -489,6 +489,12 @@
         line-height: 1.35;
         color: var(--color-text);
       }
+      .navbar__notif-item-body {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        margin-top: var(--space-1);
+        overflow-wrap: anywhere;
+      }
       .navbar__notif-item-time {
         font-size: 0.6875rem;
         color: var(--color-text-muted);
@@ -1430,6 +1436,7 @@
               return '<' + tag + href + ' class="navbar__notif-item' + (n.is_read ? '' : ' unread') + '" data-id="' + esc(n.id) + '">'
                 + '<div class="navbar__notif-item-avatar">' + avatar + '</div>'
                 + '<div><div class="navbar__notif-item-text">' + esc(n.title) + '</div>'
+                + (n.body ? '<div class="navbar__notif-item-body">' + esc(n.body) + '</div>' : '')
                 + '<div class="navbar__notif-item-time">' + notifTimeAgo(n.created_at) + '</div></div>'
                 + '</' + tag + '>';
             }).join('');

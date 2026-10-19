@@ -451,7 +451,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ completeness, is_authoritative: false, badge_eligible: false,
       badge_eligible_adcp_versions: [], diagnostics: [],
-      provenance: { sdk_version: '15.2.0', test_session_id: expect.any(String), agent_build_version: null },
+      provenance: { sdk_version: '15.9.5', test_session_id: expect.any(String), agent_build_version: null },
     });
     expect(complyMock.mock.calls[0][1].test_session_id).toBe(res.body.provenance.test_session_id);
     const db = new ComplianceDatabase();
@@ -1242,7 +1242,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
         currentUserId = STATIC_ADMIN_USER_ID;
         const diagnostics = await request(app).get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/diagnostics`);
         expect(diagnostics.body).toMatchObject({ completeness: 'timed_out', is_authoritative: false,
-          diagnostics_visibility: 'owner_or_operator', provenance: { sdk_version: '15.2.0', agent_build_version: null } });
+          diagnostics_visibility: 'owner_or_operator', provenance: { sdk_version: '15.9.5', agent_build_version: null } });
       }
     } finally {
       revokeBadges.mockRestore();
@@ -1391,9 +1391,12 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
   it('canonicalizes the requested URL before authorized saved-auth lookup and probing', async () => {
     const agentUrl = ownedAgentUrl('canonical-saved-bearer');
-    const requestedUrl = agentUrl
+    // Only what the registry key folds: scheme and host case, a default
+    // port, surrounding whitespace. A trailing slash on /mcp would be a
+    // different agent now (#7830).
+    const requestedUrl = ` ${agentUrl
       .replace('https://', 'HTTPS://')
-      .replace('.example.com', '.EXAMPLE.COM') + '/';
+      .replace('.example.com', '.EXAMPLE.COM:443')} `;
     const { AgentContextDatabase } = await import('../../src/db/agent-context-db.js');
     const db = new AgentContextDatabase();
     const context = await db.create({

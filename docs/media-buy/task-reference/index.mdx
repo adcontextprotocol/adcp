@@ -13,6 +13,7 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | Task | Purpose | Response Time | Phase |
 |------|---------|---------------|-------|
 | [`list_products`](/docs/media-buy/task-reference/list_products) | Enumerate structured product offers | ~1s | Discovery |
+| [`list_collections`](/docs/media-buy/task-reference/list_collections) | Look up or browse the seller's collection cards (experimental) | ~1s | Discovery |
 | [`request_proposals`](/docs/media-buy/task-reference/request_proposals) | Request seller-authored plans | ~60s | Planning |
 | [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) | Revise proposals or finalize inventory holds | ~60s | Planning |
 | [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) | Record terminal proposal feedback | ~1s | Planning |
@@ -44,6 +45,7 @@ AdCP tasks fall into four response time categories:
 ### 🟢 Instant (~1 second)
 **Simple lookups and event ingestion**
 - [`list_products`](/docs/media-buy/task-reference/list_products) - Published offers and canonical `Product.format_options[]`
+- [`list_collections`](/docs/media-buy/task-reference/list_collections) - Collection cards by key or with filters (experimental)
 - [`list_creatives`](/docs/creative/task-reference/list_creatives) - Creative library queries
 - [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) - Media buy status and creative approvals
 - [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) - Managed-reporting health and revision resolution
@@ -81,6 +83,7 @@ Start here to understand what's available and plan your campaign.
 
 - **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)** - Discover agent capabilities, portfolio, and supported features (protocol-level task)
 - **[`list_products`](/docs/media-buy/task-reference/list_products)** - Read published offers or bootstrap and repair a wholesale mirror
+- **[`list_collections`](/docs/media-buy/task-reference/list_collections)** - Browse or look up the seller's collection cards, or bootstrap and repair a card mirror (experimental)
 - **[`request_proposals`](/docs/media-buy/task-reference/request_proposals)**, **[`refine_proposals`](/docs/media-buy/task-reference/refine_proposals)**, and **[`decline_proposals`](/docs/media-buy/task-reference/decline_proposals)** - Request seller-authored plans, create immutable successors, finalize holds, or record terminal feedback
 - **[`list_proposals`](/docs/media-buy/task-reference/list_proposals)** - Read current proposals for an account or opportunity, including later proposals (experimental)
 - **[Canonical formats](/docs/creative/canonical-formats)** - Understand creative requirements and authority

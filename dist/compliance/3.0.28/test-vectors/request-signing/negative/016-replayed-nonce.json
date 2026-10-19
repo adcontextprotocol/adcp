@@ -1,0 +1,35 @@
+{
+  "name": "Second submission of a previously-accepted (keyid, nonce) within the replay window",
+  "spec_reference": "#verifier-checklist-requests step 12",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:U51PJzU9nMJxMAH_u-UDpSecT5SQX1-deSnWE3XpFo-BLT2_2h5FgMltntNCW05chhmFnjZEzkRmaYKeU0UUBw:"
+    },
+    "body": "{\"plan_id\":\"plan_001\",\"packages\":[{\"package_id\":\"pkg_1\",\"budget\":{\"amount\":1000,\"currency\":\"USD\"}}]}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_ref": ["test-ed25519-2026"],
+  "test_harness_state": {
+    "$comment": "Pre-populate the replay cache as if positive/001 was just verified. Harness sets replay_cache[(test-ed25519-2026, KXYnfEfJ0PBRZXQyVXfVQA)] = valid-until 1776521100.",
+    "replay_cache_entries": [
+      { "keyid": "test-ed25519-2026", "nonce": "KXYnfEfJ0PBRZXQyVXfVQA", "ttl_seconds": 360 }
+    ]
+  },
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_replayed",
+    "failed_step": 12
+  },
+  "requires_contract": "replay_window",
+  "side_effects": "mutating",
+  "$comment": "This vector is identical to positive/001-basic-post.json but is submitted after the replay cache has already recorded the (keyid, nonce) pair. White-box harnesses MAY inject the cache entry directly (see test_harness_state). Black-box runners SHOULD send the request twice in sequence per test-kits/signed-requests-runner.yaml → stateful_vector_contract.replay_window; the first submission is accepted as a real create_media_buy and MUST be sent against a sandbox endpoint only (see endpoint_scope in the test-kit), the second MUST be rejected at step 12 with request_signature_replayed without reaching step 13's cache insert. The side_effects: mutating marker is a belt-and-suspenders signal for consumers that read vectors outside the storyboard runner: the black-box path for this vector has a first-request side effect by design."
+}

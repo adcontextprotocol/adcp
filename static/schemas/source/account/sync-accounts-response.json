@@ -30,7 +30,7 @@
             "properties": {
               "account_id": {
                 "type": "string",
-                "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations when the seller's account model uses account_id references. For buyer-declared accounts, this may be echoed as the seller's internal handle for correlation and support, but the seller MUST continue accepting the natural-key AccountRef for subsequent calls. Buyers keep sending the natural key and MUST NOT assume the seller accepts the echoed account_id as an AccountRef.",
+                "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations when the seller's account model uses account_id references. For buyer-declared accounts, sellers SHOULD return it on every non-failed provisioning result and MUST continue accepting the natural-key AccountRef for subsequent calls. A seller declaring account.stable_account_id: true MUST return it, MUST accept it as an AccountRef on every account-scoped task, and MUST NOT change it for the life of the account; buyers SHOULD then send it in place of the natural key. Without that capability, buyers keep sending the natural key and MUST NOT assume the seller accepts the returned account_id as an AccountRef.",
                 "x-entity": "account"
               },
               "account": {

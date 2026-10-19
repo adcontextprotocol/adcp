@@ -77,6 +77,7 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'get_reporting_status',
     'get_task_status',
     'list_accounts',
+    'list_collections',
     'list_creatives',
     'list_products',
     'list_tasks',
@@ -2425,6 +2426,10 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
     manifestMetadata: {
       canonical_wire_manifest: '../../manifest.json',
     },
+    // Compliance schemas carry the full product-graph via task-completion-data.
+    // Rewrite root-anchored cross-def refs to embedded-resource canonical $id
+    // URIs to avoid ~100-byte URL-prefix overhead per cross-def pointer (#8041).
+    schemaRewriteEmbeddedRefs: (_toolName, tool) => tool.protocol === 'compliance',
   });
   console.log(
     `   ✓ MCP ${MCP_PROTOCOL_VERSION} projection: ${stats.toolCount} tools, ${stats.schemaCount} schemas, `
