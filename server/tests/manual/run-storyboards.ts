@@ -314,6 +314,10 @@ const THREE_ZERO_COMPAT_KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new M
     'brand_rights/acquire_rights',
     '3.0.13 compatibility run under @adcp/sdk 8.1 beta.13: frozen brand-rights response schema rejects the current training-agent rights envelope. Current-source brand coverage remains graded by the current matrix.',
   ],
+  [
+    'webhook_emission/get_capabilities',
+    '@adcp/sdk 15.9.5 validates get_adcp_capabilities against the release the agent echoes (3.2 for a 3.0 pin), whose schema requires an https identity.brand_json_url. This runner swaps the canonical base to its http loopback server for webhook_emission, so the URL is http only here. The current matrix quarantines webhook_emission for the same loopback limits. Remove when the runner serves the agent over https or the current quarantine is lifted.',
+  ],
 ]);
 
 const THREE_ZERO_SIGNED_POSITIVE_VECTOR_IDS = [

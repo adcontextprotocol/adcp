@@ -153,7 +153,7 @@
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
 #   Known values: controller | seeded_state | real_wire | webhook_receiver | multi_agent |
-#   trusted_match_publisher_auth_runner (forward-compat:
+#   trusted_match_publisher_auth_runner | property_list_reference_runner (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
 #   Default when absent: [real_wire] — untagged storyboards run unchanged.
@@ -283,6 +283,19 @@
 #                    skip_result.reason: requirement_unmet naming
 #                    "trusted_match_publisher_auth_runner"; it MUST NOT route
 #                    this pseudo-task through MCP or A2A as a fallback.
+#
+#     property_list_reference_runner
+#                  — gate on the runner implementing the complete active
+#                    property_list_reference check, including fresh token-only
+#                    MCP sessions, pagination, cross-list and mutation denial
+#                    probes, and evidence redaction. Storyboards using that
+#                    check MUST list this requirement before controller or any
+#                    other requirement that may contact the agent. When unmet,
+#                    return requirement_unmet naming this requirement before
+#                    fixture seeding or task dispatch, with zero executed
+#                    passing steps. Unknown-check not_applicable results cannot
+#                    substitute for this requirement. See runner-output-contract.yaml
+#                    > property_list_reference_check for the full probe contract.
 #
 #   Forward compatibility: runners encountering a requires value they do not
 #   recognize MUST emit skip_result.reason: requirement_unmet (not fail-load)
@@ -641,6 +654,62 @@
 #
 #   See runner-output-contract.yaml > fixture_resolution_result for evidence and
 #   `fixture_unsatisfied` grading. See governance decision DR-0010.
+#
+# creative_build_probe: object (optional; runner preparation, not agent capability)
+#   context_prefix: lowercase context namespace for the atomic route/input binding
+#   message: brief used only by the bounded automatic generation recipe
+#
+#   Requires the creative_build_probe_runner implementation described in
+#   test-kits/creative-build-probe-runner.yaml. Build steps use requires_contract:
+#   creative_build_probe_runner. Unsupported engines keep existing contract and
+#   vacuous-pass guards; discovery steps need no build-preparation contract.
+#
+#   Operator recipes belong in the brand kit selected by prerequisites.test_kit,
+#   or in the runner's explicit test_kit/--test-kit override, for example:
+#
+#     creative_build_probes:
+#       - match:
+#           - path: /capability_id
+#             operator: equals
+#             value: provisioned_image_transform
+#         input:
+#           creative_manifest:
+#             format_kind: image
+#             assets:
+#               image_main:
+#                 asset_type: image
+#                 url: https://test-assets.example/provisioned.jpg
+#                 width: 300
+#                 height: 250
+#
+#   Match clauses use the existing fixture-resolution DSL against the complete
+#   supported_formats entry. Operators assert valid input for every matched route.
+#   Input fields: message (brief/guidance), creative_manifest (generation or
+#   transformation), creative_id (has_creative_library), transformer_id/config
+#   (supports_transformers), and a provisioned target_format_id when the selected
+#   request supports legacy routing. FormatID is an object, for example
+#   {agent_url: https://formats.example, id: sandbox_named_format}.
+#   For this probe contract, config is transformer-bound
+#   and library/inline sources are unambiguous; these are fixture authoring rules,
+#   not new restrictions on build_creative wire requests. Omitted recipe fields
+#   stay absent, including message. Never embed credentials or trust material.
+#
+#   Automatic generation needs a unique routable build operation, generation
+#   support, complete understood constraints and a schema-valid minimal source
+#   manifest. Legacy omitted operations mean build; absent IDs remain legal but
+#   unaddressable through capability-ID routing. A provisioned selected-version
+#   target_format_id recipe can use existing legacy routing instead. Catalog order
+#   is not an operation/input contract. Inert metadata
+#   does not disable the probe. Other declared/unknown constraints need a recipe.
+#
+#   Bind exactly one <prefix>_capability_id or <prefix>_target_format_id plus
+#   supplied <prefix>_message, _creative_manifest,
+#   _creative_id, _transformer_id and _config; inject optional fields through
+#   context_inputs. Resolved evidence includes creative_format:<prefix>, selected
+#   capability or named-format identity and exact match clauses. Missing fixtures/preconditions
+#   report fixture_unsatisfied with zero security credit. Invalid advertised
+#   catalogs produce a structured failed validation; malformed operator recipes
+#   are authoring errors. No global contribution/accounting rules change.
 #
 # --- Test kit flavors ---
 #
@@ -1800,6 +1869,33 @@
 #         key: agent_url
 #         equals: $agent_url
 #       on_out_of_scope: warn
+#
+# Property-list reference resolution — use `check: property_list_reference`:
+#   Applies to a successful create_property_list response. This is an active
+#   credential-isolated transport check, not a JSON-field comparison. The
+#   normative execution/evidence contract is runner-output-contract.yaml >
+#   property_list_reference_check. Storyboards MUST declare the storyboard-level
+#   property_list_reference_runner requirement first, before controller. An
+#   older runner then returns requirement_unmet before fixture/task dispatch
+#   and MUST NOT claim full passing coverage.
+#
+#   Fields:
+#     agent_url: $agent_url          # managing AdCP endpoint under test
+#     list_id_path: list.list_id     # path in the current task response
+#     auth_token_path: auth_token    # path in the current task response
+#     denied_list_id: $context.other_list_id
+#                                   # existing list from a prior owner call
+#     page_size: 2                  # positive integer; max_results on each call
+#     max_pages: 3                  # positive traversal bound
+#     expected_identifiers:         # exact unordered aggregate of (type,value)
+#       - { type: domain, value: publisher.example }
+#
+#   expected_identifiers MUST contain more than page_size distinct identifiers,
+#   and max_pages MUST allow the complete traversal. The runner authenticates
+#   a fresh protocol session only with the returned bearer token, walks all
+#   get_property_list pages without an account argument, and proves that the
+#   token cannot fetch denied_list_id or mutate the shared list. Auth tokens
+#   MUST be redacted from request, response, and failure evidence.
 #
 # Cross-step comparison — use `check: field_less_than` /
 # `field_equals_context` / `field_in_context_array` /

@@ -1913,6 +1913,16 @@
             "description": "Response payload for list_products"
           }
         },
+        "list-collections": {
+          "request": {
+            "$ref": "/schemas/media-buy/list-collections-request.json",
+            "description": "Experimental: request parameters for reading a seller's collection card catalog by key or with filters"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/list-collections-response.json",
+            "description": "Experimental: response payload for list_collections"
+          }
+        },
         "request-proposals": {
           "request": {
             "$ref": "/schemas/media-buy/request-proposals-request.json",

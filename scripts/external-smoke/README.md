@@ -17,12 +17,13 @@ SDK's OAuth challenge, "requires OAuth authorization").
 
 The probe pins the default hosted line (3.0). A 3.0 pin cannot carry
 `adcp_version`, so the SDK sends only `adcp_major_version: 3`, and the agent
-may serve and echo its highest 3.x release. Since 15.9.2, `@adcp/sdk`
-validates the response against its bundled schema for the echoed release, as
-the versioning spec requires, and falls back to the pin when the echo is
-missing, from another major, or not bundled. (An external schema root bound to
-the pin would win over the echo; `testCapabilityDiscovery` does not register
-the probe's `schemaRoot`, so none applies here.) When the agent echoes a release,
+may serve and echo its highest 3.x release. `@adcp/sdk` validates the
+response against the echoed release, as the versioning spec requires, when the
+echo is in the pin's major, is listed in the response's
+`adcp.supported_versions` (required since 15.9.5), and has a schema root (here
+the SDK's bundled schemas). Otherwise it validates against the pin. Since
+15.9.5 an external schema root bound to the pin no longer overrides the echo;
+hosted compliance supplies its own bundles as `servedReleaseSchemaRoots`. When the agent echoes a release,
 the smoke check also requires the echo to be in the pin's major and listed in
 `adcp.supported_versions`, and resolves storyboards from that release's hosted
 bundle in this checkout (the 3.0 bundle does not know later specialisms such

@@ -3,7 +3,7 @@
   "$id": "/schemas/core/canonical-installment-ref.json",
   "title": "Canonical Installment Reference",
   "x-added-in": "3.3.0",
-  "description": "Closed canonical identity of one installment within a publisher-scoped collection. Only the identity members below are permitted, so the same installment always has one reference value and a set of references always serializes to the same JCS bytes. Use this wherever a reference is covered by a digest or arrives from a counterparty: core/installment-ref.json stays open for seller-emitted delivery rows, where extra members are harmless. Resolution is against the referenced product's declared installments; the publisher_domain names the adagents.json that scopes the collection ID and MUST NOT be dereferenced to resolve a reference.",
+  "description": "Closed canonical identity of one installment within a publisher-scoped collection. Only the identity members below are permitted, so the same installment always has one reference value and a set of references always serializes to the same JCS bytes. Use this wherever a reference is covered by a digest or arrives from a counterparty. core/installment-ref.json stays open for seller-emitted readback, where extra members are harmless and cannot change what was agreed: delivery rows, and the committed proposal's holds[] (experimental, media_buy.installment_holds), which describes a placed hold rather than the terms. Resolution is against the referenced product's declared installments; the publisher_domain names the adagents.json that scopes the collection ID and MUST NOT be dereferenced to resolve a reference.",
   "type": "object",
   "properties": {
     "collection_ref": {

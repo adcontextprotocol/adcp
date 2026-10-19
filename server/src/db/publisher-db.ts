@@ -8,6 +8,7 @@ import { createLogger } from '../logger.js';
 import type { PoolClient } from 'pg';
 import { PostgresStateStore } from '@adcp/sdk/server';
 import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js';
+import { registryAgentUrlKey } from './registry-agent-url-key.js';
 
 const log = createLogger('publisher-db');
 const ADAGENTS_CACHE_LOCK_TIMEOUT_MS = 5_000;
@@ -242,17 +243,6 @@ function isPublisherDomainAnchor(publisherDomain: string, type: string, value: s
   return value.endsWith(`.${publisherDomain}`);
 }
 
-/**
- * Canonicalize an agent_url to match the schema's invariant
- * (lowercase, no trailing slash, wildcard '*' is the sentinel).
- * Returns null when the input is not a usable URL — callers skip those
- * rows rather than fail the whole projection.
- *
- * Exported so the agent-side sync endpoints
- * (server/src/db/authorization-snapshot-db.ts) canonicalize the
- * agent_url query parameter through the same function the writer uses
- * for stored rows. Drift between the two would silently miss matches.
- */
 // Phase B fetch-metadata hardening. The HTTP status writer column is a
 // SMALLINT (-32768..32767), broader than the RFC 100..599 range. Clamp
 // at write time so a malicious origin returning, e.g., status 999 can't
@@ -338,24 +328,24 @@ function extractRevokedPublisherDomains(manifest: unknown): Set<string> {
   return out;
 }
 
-export function canonicalizeAgentUrl(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) return null;
-  if (trimmed === '*') return '*';
-  // Reject embedded wildcards — the schema CHECK in migration 440 only
-  // accepts '*' as exact-match. Anything else (e.g. *foo*) would fail
-  // the CHECK and abort the whole transaction.
-  if (trimmed.includes('*')) return null;
-  // Reject internal whitespace and control chars. A URL with embedded
-  // newlines or tabs would land in the canonical form and become
-  // unmatchable by lookup callers. URL.parse() at the validator level
-  // doesn't enforce this hard.
-  if (/[\s\x00-\x1f]/.test(trimmed)) return null;
-  let canonical = trimmed.toLowerCase();
-  while (canonical.endsWith('/')) canonical = canonical.slice(0, -1);
-  if (canonical.length === 0) return null;
-  return canonical;
-}
+/**
+ * The registry key for an agent URL, or null when the value cannot be keyed.
+ *
+ * Re-exported here because ~75 call sites already import it from this module.
+ * The algorithm lives in `registry-agent-url-key.ts` so the migration script,
+ * the collision audit, and every reader share exactly one implementation —
+ * see that file for the canonicalization rules and the root-slash carve-out.
+ *
+ * It still rejects embedded wildcards (the CHECK in migration 625 accepts '*'
+ * only as an exact-match sentinel) and internal whitespace / control
+ * characters (they would land in the stored key and be unmatchable by any
+ * lookup caller).
+ *
+ * Also exported for the agent-side sync endpoints
+ * (server/src/db/authorization-snapshot-db.ts), which key the agent_url query
+ * parameter through the same function the writer uses for stored rows.
+ */
+export const canonicalizeAgentUrl = registryAgentUrlKey;
 
 /**
  * Database operations for the publisher overlay (migration 432).
@@ -1492,9 +1482,24 @@ export class PublisherDatabase {
       // writer-sourced rows (`evidence='adagents_json'`,
       // `created_by='system'`) so promotions, agent_claim rows, and
       // third-party-attested rows are untouched.
-      const currentCanonical = authEntries
-        .map(e => (e?.url && typeof e.url === 'string' ? canonicalizeAgentUrl(e.url) : null))
-        .filter((c): c is string => !!c);
+      // An entry that cannot be keyed drops out of the keep-set, so the
+      // reconcile below deletes whatever it used to authorize. Say so: the
+      // key is stricter than the pre-#7830 one (it rejects anything that is
+      // not an absolute http(s) URL, and rejects userinfo), so an entry that
+      // keyed fine before can start disappearing silently.
+      const currentCanonical: string[] = [];
+      for (const entry of authEntries) {
+        if (!entry?.url || typeof entry.url !== 'string') continue;
+        const key = canonicalizeAgentUrl(entry.url);
+        if (key === null) {
+          log.warn(
+            { publisherDomain: domain, agentUrl: entry.url },
+            'Manifest agent_url failed canonicalization: its catalog rows will be retired'
+          );
+          continue;
+        }
+        currentCanonical.push(key);
+      }
       // Catalog rows for this publisher live under either
       //   publisher_domain = $1   (publisher-wide rows)
       //   property_rid IN (catalog_properties.created_by='adagents_json:$1')
@@ -1929,7 +1934,8 @@ export class PublisherDatabase {
    *
    * Security:
    *   - agent_url canonicalization at the writer matches the schema
-   *     CHECK (lowercase + no trailing slash; embedded '*' rejected).
+   *     CHECK in migration 625 (lowercase scheme and authority, no root
+   *     trailing slash, no fragment or userinfo; embedded '*' rejected).
    *   - publisher_properties cross-publisher refusal via the anchor rule.
    *   - property_ids slugs that don't resolve to a catalog_properties
    *     row owned by this publisher are skipped (legacy-only data

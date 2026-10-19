@@ -140,10 +140,16 @@ jobs:
             storyboard_id: media_buy_seller/typed_proposal_negotiation
             min_clean_storyboards: 1
             min_passing_steps: 20
+          # @adcp/sdk 15.9.5 validates get_adcp_capabilities against the
+          # echoed 3.2 release, whose schema requires an https
+          # identity.brand_json_url. The runner's http loopback base makes
+          # webhook_emission/get_capabilities a 3.0-compat known-failing skip
+          # (see run-storyboards.ts), so signals, governance and creative each
+          # record one fewer passing step: 98 -> 97, 147 -> 146, 109 -> 108.
           - surface: 3.0-compat
             tenant: signals
             min_clean_storyboards: 24
-            min_passing_steps: 98
+            min_passing_steps: 97
           # SDK 14 beta.12 makes unsigned signing-required functional steps
           # explicitly out of scope for immutable bundles that predate the
           # functional_dispatch signing contract. The remaining 39 rows are
@@ -156,11 +162,11 @@ jobs:
           - surface: 3.0-compat
             tenant: governance
             min_clean_storyboards: 27
-            min_passing_steps: 147
+            min_passing_steps: 146
           - surface: 3.0-compat
             tenant: creative
             min_clean_storyboards: 22
-            min_passing_steps: 109
+            min_passing_steps: 108
           - surface: 3.0-compat
             tenant: creative-builder
             min_clean_storyboards: 24

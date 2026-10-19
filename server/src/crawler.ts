@@ -2002,9 +2002,23 @@ export class CrawlerService {
    */
   private async reconcileLegacyAdagentsAgents(domain: string, manifest: AdagentsManifest): Promise<void> {
     const entries = Array.isArray(manifest.authorized_agents) ? manifest.authorized_agents : [];
-    const canonical = entries
-      .map(e => (e?.url && typeof e.url === 'string' ? canonicalizeAgentUrl(e.url) : null))
-      .filter((c): c is string => !!c);
+    // An entry that cannot be keyed drops out of the keep-set, so the
+    // reconcile deletes whatever it used to authorize. Say so — the registry
+    // key is stricter than the pre-#7830 one, so an entry that keyed fine
+    // before can start disappearing silently.
+    const canonical: string[] = [];
+    for (const entry of entries) {
+      if (!entry?.url || typeof entry.url !== 'string') continue;
+      const key = canonicalizeAgentUrl(entry.url);
+      if (key === null) {
+        log.warn(
+          { domain, agentUrl: entry.url },
+          'Manifest agent_url failed canonicalization: its legacy authorization rows will be deleted',
+        );
+        continue;
+      }
+      canonical.push(key);
+    }
     try {
       await this.federatedIndex.reconcileAdagentsAuthorizations(domain, canonical);
     } catch (err) {
