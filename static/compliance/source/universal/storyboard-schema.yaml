@@ -1541,6 +1541,8 @@
 #                "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
 #                "oauth_metadata_graph",
+#                "undefined_properties" (always advisory: reports properties the
+#                served release does not define, outside ext and context),
 #                "any_of", "refs_resolve", "a2a_submitted_artifact",
 #                "field_greater_than" (strict finite-number comparison against
 #                a literal threshold),

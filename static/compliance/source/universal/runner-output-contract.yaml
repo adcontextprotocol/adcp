@@ -58,6 +58,7 @@ authored_check_kinds:
   - on_401_require_header
   - resource_equals_agent_url
   - oauth_metadata_graph
+  - undefined_properties
   - any_of
   - refs_resolve
   - property_list_reference
@@ -273,6 +274,7 @@ validation_result:
                               # status_code | http_status | http_status_in |
                               # error_code | on_401_require_header |
                               # resource_equals_agent_url | oauth_metadata_graph |
+                              # undefined_properties |
                               # any_of | refs_resolve |
                               # a2a_submitted_artifact | field_less_than |
                               # field_greater_than |
@@ -327,6 +329,9 @@ validation_result:
                               # (no specific call implicated).
     - expected                # machine-readable expected value:
                               #   response_schema      → schema $id that was applied
+                              #   undefined_properties → { served_release, schema_id }:
+                              #                          the release whose schema the
+                              #                          response was walked against
                               #   field_value          → expected value (any JSON type)
                               #   field_value_or_absent → value or allowed_values array
                               #                          from the storyboard validation
@@ -419,6 +424,14 @@ validation_result:
                               #                          response set (typically [1]
                               #                          for rule-9 tests).
     - actual                  # machine-readable actual value observed:
+                              #   undefined_properties → array of findings, each
+                              #                          { path, suggestion?, defined_in? }:
+                              #                          the JSON Pointer of a property
+                              #                          the served release does not
+                              #                          define, a same-level defined
+                              #                          field it likely meant, and the
+                              #                          later release that defines it
+                              #                          when one does
                               #   response_schema      → array of schema errors
                               #                          (each { instance_path,
                               #                          schema_path, keyword,
@@ -644,6 +657,28 @@ validation_result:
       not_applicable for the entire check (not just per-assertion). Use
       sparingly — see storyboard-schema.yaml > "upstream_traffic" >
       `attestation_mode_required` for the rationale.
+    undefined_properties_check: |
+      undefined_properties walks the response against the schema of the
+      release the response echoes in adcp_version (or the storyboard's pinned
+      release when the echo is absent) and reports every property that schema
+      does not define. It never fails a step: runners MUST emit it with
+      severity advisory, and a passed: false result counts only toward
+      advisory findings. Scope:
+        - Skip objects whose schema declares additionalProperties: false;
+          response_schema already rejects extra keys there.
+        - Skip ext and context at any depth, and any field marked
+          x-adcp-open-payload: true.
+        - Report everything else, at any depth.
+      For each finding, runners SHOULD set suggestion to a field defined at
+      the same level when one is close (edit distance of 2 or less, or the
+      same tokens after splitting on "_"; for example supported_buying_modes
+      suggests buying_modes). Runners SHOULD set defined_in to the earliest
+      later release whose schema defines the property, when one does. A
+      property defined in a later release is not a typo, but under the served-release rule (#7718) a
+      new oneOf arm or widened type must be projected for the served release,
+      and response_schema grades that. Remediation text points vendor-specific
+      data at ext.{namespace}. Normative basis: versioning.mdx §Extensibility,
+      "Undefined properties".
     response_schema_validator_semantics: |
       Runners MUST apply the referenced JSON schema using a JSON Schema
       draft-07 compliant validator configured to honour the schema's own
