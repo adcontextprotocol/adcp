@@ -127,6 +127,12 @@
       "items": { "$ref": "/schemas/core/canonical-product-action.json" },
       "uniqueItems": true
     },
+    "creative_addons": {
+      "allOf": [
+        { "$ref": "/schemas/core/creative-addon-disclosure.json" },
+        { "properties": { "scope": { "const": "product" } } }
+      ]
+    },
     "hold_policy": {
       "$ref": "/schemas/core/hold-policy.json",
       "x-status": "experimental",

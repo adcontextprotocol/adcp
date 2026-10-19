@@ -101,6 +101,7 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'get_account_financials',
     'get_adcp_capabilities',
     'get_creative_delivery',
+    'get_creative_addons',
     'get_creative_features',
     'get_task_status',
     'list_accounts',
@@ -2442,6 +2443,7 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
     canonicalManifest.adcp_version,
     ...Object.values(canonicalManifest.tools || {}).map(tool => tool.added_in).filter(Boolean),
   ].filter(version => semver.valid(version)).sort(semver.rcompare)[0];
+  const surfaceReleaseLine = `${semver.major(surfaceVersion)}.${semver.minor(surfaceVersion)}`;
   const isActiveProductionTool = tool => (
     tool.protocol !== 'compliance'
     && (!tool.added_in || semver.lte(tool.added_in, surfaceVersion))
@@ -2503,12 +2505,12 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
         profile: profileName,
         profile_kind: 'active-role-catalog',
         surface_version: surfaceVersion,
-        compatibility_scope: 'active-3.2-only',
+        compatibility_scope: `active-${surfaceReleaseLine}-only`,
         filters: {
           include_tools: toolNames,
           exclude_deprecated: true,
         },
-        delivery: 'active 3.2 role-filtered discovery inputs and response schemas; canonical wire schemas remain the call-validation authority',
+        delivery: `active ${surfaceReleaseLine} role-filtered discovery inputs and response schemas; canonical wire schemas remain the call-validation authority`,
         complete_discovery_projection: '../../manifest.json',
         canonical_wire_manifest: '../../../../manifest.json',
       },
@@ -2534,7 +2536,7 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
         profile_kind: 'active-role-catalog',
         view: 'client-prompt-inputs',
         surface_version: surfaceVersion,
-        compatibility_scope: 'active-3.2-only',
+        compatibility_scope: `active-${surfaceReleaseLine}-only`,
         filters: {
           include_tools: toolNames,
           exclude_deprecated: true,

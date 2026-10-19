@@ -170,6 +170,12 @@
       "$ref": "/schemas/core/cancellation-policy.json",
       "description": "Cancellation terms for this product. Declares the minimum notice period required before cancellation takes effect and any penalties for insufficient notice. Relevant for guaranteed delivery products. Buyers accept these terms by creating a media buy against the product."
     },
+    "creative_addons": {
+      "allOf": [
+        { "$ref": "/schemas/core/creative-addon-disclosure.json" },
+        { "properties": { "scope": { "const": "product" } } }
+      ]
+    },
     "hold_policy": {
       "$ref": "/schemas/core/hold-policy.json",
       "x-status": "experimental",

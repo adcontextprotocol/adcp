@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-addon-failure.json",
+  "title": "Creative Addon Failure",
+  "description": "Feedback to the affected vendor only. The Sales Agent MUST exclude other vendors, buyer payloads, and credentials. The same entry shape is used in prior_failures and optional notification_url POST bodies.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "error_code": {
+      "type": "string",
+      "enum": [
+        "ADDON_UNREACHABLE",
+        "ADDON_AUTH_FAILED",
+        "ADDON_HASH_MISMATCH",
+        "ADDON_INVALID_POSITION",
+        "ADDON_UNDECLARED_FORMAT",
+        "ADDON_MALFORMED_FRAGMENT",
+        "ADDON_REQUIRED_UNAVAILABLE"
+      ]
+    },
+    "creative_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative"
+    },
+    "format_kind": {
+      "type": "string",
+      "enum": [
+        "image",
+        "html5",
+        "display_tag"
+      ]
+    },
+    "position": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Observed position, including invalid values, for diagnosis."
+    },
+    "vendor_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "detail": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "error_code",
+    "creative_id",
+    "format_kind",
+    "timestamp"
+  ],
+  "additionalProperties": false
+}

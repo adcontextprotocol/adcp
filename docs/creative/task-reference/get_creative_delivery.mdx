@@ -493,3 +493,7 @@ Agents that support this task expose `get_creative_delivery` in their tool surfa
 ```
 
 Buyers discover candidate creative agents through the registry, then confirm the live endpoint's tool and `get_adcp_capabilities` surfaces. This applies to any endpoint implementing the Creative Protocol, including a sales agent with creative capabilities.
+
+## Creative addon evidence (proposed 3.3)
+
+When addon support is negotiated, each served variant carries its immutable `addon_chain`, including the effective configuration and mandatory Sales Agent signature. Different chains must not be aggregated under one variant. Fragment bodies remain private. See [signed delivery reporting](/docs/creative/task-reference/get_creative_addons#signed-delivery-reporting) and the [signing profile](/docs/creative/addon-chain-signing).

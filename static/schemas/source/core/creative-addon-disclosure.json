@@ -1,0 +1,196 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-addon-disclosure.json",
+  "title": "Creative Addon Disclosure",
+  "description": "Read-only seller configuration in registration order. complete=true with vendors=[] explicitly declares an empty set; omission is undeclared. Product and account disclosures are resolved into one complete product snapshot before commitment. Contains no fragment bodies or credentials.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "scope": {
+      "type": "string",
+      "enum": [
+        "product",
+        "account"
+      ]
+    },
+    "product_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "product"
+    },
+    "complete": {
+      "type": "boolean"
+    },
+    "signed_chain_profile": {
+      "type": "string",
+      "const": "adcp/addon-chain/v1"
+    },
+    "vendors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent_name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^\\S(?:.*\\S)?$",
+            "description": "Canonical agent_name, normalized by trimming surrounding whitespace and converting to lowercase. Identity is checked against the selected vendor, never inferred from this label alone."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "live",
+              "static_reference"
+            ]
+          },
+          "agent_url": {
+            "type": "string",
+            "minLength": 1,
+            "format": "uri",
+            "pattern": "^https://"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "required",
+              "best_effort"
+            ]
+          },
+          "max_hold_seconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "format_kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "image",
+                "html5",
+                "display_tag"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "positions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "prepend",
+                "append"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "static_content_hash": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "agent_name",
+          "source",
+          "mode",
+          "format_kinds",
+          "positions"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "required"
+                }
+              },
+              "required": [
+                "mode"
+              ]
+            },
+            "then": {
+              "required": [
+                "max_hold_seconds"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "source": {
+                  "const": "live"
+                }
+              },
+              "required": [
+                "source"
+              ]
+            },
+            "then": {
+              "required": [
+                "agent_url"
+              ],
+              "not": {
+                "required": [
+                  "static_content_hash"
+                ]
+              }
+            },
+            "else": {
+              "required": [
+                "static_content_hash"
+              ],
+              "not": {
+                "required": [
+                  "agent_url"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 0
+    }
+  },
+  "required": [
+    "scope",
+    "complete",
+    "signed_chain_profile",
+    "vendors"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "const": "product"
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "then": {
+        "required": [
+          "product_id"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "product_id"
+          ]
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "vendor_identity": "agent_name MUST be unique after lowercase-and-trim normalization within this configuration",
+      "scope_binding": "product_id MUST equal the containing product or purchase; account scope inherits identity from its sync_accounts row"
+    }
+  }
+}

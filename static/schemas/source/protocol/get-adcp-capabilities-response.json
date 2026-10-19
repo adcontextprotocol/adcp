@@ -19,6 +19,8 @@
     }
   },
   "allOf": [
+    {"if": {"required": ["creative_addon"]}, "then": {"properties": {"supported_protocols": {"contains": {"const": "creative"}}}}},
+    {"if": {"properties": {"specialisms": {"contains": {"const": "creative-addon"}}}, "required": ["specialisms"]}, "then": {"required": ["creative_addon", "agent_name"]}},
     {
       "$ref": "/schemas/core/version-envelope.json"
     },
@@ -2665,6 +2667,14 @@
         }
       },
       "additionalProperties": true
+    },
+    "agent_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Addon vendor identity; required with creative-addon specialism. Operators compare the declared and registered names after lowercase-and-trim normalization."
+    },
+    "creative_addon": {
+      "$ref": "/schemas/core/creative-addon-capability.json"
     },
     "creative": {
       "type": "object",

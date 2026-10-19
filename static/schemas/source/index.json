@@ -45,6 +45,34 @@
           "$ref": "/schemas/core/product.json",
           "description": "Represents available advertising inventory"
         },
+        "creative-addon-capability": {
+          "$ref": "/schemas/core/creative-addon-capability.json",
+          "description": "Creative Addon Capability"
+        },
+        "creative-addon-registration": {
+          "$ref": "/schemas/core/creative-addon-registration.json",
+          "description": "Creative Addon Registration"
+        },
+        "creative-addon-disclosure": {
+          "$ref": "/schemas/core/creative-addon-disclosure.json",
+          "description": "Creative Addon Disclosure"
+        },
+        "creative-addon-fragment": {
+          "$ref": "/schemas/core/creative-addon-fragment.json",
+          "description": "Creative Addon Fragment"
+        },
+        "creative-addon-failure": {
+          "$ref": "/schemas/core/creative-addon-failure.json",
+          "description": "Creative Addon Failure"
+        },
+        "creative-addon-chain": {
+          "$ref": "/schemas/core/creative-addon-chain.json",
+          "description": "Creative Addon Chain"
+        },
+        "creative-addon-signing-key": {
+          "$ref": "/schemas/core/creative-addon-signing-key.json",
+          "description": "Creative Addon Signing Key"
+        },
         "canonical-product": {
           "$ref": "/schemas/core/canonical-product.json",
           "description": "Canonical-only product view for the AdCP 3.2 split product and proposal tools"
@@ -2152,6 +2180,14 @@
           "response": {
             "$ref": "/schemas/creative/list-transformers-response.json",
             "description": "Response payload with transformer descriptors — input/output formats, typed config params, account-scoped enumerable option values when expanded, and per-account pricing"
+          }
+        },
+        "get-creative-addons": {
+          "request": {
+            "$ref": "/schemas/creative/get-creative-addons-request.json"
+          },
+          "response": {
+            "$ref": "/schemas/creative/get-creative-addons-response.json"
           }
         },
         "get-creative-delivery": {

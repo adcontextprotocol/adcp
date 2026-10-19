@@ -14,6 +14,24 @@
     }
   },
   "properties": {
+    "creative_addons": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/creative-addon-disclosure.json"
+        },
+        {
+          "properties": {
+            "complete": {
+              "const": true
+            },
+            "scope": {
+              "const": "product"
+            }
+          }
+        }
+      ],
+      "description": "Seller-resolved complete configuration for this purchase, covered by commercial_terms and terms_digest. Required when addon support is negotiated. At commitment the seller atomically compares it with current effective configuration; stale terms fail before mutation."
+    },
     "product_id": {
       "type": "string",
       "minLength": 1,
