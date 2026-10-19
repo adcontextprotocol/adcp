@@ -13,7 +13,7 @@ SDK 15.9.5 and lockfile:
 node --test --test-timeout=30000 specs/optional-product-feature-declarations/probes.test.cjs
 ```
 
-The isolated suite has **67 tests**, including all 64 independent feature subsets.
+The isolated suite has **69 tests**, including all 64 independent feature subsets.
 It compiles actual current product/selection/reporting schemas and the actual
 immutable 3.2.5 feature schema for old-reader acceptance, without editing them.
 Three tests execute the real pinned SDK: two runner probes with injected clients
@@ -107,6 +107,36 @@ remaining findings. The new regression preserves distinct IDs when UTF-8
 replacement bytes tie; it adds no schema restriction. The current isolated suite
 passes 67/67 locally; new exact-head CI will be observed separately. These fresh
 reviews support continued draft human review, not ratification or runtime safety.
+
+## SDK API readiness and existing product-schema boundaries
+
+The owner reported draft adcp-client #3354 public exports and disposable build
+instructions, plus 13 limitations re-established on SDK main `1977a1ba` /
+`16.0.0-beta.9` before implementation. The first source head was reported to
+contain two confirmed security defects and is superseded. This workspace has
+read PR metadata/API reports only, has not installed or executed that candidate,
+and awaits the exact review-fix SHA before disposable candidate qualification.
+Owner baseline/fixed-suite counts remain reports, distinct from local installed
+15.9.5 evidence and the separate pristine 15.9.6 comparison.
+
+Two new real-source-schema probes explicitly reject product `publisher_domains`
+even alongside a singular domain, and domain-only collection entries even beside
+a concrete otherwise-qualifying selector. Catalog and prepared setup failures
+are retained; no fan-out or invalid-row salvage occurs. Local evidence is
+**69/69**, including all 64 proposed declaration combinations. No field, controller,
+model or SDK dependency implementation changed.
+
+The API-readiness table is conditional on exact-head qualification and upstream
+AdCP authoring/operator/capture/check-kind amendments. It preserves every-lookup
+direct/opaque authority and process-local identity/host-grant boundaries. Native
+qualified-offer binding for the future seller-wide commitment remains an
+additional WG/controller/runner decision; the catalog foundation alone does not
+implement it. Fresh independent protocol, product/docs and code reviewers each
+reran **69/69**, with no blocking/actionable findings; final code review of the
+three changed files also passed `git diff --check` and returned **Ready to push**.
+None fetched, installed, executed or reviewed candidate SDK source. Prior review
+results retain their explicitly recorded earlier scope. These reviews qualify
+only the proposal packet, not SDK implementation safety or WG ratification.
 
 ## Still required for adoption
 

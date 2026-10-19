@@ -338,3 +338,32 @@ test('schema-valid distinct IDs with equal UTF-8 replacement bytes normalize los
   assert.deepEqual(collectionPairs(a), collectionPairs(b));
   assert.equal(collectionPairs(a).length, 2);
 });
+
+test('real product schema forbids publisher_domains on products, including alongside a singular domain', async () => {
+  for (const property of [
+    { publisher_domains: ['host.example'], selection_type: 'all' },
+    { publisher_domain: 'host.example', publisher_domains: ['other.example'], selection_type: 'all' },
+  ]) {
+    const invalid = product('owner_sold_channel_carriage', { publisher_properties: [property] });
+    assert.equal(validate.product(invalid), false);
+    const catalog = setup('owner_sold_channel_carriage', { catalog: [invalid] });
+    assert.equal((await evaluate(catalog.args)).reason, 'invalid_catalog');
+    const prepared = setup('owner_sold_channel_carriage', {
+      prepare: async params => ({ success: true, simulated: { ...params, product: invalid } }),
+    });
+    assert.equal((await evaluate(prepared.args)).reason, 'invalid_qualified_setup');
+  }
+});
+test('domain-only product collection entries fail even when another concrete entry could otherwise qualify', async () => {
+  const invalid = product('collection_default_materialization', { collections: [
+    { publisher_domain: 'owner.example' },
+    { publisher_domain: 'owner.example', collection_ids: ['news'] },
+  ] });
+  assert.equal(validate.product(invalid), false);
+  const catalog = setup('collection_default_materialization', { catalog: [invalid] });
+  assert.equal((await evaluate(catalog.args)).reason, 'invalid_catalog');
+  const prepared = setup('collection_default_materialization', {
+    prepare: async params => ({ success: true, simulated: { ...params, product: invalid } }),
+  });
+  assert.equal((await evaluate(prepared.args)).reason, 'invalid_qualified_setup');
+});

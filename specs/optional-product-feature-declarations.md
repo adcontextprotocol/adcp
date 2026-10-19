@@ -117,6 +117,14 @@ Empty string collection IDs remain legal under current schemas. Wire-declared
 relations do not verify ownership or host authorization. Added collection
 scenario IDs remain provisional; this proposal adopts no new source filename.
 
+Product qualification retains two existing schema boundaries: every
+`collections[]` entry on a product MUST carry explicit `collection_ids`; a
+domain-only bulk grant is authorization scoping, not product composition.
+Product `publisher_properties[]` entries MUST use singular `publisher_domain`;
+`publisher_domains[]` is forbidden even when a singular domain is also present.
+Do not fan it out or discard invalid entries to salvage a qualifying subset.
+These are existing product requirements, not new declaration obligations.
+
 Protected captures need the proposed atomic write/delete/metadata funnel across
 all context-write paths, detached immutable preparation state and deep-cloned
 views against alias mutation, plus authenticated every-lookup tenant/caller/run/
@@ -139,6 +147,65 @@ implements no SDK/DSL, protected state or authenticated lookup. Its small pair
 normalizer is an isolated model helper, not a foundation API or evidence of
 implemented capture/state safety. The declarations owner contacted the new SDK
 owner directly to preserve this boundary before any shared API finalization.
+
+### Candidate SDK API readiness — implementation-head review pending
+
+The assigned SDK draft is [adcp-client #3354](https://github.com/adcontextprotocol/adcp-client/pull/3354),
+based on SDK main `1977a1ba`, package `16.0.0-beta.9` in beta pre-mode, wire
+`ADCP_VERSION: 3.2.5`. The owner reports re-establishing all 13 baseline
+limitations on that base before implementation; its baseline file is a local
+`.context` artifact, while repaired expectations are in four committed suites.
+Those are owner reports, not reruns by this declarations workspace. Installed
+protocol-main 15.9.5 evidence and the disposable pristine 15.9.6 comparison stay
+separate; neither establishes a 16-beta limitation. SDK 14/9 remain unqualified.
+
+The first implementation was reported to have two confirmed security defects
+and is superseded. **Await the exact review-fix SHA before any disposable build,
+execution or candidate qualification.** No candidate SDK is installed here and
+no dependency pin, lockfile or bridge changes. The following public API shape is
+an owner-reported review input, not final code approval or a release dependency:
+
+| Surface reported by the SDK owner | Possible reuse after exact-head qualification | Remaining boundary |
+| --- | --- | --- |
+| `collection_selection_satisfies` with mode, optional minimum pairs and external-owner operand; shared normalization/witness helpers | Independent one-pair defaults, two-pair strict subsets, omitted-false fixed products and declared owner/host relations | No new collection IDs, seller capability fields, reporting scope or external authorization proof. |
+| `fixture_resolution[].context_outputs` under the protected fixture namespace, exactly one of path or witness | Capture the same selected product/scoped price/relation after the complete graph resolves | Capture safety and schema legality require separate qualification; ordinary response context is not preparation authority. |
+| `collection_set_equals_context` | Compare concrete namespace-qualified sets against protected expected state | New authored check kind must be adopted in the protocol authoring/output contracts before published use. |
+| `prepareStoryboardFixtures`, `PreparedStoryboardFixtures`, trust checks and contract version; full/standalone `prepared_fixtures` options | Share qualified preparation with content/route/schema/scope/run bindings | Every lookup, direct state and opaque reference alike, requires live trusted authorization. Preparation alone does not fix standalone phase skipping. |
+
+The public CJS/ESM exports and disposable instructions are reported by the SDK
+owner: build its exact safe candidate in ignored scratch space, pack it, and
+resolve it in an isolated test root. Do not adopt its package in this workspace.
+Coordinate exact exports and build instructions with that owner before consumer
+source edits. Authored versus resolved selector types must preserve explicit
+operand defaults; do not infer a new wire or negotiation meaning from them.
+
+The SDK candidate is not sufficient authoring authority by itself. An upstream
+AdCP PR must amend the closed match-operator set and fixture-resolution capture
+shape in `static/compliance/source/universal/storyboard-schema.yaml`, and add
+`collection_set_equals_context` to `runner-output-contract.yaml` authored check
+kinds before published storyboards can legally use them. These files remain with
+their coordinated owners; this proposal edits none. Old-runner load rejection
+must be qualified as the downgrade behavior, not a successful skipped feature.
+
+Trust is reported as SDK-owned runtime object identity: direct construction,
+look-alikes, copied public bindings, frozen clones and JSON rehydration must not
+acquire preparation authority. A process-local HMAC binds nonsecret credential
+identity; tokens do not enter evidence and immutability is not portable trust.
+Cross-process/serialized reuse requires authenticated reconstruction or a host
+reference lookup with live scope checks. Host tenant/org session resolution and
+grant/revocation storage remain host responsibilities behind the trusted
+authorizer. Separate exact-head security evidence must verify both write/alias
+isolation and authority on every direct/opaque lookup. No such implementation
+safety is certified by this proposal or by an exported API list.
+
+This foundation changes no seller/controller wire and does not implement
+`prepare_product_feature` or a seller-wide commitment. Future reuse still needs
+an approved way to bind a native feature-qualified prepared offer, including a
+brief-only/initially-empty seller, into the execution fixture graph. The current
+API report is not proof that this additional route is implemented; it remains
+part of #8333's WG/controller/runner decisions. Format/time reporting, commercial
+context, branding, accounting and standalone `phase.skip_if` remain separately
+qualified consumer work; no observations or grain injection follow.
 
 Held reporting [#8336 at
 `8ccc1d62194b9b8e2a9b8d3b2543b20d145f67f6`](https://github.com/adcontextprotocol/adcp/pull/8336)
@@ -257,7 +324,7 @@ Current `seed_product` accepts permissive authored exemplars; `list_scenarios`
 only identifies operation names. Neither negotiates native feature support or
 returns a feature-qualified seller-owned offer. `simulate_delivery` supports
 property-row injection but does not inject observed format rows or time-view
-measurements. The shipping resolver accepts only seed/discover, so `construct`
+measurements. The pinned protocol-main SDK 15.9.5 resolver accepts only seed/discover, so `construct`
 is not an executable escape hatch here.
 
 Propose one additional sandbox scenario, **`prepare_product_feature`**, within
