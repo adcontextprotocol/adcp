@@ -171,7 +171,7 @@ fixture_resolution:
           value: non_guaranteed
         - path: /channels
           operator: contains_all
-          value: [video]
+          value: [olv]
         - path: /format_options
           operator: any_match
           where:
