@@ -96,13 +96,17 @@ Returns financial data for the account. Only `account`, `currency`, `period`, an
 | `balance` | Present for prepay accounts. Contains `available` balance and optional `last_top_up` (`amount`, `date`). |
 | `payment_status` | `current`, `past_due`, or `suspended`. |
 | `payment_terms` | Payment terms in effect: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. |
-| `invoices` | Array of recent invoices: `invoice_id`, `amount`, `status` (`draft`, `issued`, `paid`, `past_due`, `void`), optional `period`, `due_date`, `paid_date`. |
+| `invoices` | Array of recent invoices: `invoice_id`, `amount`, `status` (`draft`, `issued`, `paid`, `past_due`, `void`), optional `period`, `due_date`, `paid_date`. Sellers may limit the list, except that a seller listing `invoice` in `account.change_feed.resource_types` MUST return every invoice with a retained change record, as defined in [Invoices](/docs/accounts/tasks/list_account_changes#invoices). |
 
 **Error response:**
 
 - `errors` -- Array of operation-level errors. No financial data is present.
 
 **Note:** Responses use discriminated unions -- you get either financial data OR `errors`, never both.
+
+### Being notified of new invoices
+
+Sellers that list `invoice` in `account.change_feed.resource_types` record a change when an invoice is created, changes status, or has its amount or period corrected. Subscribe to `account.change_recorded` and drain [`list_account_changes`](/docs/accounts/tasks/list_account_changes#invoices) instead of polling; each record carries the `invoice_id` as `resource.resource_id`, and the buyer rereads this task to get the invoice. The feed is experimental. Buyers of sellers without it must keep polling.
 
 ## Common scenarios
 

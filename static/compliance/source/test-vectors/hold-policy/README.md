@@ -32,6 +32,14 @@ the meantime.
   committed `source_proposals`, and the seller's `response` or task-level
   `task_error`. A request may name several sources: the batch is all-or-none.
 
+The `ranking` case covers `hold_policy.rankable` and the committed proposal's
+`hold_rank` (experimental, `media_buy.hold_ranking`,
+[Hold ranking](/docs/media-buy/task-reference/refine_proposals#hold-ranking-experimental))
+across all three lists. The `installment_holds` case covers the committed
+proposal's `holds` (experimental, `media_buy.installment_holds`,
+[Installment holds](/docs/media-buy/task-reference/refine_proposals#installment-holds-experimental))
+in the finalize and extend lists.
+
 Each vector has `expected.violations`, which lists every code the input breaks.
 An empty list means conformant. Finalize vectors may also list
 `expected.indeterminate`: bounds that cannot be settled either way because
@@ -48,6 +56,8 @@ violations.
 | `agent_default` | A draft without `hold_policy` takes the seller's `hold_semantics` when the seller does not list `media_buy.hold_policy`. A seller that lists it states the policy on every 3.3 draft and committed proposal. A `terms_only` agent can hold a product that declares `available: true`. |
 | `version_gate` | A no-hold committed proposal is never returned to a caller below 3.3. `UNSUPPORTED_FEATURE` is the refusal, and only when the gate applies. A holdable finalize for a caller below 3.3 omits `hold_policy` and `hold_placed_at`. |
 | `draft_consistency` | A feature-listing seller's draft includes `hold_policy`, declares `available: false` when any allocated product's effective policy is non-holdable, and otherwise promises no more than its products (durations and `extendable`). Durations are ordered after normalizing, and `max_total_duration` needs `extendable: true`. |
+| `ranking` | A rankable policy finalizes into a hold that reports `hold_rank`, which the schema requires there and forbids under an exclusive policy. A seller emitting `rankable` or `hold_rank` lists `media_buy.hold_ranking`. A draft allocating a rankable product declares `rankable: true`. An `extend_hold` successor never reports a worse position than its source. |
+| `installment_holds` | `holds` lists each installment once, names only allocated products, carries no per-entry `expires_at`, and, under a rankable policy, gives every entry a `hold_rank` no better than the proposal's. A seller emitting `holds` lists `media_buy.installment_holds`. An `extend_hold` successor lists the same entries (or none, when its source lists none), each at a position no worse than in its source. |
 | `extension` | An `extend_hold` successor carries `commercial_terms`, `terms_digest`, `hold_policy`, and `hold_placed_at` forward unchanged, has a later `expires_at`, and stays within the original `hold_placed_at` + `max_total_duration` across the chain. `extendable` absent means false. A source that holds no inventory fails with `INVALID_STATE`, never `hold_unavailable`. A batch of several sources is graded entry by entry against each entry's own source, and stays all-or-none: a declined entry returns `hold_unavailable`, its siblings `batch_aborted`, and a terms-only source fails the whole request with `INVALID_STATE`. |
 
 ## Grading
@@ -72,7 +82,8 @@ violations.
 5. For each unable entry, reject `hold_unavailable` on a non-holdable entry and
    `batch_aborted` with no failing sibling.
 6. For a draft vector, also check that a holdable draft promises no more than
-   any allocated product's effective policy.
+   any allocated product's effective policy, including an exclusive hold
+   (`rankable` absent) over a rankable product.
 7. For a replay vector, grade `original` as a finalize vector. Then require
    the `replay` response to repeat each result: a finalized entry keeps its
    original `hold_placed_at` and `expires_at`, and any other difference is a
@@ -81,7 +92,12 @@ violations.
    terms, `hold_policy`, and `hold_placed_at`; a later `expires_at`; a source
    whose `extendable` is `true`; and `expires_at` no later than the source's
    `hold_placed_at` + `max_total_duration`. Reject `hold_unavailable` for a
-   source that holds no inventory.
+   source that holds no inventory. Under a rankable policy, reject a successor
+   whose `hold_rank` is worse than the source's, and, when the source lists
+   `holds`, a successor whose entries differ or whose entry positions worsen.
+9. For each committed proposal with `holds`, reject duplicate entries,
+   entries for products outside `commercial_terms.purchases`, and a proposal
+   `hold_rank` better than any entry's.
 
 Durations use days, hours, minutes, and seconds only. A day is exactly 86400
 seconds added to the UTC instant, so `P1D` equals `PT24H` and ignores local
@@ -92,6 +108,9 @@ committed proposal that holds inventory records that instant in
 `hold_placed_at`. Callers below 3.3 do not receive it. For them, placement
 could be any time between `request_received_at` and `response_at`, and a bound
 is a violation only when it fails for every placement in that window.
+
+These vectors do not cover whether a `holds` installment belongs to its
+product and falls within the purchase's flight.
 
 `tests/hold-policy-vectors.test.cjs` contains the reference grader and replays
 every vector.

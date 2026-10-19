@@ -1,0 +1,68 @@
+# Buyer-Orchestrator Compliance Track
+#
+# Defines certification levels for buyer and orchestrator agents against
+# the media_buy_buyer compliance track. Storyboards in this track use
+# interaction_model: media_buy_buyer and test outbound judgment and
+# state management rather than inbound response schemas.
+
+id: buyer_orchestrator_track
+version: "0.1.0"
+title: "Buyer-orchestrator compliance track"
+summary: "Certification levels for buyer and orchestrator agents: basic (discovery + activation), standard (+ negotiation + monitoring), advanced (+ recovery + multi-agent orchestration)."
+
+certification_levels:
+  basic:
+    title: "Basic buyer certification"
+    description: |
+      Minimum bar for a buyer agent. Can discover seller inventory,
+      interpret product capabilities, create buys with correct
+      idempotency, and handle async task envelopes.
+    required_specialisms:
+      - buyer-discovery
+      - buyer-activation
+    tests: |
+      - Version negotiation before domain calls
+      - Product discovery and brief-to-filter translation
+      - Idempotency key generation and retry semantics
+      - Async create (submitted task envelope) handling
+      - Creative coordination via sync_creatives
+
+  standard:
+    title: "Standard buyer certification"
+    description: |
+      Adds negotiation and monitoring. Can request and refine proposals,
+      handle TERMS_REJECTED, monitor delivery, and detect pacing variance.
+    required_specialisms:
+      - buyer-discovery
+      - buyer-activation
+      - buyer-negotiation
+      - buyer-monitoring
+    tests: |
+      - All basic tests
+      - Proposal request and refinement
+      - TERMS_REJECTED handling
+      - Delivery polling and variance detection
+      - Buy status reading via get_media_buys
+
+  advanced:
+    title: "Advanced buyer/orchestrator certification"
+    description: |
+      Full buyer resilience and multi-seller orchestration. Can recover
+      from errors, coordinate across sellers, handle partial failures,
+      and reconcile cross-agent budget.
+    required_specialisms:
+      - buyer-discovery
+      - buyer-activation
+      - buyer-negotiation
+      - buyer-monitoring
+      - buyer-recovery
+      - orchestrator-multi-agent
+    tests: |
+      - All standard tests
+      - Seller offline recovery (503)
+      - Auth expiry and re-authentication (401)
+      - Idempotency conflict resolution (409)
+      - Rate limit compliance (429)
+      - Multi-seller discovery and catalog merge
+      - Partial failure handling without rollback
+      - Cross-seller budget reconciliation

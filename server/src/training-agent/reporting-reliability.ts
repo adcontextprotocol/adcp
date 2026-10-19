@@ -2643,6 +2643,28 @@ function zeroRowRevision(obligation: ReportingObligation, nowMs: number): Pendin
   };
 }
 
+/** Older daily-source snapshots recorded the official close without its wire
+ * evidence. The pinned PT0S cutoff and retained publication time establish it;
+ * project those fields consistently without rewriting the committed snapshot. */
+function withTrainingFinality<T extends PendingReportingRevision>(revision: T): T {
+  const copy = structuredClone(revision);
+  if (revision.finality !== 'official'
+    || revision.report_definition_uri !== TRAINING_DEFINITION_URI
+    || revision.report_definition_sha256 !== TRAINING_DEFINITION_SHA256
+    || revision.report_definition_id !== 'training_delivery_summary_v1'
+    || revision.finality_basis !== undefined || revision.finality_policy_id !== undefined || revision.finalized_at !== undefined) return copy;
+  const definition = JSON.parse(TRAINING_REPORTING_DEFINITION_BYTES) as {
+    finality_policies: Array<{ finality_policy_id: string; basis: string; duration_after_period_end?: string }>;
+  };
+  if (!definition.finality_policies.some(policy => policy.finality_policy_id === 'training_snapshot'
+    && policy.basis === 'contractual_cutoff' && policy.duration_after_period_end === 'PT0S')) return copy;
+  const start = Date.parse(revision.period.start);
+  const end = Date.parse(revision.period.end);
+  const published = Date.parse(revision.created_at);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(published) || start >= end || published < end) return copy;
+  return { ...copy, finality_basis: 'contractual_cutoff', finality_policy_id: 'training_snapshot', finalized_at: revision.created_at };
+}
+
 function commitRevisionContent(
   ledger: ReportingLedger,
   revision: PendingReportingRevision,
@@ -3759,6 +3781,7 @@ export function getReportingStatusForAccount(
     const hasMore = offset + page.length < revisionSnapshot.length;
     return {
       ...revisionCommon,
+      revision: withTrainingFinality(revisionCommon.revision as ReportingRevision),
       adjustments: page.filter((item): item is Extract<PageResource, { kind: 'adjustment' }> => item.kind === 'adjustment').map(item => item.adjustment),
       adjustment_receipts: page.filter((item): item is Extract<PageResource, { kind: 'adjustment_receipt' }> => item.kind === 'adjustment_receipt').map(item => item.adjustmentReceipt),
       consumer_statuses: page.filter((item): item is Extract<PageResource, { kind: 'consumer_status' }> => item.kind === 'consumer_status').map(item => item.consumerStatus),
@@ -3902,7 +3925,7 @@ export function getReportingStatusForAccount(
     status: 'completed',
     view: 'periods',
     periods: page.filter(item => item.kind === 'period').map(item => item.record.obligation),
-    revisions: page.filter(item => item.kind === 'revision').flatMap(item => item.record.revision ? [item.record.revision] : []),
+    revisions: page.filter(item => item.kind === 'revision').flatMap(item => item.record.revision ? [withTrainingFinality(item.record.revision)] : []),
     adjustments: page.filter((item): item is Extract<PageResource, { kind: 'adjustment' }> => item.kind === 'adjustment')
       .map(item => item.adjustment),
     adjustment_receipts: page
@@ -4119,12 +4142,12 @@ export async function commitTrainingDailySourcePeriod(input: {
     // on another read or a process restart instead of rebinding its revision ID.
     if (ledger.publishedRevisions.has(record.obligation.reporting_obligation_id)) return true;
     const rows = [{ period_start: input.period.start, period_end: input.period.end, impressions: input.impressions }];
-    const revision = commitRevisionContent(ledger, {
+    const revision = commitRevisionContent(ledger, withTrainingFinality({
       ...zeroRowRevision(record.obligation, now),
       finality: stored.config.required_finality,
       row_count: rows.length,
       control_totals: [{ name: 'impressions', value: String(input.impressions), value_type: 'integer', unit: 'impressions' }],
-    }, rows);
+    }), rows);
     ledger.publishedRevisions.set(record.obligation.reporting_obligation_id, revision);
     ledger.version += 1;
     return true;
@@ -4145,7 +4168,7 @@ export function getCoreRevisionContentForAccount(
   const content = ledger?.revisionContents.get(reportingRevisionId);
   if (!content) return undefined;
   return {
-    revision: structuredClone(content.revision),
+    revision: withTrainingFinality(content.revision),
     rows: structuredClone(content.rows),
     bindingSha256: content.bindingSha256,
   };
@@ -4232,7 +4255,7 @@ export async function getCoreRevisionContentPageForAccountDurably(
     const snapshot = snapshotFromCursor(ledger, pagination?.cursor, initialScope ?? 'unavailable');
     if (snapshot === null) return undefined;
     const revision = snapshot
-      ? snapshot.common.reporting_revision as ReportingRevision
+      ? withTrainingFinality(snapshot.common.reporting_revision as ReportingRevision)
       : initial?.revision;
     const bindingSha256 = snapshot?.exactBindingSha256 ?? initial?.bindingSha256;
     const allRows = snapshot?.exactRows ?? initial?.rows;

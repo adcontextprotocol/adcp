@@ -67,6 +67,10 @@ export async function dispatchTrainingGcsReporting<T extends Operation>(operatio
   if (selectsGcs && configIds.some(id => typeof id !== 'string' || !id.startsWith('gcs:'))) {
     throw new AdcpError('VALIDATION_ERROR', { message: 'Select the GCS reporting configuration separately from teaching configurations.' });
   }
+  // Exact status forbids configuration filters. Resolve its opaque revision
+  // within this caller-owned account, just as exact delivery reads do.
+  if (operation === 'get_reporting_status' && input.view === 'revision'
+    && !await runtime.service.stores.core.getRevision(String(input.reporting_revision_id), account.accountId)) return undefined;
   if (operation === 'sync_reporting_receipts') {
     const revisions = [
       ...(Array.isArray(input.receipts) ? input.receipts.map(receipt => receipt?.reporting_revision_id) : []),
