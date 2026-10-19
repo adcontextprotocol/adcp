@@ -71,11 +71,14 @@ export async function verifyDirectory({ origin, response, now }, { bare = false 
     const input = parseDictionary(header(response.headers, 'signature-input') ?? '');
     for (const verifier of await Promise.all(keys.map(verifierOrUndefined))) {
       if (!policy.usable(verifier)) continue;
-      await verifySignature(signed, {
-        label: policy.directoryLabelFor(input, verifier.keyid),
-        policy: policy.directorySignaturePolicy(now),
-        resolveVerifier: async () => verifier,
-      });
+      const label = policy.directoryLabelFor(input, verifier.keyid);
+      if (label === undefined) continue;
+      try {
+        await verifySignature(signed, { label, policy: policy.directorySignaturePolicy(now), resolveVerifier: async () => verifier });
+      } catch (e) {
+        if (policy.isInvalidProof(e)) continue;
+        throw e;
+      }
       keyids.push(verifier.keyid);
     }
     policy.checkDirectoryBody(response, keyids);
@@ -91,14 +94,16 @@ async function resolveKey(directories, entry, keyid, now, bare) {
   const origin = new URL(entry.uri).origin;
   const response = directories[origin];
   if (response === undefined) throw new policy.PolicyError(403, 'directory-unavailable', `no directory at ${origin}`);
+  let proven;
   if (!bare) {
     const checked = await verifyDirectory({ origin, response, now });
     if (!checked.ok) throw new policy.PolicyError(403, checked.rule, `directory of ${entry.uri}: ${checked.error}`);
     policy.checkNotTestKey(keyid);
+    proven = checked.keyids;
   }
   for (const jwk of JSON.parse(response.body).keys ?? []) {
     const verifier = await verifierOrUndefined(jwk);
-    if (verifier?.keyid === keyid && (bare || policy.usable(verifier))) return verifier;
+    if (verifier?.keyid === keyid && (bare || proven.includes(keyid))) return verifier;
   }
   throw new policy.PolicyError(403, 'key-not-in-directory', `key ${keyid} is not in the directory of ${entry.uri}`);
 }

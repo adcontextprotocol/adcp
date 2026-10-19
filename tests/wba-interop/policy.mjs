@@ -145,9 +145,11 @@ export function checkNotTestKey(keyid, rejectKids = []) {
 // ── Row "Directory responses" ─────────────────────────────────────────────
 // Served with the directory media type. One signature per Ed25519 key, covering
 // "@authority";req and content-digest, with created, expires, keyid, and the
-// directory tag. No key carries a private member. Keys the profile does not
-// use, and their signatures, are ignored (RFC 7517 section 5). Content-Digest
-// matches the body (Appendix B.1).
+// directory tag. No key carries a private member. A verifier uses each Ed25519
+// key with a valid signature and ignores every other key and its signatures:
+// keys the profile does not use, keys it cannot import (RFC 7517 section 5),
+// and keys without a valid proof (Appendix B.1; directory draft section 5).
+// Content-Digest matches the body (Appendix B.1).
 
 export const DIRECTORY_MEDIA_TYPE = 'application/http-message-signatures-directory+json';
 export const DIRECTORY_TAG = 'http-message-signatures-directory';
@@ -183,18 +185,24 @@ export const directorySignaturePolicy = now => ({
   validate: v => v.parameters.tag === DIRECTORY_TAG || refuse('directory-tag', `directory signature tag ${v.parameters.tag}`),
 });
 
-/** The label of the one signature by `keyid`, or a refusal. Labels by other keys are never read. */
+/**
+ * The label of the one signature by `keyid`, undefined when the key does not
+ * sign, or a refusal when it signs more than once. Labels by other keys are never read.
+ */
 export function directoryLabelFor(signatureInput, keyid) {
   const labels = [...signatureInput].filter(([, [, params]]) => params.get('keyid') === keyid).map(([label]) => label);
-  if (labels.length !== 1) refuse('directory-one-signature-per-key', `${labels.length} directory signatures by ${keyid}`);
+  if (labels.length > 1) refuse('directory-one-signature-per-key', `${labels.length} directory signatures by ${keyid}`);
   return labels[0];
 }
+
+/** True when a directory signature failed verification, so its key is ignored. */
+export const isInvalidProof = error => error instanceof PolicyError || isSignatureError(error);
 
 export function checkDirectoryBody(response, verifiedKeyids) {
   if (!digestMatches(header(response.headers, 'content-digest'), response.body)) {
     refuse('directory-content-digest', 'directory Content-Digest does not match the body');
   }
-  if (verifiedKeyids.length === 0) refuse('directory-no-usable-key', 'the directory holds no Ed25519 key');
+  if (verifiedKeyids.length === 0) refuse('directory-no-usable-key', 'the directory holds no Ed25519 key with a valid signature');
 }
 
 // ── Row "Fetches" ─────────────────────────────────────────────────────────
