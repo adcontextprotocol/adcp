@@ -43,13 +43,15 @@ if (!args.self && !args.adapter) {
 }
 const command = args.self ? `"${process.execPath}" "${join(HERE, 'judge.mjs')}"` : args.adapter;
 
+// An adapter that does not exit 0 with one JSON object on its standard output has crashed.
 function adapter(op) {
   const r = spawnSync(command, { shell: true, input: JSON.stringify(op), encoding: 'utf8', maxBuffer: 1 << 24 });
+  let out;
   try {
-    return JSON.parse(r.stdout);
-  } catch {
-    return { ok: false, status: 0, rule: 'adapter-crash', error: (r.stderr || r.stdout || String(r.error)).slice(0, 600) };
-  }
+    out = JSON.parse(r.stdout);
+  } catch {}
+  if (r.status === 0 && out !== null && typeof out === 'object') return out;
+  return { ok: false, status: 0, rule: 'adapter-crash', error: (r.stderr || r.stdout || String(r.error ?? `exit ${r.status ?? r.signal}`)).slice(0, 600) };
 }
 
 // ── Data ──────────────────────────────────────────────────────────────────
@@ -70,10 +72,12 @@ const vectors = dir =>
 const checks = [];
 const describe = r => (r.ok ? `pass${r.identity ? ` as ${r.identity}` : ''}` : `${r.status || 'refuse'} ${r.rule ?? ''}: ${r.error ?? ''}`.trim());
 const want = e => (e.success ? `pass${e.identity ? ` as ${e.identity}` : ''}` : `${e.status ?? 'refuse'}`);
+// A crash fails every check: it is never a refusal, even where the check expects no status.
 const meets = (expected, got) =>
-  expected.success
+  got.rule !== 'adapter-crash' &&
+  (expected.success
     ? got.ok === true && (expected.identity === undefined || got.identity === expected.identity)
-    : got.ok === false && (expected.status === undefined || got.status === expected.status);
+    : got.ok === false && (expected.status === undefined || got.status === expected.status));
 
 function record(suite, id, expected, got, extra = {}) {
   checks.push({ suite, id, ok: meets(expected, got), expected: want(expected), got: describe(got), ...extra });

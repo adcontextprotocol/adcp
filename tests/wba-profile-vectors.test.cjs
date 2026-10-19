@@ -218,3 +218,23 @@ describe('Web Bot Auth profile negative vectors', () => {
     assert.deepEqual(vector.request, original.request);
   });
 });
+
+describe('Web Bot Auth interop harness grading', () => {
+  const { spawnSync } = require('node:child_process');
+  const node = JSON.stringify(process.execPath);
+  const grade = adapter => spawnSync(process.execPath, [path.join(INTEROP, 'run.mjs'), '--adapter', adapter], { encoding: 'utf8', maxBuffer: 1 << 24 });
+
+  for (const [name, adapter] of [
+    ['an adapter that throws', `${node} -e "throw new Error('stub adapter crash')"`],
+    ['an adapter that reports an adapter-crash rule', `${node} -e "process.stdout.write(JSON.stringify({ ok: false, status: 0, rule: 'adapter-crash', error: 'stub' }))"`],
+    ['an adapter that writes a refusal and exits 1', `${node} -e "process.stdout.write(JSON.stringify({ ok: false, status: 403, rule: 'stub', error: 'stub' })); process.exitCode = 1"`],
+  ]) {
+    it(`${name} fails every check, including the refusals that expect no status`, () => {
+      const run = grade(adapter);
+      assert.equal(run.status, 1, run.stderr);
+      const summary = run.stdout.match(/^(\d+) of (\d+) checks pass\.$/m);
+      assert.ok(summary, run.stdout);
+      assert.equal(summary[1], '0', run.stdout.split('\n').filter(line => line.startsWith('pass')).join('\n'));
+    });
+  }
+});

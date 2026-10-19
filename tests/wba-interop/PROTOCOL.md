@@ -34,7 +34,12 @@ The operations use the following shapes:
   verification, never the system clock.
 - **Refusal**: `{ "ok": false, "status", "rule", "error" }`. `status` is the HTTP
   status the implementation answers (`400`, `403`, or `429`). `rule` and `error`
-  are free text that the report shows.
+  are free text that the report shows. An adapter writes a refusal only for the
+  implementation's own verification refusals.
+- **Crash**: any other error crashes the adapter. The adapter exits 0 after it
+  writes its output; a nonzero exit, a signal, output that is not one JSON object,
+  or the rule `adapter-crash` is a crash. The harness grades a crash as a failure
+  of the check, never as a refusal, even where the check expects no status.
 
 ## Operations
 

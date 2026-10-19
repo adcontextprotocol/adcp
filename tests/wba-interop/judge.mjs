@@ -301,12 +301,7 @@ const OPERATIONS = {
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   let input = '';
   for await (const chunk of process.stdin) input += chunk;
+  // An error that is not a refusal crashes the adapter, which the harness grades as a failure.
   const op = JSON.parse(input);
-  let out;
-  try {
-    out = await OPERATIONS[op.op](op);
-  } catch (e) {
-    out = { ok: false, status: 0, rule: 'adapter-error', error: String(e?.stack ?? e) };
-  }
-  process.stdout.write(JSON.stringify(out));
+  process.stdout.write(JSON.stringify(await OPERATIONS[op.op](op)));
 }
