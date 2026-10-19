@@ -1,11 +1,13 @@
 ---
-id: DR-XXXX  # placeholder; next free number assigned at merge
+id: DR-0026
 title: In 3.3, a JWS artifact from a Web Bot Auth identity is signed with a key from that identity's key directory
 class: normative
-status: proposed
+status: ratified
 date: 2026-10-18
-decided_by: pending WG ratification
-refs: ["#8118", "#7878", "DR-0023", "PR #7894", "PR #8219"]
+decided: 2026-10-19
+decided_by: WG approval, recorded at https://github.com/adcontextprotocol/adcp/pull/8299#issuecomment-6269823539
+supersedes: DR-0023  # in part: the two rulings named under Decision
+refs: ["#8118", "#7878", "DR-0023", "PR #7894", "PR #8219", "PR #8299"]
 dissent: none recorded
 ---
 
@@ -15,7 +17,7 @@ For AdCP 3.3, the three JWS artifacts (governance context `iss`, designated-task
 
 - **Which issuer.** `O` is the canonical origin of the signing agent's URL: `iss` for a governance context, `agent_url` for designated-task response signing, and `rights_agent.url` for a rights attestation.
 - **When.** The trust record derived from `O` lists `O`. Profile selection never reads an unsigned field, and a fetch failure never selects the 3.2 profile.
-- **How.** A key from `O`'s key directory, with `alg` `EdDSA` and `kid` the key's JWK thumbprint. Purpose separation is by origin, so the 3.2 key-purpose checks do not apply. Revocation is `O`'s list, and every other check of the surface is unchanged.
+- **How.** A key the Web Bot Auth profile uses from `O`'s key directory (`wba-profile.mdx` §Key directories), with `alg` `EdDSA` and `kid` the key's JWK thumbprint. Purpose separation is by origin, so the 3.2 key-purpose checks do not apply. Revocation is `O`'s list, and every other check of the surface is unchanged.
 - **History.** Historical verification of a governance context uses the existing governance key archive at `O`. That is the governance-key provenance rule for 3.3.
 - **Everyone else.** A JWS artifact from an issuer whose `O` no trust record lists is verified under the 3.2 profile, which stays fully functional through 3.x.
 

@@ -106,7 +106,7 @@ No other rule restates the definition.
 - **Requests and webhooks** follow the WBA draft as written: a covered `Signature-Agent` member naming `O` (§5.2.1, §5.2.2), `tag="web-bot-auth"` (§5.2), and a `nonce`. A webhook is an ordinary WBA request from the seller's identity. Its covered `@method`, `@target-uri`, and `@authority`, plus the nonce, keep a request signature from verifying as a webhook or the reverse.
 - **Profile selection.** A signed message that carries `Signature-Agent` or the `web-bot-auth` tag is verified under the WBA profile only, never under the 3.2 profile.
 - **A2A.** RFC 9421 component names apply to every HTTP message, and `security.mdx` §Operation resolution over A2A already covers the bindings. There are no binding-specific component names.
-- **Advertisement.** Capabilities advertise the profile with the identifiers #7894 uses in `request_signing.profiles` and `webhook_signing.profiles`: `web-bot-auth` and `adcp/request-signing/v1`. The WBA draft revision is a separate field next to `profiles`, so a later revision with wire changes is advertised alongside the old one.
+- **Advertisement.** Capabilities advertise the profile with the identifiers #7894 uses in `request_signing.profiles` and `webhook_signing.profiles`: `web-bot-auth` and `adcp/request-signing/v1`. A later WBA draft revision with wire changes is advertised as a new `profiles` value, alongside the old one.
 - **Errors.** WBA defines the verifier's answer: `403` with `Accept-Signature`, `400` for headers that do not parse, and `429` for a reused signature or nonce. An AdCP error body, when sent, is the generic authentication error with no signature-specific detail. Conformance grades the status and headers only. The signature-specific `request_signature_*` codes remain for the 3.2 profile.
 
 Everything else on the signature path is the draft's: attaching no policy until verification (§4.1), the `(O, key)` lookup (§5.4), fetch limits (§6.7), coalescing (Appendix C.3), and negative caching (Appendix C.5). AdCP chooses only its numbers, such as a negative cache of at most 60 s.
@@ -140,7 +140,7 @@ Evaluated when something is gated on it: binding a principal (R5), evaluating a 
 ### R4. Coexistence with the 3.2 profile (P3)
 
 - Signed messages without `Signature-Agent` or the `web-bot-auth` tag are verified under the 3.2 profile.
-- **JWS artifacts.** For a JWS artifact, `O` is the canonical origin of the signing agent's URL: `iss` for a governance context, `agent_url` for designated-task response signing, and `rights_agent.url` for a rights attestation. When the trust record derived from `O` (R3a step 1) lists `O`, the verifier verifies the JWS with a key from `O`'s key directory, never under the 3.2 profile:
+- **JWS artifacts.** For a JWS artifact, `O` is the canonical origin of the signing agent's URL: `iss` for a governance context, `agent_url` for designated-task response signing, and `rights_agent.url` for a rights attestation. When the trust record derived from `O` (R3a step 1) lists `O`, the verifier verifies the JWS with a key the Web Bot Auth profile uses from `O`'s key directory (`wba-profile.mdx` §Key directories), never under the 3.2 profile:
   - `alg` is `EdDSA`, and `kid` is the key's JWK thumbprint;
   - purpose separation is by origin (D2), so the 3.2 key-purpose checks (`use`, `key_ops`, and `adcp_use`) do not apply;
   - revocation is `O`'s list (R3);
@@ -274,7 +274,7 @@ The window of exposure is the time between compromise and the revocation reachin
 
 | Risk | Position |
 |---|---|
-| **Draft maturity.** WBA is an adopted IETF draft (-00). | Experimental and capability-advertised; the draft revision is advertised (R2); the 3.2 profile keeps working through 3.x. |
+| **Draft maturity.** WBA is an adopted IETF draft (-00). | Experimental and capability-advertised; a later draft revision is a new `profiles` value (R2); the 3.2 profile keeps working through 3.x. |
 | **Edge verifiers.** Deployed CDN verifiers lag the draft. | Sellers verify at their origin with the SDKs (WBA Appendix C.10). The interop matrix is tracked separately. |
 | **One agent per origin.** Path-hosted agents must move to subdomains. Multi-tenant sales platforms whose path-based URLs appear in many publishers' `adagents.json` files cannot move without those files changing. | The problem being solved is buyer to seller, and buyers can add subdomains cheaply. Path-hosted sellers keep 3.2 webhook signing until they migrate. |
 | **Directory upkeep.** Signed directory responses expire, so publishing keys is a scheduled job. | SDK CLIs provide a regenerate command; the walkthrough (P8) shows a scheduled job. |
