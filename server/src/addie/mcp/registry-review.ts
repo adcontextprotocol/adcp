@@ -495,7 +495,10 @@ Does this look like a legitimate ${record.entity_type} record? Check for spam, n
         });
       }
     } else {
-      // Approve but flag for admin review
+      // Approve but flag for admin review. Say so in the thread: without
+      // an action line the channel cannot tell that a record the model
+      // called suspicious was published anyway.
+      actionTaken = 'Record approved, flagged as suspicious';
       logger.warn({ domain: record.domain, entity_type: record.entity_type, reason: result.reason }, 'Suspicious new record approved with flag');
     }
   } else if (result.verdict === 'malicious') {
@@ -703,6 +706,10 @@ Does this edit look reasonable? Check for vandalism, spam, or obviously incorrec
         'Malicious edit with no revision to revert to',
       );
       actionTaken = 'Malicious verdict, but no revision was available to revert to — needs a human';
+      // Vandalism left live with nothing to roll back to is the one
+      // outcome that must not be invisible. It queues with a null
+      // revision and no revert action.
+      needsHumanDecision = true;
     }
   } else if (result.verdict === 'needs_human_review') {
     logger.warn(
@@ -713,15 +720,16 @@ Does this edit look reasonable? Check for vandalism, spam, or obviously incorrec
     needsHumanDecision = true;
   }
 
-  // An edit item is only actionable when there is a revision to restore.
-  // `revision_number` is the pre-edit state (adcp#8337); the no-revision
-  // case is already logged as an error above.
-  if (needsHumanDecision && edit.revision_number >= 1) {
+  // `revision_number` is the revision a revert restores — the pre-edit
+  // state (adcp#8337). An edit that arrived without one still queues,
+  // with a null revision: the moderator sees the vandalism and rolls the
+  // record back by hand, which beats the queue reporting drained.
+  if (needsHumanDecision) {
     await enqueueForModerators({
       entity_type: edit.entity_type,
       domain: edit.domain,
       submission_kind: 'edit',
-      revision_number: edit.revision_number,
+      revision_number: edit.revision_number >= 1 ? edit.revision_number : null,
       submitter_user_id: edit.editor_user_id,
       submitter_email: edit.editor_email,
       edit_summary: typeof edit.edit_summary === 'string' ? edit.edit_summary : null,

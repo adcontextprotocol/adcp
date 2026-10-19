@@ -33,8 +33,8 @@ export type SubjectType =
   | 'customer'
   | 'membership'
   | 'configuration'
-  /** A community registry submission (brand / property) awaiting moderation. */
-  | 'registry_record';
+  /** A moderation queue, reported in aggregate rather than per item. */
+  | 'queue';
 
 export interface Violation {
   /** Identifier of the invariant that fired this violation. */

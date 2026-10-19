@@ -23,14 +23,16 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { BrandDatabase } from '../../src/db/brand-db.js';
 import { PropertyDatabase } from '../../src/db/property-db.js';
 import {
-  getOpenRegistryReviewItem,
+  claimRegistryReviewItem,
   getRegistryRecordModerationState,
   getRegistryReviewBacklog,
+  listOpenRegistryEditItemsForRecord,
   listRegistryReviewQueue,
   recordRegistryReviewOutcome,
-  reopenRegistryReviewItem,
+  releaseRegistryReviewItemClaim,
   resolveOpenRegistryReviewItemsForRecord,
   resolveRegistryReviewItem,
+  resolveRegistryReviewItems,
 } from '../../src/db/registry-review-queue-db.js';
 import { registryReviewQueueDrainedInvariant } from '../../src/audit/integrity/invariants/registry-review-queue-drained.js';
 import type { InvariantContext } from '../../src/audit/integrity/types.js';
@@ -52,15 +54,31 @@ describe('registry review queue (Postgres)', () => {
     await pool.query('DELETE FROM registry_review_queue WHERE domain = ANY($1)', [domains]);
     await pool.query('DELETE FROM brand_revisions WHERE brand_domain = ANY($1)', [domains]);
     await pool.query('DELETE FROM brands WHERE domain = ANY($1)', [domains]);
+    await pool.query('DELETE FROM discovered_properties WHERE publisher_domain = ANY($1)', [domains]);
     await pool.query('DELETE FROM property_revisions WHERE publisher_domain = ANY($1)', [domains]);
     await pool.query('DELETE FROM hosted_properties WHERE publisher_domain = ANY($1)', [domains]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [CLAIMANT_ORG]);
   }
 
-  /** Only this test's fixtures — the table is shared with real data. */
+  /**
+   * Only this test's fixtures. Paging the whole queue and filtering
+   * afterwards would make "no fixtures returned" pass for the wrong
+   * reason on a database that already holds 200 waiting rows, so the
+   * fixtures are backdated to the front of the oldest-first ordering.
+   */
   async function ourQueue() {
+    const ourDomains = [BRAND_DOMAIN, EDIT_DOMAIN, PROPERTY_DOMAIN, CLAIM_DOMAIN];
+    await pool.query(
+      `UPDATE brands SET created_at = NOW() - INTERVAL '365 days' WHERE domain = ANY($1)`,
+      [ourDomains],
+    );
+    await pool.query(
+      `UPDATE hosted_properties SET created_at = NOW() - INTERVAL '365 days'
+        WHERE publisher_domain = ANY($1)`,
+      [ourDomains],
+    );
     const items = await listRegistryReviewQueue({ limit: 200 });
-    return items.filter((item) => [BRAND_DOMAIN, EDIT_DOMAIN, PROPERTY_DOMAIN, CLAIM_DOMAIN].includes(item.domain));
+    return items.filter((item) => ourDomains.includes(item.domain));
   }
 
   beforeAll(async () => {
@@ -197,7 +215,7 @@ describe('registry review queue (Postgres)', () => {
     });
   });
 
-  it('refuses an edit item with no revision to restore', async () => {
+  it('refuses a revision number that names no revision', async () => {
     await expect(recordRegistryReviewOutcome({
       entity_type: 'brand',
       domain: EDIT_DOMAIN,
@@ -226,9 +244,8 @@ describe('registry review queue (Postgres)', () => {
       verdict: 'needs_human_review',
     });
 
-    const claimed = await resolveRegistryReviewItem(item.id, 'reverted', MODERATOR, 'vandalism');
-    expect(claimed).not.toBeNull();
-    expect(claimed).toMatchObject({
+    const resolved = await resolveRegistryReviewItem(item.id, 'reverted', MODERATOR, 'vandalism');
+    expect(resolved).toMatchObject({
       resolution: 'reverted',
       resolved_by_user_id: 'user_moderator',
       resolved_by_email: 'moderator@example.com',
@@ -237,14 +254,84 @@ describe('registry review queue (Postgres)', () => {
 
     // The second moderator loses the race rather than reverting twice.
     expect(await resolveRegistryReviewItem(item.id, 'reverted', MODERATOR)).toBeNull();
-    expect(await getOpenRegistryReviewItem(item.id)).toBeNull();
     expect(await ourQueue()).toHaveLength(0);
+  });
 
-    await reopenRegistryReviewItem(item.id);
-    const reopened = await getOpenRegistryReviewItem(item.id);
-    expect(reopened).not.toBeNull();
-    expect(reopened?.resolution).toBeNull();
-    expect(reopened?.resolved_by_user_id).toBeNull();
+  it('keeps a claimed item in the queue until an action completes', async () => {
+    const item = await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: 2,
+      submitter_user_id: 'user_editor',
+      verdict: 'needs_human_review',
+    });
+
+    const claimed = await claimRegistryReviewItem(item.id, MODERATOR);
+    expect(claimed?.claimed_by_user_id).toBe('user_moderator');
+    expect(claimed?.resolved_at).toBeNull();
+
+    // A crash between claiming and acting must leave the work visible:
+    // a row marked reverted by a revert that never ran is how live
+    // vandalism gets closed as handled.
+    const [stillQueued] = await ourQueue();
+    expect(stillQueued.claimed_at).not.toBeNull();
+    expect((await getRegistryReviewBacklog()).flagged_edits).toBeGreaterThanOrEqual(1);
+
+    // A second moderator is held off while the claim is fresh...
+    expect(await claimRegistryReviewItem(item.id, { user_id: 'user_other' })).toBeNull();
+    // ...but the same moderator may retry, and a stale claim is reclaimable.
+    expect(await claimRegistryReviewItem(item.id, MODERATOR)).not.toBeNull();
+    await pool.query(
+      `UPDATE registry_review_queue SET claimed_at = NOW() - INTERVAL '30 minutes' WHERE id = $1`,
+      [item.id],
+    );
+    expect(await claimRegistryReviewItem(item.id, { user_id: 'user_other' })).not.toBeNull();
+
+    await releaseRegistryReviewItemClaim(item.id);
+    const [released] = await ourQueue();
+    expect(released.claimed_at).toBeNull();
+  });
+
+  it('closes every stacked edit a single revert covers', async () => {
+    const ids: string[] = [];
+    for (const revision of [5, 6, 7]) {
+      const row = await recordRegistryReviewOutcome({
+        entity_type: 'brand',
+        domain: EDIT_DOMAIN,
+        submission_kind: 'edit',
+        revision_number: revision,
+        submitter_user_id: 'user_editor',
+        verdict: 'needs_human_review',
+      });
+      ids.push(row.id);
+    }
+
+    const open = await listOpenRegistryEditItemsForRecord('brand', EDIT_DOMAIN);
+    // Oldest revision first: restoring revision 5 undoes 6 and 7 too,
+    // and "reverting" 7 afterwards would put 5 and 6 straight back.
+    expect(open.map((row) => row.revision_number)).toEqual([5, 6, 7]);
+
+    const closed = await resolveRegistryReviewItems(ids, 'reverted', MODERATOR);
+    expect(closed).toBe(3);
+    expect(await listOpenRegistryEditItemsForRecord('brand', EDIT_DOMAIN)).toHaveLength(0);
+    expect(await ourQueue()).toHaveLength(0);
+  });
+
+  it('queues an edit with no revision to restore, and offers no revert', async () => {
+    await recordRegistryReviewOutcome({
+      entity_type: 'brand',
+      domain: EDIT_DOMAIN,
+      submission_kind: 'edit',
+      revision_number: null,
+      submitter_user_id: 'user_editor',
+      verdict: 'malicious',
+      reason: 'vandalism',
+    });
+
+    const [entry] = await ourQueue();
+    expect(entry.revision_number).toBeNull();
+    expect(entry.available_actions).toEqual(['approve']);
   });
 
   it('drops a record from the queue once it is approved, and closes its items', async () => {
@@ -328,9 +415,103 @@ describe('registry review queue (Postgres)', () => {
   });
 
 
+it('only approves or deletes a record that is still pending', async () => {
+    await brandDb.createDiscoveredBrand(
+      { domain: BRAND_DOMAIN, brand_name: 'Acme Corp', source_type: 'community' },
+      { user_id: 'user_submitter', email: 'submitter@example.com' },
+    );
+    await brandDb.approveBrand(BRAND_DOMAIN);
+
+    // The review can finish between the queue's read and its write, so
+    // the pending predicate has to live inside the statement.
+    expect(await brandDb.approveBrand(BRAND_DOMAIN, { onlyIfPending: true })).toBe(false);
+    expect(await brandDb.deleteDiscoveredBrand(
+      BRAND_DOMAIN,
+      { actor_user_id: 'user_moderator', source: 'admin_registry_review_reject' },
+      { onlyIfPending: true },
+    )).toBe(false);
+    expect(await brandDb.getDiscoveredBrandByDomain(BRAND_DOMAIN)).not.toBeNull();
+
+    await propertyDb.createCommunityProperty(
+      { publisher_domain: PROPERTY_DOMAIN, adagents_json: { authorized_agents: [] }, source_type: 'community' },
+      { user_id: 'user_submitter', email: 'submitter@example.com' },
+    );
+    await propertyDb.approveProperty(PROPERTY_DOMAIN);
+    expect(await propertyDb.approveProperty(PROPERTY_DOMAIN, { onlyIfPending: true })).toBe(false);
+    expect(await propertyDb.deleteHostedPropertyByDomain(PROPERTY_DOMAIN, { onlyIfPending: true })).toBe(false);
+    expect(await propertyDb.getHostedPropertyByDomain(PROPERTY_DOMAIN)).not.toBeNull();
+  });
+
+  it('renders the submitted record so a moderator is not approving blind', async () => {
+    // A pending community brand is hidden from the public viewer, so
+    // the queue is the only place its content appears.
+    await brandDb.createDiscoveredBrand(
+      {
+        domain: BRAND_DOMAIN,
+        brand_name: 'Acme Corp',
+        source_type: 'community',
+        brand_manifest: { description: 'Maker of anvils' },
+        has_brand_manifest: true,
+      },
+      { user_id: 'user_submitter', email: 'submitter@example.com' },
+    );
+
+    const [entry] = await ourQueue();
+
+    expect(entry.submitted_content).toContain('Acme Corp');
+    expect(entry.submitted_content).toContain('Maker of anvils');
+    expect(entry.submitted_content_truncated).toBe(false);
+  });
+
+  it('does not put a property claim or verification token in the queue payload', async () => {
+    await propertyDb.createCommunityProperty(
+      {
+        publisher_domain: PROPERTY_DOMAIN,
+        adagents_json: { authorized_agents: [], properties: [{ name: 'News' }] },
+        source_type: 'community',
+      },
+      { user_id: 'user_submitter', email: 'submitter@example.com' },
+    );
+    await pool.query(
+      `UPDATE hosted_properties SET claim_token = 'secret-claim-token',
+         verification_token = 'secret-verification-token'
+       WHERE publisher_domain = $1`,
+      [PROPERTY_DOMAIN],
+    );
+
+    const [entry] = await ourQueue();
+
+    // The content comes from adagents_json, not from a revision
+    // snapshot — a property revision snapshot is the whole row.
+    expect(entry.submitted_content).toContain('News');
+    expect(JSON.stringify(entry)).not.toContain('secret-claim-token');
+    expect(JSON.stringify(entry)).not.toContain('secret-verification-token');
+  });
+
+it('refuses to roll a property back once the real publisher owns it', async () => {
+    // A flagged edit can sit in the queue for weeks. If the publisher
+    // claims the domain and publishes their own adagents.json in the
+    // meantime, the stale community revision is not a state to restore.
+    await propertyDb.createCommunityProperty(
+      { publisher_domain: PROPERTY_DOMAIN, adagents_json: { authorized_agents: [] }, source_type: 'community' },
+      { user_id: 'user_submitter', email: 'submitter@example.com' },
+    );
+    await propertyDb.approveProperty(PROPERTY_DOMAIN);
+    await pool.query(
+      `INSERT INTO discovered_properties (publisher_domain, property_type, name)
+       VALUES ($1, 'website', 'Publisher site')
+       ON CONFLICT DO NOTHING`,
+      [PROPERTY_DOMAIN],
+    );
+
+    await expect(propertyDb.rollbackProperty(PROPERTY_DOMAIN, 1, { user_id: 'user_moderator' }))
+      .rejects.toThrow(/authoritative/i);
+  });
+
   it('runs the operational diagnostic against the real schema', async () => {
     // The unit test mocks the pool, so this is where the invariant's SQL
-    // — including the shared submitter predicate — is actually executed.
+    // — the shared backlog aggregate, including the submitter predicate
+    // — is actually executed.
     const edit = await recordRegistryReviewOutcome({
       entity_type: 'brand',
       domain: EDIT_DOMAIN,
@@ -348,15 +529,15 @@ describe('registry review queue (Postgres)', () => {
     const ctx = {
       pool,
       logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
-      options: { sampleSize: 500 },
     } as unknown as InvariantContext;
 
     const result = await registryReviewQueueDrainedInvariant.check(ctx);
-    const ours = result.violations.filter((v) => v.subject_id === `brand:${EDIT_DOMAIN}`);
 
-    expect(ours).toHaveLength(1);
-    expect(ours[0].severity).toBe('warning');
-    expect((ours[0].details as { age_hours: number }).age_hours).toBeGreaterThanOrEqual(99);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].subject_id).toBe('registry-review-queue');
+    expect(result.violations[0].severity).toBe('warning');
+    expect((result.violations[0].details as { oldest_age_hours: number }).oldest_age_hours)
+      .toBeGreaterThanOrEqual(99);
   });
 
   it('counts pending brands, pending properties and flagged edits, and the oldest wait', async () => {

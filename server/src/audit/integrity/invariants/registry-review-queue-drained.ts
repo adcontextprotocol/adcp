@@ -10,42 +10,30 @@
  * locked against further member edits.
  *
  * The moderator-facing signal is the daily digest
- * (`registry-review-digest`). This is the operational one: it fires on
- * the same state from the diagnostics side, so an operator running
- * `/api/admin/integrity/check` during an incident sees the backlog
- * without having to know the registry queue exists.
+ * (`registry-review-digest`). This is the operational one, for the
+ * operator who is already reading `/api/admin/integrity/check` during an
+ * incident and would otherwise have to know the registry queue exists.
  *
- * Severity is `warning`, not `critical`: a backlog is work waiting, not
- * data corruption, and the critical path pages a human.
+ * **One aggregate violation, not one per item.** Every other invariant
+ * here asserts that two systems agree, and reports per offending entity
+ * because each one is a separate repair. A backlog is a single condition
+ * with a single remedy — work the queue — and the outage this exists to
+ * catch is exactly when per-item violations would bury the billing and
+ * directory findings an operator opens this report for. The per-record
+ * detail lives at `/admin/registry-review`.
  *
- * Work the queue at /admin/registry-review (adcp#8338).
+ * Severity is `warning`, not `critical`: work waiting is not data
+ * corruption, and the critical path pages a human.
  */
-import {
-  BRAND_HAS_SUBMITTER,
-  PROPERTY_HAS_SUBMITTER,
-} from '../../../db/registry-review-queue-db.js';
-import { flattenToSingleLine } from '../../../utils/slack-escape.js';
-import type { Invariant, InvariantContext, InvariantResult, Violation } from '../types.js';
+import type { Pool } from 'pg';
+import { getRegistryReviewBacklog } from '../../../db/registry-review-queue-db.js';
+import type { Invariant, InvariantContext, InvariantResult } from '../types.js';
 
 /**
- * How long a submission may wait before it counts as a violation. Matches
- * the brand-logo moderation SLA so the registry queues share one promise.
+ * How long the oldest submission may wait before this fires. Matches the
+ * brand-logo moderation SLA so the registry queues share one promise.
  */
 export const REGISTRY_REVIEW_SLA_HOURS = 48;
-
-const DEFAULT_LIMIT = 200;
-const MAX_LIMIT = 1000;
-/** Domains are validated on write; flatten anyway before composing text. */
-const DOMAIN_LABEL_MAX = 253;
-
-interface StaleRow {
-  kind: 'pending_record' | 'flagged_edit';
-  entity_type: 'brand' | 'property';
-  domain: string;
-  created_at: Date;
-  age_hours: string | number;
-  verdict: string | null;
-}
 
 export const registryReviewQueueDrainedInvariant: Invariant = {
   name: 'registry-review-queue-drained',
@@ -57,64 +45,43 @@ export const registryReviewQueueDrainedInvariant: Invariant = {
     + 'member asks why their record never appeared.',
   severity: 'warning',
   async check(ctx: InvariantContext): Promise<InvariantResult> {
-    const { pool, options } = ctx;
-    const limit = Math.min(options?.sampleSize ?? DEFAULT_LIMIT, MAX_LIMIT);
-    const violations: Violation[] = [];
+    // Reads the same aggregate the admin page and the digest read, so the
+    // three surfaces cannot disagree about what is waiting.
+    const backlog = await getRegistryReviewBacklog(ctx.pool as Pool);
 
-    const stale = await pool.query<StaleRow>(
-      `SELECT * FROM (
-         SELECT 'pending_record'::text AS kind, 'brand'::text AS entity_type,
-                b.domain, b.created_at, NULL::text AS verdict
-         FROM brands b
-         WHERE b.review_status = 'pending' AND ${BRAND_HAS_SUBMITTER}
-         UNION ALL
-         SELECT 'pending_record'::text AS kind, 'property'::text AS entity_type,
-                p.publisher_domain AS domain, p.created_at, NULL::text AS verdict
-         FROM hosted_properties p
-         WHERE p.review_status = 'pending' AND ${PROPERTY_HAS_SUBMITTER}
-         UNION ALL
-         SELECT 'flagged_edit'::text AS kind, entity_type, domain, created_at, verdict
-         FROM registry_review_queue
-         WHERE resolved_at IS NULL AND submission_kind = 'edit'
-       ) queue
-       WHERE created_at < NOW() - ($1 || ' hours')::interval
-       ORDER BY created_at ASC
-       LIMIT $2`,
-      [String(REGISTRY_REVIEW_SLA_HOURS), limit],
-    );
+    if (backlog.total === 0 || (backlog.oldest_age_hours ?? 0) <= REGISTRY_REVIEW_SLA_HOURS) {
+      return { checked: backlog.total, violations: [] };
+    }
 
-    for (const row of stale.rows) {
-      const ageHours = Math.floor((Date.now() - new Date(row.created_at).getTime()) / 3_600_000);
-      const domain = flattenToSingleLine(row.domain, DOMAIN_LABEL_MAX);
-      const what = row.kind === 'pending_record'
-        ? `Community ${row.entity_type} record ${domain} has been pending review for ${ageHours}h `
-          + 'and is not visible in the registry.'
-        : `A live edit to ${row.entity_type} ${domain} has been waiting on a moderator for ${ageHours}h `
-          + 'because the automated review could not resolve it.';
-
-      violations.push({
+    const oldestHours = Math.floor(backlog.oldest_age_hours ?? 0);
+    return {
+      checked: backlog.total,
+      violations: [{
         invariant: 'registry-review-queue-drained',
         severity: 'warning',
-        subject_type: 'registry_record',
-        subject_id: `${row.entity_type}:${domain}`,
-        message: `${what} Registry review fails safe (adcp#8337), so a provider outage or a missing `
-          + 'ANTHROPIC_API_KEY builds this backlog silently.',
+        subject_type: 'queue',
+        subject_id: 'registry-review-queue',
+        message:
+          `${backlog.total} community registry submission(s) are waiting on a moderator and the `
+          + `oldest has waited ${oldestHours}h, past the ${REGISTRY_REVIEW_SLA_HOURS}h SLA. `
+          + `${backlog.pending_records} pending record(s) are not visible in the registry at all; `
+          + `${backlog.flagged_edits} live edit(s) are unreviewed. Registry review fails safe `
+          + '(adcp#8337), so a provider outage or a missing ANTHROPIC_API_KEY builds this backlog '
+          + 'silently.',
         details: {
-          kind: row.kind,
-          entity_type: row.entity_type,
-          domain,
-          verdict: row.verdict,
-          age_hours: ageHours,
+          total: backlog.total,
+          pending_brands: backlog.pending_brands,
+          pending_properties: backlog.pending_properties,
+          flagged_edits: backlog.flagged_edits,
+          oldest_age_hours: backlog.oldest_age_hours,
+          oldest_waiting_since: backlog.oldest_created_at,
           sla_hours: REGISTRY_REVIEW_SLA_HOURS,
-          waiting_since: new Date(row.created_at).toISOString(),
         },
         remediation_hint:
           'Work the queue at /admin/registry-review. If the backlog is outage-driven, check '
           + 'ANTHROPIC_API_KEY and the Anthropic status page first — every item here is a '
           + 'submission the reviewer declined to decide, not a submission it rejected.',
-      });
-    }
-
-    return { checked: stale.rows.length, violations };
+      }],
+    };
   },
 };

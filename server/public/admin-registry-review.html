@@ -122,6 +122,44 @@
     .badge-verdict-ok { background: var(--color-success-100); color: var(--color-success-700); }
     .badge-verdict-none { background: var(--color-gray-100); color: var(--color-gray-700); }
 
+    .submitted {
+      margin-top: var(--space-1);
+      font-size: var(--text-sm);
+    }
+    .submitted summary {
+      cursor: pointer;
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .submitted pre {
+      margin: var(--space-2) 0 0;
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      max-height: 320px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .claimed {
+      color: var(--color-warning-700);
+      font-size: var(--text-xs);
+    }
+    .pager {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-4);
+      margin-top: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
     .actions { display: flex; flex-direction: column; gap: var(--space-2); min-width: 150px; }
     .timestamp { color: var(--color-text-muted); font-size: var(--text-xs); }
   </style>
@@ -155,6 +193,11 @@
         </div>
 
         <div id="queue" class="queue"></div>
+
+        <div id="pager" class="pager" style="display: none;">
+          <span id="pagerSummary"></span>
+          <button class="btn btn-secondary btn-small" id="loadMoreBtn">Load more</button>
+        </div>
       </div>
     </div>
   </div>
@@ -224,11 +267,6 @@
 
     function renderRow(item) {
       const row = el('div', 'queue-row');
-      row.dataset.kind = item.kind;
-      row.dataset.entityType = item.entity_type;
-      row.dataset.domain = item.domain;
-      if (item.review_item_id) row.dataset.itemId = item.review_item_id;
-
       const meta = el('div', 'meta');
 
       const title = el('div', 'meta-domain');
@@ -288,10 +326,51 @@
         meta.appendChild(labelled('Automated action:', item.action_taken));
       }
 
+      if (item.submitted_content) {
+        // A moderator cannot publish a record they have not read: a
+        // pending record is hidden from the public viewer, so this is
+        // the only place its content appears.
+        const details = el('details', 'submitted');
+        details.appendChild(el(
+          'summary',
+          null,
+          item.submitted_content_truncated ? 'Submitted record (truncated)' : 'Submitted record',
+        ));
+        details.appendChild(el('pre', null, item.submitted_content));
+        meta.appendChild(details);
+      } else if (item.kind === 'flagged_edit') {
+        const hint = el('div', 'subtitle');
+        hint.appendChild(document.createTextNode('The edit is live — '));
+        const link = el('a', null, 'open the record and its revision history');
+        link.href = recordUrl(item);
+        link.target = '_blank';
+        link.rel = 'noopener';
+        hint.appendChild(link);
+        hint.appendChild(document.createTextNode('.'));
+        meta.appendChild(hint);
+      }
+
+      if (item.claimed_at) {
+        meta.appendChild(el(
+          'div',
+          'claimed',
+          'Another moderator claimed this at ' + new Date(item.claimed_at).toLocaleString()
+            + '. Claims expire after a few minutes.',
+        ));
+      }
+
       row.appendChild(meta);
 
       const actions = el('div', 'actions');
-      (item.available_actions || []).forEach(function (action) {
+      const actionList = item.available_actions || [];
+      if (item.kind === 'flagged_edit' && actionList.indexOf('revert') === -1) {
+        actions.appendChild(el(
+          'div',
+          'subtitle',
+          'No revision recorded — roll this record back by hand if it needs it.',
+        ));
+      }
+      actionList.forEach(function (action) {
         const button = el(
           'button',
           'btn btn-small ' + (action === 'approve' ? 'btn-success' : action === 'reject' ? 'btn-danger' : 'btn-secondary'),
@@ -307,35 +386,88 @@
       return row;
     }
 
-    async function loadQueue() {
+    var PAGE_SIZE = 50;
+    var loadedCount = 0;
+    var lastBacklogTotal = 0;
+
+    function showEmptyState(message) {
+      const empty = document.getElementById('empty');
+      empty.textContent = '';
+      empty.appendChild(el('p', null, message || '✅ Queue is clear.'));
+      empty.appendChild(el(
+        'p',
+        'subtitle',
+        'Submissions the automated review could not resolve will show up here.',
+      ));
+      empty.style.display = 'block';
+    }
+
+    function renderPager() {
+      const pager = document.getElementById('pager');
+      const summary = document.getElementById('pagerSummary');
+      const more = document.getElementById('loadMoreBtn');
+      if (loadedCount === 0) {
+        pager.style.display = 'none';
+        return;
+      }
+      pager.style.display = 'flex';
+      // The header counts everything waiting; the list is one page of
+      // it. During the outage this page exists for, those numbers differ
+      // and the page has to say so.
+      summary.textContent = 'Showing ' + loadedCount + ' of ' + lastBacklogTotal + ' waiting.';
+      more.style.display = loadedCount < lastBacklogTotal ? 'inline-block' : 'none';
+    }
+
+    async function loadQueue(options) {
+      const append = Boolean(options && options.append);
       const queue = document.getElementById('queue');
       const empty = document.getElementById('empty');
-      queue.textContent = '';
-      queue.appendChild(el('div', 'loading', 'Loading queue…'));
-      empty.style.display = 'none';
+      const offset = append ? loadedCount : 0;
+
+      if (!append) {
+        queue.textContent = '';
+        queue.appendChild(el('div', 'loading', 'Loading queue…'));
+        empty.style.display = 'none';
+      }
 
       try {
-        const resp = await fetch('/api/admin/registry-review/queue', { credentials: 'include' });
+        const resp = await fetch(
+          '/api/admin/registry-review/queue?limit=' + PAGE_SIZE + '&offset=' + offset,
+          { credentials: 'include' },
+        );
         if (resp.status === 403) {
           queue.textContent = '';
-          empty.style.display = 'block';
-          empty.textContent = '🔒 Admin access is required for the registry review queue.';
+          document.getElementById('pager').style.display = 'none';
+          showEmptyState('🔒 Admin access is required for the registry review queue.');
           return;
         }
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
         const body = await resp.json();
+        lastBacklogTotal = (body.backlog && body.backlog.total) || 0;
         renderBacklog(body.backlog);
 
         const items = Array.isArray(body.items) ? body.items : [];
-        queue.textContent = '';
-        if (items.length === 0) {
-          empty.style.display = 'block';
-          return;
+        if (!append) {
+          queue.textContent = '';
+          loadedCount = 0;
         }
         items.forEach(function (item) { queue.appendChild(renderRow(item)); });
+        loadedCount += items.length;
+
+        if (loadedCount === 0) {
+          showEmptyState();
+        } else {
+          empty.style.display = 'none';
+        }
+        renderPager();
       } catch (err) {
-        queue.textContent = '';
+        if (!append) {
+          queue.textContent = '';
+          // Don't leave stale counts standing next to a failure.
+          document.getElementById('backlog').textContent = '';
+          document.getElementById('pager').style.display = 'none';
+        }
         showStatus('Failed to load queue: ' + (err && err.message ? err.message : err), 'error');
       }
     }
@@ -382,7 +514,10 @@
     document.addEventListener('DOMContentLoaded', function () {
       document.getElementById('loading').style.display = 'none';
       document.getElementById('content').style.display = 'block';
-      document.getElementById('refreshBtn').addEventListener('click', loadQueue);
+      document.getElementById('refreshBtn').addEventListener('click', function () { loadQueue(); });
+      document.getElementById('loadMoreBtn').addEventListener('click', function () {
+        loadQueue({ append: true });
+      });
       loadQueue();
     });
   </script>

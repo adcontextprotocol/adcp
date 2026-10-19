@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS registry_review_queue (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
+  -- A moderator who is mid-action. Claiming is separate from resolving so
+  -- that a crash between the two leaves the item IN the queue: a row
+  -- marked `reverted` by a revert that never ran is how live vandalism
+  -- gets closed as handled. Stale claims expire, so a lost process does
+  -- not park an item forever.
+  claimed_at TIMESTAMPTZ,
+  claimed_by_user_id VARCHAR(255),
+
   -- Moderator decision. Identity is required whenever the row is resolved.
   resolved_at TIMESTAMPTZ,
   resolution TEXT CHECK (resolution IN ('approved', 'rejected', 'reverted')),
@@ -60,9 +68,14 @@ CREATE TABLE IF NOT EXISTS registry_review_queue (
     (resolved_at IS NULL AND resolution IS NULL AND resolved_by_user_id IS NULL)
     OR (resolved_at IS NOT NULL AND resolution IS NOT NULL AND resolved_by_user_id IS NOT NULL)
   ),
-  -- An edit item is only actionable if we know which revision to restore.
-  CONSTRAINT registry_review_queue_edit_revision CHECK (
-    submission_kind <> 'edit' OR revision_number >= 1
+  -- A revision number, when present, has to name a real revision. An
+  -- edit with none is still queued — it is vandalism left live that
+  -- nobody can revert automatically — but it offers no revert action.
+  CONSTRAINT registry_review_queue_revision_number CHECK (
+    revision_number IS NULL OR revision_number >= 1
+  ),
+  CONSTRAINT registry_review_queue_claim_identity CHECK (
+    (claimed_at IS NULL) = (claimed_by_user_id IS NULL)
   )
 );
 
@@ -85,5 +98,7 @@ COMMENT ON TABLE registry_review_queue IS
   'Registry submissions waiting on a moderator because the automated review failed safe (adcp#8337, #8338). Open rows are the queue; resolved rows record which moderator decided and how.';
 COMMENT ON COLUMN registry_review_queue.revision_number IS
   'For submission_kind = edit: the revision that restores the pre-edit state. Undoing edit N restores revision N (adcp#8337).';
+COMMENT ON COLUMN registry_review_queue.claimed_at IS
+  'Set while a moderator is mid-action. A claimed item stays in the queue; only a completed action resolves it, and a stale claim is reclaimable.';
 COMMENT ON COLUMN registry_review_queue.reason IS
   'Model-authored, submitter-influenced free text. Sanitize before rendering to Slack or HTML.';

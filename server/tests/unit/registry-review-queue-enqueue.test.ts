@@ -152,6 +152,20 @@ describe('registry review → moderator queue', () => {
       expect(mocks.recordRegistryReviewOutcome).not.toHaveBeenCalled();
     });
 
+    it('says in the thread that a suspicious record was published anyway', async () => {
+      mocks.anthropicCreate.mockResolvedValueOnce(verdictResponse('suspicious', 'thin but plausible'));
+
+      await reviewNewRecord(newBrandRecord());
+
+      expect(mocks.approveBrand).toHaveBeenCalled();
+      // Nothing is waiting on a human, so it does not queue — but the
+      // channel has to be able to tell the record went live.
+      expect(mocks.recordRegistryReviewOutcome).not.toHaveBeenCalled();
+      expect(mocks.notifyAddieReview).toHaveBeenCalledWith(
+        expect.objectContaining({ action_taken: 'Record approved, flagged as suspicious' }),
+      );
+    });
+
     it('does not queue a malicious record the cleanup actually removed', async () => {
       mocks.anthropicCreate.mockResolvedValueOnce(verdictResponse('malicious', 'spam'));
 
@@ -209,6 +223,22 @@ describe('registry review → moderator queue', () => {
       expect(queued()).toMatchObject({
         submission_kind: 'edit',
         revision_number: 3,
+        verdict: 'malicious',
+      });
+    });
+
+    it('queues a malicious edit that has no revision to revert to', async () => {
+      // Vandalism left live with nothing to roll back to is the one
+      // outcome that must not be invisible: Slack says a human is
+      // needed, so the queue has to agree.
+      mocks.anthropicCreate.mockResolvedValueOnce(verdictResponse('malicious', 'vandalism'));
+
+      await reviewRegistryEdit(brandEdit({ revision_number: 0 }));
+
+      expect(mocks.rollbackBrand).not.toHaveBeenCalled();
+      expect(queued()).toMatchObject({
+        submission_kind: 'edit',
+        revision_number: null,
         verdict: 'malicious',
       });
     });

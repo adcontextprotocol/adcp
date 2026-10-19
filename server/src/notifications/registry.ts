@@ -652,12 +652,21 @@ export async function notifyAddieReview(review: {
 export async function notifyRegistryReviewResolved(resolution: {
   entity_type: 'brand' | 'property';
   domain: string;
+  /**
+   * Whether the decision was about publishing the record or about one
+   * of its edits. "Approved" means different things to the next
+   * moderator reading the channel, and this is the message they use to
+   * avoid double-working an item.
+   */
+  subject?: 'record' | 'edit';
   /** What the moderator did, not what they set out to do. */
   action: 'approved' | 'rejected' | 'reverted';
   moderator_email?: string;
   moderator_name?: string;
   /** For a revert: the revision that was restored (adcp#8337). */
   restored_revision?: number;
+  /** For a revert that covered later stacked edits as well. */
+  reverted_edits?: number;
   note?: string;
 }): Promise<void> {
   const channelId = getChannelId();
@@ -670,19 +679,24 @@ export async function notifyRegistryReviewResolved(resolution: {
     FIELD_MAX,
   );
 
+  const isEdit = resolution.subject === 'edit';
   const emoji = resolution.action === 'approved' ? '✅'
     : resolution.action === 'rejected' ? '🗑️'
     : '⏪';
-  const verb = resolution.action === 'approved' ? 'approved'
-    : resolution.action === 'rejected' ? 'rejected and removed'
+  const verb = resolution.action === 'approved'
+    ? (isEdit ? 'edit kept as submitted' : 'record published')
+    : resolution.action === 'rejected' ? 'record rejected and removed'
     : Number.isInteger(resolution.restored_revision)
-      ? `reverted to revision ${resolution.restored_revision}`
-      : 'reverted';
+      ? `edit reverted to revision ${resolution.restored_revision}`
+      : 'edit reverted';
 
   const lines = [
     `${emoji} *${typeLabel} ${verb} from the review queue:* \`${domainLabel}\``,
     `_By ${moderator}_`,
   ];
+  if (resolution.action === 'reverted' && (resolution.reverted_edits ?? 0) > 1) {
+    lines.push(`_Covered ${resolution.reverted_edits} stacked edits on this record._`);
+  }
   if (resolution.note) {
     lines.push(`_Note: ${sanitizeSlackLine(resolution.note, FREE_TEXT_MAX)}_`);
   }

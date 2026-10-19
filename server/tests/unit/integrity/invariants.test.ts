@@ -1317,94 +1317,102 @@ describe('unique-org-per-email-domain', () => {
  * missing ANTHROPIC_API_KEY parks community submissions instead of
  * publishing them. This invariant is the operational-diagnostics half of
  * the backlog signal (adcp#8338) — the daily digest is the moderator half.
+ *
+ * One aggregate violation, deliberately: the outage this catches is
+ * exactly when per-item violations would bury the billing and directory
+ * findings an operator opens this report for.
  */
 describe('registry-review-queue-drained', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('reports nothing when the queue is drained', async () => {
-    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+  /** Shape of the `waiting` aggregate `getRegistryReviewBacklog` reads. */
+  function backlogRow(over: Record<string, unknown> = {}) {
+    return {
+      rows: [{
+        pending_brands: '0',
+        pending_properties: '0',
+        flagged_edits: '0',
+        oldest_created_at: null,
+        ...over,
+      }],
+    };
+  }
+
+  it('reports nothing when the queue is empty', async () => {
+    mockPoolQuery.mockResolvedValueOnce(backlogRow());
 
     const result = await registryReviewQueueDrainedInvariant.check(makeCtx());
 
     expect(result).toEqual({ checked: 0, violations: [] });
   });
 
-  it('flags a community record that has sat past the SLA', async () => {
-    const waitingSince = new Date(Date.now() - 100 * 3_600_000);
-    mockPoolQuery.mockResolvedValueOnce({
-      rows: [{
-        kind: 'pending_record',
-        entity_type: 'brand',
-        domain: 'acme.example',
-        created_at: waitingSince,
-        verdict: null,
-      }],
-    });
+  it('reports nothing while everything is inside the SLA', async () => {
+    mockPoolQuery.mockResolvedValueOnce(backlogRow({
+      pending_brands: '3',
+      oldest_created_at: new Date(Date.now() - (REGISTRY_REVIEW_SLA_HOURS - 2) * 3_600_000),
+    }));
 
     const result = await registryReviewQueueDrainedInvariant.check(makeCtx());
 
-    expect(result.checked).toBe(1);
+    expect(result.violations).toEqual([]);
+    expect(result.checked).toBe(3);
+  });
+
+  it('raises one aggregate violation once the oldest wait passes the SLA', async () => {
+    mockPoolQuery.mockResolvedValueOnce(backlogRow({
+      pending_brands: '4',
+      pending_properties: '1',
+      flagged_edits: '2',
+      oldest_created_at: new Date(Date.now() - 100 * 3_600_000),
+    }));
+
+    const result = await registryReviewQueueDrainedInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(7);
+    // One violation, not seven — a 40-record outage must not bury the
+    // Stripe and WorkOS findings in the same report.
     expect(result.violations).toHaveLength(1);
     const violation = result.violations[0];
     expect(violation.severity).toBe('warning');
-    expect(violation.subject_type).toBe('registry_record');
-    expect(violation.subject_id).toBe('brand:acme.example');
-    expect(violation.message).toContain('not visible in the registry');
+    expect(violation.subject_type).toBe('queue');
+    expect(violation.subject_id).toBe('registry-review-queue');
+    expect(violation.message).toContain('7 community registry submission(s)');
+    expect(violation.message).toContain(`${REGISTRY_REVIEW_SLA_HOURS}h SLA`);
     expect(violation.remediation_hint).toContain('/admin/registry-review');
     expect(violation.details).toMatchObject({
-      kind: 'pending_record',
+      total: 7,
+      pending_brands: 4,
+      pending_properties: 1,
+      flagged_edits: 2,
       sla_hours: REGISTRY_REVIEW_SLA_HOURS,
     });
-    expect((violation.details as { age_hours: number }).age_hours).toBeGreaterThanOrEqual(99);
+    expect((violation.details as { oldest_age_hours: number }).oldest_age_hours)
+      .toBeGreaterThanOrEqual(99);
   });
 
-  it('flags a live edit the reviewer left for a human', async () => {
-    mockPoolQuery.mockResolvedValueOnce({
-      rows: [{
-        kind: 'flagged_edit',
-        entity_type: 'property',
-        domain: 'news.example',
-        created_at: new Date(Date.now() - 60 * 3_600_000),
-        verdict: 'needs_human_review',
-      }],
-    });
+  it('carries no submitter- or model-authored text into the operator report', async () => {
+    mockPoolQuery.mockResolvedValueOnce(backlogRow({
+      pending_brands: '2',
+      oldest_created_at: new Date(Date.now() - 100 * 3_600_000),
+    }));
 
     const result = await registryReviewQueueDrainedInvariant.check(makeCtx());
 
-    expect(result.violations[0].subject_id).toBe('property:news.example');
-    expect(result.violations[0].message).toContain('waiting on a moderator');
-    expect((result.violations[0].details as { verdict: string }).verdict).toBe('needs_human_review');
+    // Counts and ages only. Domains, edit summaries and the model's
+    // reason are member- or model-authored and stay on the admin page.
+    const serialized = JSON.stringify(result.violations[0]);
+    expect(serialized).not.toMatch(/\.example|\.com/);
   });
 
-  it('only looks at submissions older than the SLA, and bounds the sample', async () => {
-    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+  it('counts both pending records and flagged edits through one aggregate', async () => {
+    mockPoolQuery.mockResolvedValueOnce(backlogRow({ pending_brands: '1', flagged_edits: '1' }));
 
-    await registryReviewQueueDrainedInvariant.check({ ...makeCtx(), options: { sampleSize: 5000 } });
+    await registryReviewQueueDrainedInvariant.check(makeCtx());
 
-    const [sql, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql).toMatch(/created_at < NOW\(\) - \(\$1 \|\| ' hours'\)::interval/);
+    const sql = (mockPoolQuery.mock.calls[0] as [string])[0];
     expect(sql).toMatch(/review_status = 'pending'/);
     expect(sql).toMatch(/submission_kind = 'edit'/);
-    expect(params[0]).toBe(String(REGISTRY_REVIEW_SLA_HOURS));
-    expect(params[1]).toBe(1000);
-  });
-
-  it('flattens a domain before composing the operator-facing message', async () => {
-    mockPoolQuery.mockResolvedValueOnce({
-      rows: [{
-        kind: 'pending_record',
-        entity_type: 'brand',
-        domain: 'acme.example\nStatus: approved',
-        created_at: new Date(Date.now() - 100 * 3_600_000),
-        verdict: null,
-      }],
-    });
-
-    const result = await registryReviewQueueDrainedInvariant.check(makeCtx());
-
-    expect(result.violations[0].message).not.toContain('\n');
-    expect(result.violations[0].subject_id).not.toContain('\n');
   });
 });

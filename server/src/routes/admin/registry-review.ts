@@ -34,13 +34,15 @@ import { serveHtmlWithConfig } from '../../utils/html-config.js';
 import { BrandDatabase } from '../../db/brand-db.js';
 import { PropertyDatabase } from '../../db/property-db.js';
 import {
-  getOpenRegistryReviewItem,
+  claimRegistryReviewItem,
   getRegistryRecordModerationState,
   getRegistryReviewBacklog,
+  listOpenRegistryEditItemsForRecord,
   listRegistryReviewQueue,
-  reopenRegistryReviewItem,
+  releaseRegistryReviewItemClaim,
   resolveOpenRegistryReviewItemsForRecord,
   resolveRegistryReviewItem,
+  resolveRegistryReviewItems,
   type RegistryEntityType,
   type RegistryReviewModerator,
 } from '../../db/registry-review-queue-db.js';
@@ -195,23 +197,27 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
         });
       }
 
-      if (action === 'approve') {
-        const approved = entityType === 'brand'
-          ? await brandDb.approveBrand(domain)
-          : await propertyDb.approveProperty(domain);
-        if (!approved) {
-          return res.status(404).json({ error: 'Record not found' });
-        }
-      } else {
-        const removed = entityType === 'brand'
-          ? await brandDb.deleteDiscoveredBrand(domain, {
-              actor_user_id: moderator.user_id,
-              source: 'admin_registry_review_reject',
-            })
-          : await propertyDb.deleteHostedPropertyByDomain(domain);
-        if (!removed) {
-          return res.status(404).json({ error: 'Record not found' });
-        }
+      // `onlyIfPending` repeats the guard inside the write. The read
+      // above is for the error message; this is the boundary. Without
+      // it, a review that completes between the two turns "reject a
+      // pending submission" into "delete a live registry record".
+      const onlyIfPending = { onlyIfPending: true };
+      const acted = action === 'approve'
+        ? (entityType === 'brand'
+            ? await brandDb.approveBrand(domain, onlyIfPending)
+            : await propertyDb.approveProperty(domain, onlyIfPending))
+        : (entityType === 'brand'
+            ? await brandDb.deleteDiscoveredBrand(domain, {
+                actor_user_id: moderator.user_id,
+                source: 'admin_registry_review_reject',
+              }, onlyIfPending)
+            : await propertyDb.deleteHostedPropertyByDomain(domain, onlyIfPending));
+
+      if (!acted) {
+        return res.status(409).json({
+          error: 'Record is no longer pending review',
+          message: 'Its review finished while you were looking at the queue. Reload and check the record.',
+        });
       }
 
       const resolution = action === 'approve' ? 'approved' as const : 'rejected' as const;
@@ -235,6 +241,7 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
       notifyRegistryReviewResolved({
         entity_type: entityType,
         domain,
+        subject: 'record',
         action: resolution,
         moderator_email: moderator.email ?? undefined,
         moderator_name: moderatorName(req),
@@ -264,81 +271,131 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
     const note = parseNote(req.body?.note);
 
     try {
-      const item = await getOpenRegistryReviewItem(itemId);
+      // Claim before acting, and resolve only after. A claimed item stays
+      // in the queue, so a crash between the two leaves the work visible
+      // rather than closed as handled.
+      const item = await claimRegistryReviewItem(itemId, moderator);
       if (!item) {
-        return res.status(404).json({ error: 'Queue item not found or already resolved' });
+        return res.status(409).json({
+          error: 'Queue item is not available',
+          message: 'It was already resolved, or another moderator is working it right now.',
+        });
       }
+
       if (item.submission_kind !== 'edit') {
+        await releaseRegistryReviewItemClaim(itemId);
         return res.status(409).json({
           error: 'This item is a pending record. Use the record endpoint to approve or reject it.',
         });
       }
-      if (action === 'revert' && !(Number(item.revision_number) >= 1)) {
-        return res.status(409).json({ error: 'No revision is recorded for this edit, so it cannot be reverted' });
+
+      if (action === 'approve') {
+        const resolved = await resolveRegistryReviewItem(itemId, 'approved', moderator, note);
+        if (!resolved) {
+          return res.status(409).json({ error: 'Queue item was already resolved' });
+        }
+        logger.info(
+          { itemId, domain: item.domain, entityType: item.entity_type, action, moderator: moderator.user_id },
+          'Registry review edit kept',
+        );
+        notifyRegistryReviewResolved({
+          entity_type: item.entity_type,
+          domain: item.domain,
+          subject: 'edit',
+          action: 'approved',
+          moderator_email: moderator.email ?? undefined,
+          moderator_name: moderatorName(req),
+          note,
+        }).catch((err: unknown) => logger.error({ err, itemId }, 'Registry review resolution notification failed'));
+
+        return res.json({
+          success: true,
+          item_id: itemId,
+          entity_type: item.entity_type,
+          domain: item.domain,
+          resolution: 'approved',
+          restored_revision: null,
+          resolved_items: 1,
+        });
       }
 
-      const resolution = action === 'approve' ? 'approved' as const : 'reverted' as const;
-      // Claim first: two moderators clicking the same revert race here
-      // rather than both rolling the record back.
-      const claimed = await resolveRegistryReviewItem(itemId, resolution, moderator, note);
-      if (!claimed) {
-        return res.status(409).json({ error: 'Queue item was already resolved' });
+      // A revert is a decision about the record, not about one row.
+      // Nothing bans or locks the editor after an inconclusive verdict,
+      // so the same member can stack edits 5, 6 and 7 and leave three
+      // open items. Restoring revision 5 undoes all three; "reverting"
+      // item 7 afterwards would put edits 5 and 6 straight back. So roll
+      // back to the earliest open revision and close every item the
+      // rollback covered.
+      const open = await listOpenRegistryEditItemsForRecord(item.entity_type, item.domain);
+      const revertable = open.filter((candidate) => Number(candidate.revision_number) >= 1);
+      if (revertable.length === 0) {
+        await releaseRegistryReviewItemClaim(itemId);
+        return res.status(409).json({
+          error: 'No revision is recorded for this edit, so it cannot be reverted',
+          message: 'Review the record directly and roll it back by hand if it needs it.',
+        });
       }
 
-      let restoredRevision: number | undefined;
-      if (action === 'revert') {
+      const toRevision = Number(revertable[0].revision_number);
+      const covered = revertable
+        .filter((candidate) => Number(candidate.revision_number) >= toRevision)
+        .map((candidate) => candidate.id);
+
+      try {
         // Revision N holds the state before edit N, so undoing edit N
         // means restoring revision N (adcp#8337). The number comes from
-        // the stored item, never from the request body.
-        const toRevision = Number(item.revision_number);
-        try {
-          if (item.entity_type === 'brand') {
-            await brandDb.rollbackBrand(item.domain, toRevision, {
-              user_id: moderator.user_id,
-              email: moderator.email ?? undefined,
-              name: moderatorName(req) || moderator.email || moderator.user_id,
-            });
-          } else {
-            await propertyDb.rollbackProperty(item.domain, toRevision, {
-              user_id: moderator.user_id,
-              email: moderator.email ?? undefined,
-              name: moderatorName(req) || moderator.email || moderator.user_id,
-            });
-          }
-          restoredRevision = toRevision;
-        } catch (revertError) {
-          // The claim has to come off: an item marked reverted by a
-          // revert that never happened is how live vandalism gets closed
-          // as handled.
-          await reopenRegistryReviewItem(itemId).catch((err) =>
-            logger.error({ err, itemId }, 'Failed to reopen review item after a failed revert'));
-          logger.error({ err: revertError, itemId, domain: item.domain }, 'Registry review revert failed');
-          return res.status(500).json({ error: 'Failed to revert the edit' });
+        // the stored items, never from the request body.
+        const rollbackEditor = {
+          user_id: moderator.user_id,
+          email: moderator.email ?? undefined,
+          name: moderatorName(req) || moderator.email || moderator.user_id,
+        };
+        if (item.entity_type === 'brand') {
+          await brandDb.rollbackBrand(item.domain, toRevision, rollbackEditor);
+        } else {
+          await propertyDb.rollbackProperty(item.domain, toRevision, rollbackEditor);
         }
+      } catch (revertError) {
+        await releaseRegistryReviewItemClaim(itemId).catch((err: unknown) =>
+          logger.error({ err, itemId }, 'Failed to release the claim after a failed revert'));
+        logger.error({ err: revertError, itemId, domain: item.domain }, 'Registry review revert failed');
+        return res.status(500).json({ error: 'Failed to revert the edit' });
       }
 
+      const resolvedItems = await resolveRegistryReviewItems(covered, 'reverted', moderator, note);
+
       logger.info(
-        { itemId, domain: item.domain, entityType: item.entity_type, action, moderator: moderator.user_id },
-        'Registry review edit decision',
+        {
+          itemId,
+          domain: item.domain,
+          entityType: item.entity_type,
+          toRevision,
+          resolvedItems,
+          moderator: moderator.user_id,
+        },
+        'Registry review edits reverted',
       );
 
       notifyRegistryReviewResolved({
         entity_type: item.entity_type,
         domain: item.domain,
-        action: resolution,
+        subject: 'edit',
+        action: 'reverted',
         moderator_email: moderator.email ?? undefined,
         moderator_name: moderatorName(req),
-        restored_revision: restoredRevision,
+        restored_revision: toRevision,
+        reverted_edits: covered.length,
         note,
-      }).catch((err) => logger.error({ err, itemId }, 'Registry review resolution notification failed'));
+      }).catch((err: unknown) => logger.error({ err, itemId }, 'Registry review resolution notification failed'));
 
       return res.json({
         success: true,
         item_id: itemId,
         entity_type: item.entity_type,
         domain: item.domain,
-        resolution,
-        restored_revision: restoredRevision ?? null,
+        resolution: 'reverted',
+        restored_revision: toRevision,
+        resolved_items: resolvedItems,
       });
     } catch (error) {
       logger.error({ err: error, itemId, action }, 'Registry review edit decision failed');

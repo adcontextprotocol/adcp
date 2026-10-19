@@ -21,6 +21,7 @@
  * escapes it, because the right escaping depends on the surface.
  */
 
+import type { Pool, QueryResultRow } from 'pg';
 import { query } from './client.js';
 
 export type RegistryEntityType = 'brand' | 'property';
@@ -43,6 +44,8 @@ export interface RegistryReviewQueueItem {
   action_taken: string | null;
   created_at: Date;
   updated_at: Date;
+  claimed_at: Date | null;
+  claimed_by_user_id: string | null;
   resolved_at: Date | null;
   resolution: RegistryReviewResolution | null;
   resolved_by_user_id: string | null;
@@ -107,6 +110,16 @@ export interface RegistryReviewQueueEntry {
   action_taken: string | null;
   /** Null when the record went pending without any recorded review. */
   review_item_id: string | null;
+  /**
+   * The submitted record, pretty-printed and capped, so a moderator can
+   * read what they are approving. Null for a flagged edit, where the
+   * record is already live and the viewer page shows it.
+   */
+  submitted_content: string | null;
+  submitted_content_truncated: boolean;
+  /** Set while another moderator is mid-action on this item. */
+  claimed_at: string | null;
+  claimed_by_user_id: string | null;
   /** When the submission landed — what the age column measures. */
   created_at: string;
   age_hours: number;
@@ -130,14 +143,12 @@ export interface RegistryReviewQueueEntry {
  * (which writes no revision) sets `created_by_user_id`. A claim row has
  * neither, and has no submitter to show in the queue either.
  *
- * The listing, the backlog count, the action guard and the
- * `registry-review-queue-drained` diagnostic all read this rule from
- * here. The fragments assume the table alias `b` (brands) / `p`
- * (hosted_properties) — if they drift, the queue starts offering actions on rows it
+ * The listing, the backlog count and the action guard all read this rule
+ * from here — if they drift, the queue starts offering actions on rows it
  * would not list.
  */
-export const BRAND_HAS_SUBMITTER = `EXISTS (SELECT 1 FROM brand_revisions WHERE brand_domain = b.domain)`;
-export const PROPERTY_HAS_SUBMITTER = `(
+const BRAND_HAS_SUBMITTER = `EXISTS (SELECT 1 FROM brand_revisions WHERE brand_domain = b.domain)`;
+const PROPERTY_HAS_SUBMITTER = `(
   p.created_by_user_id IS NOT NULL
   OR EXISTS (SELECT 1 FROM property_revisions WHERE publisher_domain = p.publisher_domain)
 )`;
@@ -147,6 +158,7 @@ const SELECT_COLUMNS = `
   submitter_user_id, submitter_email, edit_summary,
   verdict, reason, action_taken,
   created_at, updated_at,
+  claimed_at, claimed_by_user_id,
   resolved_at, resolution, resolved_by_user_id, resolved_by_email, resolution_note`;
 
 /** Caps on model- and member-authored text we persist. */
@@ -154,6 +166,18 @@ const REASON_MAX = 1_000;
 const EDIT_SUMMARY_MAX = 1_000;
 const ACTION_TAKEN_MAX = 500;
 const NOTE_MAX = 500;
+/**
+ * How much of a pending record the queue renders inline. A moderator who
+ * needs more than this opens the record; the cap keeps one oversized
+ * manifest from dominating the page.
+ */
+const SUBMITTED_CONTENT_MAX = 4_000;
+/**
+ * How long a moderator's claim holds before another may take the item.
+ * Long enough that two people don't collide on one click, short enough
+ * that a crashed process does not park vandalism in the queue.
+ */
+const CLAIM_TTL_MS = 5 * 60_000;
 
 function cap(value: string | null | undefined, max: number): string | null {
   if (typeof value !== 'string') return null;
@@ -207,8 +231,17 @@ export async function getRegistryRecordModerationState(
 export async function recordRegistryReviewOutcome(
   input: RecordRegistryReviewOutcomeInput,
 ): Promise<RegistryReviewQueueItem> {
-  if (input.submission_kind === 'edit' && !(Number(input.revision_number) >= 1)) {
-    throw new Error('revision_number >= 1 is required for an edit review item');
+  // An edit whose revision we do not know is still queued — it is
+  // vandalism left live that nothing can revert automatically, so hiding
+  // it is the one outcome this queue exists to prevent. It is stored with
+  // a null revision and offers no revert action. A *present* revision
+  // still has to name a real one.
+  const revision = input.submission_kind === 'edit' && input.revision_number !== null
+    && input.revision_number !== undefined
+    ? Number(input.revision_number)
+    : null;
+  if (revision !== null && !(Number.isInteger(revision) && revision >= 1)) {
+    throw new Error('revision_number must be a positive integer when present');
   }
 
   const result = await query<RegistryReviewQueueItem>(
@@ -232,7 +265,7 @@ export async function recordRegistryReviewOutcome(
       input.entity_type,
       input.domain.toLowerCase(),
       input.submission_kind,
-      input.submission_kind === 'edit' ? Number(input.revision_number) : null,
+      revision,
       input.submitter_user_id,
       cap(input.submitter_email, 255),
       cap(input.edit_summary, EDIT_SUMMARY_MAX),
@@ -254,11 +287,54 @@ export async function getOpenRegistryReviewItem(id: string): Promise<RegistryRev
 }
 
 /**
- * Claim an open item for a moderator.
+ * Take an open item so one moderator at a time acts on it.
  *
- * The `resolved_at IS NULL` guard is the concurrency control: two
- * moderators clicking the same row race here rather than both running the
- * underlying revert, and the loser gets null.
+ * Claiming is deliberately NOT resolving. The action — a rollback — can
+ * fail, and the process running it can die between the two writes; a row
+ * marked `reverted` by a revert that never ran is how live vandalism
+ * gets closed as handled. A claimed item therefore stays in the queue,
+ * in the backlog count and in the diagnostic until an action actually
+ * completes, and a claim older than {@link CLAIM_TTL_MS} is reclaimable
+ * so a lost process cannot park the item forever.
+ *
+ * Returns null when the item is gone, already resolved, or freshly
+ * claimed by somebody else.
+ */
+export async function claimRegistryReviewItem(
+  id: string,
+  moderator: RegistryReviewModerator,
+): Promise<RegistryReviewQueueItem | null> {
+  const result = await query<RegistryReviewQueueItem>(
+    `UPDATE registry_review_queue
+        SET claimed_at = NOW(),
+            claimed_by_user_id = $2,
+            updated_at = NOW()
+      WHERE id = $1
+        AND resolved_at IS NULL
+        AND (claimed_at IS NULL
+             OR claimed_by_user_id = $2
+             OR claimed_at < NOW() - ($3 || ' milliseconds')::interval)
+      RETURNING ${SELECT_COLUMNS}`,
+    [id, moderator.user_id, String(CLAIM_TTL_MS)],
+  );
+  return result.rows[0] ?? null;
+}
+
+/** Drop a claim after the action behind it failed. */
+export async function releaseRegistryReviewItemClaim(id: string): Promise<void> {
+  await query(
+    `UPDATE registry_review_queue
+        SET claimed_at = NULL, claimed_by_user_id = NULL, updated_at = NOW()
+      WHERE id = $1 AND resolved_at IS NULL`,
+    [id],
+  );
+}
+
+/**
+ * Record a completed moderator decision on one item.
+ *
+ * Called only after the underlying action succeeded, so `resolved_at`
+ * always means the work happened.
  */
 export async function resolveRegistryReviewItem(
   id: string,
@@ -282,32 +358,62 @@ export async function resolveRegistryReviewItem(
 }
 
 /**
- * Hand a claimed item back to the queue.
+ * The open flagged edits for one record, oldest revision first.
  *
- * Moderator actions claim the row first so two moderators clicking the
- * same revert race in Postgres rather than both rolling the record back.
- * When the action itself then fails, the claim has to come off — a row
- * marked resolved by an action that never happened is how live vandalism
- * gets closed as handled.
+ * A revert has to be a decision about the *record*, not about one row.
+ * An inconclusive verdict bans nobody and leaves the record editable, so
+ * the same member can stack edits 5, 6 and 7, each getting its own open
+ * item. Undoing edit 5 also undoes 6 and 7 — and a moderator who then
+ * clicks "revert" on item 7 would restore the state *before* edit 7,
+ * which is the vandalism from 5 and 6 put straight back.
  */
-export async function reopenRegistryReviewItem(id: string): Promise<void> {
-  await query(
-    `UPDATE registry_review_queue
-        SET resolved_at = NULL,
-            resolution = NULL,
-            resolved_by_user_id = NULL,
-            resolved_by_email = NULL,
-            resolution_note = NULL,
-            updated_at = NOW()
-      WHERE id = $1`,
-    [id],
+export async function listOpenRegistryEditItemsForRecord(
+  entity_type: RegistryEntityType,
+  domain: string,
+): Promise<RegistryReviewQueueItem[]> {
+  const result = await query<RegistryReviewQueueItem>(
+    `SELECT ${SELECT_COLUMNS} FROM registry_review_queue
+      WHERE entity_type = $1 AND domain = $2
+        AND submission_kind = 'edit' AND resolved_at IS NULL
+      ORDER BY revision_number ASC NULLS LAST, created_at ASC`,
+    [entity_type, domain.toLowerCase()],
   );
+  return result.rows;
+}
+
+/** Resolve several items in one statement, for a decision that covered them all. */
+export async function resolveRegistryReviewItems(
+  ids: string[],
+  resolution: RegistryReviewResolution,
+  moderator: RegistryReviewModerator,
+  note?: string | null,
+): Promise<number> {
+  if (ids.length === 0) return 0;
+  const result = await query(
+    `UPDATE registry_review_queue
+        SET resolved_at = NOW(),
+            updated_at = NOW(),
+            resolution = $2,
+            resolved_by_user_id = $3,
+            resolved_by_email = $4,
+            resolution_note = $5
+      WHERE id = ANY($1::uuid[]) AND resolved_at IS NULL`,
+    [ids, resolution, moderator.user_id, cap(moderator.email, 255), cap(note, NOTE_MAX)],
+  );
+  return result.rowCount ?? 0;
 }
 
 /**
- * Close every open item for a record. Used when the moderator acts on the
- * record itself (approve / reject a pending record) rather than on one
- * queue row, so the queue cannot keep showing work that is already done.
+ * Close the open `new_record` items for a record. Used when the
+ * moderator acts on the record itself (approve / reject a pending
+ * record) rather than on one queue row, so the queue cannot keep showing
+ * work that is already done.
+ *
+ * Scoped to `new_record` on purpose: a decision about whether to publish
+ * a record is not a decision about a flagged edit to it, and marking one
+ * `approved` against a moderator who never saw it would be a false audit
+ * trail. The two cannot coexist today — a pending record is locked
+ * against edits — but the scope should not depend on that staying true.
  */
 export async function resolveOpenRegistryReviewItemsForRecord(
   entity_type: RegistryEntityType,
@@ -324,7 +430,8 @@ export async function resolveOpenRegistryReviewItemsForRecord(
             resolved_by_user_id = $4,
             resolved_by_email = $5,
             resolution_note = $6
-      WHERE entity_type = $1 AND domain = $2 AND resolved_at IS NULL`,
+      WHERE entity_type = $1 AND domain = $2
+        AND submission_kind = 'new_record' AND resolved_at IS NULL`,
     [
       entity_type,
       domain.toLowerCase(),
@@ -353,6 +460,9 @@ interface QueueRow {
   verdict: RegistryReviewVerdict | null;
   reason: string | null;
   action_taken: string | null;
+  submitted_content: unknown;
+  claimed_at: Date | null;
+  claimed_by_user_id: string | null;
 }
 
 /**
@@ -381,7 +491,22 @@ const QUEUE_SQL = `
       q.id AS review_item_id,
       q.verdict AS verdict,
       q.reason AS reason,
-      q.action_taken AS action_taken
+      q.action_taken AS action_taken,
+      q.claimed_at AS claimed_at,
+      q.claimed_by_user_id AS claimed_by_user_id,
+      -- A pending record IS the submission, so read the content from the
+      -- row rather than from revision 1: enhanceProperty writes no
+      -- revision, and a property revision snapshot carries the row's
+      -- claim and verification tokens.
+      jsonb_strip_nulls(jsonb_build_object(
+        'brand_name', b.brand_name,
+        'brand_names', b.brand_names,
+        'house_domain', b.house_domain,
+        'keller_type', b.keller_type,
+        'parent_brand', b.parent_brand,
+        'brand_agent_url', b.brand_agent_url,
+        'brand_manifest', b.brand_manifest
+      )) AS submitted_content
     FROM brands b
     LEFT JOIN LATERAL (
       SELECT editor_user_id, editor_email, edit_summary
@@ -396,7 +521,7 @@ const QUEUE_SQL = `
       WHERE brand_domain = b.domain
     ) stats ON TRUE
     LEFT JOIN LATERAL (
-      SELECT id, verdict, reason, action_taken
+      SELECT id, verdict, reason, action_taken, claimed_at, claimed_by_user_id
       FROM registry_review_queue
       WHERE entity_type = 'brand' AND domain = b.domain
         AND submission_kind = 'new_record' AND resolved_at IS NULL
@@ -422,7 +547,10 @@ const QUEUE_SQL = `
       q.id AS review_item_id,
       q.verdict AS verdict,
       q.reason AS reason,
-      q.action_taken AS action_taken
+      q.action_taken AS action_taken,
+      q.claimed_at AS claimed_at,
+      q.claimed_by_user_id AS claimed_by_user_id,
+      p.adagents_json AS submitted_content
     FROM hosted_properties p
     LEFT JOIN LATERAL (
       SELECT editor_user_id, editor_email, edit_summary
@@ -437,7 +565,7 @@ const QUEUE_SQL = `
       WHERE publisher_domain = p.publisher_domain
     ) stats ON TRUE
     LEFT JOIN LATERAL (
-      SELECT id, verdict, reason, action_taken
+      SELECT id, verdict, reason, action_taken, claimed_at, claimed_by_user_id
       FROM registry_review_queue
       WHERE entity_type = 'property' AND domain = p.publisher_domain
         AND submission_kind = 'new_record' AND resolved_at IS NULL
@@ -463,12 +591,37 @@ const QUEUE_SQL = `
       e.id AS review_item_id,
       e.verdict AS verdict,
       e.reason AS reason,
-      e.action_taken AS action_taken
+      e.action_taken AS action_taken,
+      e.claimed_at AS claimed_at,
+      e.claimed_by_user_id AS claimed_by_user_id,
+      NULL::jsonb AS submitted_content
     FROM registry_review_queue e
     WHERE e.resolved_at IS NULL AND e.submission_kind = 'edit'
   ) queue
-  ORDER BY created_at ASC, domain ASC
+  ORDER BY created_at ASC, kind ASC, entity_type ASC, domain ASC
   LIMIT $1 OFFSET $2`;
+
+/** Pretty-print the submitted record for the queue, capped. */
+function renderSubmittedContent(value: unknown): {
+  submitted_content: string | null;
+  submitted_content_truncated: boolean;
+} {
+  if (value === null || value === undefined) {
+    return { submitted_content: null, submitted_content_truncated: false };
+  }
+  let rendered: string;
+  try {
+    rendered = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  } catch {
+    return { submitted_content: null, submitted_content_truncated: false };
+  }
+  if (!rendered || rendered === '{}') {
+    return { submitted_content: null, submitted_content_truncated: false };
+  }
+  return rendered.length > SUBMITTED_CONTENT_MAX
+    ? { submitted_content: rendered.slice(0, SUBMITTED_CONTENT_MAX), submitted_content_truncated: true }
+    : { submitted_content: rendered, submitted_content_truncated: false };
+}
 
 function toQueueEntry(row: QueueRow): RegistryReviewQueueEntry {
   return {
@@ -486,11 +639,21 @@ function toQueueEntry(row: QueueRow): RegistryReviewQueueEntry {
     reason: row.reason,
     action_taken: row.action_taken,
     review_item_id: row.review_item_id,
+    ...renderSubmittedContent(row.submitted_content),
+    claimed_at: row.claimed_at ? new Date(row.claimed_at).toISOString() : null,
+    claimed_by_user_id: row.claimed_by_user_id,
+    // The queue's age column measures how long the member has waited.
+    // For a pending record that is the row's own `created_at`, which is
+    // the same instant it entered review: community records are born
+    // pending and are locked against edits until a decision is made.
     created_at: new Date(row.created_at).toISOString(),
     age_hours: hoursSince(row.created_at),
-    // A pending record is published or deleted; a live edit is accepted
-    // as-is or rolled back to the revision the reviewer saw (adcp#8337).
-    available_actions: row.kind === 'pending_record' ? ['approve', 'reject'] : ['approve', 'revert'],
+    // A pending record is published or deleted. A live edit is kept as
+    // submitted, or rolled back to the revision the reviewer saw
+    // (adcp#8337) — which needs a revision to exist.
+    available_actions: row.kind === 'pending_record'
+      ? ['approve', 'reject']
+      : (Number(row.revision_number) >= 1 ? ['approve', 'revert'] : ['approve']),
   };
 }
 
@@ -520,8 +683,15 @@ interface BacklogRow {
  * signal an outage-driven backlog shows up in — the digest job and the
  * operational-diagnostics invariant both read it.
  */
-export async function getRegistryReviewBacklog(): Promise<RegistryReviewBacklog> {
-  const result = await query<BacklogRow>(`
+export async function getRegistryReviewBacklog(pool?: Pool): Promise<RegistryReviewBacklog> {
+  // The integrity diagnostic runs with the pool its framework hands it;
+  // everything else uses the shared client. Same SQL either way, so the
+  // admin page, the digest and the diagnostic cannot disagree about what
+  // is waiting.
+  const run = <T extends QueryResultRow>(sql: string) =>
+    (pool ? pool.query<T>(sql) : query<T>(sql));
+
+  const result = await run<BacklogRow>(`
     WITH waiting AS (
       SELECT 'brand'::text AS kind, b.created_at FROM brands b
         WHERE b.review_status = 'pending' AND ${BRAND_HAS_SUBMITTER}

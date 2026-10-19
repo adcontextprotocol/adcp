@@ -21,10 +21,12 @@ import request from 'supertest';
 const mocks = vi.hoisted(() => ({
   listQueue: vi.fn(),
   getBacklog: vi.fn(),
-  getOpenItem: vi.fn(),
+  claimItem: vi.fn(),
+  releaseClaim: vi.fn(),
   getModerationState: vi.fn(),
+  listOpenEdits: vi.fn(),
   resolveItem: vi.fn(),
-  reopenItem: vi.fn(),
+  resolveItems: vi.fn(),
   resolveForRecord: vi.fn(),
   approveBrand: vi.fn(),
   deleteBrand: vi.fn(),
@@ -78,10 +80,12 @@ vi.mock('../../src/db/property-db.js', () => ({
 vi.mock('../../src/db/registry-review-queue-db.js', () => ({
   listRegistryReviewQueue: mocks.listQueue,
   getRegistryReviewBacklog: mocks.getBacklog,
-  getOpenRegistryReviewItem: mocks.getOpenItem,
+  claimRegistryReviewItem: mocks.claimItem,
+  releaseRegistryReviewItemClaim: mocks.releaseClaim,
   getRegistryRecordModerationState: mocks.getModerationState,
+  listOpenRegistryEditItemsForRecord: mocks.listOpenEdits,
   resolveRegistryReviewItem: mocks.resolveItem,
-  reopenRegistryReviewItem: mocks.reopenItem,
+  resolveRegistryReviewItems: mocks.resolveItems,
   resolveOpenRegistryReviewItemsForRecord: mocks.resolveForRecord,
 }));
 
@@ -134,7 +138,6 @@ describe('admin registry review routes', () => {
     });
     mocks.resolveForRecord.mockResolvedValue(1);
     mocks.getModerationState.mockResolvedValue({ exists: true, review_status: 'pending', has_submitter: true });
-    mocks.reopenItem.mockResolvedValue(undefined);
     mocks.approveBrand.mockResolvedValue(true);
     mocks.approveProperty.mockResolvedValue(true);
     mocks.deleteBrand.mockResolvedValue(true);
@@ -190,7 +193,7 @@ describe('admin registry review routes', () => {
         .post(`/api/admin/registry-review/items/${ITEM_ID}`)
         .send({ action: 'revert' })
         .expect(403);
-      expect(mocks.getOpenItem).not.toHaveBeenCalled();
+      expect(mocks.claimItem).not.toHaveBeenCalled();
     });
   });
 
@@ -223,7 +226,10 @@ describe('admin registry review routes', () => {
         .expect(200);
 
       expect(res.body).toMatchObject({ success: true, resolution: 'approved' });
-      expect(mocks.approveBrand).toHaveBeenCalledWith('acme.example');
+      // The pending predicate repeats inside the write, so a review
+      // that finishes between the read and the write cannot turn this
+      // into a decision about a live record.
+      expect(mocks.approveBrand).toHaveBeenCalledWith('acme.example', { onlyIfPending: true });
       expect(mocks.resolveForRecord).toHaveBeenCalledWith(
         'brand', 'acme.example', 'approved',
         { user_id: 'user_mod', email: 'mod@example.com' },
@@ -240,7 +246,7 @@ describe('admin registry review routes', () => {
         .send({ action: 'approve' })
         .expect(200);
 
-      expect(mocks.approveProperty).toHaveBeenCalledWith('news.example');
+      expect(mocks.approveProperty).toHaveBeenCalledWith('news.example', { onlyIfPending: true });
     });
 
     it('rejects a pending brand, attributing the removal to the moderator', async () => {
@@ -249,10 +255,11 @@ describe('admin registry review routes', () => {
         .send({ action: 'reject', note: 'obvious spam' })
         .expect(200);
 
-      expect(mocks.deleteBrand).toHaveBeenCalledWith('spam.example', {
-        actor_user_id: 'user_mod',
-        source: 'admin_registry_review_reject',
-      });
+      expect(mocks.deleteBrand).toHaveBeenCalledWith(
+        'spam.example',
+        { actor_user_id: 'user_mod', source: 'admin_registry_review_reject' },
+        { onlyIfPending: true },
+      );
       expect(mocks.resolveForRecord).toHaveBeenCalledWith(
         'brand', 'spam.example', 'rejected', expect.anything(), 'obvious spam',
       );
@@ -280,6 +287,21 @@ describe('admin registry review routes', () => {
         .expect(409);
 
       expect(mocks.deleteBrand).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the record stopped being pending between the read and the write', async () => {
+      // The review this queue exists for can finish at any moment. The
+      // read says pending; the conditional write is the boundary.
+      mocks.deleteBrand.mockResolvedValue(false);
+
+      const res = await request(makeApp())
+        .post('/api/admin/registry-review/records/brand/raced.example')
+        .send({ action: 'reject' })
+        .expect(409);
+
+      expect(res.body.error).toMatch(/no longer pending/i);
+      expect(mocks.resolveForRecord).not.toHaveBeenCalled();
+      expect(mocks.notifyResolved).not.toHaveBeenCalled();
     });
 
     it('404s an unknown record', async () => {
@@ -328,8 +350,9 @@ describe('admin registry review routes', () => {
 
   describe('flagged edit decisions', () => {
     it('reverts to the revision the reviewer saw, ignoring any revision in the request', async () => {
-      mocks.getOpenItem.mockResolvedValue(editItem({ revision_number: 7 }));
-      mocks.resolveItem.mockResolvedValue(editItem({ revision_number: 7 }));
+      const item = editItem({ revision_number: 7 });
+      mocks.claimItem.mockResolvedValue(item);
+      mocks.listOpenEdits.mockResolvedValue([item]);
 
       const res = await request(makeApp())
         .post(`/api/admin/registry-review/items/${ITEM_ID}`)
@@ -343,15 +366,46 @@ describe('admin registry review routes', () => {
         user_id: 'user_mod',
         email: 'mod@example.com',
       }));
-      expect(mocks.resolveItem).toHaveBeenCalledWith(
-        ITEM_ID, 'reverted', { user_id: 'user_mod', email: 'mod@example.com' }, undefined,
+      expect(mocks.resolveItems).toHaveBeenCalledWith(
+        [ITEM_ID], 'reverted', { user_id: 'user_mod', email: 'mod@example.com' }, undefined,
       );
-      expect(mocks.reopenItem).not.toHaveBeenCalled();
+      expect(mocks.releaseClaim).not.toHaveBeenCalled();
+    });
+
+    it('reverts stacked edits to the earliest open revision and closes all of them', async () => {
+      // An inconclusive verdict bans nobody, so the same member can
+      // stack edits 5, 6 and 7. Restoring revision 5 undoes all three;
+      // "reverting" item 7 on its own would put 5 and 6 back.
+      const sixth = { ...editItem({ revision_number: 6 }), id: 'item-6' };
+      const fifth = { ...editItem({ revision_number: 5 }), id: 'item-5' };
+      const seventh = editItem({ revision_number: 7 });
+      mocks.claimItem.mockResolvedValue(seventh);
+      mocks.listOpenEdits.mockResolvedValue([fifth, sixth, seventh]);
+      mocks.resolveItems.mockResolvedValue(3);
+
+      const res = await request(makeApp())
+        .post(`/api/admin/registry-review/items/${ITEM_ID}`)
+        .send({ action: 'revert' })
+        .expect(200);
+
+      expect(mocks.rollbackBrand).toHaveBeenCalledWith('acme.example', 5, expect.anything());
+      expect(res.body.restored_revision).toBe(5);
+      expect(res.body.resolved_items).toBe(3);
+      expect(mocks.resolveItems).toHaveBeenCalledWith(
+        ['item-5', 'item-6', ITEM_ID], 'reverted', expect.anything(), undefined,
+      );
+      expect(mocks.notifyResolved).toHaveBeenCalledWith(expect.objectContaining({
+        subject: 'edit',
+        action: 'reverted',
+        restored_revision: 5,
+        reverted_edits: 3,
+      }));
     });
 
     it('reverts a property edit through the property rollback path', async () => {
-      mocks.getOpenItem.mockResolvedValue(editItem({ entity_type: 'property', domain: 'news.example', revision_number: 2 }));
-      mocks.resolveItem.mockResolvedValue(editItem({ entity_type: 'property' }));
+      const item = editItem({ entity_type: 'property', domain: 'news.example', revision_number: 2 });
+      mocks.claimItem.mockResolvedValue(item);
+      mocks.listOpenEdits.mockResolvedValue([item]);
 
       await request(makeApp())
         .post(`/api/admin/registry-review/items/${ITEM_ID}`)
@@ -362,7 +416,7 @@ describe('admin registry review routes', () => {
     });
 
     it('keeps a flagged edit without touching the record', async () => {
-      mocks.getOpenItem.mockResolvedValue(editItem());
+      mocks.claimItem.mockResolvedValue(editItem());
       mocks.resolveItem.mockResolvedValue(editItem());
 
       const res = await request(makeApp())
@@ -372,12 +426,17 @@ describe('admin registry review routes', () => {
 
       expect(res.body.resolution).toBe('approved');
       expect(mocks.rollbackBrand).not.toHaveBeenCalled();
+      expect(mocks.listOpenEdits).not.toHaveBeenCalled();
       expect(mocks.resolveItem).toHaveBeenCalledWith(ITEM_ID, 'approved', expect.anything(), undefined);
+      expect(mocks.notifyResolved).toHaveBeenCalledWith(
+        expect.objectContaining({ subject: 'edit', action: 'approved' }),
+      );
     });
 
-    it('reopens the item when the revert itself fails', async () => {
-      mocks.getOpenItem.mockResolvedValue(editItem());
-      mocks.resolveItem.mockResolvedValue(editItem());
+    it('releases the claim and resolves nothing when the revert fails', async () => {
+      const item = editItem();
+      mocks.claimItem.mockResolvedValue(item);
+      mocks.listOpenEdits.mockResolvedValue([item]);
       mocks.rollbackBrand.mockRejectedValue(new Error('deadlock detected'));
 
       await request(makeApp())
@@ -385,15 +444,30 @@ describe('admin registry review routes', () => {
         .send({ action: 'revert' })
         .expect(500);
 
-      // An item marked reverted by a revert that never happened is how
-      // live vandalism gets closed as handled.
-      expect(mocks.reopenItem).toHaveBeenCalledWith(ITEM_ID);
+      // Claiming is not resolving: an item marked reverted by a revert
+      // that never happened is how live vandalism gets closed as handled.
+      expect(mocks.resolveItems).not.toHaveBeenCalled();
+      expect(mocks.resolveItem).not.toHaveBeenCalled();
+      expect(mocks.releaseClaim).toHaveBeenCalledWith(ITEM_ID);
       expect(mocks.notifyResolved).not.toHaveBeenCalled();
     });
 
-    it('loses the race when another moderator already claimed the item', async () => {
-      mocks.getOpenItem.mockResolvedValue(editItem());
-      mocks.resolveItem.mockResolvedValue(null);
+    it('refuses when another moderator holds the claim', async () => {
+      mocks.claimItem.mockResolvedValue(null);
+
+      const res = await request(makeApp())
+        .post(`/api/admin/registry-review/items/${ITEM_ID}`)
+        .send({ action: 'revert' })
+        .expect(409);
+
+      expect(res.body.error).toMatch(/not available/i);
+      expect(mocks.rollbackBrand).not.toHaveBeenCalled();
+    });
+
+    it('refuses to revert an edit with no recorded revision, and releases the claim', async () => {
+      const item = editItem({ revision_number: null });
+      mocks.claimItem.mockResolvedValue(item);
+      mocks.listOpenEdits.mockResolvedValue([item]);
 
       await request(makeApp())
         .post(`/api/admin/registry-review/items/${ITEM_ID}`)
@@ -401,23 +475,20 @@ describe('admin registry review routes', () => {
         .expect(409);
 
       expect(mocks.rollbackBrand).not.toHaveBeenCalled();
+      expect(mocks.releaseClaim).toHaveBeenCalledWith(ITEM_ID);
     });
 
-    it('404s an item that is missing or already resolved', async () => {
-      mocks.getOpenItem.mockResolvedValue(null);
-      await request(makeApp())
-        .post(`/api/admin/registry-review/items/${ITEM_ID}`)
-        .send({ action: 'approve' })
-        .expect(404);
-    });
+    it('sends a pending-record item back to the record endpoint and releases the claim', async () => {
+      mocks.claimItem.mockResolvedValue(editItem({ submission_kind: 'new_record', revision_number: null }));
 
-    it('sends a pending-record item back to the record endpoint', async () => {
-      mocks.getOpenItem.mockResolvedValue(editItem({ submission_kind: 'new_record', revision_number: null }));
       await request(makeApp())
         .post(`/api/admin/registry-review/items/${ITEM_ID}`)
         .send({ action: 'revert' })
         .expect(409);
+
       expect(mocks.resolveItem).not.toHaveBeenCalled();
+      expect(mocks.resolveItems).not.toHaveBeenCalled();
+      expect(mocks.releaseClaim).toHaveBeenCalledWith(ITEM_ID);
     });
 
     it('rejects a malformed item id and an unknown action', async () => {
@@ -429,7 +500,7 @@ describe('admin registry review routes', () => {
         .post(`/api/admin/registry-review/items/${ITEM_ID}`)
         .send({ action: 'reject' })
         .expect(400);
-      expect(mocks.getOpenItem).not.toHaveBeenCalled();
+      expect(mocks.claimItem).not.toHaveBeenCalled();
     });
   });
 });
