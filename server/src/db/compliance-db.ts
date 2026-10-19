@@ -1351,6 +1351,50 @@ export class ComplianceDatabase {
     return result.rows[0] ?? null;
   }
 
+  /**
+   * Newest scheduled heartbeat attempts, newest first (adcp#8268).
+   *
+   * `orgId` widens rather than narrows compared with `getLatestComplianceAttempt`:
+   * a heartbeat is platform-triggered and only carries a `triggered_org_id`
+   * when the agent happens to have saved owner credentials, so an equality
+   * filter would hide exactly the credential-free agents whose timed-out
+   * heartbeats are most invisible. Unattributed runs are therefore visible to
+   * any owner of the URL, while a run charged to another organization's saved
+   * credentials stays with that organization — its coverage and duration would
+   * otherwise tell a co-claiming org that someone else holds working
+   * credentials. Pass `null` for operator/worker reads that need the whole
+   * stream.
+   *
+   * `observations_json` comes back only on the newest row. It is the only row
+   * whose storyboard coverage is projected, and failure rows store an uncapped
+   * agent error message, so fetching the rest would move unbounded text over
+   * the wire for nothing.
+   */
+  async getRecentHeartbeatAttempts(
+    agentUrl: string,
+    orgId: string | null,
+    limit = 10,
+  ): Promise<Array<Pick<ComplianceRun,
+    'id' | 'tested_at' | 'completeness' | 'headline' | 'total_duration_ms' | 'provenance_json' | 'observations_json'>>> {
+    const boundedLimit = Number.isInteger(limit) ? Math.max(1, Math.min(limit, 50)) : 10;
+    const result = await query(
+      `SELECT id, tested_at, completeness, headline, total_duration_ms, provenance_json,
+              CASE WHEN tested_at = MAX(tested_at) OVER () THEN observations_json END AS observations_json
+         FROM (
+           SELECT id, tested_at, completeness, LEFT(headline, 200) AS headline,
+                  total_duration_ms, provenance_json, observations_json
+             FROM agent_compliance_runs
+            WHERE agent_url = $1 AND triggered_by = 'heartbeat' AND dry_run = FALSE
+              AND ($3::text IS NULL OR triggered_org_id IS NULL OR triggered_org_id = $3)
+            ORDER BY tested_at DESC
+            LIMIT $2
+         ) recent
+        ORDER BY tested_at DESC`,
+      [agentUrl, boundedLimit, orgId],
+    );
+    return result.rows;
+  }
+
   /** Bounded operator snapshot, including audit-only heartbeat evidence. */
   async getRecentOperationalRuns(limit: number = 25): Promise<Array<{
     id: string;
@@ -1594,6 +1638,8 @@ export class ComplianceDatabase {
     agent_url: string;
     lifecycle_stage: LifecycleStage;
     last_checked_at: Date | null;
+    /** Times a worker process died while this agent's suite was running; 0 when healthy. */
+    heartbeat_orphan_streak: number;
     /** Total due before LIMIT; repeated on each selected row for one-query telemetry. */
     eligible_backlog: number;
   }>> {
@@ -1646,7 +1692,8 @@ export class ComplianceDatabase {
           ka.has_active_badge,
           COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
           s.last_checked_at,
-          m.requeued_at
+          m.requeued_at,
+          COALESCE(m.heartbeat_orphan_streak, 0) AS heartbeat_orphan_streak
         FROM known_agents ka
         LEFT JOIN agent_registry_metadata m ON m.agent_url = ka.agent_url
         LEFT JOIN agent_compliance_status s ON s.agent_url = ka.agent_url
@@ -1662,6 +1709,7 @@ export class ComplianceDatabase {
         agent_url,
         lifecycle_stage,
         last_checked_at,
+        heartbeat_orphan_streak,
         COUNT(*) OVER()::int AS eligible_backlog
       FROM due_agents
       ORDER BY requeued_at ASC NULLS LAST, is_member_registered DESC, has_active_badge DESC,

@@ -123,6 +123,7 @@ import type {
   RefineProposalsRequest,
 } from '@adcp/sdk';
 import { CreativeAssetSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
+import { complianceScenariosForServedVersion } from './compliance-scenarios.js';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getGovernanceSigningPublicJwk } from './governance-signing.js';
 import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
@@ -480,6 +481,9 @@ const CANONICAL_ALLOWED_SLOT_ASSET_TYPES: Record<string, string[]> = {
 // Canonical-specific additive slot types that are valid for declared
 // refinements without belonging in the canonical's default slot set.
 const CANONICAL_ADDITIONAL_SLOT_ASSET_TYPES: Record<string, string[]> = {
+  // Generative hosted-video refinements can accept structured timed prompts
+  // instead of a rendered video file.
+  video_hosted: ['video_brief'],
   // Copy-bearing CTV activations add character-limited text slots such as
   // activation_message; they are not part of every VAST manifest by default.
   video_vast: ['text'],
@@ -3092,6 +3096,23 @@ function productForServedAdcpVersion(product: Product, servedAdcpVersion: string
   return rest as Product;
 }
 
+/**
+ * Windowed delivery is counted by the billing measurement vendor the buyer
+ * agreed on the buy, so the row names it as `measurement_source`. The vendor is
+ * a brand reference; its first domain label is the lowercase slug the schema
+ * expects (`summit-measurement.example` -> `summit_measurement`). This is a
+ * sandbox heuristic for the reference seller: the spec does not map the billing
+ * vendor to `measurement_source`, and real sellers report whichever provider
+ * counted the audience.
+ */
+function billingMeasurementSource(terms: Record<string, unknown> | undefined): { measurement_source?: string } {
+  const billing = isRecord(terms?.billing_measurement) ? terms.billing_measurement : undefined;
+  const vendor = isRecord(billing?.vendor) ? billing.vendor : undefined;
+  const domain = typeof vendor?.domain === 'string' ? vendor.domain : undefined;
+  const slug = domain?.split('.')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  return slug ? { measurement_source: slug.slice(0, 64) } : {};
+}
+
 function includeThreeOneFields(ctx: TrainingContext): boolean {
   return !isThreeZeroStoryboardCompat(ctx);
 }
@@ -3105,6 +3126,7 @@ function resolveThreeZeroProposalAlias(proposals: Proposal[]): Proposal | undefi
 }
 
 import {
+  briefExcludesProduct,
   buildCatalog,
   buildProposals,
   TRAINING_AUDIENCE_ACTIVATION_METHODS,
@@ -3211,7 +3233,7 @@ import {
   getAccountStatus,
   getSeededCreativeFormats,
 } from './comply-test-controller.js';
-import { PUBLISHERS } from './publishers.js';
+import { PUBLISHERS, buildVendorMetricOptimizationCapability } from './publishers.js';
 import { applyPropertyListTargeting, listAgentUrlRejection, packageExtWithPropertyApplication } from './property-list-targeting.js';
 import {
   isMutatingTool,
@@ -3272,14 +3294,6 @@ export function acceptancePolicyDiscoveryCapability(
     default_profile_ids: [TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE],
   };
 }
-const THREE_ZERO_COMPLIANCE_SCENARIOS = [
-  'force_creative_status',
-  'force_account_status',
-  'force_media_buy_status',
-  'force_session_status',
-  'simulate_delivery',
-  'simulate_budget_spend',
-] as const;
 const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
 
@@ -3306,6 +3320,8 @@ type VersionResolution =
 type McpRequestHandler = (request: { params?: Record<string, unknown> }, extra: unknown) => Promise<unknown> | unknown;
 
 const TASK_PROTOCOL_METHODS = ['tasks/get', 'tasks/result', 'tasks/list', 'tasks/cancel'] as const;
+// `request_signing.protocol_methods_*` item pattern in the AdCP 3.1 schemas.
+const THREE_ONE_PROTOCOL_METHOD_NAME_PATTERN = /^[a-z][a-z0-9_]*\/[a-z][a-z0-9_]*$/;
 
 function parseAdcpReleaseVersion(value: unknown): ParsedAdcpReleaseVersion | undefined {
   if (typeof value !== 'string') return undefined;
@@ -4029,9 +4045,12 @@ function controllerFixtureSessionKey(
       };
     } else {
       // Resolve first so an opaque ID is usable only by the principal that
-      // owns that sandbox account. Keep the opaque identity for projection:
-      // controller fixture writes are keyed by account_id, and resolving it
-      // to a natural ref here would fork reads into a different partition.
+      // owns that sandbox account. Pass the opaque identity through unchanged:
+      // controller fixture writes for this id derive their key from the same
+      // `{ account_id }`, and sessionKeyFromArgs applies the one id-to-natural
+      // alias (inside runWithAccountIdAliasScope on stable_account_id routes)
+      // to both sides. Rewriting it to the brand-owned natural ref here would
+      // fork reads from those writes.
       if (sandboxAccountRefForId(account.account_id, ctx.principal)) {
         fixtureAccount = { account_id: account.account_id };
       } else {
@@ -7653,12 +7672,16 @@ function compactReportingCapabilityFields(): ReadonlySet<string> {
   return canonicalReportingCapabilityFields;
 }
 
-const COMPACT_FORMAT_OPTION_FIELDS = new Set([
-  'format_option_id', 'format_kind', 'display_name', 'publisher_domain',
-  'applies_to_channels', 'params', 'format_schema', 'format_shape',
-  'locale_policy', 'seller_preference', 'canonical_formats_only',
-  'experimental', 'sample_render_url',
-]);
+let canonicalFormatOptionFields: ReadonlySet<string> | undefined;
+
+/** Keep binding creative metadata as the closed compact schema evolves,
+ * while stripping legacy-only links and seller-internal fields. */
+function compactFormatOptionFields(): ReadonlySet<string> {
+  canonicalFormatOptionFields ??= new Set(Object.keys(
+    (loadSourceSchema('core/canonical-format-option.json').properties ?? {}) as Record<string, unknown>,
+  ));
+  return canonicalFormatOptionFields;
+}
 
 function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<string>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(source)
@@ -7689,7 +7712,7 @@ function compactLifecycleProduct(
   if (selectedFields.has('format_options') && Array.isArray(product.format_options)) {
     projected.format_options = product.format_options
       .filter(isRecord)
-      .map(option => pickCompactFields(option, COMPACT_FORMAT_OPTION_FIELDS));
+      .map(option => pickCompactFields(option, compactFormatOptionFields()));
   }
   if (selectedFields.has('pricing_options') && Array.isArray(product.pricing_options)) {
     projected.pricing_options = product.pricing_options
@@ -11120,6 +11143,7 @@ async function handleGetProductsUnlocked(
     }
 
     const scored = products
+      .filter(p => !briefExcludesProduct(p.product_id, briefLower))
       .map(p => {
         const text = `${p.name} ${p.description} ${p.channels?.join(' ')}`.toLowerCase();
         const keywordScore = terms.filter(t => text.includes(t)).length;
@@ -11868,7 +11892,13 @@ async function handleGetProductsUnlocked(
       const requestedProducts = products.filter(product => (
         exactProductIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
       ));
-      if (requestedProducts.length === exactProductIds.size) {
+      // One proposal carries one budget currency; explicitly selected products
+      // priced in different currencies cannot share it, so build nothing and
+      // let the existing rejection path answer.
+      const requestedCurrencies = new Set(
+        requestedProducts.map(product => product.pricing_options[0]?.currency ?? 'USD'),
+      );
+      if (requestedProducts.length === exactProductIds.size && requestedCurrencies.size === 1) {
         const allocationPercentage = 100 / requestedProducts.length;
         const firstPricing = requestedProducts[0].pricing_options[0];
         proposals = [{
@@ -11951,7 +11981,14 @@ async function handleGetProductsUnlocked(
         const selectedProducts = products.filter(product => (
           exactProductIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
         ));
-        if (selectedProducts.length === exactProductIds.size && selectedProducts.length > 0) {
+        const selectedCurrencies = new Set(
+          selectedProducts.map(product => product.pricing_options[0]?.currency ?? 'USD'),
+        );
+        if (
+          selectedProducts.length === exactProductIds.size
+          && selectedProducts.length > 0
+          && selectedCurrencies.size === 1
+        ) {
           const allocationPercentage = 100 / selectedProducts.length;
           proposals = [{
             proposal_id: 'selected_product_plan',
@@ -17200,6 +17237,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.measurementWindow ? { measurement_window: simDelivery.measurementWindow } : {}),
+      ...(includeThreeOneFields(ctx) && simDelivery?.measurementWindow
+        ? billingMeasurementSource(pkg.measurementTerms)
+        : {}),
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
       ...(auditMetrics.length > 0 ? { missing_metrics: missingMetrics } : {}),
@@ -19692,35 +19732,45 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     || (parsedServedAdcpVersion?.major === 3 && parsedServedAdcpVersion.minor === 0);
   const requiredFor = signingCap.required_for.filter(op => !isProtocolMethodName(op));
   const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethodName(op));
+  // AdCP 3.1 limits protocol method names to one lowercase slash path
+  // (`tasks/cancel`); 3.2 widened the grammar to nested A2A 0.3 paths and
+  // A2A 1.0 PascalCase names. Before 3.2, advertise only names the 3.1
+  // schema accepts. The legacy strict routes serve 3.1 to a major-only pin,
+  // and a buyer may validate against the echoed release (@adcp/sdk 15.9.5).
+  const servesPreThreeTwoRelease = isThreeZeroResponse
+    || (parsedServedAdcpVersion?.major === 3 && parsedServedAdcpVersion.minor < 2);
+  const protocolMethodForServedRelease = (op: string): boolean => !servesPreThreeTwoRelease
+    || THREE_ONE_PROTOCOL_METHOD_NAME_PATTERN.test(op);
   const protocolMethodsRequiredFor = signingCap.required_for
     .filter(isProtocolMethodName)
-    .filter(op => !isThreeZeroResponse || op.includes('/'));
+    .filter(protocolMethodForServedRelease);
   const protocolMethodsSupportedFor = (signingCap.supported_for?.filter(isProtocolMethodName) ?? [])
-    .filter(op => !isThreeZeroResponse || op.includes('/'));
+    .filter(protocolMethodForServedRelease);
   const wholesaleProfile = wholesaleCapabilityProfile(ctx);
-  const complianceScenarios = isThreeZeroResponse
-    ? [...THREE_ZERO_COMPLIANCE_SCENARIOS]
-    : [
-        'force_creative_status',
-        'force_audience_status',
-        'force_account_status',
-        'force_media_buy_status',
-        'force_create_media_buy_arm',
-        'force_task_completion',
-        'force_creative_purge',
-        'force_session_status',
-        'simulate_delivery',
-        'simulate_budget_spend',
-        'seed_account',
-        'seed_product',
-        'seed_pricing_option',
-        'seed_creative',
-        'seed_plan',
-        'seed_media_buy',
-        'seed_creative_format',
-        'seed_measurement_catalog',
-        'query_provenance_audit_observations',
-      ];
+  // The served release's capabilities schema decides which scenarios may be
+  // listed: 3.0 closes the enum to its original six, later releases accept
+  // any scenario name.
+  const complianceScenarios = complianceScenariosForServedVersion([
+    'force_creative_status',
+    'force_audience_status',
+    'force_account_status',
+    'force_media_buy_status',
+    'force_create_media_buy_arm',
+    'force_task_completion',
+    'force_creative_purge',
+    'force_session_status',
+    'simulate_delivery',
+    'simulate_budget_spend',
+    'seed_account',
+    'seed_product',
+    'seed_pricing_option',
+    'seed_creative',
+    'seed_plan',
+    'seed_media_buy',
+    'seed_creative_format',
+    'seed_measurement_catalog',
+    'query_provenance_audit_observations',
+  ], isThreeZeroResponse ? '3.0' : servedAdcpVersion);
   // AdCP 3.2 requires every signing-capable endpoint to require
   // content-digest coverage and to verify under the 3.2 sf-binary profile.
   // The legacy conformance routes intentionally exercise the 3.0/3.1
@@ -19892,9 +19942,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         // The single window the outcome_target planner states on event goals.
         attribution_windows: structuredClone(TRAINING_ATTRIBUTION_WINDOWS),
       },
-      vendor_metric_optimization: {
-        supported_targets: ['threshold_rate'],
-      },
+      // Derived from the catalog's product-level declarations so the rollup
+      // never lists a pair no product supports. Served on every negotiated
+      // version, like supported_targets: the object is additionalProperties:true.
+      vendor_metric_optimization: buildVendorMetricOptimizationCapability(),
       // Seller-level rollup of metric-optimization capabilities. Honest
       // union across catalog products (product-factory.ts assigns these
       // by channel mix). Gate scenarios — clicks_buy_flow / reach_buy_flow
@@ -19969,6 +20020,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       // validator on the capabilities response accepts.
       supported_billing: [...SUPPORTED_BILLINGS],
       supported_account_currency_modes: ['fixed', 'per_media_buy'],
+      // No stable_account_id here: this v5 monolith serves /mcp and the
+      // /<tenant>/mcp-strict* routes, which neither alias { account_id } to
+      // its natural partition nor rehydrate accounts across machines. Only
+      // the v6 tenant routes declare it (tenants/router.ts).
       sandbox: true,
     },
     ...(wholesaleProfile.signalWholesale && {

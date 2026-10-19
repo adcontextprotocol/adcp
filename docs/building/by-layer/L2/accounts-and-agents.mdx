@@ -52,11 +52,15 @@ When both are present, the buyer selects the model by including or omitting `cur
 
 **3. Do you require operator-level auth?** (`require_operator_auth`)
 
-This field determines the authentication model and the account reference shape:
+This field declares who holds the credential you authorize — the buyer agent or each operator — and with it the account reference shape. It does not mean the operator named in a natural key authenticates: with `false`, only the agent does.
 
 When `false` (default) — **buyer-declared accounts**: the seller trusts the agent. The agent authenticates once and declares accounts via `sync_accounts`. On subsequent requests, the buyer passes the natural key (`brand` + `operator`) and the seller resolves internally. See [Seller walkthrough: buyer-declared accounts](#seller-walkthrough-buyer-declared-accounts) for how the seller identifies the agent and where each field comes from.
 
 When `true` — **account-id namespaces**: each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using the seller's `authorization_endpoint`, or via API key out-of-band. Subsequent requests pass a seller-assigned `account_id`. If a credential may access more than one account, the seller MUST expose `list_accounts` and the buyer MUST resolve an explicit account before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose `list_accounts` returning that singleton; a seller MAY omit `list_accounts` only when it supplies the same explicit account ID through another declared path or out-of-band onboarding.
+
+**4. Is your `account_id` a stable reference?** (`stable_account_id`)
+
+Declare `true` when you return `account_id` on every non-failed `sync_accounts` provisioning result, accept `{ "account_id": "..." }` on every account-scoped task for every account the caller can operate, and never change an account's ID, including across identity reconciliation. Buyers can then send the ID instead of the natural key, which they keep only to open accounts and to look IDs up again. Buyer-declared sellers keep accepting the natural key throughout 3.x, but natural-key references after provisioning are deprecated and planned for removal in 4.0, so declare this capability during 3.x. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere).
 
 For sandbox, the path follows the account namespace: account-id namespaces use pre-existing test accounts from `list_accounts` or out-of-band setup; buyer-declared accounts use `sync_accounts` with `sandbox: true` and reference by natural key.
 
@@ -479,7 +483,7 @@ The agent does not choose the scope — the seller assigns it based on its own a
 
 When multiple natural keys resolve to the same scope, the `account_scope` explains why.
 
-For buyer-declared accounts (`require_operator_auth: false`), use the complete natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, buyer-selected `timezone`, and `sandbox`) on subsequent requests. A seller may also return an `account_id` from `sync_accounts` as its internal handle, but the seller MUST continue accepting the natural-key `AccountRef` for every account provisioned this way and MUST return its natural-key fields from `list_accounts`. For account-id namespaces (`require_operator_auth: true`), discover seller/storefront account IDs via `list_accounts` for upstream-managed namespaces, or receive them out-of-band for seller-defined namespaces — including sandbox test accounts.
+For buyer-declared accounts (`require_operator_auth: false`), use the complete natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, buyer-selected `timezone`, and `sandbox`) on subsequent requests. A seller SHOULD also return an `account_id` from `sync_accounts`, MUST continue accepting the natural-key `AccountRef` for every account provisioned this way, and MUST return its natural-key fields from `list_accounts`. When the seller declares `account.stable_account_id: true`, buyers SHOULD send that `account_id` instead of the natural key. For account-id namespaces (`require_operator_auth: true`), discover seller/storefront account IDs via `list_accounts` for upstream-managed namespaces, or receive them out-of-band for seller-defined namespaces — including sandbox test accounts.
 
 ## Seller walkthrough: buyer-declared accounts
 

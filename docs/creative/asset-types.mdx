@@ -23,6 +23,7 @@ The full set of asset types valid in a v2 format `slots` declaration's `asset_ty
 | `markdown` | Markdown text | `/schemas/core/assets/markdown-asset.json` |
 | `url` | URL with `url_type` discriminator (clickthrough, tracker_pixel, third-party tag) | `/schemas/core/assets/url-asset.json` |
 | `html` | Inline HTML | `/schemas/core/assets/html-asset.json` |
+| `display_tag` | Atomic third-party URL, inline markup, or paired redirect | `/schemas/core/assets/display-tag-asset.json` |
 | `css` | CSS rules | `/schemas/core/assets/css-asset.json` |
 | `javascript` | JavaScript | `/schemas/core/assets/javascript-asset.json` |
 | `vast` | VAST tag (URL or inline XML), VAST 2.x-4.x | `/schemas/core/assets/vast-asset.json` |
@@ -35,11 +36,29 @@ The full set of asset types valid in a v2 format `slots` declaration's `asset_ty
 | `vast_tracker` | Single VAST `Tracking` event URL (decomposed) | `/schemas/core/assets/vast-tracker-asset.json` |
 | `daast_tracker` | Single DAAST `Tracking` event URL (decomposed) | `/schemas/core/assets/daast-tracker-asset.json` |
 | `pixel_tracker` | Renderer-fired HTTP tracker (image pixel or JS include) for any web-rendered canonical. `event` (impression / viewable_mrc_* / viewable_video_50 / audible_video_complete / start / first_quartile / midpoint / third_quartile / complete / click / custom) × `method` (img / js). Maps to IAB OpenRTB Native 1.2 `imptrackers[]` / `jstracker` / `eventtrackers[]` / `link.clicktrackers[]`; standardized event types 1-4 are reused, while audible completion and the playback events (`start`, quartiles, `complete`) are AdCP-defined and `custom` can carry exchange/vendor extensions | `/schemas/core/assets/pixel-tracker-asset.json` |
-| `object` | Structured object (image_carousel `cards`, `video_brief` for generative video) — sub-shape declared by the canonical | (no standalone schema; per-canonical sub-shape) |
+| `card` | Typed carousel card containing image or video media | `/schemas/core/assets/card-asset.json` |
+| `video_brief` | Structured timed generation prompts | `/schemas/core/assets/video-brief-asset.json` |
 
 In a v2 manifest's `assets` map, the **slot key** is the canonical's `asset_group_id` (e.g., `image_main`, `video_main`, `script`, `cards`, `landing_page_url`) and the **value** carries the matching asset payload with its `asset_type` discriminator. The format declaration's `slots[].asset_type` tells the validator which payload schema applies.
 
 Published-post references use the same rule: a product that accepts existing posts declares a `published_post` slot, and the manifest value carries `asset_type: "published_post"` with a `post_url` or `platform_post_id`.
+
+### Structured video briefs
+
+Starting in AdCP 3.3, the `video_brief` asset carries the existing structured VideoBrief inside a manifest. A product declares a slot with `asset_type: "video_brief"`; each supplied brief has ordered `segments` with a duration and generation prompt. The segment durations must satisfy the selected product's duration contract. The generated output is a separate `video` asset.
+
+{/* Using latest because the typed video-brief asset is not yet released. */}
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/assets/video-brief-asset.json",
+  "asset_type": "video_brief",
+  "segments": [
+    { "order": 1, "duration_ms": 15000, "prompt": "An Acme hiking boot on a forest trail." }
+  ]
+}
+```
+
+The legacy declaration placeholder `object` is not a manifest payload type. Use `card` for carousel elements and `video_brief` for timed video-generation briefs; every value in an asset map must validate as a supported typed asset, including when its slot name is platform-specific.
 
 ## Important: Payload vs Requirements
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildCatalog, buildProposals } from '../../src/training-agent/product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from '../../src/training-agent/formats.js';
-import { PUBLISHERS } from '../../src/training-agent/publishers.js';
+import { PUBLISHERS, buildVendorMetricOptimizationCapability } from '../../src/training-agent/publishers.js';
 import { SIGNAL_PROVIDERS, getAllSignals } from '../../src/training-agent/signal-providers.js';
 import {
   getSession,
@@ -1776,6 +1776,13 @@ describe('createTrainingAgentServer', () => {
 
     expect(mediaBuy.vendor_metric_optimization).toEqual({
       supported_targets: ['threshold_rate'],
+      supported_metrics: [
+        {
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_score',
+          supported_targets: ['threshold_rate'],
+        },
+      ],
     });
     expect(mediaBuy.performance_feedback).toEqual({
       reports_application_status: true,
@@ -1829,10 +1836,71 @@ describe('createTrainingAgentServer', () => {
     expect(legacyCaps.media_buy.audience_targeting).not.toHaveProperty('supported_activation_methods');
   });
 
+  it('keeps the seller-level vendor_metric_optimization.supported_metrics rollup consistent with the catalog', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+    const rollup = ((result as Record<string, any>).media_buy.vendor_metric_optimization.supported_metrics) as Array<{
+      vendor: { domain: string; brand_id?: string };
+      metric_id: string;
+      supported_targets?: string[];
+    }>;
+    const keyOf = (e: { vendor: { domain: string; brand_id?: string }; metric_id: string }) =>
+      `${e.vendor.domain}|${e.vendor.brand_id ?? ''}|${e.metric_id}`;
+    const catalogPairs = new Map<string, Set<string>>();
+    for (const cp of buildCatalog()) {
+      const supported = (cp.product as {
+        vendor_metric_optimization?: { supported_metrics?: Array<{ vendor: { domain: string; brand_id?: string }; metric_id: string; supported_targets?: string[] }> };
+      }).vendor_metric_optimization?.supported_metrics ?? [];
+      for (const entry of supported) {
+        const targets = catalogPairs.get(keyOf(entry)) ?? new Set<string>();
+        for (const t of entry.supported_targets ?? []) targets.add(t);
+        catalogPairs.set(keyOf(entry), targets);
+      }
+    }
+    expect(rollup.length).toBeGreaterThan(0);
+    // No pair listed unless at least one product supports it, and none omitted.
+    expect(rollup.map(keyOf).sort()).toEqual([...catalogPairs.keys()].sort());
+    for (const entry of rollup) {
+      expect([...(entry.supported_targets ?? [])].sort()).toEqual([...catalogPairs.get(keyOf(entry))!].sort());
+    }
+  });
+
+  it('rolls up vendor_metric_optimization pairs across publishers on (domain, brand_id, metric_id)', () => {
+    const pub = (entries: NonNullable<(typeof PUBLISHERS)[number]['vendorMetricOptimization']>['supported_metrics']) =>
+      ({ vendorMetricOptimization: { supported_metrics: entries } }) as (typeof PUBLISHERS)[number];
+    const v = { domain: 'v.example' };
+    const capability = buildVendorMetricOptimizationCapability([
+      pub([{ vendor: v, metric_id: 'm', supported_targets: ['cost_per'] }]),
+      pub([
+        { vendor: v, metric_id: 'm', supported_targets: ['threshold_rate'] },
+        { vendor: { ...v, brand_id: 'b' }, metric_id: 'm' },
+      ]),
+      {} as (typeof PUBLISHERS)[number],
+    ]);
+    expect(capability?.supported_metrics).toEqual([
+      { vendor: v, metric_id: 'm', supported_targets: ['cost_per', 'threshold_rate'] },
+      { vendor: { ...v, brand_id: 'b' }, metric_id: 'm' },
+    ]);
+    expect(capability?.supported_targets).toEqual(['cost_per', 'threshold_rate']);
+    expect(buildVendorMetricOptimizationCapability([{} as (typeof PUBLISHERS)[number]])).toBeUndefined();
+
+    // The rollup is a copy: mutating it never touches the catalog declaration.
+    const live = buildVendorMetricOptimizationCapability()!;
+    live.supported_metrics[0].metric_id = 'mutated';
+    expect(buildVendorMetricOptimizationCapability()!.supported_metrics[0].metric_id).not.toBe('mutated');
+  });
+
   it('keeps v6 sales vendor_metric_optimization capabilities aligned with legacy discovery', () => {
     const platform = new TrainingSalesPlatform();
     expect((platform.capabilities as Record<string, unknown>).vendor_metric_optimization).toEqual({
       supported_targets: ['threshold_rate'],
+      supported_metrics: [
+        {
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_score',
+          supported_targets: ['threshold_rate'],
+        },
+      ],
     });
     expect((platform.capabilities as Record<string, unknown>).performance_feedback).toEqual({
       reports_application_status: true,
@@ -4012,6 +4080,57 @@ describe('validate_input handler', () => {
         result_kind: 'unvalidatable_nondeterministic',
       },
     ]);
+  });
+
+  it('validates typed video briefs against the generative video reference product', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'typed-video-brief.example' }, operator: 'pinnacle-agency.example' };
+    const fixture = JSON.parse(readFileSync(new URL(
+      '../../../static/examples/products/canonical/veo_generative_video_15s.json', import.meta.url,
+    ), 'utf8'));
+    const { cases } = JSON.parse(readFileSync(new URL(
+      '../../../static/test-vectors/canonical-manifest-constructibility.json', import.meta.url,
+    ), 'utf8'));
+    const { manifest } = cases.find((row: { product_fixture: string }) =>
+      row.product_fixture === 'veo_generative_video_15s.json');
+    const seed = await simulateCallTool(server, 'comply_test_controller', {
+      account, brand: account.brand, scenario: 'seed_product',
+      params: { product_id: fixture.product_id, fixture },
+    });
+    expect(seed.result.success).toBe(true);
+    const targets = [{ kind: 'product', id: fixture.product_id }];
+    const accepted = await simulateCallTool(server, 'validate_input', { account, manifest, targets });
+    expect(accepted.result.results).toEqual([{ target: targets[0], result_kind: 'unvalidatable_nondeterministic' }]);
+
+    const missing = structuredClone(manifest);
+    delete missing.assets.video_brief;
+    const rejected = await simulateCallTool(server, 'validate_input', { account, manifest: missing, targets });
+    expect(rejected.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: [expect.objectContaining({ rule: 'required_slot', field: 'assets.video_brief' })],
+    });
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      account, brand: account.brand, scenario: 'seed_product',
+      params: {
+        product_id: 'typed_brief_unsupported_image',
+        fixture: {
+          channels: ['display'], delivery_type: 'guaranteed',
+          format_options: [{ format_kind: 'image', params: {
+            slots: [{ asset_group_id: 'video_brief', asset_type: 'video_brief', required: true }],
+          } }],
+        },
+      },
+    });
+    const unrelated = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'image', assets: { video_brief: manifest.assets.video_brief } },
+      targets: [{ kind: 'product', id: 'typed_brief_unsupported_image' }],
+    });
+    expect(unrelated.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: [expect.objectContaining({ rule: 'allowed_slot_asset_types', field: 'params.slots[0].asset_type' })],
+    });
   });
 
   it('validates required product slots before reporting nondeterministic synthesis', async () => {
@@ -8092,6 +8211,39 @@ describe('create_media_buy handler', () => {
 
     expect(result.errors).toBeUndefined();
     expect(typeof result.media_buy_id).toBe('string');
+  });
+
+  it('returns stable audience platform IDs and matching legacy aliases on sync and discovery', async () => {
+    const account = { brand: { domain: 'nova-platform-ids.example' }, operator: 'pinnacle-agency.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const audience = {
+      audience_id: 'nova_loyalty',
+      name: 'Nova loyalty',
+      audience_type: 'crm',
+      add: [{ external_id: 'member_1', hashed_email: 'a'.repeat(64) }],
+    };
+    const { result: synced } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      audiences: [audience],
+    });
+    const created = (synced.audiences as Array<Record<string, unknown>>)[0]!;
+    expect(created.action).toBe('created');
+    expect(typeof created.platform_id).toBe('string');
+    expect(created.seller_id).toBe(created.platform_id);
+
+    const { result: updated } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      audiences: [{ ...audience, name: 'Updated Nova loyalty' }],
+    });
+    const { result: discovered } = await simulateCallTool(server, 'sync_audiences', { account });
+    for (const [result, action] of [[updated, 'updated'], [discovered, 'unchanged']] as const) {
+      expect(result.audiences).toEqual([expect.objectContaining({
+        audience_id: 'nova_loyalty',
+        action,
+        platform_id: created.platform_id,
+        seller_id: created.platform_id,
+      })]);
+    }
   });
 
   it('binds a declared external dataset source, preserves it in discovery, and accepts it for targeting', async () => {
@@ -18098,18 +18250,36 @@ describe('get_adcp_capabilities handler', () => {
     const { isProtocolMethodName } = await import('../../src/training-agent/request-signing.js');
     expect(requiredFor.every(op => !isProtocolMethodName(op))).toBe(true);
 
-    expect(rs.protocol_methods_required_for).toEqual([
-      'tasks/cancel',
-      'tasks/pushNotificationConfig/set',
-    ]);
-    expect(rs.protocol_methods_supported_for).toEqual([
-      'tasks/cancel',
-      'tasks/pushNotificationConfig/set',
-    ]);
+    // This route serves releases before 3.2, whose schemas accept only one
+    // lowercase slash path; the verifier still enforces every listed method.
+    expect(rs.protocol_methods_required_for).toEqual(['tasks/cancel']);
+    expect(rs.protocol_methods_supported_for).toEqual(['tasks/cancel']);
 
     // Cross-namespace leak guard.
     const supportedFor = rs.supported_for as string[];
     expect(supportedFor.every(op => !isProtocolMethodName(op))).toBe(true);
+  });
+
+  it('advertises only protocol method names the served release schema accepts', async () => {
+    const legacyServer = createTrainingAgentServer({ mode: 'open', strict: true });
+    const currentServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
+    const [{ result: majorOnly }, { result: current }] = await Promise.all([
+      // A major-only pin is served 3.1, the route's highest release.
+      simulateCallTool(legacyServer, 'get_adcp_capabilities', { adcp_major_version: 3 }),
+      simulateCallTool(currentServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+    ]);
+
+    expect(majorOnly.adcp_version).toMatch(/^3\.1/);
+    const legacySigning = majorOnly.request_signing as Record<string, unknown>;
+    expect(legacySigning.protocol_methods_required_for).toEqual(['tasks/cancel']);
+    expect(legacySigning.protocol_methods_supported_for).toEqual(['tasks/cancel']);
+
+    const currentSigning = current.request_signing as Record<string, unknown>;
+    expect(currentSigning.protocol_methods_required_for).toEqual([
+      'tasks/cancel',
+      'tasks/pushNotificationConfig/set',
+      'CreateTaskPushNotificationConfig',
+    ]);
   });
 
   it('advertises 3.2 only on signing routes that require content-digest coverage', async () => {
@@ -19337,6 +19507,49 @@ describe('proposal lifecycle', () => {
       idempotency_key: 'mixed-currency-fixtures-0001',
       account,
       brief: 'podcast audio advertising',
+    });
+
+    expect(result.outcome).toBe('rejected');
+  });
+
+  it('rejects request_proposals when explicit product_ids span seeded fixtures priced in different currencies', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'mixed-currency-product-ids.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    for (const [productId, pricingOptionId, currency] of [
+      ['seeded_usd_podcast', 'cpm_usd', 'USD'],
+      ['seeded_eur_podcast', 'cpm_eur', 'EUR'],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            delivery_type: 'guaranteed',
+            channels: ['audio'],
+            format_options: [{ format_option_id: 'audio_30s', format_kind: 'audio', params: { duration_ms_exact: 30000 } }],
+          },
+        },
+      });
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency, floor_price: 15.0 },
+        },
+      });
+    }
+
+    const { result } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'mixed-currency-product-ids-0001',
+      account,
+      brief: 'Plan a campaign using the selected published offers.',
+      criteria: { product_ids: ['seeded_usd_podcast', 'seeded_eur_podcast'] },
     });
 
     expect(result.outcome).toBe('rejected');

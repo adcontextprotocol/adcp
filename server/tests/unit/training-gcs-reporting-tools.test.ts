@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const shared = vi.hoisted(() => ({ runtime: undefined as unknown, resolve: vi.fn() }));
-vi.mock('../../src/training-agent/gcs-reporting.js', () => ({ getTrainingGcsReporting: () => shared.runtime }));
-vi.mock('../../src/training-agent/reporting-reliability.js', () => ({ resolveReportingAccountDurably: shared.resolve }));
+const shared = vi.hoisted(() => ({ runtime: undefined as unknown, getRuntime: vi.fn(), config: vi.fn(), resolve: vi.fn(), commit: vi.fn() }));
+vi.mock('../../src/training-agent/gcs-reporting.js', () => ({ getTrainingGcsReporting: shared.getRuntime }));
+vi.mock('../../src/training-agent/gcs-reporting-config.js', () => ({ trainingGcsReportingConfig: shared.config }));
+vi.mock('../../src/training-agent/reporting-reliability.js', () => ({ resolveReportingAccountDurably: shared.resolve, commitTrainingDailySourcePeriod: shared.commit }));
 vi.mock('../../src/training-agent/task-handlers.js', () => ({ resolveServedAdcpVersion: () => ({ ok: true, servedVersion: '3.2.1' }) }));
-import { dispatchTrainingGcsReporting } from '../../src/training-agent/gcs-reporting-tools.js';
+import { dispatchTrainingGcsReporting, publishTrainingGcsSourceDelivery } from '../../src/training-agent/gcs-reporting-tools.js';
+
+beforeEach(() => {
+  shared.getRuntime.mockReset().mockImplementation(() => shared.runtime);
+  shared.config.mockReset();
+});
 
 const actor = 'workos:private';
 const input = { account: { account_id: 'caller-alias' }, delivery_config_ids: ['gcs:daily'], view: 'periods' };
@@ -46,6 +52,35 @@ describe('GCS reporting dispatch boundary', () => {
     expect(await dispatchTrainingGcsReporting('get_reporting_status', input, actor)).toEqual({ status: 'completed' });
     expect(runtime.owns).toHaveBeenCalledWith(actor, 'resolved-account');
     expect(runtime.service.platform.getReportingStatus).toHaveBeenCalledWith({ ...input, account: { account_id: 'resolved-account' } }, expect.objectContaining({ authInfo: { clientId: actor }, account: expect.objectContaining({ id: 'resolved-account' }) }));
+    expect(runtime.service.stores.core.getRevision).not.toHaveBeenCalled();
+  });
+  it.each(['source-revision', 'unknown-revision', 'foreign-revision'])('defers an exact %s to caller-scoped source lookup when absent from GCS', async reporting_revision_id => {
+    shared.runtime = runtime;
+    const exact = { account: input.account, view: 'revision', reporting_revision_id };
+    expect(await dispatchTrainingGcsReporting('get_reporting_status', exact, actor)).toBeUndefined();
+    expect(runtime.service.stores.core.getRevision).toHaveBeenCalledWith(reporting_revision_id, 'resolved-account');
+    expect(runtime.service.platform.getReportingStatus).not.toHaveBeenCalled();
+  });
+  it('retains exact GCS revision status and authenticated account context', async () => {
+    shared.runtime = runtime;
+    runtime.service.stores.core.getRevision.mockResolvedValue({ reporting_revision_id: 'gcs-revision' });
+    const exact = { account: input.account, view: 'revision', reporting_revision_id: 'gcs-revision' };
+    expect(await dispatchTrainingGcsReporting('get_reporting_status', exact, actor)).toEqual({ status: 'completed' });
+    expect(runtime.service.stores.core.getRevision).toHaveBeenCalledWith('gcs-revision', 'resolved-account');
+    expect(runtime.service.platform.getReportingStatus).toHaveBeenCalledWith({ ...exact, account: { account_id: 'resolved-account' } }, expect.objectContaining({ authInfo: { clientId: actor }, account: expect.objectContaining({ id: 'resolved-account' }) }));
+  });
+  it('does not probe revisions before proving account ownership', async () => {
+    shared.runtime = runtime;
+    runtime.owns.mockResolvedValue(false);
+    expect(await dispatchTrainingGcsReporting('get_reporting_status', { account: input.account, view: 'revision', reporting_revision_id: 'foreign-revision' }, actor)).toBeUndefined();
+    expect(runtime.service.stores.core.getRevision).not.toHaveBeenCalled();
+    expect(runtime.service.platform.getReportingStatus).not.toHaveBeenCalled();
+  });
+  it('fails closed when exact GCS revision lookup is unavailable', async () => {
+    shared.runtime = runtime;
+    runtime.service.stores.core.getRevision.mockRejectedValue(new Error('private ledger unavailable'));
+    await expect(dispatchTrainingGcsReporting('get_reporting_status', { account: input.account, view: 'revision', reporting_revision_id: 'source-revision' }, actor)).rejects.toThrow('private ledger unavailable');
+    expect(runtime.service.platform.getReportingStatus).not.toHaveBeenCalled();
   });
   it('refuses an unowned GCS account without exposing source fixtures', async () => {
     shared.runtime = runtime;
@@ -57,5 +92,72 @@ describe('GCS reporting dispatch boundary', () => {
     shared.runtime = runtime;
     await expect(dispatchTrainingGcsReporting('get_reporting_status', { ...input, delivery_config_ids: ['gcs:daily', 'daily'] }, actor)).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     expect(runtime.service.platform.getReportingStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe('private GCS source publication from ordinary delivery', () => {
+  const source = { source_config_id: 'daily', source_config_version: 1, media_buy_ids: ['buy-a', 'buy-b'] };
+  const host = { config: { canaryPrincipal: actor }, owns: vi.fn(), db: { query: vi.fn() } };
+  const read = { account: input.account, media_buy_ids: source.media_buy_ids, start_date: '2026-10-01', end_date: '2026-10-02' };
+  const response = { reporting_period: { start: '2026-10-01T00:00:00.000Z', end: '2026-10-02T00:00:00.000Z' },
+    media_buy_deliveries: [{ media_buy_id: 'buy-b', totals: { impressions: 11 } }, { media_buy_id: 'buy-a', totals: { impressions: 7 } }] };
+  beforeEach(() => {
+    vi.clearAllMocks();shared.runtime = host;
+    shared.config.mockReturnValue({ canaryPrincipal: actor });
+    shared.resolve.mockResolvedValue({ accountId: 'resolved-account' });
+    host.owns.mockResolvedValue(true);host.db.query.mockResolvedValue({ rows: [source] });
+    shared.commit.mockResolvedValue(true);
+  });
+  it('commits actual aggregate metrics under the saved principal, source version and exact scope', async () => {
+    await publishTrainingGcsSourceDelivery(read, response, actor);
+    expect(shared.commit).toHaveBeenCalledWith({ principal: actor, accountId: 'resolved-account', sourceConfigId: 'daily', sourceConfigVersion: 1,
+      mediaBuyIds: source.media_buy_ids, period: response.reporting_period, impressions: 18 });
+  });
+  it.each([
+    ['partial scope', { ...read, media_buy_ids: ['buy-a'] }, response],
+    ['missing buy', read, { ...response, media_buy_deliveries: response.media_buy_deliveries.slice(0, 1) }],
+    ['duplicate buy', read, { ...response, media_buy_deliveries: [response.media_buy_deliveries[0], response.media_buy_deliveries[0]] }],
+    ['wrong period', read, { ...response, reporting_period: { ...response.reporting_period, end: '2026-10-03T00:00:00.000Z' } }],
+    ['failed delivery', read, { ...response, errors: [{ code: 'SERVICE_UNAVAILABLE' }] }],
+    ['missing metric', read, { ...response, media_buy_deliveries: [{ media_buy_id: 'buy-a' }, response.media_buy_deliveries[0]] }],
+    ['fractional metric', read, { ...response, media_buy_deliveries: [{ media_buy_id: 'buy-a', totals: { impressions: 0.5 } }, response.media_buy_deliveries[0]] }],
+  ])('does not publish %s as complete source evidence', async (_name, request, result) => {
+    await publishTrainingGcsSourceDelivery(request, result, actor);
+    expect(shared.commit).not.toHaveBeenCalled();
+  });
+  it('does not publish for a foreign principal or an unowned account', async () => {
+    await publishTrainingGcsSourceDelivery(read, response, 'workos:foreign');
+    expect(shared.resolve).not.toHaveBeenCalled();
+    host.owns.mockResolvedValue(false);
+    await publishTrainingGcsSourceDelivery(read, response, actor);
+    expect(shared.commit).not.toHaveBeenCalled();
+  });
+  it('preserves disabled teaching behavior', async () => {
+    shared.config.mockReturnValue(undefined);
+    shared.getRuntime.mockImplementation(() => { throw new Error('runtime unavailable'); });
+    await publishTrainingGcsSourceDelivery(read, response, actor);
+    expect(shared.getRuntime).not.toHaveBeenCalled();
+    expect(shared.resolve).not.toHaveBeenCalled();
+  });
+  it.each(['uninitialized', 'draining'])('preserves other callers when the enabled runtime is %s', async state => {
+    shared.getRuntime.mockImplementation(() => { throw new Error(`runtime ${state}`); });
+    await expect(publishTrainingGcsSourceDelivery(read, response, 'workos:foreign')).resolves.toBeUndefined();
+    await expect(publishTrainingGcsSourceDelivery(read, response, undefined)).resolves.toBeUndefined();
+    expect(shared.getRuntime).not.toHaveBeenCalled();
+    expect(shared.resolve).not.toHaveBeenCalled();
+    expect(shared.commit).not.toHaveBeenCalled();
+  });
+  it.each(['uninitialized', 'draining'])('fails closed for the canary when the enabled runtime is %s', async state => {
+    shared.getRuntime.mockImplementation(() => { throw new Error(`runtime ${state}`); });
+    await expect(publishTrainingGcsSourceDelivery(read, response, actor)).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE', message: 'Daily reporting source publication is unavailable.',
+    });
+    expect(shared.commit).not.toHaveBeenCalled();
+  });
+  it('fails closed with a fixed dependency error if the durable source write fails', async () => {
+    shared.commit.mockRejectedValue(new Error('private dependency diagnostic'));
+    await expect(publishTrainingGcsSourceDelivery(read, response, actor)).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE', message: 'Daily reporting source publication is unavailable.',
+    });
   });
 });

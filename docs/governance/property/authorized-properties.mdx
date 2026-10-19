@@ -167,27 +167,99 @@ For large networks representing thousands of properties, AdCP supports **propert
 Here's how a buyer agent validates that a sales agent is authorized to represent claimed properties:
 
 ### 1. One-Time Setup
+
+`media_buy.portfolio.publisher_domains` is a **warm-up hint, not an allowlist**. It
+is bounded (100 entries from 3.3) and a seller with a larger portfolio truncates it
+and sets `publisher_domains_complete: false`. Prefetching it saves a round trip; it
+never decides authorization. Each publisher's own `adagents.json` is the authority,
+so resolve on demand for whatever the hint omits.
+
+Every domain here comes from a counterparty, so each fetch is a counterparty-supplied
+URL. Use the [SSRF profile](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf)
+— HTTPS only, address-family and private-IP filtering, no cross-origin redirects,
+connect and total deadlines, and the 1 MiB publisher-origin body cap — not a bare
+`fetch`. The domain pattern admits dotless labels like `localhost` or `metadata`, so
+an unfiltered fetch is an internal-host oracle.
+
 ```javascript
 // Get portfolio information from capabilities
 const capabilities = await salesAgent.call('get_adcp_capabilities');
 const portfolio = capabilities.media_buy?.portfolio;
 const publisherDomains = portfolio?.publisher_domains || [];
 
-// For each publisher domain, fetch and cache adagents.json
+// Warm the cache for the domains the seller advertised. A key is absent
+// until the domain has been resolved; a present key holds the parsed
+// adagents.json. Absence means "not looked up", never "not authorized" —
+// step 2 depends on that difference.
 const authorizationCache = {};
 
-for (const domain of publisherDomains) {
+// Bound how many publisher origins one seller can make you fetch, and how
+// many at once. Both the product list and each product's publisher_properties
+// are seller-sized, so without a cap the seller chooses your fan-out.
+const MAX_RESOLVED_DOMAINS = 200;
+const RESOLVE_CONCURRENCY = 6;
+const NEGATIVE_TTL_MS = 60_000;
+
+// A failed fetch is NOT a cached denial. Keep failures here, with a TTL, so a
+// transient DNS blip or 503 cannot permanently deny a publisher that really
+// did authorize this seller — that is the deny-on-miss bug in a new place.
+const retryAfter = new Map();
+
+async function loadAdagents(domain) {
   try {
-    const adagents = await fetch(`https://${domain}/.well-known/adagents.json`);
-    authorizationCache[domain] = await adagents.json();
+    // ssrfSafeFetch applies the profile above. Do not substitute bare fetch():
+    // its default redirect: "follow" will chase a publisher's 302 anywhere.
+    const res = await ssrfSafeFetch(`https://${domain}/.well-known/adagents.json`, {
+      connect: 5_000, total: 10_000, body: 1 << 20, redirect: 'error',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`); // a 404 body is not a catalog
+    return { ok: true, adagents: await res.json() };
   } catch (error) {
-    console.warn(`Could not verify authorization for ${domain}`);
-    authorizationCache[domain] = null;
+    // Do not log the domain verbatim into an admin UI; it is attacker-influenceable.
+    console.warn('Could not reach a publisher origin to verify authorization');
+    retryAfter.set(domain, Date.now() + NEGATIVE_TTL_MS);
+    return { ok: false };
   }
 }
+
+/** Resolve a deduplicated domain set under a fixed fetch and concurrency cap. */
+async function resolveDomains(domains) {
+  const now = Date.now();
+  const pending = [...new Set(domains)].filter(
+    (d) => !(d in authorizationCache) && (retryAfter.get(d) ?? 0) <= now,
+  );
+  if (Object.keys(authorizationCache).length + pending.length > MAX_RESOLVED_DOMAINS) {
+    // Refuse the overflow rather than fetching it. A seller that names more
+    // publisher origins than this is not one you can validate in one pass.
+    throw new Error('Publisher resolution budget exceeded');
+  }
+  for (let i = 0; i < pending.length; i += RESOLVE_CONCURRENCY) {
+    const batch = pending.slice(i, i + RESOLVE_CONCURRENCY);
+    const loaded = await Promise.all(batch.map(loadAdagents));
+    batch.forEach((domain, j) => {
+      // Only a successful fetch enters the cache. Failures stay retryable.
+      if (loaded[j].ok) authorizationCache[domain] = loaded[j].adagents;
+    });
+  }
+}
+
+await resolveDomains(publisherDomains);
 ```
 
 ### 2. Product Validation
+
+Authorize against the publisher named on the **product**, not against the
+capabilities hint. A domain missing from the hint means "not prefetched", so look
+it up. Only a fetched-and-checked `adagents.json` can authorize; a publisher whose
+origin could not be reached is **unproven, not denied** — fail the buy for it, but
+retry rather than caching the failure as a decision.
+
+Resolve the whole product's domains in one bounded pass before checking any of
+them. Fetching inside the per-property loop lets a seller pick your fan-out: both
+`products[]` and each product's `publisher_properties[]` are seller-sized, so one
+response with thousands of entries pointed at a third party turns your buyer into
+a reflector.
+
 ```javascript
 // When evaluating a product
 const result = await salesAgent.call('get_products', {
@@ -197,12 +269,19 @@ const result = await salesAgent.call('get_products', {
 });
 const product = result.products[0];
 
+// One bounded, deduplicated resolve pass for everything this product names.
+// Cache misses are expected whenever publisher_domains_complete is false;
+// they mean "not prefetched", never "not authorized".
+await resolveDomains(product.publisher_properties.map((p) => p.publisher_domain));
+
 // Validate authorization for each publisher in publisher_properties
 const authorized = product.publisher_properties.every(pubProp => {
-  const domain = pubProp.publisher_domain;
-  const adagents = authorizationCache[domain];
+  const adagents = authorizationCache[pubProp.publisher_domain];
 
-  if (!adagents) return false; // No adagents.json found
+  // Absent means unreachable or unparseable, so authorization is unproven.
+  // Fail this buy — but the entry stays retryable, so a transient outage
+  // does not become a permanent denial for a publisher that did authorize.
+  if (!adagents) return false;
 
   // Verify the sales agent is in publisher's authorized_agents
   return adagents.authorized_agents.some(agent =>

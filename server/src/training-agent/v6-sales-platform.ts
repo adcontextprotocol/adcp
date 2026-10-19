@@ -1,8 +1,8 @@
 /**
  * v6 SalesPlatform for the `/sales` tenant.
  *
- * Sales platform claiming `sales-non-guaranteed`, `sales-guaranteed`, and
- * `sales-dooh`. Implements `SalesPlatform` (5 required methods +
+ * Sales platform claiming `sales-non-guaranteed`, `sales-guaranteed`,
+ * `sales-broadcast-tv`, and `sales-dooh`. Implements `SalesPlatform` (5 required methods +
  * 4 optional read-side methods).
  *
  * Spike-grade port: bodies shim through to existing v5 handlers via
@@ -64,8 +64,9 @@ import {
   assertDiscoveryAccountProvisioned,
   isIdentitylessControllerRef,
 } from './v6-account-helpers.js';
+import { registerSharedPublicBrandPartitionForAccountId, rehydrateAccountById } from './account-handlers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
-import { PUBLISHERS } from './publishers.js';
+import { PUBLISHERS, buildVendorMetricOptimizationCapability } from './publishers.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
 import { buildCatalog } from './product-factory.js';
@@ -83,7 +84,13 @@ import {
   validateReliableReportingResponse,
   withDurableReportingLedger,
 } from './reporting-reliability.js';
-import { getSession, registerSharedPublicBrandPartition, runWithSessionContext, sessionKeyFromArgs } from './state.js';
+import {
+  getSession,
+  registerSharedPublicBrandPartition,
+  runWithAccountIdAliasScope,
+  runWithSessionContext,
+  sessionKeyFromArgs,
+} from './state.js';
 import { supportsReliableReporting, supportsReportingStatus, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, type ToolArgs, type TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
@@ -441,7 +448,7 @@ const TRAINING_SALES_CHANNELS = [
 ] as const;
 
 export const TRAINING_SALES_CAPABILITIES = {
-  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', SALES_DOOH_SPECIALISM] as const,
+  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', SALES_DOOH_SPECIALISM] as const,
   creative_agents: [],
   channels: TRAINING_SALES_CHANNELS,
   overrides: {
@@ -521,9 +528,10 @@ export const TRAINING_SALES_CAPABILITIES = {
   // training platform resolves products dynamically, so it declares the
   // honest union explicitly and the tenant router preserves that declaration.
   supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
-  vendor_metric_optimization: {
-    supported_targets: ['threshold_rate' as const],
-  },
+  // Derived from the catalog's product-level declarations (supported_targets
+  // and the supported_metrics[] rollup), so neither can drift from what
+  // products actually support.
+  vendor_metric_optimization: buildVendorMetricOptimizationCapability()!,
   performance_feedback: {
     reports_application_status: true,
   },
@@ -542,9 +550,7 @@ export function salesCapabilityProjection() {
       inline_creative_management: true,
     },
     supported_optimization_metrics: [...TRAINING_SALES_CAPABILITIES.supported_optimization_metrics],
-    vendor_metric_optimization: {
-      supported_targets: [...TRAINING_SALES_CAPABILITIES.vendor_metric_optimization.supported_targets],
-    },
+    vendor_metric_optimization: structuredClone(TRAINING_SALES_CAPABILITIES.vendor_metric_optimization),
     performance_feedback: {
       ...TRAINING_SALES_CAPABILITIES.performance_feedback,
     },
@@ -750,11 +756,14 @@ function withCurrentAccountScope(
   // Public training credentials share the controller's brand-owned task
   // partition, but the truthful sandbox/operator AccountRef remains intact for
   // persistence and authorization comparisons.
-  return explicitlySandboxed
-    && typeof principal === 'string'
-    && principal.startsWith('static:')
-    && accountRef?.brand?.domain
-    ? registerSharedPublicBrandPartition(scopedArgs, accountRef.brand.domain)
+  if (typeof principal !== 'string' || !principal.startsWith('static:')) return scopedArgs;
+  if (explicitlySandboxed && accountRef?.brand?.domain) {
+    return registerSharedPublicBrandPartition(scopedArgs, accountRef.brand.domain);
+  }
+  // An account_id for a provisioned sandbox account names the same account as
+  // its `sandbox: true` natural key, so it shares that key's partition.
+  return typeof accountRef?.account_id === 'string'
+    ? registerSharedPublicBrandPartitionForAccountId(scopedArgs, accountRef.account_id, principal)
     : scopedArgs;
 }
 
@@ -787,6 +796,14 @@ function translateV5Result<T extends object>(result: unknown, options: { allowAd
     });
   }
   return result as T;
+}
+
+/** Both delivery surfaces must durably publish the ordinary source read. */
+async function readDeliveryWithSourcePublication(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+  const result = await handleGetMediaBuyDelivery(args, ctx);
+  const { publishTrainingGcsSourceDelivery } = await import('./gcs-reporting-tools.js');
+  await publishTrainingGcsSourceDelivery(args as Record<string, unknown>, result, ctx.principal);
+  return result;
 }
 
 /**
@@ -1009,6 +1026,7 @@ async function resolveTrainingSalesAccount(
   const canonical = canonicalizeAccountRef(accountRefForResolution(ref, toolName));
   if (enforceDiscoveryProvisioning) {
     await assertDiscoveryAccountProvisioned(canonical, toolName, principal);
+    if (canonical.kind === 'account_id') await rehydrateAccountById(principal, canonical.account_id);
   }
   const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
     ? { account_id: canonical.account_id }
@@ -1516,6 +1534,11 @@ export function legacyListCreativesHandler(
   };
 }
 
+function jobPrincipal(executionContext: object): string | undefined {
+  const principal = (executionContext as { principal?: unknown }).principal;
+  return typeof principal === 'string' ? principal : undefined;
+}
+
 export class TrainingSalesPlatform
   implements DecisioningPlatform<TrainingSalesConfig, TrainingSalesMeta>
 {
@@ -1529,8 +1552,13 @@ export class TrainingSalesPlatform
     if (taskRegistry) {
       this.sellerManagedControlJobs = new SellerManagedControlJobCoordinator(
         taskRegistry,
-        async job => await runWithSessionContext(async () => {
+        async job => await this.withAccountIdAliasScope(jobPrincipal(job.executionContext), () => runWithSessionContext(async () => {
           const executionArgs = structuredClone(job.request);
+          const jobAccount = (executionArgs as { account?: { account_id?: unknown } }).account;
+          if (this.storyboardCompat?.version !== '3.0' && typeof jobAccount?.account_id === 'string') {
+            // A replacement worker may not hold the account in memory yet.
+            await rehydrateAccountById(jobPrincipal(job.executionContext), jobAccount.account_id);
+          }
           if (job.executionContext.sharedPublicBrandDomain) {
             registerSharedPublicBrandPartition(
               executionArgs,
@@ -1550,7 +1578,7 @@ export class TrainingSalesPlatform
               },
             },
           );
-        }),
+        })),
         undefined,
         async job => await emitDurableSellerManagedTaskWebhook({
           pushConfig: job.pushConfig,
@@ -1588,6 +1616,14 @@ export class TrainingSalesPlatform
 
   async acknowledgeSellerManagedWebhook(taskId: string): Promise<void> {
     await this.sellerManagedControlJobs?.acknowledgeFrameworkWebhook(taskId);
+  }
+
+  /** Seller-managed jobs run outside the request, so re-enter the same
+   * account_id alias scope the tenant router gives current routes. */
+  private withAccountIdAliasScope<T>(principal: string | undefined, fn: () => Promise<T>): Promise<T> {
+    return this.storyboardCompat?.version === '3.0' || !principal
+      ? fn()
+      : runWithAccountIdAliasScope(principal, fn);
   }
 
   statusMappers = {};
@@ -1693,7 +1729,7 @@ export class TrainingSalesPlatform
           this.storyboardCompat,
         )
         : withCurrentAccountScope(currentArgs as Record<string, unknown>, ctx.account);
-      const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      const result = await readDeliveryWithSourcePublication(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
     // Optional read-side methods.
@@ -1928,7 +1964,7 @@ export class TrainingSalesPlatform
     },
 
     getMediaBuyDelivery: async (req, ctx) => translateV5Result(
-      await handleGetMediaBuyDelivery(
+      await readDeliveryWithSourcePublication(
         withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input),
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
       ),

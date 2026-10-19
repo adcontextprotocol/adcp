@@ -54,10 +54,13 @@ A collection is a persistent, publisher-controlled content program that produces
 | `season` | string | No | Current or most recent season identifier (e.g., `"3"`, `"2026"`) |
 | `status` | string | No | `active`, `hiatus`, `ended`, `upcoming` |
 | `production_quality` | string | No | `professional`, `prosumer`, `ugc`. Seller-declared. Maps to OpenRTB `content.prodq`. |
-| `talent` | array | No | Hosts, recurring cast, creators. Each entry has `role`, `name`, and optional `brand_url` linking to [brand.json](/docs/brand-protocol/brand-json). |
+| `images` | array | No | Experimental (`media_buy.collection_cards`). 1–10 image assets for a collection card (cover art, poster, creator avatar). The first entry is the primary thumbnail. |
+| `sample_content` | array | No | Experimental (`media_buy.collection_cards`). 1–10 published-post references to representative past installments or a sizzle reel. The platform URL implies the kind. Display only: not a creative, and not authorization to reuse the content. |
+| `url` | string | No | Experimental (`media_buy.collection_cards`). Canonical `https://` page about the collection, operated by the publisher or selling agent, such as a creator profile with full analytics. Buyers link out to it from the card, and MAY suppress the link-out when its host is neither the publisher's nor the selling agent's domain. Not authorization evidence. |
+| `talent` | array | No | Hosts, recurring cast, creators. Each entry has `role`, `name`, an optional `brand_ref` (experimental, `media_buy.collection_cards`) and an optional `brand_url`, both linking to [brand.json](/docs/brand-protocol/brand-json). `brand_ref` is the typed link, for example a rights-holder brand with `right_type: talent`. When both are present they MUST identify the same brand, and `brand_ref` wins. |
 | `special` | object | No | When present, this collection is a special — content anchored to a real-world event or occasion. See [specials and limited series](#specials-and-limited-series). |
 | `limited_series` | object | No | When present, this collection is a limited series — a bounded run with a defined arc and end date. See [specials and limited series](#specials-and-limited-series). |
-| `distribution` | array | No | Where this collection is distributed, with host `property_ids`, identifiers, or both per publisher. For `channel` collections this is the carriage map, not proof of sales authorization. |
+| `distribution` | array | No | Where this collection is distributed, with host `property_ids`, identifiers, or both per publisher, and an optional experimental `followers` count. For `channel` collections this is the carriage map, not proof of sales authorization. |
 | `deadline_policy` | object | No | Default deadline rules for installments. Agents compute absolute deadlines from `scheduled_at` minus `lead_days`. Episodes with explicit `deadlines` override. See [deadline policy](#deadline-policy). |
 | `related_collections` | array | No | Relationships to other collections: `spinoff`, `companion`, `sequel`, `prequel`, `crossover`. Each entry has `collection_id` + `relationship`. References are scoped to the same publisher's `adagents.json`. Symmetric types (`companion`, `crossover`) do not require both collections to declare. |
 
@@ -78,10 +81,27 @@ A collection is a persistent, publisher-controlled content program that produces
   "season": "1",
   "status": "active",
   "production_quality": "professional",
+  "images": [
+    {
+      "asset_type": "image",
+      "url": "https://cdn.acmestreaming.example.com/pinnacle-challenge/poster.jpg",
+      "width": 1200,
+      "height": 675,
+      "alt_text": "The Pinnacle Challenge key art"
+    }
+  ],
+  "sample_content": [
+    {
+      "asset_type": "published_post",
+      "post_url": "https://video.example.com/watch/pinnacle-challenge-s1e3",
+      "platform": "video.example.com"
+    }
+  ],
   "talent": [
     {
       "role": "host",
       "name": "Jordan Vega",
+      "brand_ref": { "domain": "jordanvega.example.com" },
       "brand_url": "https://jordanvega.example.com/brand.json"
     }
   ],
@@ -101,6 +121,27 @@ A collection is a persistent, publisher-controlled content program that produces
   ]
 }
 ```
+
+### Collection cards (experimental)
+
+`images`, `sample_content`, `url` and `talent[].brand_ref` give a creator or show a card: a picture, samples of its content, a page to link out to, and a typed link to the person's brand identity. Sellers that populate them list `media_buy.collection_cards` in `experimental_features`. Publishers declaring collections in `adagents.json` (and registry `collection.*` events, which embed the same object) cannot list experimental features, so consumers treat these fields as experimental wherever they appear.
+
+Collection cards reach buyers in-band. Products keep their `{publisher_domain, collection_ids}` selectors, and when the buyer sets `include_collections: true` the `get_products`, `list_products`, `request_proposals` and `refine_proposals` responses can carry a top-level `collections` array with the full object for each referenced collection (see [collections in responses](#collections-in-responses)). Sellers that list `media_buy.collection_catalog` also serve the same cards outside a brief through [`list_collections`](/docs/media-buy/task-reference/list_collections), by key or with filters, and push card changes to buyer mirrors through [collection card webhooks](/docs/media-buy/task-reference/list_collections#collection-card-webhooks). For a creator marketplace or a large podcast network this replaces fetching every publisher's `adagents.json` to draw one proposal, and it keeps fast-moving facts such as samples current. Sellers can also attach samples to the product card with the `sample_content` [reference asset role](/docs/media-buy/product-discovery/media-products#reference-assets), as a `url` asset built from `post_url` (the role cannot carry `platform`, `published_at` or `identity_ref`). Consumers skip `sample_content` entries without `post_url`, and `reference_authorization` and `identity_ref` are not authorization to reuse a sample. `brand_ref` and `brand_url` identify the same brand when `brand_url`'s host equals `brand_ref.domain`; only `domain` and `brand_id` are read on talent.
+
+Each fact has one home:
+
+| Fact | Served by |
+|---|---|
+| Which agent may sell which collection | The publisher's `adagents.json` (static, authorization) |
+| Card display and freshness facts: `images`, `sample_content`, `url`, `description`, `season`, `cadence`, `distribution[].followers` | The selling agent, in the response `collections` array, [`list_collections`](/docs/media-buy/task-reference/list_collections) and `collection_card.*` webhooks (fallback: `adagents.json`) |
+| Every other collection fact, such as `status`, `talent`, `content_rating`, `genre`, `kind`, `special`, and `distribution` channels | The publisher's `adagents.json` |
+| The person: name, picture, bio, likeness and endorsement rights | The talent's brand or rights agent, reached through `talent[].brand_ref` |
+
+The collection does not copy person-level identity. A buyer that wants the person resolves `brand_ref` to a brand agent and calls [`get_brand_identity`](/docs/brand-protocol/tasks/get_brand_identity), which returns the person's `logos` (their picture, always public), description and, with `fields: ["collections"]`, the person's other channels as `{publisher_domain, collection_id}` links (experimental, `brand.collection_links`). A `brand_ref` is the publisher's claim about who appears; buyers SHOULD treat it as confirmed only when that person's `get_brand_identity` `collections` lists the same `{publisher_domain, collection_id}` back. Showing the person's picture from `logos` on a card is not a likeness license: using a likeness in an ad goes through the [rights lifecycle](/docs/brand-protocol/tasks/get_rights). To browse a seller's cards outside a brief, or to look one up by key, use [`list_collections`](/docs/media-buy/task-reference/list_collections) (experimental, `media_buy.collection_catalog`).
+
+Keep arrays short: `adagents.json` has fetch-size budgets, so `images` and `sample_content` are capped at 10 entries each. `sample_content` carries no `kind`; the platform URL implies it.
+
+`images`, `sample_content` and `url` are excluded from the `publisher_collection` [definition pin](/docs/media-buy/specification#definition-pin-preimage) projection, so refreshing a thumbnail or a sample does not fail committed proposals with `REFERENCE_DEFINITION_CHANGED`.
 
 ## Programmed channels and owner-sold carriage
 
@@ -644,7 +685,7 @@ This tells buyer agents that The Ember is a finite opportunity — 8 installment
 
 ## How products reference collections
 
-Products reference collections via `collections` — an array of `{publisher_domain, collection_ids}` selectors that point to collections declared in the publisher's `adagents.json`. This is the same pattern as `publisher_properties`. Buyers resolve full collection objects from the publisher's `adagents.json`. Episodes are listed per-product in the `installments` array, since different products may scope different installments of the same collection.
+Products reference collections via `collections` — an array of `{publisher_domain, collection_ids}` selectors that point to collections declared in the publisher's `adagents.json`. This is the same pattern as `publisher_properties`. Full collection objects come from the response's top-level [`collections`](#collections-in-responses) array when the buyer asks for them with `include_collections` and the seller includes them, and otherwise from the publisher's `adagents.json`. Episodes are listed per-product in the `installments` array, since different products may scope different installments of the same collection.
 
 ### Reporting actual delivery
 
@@ -700,7 +741,7 @@ For premium or guaranteed buys, the seller scopes to specific installments:
 
 ## get_products response structure
 
-Products reference collections via `collections` selectors — the same pattern as `publisher_properties`. Each selector has a `publisher_domain` and `collection_ids` array pointing to collections declared in that publisher's `adagents.json`. Buyers resolve full collection objects from `adagents.json`.
+Products reference collections via `collections` selectors — the same pattern as `publisher_properties`. Each selector has a `publisher_domain` and `collection_ids` array pointing to collections declared in that publisher's `adagents.json`. When the request sets `include_collections: true`, the response can also carry the full collection objects, described [below](#collections-in-responses).
 
 ```json
 {
@@ -736,9 +777,39 @@ Products reference collections via `collections` selectors — the same pattern 
         { "pricing_option_id": "flat", "pricing_model": "flat_rate", "fixed_price": 500000, "currency": "USD" }
       ]
     }
+  ],
+  "collections": [
+    {
+      "publisher_domain": "acmestreaming.example.com",
+      "collection_id": "pinnacle_challenge",
+      "name": "The Pinnacle Challenge",
+      "kind": "series",
+      "status": "active",
+      "url": "https://acmestreaming.example.com/shows/pinnacle-challenge",
+      "images": [
+        { "asset_type": "image", "url": "https://cdn.acmestreaming.example.com/pinnacle-challenge/poster.jpg", "width": 1200, "height": 675 }
+      ],
+      "talent": [
+        { "role": "host", "name": "Jordan Vega", "brand_ref": { "domain": "jordanvega.example.com" } }
+      ]
+    }
   ]
 }
 ```
+
+### Collections in responses
+
+`get_products`, [`list_products`](/docs/media-buy/task-reference/list_products), [`request_proposals`](/docs/media-buy/task-reference/request_proposals) and [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) responses can carry a top-level `collections` array (experimental, `media_buy.collection_cards`). Each entry is a full collection object with `publisher_domain` required, because `collection_id` is unique only within its publisher.
+
+- **Opt-in.** Each of those requests takes an optional `include_collections` boolean, default `false`. Sellers MUST NOT return `collections` unless the request set `include_collections: true`, so buyers that only need selectors never pay for the objects. The `get_products` request accepts unknown fields, so a seller without the feature ignores the flag there. The other three requests reject unknown fields, so buyers send the flag only to sellers that list `media_buy.collection_cards` in `experimental_features`.
+- **Scope.** Entries cover collections referenced by a returned product's `collections` selectors, keyed by `(publisher_domain, collection_id)`. Sellers MUST NOT include a collection that no returned product references. On a paginated read, that means products on the current page. The array appears only alongside `products`, never on a rejected or `unchanged` response, and a `fields` projection that omits product `collections` omits it too.
+- **Completeness.** When `include_collections` is `true`, sellers SHOULD include every referenced collection. Omission is allowed, for example for a very large bundle. Buyers detect omissions by comparing the products' selectors with the array, and resolve a missing collection from the publisher's `adagents.json`, as before.
+- **Duplicates and strays.** If a key appears more than once, that collection is unresolvable from the response, and buyers fall back to `adagents.json` for it. Buyers ignore entries that no returned product references.
+- **Authority.** The response entry is a convenience copy from the selling agent. The publisher's `adagents.json` remains the root of authorization: which agent may sell which collection is answered only by its `authorized_agents` entries, including [collection-scoped selectors](/docs/governance/property/adagents#collections). A response copy MUST NOT be treated as authorization evidence. When the copy and `adagents.json` disagree, the copy wins only on `images`, `sample_content`, `url`, `description`, `season`, `cadence` and `distribution[].followers`. Every other field, including `status`, `talent`, `content_rating`, `genre`, `kind`, `special` and the rest of `distribution`, stays anchored to `adagents.json`. A copy that omits one of the closed-list fields leaves the declared value. A copy's `followers` apply to the declared `distribution` entry with the same `publisher_domain` (or, when several declared entries share it, the one with the same identifiers); copy entries the publisher does not declare are ignored. `season` and `cadence` are on the list because they go stale between updates to the publisher's file and drive neither suitability nor pricing. Facts buyers use for suitability or pricing, such as `content_rating`, `genre` and `production_quality`, stay with the publisher so that a reseller cannot restate them. [Definition pins](/docs/media-buy/specification#definition-pins) hash the `adagents.json` declaration, never the response copy.
+- **Unverified copies.** An entry whose `(publisher_domain, collection_id)` is not declared in that publisher's `adagents.json`, or that comes from a selling agent that `adagents.json` does not authorize for the collection, is unverified display data. It does not establish that the collection exists or is sellable, and buyers MUST NOT present it as the publisher's declaration. A response copy's `distribution` MUST NOT feed the carriage [verification states](#verification-states), which read `distribution[]` only from the owner's own file.
+- **Feed versions.** `include_collections` is part of the version scope of the `get_products` `wholesale_feed_version` and the `list_products` `feed_version`, for both `public` and `account` `cache_scope`. Absent and `false` are the same scope. Without the flag, collection copies are outside the version, so a card change alone never makes a buyer that did not ask for cards refetch the feed. With `include_collections: true`, the version also changes whenever any collection copy those reads would return changes, so an `unchanged` response never hides a fresher copy. A token issued under one setting and presented with the other is a mismatch, and the seller returns the full payload, as for any other scope-key difference. Sellers MUST issue distinct tokens for the two settings so the mismatch is detectable. [Wholesale feed webhooks](/docs/media-buy/task-reference/list_products#wholesale-feed-webhooks) for products carry no collections, and their versions belong to the scope without the flag. A webhook-fed mirror keeps cards current through the [`collection_card.*` and `collection_catalog.bulk_change` events](/docs/media-buy/task-reference/list_collections#collection-card-webhooks) (experimental, `media_buy.collection_catalog`), which carry their own `list_collections` version. Against a seller without them, it refreshes cards through a full read with `include_collections: true`.
+
+Selectors on products are unchanged, so a buyer that ignores `collections` keeps working.
 
 ## Canonical collection identity
 
@@ -1001,7 +1072,7 @@ Buyers discover collections through the standard `get_products` workflow. Natura
 }
 ```
 
-The seller returns products with `collections` selectors. The buyer resolves full collection objects from each publisher's [adagents.json](/docs/governance/property/adagents). Registry clients can also bootstrap and look up the crawled collection catalog through `/api/registry/catalog/collections/sync` and `/api/registry/catalog/collections/distribution`, which is useful for cross-referencing platform aliases such as YouTube channel IDs back to the publisher-declared collection.
+The seller returns products with `collections` selectors and, when the request set `include_collections: true`, may include the full objects in the response's top-level [`collections`](#collections-in-responses) array. A seller that lists `media_buy.collection_catalog` also lets buyers browse or look up its cards directly with [`list_collections`](/docs/media-buy/task-reference/list_collections). The buyer resolves any others from each publisher's [adagents.json](/docs/governance/property/adagents). Registry clients can also bootstrap and look up the crawled collection catalog through `/api/registry/catalog/collections/sync` and `/api/registry/catalog/collections/distribution`, which is useful for cross-referencing platform aliases such as YouTube channel IDs back to the publisher-declared collection.
 
 For community-maintained entries, registry moderators can seed a publisher-scoped collection with `PUT /api/registry/catalog/collections/{publisher_domain}/{collection_id}`. This creates a contributed registry record and emits the same `collection.created` / `collection.updated` feed events. It does not replace publisher-origin proof: once the publisher declares the collection in their own `adagents.json`, the authoritative declaration wins.
 
@@ -1086,6 +1157,101 @@ Collections SHOULD include at least one platform-independent identifier when ava
 </CodeGroup>
 
 Available podcast types: `apple_podcast_id`, `spotify_collection_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_channel_handle`, `youtube_channel_url`, `youtube_playlist_id`, `amazon_title_id`, `platform_channel_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`. For YouTube channels, `youtube_channel_id` is the preferred canonical identifier; handles and URLs are aliases for discovery and matching when the channel ID is not yet resolved.
+
+## Creator and show cards (experimental)
+
+A buyer comparing creators or shows wants a card: how many followers, who watches, how many views a typical installment gets. Each fact has one home, and no collection-level `audience_stats` object exists.
+
+| Card fact | Where it goes |
+|-----------|---------------|
+| Follower or subscriber count | `distribution[].followers` on the collection (below) |
+| Audience composition | Product `audience_evidence[]` as `seller_declared` evidence (below) |
+| Average views per installment | The product or proposal forecast's `views` metric (a projection for the proposed buy; see below) |
+| Topics | `genre[]` with `genre_taxonomy`, and `installment.topics[]` |
+
+Composition and views are inline on the product. The follower count lives on the collection that the product's `collections` selector resolves to. Sellers that list `media_buy.collection_cards` return full collection objects in the response's top-level `collections` array when the request sets `include_collections: true` (see [collections in responses](#collections-in-responses)), and sellers that also list `media_buy.collection_catalog` serve the same objects through [`list_collections`](/docs/media-buy/task-reference/list_collections) without a brief. A buyer ranking creators reads `distribution[].followers` there. `followers` is one of the fields where a verified response copy wins over `adagents.json`. For other sellers, and for any collection the response omits, the buyer resolves the collection from the publisher's [adagents.json](/docs/governance/property/adagents), which takes one fetch per publisher.
+
+### Follower counts
+
+`distribution[].followers` is the platform-reported follower or subscriber count for the collection on that `publisher_domain`. It reuses [`audience-size`](https://adcontextprotocol.org/schemas/latest/core/audience-size.json), so it carries a range, a `precision`, and an `as_of`:
+
+```json
+{
+  "publisher_domain": "videoplatform.example",
+  "identifiers": [{ "type": "youtube_channel_id", "value": "UCexample123456" }],
+  "followers": {
+    "lower_bound": 1230000,
+    "upper_bound": 1239999,
+    "precision": "approximate",
+    "as_of": "2026-09-01T00:00:00Z"
+  }
+}
+```
+
+- Use `precision: "approximate"` when the platform rounds publicly, as video platforms do with subscriber counts: a displayed "1.23M" is the interval 1,230,000 to 1,239,999. Use `exact` only when the platform reports an exact count, in which case `lower_bound` equals `upper_bound`.
+- `as_of` is when the count last changed, not when it was last read. A refresh that leaves `lower_bound`, `upper_bound` and `precision` unchanged is not a change: the seller keeps the earlier `as_of`, no feed or `list_collections` version moves, and no [collection card webhook](/docs/media-buy/task-reference/list_collections#collection-card-webhooks) fires. A scheduled sweep can therefore check every count without forcing buyers to resync. Buyers comparing two creators compare `as_of` first.
+- The value counts accounts, not de-duplicated people, even though `audience-size` is worded for people. A person who follows the same creator on two platforms is counted twice, so buyers MUST NOT sum `followers` across `distribution` entries or treat it as reach.
+- Display and comparison only. It is not a targeting predicate and does not size a buyable audience.
+- It is outside the [definition pin](/docs/media-buy/specification#definition-pins) projection: a refreshed count does not change the collection's `content_digest`, while any other change to a `distribution` entry does.
+
+A seller that serves or relays collection objects carrying `followers` MUST list `media_buy.collection_cards` in `experimental_features` on `get_adcp_capabilities`. A publisher authoring the field directly in `adagents.json` has no capabilities response; the field is experimental either way. See [experimental status](/docs/reference/experimental-status).
+
+### Audience composition
+
+Creator audience composition is product-level [audience evidence](/docs/media-buy/product-discovery/media-products#audience-evidence). No new field is needed. A creator's own analytics are a platform report, so declare them with:
+
+- `evidence_type: "seller_declared"`. Independent verification is carried by `attestation_refs`, never inferred from this value.
+- `methodology: "observed"`.
+- `provider` set to the platform's brand reference. It names the source of the numbers, not an attester: creator analytics are usually private to the creator and the platform has not verified this snapshot unless an `attestation_ref` says so.
+- a `baseline` naming the platform's viewer population.
+
+This evidence says that 62% of the channel's viewers are 18 to 24 years old:
+
+```json
+[
+  {
+    "evidence_id": "evidence_nova_viewers_age",
+    "snapshot_id": "evidence_snapshot_2026_09",
+    "version": "2026-09",
+    "content_digest": "sha256:c4d95c77ea3c9056db1611fad6708170a0a7747111e8a200199fed26f658f6fc",
+    "audience": {
+      "dimension": "age",
+      "range": {
+        "min": 18,
+        "max": 24
+      }
+    },
+    "relationship": "composition",
+    "value": 0.62,
+    "unit": "fraction",
+    "baseline": {
+      "system": "https://platform.example/audiences",
+      "population_id": "platform_viewers",
+      "version": "2026-09",
+      "description": "All viewers of the platform's channels in the measurement window"
+    },
+    "evidence_type": "seller_declared",
+    "methodology": "observed",
+    "subject_type": "individual",
+    "provider": {
+      "domain": "videoplatform.example"
+    },
+    "measurement_window": {
+      "start": "2026-08-01",
+      "end": "2026-08-31"
+    },
+    "last_updated": "2026-09-02T00:00:00Z"
+  }
+]
+```
+
+As with all audience evidence, this is population-level planning information. It is not a targeting predicate and not proof about any impression. Only the `age` dimension has a built-in vocabulary today, so a gender split currently needs a provider-defined HTTPS URI with a `taxonomy`; a canonical `gender` dimension is proposed but not yet defined. `audience_evidence` is built for immutable, digest-pinned snapshots, so a marketplace emitting it per creator should limit it to the few dimensions a card needs.
+
+Evidence is not delivery reporting. `by_demographic` in `get_media_buy_delivery` reports what a buy delivered; it does not carry a creator's pre-purchase audience.
+
+### Average views per installment
+
+Report it as the `views` metric in the product's forecast, or in the proposal's forecast when the seller is answering a brief. The forecast already carries ranges, so a creator whose recent videos vary widely can say so. This is the seller's projection for the proposed buy, not a trailing average of past videos, and the forecast has no per-installment unit; state the basis in the product description until the WG decides whether a trailing-window metric is needed.
 
 ## Ad inventory
 

@@ -32,20 +32,30 @@ The canonicalization applies RFC 3986 §6.2.2 (syntax-based normalization) and �
 
 After all eight steps, comparison is byte-for-byte. Implementations MUST NOT apply additional transformations before comparison.
 
+## Canonical origin
+
+The **canonical origin** of a URL is its scheme and authority after steps 1 to 4, written `scheme://authority`, with no path, query, or fragment. `HTTPS://User@Seller.Example.COM.:443/mcp?x=1` has the canonical origin `https://seller.example.com`. A URL that steps 1 to 4 reject has no canonical origin.
+
+Use the canonical origin only where the table below says a comparison is by origin. Everywhere else, compare the full canonical URL.
+
 ## Where it applies
 
-| Surface | Comparison | Reference |
-|---|---|---|
-| Request signing | `@target-uri` canonical output signed and verified | [Signed Requests (Transport Layer)](/docs/building/by-layer/L1/security#signed-requests-transport-layer) |
-| Signed-Agent identity | Candidate Agent URL vs operator `brand.json` `agents[].url`; the verified canonical URL is the stable Agent subject | [Agent key publication](/docs/building/by-layer/L1/security#agent-key-publication) |
-| TMP seller authorization | `seller_agent.agent_url` vs `authorized_agents[].url` | [TMP Sync-Time Validation](/docs/trusted-match/specification#sync-time-validation) |
-| TMP provider resolution | `ProviderEntry.agent_url` vs router's registered provider endpoint | [TMP Product Integration](/docs/trusted-match/specification#product-integration) |
-| `adagents.json` lookups | Any caller asking "is this agent authorized for this property?" | [adagents.json schema](https://adcontextprotocol.org/schemas/v3/adagents.json) |
-| `format-id` resolution | `format-id.agent_url` against the URL an agent publishes for its formats | [format-id schema](https://adcontextprotocol.org/schemas/v3/core/format-id.json) |
-| `adagents.json` `authoritative_location` indirection | Following the pointer; the target URL MUST canonicalize the same way | [Managed networks](/docs/governance/property/managed-networks#security-considerations) |
-| Provenance verifier allowlist | `verify_agent.agent_url` vs `creative_policy.accepted_verifiers[].agent_url` | [Provenance Verification](/docs/governance/creative/provenance-verification#the-verifier-contract-seller-publishes-buyer-represents-seller-confirms) |
-| Governance-agent acceptance | Candidate `governance_agents[].url` vs `accepted_governance_agents.any_of[].agent_url` | [`sync_governance`](/docs/accounts/tasks/sync_governance#seller-acceptance-of-governance-agents) |
-| Any registry with a URL primary key | Canonical form is the key; raw input is not | - |
+| Surface | Comparison | Form | Reference |
+|---|---|---|---|
+| Request signing | `@target-uri` canonical output signed and verified | Canonical URL | [Signed Requests (Transport Layer)](/docs/building/by-layer/L1/security#signed-requests-transport-layer) |
+| Signed-Agent identity | Candidate Agent URL vs operator `brand.json` `agents[].url`; the verified canonical URL is the stable Agent subject | Canonical URL | [Agent key publication](/docs/building/by-layer/L1/security#agent-key-publication) |
+| TMP seller authorization | `seller_agent.agent_url` vs `authorized_agents[].url` | Canonical URL | [TMP Sync-Time Validation](/docs/trusted-match/specification#sync-time-validation) |
+| TMP provider resolution | `ProviderEntry.agent_url` vs router's registered provider endpoint | Canonical URL | [TMP Product Integration](/docs/trusted-match/specification#product-integration) |
+| `adagents.json` lookups | Any caller asking "is this agent authorized for this property?" | Canonical URL | [adagents.json schema](https://adcontextprotocol.org/schemas/v3/adagents.json) |
+| `format-id` resolution | `format-id.agent_url` against the URL an agent publishes for its formats | Canonical URL | [format-id schema](https://adcontextprotocol.org/schemas/v3/core/format-id.json) |
+| `adagents.json` `authoritative_location` indirection | Following the pointer; the target URL MUST canonicalize the same way | Canonical URL | [Managed networks](/docs/governance/property/managed-networks#security-considerations) |
+| Provenance verifier allowlist | `verify_agent.agent_url` vs `creative_policy.accepted_verifiers[].agent_url` | Canonical URL | [Provenance Verification](/docs/governance/creative/provenance-verification#the-verifier-contract-seller-publishes-buyer-represents-seller-confirms) |
+| Governance-agent acceptance | Candidate `governance_agents[].url` vs `accepted_governance_agents.any_of[].agent_url` | Canonical URL | [`sync_governance`](/docs/accounts/tasks/sync_governance#seller-acceptance-of-governance-agents) |
+| Any registry with a URL primary key | Canonical form is the key; raw input is not | Canonical URL | - |
+| trust.json agents (experimental) | `agents[].url` uniqueness, grant `agents[].url` narrowing, and acknowledgement `agent_url`: one agent per origin | Canonical origin | [trust.json](/docs/reference/trust-json#identity-and-keys) |
+| WBA identity (proposed, 3.3) | The origin named by the covered `Signature-Agent` member, compared with a bound identity or a trust.json agent entry | Canonical origin | [`specs/agent-identity-3-3.md` R0](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md#r0-canonical-origin-p1-url-canonicalizationmdx) |
+| `format-id.agent_url` and a WBA signer (proposed, 3.3) | A WBA signer matches when the canonical origin of `agent_url` equals the signer's origin. The `format-id` resolution row above stays a canonical URL | Canonical origin | [`specs/agent-identity-3-3.md` R0](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md#r0-canonical-origin-p1-url-canonicalizationmdx) |
+| `authorized_agents[].url` and a WBA signer (proposed, 3.3) | A WBA signer matches by canonical origin. The `adagents.json` rows above stay canonical URLs for the 3.2 profile | Canonical origin | [`specs/agent-identity-3-3.md` R0](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md#r0-canonical-origin-p1-url-canonicalizationmdx) |
 
 Canonicalization is for matching, not safe reflection. A disclosed governance-agent rejection derives `attempted_agent_origin` from the parsed URL and strips userinfo, path, query, and fragment. It never returns the raw candidate URL; an opaque rejection returns no attempted endpoint at all.
 
@@ -59,7 +69,7 @@ The [request-signing profile](/docs/building/by-layer/L1/security#signed-request
 
 ## Conformance vectors
 
-The [`canonicalization.json`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/canonicalization.json) set exercises every rule above with fixed `{ input_url, expected_target_uri, expected_authority }` triples, plus malformed-authority rejection cases. Non-signing callers compare against `expected_target_uri` only — `expected_authority` is the HTTP-header-derived form used by the signing profile. SDKs implementing any of the surfaces in the table above SHOULD run this set on every commit; canonicalization divergence is silent until a production interop bug surfaces.
+The [`canonicalization.json`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/canonicalization.json) set exercises every rule above with fixed `{ input_url, expected_target_uri, expected_authority }` triples, plus malformed-authority rejection cases. The expected canonical origin of each case is the lowercased scheme of `input_url`, then `://`, then `expected_authority`; a case that rejects the authority has no canonical origin. Non-signing callers compare against `expected_target_uri` only — `expected_authority` is the HTTP-header-derived form used by the signing profile. SDKs implementing any of the surfaces in the table above SHOULD run this set on every commit; canonicalization divergence is silent until a production interop bug surfaces.
 
 ## Common pitfalls
 
@@ -68,6 +78,6 @@ The [`canonicalization.json`](https://adcontextprotocol.org/compliance/latest/te
 - **Collapsing consecutive slashes.** `/admin//foo` and `/admin/foo` are different canonical forms. A producer that collapses and a comparer that doesn't (or vice versa) opens a path-confusion attack.
 - **Re-encoding the query.** Query-string normalization looks tempting but is forbidden. `?x=1&y=2` and `?y=2&x=1` are different canonical forms.
 - **Trailing `?` with empty query.** `https://host/p?` and `https://host/p` are different. Preserve whichever the producer sent. Publishers registering URLs in `adagents.json` or similar registries should paste them without a trailing `?` unless they intend the empty-query form.
-- **Registering an origin for a path-mounted agent.** Canonicalization removes only dot segments, never real path segments. An `authorized_agents[].url` of `https://agent.example.com` does not match a buyer connected to `https://agent.example.com/mcp`. Register the full agent URL, and list each agent URL separately when MCP and A2A are served at different paths. See [Agent URL matching](/docs/governance/property/adagents#agent-url-matching).
+- **Registering an origin for a path-mounted agent.** Canonicalization removes only dot segments, never real path segments. This applies to every canonical-URL comparison in the table above; only the rows marked canonical origin compare by origin. An `authorized_agents[].url` of `https://agent.example.com` does not match a buyer connected to `https://agent.example.com/mcp`. Register the full agent URL, and list each agent URL separately when MCP and A2A are served at different paths. See [Agent URL matching](/docs/governance/property/adagents#agent-url-matching).
 - **Forgetting the fragment strip.** Fragments never participate in identifier comparison.
 - **Mixing `http://` and `https://`.** Scheme is preserved, not coerced. Publishers registering an `authorized_agents[].url` MUST use `https://` for anything meant to be reachable on the public internet — an `http://` entry will fail to match an `https://` caller and vice versa, and non-HTTPS URLs have no transport-integrity guarantee.

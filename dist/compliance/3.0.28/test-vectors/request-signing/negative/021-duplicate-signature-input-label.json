@@ -1,0 +1,31 @@
+{
+  "name": "Signature-Input header declares label 'sig1' twice (malformed structured dictionary)",
+  "spec_reference": "#verifier-checklist-requests step 1 (RFC 9421 §4.1 Signature-Input is a Dictionary; duplicate keys malformed)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\", sig1=(\"@method\" \"@target-uri\");created=1776520800;expires=1776521100;nonce=\"AAAAAAAAAAAAAAAAAAAAAA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_header_malformed",
+    "failed_step": 1
+  },
+  "$comment": "RFC 8941 §3.2 Dictionaries: 'When parsing, duplicate keys MUST be handled by either rejecting the input or by retaining only the last value.' Per the AdCP profile and downgrade-protection rule at step 1, verifiers MUST reject — silently retaining 'the last value' would let a proxy smuggle a weaker set of covered components past a verifier that read the first. Related cases: 011-malformed-header (unparseable) and 019-signature-without-signature-input (missing pair); this vector is the 'parseable-but-ambiguous' case the two existing vectors don't cover."
+}
