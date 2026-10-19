@@ -227,6 +227,8 @@ A seller advertises which request-signing profiles it accepts in `request_signin
 
 A buyer reads `profiles` and signs with a profile the seller lists. The operation lists (`required_for`, `warn_for`, `supported_for`, and the `protocol_methods_*` lists) keep their meaning for both profiles.
 
+The profile is [experimental](/docs/reference/experimental-status): a seller that lists `web-bot-auth` in either list also lists `signing.web_bot_auth` in `experimental_features`.
+
 ## Relationship to the AdCP RFC 9421 profile
 
 The two profiles share the signature base, the covered request components, the parameter semantics, the fetch rules, and the signed revocation list. They differ in how a verifier finds the signer's keys and how it reports a failure. The following table lists the mechanisms of the AdCP RFC 9421 profile and the rule that takes their place under this profile.
