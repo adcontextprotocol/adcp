@@ -3,6 +3,7 @@ import type { Agent } from "./types.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { AgentValidator } from "./validator.js";
+import { declaredAgentUrl } from './db/registry-agent-url-key.js';
 
 export interface PropertyInfo {
   identifier?: string;
@@ -101,7 +102,9 @@ export class PropertiesService {
           try {
             const normalizedDomain = domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
             const verificationUrl = `https://${normalizedDomain}/.well-known/adagents.json`;
-            const validation = await this.validator.validate(domain, agent.url, {
+            // Spec-exact authorization match (#7829): the registered
+            // spelling, not the folded identity key (#7830).
+            const validation = await this.validator.validate(domain, declaredAgentUrl(agent), {
               country: prop.country,
             });
 

@@ -247,6 +247,50 @@
       }
     },
     {
+      "description": "Listing media_buy.collection_catalog (list_collections and collection card webhooks) requires media_buy.collection_cards, because the response carries card fields.",
+      "if": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.collection_catalog" }
+          }
+        },
+        "required": ["experimental_features"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.collection_cards" }
+          }
+        }
+      }
+    },
+    {
+      "description": "Collection card webhook event types are repaired through list_collections, so listing any of them requires media_buy.collection_catalog.",
+      "if": {
+        "properties": {
+          "wholesale_feed_webhooks": {
+            "properties": {
+              "event_types": {
+                "contains": {
+                  "enum": ["collection_card.updated", "collection_card.removed", "collection_catalog.bulk_change"]
+                }
+              }
+            },
+            "required": ["event_types"]
+          }
+        },
+        "required": ["wholesale_feed_webhooks"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.collection_catalog" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
       "if": {
         "properties": {
           "media_buy": {
@@ -2010,6 +2054,15 @@
           "type": "object",
           "description": "Seller-level rollup of vendor-metric optimization capabilities supported by at least one product. Product-level vendor_metric_optimization.supported_metrics[] remains authoritative for the specific (vendor, metric_id) pairs and target kinds a buyer may bind on a package; this seller-level object exists so buyers and compliance runners can discover whether vendor_metric goals are in scope before walking the catalog. Sellers MUST keep this in sync with product-level vendor_metric_optimization declarations.",
           "properties": {
+            "supported_metrics": {
+              "type": "array",
+              "description": "(vendor, metric_id) pairs this seller can optimize toward on at least one of its products. Seller-level rollup of product-level vendor_metric_optimization.supported_metrics[] declarations (core/product.json); each entry has the product-level shape, and its supported_targets, when present, are the target kinds at least one product supports for the pair. Pairs are matched on vendor.domain and vendor.brand_id, as at the product level, and sellers MUST list each pair once, with supported_targets unioned across products; the object-level supported_targets covers the union of the per-pair values. Buyers SHOULD check this list before sending a vendor_metric goal, including an outcome_target vendor_metric goal, rather than learning an unsupported pair from an INVALID_REQUEST rejection. Product-level declarations remain authoritative for a specific package. Sellers MUST keep this in sync with their product catalog — if no product supports a pair, it must not appear here. Omitting this field means the seller declares no specific guarantees about which pairs it supports; buyers should fall back to per-product inspection of vendor_metric_optimization.supported_metrics.",
+              "items": {
+                "$ref": "/schemas/core/vendor-metric-optimization-supported-metric.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
             "supported_targets": {
               "type": "array",
               "description": "Target kinds this seller can support for vendor_metric optimization goals on at least one product. Values match optimization_goals[].target.kind for kind: vendor_metric. A target-less vendor_metric goal maximizes the metric within budget and does not require a target-kind declaration.",
@@ -2226,12 +2279,31 @@
           "properties": {
             "publisher_domains": {
               "type": "array",
-              "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.",
+              "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.\n\n**Non-exhaustive routing hint.** Unlike the sibling `primary_channels` and `primary_countries` allowlists, this list is NOT exhaustive and a buyer MUST NOT treat a publisher's absence from it as evidence that the seller is unauthorized for that publisher, whether or not it is marked complete. Each publisher's own adagents.json remains the authority; resolve it for the publisher named on a product rather than denying anything this list omits. When the list is truncated, the seller MUST set `publisher_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each publisher's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent. A seller that mirrors \"every publisher whose adagents.json names me\" is reflecting third-party-controlled content into a document whose size gates signing-key discovery. Sellers MUST NOT mirror this list unbounded: select the publishers you actually represent, keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
               "items": {
                 "type": "string",
                 "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
               },
-              "minItems": 1
+              "minItems": 1,
+              "x-adcp-validation": {
+                "counterparty_asserted": true,
+                "completeness_flag": "publisher_domains_complete",
+                "advisory_bounds": {
+                  "max_items": 100,
+                  "item_max_length": 253,
+                  "unique_items": true,
+                  "max_serialized_bytes": 8192
+                },
+                "enforced_in_3_x": "storyboard",
+                "schema_enforced_in": "4.0",
+                "spec": "docs/building/by-layer/L1/security.mdx#response-size-bounds"
+              }
+            },
+            "publisher_domains_complete": {
+              "type": "boolean",
+              "default": true,
+              "x-added-in": "3.3.0",
+              "description": "Whether `publisher_domains` enumerates every publisher this seller represents. Absent or `true` means the list is complete as served. `false` means the seller represents more publishers than it published — because the real set exceeds the advisory item bound or the per-field byte budget — and the list is a sample. This flag is advisory and affects prefetch planning only, never an authorization decision: buyers MUST NOT treat `publisher_domains` as an allowlist whether it is marked complete or not, and MUST resolve each product's publisher through that publisher's own adagents.json. Added in 3.3 so that bounding this counterparty-asserted array cannot silently turn a large but legitimate network into a seller that looks unauthorized for most of its inventory."
             },
             "primary_channels": {
               "type": "array",
@@ -2291,6 +2363,9 @@
     "signals": {
       "type": "object",
       "description": "Signals protocol capabilities. Only present if signals is in supported_protocols.",
+      "dependencies": {
+        "data_provider_domains_complete": ["data_provider_domains"]
+      },
       "properties": {
         "anonymous_discovery": {
           "type": "boolean",
@@ -2299,12 +2374,31 @@
         },
         "data_provider_domains": {
           "type": "array",
-          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.",
+          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.\n\n**Non-exhaustive routing hint.** This list is NOT exhaustive and a buyer MUST NOT treat a provider's absence from it as evidence that the agent may not resell that provider, whether or not it is marked complete. Each provider's own adagents.json remains the authority. When the list is truncated, the agent MUST set `data_provider_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each data provider's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent — the same trust direction as `media_buy.portfolio.publisher_domains`, and the same inflation vector into a document whose size gates signing-key discovery. Agents MUST NOT mirror this list unbounded: keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
-          "minItems": 1
+          "minItems": 1,
+            "x-adcp-validation": {
+              "counterparty_asserted": true,
+              "completeness_flag": "data_provider_domains_complete",
+              "advisory_bounds": {
+                "max_items": 100,
+                "item_max_length": 253,
+                "unique_items": true,
+                "max_serialized_bytes": 8192
+              },
+              "enforced_in_3_x": "storyboard",
+              "schema_enforced_in": "4.0",
+              "spec": "docs/building/by-layer/L1/security.mdx#response-size-bounds"
+            }
+        },
+        "data_provider_domains_complete": {
+          "type": "boolean",
+          "default": true,
+          "x-added-in": "3.3.0",
+          "description": "Whether `data_provider_domains` enumerates every data provider this agent resells. Absent or `true` means the list is complete as served. `false` means the agent resells more providers than it published — because the real set exceeds the advisory item bound or the per-field byte budget — and the list is a sample. This flag is advisory and affects prefetch planning only, never an authorization decision: buyers MUST NOT treat `data_provider_domains` as an allowlist whether it is marked complete or not, and MUST resolve each signal's provider through that provider's own adagents.json. Meaningless without `data_provider_domains`, which the sibling `dependencies` rule requires."
         },
         "discovery_modes": {
           "type": "array",
@@ -2585,10 +2679,28 @@
           "description": "When true, this agent hosts a creative library and supports list_creatives and creative_id references in build_creative. Creative agents with a library should also implement the accounts protocol (sync_accounts / list_accounts) so buyers can establish access.",
           "default": false
         },
+        "stable_creative_ids": {
+          "type": "boolean",
+          "description": "When true, this agent gives every creative that entered its library outside sync_creatives (seller UI or API, automation, or another system) a creative_id that is stable for the creative's lifetime and unique within the account, so a buyer connecting to an existing advertiser can reference those creatives in later requests. The agent MUST keep such IDs stable, MUST NOT reuse a creative_id a buyer has used on the account, and under sync_creatives delete_missing MUST NOT archive those creatives. Requires has_creative_library: true. When false or absent, sellers SHOULD follow the same rules but buyers MUST NOT rely on them.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
         "supports_revisions": {
           "type": "boolean",
           "description": "When true, this agent accepts buyer-assigned revision_id on sync_creatives, enforces immutable revision content, echoes accepted revision identity, returns it from list_creatives, and attributes delivered executions to it. Revision support does not imply revision history, rollback, or staged activation.",
           "default": false
+        },
+        "supports_assignment_merge": {
+          "type": "boolean",
+          "description": "When true, this agent accepts the merge operation in sync_creatives assignment_operations: a buyer declares that a seller-assigned creative assigned to a package is the same creative as its own, and the seller moves that assignment's serving object, approval, and delivery continuity to the buyer's creative_id. Requires has_creative_library: true and stable_creative_ids: true. When false or absent, the agent rejects merge with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "default": false,
+          "x-added-in": "3.3.0"
+        },
+        "supports_assignment_trackers": {
+          "type": "boolean",
+          "description": "When true, this agent accepts trackers on creative assignments in create_media_buy, update_media_buy, and sync_creatives, fires them in addition to the creative's own trackers or rejects the assignment, enforces shared format tracker-slot limits, and returns the assignment-scoped tracker list in list_creatives and get_media_buys readback. Requires has_creative_library: true. When false or absent, the agent MUST reject the field with UNSUPPORTED_FEATURE and buyers MUST NOT send it.",
+          "default": false,
+          "x-added-in": "3.3.0"
         },
         "supports_assignment_landing_page": {
           "type": "boolean",
@@ -2845,6 +2957,20 @@
         {
           "if": {
             "properties": {
+              "stable_creative_ids": { "const": true }
+            },
+            "required": ["stable_creative_ids"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
               "supports_revisions": { "const": true }
             },
             "required": ["supports_revisions"]
@@ -2868,6 +2994,35 @@
               "has_creative_library": { "type": "boolean", "const": true }
             },
             "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_assignment_trackers": { "const": true }
+            },
+            "required": ["supports_assignment_trackers"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_assignment_merge": { "const": true }
+            },
+            "required": ["supports_assignment_merge"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true },
+              "stable_creative_ids": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library", "stable_creative_ids"]
           }
         },
         {
@@ -3415,7 +3570,7 @@
     },
     "wholesale_feed_webhooks": {
       "type": "object",
-      "description": "Per-agent wholesale product-feed and wholesale signals-feed webhook capabilities. Consumers register durable sync_accounts notification subscribers and receive actual product.*, signal.*, or wholesale_feed.bulk_change payloads without polling. Product mirrors bootstrap and repair through list_products(if_feed_version); signal mirrors use get_signals(if_wholesale_feed_version). Deprecated wholesale get_products remains the 3.x product compatibility path. Webhook emission MUST apply the same caller/account authorization and cache-scope predicate as the corresponding read.",
+      "description": "Per-agent wholesale product-feed, wholesale signals-feed, and (experimental, media_buy.collection_catalog) collection card webhook capabilities. Consumers register durable sync_accounts notification subscribers and receive actual product.*, signal.*, collection_card.*, wholesale_feed.bulk_change, or collection_catalog.bulk_change payloads without polling. Product mirrors bootstrap and repair through list_products(if_feed_version); signal mirrors use get_signals(if_wholesale_feed_version); collection card mirrors use an unfiltered list_collections(if_collections_version). Deprecated wholesale get_products remains the 3.x product compatibility path. Webhook emission MUST apply the same caller/account authorization and cache-scope predicate as the corresponding read.",
       "properties": {
         "supported": {
           "type": "boolean",
@@ -3423,7 +3578,7 @@
         },
         "event_types": {
           "type": "array",
-          "description": "Wholesale feed webhook event types this agent can emit. Sales agents emit product.* events and MUST expose list_products or the deprecated 3.x wholesale get_products compatibility path. Signals agents emit signal.* events and MUST support wholesale get_signals. wholesale_feed.bulk_change requires at least one corresponding repair path.",
+          "description": "Wholesale feed webhook event types this agent can emit. Sales agents emit product.* events and MUST expose list_products or the deprecated 3.x wholesale get_products compatibility path. Signals agents emit signal.* events and MUST support wholesale get_signals. wholesale_feed.bulk_change requires at least one corresponding repair path. collection_card.updated, collection_card.removed and collection_catalog.bulk_change (experimental) require list_collections, so listing any of them requires media_buy.collection_catalog in experimental_features; buyers MUST NOT register them with a seller that does not list them here, and sellers reject undeclared types.",
           "items": {
             "type": "string",
             "enum": [
@@ -3435,7 +3590,10 @@
               "signal.updated",
               "signal.priced",
               "signal.removed",
-              "wholesale_feed.bulk_change"
+              "wholesale_feed.bulk_change",
+              "collection_card.updated",
+              "collection_card.removed",
+              "collection_catalog.bulk_change"
             ]
           },
           "minItems": 1,
@@ -3461,7 +3619,11 @@
                     "contains_item": "wholesale"
                   }
                 ],
-                "bulk_change_affected_entity_type_must_match_declared_repair_path": true
+                "bulk_change_affected_entity_type_must_match_declared_repair_path": true,
+                "collection_events_require": {
+                  "field": "experimental_features",
+                  "contains_item": "media_buy.collection_catalog"
+                }
               }
             },
             "spec": "specs/wholesale-feed-webhooks.md#capability-declaration"

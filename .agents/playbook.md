@@ -129,6 +129,47 @@ if (result.errors) {
 }
 ```
 
+### Slack and notification text: fixed templates, sanitized fields
+
+Slack renders a DM's `text` and every `mrkdwn` block as markup, so
+`<!channel>`, `<@U…>` and `<url|label>` in interpolated text ping or
+phish the reader, and a newline forges a line that reads as ours.
+Recipients treat these surfaces — an owner's DM, a moderator channel —
+as platform-authored, which is exactly what makes a planted string
+effective.
+
+The rule (#8320, #4754, #2726):
+
+- **Titles are fixed templates plus short sanitized identifiers.** Never
+  interpolate free text an agent, member, or model produced into a
+  notification title or a channel message's `text` fallback.
+- **Free text we did not author goes in the body**, flattened to one
+  line, capped, and escaped.
+- **A link target is not text.** `<url|label>` can't be escaped — a `>`
+  closes the link and a `|` adds a field — so check the target and drop
+  the link when it fails, rather than rendering a broken one.
+- Use the shared helpers in `server/src/utils/slack-escape.ts`. Don't
+  write another local escaper:
+  - `flattenToSingleLine(raw, max)` — collapse control characters and
+    whitespace runs, then truncate. For values a later stage escapes for
+    its own surface (a stored notification `title`/`body`, a stored
+    compliance `headline`).
+  - `sanitizeSlackLine(raw, max)` — flatten, escape, and zero-width-space
+    the `!channel` / `!here` / `!everyone` tokens. For text you are
+    writing straight into a Slack message.
+  - `sanitizeSlackLinkLabel(raw, max)` — also drops `|`, which otherwise
+    restructures a `<url|label>` link even after escaping.
+  - `isSafeSlackLinkTarget(url)` — for the target half of a link.
+  - `isSafeNotificationPath(url)` (`server/src/db/notification-db.ts`) —
+    for a stored notification link, which is rendered both as an HTML
+    `href` and as a Slack link target.
+- `notifyUser` (`server/src/notifications/notification-service.ts`) takes
+  `title` and `body` and escapes both on the Slack hop;
+  `NotificationDatabase.createNotification` flattens, caps, and drops
+  non-site-relative links at the write seam, so direct callers get the
+  same bound. Pass plain text — escaping at the call site double-encodes
+  the stored row, which the web list then renders literally.
+
 ### Design System
 All HTML files in `server/public/` MUST use CSS variables from `/server/public/design-system.css`:
 ```css
@@ -670,6 +711,8 @@ JSON examples with `$schema` field are validated against schemas in CI.
 ## Format Conventions
 
 ### Field Naming
+- `platform_id` = An object's ID assigned by the seller's ad platform (creative, catalog, event source, or audience).
+- `seller_id` = The seller's identity (for example, IAB sellers.json or publisher identifiers). The deprecated `seller_id` aliases on `sync_event_sources` and `sync_audiences` results retain their object-platform-ID semantics throughout 3.x; do not repurpose them. When reporting a platform ID in 3.3 and later 3.x responses, emit both names with identical values; buyers prefer `platform_id` and fall back to `seller_id` only when absent.
 - `formats` = Array of full format objects
 - `format_ids` = Array of format ID references
 
