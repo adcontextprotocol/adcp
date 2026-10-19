@@ -209,6 +209,7 @@ import { respondToAdminAuthorizationError } from "../auth/admin-authorization-re
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId, sendCallerOrganizationAuthError } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
+import { specExactAgentUrl } from "../db/registry-agent-url-key.js";
 import { buildCreativeCapabilities } from "../creative-agent/task-handlers.js";
 import {
   AuthorizationSnapshotDatabase,
@@ -1887,7 +1888,14 @@ const AgentPublishersOpenApi = {
     "signing-key pin status, and lifecycle state (`authorized` / `revoked`).\n\n" +
     "Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant " +
     "richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns " +
-    "domain strings only.",
+    "domain strings only.\n\n" +
+    "`agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a " +
+    "**non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are " +
+    "different agents and can return different publisher sets, the same rule the SDK applies in " +
+    "`verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. " +
+    "(Through 2026-10-18 this endpoint folded the two spellings together and answered both with the " +
+    "slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` " +
+    "in the response echoes the canonicalized lookup key, slash included.",
   tags: ["Authorization Lookups"],
   request: {
     params: z.object({ encodedUrl: z.string().openapi({ description: "Percent-encoded agent_url" }) }),
@@ -11374,10 +11382,28 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       } catch {
         return res.status(400).json({ error: "Malformed agent_url percent-encoding" });
       }
-      const agentUrl = canonicalizeAgentUrl(rawAgentUrl);
-      if (!agentUrl) {
+      // AUTHORIZATION route — the parameter is matched SPEC-EXACTLY, with a
+      // non-root trailing slash significant (#7829), exactly as the validator
+      // and the sibling /registry/lookup/agent/:agentUrl/domains route match
+      // it, and as docs/aao/directory-api.mdx has always specified.
+      //
+      // `canonicalizeAgentUrl` is the registry IDENTITY key, which folds
+      // `/mcp/` into `/mcp` (#7830). It is used here ONLY as a validity gate:
+      // an input the registry cannot key at all cannot name an indexed agent.
+      // It MUST NOT become the lookup value — that made a `/mcp/` request
+      // answer with `/mcp`'s publishers, a different authorization question.
+      // `getPublishersForAgentDetail` keys internally for the index and then
+      // restricts to the raw `agent_url` spellings that match spec-exactly,
+      // so it takes the URL as the caller wrote it.
+      if (!canonicalizeAgentUrl(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent_url after canonicalization" });
       }
+      // The echo is the AdCP canonicalization of what was asked for (host
+      // lowercased, default port and dot segments resolved) with the trailing
+      // slash PRESERVED, so it never reads as a different agent than the one
+      // that was matched. `?? rawAgentUrl` cannot normally fire — the gate
+      // above already rejected anything unparseable.
+      const agentUrl = specExactAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       const sinceParam = typeof req.query.since === 'string' ? req.query.since : null;
       let since: Date | undefined;
@@ -11474,7 +11500,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       // We also filter status server-side via includeRevoked in the DB call;
       // if the caller requested only `revoked`, drop rows whose status is
       // `authorized` in TS (small set, simpler than another SQL branch).
-      const rawRows = await federatedIndex.getPublishersForAgentDetail(agentUrl, {
+      const rawRows = await federatedIndex.getPublishersForAgentDetail(rawAgentUrl, {
         cursor,
         since,
         includeRevoked,
@@ -11507,7 +11533,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         && includeAuthorized
         && !includeRevoked
       ) {
-        const everRows = await federatedIndex.getPublishersForAgentDetail(agentUrl, {
+        const everRows = await federatedIndex.getPublishersForAgentDetail(rawAgentUrl, {
           includeRevoked: true,
           limit: 1,
         });

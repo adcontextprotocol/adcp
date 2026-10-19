@@ -8230,6 +8230,8 @@ paths:
         Given a percent-encoded `agent_url`, returns the publishers whose adagents.json authorizes that agent, with provenance (`discovery_method`, `manager_domain`), per-publisher property counts (`properties_authorized`, `properties_total`, scoped to this publisher only — never network-wide), signing-key pin status, and lifecycle state (`authorized` / `revoked`).
 
         Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns domain strings only.
+
+        `agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets, the same rule the SDK applies in `verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
       tags:
         - Authorization Lookups
       parameters:
@@ -8383,6 +8385,8 @@ paths:
         Given a percent-encoded `agent_url`, returns the publishers whose adagents.json authorizes that agent, with provenance (`discovery_method`, `manager_domain`), per-publisher property counts (`properties_authorized`, `properties_total`, scoped to this publisher only — never network-wide), signing-key pin status, and lifecycle state (`authorized` / `revoked`).
 
         Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns domain strings only.
+
+        `agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets, the same rule the SDK applies in `verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
       tags:
         - Authorization Lookups
       parameters:
