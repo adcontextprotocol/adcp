@@ -517,7 +517,19 @@ jobs:
             echo "::error::Missing R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, or R2_SECRET_ACCESS_KEY secret."
             exit 1
           fi
-          npm run backfill:cdn-artifacts -- --bucket "${ADCP_ARTIFACT_R2_BUCKET}" --build-latest --latest-only --quiet
+          mkdir -p "${RUNNER_TEMP}/schema-pointers"
+          npm run backfill:cdn-artifacts -- --bucket "${ADCP_ARTIFACT_R2_BUCKET}" --build-latest --latest-only --quiet \
+            --pointer-output-dir "${RUNNER_TEMP}/schema-pointers"
+
+      # Uploading is not serving: R2 publication is progressive and per-object.
+      # #8318 went unnoticed for weeks because nothing compared the public
+      # discovery document against the release set it is supposed to name.
+      - name: Verify published schema discovery pointers
+        run: |
+          set -euo pipefail
+          node scripts/verify-schema-discovery.mjs \
+            --expected-index "${RUNNER_TEMP}/schema-pointers/index.json" \
+            --expected-latest "${RUNNER_TEMP}/schema-pointers/latest.json"
 
       # On any failure (hard or fallback-with-degraded-gates), snapshot Fly
       # state so the next-turn investigator doesn't have to fetch it
