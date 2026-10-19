@@ -39,8 +39,9 @@
     "canonical_formats_only": { "type": "boolean", "default": false },
     "experimental": { "type": "boolean", "default": false },
     "format_kind": {
+      "$comment": "Keep this enum inline for SDK code generation; tracker-execution-package-integration.test.cjs checks exact parity with canonical-format-kind.json.",
       "type": "string",
-      "enum": ["image", "html5", "display_tag", "image_carousel", "video_hosted", "video_vast", "audio_hosted", "audio_vast", "audio_daast", "sponsored_placement", "native_in_feed", "responsive_creative", "agent_placement", "custom"]
+      "enum": ["image", "html5", "display_tag", "image_carousel", "video_hosted", "video_vast", "audio_hosted", "audio_vast", "audio_daast", "sponsored_placement", "native_in_feed", "responsive_creative", "agent_placement", "seller_rendered_stateful_display", "coordinated_placements", "custom"]
     },
     "params": { "type": "object", "additionalProperties": true },
     "format_shape": { "type": "string", "minLength": 1 },

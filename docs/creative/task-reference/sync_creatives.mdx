@@ -244,7 +244,7 @@ This request assigns one existing creative to two packages with different measur
 
 New 3.2 integrations use `format_kind` with `format_option_ref` when routing depends on a product's declared option. A compatibility implementation may accept the legacy branch from an older peer, but never mixes both shapes.
 
-Before uploading, buyers MUST verify each creative manifest against the target product's canonical `format_options[]`. The manifest MUST include every asset slot that the selected format option declares as required, keyed by that slot's `asset_group_id`.
+When uploading for a known target product, buyers MUST verify each creative manifest against that product's canonical `format_options[]`. The manifest MUST include every asset slot that the selected format option declares as required, keyed by that slot's `asset_group_id`. A library creative may be stored before selecting inventory; product-specific validation applies when the target becomes known, before assignment. Library storage alone does not establish product acceptance.
 
 ### Creative revisions
 

@@ -540,6 +540,11 @@ components:
           $ref: "#/components/schemas/AgentCapabilities"
         compliance:
           $ref: "#/components/schemas/AgentCompliance"
+        declared_urls:
+          type: array
+          items:
+            type: string
+          description: Every raw agent_url spelling the directory has indexed under this agent's identity, with the listed (canonical) url first. The registry keys an agent by identity, folding a non-root trailing slash, but GET /v1/agents/{agent_url}/publishers matches spec-exactly with the slash significant — so a client answering "which publishers authorize this agent" must query once per spelling here and merge the results.
         publisher_domains:
           type: array
           items:
@@ -6228,6 +6233,11 @@ components:
     ResolveResponse:
       type: object
       properties:
+        sandbox:
+          type: boolean
+          enum:
+            - true
+          description: Present for a non-persistent sandbox simulation. New property handles are ephemeral.
         resolved:
           type: array
           items:
@@ -6291,10 +6301,12 @@ components:
       properties:
         type:
           type: string
+          minLength: 1
           example: domain
         value:
           type: string
-          example: nytimes.com
+          minLength: 1
+          example: streamhaus.com
       required:
         - type
         - value
@@ -6316,10 +6328,15 @@ components:
             - resolve
             - lookup
           default: resolve
-          description: "`resolve` (default) contributes the identifiers, auto-creates missing catalog entries, logs demand activity, and returns rids — requires authentication. `lookup` is a pure read: no write, no activity log, no auth."
+          description: resolve (default) contributes identifiers, creates missing catalog entries, and logs activity; authentication is required. lookup is a public read with no writes or activity logging.
+        sandbox:
+          type: boolean
+          default: false
+          description: Simulate contributions without storing properties, identifiers, facts, or activity. Reads existing catalog data; new handles are ephemeral. Reserved test domains are allowed only in sandbox mode.
       required:
         - identifiers
         - provenance
+      description: "Up to 10,000 identifiers plus provenance. resolve requires authentication and contributes unknown identifiers; lookup is read-only. Domain/subdomain values must follow core/identifier.json; production rejects reserved test domains. sandbox: true simulates contributions without writes."
     FactProvenance:
       type: object
       properties:
@@ -6334,10 +6351,9 @@ components:
             - crawl
             - data_partner
             - member_assertion
-          description: How the caller knows these identifiers — the trust/audit envelope on the fact. Determines the confidence the catalog assigns. `crawl` is reserved for server-side pipelines; callers use the others.
+          description: How the caller knows these identifiers — the trust/audit envelope on the fact. Determines the confidence the catalog assigns. crawl is reserved for server-side pipelines; callers use the others.
         context:
           type: string
-          example: unilever_q3
           description: Optional free-text annotation (campaign, dataset).
       required:
         - type
@@ -7453,7 +7469,7 @@ paths:
       operationId: saveProperty
       summary: Save property
       description: |-
-        Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.
+        Save or update a hosted property in the registry. Requires authentication. For bulk identifier contributions use resolveIdentifiers instead (up to 10,000 identifiers per request). This endpoint is limited to 60 requests/hour per user/IP. publisher_domain must be a lowercase hostname without a URL, port, whitespace, wildcard, or trailing dot. Reserved test domains are rejected unless sandbox is true. With sandbox: true the request is validated and a simulated result is returned without reading or writing a hosted property; the ID is ephemeral. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.
 
         This is an identity-only write surface: the stored document always carries `authorized_agents: []`. Sales authorization lives solely in the publisher's own origin `adagents.json`; the community registry cannot mint or carry it. Any `authorized_agents` sent in the request body is ignored.
       tags:
@@ -7470,6 +7486,10 @@ paths:
                 publisher_domain:
                   type: string
                   example: examplepub.com
+                sandbox:
+                  type: boolean
+                  default: false
+                  description: Validate and simulate a save without persisting it. Allows reserved test hostnames.
                 authorized_agents:
                   type: array
                   items:
@@ -7523,6 +7543,10 @@ paths:
                     type: string
                   id:
                     type: string
+                  sandbox:
+                    type: boolean
+                    enum:
+                      - true
                   revision_number:
                     type: integer
                 required:
@@ -8211,6 +8235,8 @@ paths:
         Given a percent-encoded `agent_url`, returns the publishers whose adagents.json authorizes that agent, with provenance (`discovery_method`, `manager_domain`), per-publisher property counts (`properties_authorized`, `properties_total`, scoped to this publisher only — never network-wide), signing-key pin status, and lifecycle state (`authorized` / `revoked`).
 
         Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns domain strings only.
+
+        `agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets, the same rule the SDK applies in `verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
       tags:
         - Authorization Lookups
       parameters:
@@ -8364,6 +8390,8 @@ paths:
         Given a percent-encoded `agent_url`, returns the publishers whose adagents.json authorizes that agent, with provenance (`discovery_method`, `manager_domain`), per-publisher property counts (`properties_authorized`, `properties_total`, scoped to this publisher only — never network-wide), signing-key pin status, and lifecycle state (`authorized` / `revoked`).
 
         Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns domain strings only.
+
+        `agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a **non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are different agents and can return different publisher sets, the same rule the SDK applies in `verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. (Through 2026-10-18 this endpoint folded the two spellings together and answered both with the slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` in the response echoes the canonicalized lookup key, slash included.
       tags:
         - Authorization Lookups
       parameters:
@@ -11175,9 +11203,9 @@ paths:
       parameters:
         - schema:
             type: string
-            description: Agent URL to look up. Canonicalized server-side (lowercased, trailing slashes trimmed).
+            description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not."
           required: true
-          description: Agent URL to look up. Canonicalized server-side (lowercased, trailing slashes trimmed).
+          description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not."
           name: agent_url
           in: query
         - schema:
