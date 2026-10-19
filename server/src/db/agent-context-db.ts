@@ -4,6 +4,7 @@ import { agentQualityEvaluationFingerprint } from './agent-quality-evaluation-id
 import { encrypt as encryptToken, decrypt as decryptToken } from './encryption.js';
 import { createLogger } from '../logger.js';
 import { canonicalizeAgentUrl } from './publisher-db.js';
+import { agentIdentityContainment } from './agent-identity-match.js';
 import type { ResolvedOwnerAuth } from './compliance-db.js';
 import { isCompleteStoredBasicCredential } from '../utils/basic-auth-credentials.js';
 
@@ -417,12 +418,17 @@ export class AgentContextDatabase {
    */
   async findOwnerOrgWithSavedAuth(agentUrl: string): Promise<string | null> {
     const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
+    // The ownership half folds spellings of the agent's registry identity
+    // (#8322), matching `ComplianceDatabase.resolveOwnerAuth`. `ac.agent_url`
+    // stays an exact key match, and the join still pins the credential and
+    // the profile to the same organization.
+    const ownerAgents = agentIdentityContainment('mp.agents', canonicalUrl, 2);
     const result = await query<{ organization_id: string }>(
       `SELECT ac.organization_id
        FROM agent_contexts ac
        JOIN member_profiles mp
          ON mp.workos_organization_id = ac.organization_id
-        AND mp.agents @> $2::jsonb
+        AND ${ownerAgents.sql}
        WHERE ac.agent_url = $1
          AND (
            (ac.auth_token_encrypted IS NOT NULL
@@ -436,7 +442,7 @@ export class AgentContextDatabase {
          )
        ORDER BY ac.updated_at DESC
        LIMIT 1`,
-      [canonicalUrl, JSON.stringify([{ url: canonicalUrl }])],
+      [canonicalUrl, ...ownerAgents.params],
     );
     return result.rows[0]?.organization_id ?? null;
   }
