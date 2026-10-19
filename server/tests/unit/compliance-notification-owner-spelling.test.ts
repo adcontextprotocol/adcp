@@ -103,7 +103,10 @@ function requestedAgentUrls(params: unknown): string[] {
 function installTrailingSlashOwnerProfile() {
   mockedQuery.mockImplementation(async (sql: unknown, params?: unknown) => {
     const text = String(sql);
-    const asked = requestedAgentUrls(params).includes(STORED_SPELLING);
+    // `some(=== …)` rather than `includes(…)`: an array `includes` is already
+    // an exact match, but CodeQL reads `includes(<url literal>)` as substring
+    // URL sanitization and flags it.
+    const asked = requestedAgentUrls(params).some((url) => url === STORED_SPELLING);
     if (text.includes('workos_user_id')) {
       return mockResult(asked ? [{ workos_user_id: OWNER_USER_ID }] : []);
     }
@@ -203,7 +206,7 @@ describe('notification owner lookup folds the stored agent_url spelling (#8321)'
     // key, so a caller that still has the registered spelling must find it.
     mockedQuery.mockImplementation(async (sql: unknown, params?: unknown) => {
       const text = String(sql);
-      const asked = requestedAgentUrls(params).includes(FOLDED_URL);
+      const asked = requestedAgentUrls(params).some((url) => url === FOLDED_URL);
       if (text.includes('workos_user_id')) {
         return mockResult(asked ? [{ workos_user_id: OWNER_USER_ID }] : []);
       }
