@@ -4561,6 +4561,13 @@ export class HTTPServer {
           logger.warn({ err: error, path: req.path }, 'Property not found during rollback');
           return res.status(404).json({ error: 'Resource not found' });
         }
+        // `rollbackProperty` refuses authoritative and pending records,
+        // as the brand route checks for up front. Report the refusal
+        // rather than a server error.
+        if (error.message?.includes('Cannot roll back')) {
+          logger.warn({ err: error, path: req.path }, 'Access denied rolling back property');
+          return res.status(403).json({ error: 'Access denied' });
+        }
         logger.error({ error }, 'Failed to rollback property');
         return res.status(500).json({ error: 'Failed to rollback property' });
       }
