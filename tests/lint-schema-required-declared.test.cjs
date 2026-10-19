@@ -136,15 +136,52 @@ test('dependentSchemas inherit the enclosing declarations', (t) => {
   assert.deepEqual(violations, []);
 });
 
-test('every ALLOWED entry still suppresses a real violation', () => {
-  const allowed = new Set(ALLOWED);
-  ALLOWED.clear();
-  let found;
-  try {
-    found = new Set(lintSchemas(loadSchemas(SCHEMA_DIR)).map((v) => `${v.file}|${v.path || '/'}`));
-  } finally {
-    for (const entry of allowed) ALLOWED.add(entry);
-  }
-  const stale = [...allowed].filter((entry) => !found.has(entry));
+test('every ALLOWED entry still matches an undeclared name', () => {
+  const { violations } = lintSchemas(loadSchemas(SCHEMA_DIR), new Set());
+  const found = new Set(violations.flatMap((v) => v.missing.map((name) => `${v.file}|${v.path || '/'}|${name}`)));
+  const stale = [...ALLOWED].filter((entry) => !found.has(entry));
   assert.deepEqual(stale, [], `stale ALLOWED entries (the gap was fixed; remove them):\n  ${stale.join('\n  ')}`);
+});
+
+test('an allowlist entry covers only its named property', (t) => {
+  const files = {
+    'a.json': { type: 'object', properties: { row: { type: 'object', required: ['known', 'fresh'] } } },
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-required-declared-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'a.json'), JSON.stringify(files['a.json']));
+  const { violations } = lint(dir, new Set(['a.json|/properties/row|known']));
+  assert.deepEqual(violations, [{ file: 'a.json', path: '/properties/row', missing: ['fresh'] }]);
+});
+
+test('`if` conditions are not checked', (t) => {
+  const violations = lintTree(t, {
+    'if.json': { type: 'object', properties: { a: {} }, if: { required: ['a', 'undeclared'] }, then: {} },
+  });
+  assert.deepEqual(violations, []);
+});
+
+test('draft-07 array-form `dependencies` names must be declared', (t) => {
+  const violations = lintTree(t, {
+    'dep.json': {
+      type: 'object',
+      properties: { width: {}, height: {}, params: { type: 'object', properties: { w: {} } } },
+      dependencies: { width: ['height'], height: ['depth'] },
+      allOf: [{ then: { properties: { params: { dependencies: { w: ['h'] } } } } }],
+    },
+  });
+  assert.deepEqual(violations, [
+    { file: 'dep.json', path: '/allOf/0/then/properties/params/dependencies/w', missing: ['h'] },
+    { file: 'dep.json', path: '/dependencies/height', missing: ['depth'] },
+  ]);
+});
+
+test('reports how many name lists were skipped for an unresolvable $ref', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-required-declared-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(dir, 'ext.json'),
+    JSON.stringify({ type: 'object', required: ['x'], allOf: [{ $ref: 'https://example.com/other.json' }] }),
+  );
+  assert.deepEqual(lint(dir), { violations: [], skipped: 1 });
 });

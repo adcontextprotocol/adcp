@@ -21,19 +21,33 @@
  *     `allOf` / `anyOf` / `oneOf` branch (recursively, following `$ref`s to
  *     other source files and to local `#/definitions` / `#/$defs`);
  *   - a `patternProperties` pattern that matches the name;
- *   - for a conditional branch (`if` / `then` / `else` / `allOf` / `anyOf` /
- *     `oneOf`), the declarations of any enclosing schema, one level up or
- *     further. Declarations are pooled across a schema's `anyOf`/`oneOf`/
- *     `then`/`else` arms, so a name declared in only one arm passes.
- *   - `not` subtrees are not checked: they name properties that must be absent. Branches routinely say `required: [x]` to constrain a
- *     property the parent declares.
+ *   - for a conditional branch (`then` / `else` / `allOf` / `anyOf` / `oneOf`
+ *     / `dependencies` / `dependentSchemas`), the declarations of any
+ *     enclosing schema, one level up or further, including the property or
+ *     items schema a branch narrows. Branches routinely say `required: [x]`
+ *     to constrain a property the parent declares.
  *
- * Schemas with an unresolvable `$ref` are skipped rather than reported.
+ * Declarations are pooled across a schema's `anyOf` / `oneOf` / `then` /
+ * `else` arms, so a name declared in only one arm passes.
+ *
+ * Not checked
+ * -----------
+ *   - `not` subtrees: they name properties that must be absent.
+ *   - `if` subtrees: a condition is not a requirement.
+ *   - Schemas whose `$ref` cannot be resolved are skipped rather than
+ *     reported, and the count is printed. Published bundles use absolute
+ *     `https://adcontextprotocol.org/schemas/<version>/...` refs, which are
+ *     unresolvable here, so run this against `static/schemas/source`.
+ *   - Draft-07 `dependencies` in array form IS checked: each dependent name
+ *     must be declared, like a conditional `required`.
  *
  * Allowlist
  * ---------
- * Intentional gaps go in ALLOWED as "relFile|jsonPath". Prefer declaring the
- * property; use the allowlist only when the gap is deliberate.
+ * Intentional gaps go in ALLOWED as "relFile|jsonPath|name", one entry per
+ * missing name, so a new undeclared name on the same node still fails.
+ * tests/lint-schema-required-declared.test.cjs fails on any entry that no
+ * longer matches a violation. Prefer declaring the property; use the
+ * allowlist only when the gap is deliberate or tracked.
  */
 
 'use strict';
@@ -44,20 +58,25 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..');
 const SCHEMA_DIR = path.join(ROOT, 'static', 'schemas', 'source');
 
-// Key: "relFile|jsonPath". Use * as the path for the whole file.
+// Key: "relFile|jsonPath|name".
 const ALLOWED = new Set([
   // Mixins composed through `allOf`; each composing branch declares `asset_type`.
-  'core/format.json|/$defs/baseGroupAsset',
-  'core/format.json|/$defs/baseIndividualAsset',
-  // Standalone `allOf` fragment mixed into the targeting overlay, which declares `age_restriction`.
-  'core/targeting-unknown-age-eligibility-constraint.json|/if',
-  // Known declaration gaps in comply_test_controller injected-row shapes. The rows are specified as
-  // complete core/ rows, so the right fix is a `$ref` choice, not a bare type. Listed in the #8194 PR
-  // body for a follow-up; remove each entry when its declaration lands.
-  'compliance/comply-test-controller-request.json|/allOf/1/then/properties/account',
-  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/identifier',
-  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/installment_ref',
-  'compliance/comply-test-controller-request.json|/properties/params/properties/property_delivery/items/properties/identifier',
+  'core/format.json|/$defs/baseGroupAsset|asset_type',
+  'core/format.json|/$defs/baseIndividualAsset|asset_type',
+  // Known declaration gaps in comply_test_controller injected rows, tracked in
+  // https://github.com/adcontextprotocol/adcp/issues/8345. The rows are
+  // specified as complete core/ rows, so the fix is a `$ref` choice, not a bare type. Remove each
+  // entry when its declaration lands.
+  'compliance/comply-test-controller-request.json|/allOf/1/then/properties/account|account_id',
+  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/identifier|type',
+  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/identifier|value',
+  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/installment_ref|collection_ref',
+  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/installment_ref|installment_id',
+  'compliance/comply-test-controller-request.json|/properties/params/properties/property_delivery/items/properties/identifier|type',
+  'compliance/comply-test-controller-request.json|/properties/params/properties/property_delivery/items/properties/identifier|value',
+  // `params` is an open per-format_kind object that declares neither `width` nor `height` (#8345).
+  'media-buy/package-request.json|/allOf/2/then/properties/params/dependencies/height|width',
+  'media-buy/package-request.json|/allOf/2/then/properties/params/dependencies/width|height',
 ]);
 
 const BRANCH_KEYWORDS = ['allOf', 'anyOf', 'oneOf'];
@@ -198,8 +217,9 @@ const SCHEMA_KEYWORDS = [
   'unevaluatedItems',
 ];
 
-function lintSchemas(docs) {
+function lintSchemas(docs, allowed = ALLOWED) {
   const violations = [];
+  let skipped = 0;
 
   /**
    * `inherited` holds the declaring scope contributed by enclosing schemas
@@ -219,27 +239,38 @@ function lintSchemas(docs) {
       complete: own.complete && inherited.complete,
     };
 
-    if (Array.isArray(schema.required) && schema.required.every((n) => typeof n === 'string')) {
-      if (scope.complete && !ALLOWED.has(`${file}|${pointer || '/'}`) && !ALLOWED.has(`${file}|*`)) {
-        const missing = schema.required.filter((n) => !isDeclared(n, scope));
-        if (missing.length > 0) violations.push({ file, path: pointer, missing });
+    // `required` and draft-07 array-form `dependencies` both name properties.
+    const named = [];
+    if (Array.isArray(schema.required)) named.push({ at: pointer, names: schema.required });
+    if (isPlainObject(schema.dependencies)) {
+      for (const [key, dep] of Object.entries(schema.dependencies)) {
+        if (Array.isArray(dep)) named.push({ at: `${pointer}/dependencies/${escapePointer(key)}`, names: dep });
       }
     }
+    for (const { at, names } of named) {
+      if (!names.every((n) => typeof n === 'string')) continue;
+      if (!scope.complete) {
+        skipped += 1;
+        continue;
+      }
+      const missing = names.filter((n) => !isDeclared(n, scope) && !allowed.has(`${file}|${at || '/'}|${n}`));
+      if (missing.length > 0) violations.push({ file, path: at, missing });
+    }
 
-    // Branches may lean on enclosing declarations. A `not` branch names
-    // properties that must be absent, so it is a negative constraint and is
-    // not checked.
+    // Branches may lean on enclosing declarations. `not` (names properties that
+    // must be absent) and `if` (a condition, not a requirement) are not checked.
     for (const kw of BRANCH_KEYWORDS) {
       if (Array.isArray(schema[kw])) {
         schema[kw].forEach((branch, i) => visit(branch, file, `${pointer}/${kw}/${i}`, scope));
       }
     }
-    for (const kw of ['if', 'then', 'else']) {
+    for (const kw of ['then', 'else']) {
       if (isPlainObject(schema[kw])) visit(schema[kw], file, `${pointer}/${kw}`, scope);
     }
-    if (isPlainObject(schema.dependentSchemas)) {
-      for (const [key, sub] of Object.entries(schema.dependentSchemas)) {
-        visit(sub, file, `${pointer}/dependentSchemas/${escapePointer(key)}`, scope);
+    for (const kw of ['dependentSchemas', 'dependencies']) {
+      if (!isPlainObject(schema[kw])) continue;
+      for (const [key, sub] of Object.entries(schema[kw])) {
+        if (isPlainObject(sub)) visit(sub, file, `${pointer}/${kw}/${escapePointer(key)}`, scope);
       }
     }
 
@@ -280,22 +311,23 @@ function lintSchemas(docs) {
   }
 
   for (const [file, doc] of docs) visit(doc, file, '', newScope());
-  return violations;
+  return { violations, skipped };
 }
 
-function lint(schemaDir = SCHEMA_DIR) {
-  const violations = lintSchemas(loadSchemas(schemaDir));
+function lint(schemaDir = SCHEMA_DIR, allowed = ALLOWED) {
+  const { violations, skipped } = lintSchemas(loadSchemas(schemaDir), allowed);
   violations.sort((a, b) => (a.file + a.path).localeCompare(b.file + b.path));
-  return { violations };
+  return { violations, skipped };
 }
 
 if (require.main === module) {
-  const { violations } = lint();
+  const { violations, skipped } = lint();
+  const note = skipped ? ` (${skipped} name list(s) skipped: unresolvable $ref)` : '';
   if (violations.length === 0) {
-    console.log('✓ schema required-declared lint: every required name is declared');
+    console.log(`✓ schema required-declared lint: every required name is declared${note}`);
     process.exit(0);
   }
-  console.error(`✗ schema required-declared lint: ${violations.length} schema(s) require undeclared properties\n`);
+  console.error(`✗ schema required-declared lint: ${violations.length} schema(s) name undeclared properties${note}\n`);
   for (const v of violations) {
     console.error(`  ${v.file}${v.path || ''}`);
     console.error(`    required but not declared: ${v.missing.join(', ')}`);
