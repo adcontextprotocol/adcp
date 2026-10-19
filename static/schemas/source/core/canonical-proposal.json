@@ -7,6 +7,13 @@
   "properties": {
     "proposal_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "proposal" },
     "proposal_kind": { "type": "string", "enum": ["new_media_buy", "media_buy_update", "media_buy_cancellation"] },
+    "proposal_initiator": {
+      "type": "string",
+      "enum": ["buyer", "seller"],
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.seller_offers). Absent means buyer. seller marks a seller-initiated offer against an accepted media buy, which list_proposals returns with origin seller_offer. The offer's required fields, kinds, and notification are defined with media_buy.seller_offers; this property exists so list_proposals can discriminate seller offers from later proposals."
+    },
     "parent_proposal_id": {
       "type": "string",
       "minLength": 1,

@@ -583,7 +583,7 @@ A seller that creates a proposal after the creating task completed:
 - When it implements the [account change feed](/docs/accounts/tasks/list_account_changes), records `resource.type: "proposal"` with `action: "created"` (and `status_changed` on later disposition changes), `parent_ids.opportunity_id`, and `repair.task: "list_proposals"`, but only for callers negotiated at 3.3 or later.
 - MUST NOT infer or ask for the buyer's remaining budget to shape a later proposal.
 
-Later proposals after a purchase that change the live buy (`media_buy_update`) are out of scope for this version.
+Later proposals after a purchase that change the live buy (`media_buy_update`) are out of scope for this version. A seller's offer to amend or cancel an accepted buy is a different surface: a seller offer, defined under `media_buy.seller_offers`, announced with `proposal.offered` (the buy-scoped sibling of `proposal.created`) and read through [`list_proposals`](/docs/media-buy/task-reference/list_proposals#seller-offers) with `origin: "seller_offer"`. It needs no `later_proposals` consent and does not count against `max_count` or `min_interval`.
 
 ### Updating and closing an opportunity
 

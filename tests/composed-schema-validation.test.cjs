@@ -4941,6 +4941,82 @@ async function runTests() {
     },
     'list_proposals rejects a committed later proposal'
   );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-proposals-request.json',
+    { account: { account_id: 'acc_nova_za' }, media_buy_ids: ['mb_nova_za_0412'], dispositions: ['available'] },
+    'list_proposals filters by media buy'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-request.json',
+    { account: { account_id: 'acc_nova_za' }, media_buy_ids: [] },
+    'list_proposals rejects an empty media_buy_ids filter'
+  );
+  const sellerOffer = {
+    proposal_id: 'prop_nova_za_offer_01',
+    name: 'Postpone the November installment',
+    proposal_kind: 'media_buy_update',
+    proposal_initiator: 'seller',
+    proposal_status: 'committed',
+    parent_proposal_id: 'prop_nova_za_01',
+    media_buy_id: 'mb_nova_za_0412',
+    base_media_buy_revision: 3,
+    expires_at: '2026-10-30T23:59:59Z',
+    commercial_terms: laterDraft.commercial_terms,
+    terms_digest: `sha256:${'A'.repeat(43)}`
+  };
+  const offerEntry = { proposal: sellerOffer, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'seller_offer' };
+  await testSchemaValidation(
+    '/schemas/media-buy/list-proposals-response.json',
+    { outcome: 'listed', proposals: [offerEntry], opportunities: [] },
+    'list_proposals returns a seller offer with origin seller_offer'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-proposals-response.json',
+    {
+      outcome: 'listed',
+      proposals: [
+        { ...offerEntry, proposal: { ...sellerOffer, proposal_kind: 'media_buy_cancellation', commercial_terms: { ...laterDraft.commercial_terms, cancellation_terms: { effective_at: '2026-11-01T00:00:00Z' } } } },
+        { ...offerEntry, proposal: { ...sellerOffer, proposal_status: 'accepted', accepted_at: '2026-10-24T08:00:00Z' }, disposition: 'accepted' },
+        { ...offerEntry, disposition: 'withdrawn', disposition_changed_at: '2026-10-24T08:00:00Z' }
+      ],
+      opportunities: []
+    },
+    'list_proposals allows cancellation offers, accepted offers, and a stale offer listed as withdrawn'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-response.json',
+    { outcome: 'listed', proposals: [{ ...offerEntry, later_reason: 'new_inventory' }], opportunities: [] },
+    'list_proposals forbids later_reason on a seller offer'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-response.json',
+    { outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_initiator: undefined } }], opportunities: [] },
+    'list_proposals requires proposal_initiator seller on a seller offer'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-response.json',
+    { outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_kind: 'new_media_buy', opportunity_id: 'opp_nova_za_q4' } }], opportunities: [] },
+    'list_proposals rejects a seller offer that is a new_media_buy'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-response.json',
+    { outcome: 'listed', proposals: [{ ...offerEntry, proposal: { ...sellerOffer, proposal_status: 'draft' } }], opportunities: [] },
+    'list_proposals rejects a draft seller offer'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-response.json',
+    { outcome: 'listed', proposals: [{ ...offerEntry, origin: 'request' }], opportunities: [] },
+    'list_proposals lists a seller-initiated snapshot only as seller_offer'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-proposals-response.json',
+    {
+      outcome: 'listed',
+      proposals: [{ proposal: { ...laterDraft, proposal_initiator: 'seller', proposal_kind: 'media_buy_update' }, disposition: 'available', disposition_changed_at: '2026-10-23T09:14:04Z', origin: 'later', later_reason: 'new_inventory' }],
+      opportunities: []
+    },
+    'list_proposals keeps later proposals draft new_media_buy, so a seller offer cannot be listed as later'
+  );
   await testSchemaRejection(
     '/schemas/media-buy/list-proposals-response.json',
     {
