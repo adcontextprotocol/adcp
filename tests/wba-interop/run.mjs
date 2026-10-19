@@ -158,11 +158,19 @@ async function runScenarios(now) {
     if (args.self) recordTier(s, await judge.verifyRequest(op, { bare: true }), await judge.verifyRequest(op));
   }
   for (const s of SCENARIOS.directory_scenarios) {
-    const { id, name, expected, tier, basis, keys = [SIGNER.kid], ...options } = s;
+    const { id, name, expected, tier, basis, keys = [SIGNER.kid], requests = [], ...options } = s;
     const response = await judge.signDirectory({ ...options, keys: keys.map(k => PRIVATE[k]), origin: SIGNER.identity, now });
     const op = { origin: SIGNER.identity, response, now };
     record('scenarios', `${id} ${name}`, expected, adapter({ op: 'verify_directory', ...op }), { tier });
     if (args.self) recordTier(s, await judge.verifyDirectory(op, { bare: true }), await judge.verifyDirectory(op));
+    // Each request is signed with its key and verified against this directory.
+    for (const r of requests) {
+      const check = { id: `${id}`, name: `${name}: request ${r.name}`, expected: r.expected, tier: r.tier };
+      const request = await judge.signScenario({ ...SCENARIOS, signer: { identity: SIGNER.identity, kid: r.kid } }, { base: 'post' }, PRIVATE, now);
+      const verify = { request, directories: { [SIGNER.identity]: response }, now, prior: [] };
+      record('scenarios', `${check.id} ${check.name}`, r.expected, adapter({ op: 'verify_request', ...verify }), { tier: r.tier });
+      if (args.self) recordTier(check, await judge.verifyRequest(verify, { bare: true }), await judge.verifyRequest(verify));
+    }
   }
 }
 

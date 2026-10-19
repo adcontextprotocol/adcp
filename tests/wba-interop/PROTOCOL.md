@@ -114,8 +114,10 @@ needed the key gets `403`.
   judge verifies them; then the judge signs, and the adapter verifies. The judge
   signs with the library's `generateNonce`, which produces padded standard base64.
 - **`scenarios`**: the judge signs every scenario in `scenarios.json` at the run's
-  clock, and the adapter verifies it. The report counts tier `wba` failures
-  ("breaks WBA") separately from tier `adcp` failures ("breaks an AdCP addition").
+  clock, and the adapter verifies it. For a directory scenario with `requests`,
+  the judge also signs each request with its key, and the adapter verifies it
+  against that directory. The report counts tier `wba` failures ("breaks WBA")
+  separately from tier `adcp` failures ("breaks an AdCP addition").
 
 `run.mjs --self` uses `judge.mjs` as the adapter and adds the `tiers` suite, which
 checks every scenario's tier against the bare library and the policy.
