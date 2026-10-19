@@ -161,10 +161,7 @@ When a deployment verifies at the edge, Appendix C.10 applies: the edge "can ins
 
 ## Onboarding
 
-A verified identity is in one of two states, adopted from [#7817](https://github.com/adcontextprotocol/adcp/issues/7817):
-
-- **`identity-established`.** The signature verified against the identity's directory, so the seller knows exactly which origin is calling. Until the seller approves the identity, the identity gets no account access, reads included: it sees what an anonymous caller sees, such as `get_adcp_capabilities` and any public product discovery. The identity starts with an empty authorized set, and `sync_accounts` from an unapproved identity MUST NOT create or provision accounts.
-- **`authorized-for-spend`.** The seller has approved the identity. The identity maps to a principal, the principal resolves to its accounts, and every later signed request from the identity is authenticated without a bearer token.
+A verified identity gets account access only after the seller binds it to a principal, under rule R5 of [Agent identity and buyer self-onboarding](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md). Until then it gets what an anonymous caller gets, reads included. After binding, the principal resolves to its accounts, and every later signed request from the identity is authenticated without a bearer token.
 
 A seller approves an identity from a domain allowlist, from a commercial agreement, or with one click in its admin interface. For one-click approval, the seller records the identity for review and rejects the request with an AdCP authorization error. It never runs a queued request later, because the request's signature expires within minutes; after approval, the buyer sends the request again. A seller limits how many identities one origin or one network address can submit for review.
 
@@ -284,6 +281,5 @@ The keys in `keys.json` are public test keys with published private seeds. Secti
 - [RFC 7638: JSON Web Key Thumbprint](https://www.rfc-editor.org/rfc/rfc7638) and [RFC 8037](https://www.rfc-editor.org/rfc/rfc8037) Appendix A.3
 - [RFC 8941: Structured Field Values for HTTP](https://www.rfc-editor.org/rfc/rfc8941)
 - [RFC #7878: An AdCP profile of Web Bot Auth for request signing](https://github.com/adcontextprotocol/adcp/issues/7878)
-- [RFC #7817: discoverable signer agent URL for RFC 9421 request signing](https://github.com/adcontextprotocol/adcp/issues/7817)
 - [Signed Requests (Transport Layer)](/docs/building/by-layer/L1/security#signed-requests-transport-layer), the AdCP RFC 9421 profile
 - [Request Signing Guide](/docs/building/by-layer/L1/request-signing)
