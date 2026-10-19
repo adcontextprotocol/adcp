@@ -217,6 +217,7 @@ import { respondToAdminAuthorizationError } from "../auth/admin-authorization-re
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId, sendCallerOrganizationAuthError } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
+import { agentIdentityContainment } from "../db/agent-identity-match.js";
 import { specExactAgentUrl } from "../db/registry-agent-url-key.js";
 import { buildCreativeCapabilities } from "../creative-agent/task-handlers.js";
 import {
@@ -7782,10 +7783,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
               error: 'An owner/admin of the selected organization is required; registry admin overrides require a reason',
             });
           }
+          // Same identity fold as the owner path above and as the locked
+          // re-check inside `selectGradingProfile` (#8322): a registry-admin
+          // override must not be denied for an agent whose owning org holds
+          // the other spelling, when that is the very org this check names.
+          const overrideAgents = agentIdentityContainment('agents', agentUrl, 2);
           const orgOwnsAgent = await query(
             `SELECT 1 FROM member_profiles
-             WHERE workos_organization_id = $1 AND agents @> $2::jsonb LIMIT 1`,
-            [organizationId, JSON.stringify([{ url: agentUrl }])],
+             WHERE workos_organization_id = $1 AND ${overrideAgents.sql} LIMIT 1`,
+            [organizationId, ...overrideAgents.params],
           );
           if (orgOwnsAgent.rowCount !== 1) {
             return res.status(403).json({ error: 'The selected organization does not own this agent' });
