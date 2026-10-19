@@ -224,7 +224,20 @@ that step already skips on `missing_tool`, which hid the difference entirely,
 and the defect rode every released 3.0 bundle up to 3.0.26 before #7801 added
 the default.
 
-So every key a `sample_request` reads needs a writer that runs first:
+So every key a storyboard reads needs a writer that runs first. "Reads" is
+wider than `sample_request`: the runner also substitutes `validations[].value`
+and `validations[].allowed_values[]`, resolves `validations[].context_key`
+from the same snapshot, and substitutes a webhook step's `filter`. Those
+assertion surfaces are resolved against the context as it stood *before* the
+step, and nothing guards them — an unresolved `value` quietly becomes the
+comparand (the check grades the response against the literal string
+`"$context.<name>"`), an absent `context_key` makes the check *pass* with a
+`context_key_absent` observation, and a token left in a `filter` yields a
+selector no delivery can match. A step's own `context_outputs` land after its
+validations run, so a step cannot assert against a key it captures itself
+(#8328).
+
+The writers:
 
 - **test topology** (an agent URL, a fixed sandbox id) — declare it in the
   storyboard's root `context:` block, which seeds the run context before step
@@ -238,7 +251,9 @@ So every key a `sample_request` reads needs a writer that runs first:
   written once a step that produces it has run.
 
 `scripts/lint-storyboard-context-resolution.cjs` replays the runner's
-substitution and fails on anything left unresolved. It runs as a hard gate in
+substitution over requests (`context_placeholder_unresolved`) and over every
+assertion comparand (`context_assertion_unresolved`), and fails on anything
+left unresolved. It runs as a hard gate in
 `npm run build:compliance` — a bundle must not ship the defect, because
 `dist/**` release artifacts are immutable — and
 `npm run test:storyboard-context-resolution` re-checks the source tree plus

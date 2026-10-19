@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
- * Tests for the storyboard `$context` resolution lint (#8317). Concerns:
+ * Tests for the storyboard `$context` resolution lint (#8317, #8328).
+ * Concerns:
  *   1. Source-tree guard — no storyboard under static/compliance/source reads
- *      a context key that nothing seeds or captures before it, and nothing
- *      captures a key hosted grading pins.
+ *      a context key that nothing seeds or captures before it, in a request or
+ *      in an assertion comparand, and nothing captures a key hosted grading
+ *      pins.
  *   2. The convention-producer map still describes the installed SDK: every
  *      (task, key) pair it waives is really written by that task's
  *      `CONTEXT_EXTRACTORS` entry.
@@ -17,6 +19,12 @@
  *      dropped, when the capture lands after the read, when a convention key
  *      is read before its producing task, when a pinned agent URL is captured
  *      from a response, and when a token names an inherited Object member.
+ *   6. Assertion-comparand semantics (#8328) — the lint fires on a
+ *      `validations[].value`, `allowed_values[]`, `context_key`, or webhook
+ *      `filter` that reads a key the step itself captures, and the SDK still
+ *      grades those two shapes the way the rule's rationale claims: an
+ *      unresolved `value` compares against the literal token, and an absent
+ *      `context_key` passes vacuously.
  */
 
 'use strict';
@@ -26,7 +34,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const yaml = require('js-yaml');
-const { extractContext } = require('@adcp/sdk/testing');
+const { extractContext, injectContext, runValidations } = require('@adcp/sdk/testing');
 
 const {
   CONVENTION_CONTEXT_PRODUCERS,
@@ -82,12 +90,47 @@ const FROZEN_BUNDLE_DEFECTS = [
       '3.2.0-rc.7', '3.2.1', '3.2.2', '3.2.3', '3.2.4', '3.2.5',
     ],
   },
+  {
+    // #8328: `geo_place_targeting` asserts "current_version is included in
+    // supported_versions" with a comparand it captures on the same step, so
+    // every seller is graded against the literal `"$context.…"` string and the
+    // capability step cannot pass. Fixed in source by capturing
+    // `supported_versions` and settling the membership at read-back, where the
+    // applied version is already in context.
+    defect: 'context_assertion_unresolved/get_adcp_capabilities:place_system_version',
+    versions: [
+      '3.2.0-beta.6', '3.2.0-rc.0', '3.2.0-rc.1', '3.2.0-rc.2', '3.2.0-rc.3',
+      '3.2.0-rc.4', '3.2.0-rc.5', '3.2.0-rc.6', '3.2.0-rc.7',
+      '3.2.1', '3.2.2', '3.2.3', '3.2.4', '3.2.5',
+    ],
+  },
+  {
+    // #8328: `vendor_metric_accountability` asserts the day-1
+    // `committed_at` equals `confirmed_at` with a comparand the same step
+    // captures, so no seller can satisfy it. Fixed in source by capturing both
+    // timestamps and settling the equality against the persisted
+    // `confirmed_at` on a `get_media_buys` read-back.
+    defect: 'context_assertion_unresolved/create_media_buy:confirmed_at',
+    versions: [
+      '3.2.0-beta.6', '3.2.0-rc.0', '3.2.0-rc.1', '3.2.0-rc.2', '3.2.0-rc.3',
+      '3.2.0-rc.4', '3.2.0-rc.5', '3.2.0-rc.6', '3.2.0-rc.7',
+      '3.2.1', '3.2.2', '3.2.3', '3.2.4', '3.2.5',
+    ],
+  },
 ];
 
-/** version -> the single `rule/task:key` it is allowed to report. */
-const FROZEN_DEFECT_BY_VERSION = new Map(
-  FROZEN_BUNDLE_DEFECTS.flatMap(({ defect, versions }) => versions.map((v) => [v, defect])),
-);
+/** version -> every `rule/task:key` it is allowed to report, sorted. */
+const FROZEN_DEFECTS_BY_VERSION = (() => {
+  const byVersion = new Map();
+  for (const { defect, versions } of FROZEN_BUNDLE_DEFECTS) {
+    for (const version of versions) {
+      if (!byVersion.has(version)) byVersion.set(version, []);
+      byVersion.get(version).push(defect);
+    }
+  }
+  for (const defects of byVersion.values()) defects.sort();
+  return byVersion;
+})();
 
 /**
  * One response fixture per task named in CONVENTION_CONTEXT_PRODUCERS, shaped
@@ -230,12 +273,9 @@ test('bundled compliance releases carry exactly the frozen defects and nothing e
 
   const actual = Object.fromEntries([...observed].map(([version, { offenders }]) => [version, offenders]));
   const expected = Object.fromEntries(
-    [...observed.keys()].concat([...FROZEN_DEFECT_BY_VERSION.keys()])
+    [...observed.keys()].concat([...FROZEN_DEFECTS_BY_VERSION.keys()])
       .filter((version, i, all) => all.indexOf(version) === i)
-      .map((version) => [
-        version,
-        FROZEN_DEFECT_BY_VERSION.has(version) ? [FROZEN_DEFECT_BY_VERSION.get(version)] : [],
-      ]),
+      .map((version) => [version, FROZEN_DEFECTS_BY_VERSION.get(version) ?? []]),
   );
 
   assert.deepEqual(
@@ -557,4 +597,316 @@ phases:
 
   storyboard.phases[0].steps[0].sample_request.note = '$context.governance_agent_url';
   assert.equal(lintDoc(storyboard, 'fixture.yaml').length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// 6. Assertion comparands (#8328)
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal `runValidations` context. `storyboardContext` is the pre-step
+ * context the runner passes — the whole point of the rule is that the step's
+ * own captures are not in it yet.
+ */
+function validationContext(taskName, data, storyboardContext = {}) {
+  return {
+    taskName,
+    strictResponseSchemaValidation: false,
+    taskResult: { success: true, data },
+    agentUrl: 'https://seller.example/mcp',
+    contributions: new Set(),
+    request: {},
+    storyboardContext,
+  };
+}
+
+/** Grade `validations` as the runner would, minus the schema arm. */
+function grade(taskName, data, validations, storyboardContext = {}) {
+  const resolved = validations
+    .filter((v) => v.check !== 'response_schema')
+    .map((v) => ({
+      ...v,
+      ...(v.value !== undefined && { value: injectContext({ __v: v.value }, storyboardContext).__v }),
+      ...(Array.isArray(v.allowed_values) && {
+        allowed_values: v.allowed_values.map((av) => injectContext({ __v: av }, storyboardContext).__v),
+      }),
+    }));
+  return runValidations(resolved, validationContext(taskName, data, storyboardContext));
+}
+
+function stepFromStoryboard(relPath, stepId) {
+  const storyboard = yaml.load(fs.readFileSync(path.join(REPO_ROOT, relPath), 'utf8'));
+  for (const phase of storyboard.phases) {
+    for (const step of phase.steps ?? []) {
+      if (step.id === stepId) return step;
+    }
+  }
+  throw new Error(`step "${stepId}" not found in ${relPath}`);
+}
+
+test('an unresolved comparand is graded against the literal token, not reported', () => {
+  // This is the whole rationale for the rule: the runner does not guard
+  // `validations[].value`, so the token survives into the comparison and the
+  // check decides on a string nobody meant to assert.
+  const data = { supported_versions: ['2026-05', '2025-11'] };
+  const [unresolved] = grade('get_adcp_capabilities', data, [
+    {
+      check: 'field_contains',
+      path: 'supported_versions[*]',
+      value: '$context.place_system_version',
+      description: 'unresolved',
+    },
+  ]);
+  assert.equal(unresolved.passed, false);
+  assert.equal(unresolved.expected, '$context.place_system_version');
+  assert.ok(
+    !/\$context/.test(unresolved.check),
+    'the runner reports an ordinary comparison failure — nothing names the unresolved token',
+  );
+
+  const [resolved] = grade('get_adcp_capabilities', data, [
+    {
+      check: 'field_contains',
+      path: 'supported_versions[*]',
+      value: '$context.place_system_version',
+      description: 'resolved',
+    },
+  ], { place_system_version: '2026-05' });
+  assert.equal(resolved.passed, true);
+});
+
+test('an absent context_key makes the check pass vacuously', () => {
+  const [vacuous] = grade('get_media_buys', { media_buys: [{ confirmed_at: '2026-04-29T10:53:00Z' }] }, [
+    {
+      check: 'field_equals_context',
+      path: 'media_buys[0].confirmed_at',
+      context_key: 'day_one_committed_at',
+      description: 'absent key',
+    },
+  ]);
+  assert.equal(vacuous.passed, true, 'field_equals_context fails open on an absent key');
+  assert.match(vacuous.observations.join(' '), /context_key_absent/);
+});
+
+const SELF_CAPTURE_FIXTURE = `
+id: fixture/self-asserted
+phases:
+  - id: discover
+    steps:
+      - id: read_capabilities
+        task: get_adcp_capabilities
+        context_outputs:
+          - key: "place_system_version"
+            path: "media_buy.execution.targeting.geo_places.geonames.catalog.current_version"
+        sample_request: {}
+        validations:
+          - check: field_contains
+            path: "media_buy.execution.targeting.geo_places.geonames.catalog.supported_versions[*]"
+            value: "$context.place_system_version"
+            description: "current_version is included in supported_versions"
+`;
+
+test('a validation value that reads the step\'s own capture is a violation', () => {
+  const violations = lintDoc(doc(SELF_CAPTURE_FIXTURE), 'fixture.yaml');
+  assert.equal(violations.length, 1);
+  assert.deepEqual(
+    {
+      rule: violations[0].rule,
+      stepId: violations[0].stepId,
+      key: violations[0].key,
+      location: violations[0].location,
+    },
+    {
+      rule: 'context_assertion_unresolved',
+      stepId: 'read_capabilities',
+      key: 'place_system_version',
+      location: 'validations[0].value',
+    },
+  );
+  assert.match(formatViolation(violations[0]), /compares the response against the/);
+});
+
+test('the same comparand resolves once an earlier step captures it', () => {
+  const storyboard = doc(SELF_CAPTURE_FIXTURE);
+  const [step] = storyboard.phases[0].steps;
+  storyboard.phases[0].steps = [
+    { id: 'capture_version', task: 'get_adcp_capabilities', context_outputs: step.context_outputs, sample_request: {} },
+    { ...step, context_outputs: undefined },
+  ];
+  assert.deepEqual(lintDoc(storyboard, 'fixture.yaml'), []);
+});
+
+test('allowed_values, context_key and a webhook filter are covered too', () => {
+  const storyboard = doc(`
+id: fixture/assertion-surfaces
+phases:
+  - id: run
+    steps:
+      - id: create_buy
+        task: create_media_buy
+        context_outputs:
+          - key: "confirmed_at"
+            path: "confirmed_at"
+          - key: "accepted_status"
+            path: "status"
+        sample_request: {}
+        validations:
+          - check: field_value
+            path: "status"
+            allowed_values: ["completed", "$context.accepted_status"]
+            description: "allowed_values comparand"
+          - check: field_equals_context
+            path: "packages[0].committed_metrics[0].committed_at"
+            context_key: "confirmed_at"
+            description: "context_key comparand"
+      - id: expect_buy_webhook
+        task: expect_webhook
+        filter:
+          body:
+            media_buy_id: "$context.media_buy_id"
+`);
+  assert.deepEqual(
+    lintDoc(storyboard, 'fixture.yaml').map((v) => `${v.rule}:${v.stepId}:${v.key}:${v.location}`),
+    [
+      'context_assertion_unresolved:create_buy:accepted_status:validations[0].allowed_values[1]',
+      'context_assertion_unresolved:create_buy:confirmed_at:validations[1].context_key',
+      // create_media_buy's convention extractor writes media_buy_id, and that
+      // step ran first, so the webhook filter resolves.
+    ],
+  );
+
+  assert.match(
+    formatViolation(lintDoc(storyboard, 'fixture.yaml')[1]),
+    /passes\* with a `context_key_absent` observation/,
+  );
+});
+
+test('a webhook filter that reads an unwritten key is a violation', () => {
+  const storyboard = doc(`
+id: fixture/webhook-filter
+phases:
+  - id: run
+    steps:
+      - id: expect_buy_webhook
+        task: expect_webhook
+        filter:
+          body:
+            media_buy_id: "$context.media_buy_id"
+`);
+  const violations = lintDoc(storyboard, 'fixture.yaml');
+  assert.equal(violations.length, 1);
+  assert.deepEqual(
+    { rule: violations[0].rule, key: violations[0].key, location: violations[0].location },
+    { rule: 'context_assertion_unresolved', key: 'media_buy_id', location: 'filter.body.media_buy_id' },
+  );
+  // A filter token is not a comparand — it narrows the selector, so the
+  // message has to describe the webhook failure mode, not a comparison.
+  assert.match(formatViolation(violations[0]), /expect_no_webhook` passes without having/);
+});
+
+test('a token nested inside a comparand reports a well-formed location', () => {
+  const storyboard = doc(`
+id: fixture/nested-comparand
+phases:
+  - id: run
+    steps:
+      - id: read_accounts
+        task: list_accounts
+        sample_request: {}
+        validations:
+          - check: field_value
+            path: "accounts[0].identifiers"
+            value:
+              - id: "$context.account_id"
+            description: "nested comparand"
+`);
+  assert.deepEqual(
+    lintDoc(storyboard, 'fixture.yaml').map((v) => v.location),
+    ['validations[0].value[0].id'],
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 7. The two #8328 storyboards still assert what they claim to
+// ---------------------------------------------------------------------------
+
+const GEO_STORYBOARD = 'static/compliance/source/protocols/media-buy/scenarios/geo_place_targeting.yaml';
+const VENDOR_STORYBOARD = 'static/compliance/source/protocols/media-buy/scenarios/vendor_metric_accountability.yaml';
+
+test('geo_place_targeting still grades the catalog member_of invariant', () => {
+  const step = stepFromStoryboard(GEO_STORYBOARD, 'confirm_place_catalog_membership');
+  const context = { place_system_version: '2026-05', place_supported_versions: ['2026-05', '2025-11'] };
+  const capabilities = (currentVersion, supportedVersions) => ({
+    media_buy: {
+      execution: {
+        targeting: {
+          geo_places: {
+            geonames: {
+              countries: { NL: ['city'] },
+              catalog: {
+                current_version: currentVersion,
+                supported_versions: supportedVersions,
+                resolver: { url: 'https://seller.example/geo' },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  const membership = (results) => results.find((r) => r.check === 'field_in_context_array');
+
+  const clean = grade('get_adcp_capabilities', capabilities('2026-05', ['2026-05', '2025-11']), step.validations, context);
+  assert.deepEqual(clean.filter((r) => !r.passed), [], 'a conformant catalog passes every check');
+  assert.ok(membership(clean), 'the membership assertion is still authored on this step');
+
+  // A current_version the seller does not list in supported_versions is the
+  // geo-place-catalog-capability.json `member_of` violation this storyboard
+  // exists to catch. Both reads agree on the version, so only the membership
+  // check fires.
+  const offCatalog = grade('get_adcp_capabilities', capabilities('2026-05', ['2025-11']), step.validations, {
+    ...context,
+    place_supported_versions: ['2025-11'],
+  });
+  assert.deepEqual(offCatalog.filter((r) => !r.passed).map((r) => r.check), ['field_in_context_array']);
+});
+
+test('vendor_metric_accountability grades committed_at = confirmed_at on every day-1 entry', () => {
+  const step = stepFromStoryboard(VENDOR_STORYBOARD, 'read_back_commitment_timestamps');
+  const confirmedAt = '2026-04-29T10:53:00Z';
+  const mediaBuyId = 'mb_vendor_1';
+  const stamped = {
+    media_buy_id: mediaBuyId,
+    confirmed_at: confirmedAt,
+    day_one_committed_at_pkg0_attention: confirmedAt,
+    day_one_committed_at_pkg0_brand_lift: confirmedAt,
+    day_one_committed_at_pkg1_attention: confirmedAt,
+  };
+  const readBack = { media_buys: [{ media_buy_id: mediaBuyId, confirmed_at: confirmedAt }] };
+
+  assert.deepEqual(grade('get_media_buys', readBack, step.validations, stamped).filter((r) => !r.passed), []);
+
+  // Every day-1 entry is covered, not just the first: "each such entry's
+  // committed_at MUST equal confirmed_at" (create_media_buy.mdx).
+  for (const key of [
+    'day_one_committed_at_pkg0_attention',
+    'day_one_committed_at_pkg0_brand_lift',
+    'day_one_committed_at_pkg1_attention',
+  ]) {
+    const drifted = grade('get_media_buys', readBack, step.validations, {
+      ...stamped,
+      [key]: '2026-04-29T11:00:00Z',
+    });
+    assert.equal(drifted.filter((r) => !r.passed).length, 1, `a drifted ${key} must fail exactly one check`);
+  }
+
+  // A decoy buy at index 0 would otherwise satisfy the timestamp checks and
+  // rebind $context.media_buy_id for the delivery audit that follows.
+  const decoy = grade(
+    'get_media_buys',
+    { media_buys: [{ media_buy_id: 'mb_decoy', confirmed_at: confirmedAt }] },
+    step.validations,
+    stamped,
+  );
+  assert.deepEqual(decoy.filter((r) => !r.passed).map((r) => r.path), ['media_buys[0].media_buy_id']);
 });
