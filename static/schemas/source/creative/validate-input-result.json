@@ -71,12 +71,16 @@
     },
     "warnings": {
       "type": "array",
-      "description": "Non-blocking observations (e.g. LEAN policy advisories such as hover-triggered expansion or non-user-initiated entry into overlay anchoring) that do not affect `result_kind`. MAY be present alongside `validated_pass`, `validated_fail`, or `unvalidatable_nondeterministic`. Same item shape as `violations`.",
+      "description": "Non-blocking observations (e.g. LEAN policy advisories such as hover-triggered expansion or non-user-initiated entry into overlay anchoring) that do not affect `result_kind`. MAY be present alongside `validated_pass`, `validated_fail`, or `unvalidatable_nondeterministic`. Each item carries `rule` and `field` (both required) and optional `expected` and `predicted`, with the same meanings as on `violations`. Warnings do not define `retry_with`.",
       "items": {
         "type": "object",
         "required": ["rule", "field"],
         "properties": {
           "rule": { "type": "string" },
+          "field": {
+            "type": "string",
+            "description": "Path to the field the warning concerns, in the same form as `violations[].field` (e.g., 'assets.video_main.duration_ms')."
+          },
           "expected": {},
           "predicted": {}
         },
