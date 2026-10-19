@@ -92,7 +92,7 @@ The Web Bot Auth profile identifies the signer by its origin, through a covered 
 
 ### OAuth sellers and auth.md (informative)
 
-A seller that issues bearer tokens can accept the same agent identity without a separate registration. The agent presents an RFC 7523 JWT-bearer assertion signed with a key from a directory at a separate origin the agent dedicates to that purpose, and never with its request-signing key: AdCP separates key purposes by origin, and JWS surfaces wait for 3.4. A seller that publishes an [auth.md](https://workos.com/auth-md) agent-registration file can point to it from `account.agent_onboarding.url`. Either way, one published identity works across AdCP and non-AdCP services.
+A seller that issues bearer tokens can accept the same agent identity without a separate registration. The agent presents an RFC 7523 JWT-bearer assertion signed with a key from a directory at a separate origin the agent dedicates to that purpose, and never with its request-signing key: AdCP separates key purposes by origin. A seller that publishes an [auth.md](https://workos.com/auth-md) agent-registration file can point to it from `account.agent_onboarding.url`. Either way, one published identity works across AdCP and non-AdCP services.
 
 ### mTLS
 

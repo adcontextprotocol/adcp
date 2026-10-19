@@ -29,8 +29,8 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 
 | Release | What happens |
 |---|---|
-| **3.3** | Web Bot Auth, trust.json evaluation, grants, onboarding posture, and relationship status ship as experimental. The RFC 9421 profile is deprecated (6-month notice). JWS document signing (governance context, response signing, rights attestations) stays on the RFC 9421 chain. |
-| **3.4 (direction, not decided)** | JWS document signing moves to origin identities, with relying-party consent and a governance-key provenance contract. Experimental surfaces graduate once they meet the [graduation criteria](/docs/reference/experimental-status). |
+| **3.3** | Web Bot Auth, trust.json evaluation, grants, onboarding posture, and relationship status ship as experimental. The RFC 9421 profile is deprecated (6-month notice). JWS artifacts (governance context, designated-task response signing, rights attestations) from a Web Bot Auth identity are verified with keys from its key directory; from any other issuer they stay on the RFC 9421 chain. |
+| **3.4 (direction, not decided)** | Experimental surfaces graduate once they meet the [graduation criteria](/docs/reference/experimental-status). |
 | **4.0** | The RFC 9421 profile, the brand.json trust fields (`agents[].jwks_uri`, `authorized_operators`), and `identity.brand_json_url` are removed. |
 
 ## By role
@@ -89,7 +89,7 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 
 ### Governance agent
 
-No change in 3.3. Governance context `iss`, designated-task response signing, and rights attestations stay on the RFC 9421 chain until 3.4. A governance agent is its own agent, on its own origin, when it moves.
+A governance agent is its own agent, on its own origin. For a JWS artifact, the signing agent's origin comes from `iss` for a governance context, `agent_url` for designated-task response signing, and `rights_agent.url` for a rights attestation. When the trust record derived from that origin lists it, verifiers use a key from the origin's key directory, never the RFC 9421 chain: `alg` is `EdDSA`, `kid` is the key's JWK thumbprint, and revocation is the origin's list. Purpose separation is by origin, so the RFC 9421 key-purpose checks (`use`, `key_ops`, `adcp_use`) don't apply. Historical verification of a governance context uses the existing governance key archive at the origin. An issuer whose origin no trust record lists stays on the RFC 9421 chain, which stays fully functional through 3.x.
 
 ### Publisher
 
@@ -107,9 +107,9 @@ SDK support for the Web Bot Auth profile, trust.json evaluation, and grants is i
 
 ## Rollback
 
-Most 3.3 identity changes roll back by turning them off. A binding is the exception.
+Most 3.3 identity changes roll back by turning them off. Bindings and a published trust.json are the exceptions.
 - **Signers:** keep your brand.json keys and capabilities pointer until the sellers you use have bound your origin. A seller that has bound your origin keeps refusing RFC 9421 signatures from it; rollback is available only with sellers that have not bound you.
-- **Sellers:** stop advertising `web-bot-auth` for new signers. Origins you have bound stay bound and cannot return to RFC 9421 signatures with you, so keep verifying Web Bot Auth for them.
+- **Sellers:** stop binding new origins. Keep advertising and verifying `web-bot-auth` while any origin is bound, because a bound origin can't return to RFC 9421 signatures with you.
 - **Brands:** a seller that has read your trust.json never falls back to brand.json for you. There is no rollback by deletion; keep the record complete.
 
 ## Related

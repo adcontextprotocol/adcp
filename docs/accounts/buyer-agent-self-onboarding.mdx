@@ -71,13 +71,13 @@ served at `https://pinnacle-agency.example/.well-known/trust.json`. Sellers deri
 {
   "version": 1,
   "issuer": "https://buyer.pinnacle-agency.example",
-  "updated": "2026-10-02T09:00:00Z",
-  "next_update": "2026-10-02T09:15:00Z",
+  "updated": "2026-10-13T14:55:00Z",
+  "next_update": "2026-10-13T15:10:00Z",
   "revoked_kids": []
 }
 ```
 
-The format and polling rules are in [Transport revocation](/docs/building/by-layer/L1/security#transport-revocation). Without it, a seller can verify you but cannot bind you for spend.
+The list is re-signed before its `next_update`, so publishing it is a scheduled job too. The format and polling rules are in [Transport revocation](/docs/building/by-layer/L1/security#transport-revocation). Without it, a seller can verify you but cannot bind you for spend.
 
 **Grants from the advertisers.** Nova Motors grants Pinnacle authority to buy for it, in Nova Motors' own trust.json:
 
