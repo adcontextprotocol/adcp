@@ -90,6 +90,14 @@ phases:
             path: "context.correlation_id"
             value: "capability_discovery--get_capabilities"
             description: "Context correlation_id returned unchanged"
+          - id: legacy_hmac_fallback_removed_in_4_0
+            check: field_value_or_absent
+            path: "webhook_signing.legacy_hmac_fallback"
+            value: false
+            description: "[4.0 compatibility] Agent does not advertise the HMAC webhook fallback; 4.0 removes it"
+            severity: advisory
+            permanent_advisory:
+              reason: "AdCP 4.0 compatibility check (universal/v4-compatibility.yaml). The HMAC fallback is deprecated but allowed in 3.x, so this stays advisory on every 3.x bundle."
       - id: get_capabilities_filtered
         title: "Discover capabilities filtered by protocol"
         narrative: |

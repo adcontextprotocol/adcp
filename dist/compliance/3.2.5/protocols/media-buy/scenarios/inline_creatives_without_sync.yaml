@@ -1,0 +1,1171 @@
+id: media_buy_seller/inline_creatives_without_sync
+version: "1.0.0"
+title: "Inline media-buy creatives without sync_creatives"
+category: media_buy_seller
+summary: "Verifies that a seller advertising inline_creative_management accepts package creatives on create_media_buy and update_media_buy without requiring the Creative Protocol or sync_creatives."
+track: media_buy
+requires:
+  - controller
+
+# Gate: scenario runs only when the seller declares inline creative handling on
+# the media-buy feature surface. Sellers that do not advertise the flag grade
+# not_applicable. The scenario intentionally does not call sync_creatives; that
+# keeps inline-only media-buy sellers from being forced into the creative
+# library surface.
+requires_capability:
+  path: media_buy.features.inline_creative_management
+  equals: true
+
+required_tools:
+  - get_products
+  - create_media_buy
+  - update_media_buy
+  - get_media_buys
+
+narrative: |
+  Some sales agents do not expose the Creative Protocol or a reusable creative
+  library. They still accept creative bodies inline on media-buy operations. For
+  those sellers, the buyer should not call sync_creatives; it should put
+  CreativeAsset objects in packages[].creatives on create_media_buy and
+  update_media_buy.
+
+  This scenario walks that path end-to-end:
+
+  1. Discover that inline_creative_management is true.
+  2. Create a media buy with packages[].creatives populated.
+  3. Replace the package's inline creative through update_media_buy.
+  4. Read the media buy back and confirm the replacement approval state is visible.
+
+  The scenario exercises each format representation the seller actually publishes.
+  There are four execution paths. One canonical discovery decides between the three
+  canonical shapes; the legacy path has its own discovery and runs independently:
+
+  - canonical, product-local option: selected via packages[].format_option_refs with
+    scope "product"
+  - canonical, publisher-catalog option: selected via packages[].format_option_refs
+    with scope "publisher", carrying the full {publisher_domain, format_option_id} pair
+  - canonical, no stable format_option_id: no selector at all, format_kind alone
+  - legacy format_ids[]
+
+  Exactly one canonical path runs for a given seller - the three gates are mutually
+  exclusive on the captured declaration - and the legacy path runs independently of all
+  three. Each path creates its own media buy so the readback checks prove each
+  replacement persisted independently.
+
+  Every canonical gate and every canonical buy come from the SAME get_products response,
+  because there is one canonical discovery rather than one per shape. Brief-mode
+  discovery carries no ordering or stability guarantee and nothing here depends on one:
+  a seller whose results reorder, or whose canonical shape differs between calls, is
+  never failed for it.
+
+  Reading the report: both discovery phases are optional, and a seller publishing one
+  representation WILL see the other's discovery step go red. That is expected and takes
+  no action - those steps do not gate the run, and the red is how a path the seller
+  cannot serve is kept from executing. A red step inside one of the four execution
+  phases is the opposite: that representation was advertised and the seller must make
+  inline create, update and readback work on it. The closing assert_contribution is the
+  only coverage gate: it fails when no path completed.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_inline_creatives
+  examples:
+    - "Media-buy sellers that attach creatives directly to buys"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  controller_seeding: true
+  description: |
+    Seller advertises media_buy.features.inline_creative_management: true and
+    accepts package-scoped CreativeAsset objects on create_media_buy and
+    update_media_buy. The seller does not need to implement sync_creatives.
+
+    Fixture applicability (predates this storyboard's path split): the buyer
+    submits one fixed 300x250 image creative, and every path reads products[0]
+    of its own get_products response and that product's FIRST format
+    declaration. To be graded, answer this brief with a first product whose
+    pricing_options[0] is fixed-price and whose format_options[0] - or
+    format_ids[0] on the legacy path - accepts a 300x250 image. A seller that
+    ranks another product or another declaration first is not graded on that
+    path; it is not failed for the mismatch, but it also cannot be carried by
+    it. Selecting a compatible declaration by kind or dimensions regardless of
+    array order would need an order-independent selector the storyboard
+    grammar does not have; that limitation is general and out of scope here.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_547235310e65"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+    - account_id: "acct_acmeoutdoor_example_live_7f31cc7a1428"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+        billing: "operator"
+        status: "active"
+        sandbox: false
+
+# Scope is the one field a format_option_ref needs that no get_products response
+# carries, so it is seeded here as a run-start constant and injected per path with
+# context_inputs. Storyboard-root context values must be scalars.
+context:
+  format_option_scope_product: "product"
+  format_option_scope_publisher: "publisher"
+
+phases:
+  - id: capability_discovery
+    title: "Discover inline creative support"
+    narrative: |
+      The buyer confirms the seller accepts inline package creatives before
+      exercising either accepted product-format path.
+
+    steps:
+      - id: get_capabilities
+        title: "Check inline creative feature"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy support and
+          media_buy.features.inline_creative_management: true.
+        sample_request:
+          context:
+            correlation_id: "inline_creatives_without_sync--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_value
+            path: "media_buy.features.inline_creative_management"
+            value: true
+            description: "Seller advertises inline creative handling on media-buy operations"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  # ONE canonical discovery, so every canonical shape is decided from a single
+  # get_products response: the product, pricing option and format declaration a path
+  # buys with are always the ones that opened its gate. Splitting this per shape made
+  # the discriminating field (format_option_id, which product-format-declaration.json
+  # marks optional) a MANDATORY capture in one probe and a required absence in another,
+  # so a seller answering one brief with different canonical shapes across calls had no
+  # gate open at all.
+  #
+  # The whole declaration is captured as one object. Every capture here resolves for any
+  # canonical product, so there is no optional capture to fail the step, and the three
+  # execution phases below discriminate with skip_if reading into that object.
+  #
+  # optional, and deliberately WITHOUT branch_set: a seller publishing only legacy
+  # format_ids[] has nothing to capture here, and that is conformant - Product requires
+  # format_ids, format_options, or both. `optional: true` already keeps an unproductive
+  # capture from failing the storyboard. Declaring a branch_set would additionally
+  # regrade a peer's failures once any one branch completed, hiding a real
+  # per-representation diagnostic; the execution phases below are what must stay graded.
+  - id: canonical_format_discovery
+    title: "Discover a product option through format_options"
+    optional: true
+    narrative: |
+      A 3.1+ seller may publish products through format_options[]. This phase captures
+      the product, its pricing option, its canonical format_kind and the whole first
+      format declaration from one response.
+
+      format_option_id is optional on a declaration (product-format-declaration.json
+      requires only format_kind and params), and publisher_domain is present only on
+      publisher-catalog-backed options. Neither is captured on its own, because a
+      capture that does not resolve fails the step and discards every other capture with
+      it. Capturing the declaration whole keeps those optional fields intact without
+      making either one a precondition.
+
+      Expected non-gating diagnostic: a seller publishing only legacy format_ids[] has
+      nothing to capture here, so this step goes red and the legacy path grades it
+      instead. No action is required for that red.
+
+    steps:
+
+      - id: get_products_canonical_format
+        title: "Discover a product with format_options"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least one fixed-price product with a pricing option and a
+          format_options[] declaration that can be used by the inline CreativeAsset.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_inline_creatives_without_sync_canonical_format_discovery_get_products_canonical_format"
+          buying_mode: "brief"
+          brief: "Display inventory on outdoor lifestyle content. Q3 flight with buyer-supplied inline creative."
+          filters:
+            is_fixed_price: true
+            # Narrows to products that ACCEPT image. product-filters.json defines this
+            # as "products accepting any of these canonical format kinds", so it says
+            # nothing about which declaration lands at format_options[0] and must not be
+            # read as ordering them. The check below only detects a mismatch; it does
+            # not select a matching declaration.
+            format_kinds: ["image"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          context:
+            correlation_id: "inline_creatives_without_sync--get_products_canonical"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "canonical_product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "canonical_pricing_option_id"
+          - path: "products[0].format_options[0].format_kind"
+            key: "canonical_format_kind"
+          - path: "products[0].format_options[0]"
+            key: "canonical_declaration"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].format_options[0].format_kind"
+            value: "image"
+            description: "This fixture buys one fixed 300x250 image creative against products[0].format_options[0]. filters.format_kinds narrows to products that ACCEPT image and says nothing about declaration order, so a conformant multi-kind product may lead with another kind; capturing that declaration would ship an image asset under the wrong format_kind for a seller to correctly reject. This check DETECTS that mismatch, it does not select a matching declaration: a red here closes all three canonical gates, so a canonical-only seller leading with another kind is not graded on any canonical path and the closing assert_contribution then fails the run. Rank a declaration accepting a 300x250 image first for this brief."
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--get_products_canonical"
+            description: "Context correlation_id returned unchanged"
+
+  - id: canonical_unnamed_option_inline_path
+    title: "Inline creative path using an unnamed format option"
+    depends_on: [capability_discovery]
+    # Also stands down when canonical discovery captured nothing at all: a dotted
+    # reference onto an absent key is falsy, so without the existence clause this phase
+    # would run for a legacy-only seller and fail on unresolved context.
+    skip_if: "!context.canonical_declaration || context.canonical_declaration.format_option_id"
+    narrative: |
+      Covers the seller whose first canonical declaration carries no stable
+      format_option_id - legal, because product-format-declaration.json requires only
+      format_kind and params. There is no id to select with, and none is needed:
+      format_kind alone routes the creative to that single declaration. The package
+      therefore carries no format_option_refs[] at all.
+
+      Not optional: once canonical discovery captured a declaration with no id, inline
+      create, update and readback on this representation must work.
+
+    steps:
+
+      - id: create_buy_with_unnamed_option_inline_creative
+        title: "Create media buy with unnamed-option inline creative"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Accept the media buy and attach the inline creative to the package.
+          The response should include the package and preserve package context.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_create_unnamed_option"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.canonical_product_id"
+              budget: 7500
+              pricing_option_id: "$context.canonical_pricing_option_id"
+              context:
+                buyer_ref: "inline-creative-unnamed-option-line-001"
+              creatives:
+                - creative_id: "acme-inline-unnamed-option-display-v1"
+                  name: "Acme Outdoor inline unnamed-option display v1"
+                  format_kind: "$context.canonical_format_kind"
+                  assets:
+                    image:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"
+                      width: 300
+                      height: 250
+                      mime_type: "image/jpeg"
+                    click_url:
+                      asset_type: "url"
+                      url: "https://acmeoutdoor.example/q3"
+          context:
+            correlation_id: "inline_creatives_without_sync--create_unnamed_option"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "unnamed_option_media_buy_id"
+          - path: "packages[0].package_id"
+            key: "unnamed_option_package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media_buy_id"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "Seller assigns a package_id"
+          - check: field_value
+            path: "packages[0].context.buyer_ref"
+            value: "inline-creative-unnamed-option-line-001"
+            description: "Created package echoes package-level context for correlation"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--create_unnamed_option"
+            description: "Context correlation_id returned unchanged"
+
+      - id: update_buy_with_replacement_unnamed_option_inline_creative
+        title: "Replace unnamed-option inline creative"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Replace the package's inline creative body with the new creative_id and
+          return the affected package. The replacement creative is verified on
+          the standardized creative_approvals readback surface below.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          media_buy_id: "$context.unnamed_option_media_buy_id"
+          packages:
+            - package_id: "$context.unnamed_option_package_id"
+              creatives:
+                - creative_id: "acme-inline-unnamed-option-display-v2"
+                  name: "Acme Outdoor inline unnamed-option display v2"
+                  format_kind: "$context.canonical_format_kind"
+                  assets:
+                    image:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-alt.jpg"
+                      width: 300
+                      height: 250
+                      mime_type: "image/jpeg"
+                    click_url:
+                      asset_type: "url"
+                      url: "https://acmeoutdoor.example/q3-refresh"
+          idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_update_unnamed_option"
+          context:
+            correlation_id: "inline_creatives_without_sync--update_unnamed_option"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+          - check: field_equals_context
+            path: "media_buy_id"
+            context_key: "unnamed_option_media_buy_id"
+            description: "Update response references the same media buy"
+          - check: field_equals_context
+            path: "affected_packages[0].package_id"
+            context_key: "unnamed_option_package_id"
+            description: "Update response includes the affected package"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.unnamed_option_package_id"
+              product_id: "$context.canonical_product_id"
+              pricing_option_id: "$context.canonical_pricing_option_id"
+              budget: 7500
+              context:
+                buyer_ref: "inline-creative-unnamed-option-line-001"
+            description: "Affected package includes complete post-update package state for the unnamed-option inline creative line"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--update_unnamed_option"
+            description: "Context correlation_id returned unchanged"
+
+      - id: get_unnamed_option_media_buy_after_inline_replacement
+        title: "Read unnamed-option media buy after inline replacement"
+        contributes_to: inline_creative_path_exercised
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Return the unnamed-option-path media buy with package approval state for
+          the replacement inline creative. The full CreativeAsset body is not
+          required on this read surface.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          media_buy_ids:
+            - "$context.unnamed_option_media_buy_id"
+          context:
+            correlation_id: "inline_creatives_without_sync--get_unnamed_option_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "unnamed_option_media_buy_id"
+            description: "Read response returns the created unnamed-option media buy"
+          - check: field_equals_context
+            path: "media_buys[0].packages[0].package_id"
+            context_key: "unnamed_option_package_id"
+            description: "Read response returns the created unnamed-option package"
+          - check: field_value
+            path: "media_buys[0].packages[0].creative_approvals[0].creative_id"
+            value: "acme-inline-unnamed-option-display-v2"
+            description: "Read response reflects the unnamed-option replacement inline creative on the package approval-state surface"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--get_unnamed_option_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: canonical_product_scoped_inline_path
+    title: "Inline creative path using a product-local format option ref"
+    depends_on: [capability_discovery]
+    skip_if: "!context.canonical_declaration.format_option_id || context.canonical_declaration.publisher_domain"
+    narrative: |
+      Covers the seller whose first canonical declaration carries a stable
+      format_option_id and no publisher_domain - a product-local option. The package
+      selects it with format_option_refs[], built from the captured declaration so the
+      id is exactly the one discovery observed.
+
+      Not optional: once canonical discovery captured a product-local option, inline
+      create, update and readback on this representation must work.
+
+    steps:
+
+      - id: create_buy_with_product_scoped_inline_creative
+        title: "Create media buy with product-scoped inline creative"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Accept the media buy and attach the inline creative to the package.
+          The response should include the package and preserve package context.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_create_product_scoped"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.canonical_product_id"
+              budget: 7500
+              pricing_option_id: "$context.canonical_pricing_option_id"
+              format_option_refs:
+                # The whole captured declaration becomes the ref. This is deliberate and
+                # schema-supported: format-option-ref.json sets additionalProperties
+                # true on the root and on both branches, so the declaration's own
+                # format_kind/params/display_name ride along legally, and the
+                # {publisher_domain, format_option_id} identity pair stays coherent
+                # rather than being rebuilt from separately captured leaves. Receivers
+                # MUST tolerate those extra members and MUST NOT read the nested
+                # format_kind as a package-level selector route.
+                #
+                # `scope` is the only member no get_products response can supply, and it
+                # is injected below from a storyboard-root constant. This is NOT a
+                # runner defect: whole-object $context substitution works correctly, but
+                # the template grammar has no object-spread or projection construct, so
+                # a substituted object cannot also carry a literal sibling field. Order
+                # is what makes it safe - applyContextInputs structuredClones the
+                # request before setPath, so the captured declaration is never mutated.
+                # Injecting the declaration itself via context_inputs and then writing
+                # scope would mutate it, because both writes land after that one clone.
+                - "$context.canonical_declaration"
+              context:
+                buyer_ref: "inline-creative-product-scoped-line-001"
+              creatives:
+                - creative_id: "acme-inline-product-scoped-display-v1"
+                  name: "Acme Outdoor inline product-scoped display v1"
+                  format_kind: "$context.canonical_format_kind"
+                  assets:
+                    image:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"
+                      width: 300
+                      height: 250
+                      mime_type: "image/jpeg"
+                    click_url:
+                      asset_type: "url"
+                      url: "https://acmeoutdoor.example/q3"
+          context:
+            correlation_id: "inline_creatives_without_sync--create_product_scoped"
+        context_inputs:
+          - key: "format_option_scope_product"
+            inject_at: "packages[0].format_option_refs[0].scope"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "product_scoped_media_buy_id"
+          - path: "packages[0].package_id"
+            key: "product_scoped_package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media_buy_id"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "Seller assigns a package_id"
+          - check: field_value
+            path: "packages[0].context.buyer_ref"
+            value: "inline-creative-product-scoped-line-001"
+            description: "Created package echoes package-level context for correlation"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--create_product_scoped"
+            description: "Context correlation_id returned unchanged"
+
+      - id: update_buy_with_replacement_product_scoped_inline_creative
+        title: "Replace product-scoped inline creative"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Replace the package's inline creative body with the new creative_id and
+          return the affected package. The replacement creative is verified on
+          the standardized creative_approvals readback surface below.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          media_buy_id: "$context.product_scoped_media_buy_id"
+          packages:
+            - package_id: "$context.product_scoped_package_id"
+              creatives:
+                - creative_id: "acme-inline-product-scoped-display-v2"
+                  name: "Acme Outdoor inline product-scoped display v2"
+                  format_kind: "$context.canonical_format_kind"
+                  assets:
+                    image:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-alt.jpg"
+                      width: 300
+                      height: 250
+                      mime_type: "image/jpeg"
+                    click_url:
+                      asset_type: "url"
+                      url: "https://acmeoutdoor.example/q3-refresh"
+          idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_update_product_scoped"
+          context:
+            correlation_id: "inline_creatives_without_sync--update_product_scoped"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+          - check: field_equals_context
+            path: "media_buy_id"
+            context_key: "product_scoped_media_buy_id"
+            description: "Update response references the same media buy"
+          - check: field_equals_context
+            path: "affected_packages[0].package_id"
+            context_key: "product_scoped_package_id"
+            description: "Update response includes the affected package"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.product_scoped_package_id"
+              product_id: "$context.canonical_product_id"
+              pricing_option_id: "$context.canonical_pricing_option_id"
+              budget: 7500
+              context:
+                buyer_ref: "inline-creative-product-scoped-line-001"
+            description: "Affected package includes complete post-update package state for the product-scoped inline creative line"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--update_product_scoped"
+            description: "Context correlation_id returned unchanged"
+
+      - id: get_product_scoped_media_buy_after_inline_replacement
+        title: "Read product-scoped media buy after inline replacement"
+        contributes_to: inline_creative_path_exercised
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Return the product-scoped-path media buy with package approval state for
+          the replacement inline creative. The full CreativeAsset body is not
+          required on this read surface.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          media_buy_ids:
+            - "$context.product_scoped_media_buy_id"
+          context:
+            correlation_id: "inline_creatives_without_sync--get_product_scoped_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "product_scoped_media_buy_id"
+            description: "Read response returns the created product-scoped media buy"
+          - check: field_equals_context
+            path: "media_buys[0].packages[0].package_id"
+            context_key: "product_scoped_package_id"
+            description: "Read response returns the created product-scoped package"
+          - check: field_value
+            path: "media_buys[0].packages[0].creative_approvals[0].creative_id"
+            value: "acme-inline-product-scoped-display-v2"
+            description: "Read response reflects the product-scoped replacement inline creative on the package approval-state surface"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--get_product_scoped_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: canonical_publisher_scoped_inline_path
+    title: "Inline creative path using a publisher-catalog format option ref"
+    depends_on: [capability_discovery]
+    skip_if: "!context.canonical_declaration.format_option_id || !context.canonical_declaration.publisher_domain"
+    narrative: |
+      Covers the seller whose first canonical declaration is publisher-catalog-backed.
+      product-format-declaration.json makes such an option addressable only by the
+      complete {publisher_domain, format_option_id} pair, and format-option-ref.json's
+      product-local branch forbids publisher_domain outright - so a product-scoped ref
+      would be unresolvable here and a correct seller would reject it with
+      UNSUPPORTED_FEATURE. The ref is built from the captured declaration, which keeps
+      that identity pair intact.
+
+      Not optional: once canonical discovery captured a publisher-backed option, inline
+      create, update and readback on this representation must work.
+
+    steps:
+
+      - id: create_buy_with_publisher_scoped_inline_creative
+        title: "Create media buy with publisher-scoped inline creative"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Accept the media buy and attach the inline creative to the package.
+          The response should include the package and preserve package context.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_create_publisher_scoped"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.canonical_product_id"
+              budget: 7500
+              pricing_option_id: "$context.canonical_pricing_option_id"
+              format_option_refs:
+                # Whole captured declaration as the ref - see canonical_product_scoped_
+                # inline_path above for why this is schema-supported, why receivers must
+                # tolerate the extra members, and why scope is injected separately
+                # rather than substituted alongside.
+                - "$context.canonical_declaration"
+              context:
+                buyer_ref: "inline-creative-publisher-scoped-line-001"
+              creatives:
+                - creative_id: "acme-inline-publisher-scoped-display-v1"
+                  name: "Acme Outdoor inline publisher-scoped display v1"
+                  format_kind: "$context.canonical_format_kind"
+                  assets:
+                    image:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"
+                      width: 300
+                      height: 250
+                      mime_type: "image/jpeg"
+                    click_url:
+                      asset_type: "url"
+                      url: "https://acmeoutdoor.example/q3"
+          context:
+            correlation_id: "inline_creatives_without_sync--create_publisher_scoped"
+        context_inputs:
+          - key: "format_option_scope_publisher"
+            inject_at: "packages[0].format_option_refs[0].scope"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "publisher_scoped_media_buy_id"
+          - path: "packages[0].package_id"
+            key: "publisher_scoped_package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media_buy_id"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "Seller assigns a package_id"
+          - check: field_value
+            path: "packages[0].context.buyer_ref"
+            value: "inline-creative-publisher-scoped-line-001"
+            description: "Created package echoes package-level context for correlation"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--create_publisher_scoped"
+            description: "Context correlation_id returned unchanged"
+
+      - id: update_buy_with_replacement_publisher_scoped_inline_creative
+        title: "Replace publisher-scoped inline creative"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Replace the package's inline creative body with the new creative_id and
+          return the affected package. The replacement creative is verified on
+          the standardized creative_approvals readback surface below.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          media_buy_id: "$context.publisher_scoped_media_buy_id"
+          packages:
+            - package_id: "$context.publisher_scoped_package_id"
+              creatives:
+                - creative_id: "acme-inline-publisher-scoped-display-v2"
+                  name: "Acme Outdoor inline publisher-scoped display v2"
+                  format_kind: "$context.canonical_format_kind"
+                  assets:
+                    image:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-alt.jpg"
+                      width: 300
+                      height: 250
+                      mime_type: "image/jpeg"
+                    click_url:
+                      asset_type: "url"
+                      url: "https://acmeoutdoor.example/q3-refresh"
+          idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_update_publisher_scoped"
+          context:
+            correlation_id: "inline_creatives_without_sync--update_publisher_scoped"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+          - check: field_equals_context
+            path: "media_buy_id"
+            context_key: "publisher_scoped_media_buy_id"
+            description: "Update response references the same media buy"
+          - check: field_equals_context
+            path: "affected_packages[0].package_id"
+            context_key: "publisher_scoped_package_id"
+            description: "Update response includes the affected package"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.publisher_scoped_package_id"
+              product_id: "$context.canonical_product_id"
+              pricing_option_id: "$context.canonical_pricing_option_id"
+              budget: 7500
+              context:
+                buyer_ref: "inline-creative-publisher-scoped-line-001"
+            description: "Affected package includes complete post-update package state for the publisher-scoped inline creative line"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--update_publisher_scoped"
+            description: "Context correlation_id returned unchanged"
+
+      - id: get_publisher_scoped_media_buy_after_inline_replacement
+        title: "Read publisher-scoped media buy after inline replacement"
+        contributes_to: inline_creative_path_exercised
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Return the publisher-scoped-path media buy with package approval state for
+          the replacement inline creative. The full CreativeAsset body is not
+          required on this read surface.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          media_buy_ids:
+            - "$context.publisher_scoped_media_buy_id"
+          context:
+            correlation_id: "inline_creatives_without_sync--get_publisher_scoped_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "publisher_scoped_media_buy_id"
+            description: "Read response returns the created publisher-scoped media buy"
+          - check: field_equals_context
+            path: "media_buys[0].packages[0].package_id"
+            context_key: "publisher_scoped_package_id"
+            description: "Read response returns the created publisher-scoped package"
+          - check: field_value
+            path: "media_buys[0].packages[0].creative_approvals[0].creative_id"
+            value: "acme-inline-publisher-scoped-display-v2"
+            description: "Read response reflects the publisher-scoped replacement inline creative on the package approval-state surface"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--get_publisher_scoped_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: legacy_format_discovery
+    title: "Discover a product option through format_ids"
+    optional: true
+    narrative: |
+      A seller may still publish products through legacy format_ids[]. This phase
+      captures the product, its pricing option and its legacy format reference from
+      one response. A seller publishing only canonical format_options[] has nothing
+      to capture here and is graded on a canonical path instead.
+
+      Unlike canonical discovery this probe deliberately does NOT narrow with
+      filters.format_kinds. In product-format-declaration.json's matching clause the
+      "once a format_id has been projected" condition attaches to the prohibition on
+      raw (agent_url, id) matching, not to the normalization requirement itself - so
+      normalization before comparison is unconditional. The narrower reason this filter
+      is still omitted: a legacy-only product whose id has no canonical projection has
+      no canonical kind to match, so a seller correctly honouring the filter would
+      exclude itself and lose the only path it can be graded on.
+
+      Applicability is stated here instead: the buyer submits a 300x250 image creative
+      on this path, so rank a product whose format_ids[0] accepts that creative first
+      for this brief. A product selected here that cannot take a 300x250 image is
+      rejected on create, and this phase is graded.
+
+    steps:
+
+      - id: get_products_legacy_format
+        title: "Discover a product with format_ids"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least one fixed-price product with a pricing option and a
+          concrete format_id that can be used by the inline CreativeAsset.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_inline_creatives_without_sync_legacy_format_inline_path_get_products_legacy_format"
+          buying_mode: "brief"
+          brief: "Display inventory on outdoor lifestyle content. Q3 flight with buyer-supplied inline creative."
+          filters:
+            is_fixed_price: true
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          context:
+            correlation_id: "inline_creatives_without_sync--get_products_legacy"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "legacy_product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "legacy_pricing_option_id"
+          - path: "products[0].format_ids[0]"
+            key: "legacy_format_id"
+          # Gate key: capturing the id leaf separately means a format_ids[0] with no
+          # id leaves the gate closed instead of opening it onto an unusable reference.
+          - path: "products[0].format_ids[0].id"
+            key: "legacy_format_id_value"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "EXPECTED AND NON-GATING for a canonical-only seller: format_ids is deprecated in 3.2 and a product carrying format_options[] alone is conformant, so a red here means the legacy path below is standing down and no action is required. It is graded only so an advertised legacy representation cannot skip silently."
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--get_products_legacy"
+            description: "Context correlation_id returned unchanged"
+
+  # Deliberately NOT optional and with no branch_set: the discovery phases above
+  # absorb "this seller does not publish that representation"; this phase only runs
+  # when the representation WAS captured, so a failure here is a real one. Adding
+  # optional/branch_set would regrade it peer_branch_taken and re-hide it.
+  - id: legacy_format_inline_path
+    title: "Inline creative path using format_ids"
+    depends_on: [capability_discovery]
+    skip_if: "!context.legacy_format_id_value"
+    narrative: |
+      Runs only when legacy_format_discovery captured a usable legacy format
+      reference, and buys with the product, pricing option and reference captured
+      from that same response. Not optional: once the seller advertises this
+      representation, inline create, update and readback on it must work.
+
+    steps:
+
+      - id: create_buy_with_legacy_inline_creative
+        title: "Create media buy with legacy inline creative"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Accept the media buy and attach the inline creative to the package.
+          The response should include the package and preserve package context.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_create_legacy"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.legacy_product_id"
+              budget: 7500
+              pricing_option_id: "$context.legacy_pricing_option_id"
+              context:
+                buyer_ref: "inline-creative-legacy-line-001"
+              creatives:
+                - creative_id: "acme-inline-legacy-display-v1"
+                  name: "Acme Outdoor inline legacy display v1"
+                  format_id: "$context.legacy_format_id"
+                  assets:
+                    image:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"
+                      width: 300
+                      height: 250
+                      mime_type: "image/jpeg"
+                    click_url:
+                      asset_type: "url"
+                      url: "https://acmeoutdoor.example/q3"
+          context:
+            correlation_id: "inline_creatives_without_sync--create_legacy"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "legacy_media_buy_id"
+          - path: "packages[0].package_id"
+            key: "legacy_package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media_buy_id"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "Seller assigns a package_id"
+          - check: field_value
+            path: "packages[0].context.buyer_ref"
+            value: "inline-creative-legacy-line-001"
+            description: "Created package echoes package-level context for correlation"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--create_legacy"
+            description: "Context correlation_id returned unchanged"
+
+      - id: update_buy_with_replacement_legacy_inline_creative
+        title: "Replace legacy inline creative"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Replace the package's inline creative body with the new creative_id and
+          return the affected package. The replacement creative is verified on
+          the standardized creative_approvals readback surface below.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          media_buy_id: "$context.legacy_media_buy_id"
+          packages:
+            - package_id: "$context.legacy_package_id"
+              creatives:
+                - creative_id: "acme-inline-legacy-display-v2"
+                  name: "Acme Outdoor inline legacy display v2"
+                  format_id: "$context.legacy_format_id"
+                  assets:
+                    image:
+                      asset_type: "image"
+                      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-alt.jpg"
+                      width: 300
+                      height: 250
+                      mime_type: "image/jpeg"
+                    click_url:
+                      asset_type: "url"
+                      url: "https://acmeoutdoor.example/q3-refresh"
+          idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_update_legacy"
+          context:
+            correlation_id: "inline_creatives_without_sync--update_legacy"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+          - check: field_equals_context
+            path: "media_buy_id"
+            context_key: "legacy_media_buy_id"
+            description: "Update response references the same media buy"
+          - check: field_equals_context
+            path: "affected_packages[0].package_id"
+            context_key: "legacy_package_id"
+            description: "Update response includes the affected package"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.legacy_package_id"
+              product_id: "$context.legacy_product_id"
+              pricing_option_id: "$context.legacy_pricing_option_id"
+              budget: 7500
+              context:
+                buyer_ref: "inline-creative-legacy-line-001"
+            description: "Affected package includes complete post-update package state for the legacy inline creative line"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--update_legacy"
+            description: "Context correlation_id returned unchanged"
+
+      - id: get_legacy_media_buy_after_inline_replacement
+        title: "Read legacy media buy after inline replacement"
+        contributes_to: inline_creative_path_exercised
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          Return the legacy-path media buy with package approval state for the
+          replacement inline creative. The full CreativeAsset body is not
+          required on this read surface.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            operator_unit:
+              id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+          media_buy_ids:
+            - "$context.legacy_media_buy_id"
+          context:
+            correlation_id: "inline_creatives_without_sync--get_legacy_media_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "legacy_media_buy_id"
+            description: "Read response returns the created legacy media buy"
+          - check: field_equals_context
+            path: "media_buys[0].packages[0].package_id"
+            context_key: "legacy_package_id"
+            description: "Read response returns the created legacy package"
+          - check: field_value
+            path: "media_buys[0].packages[0].creative_approvals[0].creative_id"
+            value: "acme-inline-legacy-display-v2"
+            description: "Read response reflects the legacy replacement inline creative on the package approval-state surface"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "inline_creatives_without_sync--get_legacy_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: verify_format_coverage
+    title: "Require a complete inline creative path"
+    narrative: |
+      Skipping a format path the seller does not advertise is expected; skipping
+      every path is not. This assertion is the scenario's only coverage gate: it fails
+      when no path completed create, update and readback, so a run in which every path
+      stood down cannot be graded as passing.
+
+    steps:
+      - id: assert_inline_creative_path
+        title: "Require a completed inline creative path"
+        task: assert_contribution
+        stateful: false
+        expected: |
+          At least one of canonical_product_scoped_inline_path,
+          canonical_publisher_scoped_inline_path,
+          canonical_unnamed_option_inline_path or legacy_format_inline_path
+          contributed inline_creative_path_exercised.
+        validations:
+          - id: inline_creative_path_coverage
+            check: any_of
+            allowed_values: [inline_creative_path_exercised]
+            description: "No format path completed create, update, and readback. If a path above failed, that failure is the cause - fix it there; this check is only the summary. If every path stood down instead, neither discovery gate closed on a usable product: the canonical paths need products[0] of the canonical get_products response to carry a fixed_price pricing option and a format_options[0] declaration, and the legacy path needs products[0] of its own response to carry a fixed_price pricing option and format_ids[0].id. A product that declares formats can still close every gate by returning no fixed_price pricing option first."

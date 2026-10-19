@@ -2348,6 +2348,62 @@ discovery. See
 [Discovering an agent's signing keys](#discovering-an-agents-signing-keys-via-brand_json_url)
 and [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
 
+**Counterparty-asserted fields are bounded separately.** Not every byte of a
+discovery response is something the agent decided to say. Where a field
+enumerates relationships a *counterparty* asserts, a third party controls its
+contents: `media_buy.portfolio.publisher_domains` and
+`signals.data_provider_domains` are both populated from the counterparty's own
+`/.well-known/adagents.json`, which any domain owner publishes unilaterally and
+without the named agent's consent. An agent that mirrors "every publisher whose
+adagents.json names me" has handed an unauthenticated stranger a write
+primitive into its own capabilities document — and because that document is
+fetched unnarrowed under `MAX_CAPABILITIES_BYTES` on the
+[signing-key discovery path](#discovering-an-agents-signing-keys-via-brand_json_url),
+inflating it past 64 KiB costs the victim signature verification, not merely
+discovery. The attacker needs no relationship with the victim, and the failure
+arrives a cache cycle later, far from its cause.
+
+Agents therefore **MUST NOT** reflect a counterparty-asserted list unbounded.
+A single counterparty-asserted field **MUST NOT** exceed one eighth of
+`MAX_CAPABILITIES_BYTES` (8,192 bytes), and all such fields together
+**MUST NOT** exceed one quarter (16,384 bytes). Measure uncompressed
+serialized JSON — the member name, the array punctuation, and the quoted
+elements — because that is the unit the consumer's cap is enforced in: a
+field that fits only once gzipped still trips a verifier counting decoded
+bytes. Today exactly two fields carry this class, so the aggregate equals
+their sum and binds nothing the per-field rule does not; it is written to
+hold when a third such field lands.
+
+**These are sub-caps, not an allowance.** They carve a ceiling out of a
+budget the whole document must already stay under; the remaining bytes are
+not an entitlement for self-declared fields to grow into. An agent whose
+counterparty-asserted fields sit at 2 KiB and whose format catalog takes the
+document past 64 KiB has satisfied every MUST in this paragraph and still
+lost signature verification — self-inflicted rather than attacker-inflicted,
+and just as broken.
+
+The structural bounds carried in `x-adcp-validation` — at most 100 unique
+entries, each at most 253 characters — are a coarse ceiling and are not
+sufficient on their own: a count bound cannot express bytes, a hundred-entry
+list of maximum-length domains is thirteen times the size of a hundred
+ordinary ones, and two fields at those limits are already most of the budget.
+Through 3.x they are graded by the conformance storyboard rather than enforced
+by the schema, so a document already above them is reported, not rejected;
+they become schema constraints in 4.0. The byte budget above is the bound that
+binds in 3.x. Where the real set does not fit, an agent
+**MUST** truncate and mark the list incomplete
+(`publisher_domains_complete: false`, `data_provider_domains_complete: false`)
+rather than exceed the budget, and **MUST NOT** drop a field it does in fact
+populate or serve a truncated list as complete. Omitting a field that has no
+members is unaffected. Consumers **MUST NOT** treat either list as an
+authorization allowlist, whether or not it is marked complete — the
+counterparty's own `adagents.json` is the authority, and absence from the
+list is not a denial.
+
+A schema bound is a conformance statement, not a runtime control: it makes an
+inflated document non-conformant, it does not make it unservable. The control
+is the producing agent bounding what it mirrors.
+
 **Scope.** This section covers responses a client reads on its own call path.
 Inbound deliveries a buyer *receives* — A2A push notifications and
 [AdCP webhooks](#webhook-callbacks) — are a server-side surface with its
