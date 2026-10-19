@@ -20,7 +20,29 @@ This endpoint is **discovery**, not **authorization**. The publisher's own `adag
 GET https://{aao_directory}/v1/agents/{agent_url}/publishers
 ```
 
-`{agent_url}` MUST be percent-encoded. The directory canonicalizes the lookup key (lowercase host, default port stripped, trailing slash on path component normalized) using the same convention the SDK applies in `verify_agent_authorization`.
+`{agent_url}` MUST be percent-encoded. The directory canonicalizes the lookup key using [AdCP URL canonicalization](/docs/reference/url-canonicalization), the same convention the SDK applies in `verify_agent_authorization`: the scheme and host lowercase, a default port and a root trailing slash are dropped, dot segments resolve, and percent-encoded unreserved characters decode. Path case and a non-root trailing slash are significant — `/mcp` and `/mcp/` are different agents.
+
+<Note>
+**Directory behavior change — 2026-10-18.** Through that date the AAO
+directory at `agenticadvertising.org` folded the two spellings together and
+answered a request for `https://a.example/mcp/` with
+`https://a.example/mcp`'s publishers. That was an implementation bug — it
+disagreed with this spec and with `verify_agent_authorization`, so the
+directory could report an authorization the publisher's `adagents.json` does
+not grant. Trailing-slash matching is now exact, as specified above. A caller
+that asked with the wrong spelling and got rows will now get `404` (agent
+never indexed) or `200` with an empty `publishers[]`; ask with the spelling
+the publisher's `adagents.json` lists. The registry's own per-agent
+*identity* surfaces (compliance, badges, monitoring) deliberately do fold the
+two spellings — identity and authorization are separate questions.
+</Note>
+
+A client that only holds an agent's registry identity URL cannot know which
+spelling to ask for. The AAO registry listing answers that: each agent in
+`GET /api/registry/agents` carries `declared_urls[]`, every spelling the
+directory has indexed under that identity, with the listed (folded) URL
+first. Query this endpoint once per spelling and merge the results — which
+is what the public agent page does.
 
 ### Query parameters
 

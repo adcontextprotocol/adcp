@@ -123,6 +123,7 @@ import type {
   RefineProposalsRequest,
 } from '@adcp/sdk';
 import { CreativeAssetSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
+import { complianceScenariosForServedVersion } from './compliance-scenarios.js';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getGovernanceSigningPublicJwk } from './governance-signing.js';
 import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
@@ -480,6 +481,9 @@ const CANONICAL_ALLOWED_SLOT_ASSET_TYPES: Record<string, string[]> = {
 // Canonical-specific additive slot types that are valid for declared
 // refinements without belonging in the canonical's default slot set.
 const CANONICAL_ADDITIONAL_SLOT_ASSET_TYPES: Record<string, string[]> = {
+  // Generative hosted-video refinements can accept structured timed prompts
+  // instead of a rendered video file.
+  video_hosted: ['video_brief'],
   // Copy-bearing CTV activations add character-limited text slots such as
   // activation_message; they are not part of every VAST manifest by default.
   video_vast: ['text'],
@@ -3229,7 +3233,7 @@ import {
   getAccountStatus,
   getSeededCreativeFormats,
 } from './comply-test-controller.js';
-import { PUBLISHERS } from './publishers.js';
+import { PUBLISHERS, buildVendorMetricOptimizationCapability } from './publishers.js';
 import { applyPropertyListTargeting, listAgentUrlRejection, packageExtWithPropertyApplication } from './property-list-targeting.js';
 import {
   isMutatingTool,
@@ -3290,14 +3294,6 @@ export function acceptancePolicyDiscoveryCapability(
     default_profile_ids: [TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE],
   };
 }
-const THREE_ZERO_COMPLIANCE_SCENARIOS = [
-  'force_creative_status',
-  'force_account_status',
-  'force_media_buy_status',
-  'force_session_status',
-  'simulate_delivery',
-  'simulate_budget_spend',
-] as const;
 const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
 
@@ -3324,6 +3320,8 @@ type VersionResolution =
 type McpRequestHandler = (request: { params?: Record<string, unknown> }, extra: unknown) => Promise<unknown> | unknown;
 
 const TASK_PROTOCOL_METHODS = ['tasks/get', 'tasks/result', 'tasks/list', 'tasks/cancel'] as const;
+// `request_signing.protocol_methods_*` item pattern in the AdCP 3.1 schemas.
+const THREE_ONE_PROTOCOL_METHOD_NAME_PATTERN = /^[a-z][a-z0-9_]*\/[a-z][a-z0-9_]*$/;
 
 function parseAdcpReleaseVersion(value: unknown): ParsedAdcpReleaseVersion | undefined {
   if (typeof value !== 'string') return undefined;
@@ -7674,12 +7672,16 @@ function compactReportingCapabilityFields(): ReadonlySet<string> {
   return canonicalReportingCapabilityFields;
 }
 
-const COMPACT_FORMAT_OPTION_FIELDS = new Set([
-  'format_option_id', 'format_kind', 'display_name', 'publisher_domain',
-  'applies_to_channels', 'params', 'format_schema', 'format_shape',
-  'locale_policy', 'seller_preference', 'canonical_formats_only',
-  'experimental', 'sample_render_url',
-]);
+let canonicalFormatOptionFields: ReadonlySet<string> | undefined;
+
+/** Keep binding creative metadata as the closed compact schema evolves,
+ * while stripping legacy-only links and seller-internal fields. */
+function compactFormatOptionFields(): ReadonlySet<string> {
+  canonicalFormatOptionFields ??= new Set(Object.keys(
+    (loadSourceSchema('core/canonical-format-option.json').properties ?? {}) as Record<string, unknown>,
+  ));
+  return canonicalFormatOptionFields;
+}
 
 function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<string>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(source)
@@ -7710,7 +7712,7 @@ function compactLifecycleProduct(
   if (selectedFields.has('format_options') && Array.isArray(product.format_options)) {
     projected.format_options = product.format_options
       .filter(isRecord)
-      .map(option => pickCompactFields(option, COMPACT_FORMAT_OPTION_FIELDS));
+      .map(option => pickCompactFields(option, compactFormatOptionFields()));
   }
   if (selectedFields.has('pricing_options') && Array.isArray(product.pricing_options)) {
     projected.pricing_options = product.pricing_options
@@ -19730,35 +19732,45 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     || (parsedServedAdcpVersion?.major === 3 && parsedServedAdcpVersion.minor === 0);
   const requiredFor = signingCap.required_for.filter(op => !isProtocolMethodName(op));
   const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethodName(op));
+  // AdCP 3.1 limits protocol method names to one lowercase slash path
+  // (`tasks/cancel`); 3.2 widened the grammar to nested A2A 0.3 paths and
+  // A2A 1.0 PascalCase names. Before 3.2, advertise only names the 3.1
+  // schema accepts. The legacy strict routes serve 3.1 to a major-only pin,
+  // and a buyer may validate against the echoed release (@adcp/sdk 15.9.5).
+  const servesPreThreeTwoRelease = isThreeZeroResponse
+    || (parsedServedAdcpVersion?.major === 3 && parsedServedAdcpVersion.minor < 2);
+  const protocolMethodForServedRelease = (op: string): boolean => !servesPreThreeTwoRelease
+    || THREE_ONE_PROTOCOL_METHOD_NAME_PATTERN.test(op);
   const protocolMethodsRequiredFor = signingCap.required_for
     .filter(isProtocolMethodName)
-    .filter(op => !isThreeZeroResponse || op.includes('/'));
+    .filter(protocolMethodForServedRelease);
   const protocolMethodsSupportedFor = (signingCap.supported_for?.filter(isProtocolMethodName) ?? [])
-    .filter(op => !isThreeZeroResponse || op.includes('/'));
+    .filter(protocolMethodForServedRelease);
   const wholesaleProfile = wholesaleCapabilityProfile(ctx);
-  const complianceScenarios = isThreeZeroResponse
-    ? [...THREE_ZERO_COMPLIANCE_SCENARIOS]
-    : [
-        'force_creative_status',
-        'force_audience_status',
-        'force_account_status',
-        'force_media_buy_status',
-        'force_create_media_buy_arm',
-        'force_task_completion',
-        'force_creative_purge',
-        'force_session_status',
-        'simulate_delivery',
-        'simulate_budget_spend',
-        'seed_account',
-        'seed_product',
-        'seed_pricing_option',
-        'seed_creative',
-        'seed_plan',
-        'seed_media_buy',
-        'seed_creative_format',
-        'seed_measurement_catalog',
-        'query_provenance_audit_observations',
-      ];
+  // The served release's capabilities schema decides which scenarios may be
+  // listed: 3.0 closes the enum to its original six, later releases accept
+  // any scenario name.
+  const complianceScenarios = complianceScenariosForServedVersion([
+    'force_creative_status',
+    'force_audience_status',
+    'force_account_status',
+    'force_media_buy_status',
+    'force_create_media_buy_arm',
+    'force_task_completion',
+    'force_creative_purge',
+    'force_session_status',
+    'simulate_delivery',
+    'simulate_budget_spend',
+    'seed_account',
+    'seed_product',
+    'seed_pricing_option',
+    'seed_creative',
+    'seed_plan',
+    'seed_media_buy',
+    'seed_creative_format',
+    'seed_measurement_catalog',
+    'query_provenance_audit_observations',
+  ], isThreeZeroResponse ? '3.0' : servedAdcpVersion);
   // AdCP 3.2 requires every signing-capable endpoint to require
   // content-digest coverage and to verify under the 3.2 sf-binary profile.
   // The legacy conformance routes intentionally exercise the 3.0/3.1
@@ -19930,9 +19942,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         // The single window the outcome_target planner states on event goals.
         attribution_windows: structuredClone(TRAINING_ATTRIBUTION_WINDOWS),
       },
-      vendor_metric_optimization: {
-        supported_targets: ['threshold_rate'],
-      },
+      // Derived from the catalog's product-level declarations so the rollup
+      // never lists a pair no product supports. Served on every negotiated
+      // version, like supported_targets: the object is additionalProperties:true.
+      vendor_metric_optimization: buildVendorMetricOptimizationCapability(),
       // Seller-level rollup of metric-optimization capabilities. Honest
       // union across catalog products (product-factory.ts assigns these
       // by channel mix). Gate scenarios — clicks_buy_flow / reach_buy_flow

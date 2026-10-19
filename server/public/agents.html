@@ -1207,13 +1207,26 @@
         }
     }
 
-    async function fetchPublishers(agent) {
-        const section = document.getElementById('publishers-section');
-        try {
-            // Use AgenticAdvertising.org's indexed authorization data. Calling the
-            // agent live here made this public page depend on each agent's
-            // auth and uptime, and non-JSON gateway errors broke rendering.
-            const response = await fetch(`/v1/agents/${encodeURIComponent(agent.url)}/publishers?status=authorized&status=revoked&limit=1000`);
+    // The registry lists an agent under its folded identity URL (#7830), but
+    // the directory matches spec-exactly with a non-root trailing slash
+    // significant (#7829, #8314): a publisher that declared
+    // `https://a.example/mcp/` has not authorized `https://a.example/mcp`.
+    // Asking only with the listed URL therefore showed nothing at all for a
+    // slash-declared agent. `declared_urls` from the registry listing carries
+    // every spelling the directory indexed under this identity (listed URL
+    // first); ask about each and merge. Falls back to the listed URL alone,
+    // which is exactly the old behaviour.
+    function declaredSpellings(agent) {
+        const declared = Array.isArray(agent.declared_urls) ? agent.declared_urls : [];
+        return [...new Set([agent.url, ...declared])].filter(url => typeof url === 'string' && url.length > 0);
+    }
+
+    async function fetchPublisherRecords(agent) {
+        // Use AgenticAdvertising.org's indexed authorization data. Calling the
+        // agent live here made this public page depend on each agent's
+        // auth and uptime, and non-JSON gateway errors broke rendering.
+        const pages = await Promise.all(declaredSpellings(agent).map(async (spelling) => {
+            const response = await fetch(`/v1/agents/${encodeURIComponent(spelling)}/publishers?status=authorized&status=revoked&limit=1000`);
             const raw = await response.text();
             let data;
             try {
@@ -1222,20 +1235,49 @@
                 throw new Error(`Directory returned an invalid response (${response.status})`);
             }
 
+            // 404 means this spelling has never been indexed. With several
+            // spellings that is the normal answer for all but one of them,
+            // so it is an empty page rather than an error.
             if (response.status === 404) {
-                section.innerHTML = '<div class="property-section-small">No indexed publisher authorizations are available for this agent yet.</div>';
-                return;
+                return { publishers: [], truncated: false };
             }
 
             if (!response.ok || data.error) {
-                const message = data.error?.message || data.message || data.error || 'Unknown error';
-                section.innerHTML = `<div class="tool-error-box">
-                    <strong>Error:</strong> ${escapeHtml(message)}
-                </div>`;
-                return;
+                const error = new Error(data.error?.message || data.message || data.error || 'Unknown error');
+                error.directoryError = true;
+                throw error;
             }
 
-            const publishers = Array.isArray(data.publishers) ? data.publishers : [];
+            return {
+                publishers: Array.isArray(data.publishers) ? data.publishers : [],
+                truncated: Boolean(data.next_cursor),
+            };
+        }));
+
+        // One row per publisher. `authorized` beats `revoked`: if any
+        // spelling the publisher declared is still authorized, the agent is
+        // authorized there, and showing it as revoked would be wrong.
+        const byDomain = new Map();
+        for (const page of pages) {
+            for (const publisher of page.publishers) {
+                const existing = byDomain.get(publisher.publisher_domain);
+                if (!existing || (existing.status !== 'authorized' && publisher.status === 'authorized')) {
+                    byDomain.set(publisher.publisher_domain, publisher);
+                }
+            }
+        }
+
+        return {
+            publishers: [...byDomain.values()],
+            truncated: pages.some(page => page.truncated),
+        };
+    }
+
+    async function fetchPublishers(agent) {
+        const section = document.getElementById('publishers-section');
+        try {
+            const { publishers, truncated } = await fetchPublisherRecords(agent);
+
             if (publishers.length > 0) {
                 const authorized = publishers.filter(p => p.status === 'authorized');
                 const revoked = publishers.filter(p => p.status === 'revoked');
@@ -1283,7 +1325,7 @@
                     html += '</div>';
                 }
 
-                if (data.next_cursor) {
+                if (truncated) {
                     html += '<div class="ds-alert ds-alert-info"><p class="ds-alert__desc">Showing the first 1,000 publisher authorizations. Additional results are available from the directory API.</p></div>';
                 }
                 section.innerHTML = html;
@@ -1291,7 +1333,11 @@
                 section.innerHTML = '<div class="property-section-small">No indexed publisher authorizations are available for this agent yet.</div>';
             }
         } catch (error) {
-            section.innerHTML = `<div class="error-text">Failed to load publishers: ${escapeHtml(error.message)}</div>`;
+            section.innerHTML = error.directoryError
+                ? `<div class="tool-error-box">
+                    <strong>Error:</strong> ${escapeHtml(error.message)}
+                </div>`
+                : `<div class="error-text">Failed to load publishers: ${escapeHtml(error.message)}</div>`;
         }
     }
 

@@ -32,6 +32,11 @@ narrative: |
   surfaces were advisory in the released 3.1 compliance bundles and are blocking
   in this 3.2 source bundle. Released bundles remain immutable.
 
+  Both checks also carry AdCP 4.0 compatibility ids
+  (`major_versions_removed_in_4_0`, `adcp_version_echo_required_in_4_0`; see
+  `universal/v4-compatibility.yaml`). 4.0 removes the major-precision fields,
+  so these release-precision surfaces become the only version declaration.
+
   Scope: protocol envelope and capabilities advertisement only. The
   `VERSION_UNSUPPORTED` error path (buyer pins a release outside the seller's
   `supported_versions`) is exercised separately by error_compliance — running it
@@ -106,11 +111,13 @@ phases:
             path: "adcp.major_versions"
             description: "Legacy major-precision advertisement present (required through 3.x)"
 
-          - check: field_present
+          - id: major_versions_removed_in_4_0
+            check: field_present
             path: "adcp.supported_versions"
             description: "Seller advertises release-precision supported_versions (required for 3.2 certification)"
 
-          - check: envelope_field_present
+          - id: adcp_version_echo_required_in_4_0
+            check: envelope_field_present
             path: "adcp_version"
             description: "Seller echoes adcp_version on the response envelope (required for 3.2 certification)"
 

@@ -371,6 +371,37 @@ A product can declare the `signals` execution mode when it resolves canonical ag
 
 Multiple intervals or signals may be unioned only when their canonical predicates cover the request with no gap and no extra age. Implementations compare the represented predicate sets deterministically; an AI agent may propose a mapping, but names, inferred provider IDs, and approximate bucket choices never prove equivalence. For inferred or modeled signals, exactness means equality of the declared demographic predicate—not a claim that the provider knows every person's age perfectly. Methodology, modeling, and coverage metadata continue to describe population-level accuracy.
 
+### Age determination basis on included signals
+
+A signal's `demographic_predicate.age` says which ages it covers, not how those ages were established. `age_determination_bases` (`verified`, `declared`, `inferred`, same enum as `accepted_bases`) is an optional sibling of `demographic_predicate` on `signal-listing`, `signal-definition`, and `signal-definition-enrichment`. It lists the user-level bases by which the signal's members' ages were established, and it is valid only when `demographic_predicate.age` is present. Population estimates stay out of scope: aggregate composition cannot establish an individual's age, so report it through `audience_evidence`.
+
+<Note>
+**AdCP 3.3 (stable).** Until 3.3, carry the value as `ext.adcp.age_determination_bases` on the signal-listing entry. See [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3#age_determination_bases-on-signals).
+</Note>
+
+- On a product-scoped `included_signals` entry the field is authoritative.
+- For `data_provider` and `signal_source` refs, a projected value MUST match the referenced definition, the same rule `demographic_predicate` follows. Sellers and federating agents MUST NOT substitute their own.
+- Absent means the signal makes no basis claim. A buyer whose request names `accepted_bases` MUST NOT treat that signal as satisfying the age predicate. For a listing that projects a `data_provider` or `signal_source` definition, absence means the listing did not project the value: resolve it from the referenced definition, and only the resolved value counts.
+- The bases describe how known ages were established. Unknown-age membership is governed only by `include_unknown`.
+
+**Matching.** A signal listing (an `included_signals` entry, a `signal_targeting_options` entry, or a `get_signals` result) satisfies a requested age predicate that carries `accepted_bases` only when both hold: its `demographic_predicate.age` is within the requested range, and every value in its `age_determination_bases` is in the request's `accepted_bases`. This is a condition on each signal, not on the union: `supported_bases` is an any-of set of ways a product can resolve an impression, while a signal's bases describe every member, so a mixed `["verified", "inferred"]` signal fails a buyer that accepts only `verified`. Coverage of the requested interval still follows the exact-union rule above: the signals together must cover the request with no gap and no extra age, and each one must pass the basis test. The accepted set is the effective one after `age_restriction` narrowing, so a signal declaring only `declared` fails when `verification_required` is true. When the request has no `accepted_bases` and no `verification_required`, the basis does not affect matching. `age_determination_bases` is disclosure on the signal; it does not change how `supported_bases` or `applied_bases` are computed.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/signal-listing.json",
+  "signal_ref": { "scope": "product", "signal_id": "verified_adults_25_34" },
+  "name": "Verified adults 25–34",
+  "value_type": "binary",
+  "restricted_attributes": ["age"],
+  "demographic_predicate": {
+    "age": { "min": 25, "max": 34, "include_unknown": false }
+  },
+  "age_determination_bases": ["verified"]
+}
+```
+
+That listing passes the basis test for a request for ages 25–34 with `accepted_bases: ["verified", "declared"]`. It does not satisfy `accepted_bases: ["declared"]`. When gender targeting ([#7925](https://github.com/adcontextprotocol/adcp/issues/7925), experimental) graduates, gender will need an equivalent disclosure; the enum is not generalized here.
+
 ### Governance interaction
 
 Age is a registered restricted-attribute category because some campaign plans prohibit its use in regulated contexts. A direct `targeting_overlay.demographics.age` predicate and a signal carrying `demographic_predicate.age` are both age-based targeting for governance evaluation. They are blocked only when the applicable campaign plan lists `age` in `restricted_attributes`; the registry entry does not create a global prohibition on otherwise lawful demographic targeting.

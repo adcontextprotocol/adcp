@@ -835,11 +835,11 @@ function stripModelContextAnnotations(schema) {
     // Exact const values and homogeneous enums already communicate their JSON
     // types. Mixed enums retain type because it still narrows the listed values.
     if (Object.hasOwn(node, 'const')) delete node.type;
-    // Closed-object enforcement belongs to the validation profile. The
-    // declared property list already communicates the prompt shape, while
-    // retaining `additionalProperties: true` and schema-valued maps preserves
-    // meaningful extension and dictionary surfaces.
-    if (node.additionalProperties === false) delete node.additionalProperties;
+    // Closed-object enforcement belongs to the validation profile; the
+    // declared property list communicates the prompt shape. Boolean true is
+    // JSON Schema's default, so omit that redundant spelling as well. Retain
+    // schema-valued additionalProperties to describe typed dictionary values.
+    if (typeof node.additionalProperties === 'boolean') delete node.additionalProperties;
     for (const keyword of Object.keys(node)) {
       if (keyword.startsWith('x-')) delete node[keyword];
     }

@@ -557,7 +557,7 @@ phases:
         stateful: true
         expected: |
           Return event sources with:
-          - event_source_id and seller_id
+          - event_source_id and platform_id (3.3 and later 3.x: include an identical deprecated seller_id alias; earlier releases may return seller_id alone)
           - setup.snippet: integration code (JavaScript pixel, HTML tag, or pixel URL)
           - setup.instructions: human-readable integration guide
           - action: created or updated
