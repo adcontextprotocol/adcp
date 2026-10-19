@@ -28,6 +28,11 @@
  *   historical user to be a member of the agent-context org and that org's
  *   member profile to list the agent URL. Non-owner legacy rows stay in
  *   `agent_test_history`; this script must not elevate them to `owner_test`.
+ *   The join below matches `agents[].url` against `ac.agent_url` EXACTLY and
+ *   deliberately does not fold spellings the way the live predicates do
+ *   (#8322, `db/agent-identity-match.ts`). Widening a backfill's eligibility
+ *   relabels history; an owner row this misses stays an ordinary test row,
+ *   which is the safe direction for a one-off rewrite.
  *
  * - Cutover guard: skips any `agent_test_history` row whose `started_at` is at
  *   or after the earliest live (not backfilled) `triggered_by='owner_test'`
