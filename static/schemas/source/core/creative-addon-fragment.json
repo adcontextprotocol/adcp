@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-addon-fragment.json",
+  "title": "Creative Addon Fragment",
+  "description": "Vendor-to-Sales-Agent fragment. The Sales Agent checks SHA-256 over exact UTF-8 content bytes before placement. This object MUST NOT appear in buyer reporting.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative"
+    },
+    "position": {
+      "type": "string",
+      "enum": [
+        "prepend",
+        "append"
+      ]
+    },
+    "content": {
+      "type": "string",
+      "minLength": 1
+    },
+    "content_hash": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "vendor_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "detail_url": {
+      "type": "string",
+      "minLength": 1,
+      "format": "uri",
+      "pattern": "^https://"
+    }
+  },
+  "required": [
+    "creative_id",
+    "position",
+    "content",
+    "content_hash"
+  ],
+  "additionalProperties": false
+}

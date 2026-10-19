@@ -20,6 +20,7 @@
     "collection-lists",
     "content-standards",
     "creative-ad-server",
+    "creative-addon",
     "creative-generative",
     "creative-template",
     "creative-transformers",
@@ -44,6 +45,7 @@
     "sponsored-intelligence"
   ],
   "enumDescriptions": {
+    "creative-addon": "Operator-registered vendor that returns seller-adjacent fragments without receiving buyer creative content.",
     "audience-sync": "Syncs buyer-provided audience segments into a platform for activation",
     "brand-rights": "Brand identity and rights licensing (talent, music, stock media)",
     "buyer-activation": "Buyer agent that creates media buys with correct idempotency keys, handles transient failures with retry, and coordinates creative assignment",

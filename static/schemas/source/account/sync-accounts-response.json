@@ -28,6 +28,13 @@
           "items": {
             "type": "object",
             "properties": {
+              "creative_addons": {
+                "allOf": [
+                  { "$ref": "/schemas/core/creative-addon-disclosure.json" },
+                  { "properties": { "scope": { "const": "account" } } }
+                ],
+                "description": "Account-scoped current configuration for this successful response row. Completeness is relative to this account, not all product-specific rules. No credentials or loader bodies are disclosed."
+              },
               "account_id": {
                 "type": "string",
                 "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations when the seller's account model uses account_id references. For buyer-declared accounts, sellers SHOULD return it on every non-failed provisioning result and MUST continue accepting the natural-key AccountRef for subsequent calls. A seller declaring account.stable_account_id: true MUST return it, MUST accept it as an AccountRef on every account-scoped task, and MUST NOT change it for the life of the account; buyers SHOULD then send it in place of the natural key. Without that capability, buyers keep sending the natural key and MUST NOT assume the seller accepts the returned account_id as an AccountRef.",
@@ -220,6 +227,10 @@
               ]
             },
             "allOf": [
+              {
+                "if": { "properties": { "action": { "const": "failed" } }, "required": ["action"] },
+                "then": { "not": { "required": ["creative_addons"] } }
+              },
               {
                 "description": "Settings-update-mode results (echoing the request's `account` field) anchor identity on `account` alone; provisioning-mode results anchor identity on the buyer-declared `brand` + `operator` natural key instead, never both. Mirrors the same discriminator sync_governance's response rows already use.",
                 "if": {

@@ -51,8 +51,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // list_collections (#8183) adds one tool and the collection selector,
   // collection kind, and genre taxonomy definitions it alone reaches, plus the
   // shared locale tag its languages filter references.
-  assert.equal(report.definition_instances, 693);
-  assert.equal(report.unique_definitions, 188);
+  // Seller-resolved addon disclosure adds one shared purchase definition.
+  assert.equal(report.definition_instances, 694);
+  assert.equal(report.unique_definitions, 189);
   assert.equal(report.repeated_definitions, 133);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
@@ -177,7 +178,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 188);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 189);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

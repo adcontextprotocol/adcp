@@ -49,15 +49,15 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
-// The generated profiles describe the active surface of the package's release
-// line. Before the line's GA (x.y.0-rc.N) that is the x.y.0 surface the tool
-// manifest declares via added_in; once the line has a stable release it is the
-// released package version itself (3.2 GA ships as 3.2.1 because 3.2.0 is
-// permanently withdrawn; see RELEASING.md).
+// The active source surface includes get_creative_addons in 3.3 even while
+// package.json still names the previous stable release. Preserve newer package
+// versions once that release line ships; prereleases describe their GA surface.
 const PACKAGE_VERSION = require('../package.json').version;
-const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
+const PACKAGE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
   ? `${semver.major(PACKAGE_VERSION)}.${semver.minor(PACKAGE_VERSION)}.0`
   : PACKAGE_VERSION;
+const ACTIVE_SURFACE_VERSION = semver.rsort([PACKAGE_SURFACE_VERSION, '3.3.0'])[0];
+const ACTIVE_RELEASE_LINE = `${semver.major(ACTIVE_SURFACE_VERSION)}.${semver.minor(ACTIVE_SURFACE_VERSION)}`;
 // Macro occurrence contracts and representation-set resolution add shared,
 // structurally enforced graphs to media-buy tasks. The 3.2 tracker contract
 // adds one seller-bound destination contract to build_creative; keep that
@@ -1632,11 +1632,13 @@ test('comply-test-controller projected schema uses embedded-resource refs, not r
   }
 });
 
-test('generated production profile exposes the active 3.2 surface without compliance annotations', () => {
+test('generated production profile exposes the active surface without compliance annotations', () => {
   assert.ok(fs.existsSync(PRODUCTION_PROFILE_DIR), 'production profile is missing');
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
   const profile = readJson(path.join(PRODUCTION_PROFILE_DIR, 'manifest.json'));
 
+  assert.equal(canonicalManifest.tools.get_creative_addons.added_in, '3.3.0');
+  assert.ok(profile.tools.get_creative_addons);
   assert.equal(profile.profile, 'production');
   assert.equal(profile.surface_version, ACTIVE_SURFACE_VERSION);
   assert.equal(profile.annotation_mode, 'structural');
@@ -1793,7 +1795,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
     assert.equal(profile.profile, profileName);
     assert.equal(profile.profile_kind, 'active-role-catalog');
     assert.equal(profile.surface_version, ACTIVE_SURFACE_VERSION);
-    assert.equal(profile.compatibility_scope, 'active-3.2-only');
+    assert.equal(profile.compatibility_scope, `active-${ACTIVE_RELEASE_LINE}-only`);
     assert.equal(profile.annotation_mode, 'structural');
     assert.deepEqual(profile.schema_fields, ['inputSchema', 'outputSchema']);
     assert.deepEqual(profile.filters, {
@@ -1806,6 +1808,8 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
 
     assert.equal(modelContext.profile, profileName);
     assert.equal(modelContext.view, 'client-prompt-inputs');
+    assert.equal(modelContext.surface_version, ACTIVE_SURFACE_VERSION);
+    assert.equal(modelContext.compatibility_scope, `active-${ACTIVE_RELEASE_LINE}-only`);
     assert.equal(modelContext.annotation_mode, 'model-context');
     assert.equal(modelContext.discovery_profile, '../manifest.json');
     assert.equal(
