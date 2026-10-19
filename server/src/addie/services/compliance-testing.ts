@@ -340,7 +340,7 @@ export async function comply(
       // Any other unknown id, including one a later release removed, keeps the
       // existing fail-closed behaviour: the retry is never attempted, or (for
       // a mixed declaration) throws again on the id that is still unknown.
-      overlayComplianceDir = complianceDirToleratingUnknownSpecialism(error, target);
+      overlayComplianceDir = await complianceDirToleratingUnknownSpecialism(error, target);
       if (!overlayComplianceDir) throw error;
       logger.warn(
         { agentUrl, version: target.version, err: error },
@@ -383,13 +383,13 @@ export const SPECIALISM_NOT_IN_RELEASE_NOTICE_CODE = 'specialism_not_in_complian
 export function complianceDirToleratingUnknownSpecialism(
   error: unknown,
   target: HostedComplianceTarget,
-): string | undefined {
+): Promise<string | undefined> {
   const info = classifyCapabilityResolutionError(error);
-  if (info?.kind !== 'unknown_specialism' || !info.specialism) return undefined;
+  if (info?.kind !== 'unknown_specialism' || !info.specialism) return Promise.resolve(undefined);
   // The classified id is agent-controlled. It only selects the overlay when it
   // matches a specialism our own compliance catalog says a later release
   // introduced, so an unrecognized or hostile id cannot silence grading.
-  if (!isForwardIntroducedSpecialism(target.version, info.specialism)) return undefined;
+  if (!isForwardIntroducedSpecialism(target.version, info.specialism)) return Promise.resolve(undefined);
   return complianceDirToleratingForwardIntroducedSpecialisms(target);
 }
 

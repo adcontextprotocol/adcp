@@ -9974,7 +9974,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         // to list, but it must not 422 the whole listing (#8269). Re-resolve
         // against the overlay that treats it as not applicable; any other
         // resolution fault still falls through to the fail-closed response.
-        const overlayDir = complianceDirToleratingUnknownSpecialism(initialErr, runTarget);
+        const overlayDir = await complianceDirToleratingUnknownSpecialism(initialErr, runTarget);
         if (overlayDir) {
           try {
             resolved = resolveStoryboardsForCapabilities(caps, { ...runOptions, complianceDir: overlayDir });

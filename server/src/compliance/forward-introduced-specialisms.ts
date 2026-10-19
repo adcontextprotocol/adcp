@@ -33,7 +33,8 @@
  * behaviour, so a typo or a hostile declaration cannot silence grading.
  */
 
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { cp, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -138,10 +139,10 @@ export function forwardIntroducedSpecialisms(targetVersion: string): ReadonlySet
 
   const knownByTargetRelease = new Set<string>(targetIds);
   const introducedLater = new Set<string>();
-  // A cache directory carrying some other prerelease label sorts below every
-  // release, so its specialisms land in the known set rather than the later
-  // one. That only ever shrinks what is tolerated, which is the safe direction.
-  for (const version of bundledComplianceVersions()) {
+  // Released caches only. `dist/compliance/latest` is the mutable development
+  // output, and a cache directory carrying some other prerelease label has no
+  // defined order, so neither may decide what a release introduced.
+  for (const version of bundledComplianceVersions().filter(candidate => EXACT_COMPLIANCE_VERSION_RE.test(candidate))) {
     const ids = specialismIdsForComplianceVersion(version);
     const target = compareComplianceVersions(version, targetVersion) <= 0
       ? knownByTargetRelease
@@ -174,65 +175,78 @@ export function declaredSpecialismsNotApplicableForTarget(
   return [...notApplicable].sort();
 }
 
-const overlayDirByVersion = new Map<string, string>();
+const overlayDirByVersion = new Map<string, Promise<string | undefined>>();
 
 /**
  * A compliance cache directory for `target` whose index also lists every
  * specialism introduced after it, so capability resolution reports them as an
- * empty bundle instead of throwing. Returns `undefined` when the target is the
- * newest release (nothing to tolerate) or the overlay cannot be created, in
+ * empty bundle instead of throwing. Resolves to `undefined` when the target is
+ * the newest release (nothing to tolerate) or the overlay cannot be staged, in
  * which case callers keep the existing fail-closed behaviour.
  *
- * The overlay is created at most once per process per target version, inside a
- * `mkdtemp` directory so no other local user can pre-create or swap the path
- * the grader loads storyboards from. It is a few megabytes per graded line
- * (2 MB for 3.0, 4 MB for 3.1; the newest line needs none), and the process
- * has at most one per line, so it is left for the container's temp lifecycle
- * rather than reference-counted.
+ * Staged at most once per process per target version, inside a `mkdtemp`
+ * directory so no other local user can pre-create or swap the path the grader
+ * loads storyboards from. The in-flight promise is what gets memoized, so
+ * concurrent runs on the same line share one copy rather than racing two.
+ *
+ * The copy is async because `comply()` is reachable from in-process HTTP
+ * handlers: a few megabytes of storyboards and test kits (2 MB for 3.0, 4 MB
+ * for 3.1; the newest line needs none) would stall the shared event loop if
+ * copied synchronously. It is left for the container's temp lifecycle rather
+ * than reference-counted.
  */
 export function complianceDirToleratingForwardIntroducedSpecialisms(
   target: HostedComplianceTarget,
-): string | undefined {
+): Promise<string | undefined> {
   const forward = forwardIntroducedSpecialisms(target.version);
-  if (forward.size === 0) return undefined;
+  if (forward.size === 0) return Promise.resolve(undefined);
 
   const cached = overlayDirByVersion.get(target.version);
   if (cached) return cached;
 
-  try {
-    const overlayDir = mkdtempSync(join(tmpdir(), 'adcp-compliance-overlay-'));
-    cpSync(target.complianceDir, overlayDir, { recursive: true });
-
-    const index = JSON.parse(
-      readFileSync(join(target.complianceDir, 'index.json'), 'utf8'),
-    ) as ComplianceIndexFile & Record<string, unknown>;
-    index.specialisms = [
-      ...(index.specialisms ?? []),
-      // No `protocol`: the resolver only demands a declared parent protocol for
-      // specialisms it can actually grade, and this release defines neither the
-      // bundle nor (necessarily) the protocol it would roll up to.
-      // `preview` keeps the entry inside the index's documented status
-      // vocabulary (stable | preview | deprecated) and is the closest honest
-      // fit: claimable, no graded verdict. Nothing on the grading path reads
-      // it; the title carries the real reason.
-      ...[...forward].map(id => ({
-        id,
-        protocol: '',
-        title: 'Not defined in this compliance release',
-        status: 'preview',
-        required_tools: [],
-        path: `specialisms/${id}/`,
-      })),
-    ];
-    writeFileSync(join(overlayDir, 'index.json'), JSON.stringify(index), 'utf8');
-
-    overlayDirByVersion.set(target.version, overlayDir);
-    return overlayDir;
-  } catch (err) {
+  const staging = stageComplianceOverlay(target, forward).catch(err => {
     logger.error(
       { err, version: target.version },
       'Could not stage a compliance overlay for forward-introduced specialisms',
     );
+    // A transient failure (no space, read-only /tmp) must not poison every
+    // later run on this line.
+    overlayDirByVersion.delete(target.version);
     return undefined;
-  }
+  });
+  overlayDirByVersion.set(target.version, staging);
+  return staging;
+}
+
+async function stageComplianceOverlay(
+  target: HostedComplianceTarget,
+  forward: ReadonlySet<string>,
+): Promise<string> {
+  const overlayDir = await mkdtemp(join(tmpdir(), 'adcp-compliance-overlay-'));
+  await cp(target.complianceDir, overlayDir, { recursive: true });
+
+  const index = JSON.parse(
+    readFileSync(join(target.complianceDir, 'index.json'), 'utf8'),
+  ) as ComplianceIndexFile & Record<string, unknown>;
+  index.specialisms = [
+    ...(index.specialisms ?? []),
+    // No `protocol`: the resolver only demands a declared parent protocol for
+    // specialisms it can actually grade, and this release defines neither the
+    // bundle nor (necessarily) the protocol it would roll up to.
+    // `preview` keeps the entry inside the index's documented status
+    // vocabulary (stable | preview | deprecated) and is the closest honest
+    // fit: claimable, no graded verdict. Nothing on the grading path reads
+    // it; the title carries the real reason.
+    ...[...forward].map(id => ({
+      id,
+      protocol: '',
+      title: 'Not defined in this compliance release',
+      status: 'preview',
+      required_tools: [],
+      path: `specialisms/${id}/`,
+    })),
+  ];
+  await writeFile(join(overlayDir, 'index.json'), JSON.stringify(index), 'utf8');
+
+  return overlayDir;
 }

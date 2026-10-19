@@ -5555,7 +5555,7 @@ export function createMemberToolHandlers(
         // bundle to recommend, but it must not block the whole
         // recommendation (#8269). Re-resolve against the overlay that treats
         // it as not applicable; every other fault keeps the coaching below.
-        const overlayDir = complianceDirToleratingUnknownSpecialism(initialError, runTarget);
+        const overlayDir = await complianceDirToleratingUnknownSpecialism(initialError, runTarget);
         if (!overlayDir) throw initialError;
         resolvedBundles = resolveStoryboardsForCapabilities(
           caps,

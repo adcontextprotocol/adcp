@@ -47,14 +47,14 @@ describe('forwardIntroducedSpecialisms', () => {
     expect(isForwardIntroducedSpecialism(target30.version, '../../etc/passwd')).toBe(false);
   });
 
-  it('leaves deprecated specialisms the SDK aliases to a universal bundle alone', () => {
+  it('leaves deprecated specialisms the SDK aliases to a universal bundle alone', async () => {
     // `signed-requests` is still in the 3.0 and 3.1 enums but has no specialism
     // bundle in any release; @adcp/sdk honours it via
     // DEPRECATED_SPECIALISM_UNIVERSAL_ALIASES. Adding a synthetic index entry
     // for it would shadow that alias and turn a graded universal storyboard
     // into an empty bundle.
     expect(isForwardIntroducedSpecialism(target30.version, 'signed-requests')).toBe(false);
-    const overlayDir = complianceDirToleratingForwardIntroducedSpecialisms(target30)!;
+    const overlayDir = (await complianceDirToleratingForwardIntroducedSpecialisms(target30))!;
     const resolved = resolveAgainst(overlayDir, ['signed-requests']);
     expect(resolved.storyboards.map(sb => sb.id)).toContain('signed_requests');
   });
@@ -65,9 +65,9 @@ describe('forwardIntroducedSpecialisms', () => {
     expect([...forwardIntroducedSpecialisms('not-a-version')]).toEqual([]);
   });
 
-  it('has nothing to tolerate on the newest graded line', () => {
+  it('has nothing to tolerate on the newest graded line', async () => {
     expect([...forwardIntroducedSpecialisms(target32.version)]).toEqual([]);
-    expect(complianceDirToleratingForwardIntroducedSpecialisms(target32)).toBeUndefined();
+    await expect(complianceDirToleratingForwardIntroducedSpecialisms(target32)).resolves.toBeUndefined();
   });
 
   it('reports declared specialisms the graded release predates, deduplicated', () => {
@@ -89,12 +89,14 @@ describe('capability resolution against a 3.0 target', () => {
       .toThrow(/no bundle exists/);
   });
 
-  it('grades the rest of the run with a 3.1-only specialism declared', () => {
-    const overlayDir = complianceDirToleratingForwardIntroducedSpecialisms(target30);
+  it('grades the rest of the run with a 3.1-only specialism declared', async () => {
+    const overlayDir = await complianceDirToleratingForwardIntroducedSpecialisms(target30);
     expect(overlayDir).toBeTruthy();
 
     const baseline = resolveAgainst(target30.complianceDir, ['sales-guaranteed']);
     const tolerated = resolveAgainst(overlayDir!, ['sales-guaranteed', 'sponsored-intelligence']);
+    // Concurrent runs on the same line share one staged copy.
+    expect(await complianceDirToleratingForwardIntroducedSpecialisms(target30)).toBe(overlayDir);
 
     // Every storyboard the agent would have been graded on still runs.
     expect(tolerated.storyboards.map(sb => sb.id).sort())
@@ -110,8 +112,8 @@ describe('capability resolution against a 3.0 target', () => {
       .toBeGreaterThan(0);
   });
 
-  it('keeps failing closed on a specialism no release defines', () => {
-    const overlayDir = complianceDirToleratingForwardIntroducedSpecialisms(target30)!;
+  it('keeps failing closed on a specialism no release defines', async () => {
+    const overlayDir = (await complianceDirToleratingForwardIntroducedSpecialisms(target30))!;
     expect(() => resolveAgainst(overlayDir, ['definitely-not-a-specialism']))
       .toThrow(CapabilityResolutionError);
     try {
@@ -122,8 +124,8 @@ describe('capability resolution against a 3.0 target', () => {
     }
   });
 
-  it('leaves a known specialism unchanged', () => {
-    const overlayDir = complianceDirToleratingForwardIntroducedSpecialisms(target30)!;
+  it('leaves a known specialism unchanged', async () => {
+    const overlayDir = (await complianceDirToleratingForwardIntroducedSpecialisms(target30))!;
     const direct = resolveAgainst(target30.complianceDir, ['sales-guaranteed']);
     const viaOverlay = resolveAgainst(overlayDir, ['sales-guaranteed']);
     expect(viaOverlay.storyboards.map(sb => sb.id)).toEqual(direct.storyboards.map(sb => sb.id));
@@ -131,12 +133,12 @@ describe('capability resolution against a 3.0 target', () => {
       .toEqual(direct.bundles.map(bundle => `${bundle.ref.kind}:${bundle.ref.id}`));
   });
 
-  it('keeps declared test kits physically inside the overlay root', () => {
+  it('keeps declared test kits physically inside the overlay root', async () => {
     // @adcp/sdk resolves a storyboard's declared prerequisites.test_kit and
     // requires the realpath to sit under the realpath of complianceDir. A
     // symlinked overlay resolves back into dist/ and throws mid-run, which
     // would void the run this fix exists to rescue.
-    const overlayDir = complianceDirToleratingForwardIntroducedSpecialisms(target30)!;
+    const overlayDir = (await complianceDirToleratingForwardIntroducedSpecialisms(target30))!;
     const storyboard = loadStoryboardFile(
       join(target30.complianceDir, 'protocols', 'media-buy', 'index.yaml'),
     ) as { prerequisites?: { test_kit?: string } };
@@ -151,8 +153,8 @@ describe('capability resolution against a 3.0 target', () => {
     );
   });
 
-  it('never writes into the released compliance artifact', () => {
-    complianceDirToleratingForwardIntroducedSpecialisms(target30);
+  it('never writes into the released compliance artifact', async () => {
+    await complianceDirToleratingForwardIntroducedSpecialisms(target30);
     const released = JSON.parse(
       readFileSync(join(target30.complianceDir, 'index.json'), 'utf8'),
     ) as { specialisms: Array<{ id: string }> };
