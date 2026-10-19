@@ -55,6 +55,7 @@ import {
   SAMPLE_BRIEFS,
   classifyCapabilityResolutionError,
   classifyCapabilityResolutionErrorWithDeclaredProtocols,
+  complianceDirToleratingUnknownSpecialism,
   presentCapabilityResolutionError,
   complianceResultToDbInput,
   loadComplianceIndex,
@@ -5547,8 +5548,20 @@ export function createMemberToolHandlers(
         major_versions: profile?.adcp_major_versions,
         supported_versions: profile?.adcp_supported_versions,
       };
-      const res = resolveStoryboardsForCapabilities(caps, runOptions);
-      resolvedBundles = res.bundles;
+      try {
+        resolvedBundles = resolveStoryboardsForCapabilities(caps, runOptions).bundles;
+      } catch (initialError) {
+        // A specialism AdCP introduced after this target's release has no
+        // bundle to recommend, but it must not block the whole
+        // recommendation (#8269). Re-resolve against the overlay that treats
+        // it as not applicable; every other fault keeps the coaching below.
+        const overlayDir = complianceDirToleratingUnknownSpecialism(initialError, runTarget);
+        if (!overlayDir) throw initialError;
+        resolvedBundles = resolveStoryboardsForCapabilities(
+          caps,
+          { ...runOptions, complianceDir: overlayDir },
+        ).bundles;
+      }
     } catch (error) {
       const capsError = classifyCapabilityResolutionError(error, supportedProtocols);
       // specialism ids came from the untrusted agent — fence them so a hostile

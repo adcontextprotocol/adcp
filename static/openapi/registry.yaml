@@ -874,6 +874,11 @@ components:
           type:
             - string
             - "null"
+        tolerated_undefined_specialisms:
+          type: array
+          items:
+            type: string
+          description: Declared specialisms the graded compliance release does not define. Capability resolution skipped them instead of voiding the run; they were not graded. Absent on ordinary runs.
       required:
         - grading_policy_version
         - compliance_bundle_version
@@ -4478,7 +4483,8 @@ components:
               - failing
               - untested
               - unknown
-          description: Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status
+              - not_applicable
+          description: Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status. `not_applicable` means AdCP introduced the specialism after the compliance release this run graded, so it could not be tested.
         eligibility:
           $ref: "#/components/schemas/ComplianceEligibility"
         storyboard_statuses:
@@ -14272,6 +14278,11 @@ paths:
                         - storyboards
                   total_storyboards:
                     type: integer
+                  specialisms_not_applicable:
+                    type: array
+                    items:
+                      type: string
+                    description: Declared specialisms AdCP introduced after this compliance release. They have no bundle to run here, so they are listed separately instead of failing resolution.
                 required:
                   - agent_url
                   - requested_compliance_target
