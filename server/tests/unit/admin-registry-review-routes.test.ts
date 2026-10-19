@@ -370,10 +370,14 @@ describe('admin registry review routes', () => {
         .expect(200);
 
       expect(res.body.restored_revision).toBe(7);
-      expect(mocks.rollbackBrand).toHaveBeenCalledWith('acme.example', 7, expect.objectContaining({
-        user_id: 'user_mod',
-        email: 'mod@example.com',
-      }));
+      expect(mocks.rollbackBrand).toHaveBeenCalledWith(
+        'acme.example',
+        7,
+        expect.objectContaining({ user_id: 'user_mod', email: 'mod@example.com' }),
+        // The pre-check is the friendly error; the in-transaction guard
+        // is the boundary two moderators actually race on.
+        { onlyIfNoRollbackSince: true },
+      );
       // Items are closed by the revision the rollback created, not by
       // the list read before it, so an edit that lands mid-flight is
       // covered rather than left with a poisoned revert target.
@@ -400,7 +404,9 @@ describe('admin registry review routes', () => {
         .send({ action: 'revert' })
         .expect(200);
 
-      expect(mocks.rollbackBrand).toHaveBeenCalledWith('acme.example', 5, expect.anything());
+      expect(mocks.rollbackBrand).toHaveBeenCalledWith(
+        'acme.example', 5, expect.anything(), { onlyIfNoRollbackSince: true },
+      );
       expect(res.body.restored_revision).toBe(5);
       expect(res.body.resolved_items).toBe(3);
       expect(mocks.notifyResolved).toHaveBeenCalledWith(expect.objectContaining({
@@ -422,7 +428,9 @@ describe('admin registry review routes', () => {
         .send({ action: 'revert' })
         .expect(200);
 
-      expect(mocks.rollbackBrand).toHaveBeenCalledWith('acme.example', 4, expect.anything());
+      expect(mocks.rollbackBrand).toHaveBeenCalledWith(
+        'acme.example', 4, expect.anything(), { onlyIfNoRollbackSince: true },
+      );
     });
 
     it('reverts a property edit through the property rollback path', async () => {
@@ -435,7 +443,9 @@ describe('admin registry review routes', () => {
         .send({ action: 'revert' })
         .expect(200);
 
-      expect(mocks.rollbackProperty).toHaveBeenCalledWith('news.example', 2, expect.anything());
+      expect(mocks.rollbackProperty).toHaveBeenCalledWith(
+        'news.example', 2, expect.anything(), { onlyIfNoRollbackSince: true },
+      );
     });
 
     it('keeps every flagged edit on the record without touching it', async () => {
@@ -509,6 +519,40 @@ describe('admin registry review routes', () => {
       expect(res.body.message).toMatch(/another moderator/i);
       expect(mocks.notifyResolved).not.toHaveBeenCalled();
       expect(mocks.releaseClaim).toHaveBeenCalledWith(ITEM_ID);
+    });
+
+    it('reports a lost race as a conflict rather than a server error', async () => {
+      // Two moderators can both clear the pre-check; only one holds
+      // the row lock, and the in-transaction guard stops the loser
+      // from restoring a revision above the winner's rollback.
+      const item = editItem();
+      mocks.claimItem.mockResolvedValue(item);
+      mocks.listOpenEdits.mockResolvedValue([item]);
+      mocks.rollbackBrand.mockRejectedValue(new Error('Cannot roll back brand past a later rollback'));
+
+      const res = await request(makeApp())
+        .post(`/api/admin/registry-review/items/${ITEM_ID}`)
+        .send({ action: 'revert' })
+        .expect(409);
+
+      expect(res.body.error).toMatch(/already rolled back/i);
+      expect(mocks.resolveReverted).not.toHaveBeenCalled();
+      expect(mocks.releaseClaim).toHaveBeenCalledWith(ITEM_ID);
+    });
+
+    it('records a keep as dismissed when the record was already rolled back past the edits', async () => {
+      // The revert path refuses this item, so "keep" is the only way
+      // to clear it — and it is not an approval of the content.
+      mocks.claimItem.mockResolvedValue(editItem({ revision_number: 5 }));
+      mocks.listOpenEdits.mockResolvedValue([editItem({ revision_number: 5 })]);
+      mocks.rollbackLandedAfter.mockResolvedValue(true);
+
+      const res = await request(makeApp())
+        .post(`/api/admin/registry-review/items/${ITEM_ID}`)
+        .send({ action: 'approve' })
+        .expect(200);
+
+      expect(res.body.resolution).toBe('dismissed');
     });
 
     it('releases the claim and resolves nothing when the revert fails', async () => {

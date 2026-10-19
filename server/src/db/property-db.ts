@@ -743,7 +743,9 @@ export class PropertyDatabase {
   async rollbackProperty(
     domain: string,
     toRevisionNumber: number,
-    editor: { user_id: string; email?: string; name?: string }
+    editor: { user_id: string; email?: string; name?: string },
+    /** See {@link BrandDatabase.rollbackBrand} (adcp#8338). */
+    options?: { onlyIfNoRollbackSince?: boolean },
   ): Promise<{ property: HostedProperty; revision_number: number }> {
     const client = await getClient();
     try {
@@ -780,6 +782,16 @@ export class PropertyDatabase {
       }
       if (currentResult.rows[0].review_status === 'pending') {
         throw new Error('Cannot roll back property pending review');
+      }
+      if (options?.onlyIfNoRollbackSince) {
+        const since = await client.query(
+          `SELECT 1 FROM property_revisions
+            WHERE publisher_domain = $1 AND is_rollback AND revision_number > $2 LIMIT 1`,
+          [domain.toLowerCase(), toRevisionNumber],
+        );
+        if ((since.rowCount ?? 0) > 0) {
+          throw new Error('Cannot roll back property past a later rollback');
+        }
       }
 
       // Get next revision number

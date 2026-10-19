@@ -491,7 +491,12 @@ export async function resolveOpenRegistryEditItemsForRecord(
  * vandalism.
  *
  * Items with no revision number stay open: nothing can assert what
- * state an unknown revision belongs to.
+ * state an unknown revision belongs to. Note that the open-item index
+ * keys on `COALESCE(revision_number, 0)`, so several *unrevertable*
+ * edits on one record collapse into a single row and only the latest
+ * keeps its detail — the one place the "every covered edit is on the
+ * card" guarantee does not hold. It needs a rollback to have already
+ * landed, and the card points the moderator at the record itself.
  *
  * Deliberately ignores claims. The rollback is a fact about the record,
  * so an item another moderator was holding is decided whether or not
@@ -767,9 +772,13 @@ function renderCoveredEdits(value: unknown): CoveredEdit[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, MAX_COVERED_EDITS).map((entry) => {
     const row = (entry ?? {}) as Record<string, unknown>;
-    const revision = Number(row.revision_number);
+    // `Number(null)` is 0, which would render an unrevertable edit as
+    // "revision 0".
+    const revision = row.revision_number === null || row.revision_number === undefined
+      ? null
+      : Number(row.revision_number);
     return {
-      revision_number: Number.isInteger(revision) ? revision : null,
+      revision_number: revision !== null && Number.isInteger(revision) ? revision : null,
       submitter_email: cap(row.submitter_email as string | null, 255),
       edit_summary: cap(row.edit_summary as string | null, EDIT_SUMMARY_MAX),
       verdict: (row.verdict as RegistryReviewVerdict | null) ?? null,

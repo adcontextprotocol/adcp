@@ -306,12 +306,18 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
         // The queue shows one row per record, so keeping is a decision
         // about all of that record's flagged edits.
         const openEdits = await listOpenRegistryEditItemsForRecord(item.entity_type, item.domain);
+        const earliest = openEdits
+          .map((candidate) => Number(candidate.revision_number))
+          .filter((revision) => revision >= 1)
+          .sort((a, b) => a - b)[0];
         // Vandalism nobody could roll back is not "approved" — saying so
         // would put a moderator's name behind content they only failed
-        // to undo.
-        const resolution = openEdits.some((candidate) => Number(candidate.revision_number) >= 1)
-          ? 'approved' as const
-          : 'dismissed' as const;
+        // to undo. That covers both an edit with no revision at all and
+        // one whose record was already rolled back past it, which the
+        // revert path refuses.
+        const revertable = earliest !== undefined
+          && !(await rollbackLandedAfter(item.entity_type, item.domain, earliest));
+        const resolution = revertable ? 'approved' as const : 'dismissed' as const;
         const resolvedItems = await resolveOpenRegistryEditItemsForRecord(
           item.entity_type, item.domain, resolution, moderator, note,
         );
@@ -402,11 +408,23 @@ export function setupRegistryReviewRoutes(pageRouter: Router, apiRouter: Router)
           email: moderator.email ?? undefined,
           name: moderatorName(req) || moderator.email || moderator.user_id,
         };
+        // The pre-check above is the friendly error; this is the
+        // boundary. Two moderators on one record can both pass the
+        // check and only one can hold the row lock.
+        const guard = { onlyIfNoRollbackSince: true };
         rollbackRevision = item.entity_type === 'brand'
-          ? (await brandDb.rollbackBrand(item.domain, toRevision, rollbackEditor)).revision_number
-          : (await propertyDb.rollbackProperty(item.domain, toRevision, rollbackEditor)).revision_number;
+          ? (await brandDb.rollbackBrand(item.domain, toRevision, rollbackEditor, guard)).revision_number
+          : (await propertyDb.rollbackProperty(item.domain, toRevision, rollbackEditor, guard)).revision_number;
       } catch (revertError) {
         await releaseClaim(itemId);
+        const message = revertError instanceof Error ? revertError.message : '';
+        if (message.includes('past a later rollback')) {
+          logger.warn({ itemId, domain: item.domain }, 'Registry review revert lost to a concurrent rollback');
+          return res.status(409).json({
+            error: 'This record was already rolled back past that revision',
+            message: 'Another moderator reverted it first. Reload the queue.',
+          });
+        }
         logger.error({ err: revertError, itemId, domain: item.domain }, 'Registry review revert failed');
         return res.status(500).json({ error: 'Failed to revert the edit' });
       }

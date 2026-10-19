@@ -665,6 +665,31 @@ describe('registry review queue (Postgres)', () => {
       .rejects.toThrow(/authoritative/i);
   });
 
+  it('refuses a rollback that would restore a revision above a later rollback', async () => {
+    // Two moderators can both clear the route's pre-check; only one
+    // holds the row lock, so the guard has to live in the transaction.
+    await brandDb.createDiscoveredBrand(
+      { domain: EDIT_DOMAIN, brand_name: 'Acme Corp', source_type: 'community' },
+      { user_id: 'user_submitter', email: 'submitter@example.com' },
+    );
+    await brandDb.approveBrand(EDIT_DOMAIN);
+    await brandDb.editDiscoveredBrand(EDIT_DOMAIN, {
+      brand_name: 'Vandalised',
+      edit_summary: 'vandalism',
+      editor_user_id: 'user_editor',
+    });
+    await brandDb.rollbackBrand(EDIT_DOMAIN, 1, { user_id: 'user_first_moderator' });
+
+    await expect(brandDb.rollbackBrand(
+      EDIT_DOMAIN, 1, { user_id: 'user_second_moderator' }, { onlyIfNoRollbackSince: true },
+    )).rejects.toThrow(/past a later rollback/);
+
+    // Without the option the primitive still allows a deliberate
+    // roll-back-further by an admin.
+    await expect(brandDb.rollbackBrand(EDIT_DOMAIN, 1, { user_id: 'user_second_moderator' }))
+      .resolves.toBeTruthy();
+  });
+
   it('runs the operational diagnostic against the real schema', async () => {
     // The unit test mocks the pool, so this is where the invariant's SQL
     // — the shared backlog aggregate, including the submitter predicate
@@ -726,9 +751,35 @@ describe('registry review queue (Postgres)', () => {
     expect(after.pending_brands).toBe(before.pending_brands + 1);
     expect(after.pending_properties).toBe(before.pending_properties + 1);
     expect(after.flagged_edits).toBe(before.flagged_edits + 1);
+    expect(after.flagged_edit_records).toBe(before.flagged_edit_records + 1);
     expect(after.pending_records).toBe(after.pending_brands + after.pending_properties);
-    expect(after.total).toBe(after.pending_records + after.flagged_edits);
+    // `total` counts decisions, which is what the queue lists — so the
+    // page's "showing N of M" cannot disagree with its own list.
+    expect(after.total).toBe(after.pending_records + after.flagged_edit_records);
     // The oldest wait is what makes an outage-driven backlog obvious.
     expect(after.oldest_age_hours).toBeGreaterThanOrEqual(72);
+  });
+
+  it('counts stacked edits on one record as one decision', async () => {
+    const before = await getRegistryReviewBacklog();
+
+    for (const revision of [2, 3, 4]) {
+      await recordRegistryReviewOutcome({
+        entity_type: 'brand',
+        domain: EDIT_DOMAIN,
+        submission_kind: 'edit',
+        revision_number: revision,
+        submitter_user_id: 'user_editor',
+        verdict: 'needs_human_review',
+      });
+    }
+
+    const after = await getRegistryReviewBacklog();
+
+    expect(after.flagged_edits).toBe(before.flagged_edits + 3);
+    expect(after.flagged_edit_records).toBe(before.flagged_edit_records + 1);
+    expect(after.total).toBe(before.total + 1);
+    // One row, one decision, one number in the header.
+    expect(await ourQueue()).toHaveLength(1);
   });
 });

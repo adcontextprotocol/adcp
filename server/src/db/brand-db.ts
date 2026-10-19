@@ -1911,7 +1911,17 @@ export class BrandDatabase {
   async rollbackBrand(
     domain: string,
     toRevisionNumber: number,
-    editor: { user_id: string; email?: string; name?: string }
+    editor: { user_id: string; email?: string; name?: string },
+    /**
+     * `onlyIfNoRollbackSince` refuses when a rollback has already
+     * restored the record past `toRevisionNumber`. Checked inside this
+     * transaction, after the row lock, because a caller that checks
+     * first and rolls back second can be overtaken: the moderation
+     * queue's revert is exactly that shape, and restoring a revision
+     * above an intervening rollback puts the undone edits back
+     * (adcp#8338).
+     */
+    options?: { onlyIfNoRollbackSince?: boolean },
   ): Promise<{ brand: DiscoveredBrand; revision_number: number }> {
     const canonicalDomain = domain.toLowerCase();
     const client = await getClient();
@@ -1946,6 +1956,16 @@ export class BrandDatabase {
       }
       if (current.review_status === 'pending') {
         throw new Error('Cannot roll back brand pending review');
+      }
+      if (options?.onlyIfNoRollbackSince) {
+        const since = await client.query(
+          `SELECT 1 FROM brand_revisions
+            WHERE brand_domain = $1 AND is_rollback AND revision_number > $2 LIMIT 1`,
+          [canonicalDomain, toRevisionNumber],
+        );
+        if ((since.rowCount ?? 0) > 0) {
+          throw new Error('Cannot roll back brand past a later rollback');
+        }
       }
 
       // Get next revision number
