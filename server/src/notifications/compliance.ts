@@ -11,6 +11,7 @@ import { notifyUser } from './notification-service.js';
 import { NotificationDatabase } from '../db/notification-db.js';
 import { CatalogEventsDatabase } from '../db/catalog-events-db.js';
 import { query } from '../db/client.js';
+import { registryAgentUrlKeySpellings } from '../db/registry-agent-url-key.js';
 import { ComplianceDatabase, type ComplianceStatus, type TrackSummaryEntry, type StoryboardStatusEntry } from '../db/compliance-db.js';
 import type { SlackBlockMessage } from '../slack/types.js';
 
@@ -31,36 +32,78 @@ interface ComplianceChangeInput {
 }
 
 /**
- * Find user IDs for the organization that owns an agent URL.
- * Looks up member_profiles where the agents JSONB contains the URL,
- * then finds org members to notify.
+ * Find user IDs for the organizations that own an agent URL.
+ * Looks up member_profiles whose `agents` JSONB holds ANY spelling of the
+ * agent's registry identity, then finds org members to notify (#8321).
+ *
+ * The notifiers are handed the registry identity key, which folds a trailing
+ * slash (#7830): `/mcp` and `/mcp/` are one agent. The owner's profile can
+ * still hold the other spelling. Most writers key `agents[].url` before
+ * storing it (`routes/member-agents.ts`, the member create/update paths in
+ * `routes/member-profiles.ts`), but rows predate the fold and the admin
+ * `PUT /api/admin/member-profiles/:id` handler still writes `agents` through
+ * unkeyed (#8322) — so unfolded rows both exist and are still being created.
+ * Matching the raw URL alone left those owners with no DM at all: compliance,
+ * verification and the heartbeat-timeout notice each failed closed and
+ * silently. Ownership resolution keys its input
+ * (`services/agent-ownership.ts`); this keys both sides, since SQL may not
+ * fold the stored one.
+ *
+ * `declared_url` is deliberately not consulted: it is the AUTHORIZATION
+ * spelling (#7829) and must never decide identity.
  */
 async function resolveAgentOwnerUserIds(agentUrl: string): Promise<string[]> {
   try {
+    const spellings = registryAgentUrlKeySpellings(agentUrl);
+    // The helper never returns an empty set; keep the invariant local so an
+    // empty one could not assemble `WHERE  LIMIT 5` and be swallowed below.
+    if (spellings.length === 0) return [];
+    // One `@>` per spelling, OR'd, so the GIN index on member_profiles.agents
+    // still serves the lookup. The clause is built from placeholder indexes
+    // only — no caller-supplied text reaches the SQL text. Parenthesized so a
+    // future `AND` cannot silently rebind against the `OR` and widen it.
+    const containment = spellings
+      .map((_, i) => `mp.agents @> $${i + 1}::jsonb`)
+      .join(' OR ');
+    // DISTINCT because two orgs can co-claim one agent and a user can belong
+    // to both; ORDER BY because the cap below is otherwise planner-dependent,
+    // and silently dropping the true owner for a co-claimant is the same
+    // fail-quiet class this fix exists to close.
     const result = await query(
-      `SELECT om.workos_user_id
+      `SELECT DISTINCT om.workos_user_id
        FROM member_profiles mp
        JOIN organization_memberships om
          ON om.workos_organization_id = mp.workos_organization_id
-       WHERE mp.agents @> $1::jsonb
+       WHERE (${containment})
+       ORDER BY om.workos_user_id
        LIMIT 5`,
-      [JSON.stringify([{ url: agentUrl }])],
+      spellings.map((spelling) => JSON.stringify([{ url: spelling }])),
     );
     return result.rows.map((r: any) => r.workos_user_id);
   } catch (error) {
-    logger.debug({ error, agentUrl }, 'Could not resolve agent owner');
+    // Warn, not debug: the callers treat an empty result as "nobody owns this
+    // agent", so a swallowed query failure is indistinguishable from a
+    // correct silence — the same fail-quiet mode #8321 is about.
+    logger.warn({ error, agentUrl }, 'Could not resolve agent owner');
     return [];
   }
 }
 
+/**
+ * Whether any owner lists this agent publicly. Folds the stored spelling the
+ * same way `resolveAgentOwnerUserIds` does: the shared-channel post names the
+ * agent's hostname, and an agent its owner published as `/mcp/` is public
+ * whichever spelling the heartbeat reports it under. Leaving this one raw
+ * would suppress the post for exactly the agents the fix reaches.
+ */
 async function isAgentPublic(agentUrl: string): Promise<boolean> {
   try {
     const result = await query(
       `SELECT 1 FROM member_profiles mp
        CROSS JOIN LATERAL jsonb_array_elements(mp.agents) agent
-       WHERE agent->>'url' = $1 AND agent->>'visibility' = 'public'
+       WHERE agent->>'url' = ANY($1::text[]) AND agent->>'visibility' = 'public'
        LIMIT 1`,
-      [agentUrl],
+      [registryAgentUrlKeySpellings(agentUrl)],
     );
     return result.rowCount === 1;
   } catch {
