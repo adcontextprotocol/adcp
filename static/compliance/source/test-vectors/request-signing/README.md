@@ -46,7 +46,7 @@ test-vectors/request-signing/
 │   ├── 024-unquoted-string-param.json     → request_signature_header_malformed (step 1; RFC 8941 §3.3 string values must be quoted)
 │   ├── 025-jwk-alg-crv-mismatch.json      → request_signature_key_purpose_invalid (step 8; alg=EdDSA with crv=P-256 is impossible per RFC 8037)
 │   ├── 026-non-ascii-host.json            → request_target_uri_malformed (step 10; raw IDN U-label on wire; MUST be A-label; real signature over the A-label base)
-│   ├── 027-webhook-registration-authentication-unsigned.json → request_signature_required (webhook-reg with push_notification_config.authentication over bearer on a seller supporting signing; operation NOT in required_for)
+│   ├── 027-webhook-registration-authentication-unsigned.json → request_signature_required (webhook-reg with push_notification_config.authentication over bearer on a seller supporting signing; operation NOT in required_for; transitional deprecated condition (b), graded only when `webhook_signing.legacy_hmac_fallback` is `true`, skipped otherwise)
 │   ├── 028-unsigned-protocol-method-required.json → request_signature_required (unsigned `tasks/cancel` JSON-RPC POST; method is in `protocol_methods_required_for`)
 │   ├── 029-duplicate-signature-label.json → request_signature_header_malformed (step 1; RFC 9421 §4.2 / RFC 8941 §3.2 duplicate key on the `Signature` header)
 │   ├── 030-content-digest-key-case.json   → request_signature_header_malformed (step 1; RFC 8941 §3.1.2 keys are lowercase only — `SHA-256` is not a synonym of `sha-256`)

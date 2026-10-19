@@ -1,6 +1,6 @@
 {
   "name": "AdCP 3.2 webhook registration with push_notification_config.authentication over bearer (unsigned); operation NOT in required_for (Content-Digest sent)",
-  "spec_reference": "#webhook-security Downgrade and injection resistance — MUST require 9421 when authentication is present; AdCP 3.2 profile per #content-digest-and-proxy-compatibility and #adcp-rfc-9421-profile binary value encoding",
+  "spec_reference": "#webhook-callbacks Downgrade and injection resistance — deprecated condition (b): MUST require 9421 when authentication is present and the seller honors the per-request trigger (legacy_hmac_fallback true, no onboarding record). Transitional in 3.x, removed in 4.0; a seller with legacy_hmac_fallback false returns webhook_hmac_not_supported instead.; AdCP 3.2 profile per #content-digest-and-proxy-compatibility and #adcp-rfc-9421-profile binary value encoding",
   "signing_profile_version": "3.2",
   "reference_now": 1776520800,
   "request": {
