@@ -1354,7 +1354,7 @@ Verifiers MUST NOT accept signatures from a `keyid` they cannot resolve to a spe
 
 #### Agent resolution
 
-Under the RFC 9421 profile, every AdCP surface that verifies a signature by agent URL uses this one algorithm: request signing, webhook signing, governance JWS `iss`, designated-task response signing, and rights attestations. Requests and webhooks signed under the Web Bot Auth profile use [Web Bot Auth identities](#web-bot-auth-identities) instead. Surface sections define their own error codes and MAY add stricter selectors, such as a required `type` or an exact `id`. They MUST NOT define a looser way to match an agent or another way to pick its keys. TMP is not covered: its match-time signatures use publisher keys distributed through the property registry, as the [TMP specification](/docs/trusted-match/specification) defines.
+Under the RFC 9421 profile, every AdCP surface that verifies a signature by agent URL uses this one algorithm: request signing, webhook signing, governance JWS `iss`, designated-task response signing, and rights attestations. Requests and webhooks signed under the Web Bot Auth profile, and JWS artifacts from an issuer whose trust record lists its origin, use [Web Bot Auth identities](#web-bot-auth-identities) instead. Surface sections define their own error codes and MAY add stricter selectors, such as a required `type` or an exact `id`. They MUST NOT define a looser way to match an agent or another way to pick its keys. TMP is not covered: its match-time signatures use publisher keys distributed through the property registry, as the [TMP specification](/docs/trusted-match/specification) defines.
 
 Given agent URL `A`, a verifier first selects the brand.json that must list `A`. There are two selection rules, and each surface uses exactly one of them:
 
@@ -1497,7 +1497,7 @@ Each SDK ships a CLI for dev-loop debugging — `npx @adcp/sdk@latest resolve <u
 #### Web Bot Auth identities
 
 <Note>
-**Experimental in 3.3.** This section covers requests and webhooks signed under the Web Bot Auth profile (`web-bot-auth`). The profile's wire rules (the `Signature-Agent` header, signature parameters and algorithms, the key directory, the nonce and replay protection, and the failure statuses) are defined once, on the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) page ([#7894](https://github.com/adcontextprotocol/adcp/pull/7894)). This section covers identity, trust records, binding, and authorization, and does not restate them. JWS artifacts (governance context, designated-task response signing, rights attestations) stay on the RFC 9421 chain in 3.3. Advertising the profile (`web-bot-auth` in `request_signing.profiles` and `webhook_signing.profiles`) depends on [#7894](https://github.com/adcontextprotocol/adcp/pull/7894), which adds those capability fields; this section assumes them. Design: [`specs/agent-identity-3-3.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) R3, R3a, R4 and R9.
+**Experimental in 3.3.** This section covers requests and webhooks signed under the Web Bot Auth profile (`web-bot-auth`). The profile's wire rules (the `Signature-Agent` header, signature parameters and algorithms, the key directory, the nonce and replay protection, and the failure statuses) are defined once, on the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) page ([#7894](https://github.com/adcontextprotocol/adcp/pull/7894)). This section covers identity, trust records, binding, and authorization, and does not restate them. JWS artifacts (governance context, designated-task response signing, rights attestations) from a Web Bot Auth identity are verified with keys from its key directory, as the JWS artifacts rule under Coexistence below says ([#8299](https://github.com/adcontextprotocol/adcp/pull/8299)). Advertising the profile (`web-bot-auth` in `request_signing.profiles` and `webhook_signing.profiles`) depends on [#7894](https://github.com/adcontextprotocol/adcp/pull/7894), which adds those capability fields; this section assumes them. Design: [`specs/agent-identity-3-3.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) R3, R3a, R4 and R9.
 </Note>
 
 **Identity is an origin.** A Web Bot Auth identity is the [canonical origin](/docs/reference/url-canonicalization#canonical-origin) `O` named by the signature's covered `Signature-Agent` member. One agent per origin; a governance agent is its own agent.
@@ -1508,7 +1508,7 @@ Discovery failures and key removal follow WBA §6.10. A request the verifier can
 
 There is no capabilities fetch and no brand.json lookup, and verification creates no principal. A verified origin the seller has not bound is *identity-established*: it gets what an anonymous caller gets.
 
-**Evaluating the trust record.** The operator's trust record is evaluated when something is gated on it: binding a principal, evaluating a grant ([Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental)), or `open` onboarding. It is never evaluated on the signature path.
+**Evaluating the trust record.** The operator's trust record is evaluated when something is gated on it: binding a principal, evaluating a grant ([Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental)), or `open` onboarding. It is never evaluated on the request-signature path. For a JWS artifact, step 1 derives it to select the profile, as the JWS artifacts rule under Coexistence below says.
 
 1. **Derive it.** `R = https://{eTLD+1(host(O))}/.well-known/trust.json`, using a pinned, dated Public Suffix List snapshot that includes the ICANN and PRIVATE sections.
    - An `O` whose host is an IP literal or a public suffix, or has no defined eTLD+1, has no trust record.
@@ -1533,6 +1533,14 @@ Once identity is established, every authorization outcome uses the standard AdCP
 **Coexistence with the RFC 9421 profile.**
 - **Profile selection.** A signed message that carries `Signature-Agent` or the `web-bot-auth` tag is verified under the Web Bot Auth profile only, never under the RFC 9421 profile. An uncovered `Signature-Agent` member is never attributed to the signature.
 - **Unsigned requests.** The answer to an unsigned request for an operation in `required_for` is defined on the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) page, including when a verifier advertises both profiles.
+- **JWS artifacts.** For a JWS artifact, `O` is the canonical origin of the signing agent's URL: `iss` for a governance context, `agent_url` for designated-task response signing, and `rights_agent.url` for a rights attestation. When the trust record derived from `O` (step 1 of Evaluating the trust record) lists `O`, the verifier verifies the JWS with a key from `O`'s key directory, never under the RFC 9421 profile:
+  - `alg` is `EdDSA`, and `kid` is the key's JWK thumbprint;
+  - purpose separation is by origin, so the RFC 9421 key-purpose checks (`use`, `key_ops`, and `adcp_use`) do not apply;
+  - revocation is `O`'s list;
+  - for historical verification of a governance context, the verifier uses the existing governance key archive at `O` ([Revocation](#revocation));
+  - every other check of the surface is unchanged.
+
+  Profile selection never reads an unsigned field. A fetch failure is not absence, so it never selects the RFC 9421 profile. A JWS artifact from an issuer whose `O` no trust record lists is verified under the RFC 9421 profile, which stays fully functional through 3.x. Design: spec R4, as amended by [#8299](https://github.com/adcontextprotocol/adcp/pull/8299) and the decision record it adds.
 - **No downgrade.** Once a verifier has bound `O`, it refuses RFC 9421 signatures for any agent URL whose origin is `O`. Before binding, an operator ends RFC 9421 use for an agent by removing its brand.json entry and keys.
 - **Grants.** A 200 from a grantor's trust.json makes it the grantor's only source of grants, and brand.json `authorized_operators[]` is ignored, as `specs/brand-identity-trust-split.md` §No downgrade sets out.
 
