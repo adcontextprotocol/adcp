@@ -451,6 +451,28 @@
       "if": {
         "properties": {
           "scenario": {
+            "const": "simulate_later_proposal"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "account_id",
+              "opportunity_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
             "const": "simulate_budget_spend"
           }
         }
@@ -1010,6 +1032,14 @@
           "type": "string",
           "description": "Product to seed or prepare for deterministic compact lifecycle testing. Used by seed_product, seed_pricing_option, compact_product_lifecycle_probe prepare, compact_direct_buy_lifecycle_probe prepare, and definition_pin_probe prepare.",
           "x-entity": "product"
+        },
+        "opportunity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "description": "Open opportunity with later_proposals consent for which simulate_later_proposal makes the seller create one later proposal now, as it would after the creating task completed, including the proposal.created notification and any change-feed record. Experimental (media_buy.open_opportunities). The seller still enforces the consent window, max_count, and min_interval and fails the scenario when they forbid a proposal.",
+          "x-entity": "opportunity"
         },
         "proposal_id": {
           "type": "string",
@@ -1586,6 +1616,19 @@
             "amount": 150,
             "currency": "USD"
           }
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Make the seller create a later proposal for an open, consented opportunity",
+      "data": {
+        "scenario": "simulate_later_proposal",
+        "params": {
+          "account_id": "acc_nova_za",
+          "opportunity_id": "opp_nova_za_q4"
         },
         "account": {
           "sandbox": true
