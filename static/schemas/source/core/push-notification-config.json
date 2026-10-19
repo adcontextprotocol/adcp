@@ -57,5 +57,6 @@
   },
   "required": [
     "url"
-  ]
+  ],
+  "not": { "required": ["authentication", "signing_profile"] }
 }

@@ -131,6 +131,7 @@
     },
     "required": ["all_authorized_accounts"]
   },
+  "not": { "required": ["authentication", "signing_profile"] },
   "additionalProperties": false,
   "examples": [
     {

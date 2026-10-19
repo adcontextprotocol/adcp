@@ -257,7 +257,7 @@
         "authentication": {
           "type": "object",
           "deprecated": true,
-          "description": "Legacy authentication configuration for webhook delivery (A2A-compatible). Opts the receiver into Bearer or HMAC-SHA256 signing. Both schemes are deprecated; the preferred signing profile for new integrations is RFC 9421, where the seller signs with a key published at its brand.json agents[] entry and the buyer verifies against the seller's JWKS — no shared secret crosses the wire (see docs/building/by-layer/L1/security.mdx#webhook-callbacks). This field is required in AdCP 3.x; the requirement is removed in AdCP 4.0 when the default RFC 9421 path becomes the only path.",
+          "description": "Legacy authentication configuration for webhook delivery (A2A-compatible). Opts the receiver into Bearer or HMAC-SHA256 signing. Both schemes are deprecated; the preferred signing profile for new integrations is RFC 9421, where the seller signs with a key published at its brand.json agents[] entry and the buyer verifies against the seller's JWKS — no shared secret crosses the wire (see docs/building/by-layer/L1/security.mdx#webhook-callbacks). This field is required in AdCP 3.x unless `signing_profile` is present; the requirement is removed in AdCP 4.0 when the default RFC 9421 path becomes the only path.",
           "properties": {
             "schemes": {
               "type": "array",
@@ -296,6 +296,11 @@
           ],
           "description": "For batched delivery, how often to push artifacts. Required when delivery_mode is 'batched'."
         },
+        "signing_profile": {
+          "x-status": "experimental",
+          "$ref": "/schemas/enums/webhook-signing-profile.json",
+          "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the registration with `INVALID_REQUEST`. MUST NOT be combined with `authentication`."
+        },
         "sampling_rate": {
           "type": "number",
           "minimum": 0,
@@ -305,9 +310,13 @@
       },
       "required": [
         "url",
-        "authentication",
         "delivery_mode"
       ],
+      "anyOf": [
+        { "required": ["authentication"] },
+        { "required": ["signing_profile"] }
+      ],
+      "not": { "required": ["authentication", "signing_profile"] },
       "additionalProperties": true
     },
     "context": {

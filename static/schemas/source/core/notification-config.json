@@ -110,6 +110,7 @@
       }
     }
   ],
+  "not": { "required": ["authentication", "signing_profile"] },
   "additionalProperties": false,
   "examples": [
     {
