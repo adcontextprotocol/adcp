@@ -187,6 +187,12 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
   }));
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
+    // Cold schema compilation can leave the loopback connection idle longer
+    // than Node's default keep-alive window. Keep the fixture-owned socket
+    // available for the next MCP request; request/storyboard deadlines remain
+    // unchanged, and close() below destroys every owned connection.
+    srv.keepAliveTimeout = 90_000;
+    srv.headersTimeout = 95_000;
     const connections = new Set<Socket>();
     srv.on('connection', socket => {
       connections.add(socket);
@@ -266,8 +272,8 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([]);
  */
 const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
   [
-    'media_buy_seller/inline_creatives_without_sync/get_products_legacy_format',
-    'The optional legacy-format branch has no capability gate and therefore executes against the current training seller even though it publishes canonical format_options only. The canonical inline-creative branch remains graded. Remove when the runner gates this branch on an observed format_ids representation.',
+    'sales_broadcast_tv/expect_window_update_webhook',
+    'The training seller emits no delivery window_update webhooks: on AdCP 3.2 its synchronous create_media_buy completion is silent and it does not push delivery reports on simulated delivery. Every other step of the broadcast transaction is graded. Remove when the training agent emits C3 and C7 window_update webhooks to the registered push_notification_config.',
   ],
   [
     'governance_delivery_monitor/check_governance_drift',
@@ -307,6 +313,10 @@ const THREE_ZERO_COMPAT_KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new M
   [
     'brand_rights/acquire_rights',
     '3.0.13 compatibility run under @adcp/sdk 8.1 beta.13: frozen brand-rights response schema rejects the current training-agent rights envelope. Current-source brand coverage remains graded by the current matrix.',
+  ],
+  [
+    'webhook_emission/get_capabilities',
+    '@adcp/sdk 15.9.5 validates get_adcp_capabilities against the release the agent echoes (3.2 for a 3.0 pin), whose schema requires an https identity.brand_json_url. This runner swaps the canonical base to its http loopback server for webhook_emission, so the URL is http only here. The current matrix quarantines webhook_emission for the same loopback limits. Remove when the runner serves the agent over https or the current quarantine is lifted.',
   ],
 ]);
 

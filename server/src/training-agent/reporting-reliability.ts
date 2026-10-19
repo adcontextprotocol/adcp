@@ -751,7 +751,12 @@ export async function resolveReportingAccountDurably(
   for (const [key, ledger] of ledgers) {
     const [storedPrincipal, accountId] = key.split('\u001f');
     if (storedPrincipal !== principalScope || !accountId) continue;
-    const storedAccount = ledger.accountRefs.find(reference => accountScopeFromRef(reference) === scope);
+    // Mirror the DB lookup below: an account_id reference matches by id.
+    const storedAccount = account.account_id === undefined
+      ? ledger.accountRefs.find(reference => accountScopeFromRef(reference) === scope)
+      : account.account_id === accountId
+        ? ledger.accountRefs.find(reference => reference.account_id === undefined)
+        : undefined;
     if (storedAccount) return { accountId, account: structuredClone(storedAccount) };
   }
   if (!isDatabaseInitialized()) return undefined;
@@ -2005,7 +2010,7 @@ export function publishReliableReportingReconciledAdjustments(
   return { adjustments, disputed_observed_adjustment_sha256: '0'.repeat(64) };
 }
 
-function obligationId(accountId: string, config: CoreConfig, periodEnd: string): string {
+export function obligationId(accountId: string, config: Pick<CoreConfig, 'delivery_config_id' | 'delivery_config_version'>, periodEnd: string): string {
   return stableId('reporting-obligation', [accountId, config.delivery_config_id, String(config.delivery_config_version), periodEnd]);
 }
 
@@ -2636,6 +2641,28 @@ function zeroRowRevision(obligation: ReportingObligation, nowMs: number): Pendin
     control_totals: [],
     created_at: iso(nowMs),
   };
+}
+
+/** Older daily-source snapshots recorded the official close without its wire
+ * evidence. The pinned PT0S cutoff and retained publication time establish it;
+ * project those fields consistently without rewriting the committed snapshot. */
+function withTrainingFinality<T extends PendingReportingRevision>(revision: T): T {
+  const copy = structuredClone(revision);
+  if (revision.finality !== 'official'
+    || revision.report_definition_uri !== TRAINING_DEFINITION_URI
+    || revision.report_definition_sha256 !== TRAINING_DEFINITION_SHA256
+    || revision.report_definition_id !== 'training_delivery_summary_v1'
+    || revision.finality_basis !== undefined || revision.finality_policy_id !== undefined || revision.finalized_at !== undefined) return copy;
+  const definition = JSON.parse(TRAINING_REPORTING_DEFINITION_BYTES) as {
+    finality_policies: Array<{ finality_policy_id: string; basis: string; duration_after_period_end?: string }>;
+  };
+  if (!definition.finality_policies.some(policy => policy.finality_policy_id === 'training_snapshot'
+    && policy.basis === 'contractual_cutoff' && policy.duration_after_period_end === 'PT0S')) return copy;
+  const start = Date.parse(revision.period.start);
+  const end = Date.parse(revision.period.end);
+  const published = Date.parse(revision.created_at);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(published) || start >= end || published < end) return copy;
+  return { ...copy, finality_basis: 'contractual_cutoff', finality_policy_id: 'training_snapshot', finalized_at: revision.created_at };
 }
 
 function commitRevisionContent(
@@ -3754,6 +3781,7 @@ export function getReportingStatusForAccount(
     const hasMore = offset + page.length < revisionSnapshot.length;
     return {
       ...revisionCommon,
+      revision: withTrainingFinality(revisionCommon.revision as ReportingRevision),
       adjustments: page.filter((item): item is Extract<PageResource, { kind: 'adjustment' }> => item.kind === 'adjustment').map(item => item.adjustment),
       adjustment_receipts: page.filter((item): item is Extract<PageResource, { kind: 'adjustment_receipt' }> => item.kind === 'adjustment_receipt').map(item => item.adjustmentReceipt),
       consumer_statuses: page.filter((item): item is Extract<PageResource, { kind: 'consumer_status' }> => item.kind === 'consumer_status').map(item => item.consumerStatus),
@@ -3897,7 +3925,7 @@ export function getReportingStatusForAccount(
     status: 'completed',
     view: 'periods',
     periods: page.filter(item => item.kind === 'period').map(item => item.record.obligation),
-    revisions: page.filter(item => item.kind === 'revision').flatMap(item => item.record.revision ? [item.record.revision] : []),
+    revisions: page.filter(item => item.kind === 'revision').flatMap(item => item.record.revision ? [withTrainingFinality(item.record.revision)] : []),
     adjustments: page.filter((item): item is Extract<PageResource, { kind: 'adjustment' }> => item.kind === 'adjustment')
       .map(item => item.adjustment),
     adjustment_receipts: page
@@ -4006,6 +4034,36 @@ export async function captureReportingMediaBuyCandidateDurably(
   }, existingBinding?.account ?? account);
 }
 
+/** Read accepted-buy facts in the exact caller/account scope without a task-session dependency. */
+export async function reportingMediaBuyCandidatesForAccountDurably(
+  principal: string | undefined,
+  accountId: string,
+): Promise<ReportingMediaBuyCandidate[]> {
+  let ledger = ledgers.get(callerScope(principal, accountId));
+  if (isDatabaseInitialized()) {
+    const { rows } = await getPool().query<{ ledger: SerializedReportingLedger | string }>(
+      `SELECT ledger FROM training_reporting_ledgers WHERE principal_scope = $1 AND account_id = $2`,
+      [principal && principal.length > 0 ? principal : 'anonymous', accountId],
+    );
+    const stored = rows[0]?.ledger;
+    ledger = stored === undefined ? undefined : deserializeLedger(
+      typeof stored === 'string' ? JSON.parse(stored) as SerializedReportingLedger : stored,
+    );
+  }
+  const nowMs = Date.now();
+  return [...(ledger?.mediaBuyCandidates ?? [])].flatMap(([mediaBuyId, history]) => {
+    const accepted = candidateAt(history, nowMs);
+    return accepted ? [{
+      mediaBuyId,
+      startTime: accepted.start,
+      endTime: accepted.end,
+      knownAt: accepted.knownAt,
+      effectiveAt: accepted.effectiveAt,
+      packages: structuredClone(accepted.packages),
+    }] : [];
+  });
+}
+
 export async function validateReportingConfigurationReplacementDurably(
   principal: string | undefined,
   accountId: string,
@@ -4046,6 +4104,56 @@ export async function getReportingStatusForAccountDurably(
   });
 }
 
+/** Freeze an ordinary delivery read as the private canary's daily source snapshot. */
+export async function commitTrainingDailySourcePeriod(input: {
+  principal: string;
+  accountId: string;
+  sourceConfigId: string;
+  sourceConfigVersion: number;
+  mediaBuyIds: string[];
+  period: { start: string; end: string };
+  impressions: number;
+}): Promise<boolean> {
+  if (!isDatabaseInitialized()) throw new Error('Daily source publication requires the primary ledger.');
+  const start = Date.parse(input.period.start);
+  const end = Date.parse(input.period.end);
+  const now = Date.now();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start % DAY_MS !== 0
+    || end - start !== DAY_MS || end >= now || !Number.isSafeInteger(input.impressions)
+    || input.impressions < 0 || input.mediaBuyIds.length < 1 || input.mediaBuyIds.length > 10
+    || new Set(input.mediaBuyIds).size !== input.mediaBuyIds.length) return false;
+  return await withDurableReportingLedger(input.principal, input.accountId, true, () => {
+    const ledger = ledgerFor(input.principal, input.accountId);
+    // Conformance fixtures deliberately use virtual clocks and injected rows.
+    // They cannot supply the live private canary's source evidence.
+    if (ledger.virtualNow || ledger.integrityRecords) return false;
+    const stored = ledger.configs.get(generationKey({ delivery_config_id: input.sourceConfigId, delivery_config_version: input.sourceConfigVersion }));
+    if (!stored || !stored.config.active || stored.config.delivery_config_version !== input.sourceConfigVersion
+      || stored.config.offering_id !== 'analytics-daily-managed'
+      || stored.config.schedule.period_duration !== 'P1D' || stored.config.schedule.alignment !== 'utc'
+      || stored.config.required_finality !== 'official' || !('media_buy_ids' in stored.config.scope)
+      || canonicalize([...stored.config.scope.media_buy_ids].sort()) !== canonicalize([...input.mediaBuyIds].sort())) return false;
+    const record = recordsFor(input.principal, input.accountId, [stored], now).find(item => (
+      item.obligation.period.start === input.period.start && item.obligation.period.end === input.period.end
+    ));
+    if (!record || record.obligation.coverage?.status !== 'full'
+      || canonicalize([...record.obligation.media_buy_ids].sort()) !== canonicalize([...input.mediaBuyIds].sort())) return false;
+    // This offering publishes one snapshot; preserve its first committed bytes
+    // on another read or a process restart instead of rebinding its revision ID.
+    if (ledger.publishedRevisions.has(record.obligation.reporting_obligation_id)) return true;
+    const rows = [{ period_start: input.period.start, period_end: input.period.end, impressions: input.impressions }];
+    const revision = commitRevisionContent(ledger, withTrainingFinality({
+      ...zeroRowRevision(record.obligation, now),
+      finality: stored.config.required_finality,
+      row_count: rows.length,
+      control_totals: [{ name: 'impressions', value: String(input.impressions), value_type: 'integer', unit: 'impressions' }],
+    }), rows);
+    ledger.publishedRevisions.set(record.obligation.reporting_obligation_id, revision);
+    ledger.version += 1;
+    return true;
+  });
+}
+
 /**
  * Resolve immutable Core content by revision identity. Every retained Core
  * revision has committed authoritative rows, including explicit zero-row
@@ -4060,7 +4168,7 @@ export function getCoreRevisionContentForAccount(
   const content = ledger?.revisionContents.get(reportingRevisionId);
   if (!content) return undefined;
   return {
-    revision: structuredClone(content.revision),
+    revision: withTrainingFinality(content.revision),
     rows: structuredClone(content.rows),
     bindingSha256: content.bindingSha256,
   };
@@ -4147,7 +4255,7 @@ export async function getCoreRevisionContentPageForAccountDurably(
     const snapshot = snapshotFromCursor(ledger, pagination?.cursor, initialScope ?? 'unavailable');
     if (snapshot === null) return undefined;
     const revision = snapshot
-      ? snapshot.common.reporting_revision as ReportingRevision
+      ? withTrainingFinality(snapshot.common.reporting_revision as ReportingRevision)
       : initial?.revision;
     const bindingSha256 = snapshot?.exactBindingSha256 ?? initial?.bindingSha256;
     const allRows = snapshot?.exactRows ?? initial?.rows;

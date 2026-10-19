@@ -7,6 +7,7 @@
  */
 
 import type { PublisherProfile, ShowDefinition } from './types.js';
+import { CREATOR_PUBLISHER } from './creators.js';
 
 export const PUBLISHERS: PublisherProfile[] = [
   {
@@ -693,14 +694,15 @@ export const PUBLISHERS: PublisherProfile[] = [
     channels: ['print', 'display'],
     deliveryTypes: ['guaranteed'],
     pricingTemplates: [
-      { model: 'flat_rate', currency: 'USD', fixedPrice: 35000, minSpendPerPackage: 15000 },
       { model: 'cpm', currency: 'USD', fixedPrice: 22, minSpendPerPackage: 5000 },
+      { model: 'flat_rate', currency: 'USD', fixedPrice: 35000, minSpendPerPackage: 15000 },
       { model: 'time', currency: 'USD', fixedPrice: 12000, timeParameters: { time_unit: 'month', min_duration: 1, max_duration: 12 } },
     ],
     measurementProvider: 'Alliance for Audited Media (AAM) with comScore digital',
     measurementNotes: 'AAM-audited print circulation. comScore digital measurement. Print ad recall studies available quarterly. Digital viewability via IAS.',
     reportingFrequencies: ['monthly'],
     reportingMetrics: ['impressions', 'spend', 'reach'],
+    propertyListTargeting: true,
     properties: [
       {
         propertyId: 'meridian_magazines',
@@ -718,6 +720,73 @@ export const PUBLISHERS: PublisherProfile[] = [
         channels: ['display'],
         tags: ['print', 'digital', 'companion'],
       },
+      // Outdoor-lifestyle digital titles. The identifiers match the
+      // `acme_outdoor_*` property lists of the compliance test kit, so a
+      // buyer list can narrow this display inventory.
+      {
+        propertyId: 'meridian_outdoor_magazine',
+        name: 'Meridian Outdoor Magazine',
+        identifierType: 'domain',
+        identifierValue: 'outdoormagazine.example',
+        channels: ['display'],
+        tags: ['outdoor', 'lifestyle', 'magazine'],
+      },
+      {
+        propertyId: 'meridian_hiking_trails',
+        name: 'Meridian Hiking Trails',
+        identifierType: 'domain',
+        identifierValue: 'hikingtrails.example',
+        channels: ['display'],
+        tags: ['outdoor', 'lifestyle', 'hiking'],
+      },
+      {
+        propertyId: 'meridian_camping_gear',
+        name: 'Meridian Camping Gear',
+        identifierType: 'domain',
+        identifierValue: 'campinggear.example',
+        channels: ['display'],
+        tags: ['outdoor', 'lifestyle', 'camping'],
+      },
+      {
+        propertyId: 'meridian_mountaineering',
+        name: 'Meridian Mountaineering',
+        identifierType: 'domain',
+        identifierValue: 'mountaineering.example',
+        channels: ['display'],
+        tags: ['outdoor', 'lifestyle', 'climbing'],
+      },
     ],
   },
+  CREATOR_PUBLISHER,
 ];
+
+type VendorMetricOptimizationEntry = NonNullable<PublisherProfile['vendorMetricOptimization']>['supported_metrics'][number];
+
+/**
+ * Seller-level media_buy.vendor_metric_optimization rollup, derived from the
+ * publishers' product-level declarations so it cannot drift from the catalog.
+ * Pairs are keyed on (vendor.domain, vendor.brand_id, metric_id), the match
+ * key the schema defines, so vendor.countries is ignored. Per-pair
+ * supported_targets and the object-level supported_targets are the union
+ * across products. Returns undefined when no product declares a pair.
+ */
+export function buildVendorMetricOptimizationCapability(
+  publishers: readonly PublisherProfile[] = PUBLISHERS,
+): { supported_targets?: Array<'cost_per' | 'threshold_rate'>; supported_metrics: VendorMetricOptimizationEntry[] } | undefined {
+  const rollup = new Map<string, VendorMetricOptimizationEntry>();
+  for (const pub of publishers) {
+    for (const entry of pub.vendorMetricOptimization?.supported_metrics ?? []) {
+      const key = JSON.stringify([entry.vendor.domain, entry.vendor.brand_id ?? null, entry.metric_id]);
+      const existing = rollup.get(key);
+      if (!existing) {
+        rollup.set(key, structuredClone(entry));
+      } else if (entry.supported_targets) {
+        existing.supported_targets = [...new Set([...(existing.supported_targets ?? []), ...entry.supported_targets])];
+      }
+    }
+  }
+  if (rollup.size === 0) return undefined;
+  const supported_metrics = [...rollup.values()];
+  const supported_targets = [...new Set(supported_metrics.flatMap(entry => entry.supported_targets ?? []))];
+  return { ...(supported_targets.length > 0 && { supported_targets }), supported_metrics };
+}

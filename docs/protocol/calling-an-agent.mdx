@@ -47,8 +47,8 @@ For the key-required operations listed above, a missing key produces `adcp_error
 `account` is a discriminated union. On [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy), two variants:
 
 ```json
-// variant 0: by seller-assigned id (from list_accounts or out-of-band onboarding;
-// buyer-declared sellers may also echo account_id from sync_accounts as an internal handle)
+// variant 0: by seller-assigned id (from list_accounts, out-of-band onboarding, or
+// sync_accounts when the seller declares account.stable_account_id: true)
 "account": { "account_id": "seller_assigned_id" }
 
 // variant 1: by advertiser natural key

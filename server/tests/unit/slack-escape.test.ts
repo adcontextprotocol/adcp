@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { escapeSlackText } from '../../src/utils/slack-escape.js';
+import {
+  escapeSlackText,
+  flattenToSingleLine,
+  isSafeSlackLinkTarget,
+  sanitizeSlackLine,
+  sanitizeSlackLinkLabel,
+  sanitizeSlackLiteral,
+} from '../../src/utils/slack-escape.js';
 
 describe('escapeSlackText', () => {
   it('leaves plain text unchanged', () => {
@@ -49,5 +56,117 @@ describe('escapeSlackText', () => {
     // "<!here>" is 7 chars, well under 240 — should escape cleanly
     // without losing characters to truncation.
     expect(escapeSlackText('<!here>', 240)).toBe('&lt;!here&gt;');
+  });
+});
+
+describe('flattenToSingleLine', () => {
+  it('collapses newlines so untrusted text cannot forge extra message lines', () => {
+    // Without flattening, an agent error of "boom\nStatus: passing" renders
+    // as a second line the reader attributes to us.
+    expect(flattenToSingleLine('boom\nStatus: passing')).toBe('boom Status: passing');
+    expect(flattenToSingleLine('a\r\n\tb   c')).toBe('a b c');
+  });
+
+  it('strips control characters that hide structure from a human reader', () => {
+    expect(flattenToSingleLine('a\u0000b\u001fc\u007fd')).toBe('a b c d');
+  });
+
+  it('does not escape — that is the caller surface\'s job', () => {
+    expect(flattenToSingleLine('<!channel> & <b>')).toBe('<!channel> & <b>');
+  });
+
+  it('truncates after collapsing, so whitespace padding cannot push content out', () => {
+    const padded = `${' '.repeat(500)}real content`;
+    expect(flattenToSingleLine(padded, 20)).toBe('real content');
+  });
+
+  it('still finds the content when padding exceeds the fast-path window', () => {
+    // The fast path only looks at maxLength * 32 characters. An agent that
+    // prefixes its error with more padding than that would otherwise get an
+    // empty string stored — choosing, in effect, what its own owner is told.
+    const buried = `${' '.repeat(20_000)}ECONNREFUSED`;
+    expect(flattenToSingleLine(buried, 50)).toBe('ECONNREFUSED');
+    expect(flattenToSingleLine(`${'\u0000'.repeat(20_000)}ECONNREFUSED`, 50)).toBe('ECONNREFUSED');
+  });
+
+  it('caps inputs far past the limit', () => {
+    const huge = 'x'.repeat(1_000_000);
+    expect(flattenToSingleLine(huge, 50)).toBe(`${'x'.repeat(50)}…`);
+  });
+
+  it('returns empty for input that is only padding', () => {
+    expect(flattenToSingleLine(' '.repeat(20_000), 50)).toBe('');
+  });
+});
+
+describe('sanitizeSlackLinkLabel', () => {
+  it('drops the pipe that escaping alone leaves able to restructure a link', () => {
+    // `<url|label>`: a `|` inside the label starts another field, so
+    // escaping angle brackets is not enough on its own.
+    expect(sanitizeSlackLinkLabel('Post|https://evil.example')).toBe('Posthttps://evil.example');
+    expect(sanitizeSlackLinkLabel('<!channel> title')).toBe('&lt;!\u200bchannel&gt; title');
+  });
+});
+
+describe('isSafeSlackLinkTarget', () => {
+  it('accepts ordinary http(s) targets', () => {
+    expect(isSafeSlackLinkTarget('https://agenticadvertising.org/registry?tab=agents')).toBe(true);
+    expect(isSafeSlackLinkTarget('https://zoom.us/j/123?pwd=abc')).toBe(true);
+  });
+
+  it('rejects anything that would break out of <url|label> syntax', () => {
+    // A `>` closes the link and leaves the rest as top-level mrkdwn; a
+    // `|` adds another field and relabels it.
+    expect(isSafeSlackLinkTarget('https://ok.example/a>b')).toBe(false);
+    expect(isSafeSlackLinkTarget('https://ok.example/a|b')).toBe(false);
+    expect(isSafeSlackLinkTarget('https://ok.example/a b')).toBe(false);
+    expect(isSafeSlackLinkTarget('javascript:alert(1)')).toBe(false);
+    expect(isSafeSlackLinkTarget('')).toBe(false);
+  });
+});
+
+describe('sanitizeSlackLine', () => {
+  it('flattens and escapes in one step for text written straight into Slack', () => {
+    // The zero-width space keeps the broadcast token defused even if
+    // something downstream unescapes the angle brackets.
+    expect(sanitizeSlackLine('<!channel>\nping')).toBe('&lt;!\u200bchannel&gt; ping');
+  });
+
+  it('keeps the inline formatting that legitimate copy relies on', () => {
+    // Bold/italic/strike/code restyle text but cannot ping anyone or forge
+    // a destination, and escaping them would mangle ordinary copy. Use
+    // `sanitizeSlackLiteral` where even that should render literally.
+    expect(sanitizeSlackLine('*bold* _italic_ ~strike~ `code`'))
+      .toBe('*bold* _italic_ ~strike~ `code`');
+  });
+
+  it('never lets a forged link survive', () => {
+    expect(sanitizeSlackLine('<https://evil.example|agenticadvertising.org>'))
+      .toBe('&lt;https://evil.example|agenticadvertising.org&gt;');
+  });
+});
+
+
+describe('sanitizeSlackLiteral', () => {
+  it('defuses a bare URL that Slack would otherwise auto-link', () => {
+    // `sanitizeSlackLine` leaves this clickable: nothing about it is
+    // mrkdwn syntax, Slack's auto-linker just finds it.
+    expect(sanitizeSlackLine('Acme https://evil.example Co')).toContain('https://evil.example');
+    expect(sanitizeSlackLiteral('Acme https://evil.example Co'))
+      .toBe('Acme https:/\u200b/evil.example Co');
+  });
+
+  it('defuses inline formatting tokens the line form keeps on purpose', () => {
+    expect(sanitizeSlackLiteral('*bold* `code`'))
+      .toBe('\u200b*bold\u200b* \u200b`code\u200b`');
+  });
+
+  it('still flattens, escapes and defuses broadcasts', () => {
+    expect(sanitizeSlackLiteral('<!channel>\nsecond line'))
+      .toBe('&lt;!\u200bchannel&gt; second line');
+  });
+
+  it('leaves an ordinary name alone', () => {
+    expect(sanitizeSlackLiteral('Pinnacle Agency')).toBe('Pinnacle Agency');
   });
 });

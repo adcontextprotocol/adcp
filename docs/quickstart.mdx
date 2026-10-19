@@ -28,6 +28,26 @@ The test agent is path-routed: `/sales/mcp` serves media-buy tools (this quickst
 
 For your own API key (org-scoped, usage tracking), create one at the [AAO dashboard](https://agenticadvertising.org/dashboard/api-keys).
 
+To test an OAuth connect flow, use `/sales/mcp` and follow its `401`
+`WWW-Authenticate` challenge to the protected-resource metadata at
+[`/.well-known/oauth-protected-resource/sales/mcp`](https://test-agent.adcontextprotocol.org/.well-known/oauth-protected-resource/sales/mcp).
+The metadata links to [current OAuth connection instructions](https://test-agent.adcontextprotocol.org/sales/oauth), served by the training agent.
+Use the advertised authorization server, PKCE, and the exact resource indicator
+`https://test-agent.adcontextprotocol.org/sales/mcp`. Sign in with an AgenticAdvertising.org account
+and select an organization where you have an active owner, admin, or member
+role. The OAuth credential uses an organization-scoped sandbox; a paid
+subscription is not required. Other specialism endpoints continue to use bearer
+test tokens or API keys.
+
+Live GCS reporting under `/sales/reporting` is limited to owners and admins of
+the private training buyer canary organization with provisioned local grants. Those callers retain their
+private buyer identity on `/sales/mcp`; ordinary members of the canary
+organization use the separate sandbox. A denied OAuth call returns `403`
+with `BUYER_ACCESS_DENIED`, an `error_description`, and a
+`WWW-Authenticate: Bearer error="insufficient_scope"` header. Surface the
+description instead of retrying sign-in or treating it as an MCP discovery
+failure. If you have no organization access, use the shared bearer token above.
+
 ## 1. Discover products
 
 AdCP over MCP uses JSON-RPC 2.0. The transport is [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) — responses arrive as server-sent events.

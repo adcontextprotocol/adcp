@@ -171,7 +171,7 @@
       "variants": 2,
       "note": "0:[format_id] | 1:[format_kind]"
     },
-    "core/creative-asset.json##/properties/assets/patternProperties/^[a-z0-9_]+$/oneOf": {
+    "core/creative-asset.json##/properties/assets/patternProperties/^/oneOf": {
       "kind": "dangerous",
       "variants": 2,
       "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
@@ -181,7 +181,7 @@
       "variants": 2,
       "note": "0:[format_id] | 1:[format_kind]"
     },
-    "core/creative-manifest.json##/properties/assets/patternProperties/^[a-z0-9_]+$/oneOf": {
+    "core/creative-manifest.json##/properties/assets/patternProperties/^/oneOf": {
       "kind": "dangerous",
       "variants": 2,
       "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
@@ -236,7 +236,7 @@
       "variants": 2,
       "note": "0:[format_id] | 1:[format_kind]"
     },
-    "creative/list-creatives-response.json##/properties/creatives/items/properties/assets/patternProperties/^[a-z0-9_]+$/oneOf": {
+    "creative/list-creatives-response.json##/properties/creatives/items/properties/assets/patternProperties/^/oneOf": {
       "kind": "dangerous",
       "variants": 2,
       "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
@@ -370,6 +370,11 @@
       "kind": "dangerous",
       "variants": 2,
       "note": "shared-required=[∅]; 0:boolean | 1:req=[∅]"
+    },
+    "trust/v1/trust.json##/oneOf": {
+      "kind": "dangerous",
+      "variants": 2,
+      "note": "shared-required=[∅]; 0:req=[authoritative_location] | 1:req=[∅]"
     }
   }
 }
