@@ -122,6 +122,11 @@ needed the key gets `403`.
 `run.mjs --self` uses `judge.mjs` as the adapter and adds the `tiers` suite, which
 checks every scenario's tier against the bare library and the policy.
 
+## Pinning
+
+Each SDK pins `ADCP_REF` to the commit that merged this harness, and moving to a
+later commit is one pull request per SDK.
+
 ## Out of scope
 
 The harness serves directories from data. It does not grade live fetches, the
