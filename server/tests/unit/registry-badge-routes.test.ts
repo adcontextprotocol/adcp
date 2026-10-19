@@ -585,6 +585,39 @@ describe('registry badge routes', () => {
     }));
   });
 
+  it('matches the override org against every spelling of the agent identity (#8322)', async () => {
+    // The owner path folds `/mcp` and `/mcp/` into one agent, so the
+    // registry-admin override's "does the selected org own this agent" check
+    // must fold too — otherwise the override is denied for exactly the
+    // agents whose owners this change exists to reach.
+    ownershipMocks.canManageAgentForOrg.mockResolvedValueOnce(false);
+    adminStatusMocks.isAuthenticatedUserAAOAdmin.mockResolvedValue(true);
+
+    const response = await request(buildApp('private', {
+      id: 'user_linked_profile',
+      authWorkosUserId: 'credential_admin',
+      email: 'admin-credential@example.test',
+    }))
+      .put(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/grading-profile`)
+      .send({
+        organization_id: 'org_other', role: 'media-buy', adcp_version: '3.1',
+        selected_profile: 'spec', assessment_id: '11111111-1111-4111-8111-111111111111',
+        expected_revision: 0, idempotency_key: '44444444-4444-4444-8444-444444444444',
+        admin_override_reason: 'Support request',
+      });
+
+    expect(response.status).toBe(200);
+    const ownershipCall = databaseMocks.query.mock.calls
+      .find(([sql]: [string]) => typeof sql === 'string' && sql.includes('FROM member_profiles'));
+    expect(ownershipCall).toBeDefined();
+    expect(ownershipCall![0]).toContain('agents @> $2::jsonb OR agents @> $3::jsonb');
+    expect(ownershipCall![1]).toEqual([
+      'org_other',
+      JSON.stringify([{ url: AGENT_URL }]),
+      JSON.stringify([{ url: `${AGENT_URL}/` }]),
+    ]);
+  });
+
   it('fails closed when exact registry-admin authority is revoked before dispatch', async () => {
     ownershipMocks.canManageAgentForOrg.mockResolvedValueOnce(false);
     adminStatusMocks.isAuthenticatedUserAAOAdmin
