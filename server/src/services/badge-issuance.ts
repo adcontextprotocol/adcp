@@ -10,6 +10,7 @@ import { advertisesStableBadgeLine, isVerificationMode, SUPPORTED_BADGE_VERSIONS
 import { getStoryboardIdsForVersion } from './storyboards.js';
 import { API_ACCESS_TIERS, ACTIVE_SUBSCRIPTION_STATUSES } from './membership-tiers.js';
 import { query } from '../db/client.js';
+import { agentIdentityContainment } from '../db/agent-identity-match.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import { logger as baseLogger } from '../logger.js';
 import { getEffectiveGradingDecision } from '../db/verification-profile-db.js';
@@ -460,17 +461,31 @@ export async function runBadgeFanOut(params: {
   // Resolve membership org for this agent — only orgs with an active
   // API-access tier qualify for badge issuance. processAgentBadges
   // revokes all badges if this returns undefined.
+  // Match the agent by its registry identity, not by one spelling of its URL
+  // (#8322): `agentUrl` here is the folded key every per-agent surface uses,
+  // while the owner's profile may hold `/mcp/`. An exact match left exactly
+  // those owners without badges — `membershipOrgId` undefined makes
+  // processAgentBadges revoke everything. Tier and subscription gating are
+  // unchanged, and the fold cannot reach a profile for a different agent.
+  //
+  // This query picks ONE org out of possibly several, and `membership_org_id`
+  // is stamped on every badge it issues. Two orgs can co-claim one agent, so
+  // the fold must not move that stamp: a profile holding the key itself wins
+  // over one reached only through the fold, and `mp.created_at` breaks the
+  // tie within each group exactly as before.
+  const ownerAgents = agentIdentityContainment('mp.agents', agentUrl, 1);
   const orgResult = await query(
     `SELECT mp.workos_organization_id
      FROM member_profiles mp
      JOIN organizations o ON o.workos_organization_id = mp.workos_organization_id
-     WHERE mp.agents @> $1::jsonb
-       AND o.membership_tier = ANY($2::text[])
-       AND o.subscription_status = ANY($3::text[])
-     ORDER BY mp.created_at ASC
+     WHERE ${ownerAgents.sql}
+       AND o.membership_tier = ANY($${ownerAgents.nextPlaceholder}::text[])
+       AND o.subscription_status = ANY($${ownerAgents.nextPlaceholder + 1}::text[])
+     ORDER BY (mp.agents @> $${ownerAgents.primaryPlaceholder}::jsonb) DESC,
+              mp.created_at ASC
      LIMIT 1`,
     [
-      JSON.stringify([{ url: agentUrl }]),
+      ...ownerAgents.params,
       [...API_ACCESS_TIERS],
       [...ACTIVE_SUBSCRIPTION_STATUSES],
     ],
