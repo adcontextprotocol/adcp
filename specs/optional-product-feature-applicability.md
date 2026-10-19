@@ -6,34 +6,57 @@ date: 2026-10-16
 refs: ["#8254", "DR-0001", "DR-0010"]
 ---
 
-This is a decision proposal, not an operative protocol rule or a fix to the
-published compliance bundle. Human/WG ratification is required before adopting
-an applicability policy. The implementation issue remains open:
-[#8254](https://github.com/adcontextprotocol/adcp/issues/8254).
+This remains a nonoperative proposal, not a repair to the published compliance
+bundle. Its `status: proposed` does not assert human/WG ratification.
+[#8254](https://github.com/adcontextprotocol/adcp/issues/8254) remains open.
 
-## Decision requested
+## Approved direction and remaining review
 
-Choose the evidence that makes an optional product feature applicable:
+On 2026-10-19 Brian approved the recommended **catalog-evidence direction with
+its documented coverage limits**, and separately authorized future-minor seller
+feature declarations. This records chat direction for implementation preparation;
+it is not an eligible GitHub approval, WG vote, path-gate bypass, publication
+authorization, or claim that a fix is qualified. The catalog-versus-declarations
+choice is not being reopened.
 
-1. A qualifying seller-owned product discovered in the sandbox catalog, with
-   explicit coverage gaps when no such product is discoverable; or
-2. A separately approved seller-wide support declaration that commits a seller
-   to relevant controlled fixtures, including support absent from its initial
-   sandbox catalog.
+The two authorized tracks have separate release scopes:
 
-Also confirm that format breakdown and time-based views are independent scopes,
-and choose whether advanced delivery tests should assert only current normative
-guarantees or use a separately specified controller contract to inject observed
-format rows and time-threshold measurements.
+1. Main-first catalog applicability for existing product features, with independent
+   selectable/default, fixed-bundle, owner-sold, format and time scopes. A valid
+   no-match is an explicit `fixture_unsatisfied` coverage gap projected
+   `not_applicable`, never a pass or proof of nonsupport. Seeded-only and brief-only
+   limitations remain visible. A faithful patch-compatible implementation could
+   later receive a separate reviewed 3.2.x backport after actual pinned qualification.
+2. Future-minor seller-wide declarations and controlled-fixture commitments in
+   [draft #8333](https://github.com/adcontextprotocol/adcp/pull/8333), isolated from
+   this patch. Neither declaration fields nor new controller refusal semantics
+   are introduced here. Deterministic grain injection is separate controller work.
 
-**Recommendation:** choose catalog evidence for the existing product-scoped
-features, split independent coverage, and constrain reporting assertions to
-current normative guarantees. Treat unavailable qualifying products as explicit
-`fixture_unsatisfied` coverage gaps, projected as `not_applicable`, never as a
-pass or proof that a seller lacks the feature. Accept and display the resulting
-seeded-only and brief-only coverage limitations explicitly. If those limitations
-are unacceptable, choose declaration-based applicability in a future minor
-instead; no new declaration is designed or added by this proposal.
+The [implementer's catalog feedback](https://github.com/adcontextprotocol/adcp/pull/8259#issuecomment-6227155326)
+supports honest no-match treatment and acknowledges seeded-only/brief-only limits;
+it is feedback, not a formal approval or a substitute for executable qualification.
+
+**Remaining engineering review:** the installed main SDK 15.9.5 cannot faithfully
+express all collection qualification/capture/validation/state requirements. The
+[concrete prerequisite proposal](optional-product-feature-applicability/collection-prerequisite.md)
+compares existing public mechanisms, a local foundation preserving the pin, and
+a focused upstream prerequisite; it recommends the upstream route through the
+confirmed owner. Names shown there are proposed contracts, not existing APIs.
+Root is coordinating read-only feasibility/ownership review with the existing SDK
+workspace. No SDK/DSL implementation or dependency adoption is authorized here.
+
+A separately held reporting source draft executes actual revised storyboards and
+hosted disposition. It preserves minimum-spend rejection, public default-brand
+mismatch and a matured committed-time disclosure false pass as explicit merge
+holds; its passing evidence tests do not make it shippable. Full/standalone parity
+and hosted discovery disposition also require qualification. Collections remain
+unqualified. No source implementation in this proposal is claimed.
+
+Human/WG review of proposed authoring/output contracts and eligible GitHub/path
+review remain required. In particular, the existing workflow-file hard approval
+gate remains unsatisfied until an eligible human/CODEOWNERS review is recorded.
+Do not merge automatically. No main/maintenance merge, Version Packages mutation,
+release, immutable artifact edit or production write is part of this packet.
 
 ## Rationale and existing authority
 
@@ -103,8 +126,8 @@ An explicit deterministic grain-injection contract would be separate work.
 
 | Alternative | Benefit | Cost / recommendation |
 | --- | --- | --- |
-| Catalog evidence, independent scopes | Existing discovery contract identifies product declarations without inventing seller-wide claims. | Recommended, subject to explicit acceptance of catalog coverage limits. Requires semantic storyboard rewrites and handling fixed-bundle defaults; not just three `fixture_resolution` blocks. Harness-only changes can be evaluated for a 3.2.x patch after implementation review. |
-| Independent seller-wide declarations | Retains seeded coverage for supporting sellers with initially empty catalogs. | Requires WG design, independent feature scopes and a minor changeset; stable-schema field additions cannot be backported to 3.2.x. No field names are proposed here. |
+| Catalog evidence, independent scopes | Existing discovery contract identifies product declarations without inventing seller-wide claims. | Approved implementation direction in chat, with explicit catalog coverage limits; not formal ratification. Requires semantic storyboard rewrites and handling fixed-bundle defaults; not just three `fixture_resolution` blocks. Harness-only changes can be evaluated for a 3.2.x patch after implementation review. |
+| Independent seller-wide declarations | Retains seeded coverage for supporting sellers with initially empty catalogs. | Separately authorized future-minor track in draft #8333; requires WG design, independent feature scopes and a minor changeset; stable-schema field additions cannot be backported to 3.2.x. No field names are added here. |
 | Negotiate supported fixture features | Could qualify controlled setup before seed execution. | A new controller contract, not an interpretation of `INVALID_PARAMS` or `UNKNOWN_SCENARIO`; broader than this issue. Do not implement implicitly. |
 | Keep seed-only applicability or skip all optional failures | Small diff. | Reject: generic setup does not establish native support; blanket skips conceal broken advertised or selected paths. |
 
@@ -116,10 +139,10 @@ versioned artifacts or cut a release as part of this issue.
 
 ## Executable evidence and implementation acceptance
 
-Run the existing SDK contract probes with:
+Run all decision and public-runner prerequisite evidence with:
 
 ```bash
-node --test --test-timeout=30000 specs/optional-product-feature-applicability/probes.test.cjs
+node --test --test-timeout=30000 specs/optional-product-feature-applicability/*.test.cjs
 ```
 
 The probes use the installed, pinned SDK and schema-validated fixture discovery
@@ -128,7 +151,14 @@ paths, preserve failures after selection, reject failed discovery without seed
 fallback, demonstrate that seed-first never discovers the native catalog, and
 demonstrate all-or-nothing companion suppression. These are decision evidence,
 not regression coverage of repaired published storyboards. CI runs them
-separately from the source-storyboard matrix.
+separately from the source-storyboard matrix. The 12 original decision probes
+plus 19 public-runner prerequisite probes pass on the unchanged SDK 15.9.5 pin.
+The latter use public full/standalone/extraction APIs and real MCP transport
+intercepted through public `trustedFetchFn`, with no private runner seams. They
+demonstrate omitted/false eligibility, later paginated qualification, selected
+identity versus unrelated selectors/commercial metadata, owner/host relation,
+namespace-set validation and standalone limitations. They intentionally preserve
+limitations; they do not qualify repaired collection storyboards.
 
 Before an implementation may merge, execute the actual revised source
 storyboards and hosted disposition policy against this acceptance matrix:
@@ -145,10 +175,10 @@ storyboards and hosted disposition policy against this acceptance matrix:
 | Applicable seller omits required format array or companions | Graded failure. |
 | Malformed/rejected/transport-failed discovery or broken pagination | Terminal failure evidence; no applicability skip or seed fallback. |
 | Advertised seed/setup operation fails | Retain failed setup evidence and hosted setup-gap disposition; do not recast as unsupported feature. |
-| Seeded-only or brief-only supporting seller | Explicit coverage limitation under catalog evidence, or covered through the separately approved declaration approach. |
+| Seeded-only or brief-only supporting seller | Explicit coverage limitation under catalog evidence; future declarations are a separate release track, not a patch substitute. |
 | Baseline requested-metric narrowing broken | Baseline failure remains graded regardless of optional feature applicability. |
 
 Sibling [#8252](https://github.com/adcontextprotocol/adcp/issues/8252) owns
 `product_filter_behavior`; [#8253](https://github.com/adcontextprotocol/adcp/issues/8253)
-owns optional-tool gates. Their fixes do not resolve this applicability choice.
+owns optional-tool gates. Their source ownership is unchanged; this work does not reopen or duplicate them.
 No independent expert analysis constitutes human/WG ratification.
