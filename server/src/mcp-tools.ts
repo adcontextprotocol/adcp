@@ -28,9 +28,11 @@ import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review
 import type { MCPAuthContext } from "./mcp/auth.js";
 import { createLogger } from "./logger.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
+import { isRegistryDomain } from "./services/registry-domain.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { serializeInlineScriptJson } from './utils/inline-script-json.js';
 import { getBrandPrimaryDomain } from './services/brand-domain-resolver.js';
+import { declaredAgentUrl } from './db/registry-agent-url-key.js';
 
 const logger = createLogger('mcp-tools');
 
@@ -912,8 +914,12 @@ export class MCPToolHandler {
         const matchingAgents = [];
 
         for (const agent of allAgents) {
-          // Check if agent is authorized for this property
-          const validation = await this.validator.validate(propertyValue, agent.url);
+          // Authorization is spec-exact (#7829): a publisher that lists
+          // `/mcp/` authorizes `/mcp/`, not `/mcp`. Match on the URL the
+          // member registered, not on the identity key, which folds the
+          // trailing slash away (#7830).
+          const validation = await this.validator.validate(
+            propertyValue, declaredAgentUrl(agent));
           if (validation.authorized) {
             matchingAgents.push({
               url: agent.url,
@@ -1860,10 +1866,10 @@ export class MCPToolHandler {
           };
         }
 
-        const publisherDomain = sanitizeDomain(args?.publisher_domain as string);
-        if (!publisherDomain) {
+        const publisherDomain = args?.publisher_domain;
+        if (typeof publisherDomain !== 'string' || !isRegistryDomain(publisherDomain)) {
           return {
-            content: [{ type: "text", text: JSON.stringify({ error: "publisher_domain is required or invalid format" }) }],
+            content: [{ type: "text", text: JSON.stringify({ error: "Invalid publisher_domain: expected a lowercase hostname; reserved test domains are not allowed" }) }],
             isError: true,
           };
         }

@@ -247,6 +247,50 @@
       }
     },
     {
+      "description": "Listing media_buy.collection_catalog (list_collections and collection card webhooks) requires media_buy.collection_cards, because the response carries card fields.",
+      "if": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.collection_catalog" }
+          }
+        },
+        "required": ["experimental_features"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.collection_cards" }
+          }
+        }
+      }
+    },
+    {
+      "description": "Collection card webhook event types are repaired through list_collections, so listing any of them requires media_buy.collection_catalog.",
+      "if": {
+        "properties": {
+          "wholesale_feed_webhooks": {
+            "properties": {
+              "event_types": {
+                "contains": {
+                  "enum": ["collection_card.updated", "collection_card.removed", "collection_catalog.bulk_change"]
+                }
+              }
+            },
+            "required": ["event_types"]
+          }
+        },
+        "required": ["wholesale_feed_webhooks"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.collection_catalog" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
       "if": {
         "properties": {
           "media_buy": {
@@ -3517,7 +3561,7 @@
     },
     "wholesale_feed_webhooks": {
       "type": "object",
-      "description": "Per-agent wholesale product-feed and wholesale signals-feed webhook capabilities. Consumers register durable sync_accounts notification subscribers and receive actual product.*, signal.*, or wholesale_feed.bulk_change payloads without polling. Product mirrors bootstrap and repair through list_products(if_feed_version); signal mirrors use get_signals(if_wholesale_feed_version). Deprecated wholesale get_products remains the 3.x product compatibility path. Webhook emission MUST apply the same caller/account authorization and cache-scope predicate as the corresponding read.",
+      "description": "Per-agent wholesale product-feed, wholesale signals-feed, and (experimental, media_buy.collection_catalog) collection card webhook capabilities. Consumers register durable sync_accounts notification subscribers and receive actual product.*, signal.*, collection_card.*, wholesale_feed.bulk_change, or collection_catalog.bulk_change payloads without polling. Product mirrors bootstrap and repair through list_products(if_feed_version); signal mirrors use get_signals(if_wholesale_feed_version); collection card mirrors use an unfiltered list_collections(if_collections_version). Deprecated wholesale get_products remains the 3.x product compatibility path. Webhook emission MUST apply the same caller/account authorization and cache-scope predicate as the corresponding read.",
       "properties": {
         "supported": {
           "type": "boolean",
@@ -3525,7 +3569,7 @@
         },
         "event_types": {
           "type": "array",
-          "description": "Wholesale feed webhook event types this agent can emit. Sales agents emit product.* events and MUST expose list_products or the deprecated 3.x wholesale get_products compatibility path. Signals agents emit signal.* events and MUST support wholesale get_signals. wholesale_feed.bulk_change requires at least one corresponding repair path.",
+          "description": "Wholesale feed webhook event types this agent can emit. Sales agents emit product.* events and MUST expose list_products or the deprecated 3.x wholesale get_products compatibility path. Signals agents emit signal.* events and MUST support wholesale get_signals. wholesale_feed.bulk_change requires at least one corresponding repair path. collection_card.updated, collection_card.removed and collection_catalog.bulk_change (experimental) require list_collections, so listing any of them requires media_buy.collection_catalog in experimental_features; buyers MUST NOT register them with a seller that does not list them here, and sellers reject undeclared types.",
           "items": {
             "type": "string",
             "enum": [
@@ -3537,7 +3581,10 @@
               "signal.updated",
               "signal.priced",
               "signal.removed",
-              "wholesale_feed.bulk_change"
+              "wholesale_feed.bulk_change",
+              "collection_card.updated",
+              "collection_card.removed",
+              "collection_catalog.bulk_change"
             ]
           },
           "minItems": 1,
@@ -3563,7 +3610,11 @@
                     "contains_item": "wholesale"
                   }
                 ],
-                "bulk_change_affected_entity_type_must_match_declared_repair_path": true
+                "bulk_change_affected_entity_type_must_match_declared_repair_path": true,
+                "collection_events_require": {
+                  "field": "experimental_features",
+                  "contains_item": "media_buy.collection_catalog"
+                }
               }
             },
             "spec": "specs/wholesale-feed-webhooks.md#capability-declaration"

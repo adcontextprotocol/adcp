@@ -80,7 +80,8 @@ describe('seller-managed event sources (training agent)', () => {
       action: 'unchanged',
       setup: { snippet_type: 'server_only' },
     });
-    expect(typeof sources[0]!.seller_id).toBe('string');
+    expect(typeof sources[0]!.platform_id).toBe('string');
+    expect(sources[0]!.seller_id).toBe(sources[0]!.platform_id);
   });
 
   it('lists buyer-synced sources before seller-managed ones, on discovery and on upsert', async () => {
@@ -97,6 +98,10 @@ describe('seller-managed event sources (training agent)', () => {
     ]);
 
     const discovered = await discover(server);
+    for (const source of [...upserted, ...discovered]) {
+      expect(typeof source.platform_id).toBe('string');
+      expect(source.seller_id).toBe(source.platform_id);
+    }
     expect(discovered.map(source => [source.event_source_id, source.managed_by])).toEqual([
       ['nova_web_pixel', 'buyer'],
       [SELLER_MANAGED_PURCHASE_SOURCE_ID, 'seller'],
@@ -114,11 +119,11 @@ describe('seller-managed event sources (training agent)', () => {
 
     expect(mine.map(source => source.event_source_id)).toEqual([SELLER_MANAGED_PURCHASE_SOURCE_ID]);
     expect(theirs.map(source => source.event_source_id)).toEqual(['acme_web_pixel', SELLER_MANAGED_PURCHASE_SOURCE_ID]);
-    const mineSellerId = mine[0]!.seller_id;
-    const theirsSellerId = theirs.find(source => source.managed_by === 'seller')!.seller_id;
-    expect(mineSellerId).not.toBe(theirsSellerId);
+    const minePlatformId = mine[0]!.platform_id;
+    const theirsPlatformId = theirs.find(source => source.managed_by === 'seller')!.platform_id;
+    expect(minePlatformId).not.toBe(theirsPlatformId);
     // Deterministic per account.
-    expect((await discover(server, ACCOUNT))[0]!.seller_id).toBe(mineSellerId);
+    expect((await discover(server, ACCOUNT))[0]!.platform_id).toBe(minePlatformId);
   });
 
   it('refuses a buyer upsert of a seller-managed source id and leaves the source seller-managed', async () => {

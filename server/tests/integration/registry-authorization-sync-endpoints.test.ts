@@ -196,6 +196,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       // We only need the agent_url to be canonical; the implementation
       // never inserts data on this path.
       const result = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'effective',
@@ -211,6 +212,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       await insertCAA(pool, { agent: AGENT_Y, publisher: PUB_A });
 
       const x = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'effective',
@@ -229,6 +231,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       await insertCAA(pool, { agent: AGENT_X, publisher: PUB_A, signingKeys: keys });
 
       const eff = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'effective',
@@ -237,6 +240,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       expect(eff.rows[0].signing_keys).toEqual(keys);
 
       const raw = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'raw',
@@ -248,6 +252,7 @@ describe('AuthorizationSnapshotDatabase', () => {
     it('rows without signing_keys read back as null', async () => {
       await insertCAA(pool, { agent: AGENT_X, publisher: PUB_A });
       const eff = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'effective',
@@ -260,6 +265,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       await insertCAA(pool, { agent: AGENT_X, publisher: PUB_B, evidence: 'agent_claim' });
 
       const def = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'effective',
@@ -267,6 +273,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       expect(def.rows.map(r => r.evidence)).toEqual(['adagents_json']);
 
       const both = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json', 'agent_claim'],
         include: 'effective',
@@ -280,6 +287,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       await insertOverride(pool, { publisher: PUB_A, agent: AGENT_X, type: 'suppress' });
 
       const raw = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'raw',
@@ -289,6 +297,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       expect(raw.rows[0].override_applied).toBe(false);
 
       const eff = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'effective',
@@ -306,6 +315,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       });
 
       const eff = await db.getNarrow({
+        agentUrl: AGENT_OVERRIDE,
         agentUrlCanonical: AGENT_OVERRIDE,
         evidence: ['override'],
         include: 'effective',
@@ -319,6 +329,7 @@ describe('AuthorizationSnapshotDatabase', () => {
 
       // raw never surfaces overrides — they're only in the view.
       const raw = await db.getNarrow({
+        agentUrl: AGENT_OVERRIDE,
         agentUrlCanonical: AGENT_OVERRIDE,
         evidence: ['override'],
         include: 'raw',
@@ -334,6 +345,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       });
 
       const raw = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'raw',
@@ -342,6 +354,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       expect(raw.rows[0].disputed).toBe(true);
 
       const eff = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'effective',
@@ -358,6 +371,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       });
 
       const raw = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'raw',
@@ -365,6 +379,7 @@ describe('AuthorizationSnapshotDatabase', () => {
       expect(raw.rows).toHaveLength(0);
 
       const eff = await db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['adagents_json'],
         include: 'effective',
@@ -374,6 +389,7 @@ describe('AuthorizationSnapshotDatabase', () => {
 
     it('throws on unknown evidence', async () => {
       await expect(db.getNarrow({
+        agentUrl: AGENT_X,
         agentUrlCanonical: AGENT_X,
         evidence: ['bogus'],
         include: 'effective',

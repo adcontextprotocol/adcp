@@ -23,7 +23,7 @@ function readSchema(uri) {
   return JSON.parse(fs.readFileSync(path.join(SOURCE_DIR, uri.slice('/schemas/'.length)), 'utf8'));
 }
 
-async function compileRequestSchema(tool) {
+async function compileCompactSchema(tool, direction = 'request') {
   const ajv = new Ajv({
     allErrors: true,
     strict: false,
@@ -31,7 +31,7 @@ async function compileRequestSchema(tool) {
     loadSchema: async (uri) => readSchema(uri),
   });
   addFormats(ajv);
-  return ajv.compileAsync(readSchema(`/schemas/media-buy/${tool.replaceAll('_', '-')}-request.json`));
+  return ajv.compileAsync(readSchema(`/schemas/media-buy/${tool.replaceAll('_', '-')}-${direction}.json`));
 }
 
 const compactRequests = {
@@ -79,7 +79,7 @@ const compactRequests = {
 
 test('SDK auto version envelope passes every strict compact lifecycle request schema', async () => {
   const validators = new Map(await Promise.all(
-    Object.keys(compactRequests).map(async (tool) => [tool, await compileRequestSchema(tool)]),
+    Object.keys(compactRequests).map(async (tool) => [tool, await compileCompactSchema(tool)]),
   ));
   const outbound = new Map();
   const strictServer = {
@@ -115,5 +115,21 @@ test('SDK auto version envelope passes every strict compact lifecycle request sc
       adcp_major_version: outbound.get(tool).adcp_major_version,
       adcp_version: outbound.get(tool).adcp_version,
     }, expectedEnvelope, `${tool} did not receive the SDK's compatible auto envelope`);
+  }
+});
+
+test('list_products accepts the served payload version with release precision', async () => {
+  const validate = await compileCompactSchema('list_products', 'response');
+  for (const response of [
+    { outcome: 'listed', products: [], feed_version: 'creative-feed', cache_scope: 'public' },
+    { outcome: 'unchanged', feed_version: 'creative-feed', cache_scope: 'public' },
+  ]) {
+    assert.equal(validate(response), true, JSON.stringify(validate.errors));
+    assert.equal(validate({ ...response, adcp_version: '3.2-beta.0' }), true,
+      JSON.stringify(validate.errors));
+    assert.equal(validate({ ...response, adcp_version: '3.3' }), true,
+      JSON.stringify(validate.errors));
+    assert.equal(validate({ ...response, adcp_version: '3.2.0-beta.0' }), false,
+      'served protocol version must use release precision');
   }
 });

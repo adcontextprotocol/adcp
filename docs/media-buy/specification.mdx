@@ -79,6 +79,10 @@ Every media buy request involves three entities:
 
 ### Identifiers
 
+Use `platform_id` for an object's ID in the seller's ad platform, consistently across `sync_creatives`, `sync_catalogs`, `sync_event_sources`, and `sync_audiences` results. Reserve `seller_id` for the seller's identity, such as the IAB sellers.json ID in `adagents.json` `contact.seller_id` and publisher identifiers of type `seller_id`.
+
+The existing `seller_id` fields on event source and audience results are deprecated aliases for `platform_id` starting in AdCP 3.3. When reporting a platform identifier in 3.3 and later 3.x responses, sellers MUST emit both names with identical values. Buyers MUST prefer `platform_id` and fall back to `seller_id` only when `platform_id` is absent. These aliases retain their object-ID semantics and MUST NOT be repurposed as seller identity. They remain functional throughout 3.x, with removal no earlier than 4.0 under the [deprecation policy](/docs/reference/versioning#deprecation-policy).
+
 - **`product_id`**: Opaque identifier for a product returned by `get_products`. A non-custom wholesale ID remains stable for the same logical offer within the seller and declared `cache_scope`, including across reads and wholesale-feed webhooks; feed and pricing versions communicate temporal catalog mutation, while retirement or replacement may end the identity. Binding commercial terms are immutable under `pricing_option_id`, so changed price, floor, currency, model, or priced applicability receives a new option ID. An `is_custom: true` ID remains stable only in its issuing discovery/refinement lineage through its promised lifetime. Creating a package with the product and pricing-option IDs accepts the disclosed configuration and commercial option. A caller-authorized custom ID past `expires_at` returns `PRODUCT_EXPIRED`; after its tombstone is no longer retained or outside its account/lineage, `PRODUCT_NOT_FOUND` applies without disclosing cross-tenant existence.
 
 ### Structured requirements and briefs
@@ -1002,7 +1006,7 @@ Configure event sources on a seller account for conversion tracking with upsert 
 - Sales agents MUST return per-source results with `action` indicating what happened
 - Sales agents MUST include seller-managed event sources in the response when present
 - Sales agents SHOULD return `setup` instructions for newly created event sources
-- Sales agents MAY include `seller_id` for cross-referencing in the seller's platform
+- Sales agents MAY include `platform_id` for cross-referencing the event source in the seller's platform; in 3.3 and later 3.x responses they MUST also emit the deprecated `seller_id` alias with the same value when reporting this identifier
 
 ### log_event
 
