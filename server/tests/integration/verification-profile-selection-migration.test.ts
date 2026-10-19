@@ -761,4 +761,65 @@ describe.skipIf(!process.env.DATABASE_URL)('owner-selectable grading profile mig
       ],
     )).rejects.toThrow();
   });
+
+  it('authorizes the owner through the registry identity key, not one spelling', async () => {
+    // #8322. The selection path is handed the folded key (`/mcp`), while the
+    // owner's profile may hold `/mcp/`. An exact match on `agents[].url`
+    // rejected the owner with `authorization_changed` — a denial on their own
+    // agent. The fold is scoped to the acting org: the row still has to be in
+    // `actorOrgId`'s own profile, and `declared_url` is never consulted.
+    const original = (await client.query<{ agents: unknown }>(
+      `SELECT agents FROM member_profiles WHERE workos_organization_id = 'org_1'`,
+    )).rows[0].agents;
+    const attempt = {
+      agentUrl: 'https://seller.example.test/mcp',
+      role: 'media-buy' as const,
+      adcpVersion: '3.1',
+      selectedProfile: 'spec' as const,
+      assessmentId: (await client.query<{ id: string }>(
+        `SELECT id FROM verification_profile_role_assessments
+         WHERE grading_profile = 'spec' ORDER BY source_tested_at DESC LIMIT 1`,
+      )).rows[0].id,
+      // Deliberately stale: the selection must fail AFTER the ownership gate
+      // so the assertion proves authorization passed without committing a
+      // selection that later tests would see.
+      expectedRevision: 9999,
+      // (by this point the earlier tests have aged the 'spec' assessment out,
+      // so the first gate past ownership is the stale-evidence one)
+      acknowledgePublicImpact: true,
+      requestId: 'request-identity-key',
+      actorUserId: 'user_1',
+      actorOrgId: 'org_1',
+      actorKind: 'organization' as const,
+    };
+
+    try {
+      await client.query(
+        `UPDATE member_profiles
+         SET agents = '[{"url":"https://seller.example.test/mcp/","visibility":"public"}]'::jsonb
+         WHERE workos_organization_id = 'org_1'`,
+      );
+      await expect(selectGradingProfile({
+        ...attempt,
+        idempotencyKey: '88888888-8888-4888-8888-888888888888',
+      })).rejects.toMatchObject<Partial<GradingProfileConflictError>>({ reason: 'stale_assessment' });
+
+      // A row for a DIFFERENT agent, with the caller's spelling parked in
+      // `declared_url`, must not authorize anything.
+      await client.query(
+        `UPDATE member_profiles
+         SET agents = '[{"url":"https://seller.example.test/other","declared_url":"https://seller.example.test/mcp","visibility":"public"}]'::jsonb
+         WHERE workos_organization_id = 'org_1'`,
+      );
+      await expect(selectGradingProfile({
+        ...attempt,
+        idempotencyKey: '99999999-9999-4999-8999-999999999999',
+      })).rejects.toMatchObject<Partial<GradingProfileConflictError>>({ reason: 'authorization_changed' });
+    } finally {
+      await client.query(
+        `UPDATE member_profiles SET agents = $1::jsonb WHERE workos_organization_id = 'org_1'`,
+        [JSON.stringify(original)],
+      );
+    }
+  });
 });
