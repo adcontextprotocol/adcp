@@ -370,6 +370,16 @@
                 "required": ["asset_type"]
               },
               {
+                "title": "IndividualVideoBriefAsset",
+                "description": "Structured video brief asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "video_brief" }
+                },
+                "required": ["asset_type"]
+              },
+              {
                 "title": "IndividualCatalogAsset",
                 "description": "Catalog asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
@@ -622,6 +632,15 @@
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
                         "asset_type": { "const": "brief" }
+                      },
+                      "required": ["asset_type"]
+                    },
+                    {
+                      "title": "GroupVideoBriefAsset",
+                      "description": "Structured video brief asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "video_brief" }
                       },
                       "required": ["asset_type"]
                     },

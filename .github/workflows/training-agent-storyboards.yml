@@ -3,6 +3,12 @@ name: Training Agent Storyboards
 on:
   pull_request:
     branches: [main, '3.2.x', '3.1.x', '3.0.x']
+    # Draft PRs skip this matrix (see the job-level `if`s): it is ~22 jobs and
+    # ~200 runner-minutes per push, about half of the repo's Actions minutes,
+    # against an org-wide hosted-runner concurrency cap. `ready_for_review`
+    # runs the full matrix when a draft is marked ready. This workflow is not
+    # a required check, so skipped draft runs never block a merge.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'server/src/training-agent/**'
       - 'server/src/services/hosted-compliance-version.ts'
@@ -49,7 +55,14 @@ concurrency:
 jobs:
   storyboards:
     name: Storyboards (${{ matrix.surface }} /${{ matrix.tenant }})
-    runs-on: ubuntu-latest
+    # Skip draft PRs; push events have no pull_request payload and always run.
+    if: github.event.pull_request.draft != true
+    # The storyboard matrix is about half of the repo's runner-minutes. Set the
+    # STORYBOARD_RUNNER repository variable to a larger-runner label (for
+    # example ubuntu-latest-m) to move it off the shared hosted pool; unset,
+    # it stays on ubuntu-latest. Unset it again if the larger runner is shut
+    # down (e.g. by the Actions spending limit) so jobs never queue forever.
+    runs-on: ${{ vars.STORYBOARD_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -127,10 +140,16 @@ jobs:
             storyboard_id: media_buy_seller/typed_proposal_negotiation
             min_clean_storyboards: 1
             min_passing_steps: 20
+          # @adcp/sdk 15.9.5 validates get_adcp_capabilities against the
+          # echoed 3.2 release, whose schema requires an https
+          # identity.brand_json_url. The runner's http loopback base makes
+          # webhook_emission/get_capabilities a 3.0-compat known-failing skip
+          # (see run-storyboards.ts), so signals, governance and creative each
+          # record one fewer passing step: 98 -> 97, 147 -> 146, 109 -> 108.
           - surface: 3.0-compat
             tenant: signals
             min_clean_storyboards: 24
-            min_passing_steps: 98
+            min_passing_steps: 97
           # SDK 14 beta.12 makes unsigned signing-required functional steps
           # explicitly out of scope for immutable bundles that predate the
           # functional_dispatch signing contract. The remaining 39 rows are
@@ -143,11 +162,11 @@ jobs:
           - surface: 3.0-compat
             tenant: governance
             min_clean_storyboards: 27
-            min_passing_steps: 147
+            min_passing_steps: 146
           - surface: 3.0-compat
             tenant: creative
             min_clean_storyboards: 22
-            min_passing_steps: 109
+            min_passing_steps: 108
           - surface: 3.0-compat
             tenant: creative-builder
             min_clean_storyboards: 24
@@ -536,7 +555,9 @@ jobs:
 
   sales_storyboard_orchestrators:
     name: Sales storyboard orchestrator (${{ matrix.orchestrator }}/8)
-    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft != true
+    # Same runner selection as the storyboards matrix above.
+    runs-on: ${{ vars.STORYBOARD_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -606,7 +627,7 @@ jobs:
 
   sales_storyboards:
     name: Storyboards (current /sales)
-    if: always()
+    if: always() && github.event.pull_request.draft != true
     needs: sales_storyboard_orchestrators
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -717,8 +738,8 @@ jobs:
           # Beta.12 capability-resolved replay. Result-row totals include the
           # three signed-request route profiles; storyboard applicability is
           # reported separately in the aggregate summary.
-          MIN_CLEAN: 135
-          MIN_PASSED: 646
+          MIN_CLEAN: 136
+          MIN_PASSED: 669
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
@@ -738,6 +759,7 @@ jobs:
           required_clean=(
             "sales_non_guaranteed"
             "sales_guaranteed"
+            "sales_broadcast_tv"
             "media_buy_seller/billing_finality_delivery"
             "media_buy_seller/canonical_formats"
             "media_buy_seller/external_audience_source_binding"

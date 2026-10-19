@@ -14,6 +14,8 @@
  */
 
 import { Router } from 'express';
+import { trainingGcsReportingRouter } from './gcs-reporting-routes.js';
+import { mountCreativeFeaturesVerifier } from './creative-features-verifier.js';
 import type { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { WorkOS } from '@workos-inc/node';
@@ -58,6 +60,7 @@ import {
 } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { buildGovernanceAgentCredentialAuthenticator } from './governance-agent-credentials.js';
+import { createTrainingBuyerOAuthMiddleware, trainingBuyerOAuthConfig, trainingBuyerMetadata, trainingBuyerDocumentation, TRAINING_BUYER_METADATA_PATH } from './buyer-oauth.js';
 
 const logger = createLogger('training-agent-routes');
 
@@ -276,7 +279,7 @@ const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-buil
  *  `_training_agent_tenants` discovery extension. Mirrors the per-tenant
  *  config builders in `tenants/<id>.ts`. */
 const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> = {
-  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-dooh'],
+  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', 'sales-dooh'],
   signals: ['signal-marketplace', 'signal-owned'],
   governance: [
     'governance-spend-authority',
@@ -321,6 +324,18 @@ export function createTrainingAgentRouter(options: {
   disableRateLimit?: boolean;
 } = {}): Router {
   const router = Router();
+  const buyerOAuth = trainingBuyerOAuthConfig();
+  const requireSalesAuth = buyerOAuth ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault) : requireTokenDefault;
+  const requireReportingAuth = buyerOAuth
+    ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault, undefined, 'private-reporting')
+    : requireTokenDefault;
+  if (buyerOAuth) router.get(TRAINING_BUYER_METADATA_PATH, (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.json(trainingBuyerMetadata(buyerOAuth));
+  });
+  if (buyerOAuth) router.get('/sales/oauth', (_req, res) => {
+    res.type('text/plain').send(trainingBuyerDocumentation(buyerOAuth));
+  });
 
   startSessionCleanup();
 
@@ -342,12 +357,21 @@ export function createTrainingAgentRouter(options: {
     },
   });
 
+  router.use('/sales/reporting', ...(!options.disableRateLimit ? [mcpRateLimiter] : []), requireReportingAuth, trainingGcsReportingRouter());
+
+  // Public conformance verifier for provenance truth-of-claim storyboards
+  // (adcp#8199). Unauthenticated by design, rate limited per IP, and serves
+  // get_creative_features only. Mounted before the tenant routes so the
+  // tenant resolver never sees it.
+  mountCreativeFeaturesVerifier(router, { rateLimit: !options.disableRateLimit });
+
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via
   // resolveByRequest(host, pathname).
   mountTenantRoutes(router, TENANT_IDS, {
     ...(!options.disableRateLimit && { rateLimit: mcpRateLimiter }),
     requireAuth: requireTokenDefault,
+    requireSalesAuth,
     requireGovernanceAuth: requireTokenGovernance,
     storyboardCompat: options.storyboardCompat,
   });

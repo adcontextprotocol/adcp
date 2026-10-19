@@ -980,14 +980,46 @@ describe('Registry crawler cache (PR 2 of #3177)', () => {
       expect(claim?.agent_url).toBe(CLAIMING_AGENT);
     });
 
-    it('canonicalizes both stored and input urls so an un-canonical input still matches', async () => {
-      // Pass a non-canonical form (uppercase, trailing slash). The SQL
-      // canonicalizes both sides, so KEPT_AGENT must still survive.
-      // This is the safety net against a caller forgetting to
-      // canonicalize — without it, the DELETE would nuke every row.
+    it('keys both stored and input urls so an un-canonical input still matches', async () => {
+      // Pass a form that differs only in the parts the key folds — scheme
+      // and host case, surrounding whitespace, a default port. KEPT_AGENT
+      // must still survive. This is the safety net against a caller
+      // forgetting to canonicalize; without it the DELETE would nuke
+      // every row.
+      const authority = new URL(KEPT_AGENT).host.toUpperCase();
       await federatedIndex.reconcileAdagentsAuthorizations(TEST_DOMAIN, [
-        `${KEPT_AGENT.toUpperCase()}/`,
+        ` HTTPS://${authority}:443${new URL(KEPT_AGENT).pathname} `,
       ]);
+
+      const adagents = await pool.query<{ agent_url: string }>(
+        `SELECT agent_url FROM agent_publisher_authorizations
+          WHERE publisher_domain = $1 AND source = 'adagents_json'`,
+        [TEST_DOMAIN],
+      );
+      expect(adagents.rows).toHaveLength(1);
+      expect(adagents.rows[0].agent_url).toBe(KEPT_AGENT);
+    });
+
+    it('treats a path-case variant as a different agent', async () => {
+      // #7830: /mcp and /MCP are different agents, so a manifest that only
+      // lists the variant no longer authorizes the stored row and the
+      // reconcile drops it.
+      await federatedIndex.reconcileAdagentsAuthorizations(TEST_DOMAIN, [
+        KEPT_AGENT.replace('/mcp', '/MCP'),
+      ]);
+
+      const adagents = await pool.query<{ agent_url: string }>(
+        `SELECT agent_url FROM agent_publisher_authorizations
+          WHERE publisher_domain = $1 AND source = 'adagents_json'`,
+        [TEST_DOMAIN],
+      );
+      expect(adagents.rows).toHaveLength(0);
+    });
+
+    it('treats a trailing-slash variant as the same agent', async () => {
+      // Registry identity folds the trailing slash, so a manifest listing
+      // /mcp/ still covers the row stored as /mcp (#7830).
+      await federatedIndex.reconcileAdagentsAuthorizations(TEST_DOMAIN, [`${KEPT_AGENT}/`]);
 
       const adagents = await pool.query<{ agent_url: string }>(
         `SELECT agent_url FROM agent_publisher_authorizations

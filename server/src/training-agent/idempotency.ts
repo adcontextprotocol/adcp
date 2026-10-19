@@ -19,7 +19,8 @@
  *   public sandbox token is in use (otherwise every caller on that token
  *   sees the same oracle).
  * - `getIdempotencyStore` — returns a process-wide store backed by
- *   Postgres when a DB pool is available, in-memory otherwise.
+ *   Postgres in production (with lazy pool lookup) or when a DB pool is
+ *   available, in-memory otherwise.
  */
 
 import {
@@ -34,6 +35,28 @@ import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { randomUUID } from 'node:crypto';
 
 export const REPLAY_TTL_SECONDS = 86400;
+
+/** Bound boot queries while allowing the configured connection timeout plus query headroom. */
+export async function probeIdempotencyStore(
+  store: Pick<IdempotencyStore, 'probe'>,
+  connectionTimeoutMillis: number = 5000,
+): Promise<void> {
+  if (!store.probe) return;
+  const deadlineMs = Math.max(10_000, connectionTimeoutMillis + 5000);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      store.probe(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(
+          `Idempotency backend probe timed out after ${deadlineMs}ms — check DATABASE_URL and pool reachability`,
+        )), deadlineMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 const MIN_TTL_SECONDS = 3600;
 const MAX_TTL_SECONDS = 604800;
@@ -472,7 +495,12 @@ function validateTtl(seconds: number): number {
 }
 
 function fencedPgBackend(): FencedIdempotencyBackend {
-  const db = getPool();
+  // Tenant registry prewarming starts before initializeDatabase(). Resolve
+  // the pool only when querying so construction never downgrades production
+  // to process-local memory; operations still fail closed until DB startup.
+  const db = {
+    query: (text: string, values?: unknown[]) => getPool().query(text, values),
+  };
   const base = pgBackend(db);
   return {
     ...base,
@@ -504,7 +532,7 @@ function fencedPgBackend(): FencedIdempotencyBackend {
 
 export function getIdempotencyStore(): OwnedIdempotencyStore {
   if (storeInstance) return storeInstance;
-  const backend = isDatabaseInitialized()
+  const backend = process.env.NODE_ENV === 'production' || isDatabaseInitialized()
     ? fencedPgBackend()
     : memoryBackend();
   const base = createHashAwareIdempotencyStore({ backend, ttlSeconds: REPLAY_TTL_SECONDS });

@@ -79,7 +79,7 @@
     "status_retention_days": {
       "type": "integer",
       "minimum": 1,
-      "description": "Minimum period for which obligation, revision, and materialization metadata remain queryable."
+      "description": "Minimum period for which obligation, revision, and materialization metadata remain queryable. Revision content is retained for this period only for the revisions named in reporting-revision.json content_retention; other superseded snapshot revisions MAY be compacted to metadata only."
     },
     "consumer_mismatch_escalation_seconds": {
       "type": "integer",

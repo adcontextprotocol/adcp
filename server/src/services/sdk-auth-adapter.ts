@@ -9,6 +9,7 @@
  */
 
 import type { ResolvedOwnerAuth } from '../db/compliance-db.js';
+import { createNonInteractiveOAuthProvider } from '@adcp/sdk/auth';
 
 /**
  * The subset of `ResolvedOwnerAuth` the SDK accepts. Kept as a
@@ -20,8 +21,8 @@ export type SdkAuth =
   | { type: 'basic'; username: string; password: string }
   | {
       type: 'oauth';
-      tokens: { access_token: string; refresh_token: string; expires_at?: string };
-      client?: { client_id: string; client_secret?: string };
+      tokens: { access_token: string; refresh_token: string; expires_at?: string; issuer?: string };
+      client?: { client_id: string; client_secret?: string; issuer?: string };
     }
   | Extract<ResolvedOwnerAuth, { type: 'oauth_client_credentials' }>;
 
@@ -31,9 +32,26 @@ export type SdkAuth =
  */
 export async function adaptAuthForSdk(
   auth: ResolvedOwnerAuth | undefined,
-  _context: { tokenEndpointLabel?: string } = {},
+  context: { tokenEndpointLabel?: string; ownerDiscoveryUrl?: string } = {},
 ): Promise<SdkAuth | undefined> {
+  if (context.ownerDiscoveryUrl) await assertOwnerOAuthReady(auth, context.ownerDiscoveryUrl);
   return auth;
+}
+
+/**
+ * Validate selected owner credentials before the SDK's endpoint discovery can
+ * replace an issuer error with a generic connection error. The public provider
+ * reads only its supplied config here: no storage, discovery, registration or
+ * authorization-server request. Opt in only at explicit owner/discovery calls.
+ */
+export async function assertOwnerOAuthReady(auth: SdkAuth | undefined, agentUrl: string): Promise<void> {
+  if (auth?.type !== 'oauth') return;
+  const provider = createNonInteractiveOAuthProvider({
+    id: 'owner-readiness', name: 'Owner credential readiness', agent_uri: agentUrl, protocol: 'mcp',
+    ...agentConfigAuthFields(auth),
+  });
+  await provider.tokens();
+  await provider.clientInformation();
 }
 
 /**
@@ -67,8 +85,9 @@ export type AgentConfigAuthFields = {
     access_token: string;
     refresh_token: string;
     expires_at?: string;
+    issuer?: string;
   };
-  oauth_client?: { client_id: string; client_secret?: string };
+  oauth_client?: { client_id: string; client_secret?: string; issuer?: string };
   oauth_client_credentials?: Extract<SdkAuth, { type: 'oauth_client_credentials' }>['credentials'];
 };
 

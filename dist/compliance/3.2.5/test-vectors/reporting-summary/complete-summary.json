@@ -1,0 +1,68 @@
+{
+  "description": "Closed, complete hourly reporting scope observed at 04:05 UTC. Active hourly and daily committed configuration generations have their next period starts at 05:00 UTC and the following midnight. The summary projects 05:00 UTC without adding an obligation to the evaluated scope. Cases exercise structural validation; schedule-dependent presence is enforced by the reporting_core storyboard.",
+  "schema_ref": "media-buy/get-reporting-status-response.json",
+  "response": {
+    "status": "completed",
+    "view": "summary",
+    "ledger_snapshot_id": "ledger_acme_complete_20260801",
+    "ledger_as_of": "2026-08-01T04:05:00.000Z",
+    "account_id": "acc_acme_reporting",
+    "scope": {
+      "period_start": "2026-08-01T00:00:00.000Z",
+      "period_end": "2026-08-01T01:00:00.000Z",
+      "scope_closed": true,
+      "all_accessible_media_buys": true,
+      "delivery_config_generations": [
+        { "delivery_config_id": "analytics-daily", "delivery_config_version": 1, "feed_purpose": "analytics" },
+        { "delivery_config_id": "pacing-hourly", "delivery_config_version": 1, "feed_purpose": "pacing" }
+      ],
+      "feed_purposes": ["analytics", "pacing"],
+      "finality": ["snapshot"],
+      "ledger_retained_from": "2026-07-01T00:00:00.000Z",
+      "coverage_complete": true
+    },
+    "health": "complete",
+    "coverage": {
+      "status": "full",
+      "evaluated_at": "2026-08-01T01:00:00.000Z",
+      "media_buy_ids": ["mb_acme"],
+      "fully_covered_media_buy_ids": ["mb_acme"],
+      "partially_covered_media_buy_ids": [],
+      "unsupported_media_buy_ids": [],
+      "unknown_media_buy_ids": [],
+      "package_ids": ["pkg_acme"],
+      "covered_package_ids": ["pkg_acme"],
+      "unsupported_package_ids": [],
+      "unknown_package_ids": [],
+      "limitations": []
+    },
+    "data_through": "2026-08-01T01:00:00.000Z",
+    "next_expected_at": "2026-08-01T05:00:00.000Z",
+    "obligation_counts": { "total": 1, "waiting": 0, "healthy": 0, "delayed": 0, "action_required": 0, "complete": 1 },
+    "issues": []
+  },
+  "cases": [
+    { "name": "complete with a future expectation", "valid": true, "patch": [] },
+    { "name": "complete without a future expectation", "valid": true, "patch": [{ "op": "remove", "path": "/next_expected_at" }] },
+    { "name": "future expectation with an explicit UTC offset", "valid": true, "patch": [{ "op": "replace", "path": "/next_expected_at", "value": "2026-08-01T01:00:00-04:00" }] },
+    { "name": "missing scope_closed", "valid": false, "patch": [{ "op": "remove", "path": "/scope/scope_closed" }] },
+    { "name": "false scope_closed", "valid": false, "patch": [{ "op": "replace", "path": "/scope/scope_closed", "value": false }] },
+    { "name": "missing coverage_complete", "valid": false, "patch": [{ "op": "remove", "path": "/scope/coverage_complete" }] },
+    { "name": "false coverage_complete", "valid": false, "patch": [{ "op": "replace", "path": "/scope/coverage_complete", "value": false }] },
+    { "name": "missing scope_closed without a future expectation", "valid": false, "patch": [{ "op": "remove", "path": "/next_expected_at" }, { "op": "remove", "path": "/scope/scope_closed" }] },
+    { "name": "false scope_closed without a future expectation", "valid": false, "patch": [{ "op": "remove", "path": "/next_expected_at" }, { "op": "replace", "path": "/scope/scope_closed", "value": false }] },
+    { "name": "missing coverage_complete without a future expectation", "valid": false, "patch": [{ "op": "remove", "path": "/next_expected_at" }, { "op": "remove", "path": "/scope/coverage_complete" }] },
+    { "name": "false coverage_complete without a future expectation", "valid": false, "patch": [{ "op": "remove", "path": "/next_expected_at" }, { "op": "replace", "path": "/scope/coverage_complete", "value": false }] },
+    { "name": "malformed future timestamp", "valid": false, "patch": [{ "op": "replace", "path": "/next_expected_at", "value": "not-a-timestamp" }] },
+    { "name": "naive future timestamp", "valid": false, "patch": [{ "op": "replace", "path": "/next_expected_at", "value": "2026-08-01T05:00:00" }] },
+    { "name": "impossible calendar date", "valid": false, "patch": [{ "op": "replace", "path": "/next_expected_at", "value": "2026-02-30T05:00:00Z" }] },
+    { "name": "null future timestamp", "valid": false, "patch": [{ "op": "replace", "path": "/next_expected_at", "value": null }] },
+    { "name": "complete with an unrelated issue", "valid": false, "patch": [{ "op": "replace", "path": "/issues", "value": [{ "issue_id": "issue_acme_overdue", "code": "REPORT_OVERDUE", "severity": "delayed", "responsible_party": "seller", "recommended_action": "wait_for_retry" }] }] },
+    { "name": "action_required without an issue", "valid": false, "patch": [{ "op": "replace", "path": "/health", "value": "action_required" }] },
+    { "name": "delayed with an action_required issue", "valid": false, "patch": [{ "op": "replace", "path": "/health", "value": "delayed" }, { "op": "replace", "path": "/issues", "value": [{ "issue_id": "issue_acme_overdue", "code": "REPORT_OVERDUE", "severity": "action_required", "responsible_party": "seller", "recommended_action": "contact_seller" }] }] },
+    { "name": "incomplete retained history without HISTORY_UNAVAILABLE", "valid": false, "patch": [{ "op": "replace", "path": "/health", "value": "action_required" }, { "op": "replace", "path": "/scope/coverage_complete", "value": false }, { "op": "replace", "path": "/issues", "value": [{ "issue_id": "issue_acme_overdue", "code": "REPORT_OVERDUE", "severity": "action_required", "responsible_party": "seller", "recommended_action": "contact_seller" }] }] },
+    { "name": "summary carrying periods", "valid": false, "patch": [{ "op": "add", "path": "/periods", "value": [] }] },
+    { "name": "complete periods view retains its existing field restriction", "valid": false, "patch": [{ "op": "replace", "path": "/view", "value": "periods" }, { "op": "add", "path": "/periods", "value": [] }, { "op": "add", "path": "/revisions", "value": [] }, { "op": "add", "path": "/adjustments", "value": [] }, { "op": "add", "path": "/materializations", "value": [] }, { "op": "add", "path": "/receipts", "value": [] }, { "op": "add", "path": "/pagination", "value": { "has_more": false, "total_count": 0 } }, { "op": "add", "path": "/changes_checkpoint", "value": "checkpoint_acme_complete" }] },
+    { "name": "complete periods view without a future expectation", "valid": true, "patch": [{ "op": "remove", "path": "/next_expected_at" }, { "op": "replace", "path": "/view", "value": "periods" }, { "op": "add", "path": "/periods", "value": [] }, { "op": "add", "path": "/revisions", "value": [] }, { "op": "add", "path": "/adjustments", "value": [] }, { "op": "add", "path": "/materializations", "value": [] }, { "op": "add", "path": "/receipts", "value": [] }, { "op": "add", "path": "/pagination", "value": { "has_more": false, "total_count": 0 } }, { "op": "add", "path": "/changes_checkpoint", "value": "checkpoint_acme_complete" }] }
+  ]
+}

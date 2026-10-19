@@ -26,6 +26,7 @@ import {
   assertDiscoveryAccountProvisioned,
   isIdentitylessControllerRef,
 } from './v6-account-helpers.js';
+import { rehydrateAccountById } from './account-handlers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { taskRegistryScopeFromContext } from './task-registry-scope.js';
@@ -80,6 +81,7 @@ function trainingAccountStore(
       const canonical = canonicalizeAccountRef(accountRefForResolution(ref, toolName));
       if (enforceDiscoveryProvisioning) {
         await assertDiscoveryAccountProvisioned(canonical, toolName, principal);
+        if (canonical.kind === 'account_id') await rehydrateAccountById(principal, canonical.account_id);
       }
       const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
         ? { account_id: canonical.account_id }
