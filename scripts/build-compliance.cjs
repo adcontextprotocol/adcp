@@ -496,6 +496,7 @@ function verifyEnumParity(specialisms, protocols) {
 }
 
 const { lint: lintUniversalDocParity } = require('./lint-universal-storyboard-doc-parity.cjs');
+const { lint: lintV4CompatibilityRegistry } = require('./lint-v4-compatibility-registry.cjs');
 const {
   formatViolation: formatComplianceSourceAuthorityViolation,
   lintBuiltMirror: lintComplianceBuiltMirror,
@@ -931,6 +932,12 @@ function main() {
   const docParityErrors = lintUniversalDocParity({ sourceDir: SOURCE_DIR });
   if (docParityErrors.length) {
     console.error('Universal-storyboard doc parity drift:\n  - ' + docParityErrors.join('\n  - '));
+    process.exit(1);
+  }
+
+  const v4CompatibilityErrors = lintV4CompatibilityRegistry({ sourceDir: SOURCE_DIR });
+  if (v4CompatibilityErrors.length) {
+    console.error('AdCP 4.0 compatibility registry drift:\n  - ' + v4CompatibilityErrors.join('\n  - '));
     process.exit(1);
   }
 }
