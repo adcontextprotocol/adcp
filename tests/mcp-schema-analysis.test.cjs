@@ -53,7 +53,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // shared locale tag its languages filter references.
   // Media-buy lineage adds the shared lineage reason enum, reached from
   // create_media_buy and buy_products.
-  assert.equal(report.definition_instances, 695);
+  // opportunity.later_proposals adds a Duration reference to the shared
+  // opportunity context reached from the proposal and purchase tools (+2).
+  assert.equal(report.definition_instances, 697);
   assert.equal(report.unique_definitions, 189);
   assert.equal(report.repeated_definitions, 134);
   assert.ok(report.repeated_definition_bytes > 180_000);
