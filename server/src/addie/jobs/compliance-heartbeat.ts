@@ -37,6 +37,7 @@ import { notifyComplianceChange, notifyComplianceTimeout, notifyVerificationChan
 import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
 import { logOutboundRequest } from '../../db/outbound-log-db.js';
+import { flattenToSingleLine } from '../../utils/slack-escape.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
@@ -132,6 +133,17 @@ type PendingShadowAssessment = Parameters<typeof recordVerificationProfileShadow
 
 /** How long the worker waits on a best-effort timeout DM before moving on. */
 const HEARTBEAT_TIMEOUT_NOTIFY_BUDGET_MS = 15_000;
+
+/**
+ * How much of an upstream transport error we quote in the stored `Unreachable:`
+ * headline. The message is whatever the remote agent (or the stack talking to
+ * it) produced, and that headline is republished to the registry card, the
+ * `agent.compliance_changed` feed event, and the owner's notification — so it
+ * is flattened to one line and capped here rather than at each reader
+ * (adcp#8320). The untruncated message still reaches the structured log and
+ * the run's observation record.
+ */
+const UNREACHABLE_HEADLINE_DETAIL_MAX = 300;
 
 /**
  * Best-effort owner DM for a heartbeat that ran out of time (adcp#8268).
@@ -609,9 +621,10 @@ export async function runComplianceHeartbeatJob(
 
       // Classify failure. Timeouts and capability-config faults are expected
       // per-agent problems, not platform errors — log at warn so observability
-      // doesn't alarm on them. The DB `headline` flows into Slack DM titles
-      // via notifyComplianceChange, so only sanitized / controlled strings
-      // go there (never the raw upstream error message).
+      // doesn't alarm on them. Every branch below writes a controlled string;
+      // the one that has to quote the upstream error flattens and caps it
+      // first (adcp#8320), because the stored `headline` is republished to
+      // the registry card, the change feed, and the owner's notification.
       let headline: string;
       let observationCategory: string;
       let observationSeverity: 'warning' | 'error';
@@ -641,7 +654,7 @@ export async function runComplianceHeartbeatJob(
         observationMessage = presentation.headline;
         logger.warn({ agentUrl: agent.agent_url, ...presentation.logFields }, presentation.logMsg);
       } else {
-        headline = `Unreachable: ${errorMessage}`;
+        headline = `Unreachable: ${flattenToSingleLine(errorMessage, UNREACHABLE_HEADLINE_DETAIL_MAX)}`;
         observationCategory = 'connectivity';
         observationSeverity = 'error';
         observationMessage = errorMessage;

@@ -894,6 +894,23 @@ describe('runComplianceHeartbeatJob', () => {
     );
   });
 
+  it('bounds the agent-controlled error quoted in the Unreachable headline', async () => {
+    // The stored headline is republished to the registry card, the change
+    // feed, and the owner's notification, so the quoted upstream error is
+    // flattened to one line and capped at the source (adcp#8320).
+    mocks.comply.mockRejectedValueOnce(new Error(
+      `<!channel> connection reset\nStatus: passing ${'A'.repeat(10_000)}`,
+    ));
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    await runComplianceHeartbeatJob({ limit: 1 });
+
+    const recorded = mocks.recordComplianceRun.mock.calls.at(-1)![0] as { headline: string };
+    expect(recorded.headline.startsWith('Unreachable: <!channel> connection reset Status: passing AAA')).toBe(true);
+    expect(recorded.headline).not.toContain('\n');
+    expect(recorded.headline.length).toBeLessThanOrEqual('Unreachable: '.length + 301);
+  });
+
   it('records malformed saved Basic auth as audit-only setup evidence', async () => {
     mocks.comply.mockRejectedValueOnce(new Error('step.auth.basic.username must be a non-empty string'));
 
