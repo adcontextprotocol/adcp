@@ -1167,6 +1167,12 @@ export class BrandDatabase {
 
   /**
    * Delete a discovered brand and record removal of any hierarchy edge.
+   *
+   * `options.onlyIfPending` makes the delete conditional on the row
+   * still being unreviewed, inside the same statement. A caller that
+   * checks `review_status` first and then deletes has a window in which
+   * the record is approved and published between the two — the admin
+   * moderation queue's "reject" is exactly that shape (adcp#8338).
    */
   async deleteDiscoveredBrand(
     domain: string,
@@ -1174,6 +1180,7 @@ export class BrandDatabase {
       actor_user_id: 'system:brand-database',
       source: 'delete_discovered_brand',
     },
+    options?: { onlyIfPending?: boolean },
   ): Promise<boolean> {
     const canonicalDomain = domain.toLowerCase();
     const client = await getClient();
@@ -1181,7 +1188,7 @@ export class BrandDatabase {
       await client.query('BEGIN');
       await lockBrandHouseDomainWriter(client, canonicalDomain);
       const result = await client.query<{ domain: string; house_domain: string | null }>(
-        'DELETE FROM brands WHERE domain = $1 RETURNING domain, house_domain',
+        `DELETE FROM brands WHERE domain = $1${options?.onlyIfPending ? " AND review_status = 'pending'" : ''} RETURNING domain, house_domain`,
         [canonicalDomain],
       );
       const deleted = result.rows[0];
@@ -1584,10 +1591,16 @@ export class BrandDatabase {
 
   /**
    * Approve a pending brand (called by Addie after review).
+   *
+   * `options.onlyIfPending` narrows the UPDATE to a row that is still
+   * unreviewed, so a caller that read the status first cannot approve a
+   * record whose state changed underneath it (adcp#8338).
    */
-  async approveBrand(domain: string): Promise<boolean> {
+  async approveBrand(domain: string, options?: { onlyIfPending?: boolean }): Promise<boolean> {
     const result = await query(
-      `UPDATE brands SET review_status = 'approved' WHERE domain = $1`,
+      `UPDATE brands SET review_status = 'approved' WHERE domain = $1${
+        options?.onlyIfPending ? " AND review_status = 'pending'" : ''
+      }`,
       [domain.toLowerCase()]
     );
     return result.rowCount !== null && result.rowCount > 0;
@@ -1898,7 +1911,17 @@ export class BrandDatabase {
   async rollbackBrand(
     domain: string,
     toRevisionNumber: number,
-    editor: { user_id: string; email?: string; name?: string }
+    editor: { user_id: string; email?: string; name?: string },
+    /**
+     * `onlyIfNoRollbackSince` refuses when a rollback has already
+     * restored the record past `toRevisionNumber`. Checked inside this
+     * transaction, after the row lock, because a caller that checks
+     * first and rolls back second can be overtaken: the moderation
+     * queue's revert is exactly that shape, and restoring a revision
+     * above an intervening rollback puts the undone edits back
+     * (adcp#8338).
+     */
+    options?: { onlyIfNoRollbackSince?: boolean },
   ): Promise<{ brand: DiscoveredBrand; revision_number: number }> {
     const canonicalDomain = domain.toLowerCase();
     const client = await getClient();
@@ -1933,6 +1956,16 @@ export class BrandDatabase {
       }
       if (current.review_status === 'pending') {
         throw new Error('Cannot roll back brand pending review');
+      }
+      if (options?.onlyIfNoRollbackSince) {
+        const since = await client.query(
+          `SELECT 1 FROM brand_revisions
+            WHERE brand_domain = $1 AND is_rollback AND revision_number > $2 LIMIT 1`,
+          [canonicalDomain, toRevisionNumber],
+        );
+        if ((since.rowCount ?? 0) > 0) {
+          throw new Error('Cannot roll back brand past a later rollback');
+        }
       }
 
       // Get next revision number

@@ -278,12 +278,64 @@ requalify each dependent PR on that main, including combined tests and human rev
 historical backfill or incident recovery.
 
 Routine app deployment is authorized to rebuild and upload only
-`schemas/latest/**`, `compliance/latest/**`, and `protocol/latest.tgz*`.
-It uses `backfill-cdn-artifacts.sh --latest-only`; root version indexes and
-all semver paths are excluded. The app itself serves committed `dist`, so a
-committed package version without a published GitHub Release and its four
-assets also blocks app deployment. This can delay app-only fixes while a
-release needs recovery.
+`schemas/latest/**`, `compliance/latest/**`, `protocol/latest.tgz*`, and the
+root discovery pointers `schemas/index.json` and `schemas/latest.json`. It
+uses `backfill-cdn-artifacts.sh --latest-only`; all semver paths are excluded.
+The app itself serves committed `dist`, so a committed package version without
+a published GitHub Release and its four assets also blocks app deployment.
+This can delay app-only fixes while a release needs recovery.
+
+The root pointers name versions, so routine deployment must not be able to
+advertise one that release authority has not published.
+`scripts/build-schema-discovery-pointers.cjs` enforces that mechanically:
+
+- It starts from the regenerated `dist/schemas/index.json` and refuses a
+  source document whose aliases disagree with its own version list, whose
+  `$id`/`$schema`/`channel` are not the expected literals, or that carries a
+  malformed entry.
+- `versions[]` keeps only the releases with a `schemas/<version>/` prefix in
+  one delimited bucket listing. A truncated listing is refused.
+- An alias (`latest_stable`, `v3`, `v3.2`, …) may only resolve to a release
+  whose `schemas/<version>/index.json` object was confirmed with a HEAD. A
+  prefix appears as soon as release publication writes its first object, and
+  that publication is progressive and per-object, so prefix existence alone
+  would let a half-uploaded release win an alias under an immutable cache
+  policy. The deploy walks each line newest-first and stops at the first
+  confirmation — typically one HEAD per release line.
+- Every URL in the published document is derived from a validated version
+  string; nothing but two prose fields is copied from the source.
+- It refuses to move any pointer backwards relative to the copy currently
+  served. The one exemption is a release the source marks `withdrawn` or
+  `unpublished`, which is a deliberate editorial decision. Any other
+  regression means the CDN no longer serves a release it advertises: recover
+  that release, do not override the guard.
+
+A release whose version directory never reached the CDN therefore keeps its
+line pinned to the newest patch that is actually fetchable, and the deploy log
+carries a `Schema versions missing from the CDN` warning naming the gap.
+
+`scripts/verify-schema-discovery.mjs` then fetches the canonical public URLs
+and fails the deploy unless they serve byte-for-byte what this run uploaded —
+uploading is not serving. Note the scope: it proves the public document is
+this run's, not that the document names the newest release of every line. A
+line pinned one release back by a CDN gap passes, and the warning above is the
+signal for that.
+
+`npm run backfill:cdn-artifacts -- --bucket "$ADCP_ARTIFACT_R2_BUCKET"
+--build-latest --latest-only --aws-dry-run` computes and prints both documents
+against the live bucket without uploading anything, which is how to preview
+pointer state during an incident.
+
+Pointer currency follows the deploy, not the release: `release.yml` uploads
+`schemas/<version>/` with `--version V --skip-latest` and still never touches
+the pointers, so a new release is advertised by the next successful `main`
+deploy that sees its prefix. Releases cut on a maintenance branch wait for the
+forward merge into `main`.
+
+Before [#8318](https://github.com/adcontextprotocol/adcp/issues/8318) no
+workflow published these two objects at all: `--latest-only` excluded them and
+`--version V --skip-latest` still does, so they froze at whatever the last
+manual bulk backfill wrote while four releases shipped past them.
 
 Only the release workflow publishes a new immutable version. It verifies the
 current tested branch, the original merged release PR's final-head maintainer
