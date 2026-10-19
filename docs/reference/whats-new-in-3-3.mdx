@@ -89,6 +89,10 @@ This is a recommendation, not a conformance requirement, but the interop effect 
 
 The seller-side counterpart matters more than the number: keep discovery responses small. `tools/list`, `get_adcp_capabilities`, and the A2A agent card are the first bytes a counterparty reads, and an oversized one makes an agent unreachable rather than slow. `get_adcp_capabilities` is the sharpest case — above `MAX_CAPABILITIES_BYTES` your signing keys stop resolving too. See [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
 
+### Bounded inbound push and webhook bodies
+
+The response bound covers what a client reads on its own call path. 3.3 adds the receiver-side counterpart: [Inbound body bounds](/docs/building/by-layer/L1/security#inbound-body-bounds). Receivers of A2A push notifications and AdCP webhooks (reporting, artifact, collection-list, and account notification subscribers) SHOULD pre-reject an over-limit `Content-Length`, count decoded bytes while streaming, apply the 64-deep, 100,000-member parse bounds after the byte cap and before RFC 9421 or Web Bot Auth verification, apply connect, idle, and total deadlines, and reject with HTTP 413 rather than truncating. The default cap is 4 MiB, generalizing the attestation task-body cap rather than adding a new number, and a tighter per-feature cap governs. This is a recommendation, not a conformance requirement.
+
 ## Nobody else gets to write your capabilities document
 
 Two capability fields enumerate relationships a *counterparty* asserts:
@@ -155,6 +159,7 @@ These merged on `main` during the 3.3 cycle and were also released on the 3.2 li
 | A seller advertising `account.change_feed` | Include `changed_paths` on every `adcp` and `seller_operator` record; optionally echo `idempotency_key` on `adcp` records, to the sending principal only. |
 | A buyer or SDK maintainer | Adopt the 4 MiB response-size default; size your aggregate budget, not just the per-call one, if you fan out across agents. |
 | Any agent operator | Measure `tools/list`, `get_adcp_capabilities`, and your agent card. Oversized discovery makes you unreachable, and oversized capabilities also breaks signing-key discovery. |
+| A buyer operating a webhook or push-notification receiver | Bound the request body (4 MiB default) before signature verification, and answer an over-limit request with 413. |
 | A compliance operator | Treat beta.0 as an implementation input. Do not issue a 3.3 badge from beta.0. |
 
 ## In review for 3.3
