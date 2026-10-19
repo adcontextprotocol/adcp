@@ -5,6 +5,7 @@ import {
   isSafeSlackLinkTarget,
   sanitizeSlackLine,
   sanitizeSlackLinkLabel,
+  sanitizeSlackLiteral,
 } from '../../src/utils/slack-escape.js';
 
 describe('escapeSlackText', () => {
@@ -131,9 +132,41 @@ describe('sanitizeSlackLine', () => {
     expect(sanitizeSlackLine('<!channel>\nping')).toBe('&lt;!\u200bchannel&gt; ping');
   });
 
+  it('keeps the inline formatting that legitimate copy relies on', () => {
+    // Bold/italic/strike/code restyle text but cannot ping anyone or forge
+    // a destination, and escaping them would mangle ordinary copy. Use
+    // `sanitizeSlackLiteral` where even that should render literally.
+    expect(sanitizeSlackLine('*bold* _italic_ ~strike~ `code`'))
+      .toBe('*bold* _italic_ ~strike~ `code`');
+  });
+
   it('never lets a forged link survive', () => {
     expect(sanitizeSlackLine('<https://evil.example|agenticadvertising.org>'))
       .toBe('&lt;https://evil.example|agenticadvertising.org&gt;');
   });
 });
 
+
+describe('sanitizeSlackLiteral', () => {
+  it('defuses a bare URL that Slack would otherwise auto-link', () => {
+    // `sanitizeSlackLine` leaves this clickable: nothing about it is
+    // mrkdwn syntax, Slack's auto-linker just finds it.
+    expect(sanitizeSlackLine('Acme https://evil.example Co')).toContain('https://evil.example');
+    expect(sanitizeSlackLiteral('Acme https://evil.example Co'))
+      .toBe('Acme https:/\u200b/evil.example Co');
+  });
+
+  it('defuses inline formatting tokens the line form keeps on purpose', () => {
+    expect(sanitizeSlackLiteral('*bold* `code`'))
+      .toBe('\u200b*bold\u200b* \u200b`code\u200b`');
+  });
+
+  it('still flattens, escapes and defuses broadcasts', () => {
+    expect(sanitizeSlackLiteral('<!channel>\nsecond line'))
+      .toBe('&lt;!\u200bchannel&gt; second line');
+  });
+
+  it('leaves an ordinary name alone', () => {
+    expect(sanitizeSlackLiteral('Pinnacle Agency')).toBe('Pinnacle Agency');
+  });
+});

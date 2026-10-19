@@ -27,6 +27,7 @@ import {
 } from '../../services/announcement-visual.js';
 import { getEditorialChannel } from '../../db/system-settings-db.js';
 import type { SlackBlock, SlackElement } from '../../slack/types.js';
+import { sanitizeSlackLiteral } from '../../utils/slack-escape.js';
 
 const logger = createLogger('announcement-trigger');
 
@@ -849,37 +850,20 @@ export async function findStaleLiCandidates(): Promise<ReminderCandidate[]> {
 }
 
 /**
- * Escape Slack mrkdwn formatting chars + link syntax + bare URLs in
- * untrusted text (org names from WorkOS, etc.) so a hostile value
- * can't break the rendered reminder or inject a clickable link.
- *
- *  - `*`, `_`, `~`, backtick are Slack's inline formatting tokens.
- *    Prefix each with a zero-width space so Slack's parser sees them
- *    as mid-word literals rather than token boundaries.
- *  - `<`, `|`, `>` make up Slack's explicit link/mention syntax
- *    (`<url|label>`, `<@U…>`, `<#C…>`). Strip entirely.
- *  - `http://` / `https://` schemes trigger Slack's auto-linking.
- *    Break the scheme with a zero-width space so `https://evil/` in
- *    an org name renders as literal text, not a clickable link.
- *
- * A WorkOS org renamed to `Acme<https://evil|click>Co` would
- * otherwise phishing-link editorial on the reminder card.
+ * Org names come from WorkOS and land on a reminder card editorial reads as
+ * platform copy, so they get the strictest shared form: flattened to one
+ * line, escaped, with formatting tokens and bare-URL auto-linking defused.
+ * A WorkOS org renamed to `Acme<https://evil|click>Co` would otherwise
+ * phishing-link the card, and one renamed with an embedded newline would
+ * forge a second line of it.
  */
-function escapeSlackMrkdwn(s: string): string {
-  return s
-    .replace(/[<|>]/g, '')
-    // `​` is zero-width space; insert after the scheme so
-    // `http://x` becomes `http:/​/x` — Slack no longer auto-links.
-    .replace(/(https?:)\/\//gi, '$1/​/')
-    // Same ZWSP trick so mid-word formatting chars render literal.
-    .replace(/([*_~`])/g, '​$1');
-}
+const ORG_NAME_MAX = 160;
 
 export function buildReminderText(args: {
   orgName: string;
   daysSinceSlack: number;
 }): string {
-  const safeName = escapeSlackMrkdwn(args.orgName);
+  const safeName = sanitizeSlackLiteral(args.orgName, ORG_NAME_MAX);
   return (
     `📌 LinkedIn not yet marked posted for *${safeName}* — ` +
     `${args.daysSinceSlack} days since Slack. ` +
@@ -897,7 +881,7 @@ export function buildDeadParentText(args: {
   orgName: string;
   daysSinceSlack: number;
 }): string {
-  const safeName = escapeSlackMrkdwn(args.orgName);
+  const safeName = sanitizeSlackLiteral(args.orgName, ORG_NAME_MAX);
   return (
     `🧹 Review card for *${safeName}* is no longer reachable ` +
     `(deleted or archived). LinkedIn is still unmarked ` +

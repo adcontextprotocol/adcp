@@ -1756,9 +1756,12 @@ export class MCPToolHandler {
               editor_name: authContext.email,
             });
 
-            const oldRevision = revision_number > 1
-              ? await brandDb.getBrandRevision(domain, revision_number - 1)
-              : null;
+            // Revision N is the state *before* edit N — `editDiscoveredBrand`
+            // snapshots the pre-edit row — so the edit's own revision number
+            // is the old snapshot. Reading N-1 handed the reviewer a field
+            // the *previous* editor wrote, attributed to this one, which the
+            // auto-ban then acted on (adcp#8326). `http.ts` already does this.
+            const oldRevision = await brandDb.getBrandRevision(domain, revision_number);
 
             // Fire-and-forget: notify then review (review runs even if notification fails)
             notifyRegistryEdit({
@@ -1923,9 +1926,9 @@ export class MCPToolHandler {
               editor_name: authContext.email,
             });
 
-            const oldPropRevision = revision_number > 1
-              ? await propertyDb.getPropertyRevision(publisherDomain, revision_number - 1)
-              : null;
+            // Same off-by-one as the brand path above: revision N is the
+            // pre-edit snapshot, so N is what the reviewer must diff against.
+            const oldPropRevision = await propertyDb.getPropertyRevision(publisherDomain, revision_number);
 
             // Fire-and-forget: notify then review (review runs even if notification fails)
             notifyRegistryEdit({
