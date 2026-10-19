@@ -49,6 +49,16 @@
  * pending with a note in the moderator channel. Do not reintroduce a default
  * verdict: a fail-open `ok` makes "break the review" equivalent to "get
  * approved" (adcp#8326).
+ *
+ * ## The queue behind the channel
+ *
+ * Every outcome that leaves a decision for a human also writes a row to
+ * `registry_review_queue` (adcp#8338). The Slack post is the fast signal;
+ * the row is the durable one, and is what `/admin/registry-review`, the
+ * backlog digest, and the `registry-review-queue-drained` diagnostic read.
+ * Without it an Anthropic outage builds a backlog of pending records
+ * behind a channel message nobody re-reads. The enqueue never throws —
+ * see {@link enqueueForModerators}.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -65,6 +75,10 @@ import {
   notifyRegistryApproval,
   notifyRegistryBan,
 } from '../../notifications/registry.js';
+import {
+  recordRegistryReviewOutcome,
+  type RecordRegistryReviewOutcomeInput,
+} from '../../db/registry-review-queue-db.js';
 
 export interface ReviewResult {
   /**
@@ -389,6 +403,29 @@ function parseReviewJson(text: string): { verdict?: unknown; reason?: unknown } 
 }
 
 /**
+ * Put the submission in the admin moderation queue (adcp#8338).
+ *
+ * The moderator channel used to be the only queue, so an Anthropic outage
+ * — or a deployment with no `ANTHROPIC_API_KEY` — could build a backlog of
+ * pending records behind a Slack message nobody re-read. Every outcome
+ * that leaves a decision for a human writes a row here instead, which is
+ * what `/admin/registry-review` and the backlog signal read.
+ *
+ * Never throws: failing to enqueue must not cost the moderator channel
+ * post, which is still the faster of the two signals.
+ */
+async function enqueueForModerators(input: RecordRegistryReviewOutcomeInput): Promise<void> {
+  try {
+    await recordRegistryReviewOutcome(input);
+  } catch (error) {
+    logger.error(
+      { error, domain: input.domain, entity_type: input.entity_type },
+      'Failed to add registry submission to the moderator queue',
+    );
+  }
+}
+
+/**
  * The moderator channel is the queue, so say what actually happened rather
  * than what we set out to do. A failed revert that still reads "Edit
  * reverted" is how live vandalism gets closed as handled.
@@ -436,6 +473,8 @@ Does this look like a legitimate ${record.entity_type} record? Check for spam, n
 
   const result = applyReviewIntegrity(await callReview(prompt), submitted);
   let actionTaken: string | undefined;
+  /** Set when the record is left for a moderator — see {@link enqueueForModerators}. */
+  let needsHumanDecision = false;
 
   // Act on the verdict. `needs_human_review` deliberately falls through every
   // branch: it approves nothing and bans nobody.
@@ -510,12 +549,29 @@ Does this look like a legitimate ${record.entity_type} record? Check for spam, n
     }
 
     actionTaken = describeAction(deleted, 'Record hidden', banned, bannable);
+    // A delete that failed leaves the record pending with a malicious
+    // verdict against it — exactly the state a moderator has to finish.
+    needsHumanDecision = !deleted;
   } else {
     logger.warn(
       { domain: record.domain, entity_type: record.entity_type, reason: result.reason },
       'Registry review inconclusive: new record left pending for human review',
     );
     actionTaken = 'Left pending for human review';
+    needsHumanDecision = true;
+  }
+
+  if (needsHumanDecision) {
+    await enqueueForModerators({
+      entity_type: record.entity_type,
+      domain: record.domain,
+      submission_kind: 'new_record',
+      submitter_user_id: record.editor_user_id,
+      submitter_email: record.editor_email,
+      verdict: result.verdict,
+      reason: result.reason,
+      action_taken: actionTaken,
+    });
   }
 
   await postReviewToModerators(record.slack_thread_ts, result, record.domain, actionTaken);
@@ -568,6 +624,8 @@ Does this edit look reasonable? Check for vandalism, spam, or obviously incorrec
 
   const result = applyReviewIntegrity(await callReview(prompt), submitted);
   let actionTaken: string | undefined;
+  /** Set when the edit is left for a moderator — see {@link enqueueForModerators}. */
+  let needsHumanDecision = false;
 
   // Act on malicious edits. Every other verdict, including
   // `needs_human_review`, leaves the revision in place.
@@ -635,6 +693,10 @@ Does this edit look reasonable? Check for vandalism, spam, or obviously incorrec
       }
 
       actionTaken = describeAction(reverted, 'Edit reverted', banned, bannable);
+      // A revert that failed leaves the vandalism live. The moderator
+      // queue carries the same revision number the reviewer formed its
+      // verdict over, so their retry restores the same state (adcp#8337).
+      needsHumanDecision = !reverted;
     } else {
       logger.error(
         { domain: edit.domain, entity_type: edit.entity_type, revision_number: edit.revision_number },
@@ -648,6 +710,25 @@ Does this edit look reasonable? Check for vandalism, spam, or obviously incorrec
       'Registry review inconclusive: edit left in place for human review',
     );
     actionTaken = 'Left for human review';
+    needsHumanDecision = true;
+  }
+
+  // An edit item is only actionable when there is a revision to restore.
+  // `revision_number` is the pre-edit state (adcp#8337); the no-revision
+  // case is already logged as an error above.
+  if (needsHumanDecision && edit.revision_number >= 1) {
+    await enqueueForModerators({
+      entity_type: edit.entity_type,
+      domain: edit.domain,
+      submission_kind: 'edit',
+      revision_number: edit.revision_number,
+      submitter_user_id: edit.editor_user_id,
+      submitter_email: edit.editor_email,
+      edit_summary: typeof edit.edit_summary === 'string' ? edit.edit_summary : null,
+      verdict: result.verdict,
+      reason: result.reason,
+      action_taken: actionTaken,
+    });
   }
 
   await postReviewToModerators(edit.slack_thread_ts, result, edit.domain, actionTaken);

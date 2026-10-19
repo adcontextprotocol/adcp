@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Admin - Registry review queue - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    body { background: var(--color-bg-page); min-height: 100vh; }
+    .container { max-width: var(--container-xl); margin: var(--space-8) auto; padding: 0 var(--space-5); }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2_5); color: var(--color-text-heading); }
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: var(--space-5);
+      margin-bottom: var(--space-5);
+    }
+    .subtitle { color: var(--color-text-secondary); font-size: var(--text-sm); }
+
+    .backlog {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-5);
+    }
+    .stat {
+      padding: var(--space-4);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-subtle);
+    }
+    .stat.alert { border-color: var(--color-warning-300, var(--color-gray-300)); background: var(--color-warning-100, var(--color-bg-subtle)); }
+    .stat-value { font-size: var(--text-2xl); font-weight: var(--font-semibold); color: var(--color-text-heading); }
+    .stat-label { color: var(--color-text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .btn {
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-small { padding: var(--space-1_5) var(--space-3); font-size: var(--text-xs); }
+    .btn-secondary { background: var(--color-bg-button-secondary); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-bg-button-secondary-hover); }
+    .btn-danger { background: var(--color-error-500); color: white; }
+    .btn-danger:hover { background: var(--color-error-600); }
+    .btn-success { background: var(--color-success-600, #047857); color: white; }
+    .btn-success:hover { background: var(--color-success-700, #065f46); }
+
+    .status-message {
+      padding: var(--space-2_5) var(--space-4);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-4);
+      font-size: var(--text-sm);
+    }
+    .status-message.success { background: var(--color-success-100); color: var(--color-success-700); }
+    .status-message.error { background: var(--color-error-100); color: var(--color-error-700); }
+    .status-message.info { background: var(--color-info-100); color: var(--color-info-700); }
+
+    .empty-state { text-align: center; padding: var(--space-10); color: var(--color-text-secondary); }
+    .loading { text-align: center; padding: var(--space-8); color: var(--color-text-secondary); }
+
+    .queue { display: grid; gap: var(--space-4); }
+    .queue-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: var(--space-5);
+      padding: var(--space-4);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
+      align-items: start;
+    }
+    .queue-row.acting { opacity: 0.5; pointer-events: none; }
+
+    .meta { display: grid; gap: var(--space-2); font-size: var(--text-sm); min-width: 0; }
+    .meta-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: baseline; }
+    .meta-domain { font-weight: var(--font-semibold); color: var(--color-text-heading); font-size: var(--text-base); word-break: break-all; }
+    .meta-domain a { color: var(--color-brand); text-decoration: none; }
+    .meta-domain a:hover { text-decoration: underline; }
+    .meta-label { color: var(--color-text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; }
+    .meta-value { color: var(--color-text); word-break: break-word; }
+    .meta-submitter { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); word-break: break-all; }
+    .meta-note {
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-bg-subtle);
+      border-left: 3px solid var(--color-warning-300, var(--color-gray-300));
+      border-radius: var(--radius-sm);
+      color: var(--color-text);
+      font-size: var(--text-sm);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .badge-brand { background: var(--color-purple-100); color: var(--color-purple-700); }
+    .badge-property { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-pending_record { background: var(--color-bg-subtle); color: var(--color-text-muted); }
+    .badge-flagged_edit { background: var(--color-warning-100, var(--color-bg-subtle)); color: var(--color-warning-700, var(--color-text-muted)); }
+    .badge-verdict-needs_human_review { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-verdict-malicious { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-verdict-suspicious { background: var(--color-warning-100, var(--color-bg-subtle)); color: var(--color-warning-700, var(--color-text-muted)); }
+    .badge-verdict-ok { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-verdict-none { background: var(--color-bg-subtle); color: var(--color-text-muted); }
+
+    .actions { display: flex; flex-direction: column; gap: var(--space-2); min-width: 150px; }
+    .timestamp { color: var(--color-text-muted); font-size: var(--text-xs); }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div id="loading" class="loading">Loading…</div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h1>Registry review queue</h1>
+            <p class="subtitle">
+              Community brands and properties waiting on a moderator. Automated review fails safe, so an
+              Anthropic outage or an unparseable verdict leaves the submission here instead of publishing it.
+            </p>
+          </div>
+          <button class="btn btn-secondary" id="refreshBtn">↻ Refresh</button>
+        </div>
+
+        <div class="backlog" id="backlog"></div>
+
+        <div id="statusMessage" class="status-message" style="display: none;"></div>
+
+        <div id="empty" class="empty-state" style="display: none;">
+          <p>✅ Queue is clear.</p>
+          <p class="subtitle">Submissions the automated review could not resolve will show up here.</p>
+        </div>
+
+        <div id="queue" class="queue"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Every submitter- and model-authored value on this page (domain,
+    // record name, edit summary, verdict reason) reaches the DOM through
+    // textContent, never through innerHTML — the reason text is model
+    // output derived from the submitter's own edit summary.
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined && text !== null) node.textContent = String(text);
+      return node;
+    }
+
+    function labelled(labelText, valueText, valueClass) {
+      const wrap = el('span');
+      wrap.appendChild(el('span', 'meta-label', labelText));
+      wrap.appendChild(document.createTextNode(' '));
+      wrap.appendChild(el('span', valueClass || 'meta-value', valueText));
+      return wrap;
+    }
+
+    function showStatus(msg, kind) {
+      const node = document.getElementById('statusMessage');
+      node.className = 'status-message ' + (kind || 'info');
+      node.textContent = msg;
+      node.style.display = 'block';
+      if (kind !== 'error') {
+        setTimeout(function () { node.style.display = 'none'; }, 4000);
+      }
+    }
+
+    function ageLabel(hours) {
+      if (hours === null || hours === undefined) return 'unknown';
+      if (hours < 1) return 'under an hour';
+      if (hours < 48) return Math.round(hours) + 'h';
+      return Math.round(hours / 24) + 'd';
+    }
+
+    function recordUrl(item) {
+      const path = item.entity_type === 'brand' ? '/brand/view/' : '/property/view/';
+      return path + encodeURIComponent(item.domain);
+    }
+
+    function renderBacklog(backlog) {
+      const host = document.getElementById('backlog');
+      host.textContent = '';
+      if (!backlog) return;
+
+      const stats = [
+        { label: 'Waiting on a moderator', value: backlog.total, alert: backlog.total > 0 },
+        { label: 'Pending records', value: backlog.pending_records },
+        { label: 'Flagged live edits', value: backlog.flagged_edits },
+        { label: 'Oldest has waited', value: ageLabel(backlog.oldest_age_hours), alert: backlog.oldest_age_hours >= 48 },
+      ];
+
+      stats.forEach(function (stat) {
+        const card = el('div', 'stat' + (stat.alert ? ' alert' : ''));
+        card.appendChild(el('div', 'stat-value', stat.value));
+        card.appendChild(el('div', 'stat-label', stat.label));
+        host.appendChild(card);
+      });
+    }
+
+    function renderRow(item) {
+      const row = el('div', 'queue-row');
+      row.dataset.kind = item.kind;
+      row.dataset.entityType = item.entity_type;
+      row.dataset.domain = item.domain;
+      if (item.review_item_id) row.dataset.itemId = item.review_item_id;
+
+      const meta = el('div', 'meta');
+
+      const title = el('div', 'meta-domain');
+      const link = el('a', null, item.domain);
+      link.href = recordUrl(item);
+      link.target = '_blank';
+      link.rel = 'noopener';
+      title.appendChild(link);
+      if (item.record_name && item.record_name !== item.domain) {
+        title.appendChild(el('span', 'subtitle', ' — ' + item.record_name));
+      }
+      meta.appendChild(title);
+
+      const badges = el('div', 'meta-row');
+      badges.appendChild(el('span', 'badge badge-' + item.entity_type, item.entity_type));
+      badges.appendChild(el(
+        'span',
+        'badge badge-' + item.kind,
+        item.kind === 'pending_record' ? 'pending record' : 'flagged live edit',
+      ));
+      badges.appendChild(el(
+        'span',
+        'badge badge-verdict-' + (item.verdict || 'none'),
+        item.verdict ? item.verdict.replace(/_/g, ' ') : 'no verdict recorded',
+      ));
+      if (item.source_type) badges.appendChild(labelled('Source:', item.source_type));
+      meta.appendChild(badges);
+
+      const detail = el('div', 'meta-row');
+      detail.appendChild(labelled(
+        item.kind === 'flagged_edit' ? 'Reverts to revision:' : 'Revision:',
+        item.revision_number === null || item.revision_number === undefined ? '—' : item.revision_number,
+      ));
+      if (item.revision_count) detail.appendChild(labelled('Revisions:', item.revision_count));
+      detail.appendChild(labelled('Age:', ageLabel(item.age_hours)));
+      detail.appendChild(el('span', 'timestamp', new Date(item.created_at).toLocaleString()));
+      meta.appendChild(detail);
+
+      const submitter = el('div', 'meta-row');
+      submitter.appendChild(labelled(
+        'Submitter:',
+        item.submitter_email || item.submitter_user_id || 'unknown',
+        'meta-submitter',
+      ));
+      meta.appendChild(submitter);
+
+      if (item.edit_summary) {
+        meta.appendChild(labelled('Summary:', item.edit_summary));
+      }
+      if (item.reason) {
+        const note = el('div', 'meta-note');
+        note.appendChild(el('span', 'meta-label', 'Review reason:'));
+        note.appendChild(document.createTextNode(' ' + item.reason));
+        meta.appendChild(note);
+      }
+      if (item.action_taken) {
+        meta.appendChild(labelled('Automated action:', item.action_taken));
+      }
+
+      row.appendChild(meta);
+
+      const actions = el('div', 'actions');
+      (item.available_actions || []).forEach(function (action) {
+        const button = el(
+          'button',
+          'btn btn-small ' + (action === 'approve' ? 'btn-success' : action === 'reject' ? 'btn-danger' : 'btn-secondary'),
+          action === 'approve'
+            ? (item.kind === 'pending_record' ? 'Approve' : 'Keep edit')
+            : action === 'reject' ? 'Reject' : 'Revert edit',
+        );
+        button.addEventListener('click', function () { act(row, item, action); });
+        actions.appendChild(button);
+      });
+      row.appendChild(actions);
+
+      return row;
+    }
+
+    async function loadQueue() {
+      const queue = document.getElementById('queue');
+      const empty = document.getElementById('empty');
+      queue.textContent = '';
+      queue.appendChild(el('div', 'loading', 'Loading queue…'));
+      empty.style.display = 'none';
+
+      try {
+        const resp = await fetch('/api/admin/registry-review/queue', { credentials: 'include' });
+        if (resp.status === 403) {
+          queue.textContent = '';
+          empty.style.display = 'block';
+          empty.textContent = '🔒 Admin access is required for the registry review queue.';
+          return;
+        }
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+        const body = await resp.json();
+        renderBacklog(body.backlog);
+
+        const items = Array.isArray(body.items) ? body.items : [];
+        queue.textContent = '';
+        if (items.length === 0) {
+          empty.style.display = 'block';
+          return;
+        }
+        items.forEach(function (item) { queue.appendChild(renderRow(item)); });
+      } catch (err) {
+        queue.textContent = '';
+        showStatus('Failed to load queue: ' + (err && err.message ? err.message : err), 'error');
+      }
+    }
+
+    async function act(row, item, action) {
+      const prompts = {
+        approve: item.kind === 'pending_record'
+          ? 'Publish ' + item.domain + ' in the registry?'
+          : 'Keep this edit to ' + item.domain + ' as-is?',
+        reject: 'Reject and permanently remove the pending record for ' + item.domain + '?',
+        revert: 'Revert ' + item.domain + ' to revision ' + item.revision_number + '?',
+      };
+      if (!window.confirm(prompts[action])) return;
+
+      let note;
+      if (action === 'reject' || action === 'revert') {
+        note = window.prompt('Reason? (optional, recorded with your decision)') || undefined;
+      }
+
+      const url = item.kind === 'pending_record'
+        ? '/api/admin/registry-review/records/' + encodeURIComponent(item.entity_type) + '/' + encodeURIComponent(item.domain)
+        : '/api/admin/registry-review/items/' + encodeURIComponent(item.review_item_id);
+
+      row.classList.add('acting');
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: action, note: note }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(function () { return { error: 'HTTP ' + resp.status }; });
+          throw new Error(err.error || 'HTTP ' + resp.status);
+        }
+        showStatus('Recorded: ' + action + ' for ' + item.domain + '.', 'success');
+        await loadQueue();
+      } catch (err) {
+        row.classList.remove('acting');
+        showStatus('Failed to ' + action + ': ' + (err && err.message ? err.message : err), 'error');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+      document.getElementById('refreshBtn').addEventListener('click', loadQueue);
+      loadQueue();
+    });
+  </script>
+</body>
+</html>

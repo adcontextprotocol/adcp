@@ -638,3 +638,124 @@ export async function notifyAddieReview(review: {
     logger.error({ error, domain: review.domain }, 'Failed to send Addie review notification');
   }
 }
+
+/**
+ * Notify the moderator channel that a human closed a queued registry
+ * review (adcp#8338).
+ *
+ * The channel was the only queue before the admin view existed, so a
+ * decision taken in the UI has to land back in the room — otherwise two
+ * moderators work the same card. The moderator's own identity is the one
+ * platform-authored thing here; everything else (domain, note) is
+ * member- or moderator-typed free text and goes through the helpers.
+ */
+export async function notifyRegistryReviewResolved(resolution: {
+  entity_type: 'brand' | 'property';
+  domain: string;
+  /** What the moderator did, not what they set out to do. */
+  action: 'approved' | 'rejected' | 'reverted';
+  moderator_email?: string;
+  moderator_name?: string;
+  /** For a revert: the revision that was restored (adcp#8337). */
+  restored_revision?: number;
+  note?: string;
+}): Promise<void> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured()) return;
+
+  const typeLabel = resolution.entity_type === 'brand' ? 'Brand' : 'Property';
+  const domainLabel = sanitizeSlackLine(resolution.domain, FIELD_MAX);
+  const moderator = sanitizeSlackLine(
+    resolution.moderator_name || resolution.moderator_email || 'Admin',
+    FIELD_MAX,
+  );
+
+  const emoji = resolution.action === 'approved' ? '✅'
+    : resolution.action === 'rejected' ? '🗑️'
+    : '⏪';
+  const verb = resolution.action === 'approved' ? 'approved'
+    : resolution.action === 'rejected' ? 'rejected and removed'
+    : Number.isInteger(resolution.restored_revision)
+      ? `reverted to revision ${resolution.restored_revision}`
+      : 'reverted';
+
+  const lines = [
+    `${emoji} *${typeLabel} ${verb} from the review queue:* \`${domainLabel}\``,
+    `_By ${moderator}_`,
+  ];
+  if (resolution.note) {
+    lines.push(`_Note: ${sanitizeSlackLine(resolution.note, FREE_TEXT_MAX)}_`);
+  }
+
+  const message: SlackBlockMessage = {
+    text: `Registry review resolved: ${domainLabel}`,
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: lines.join('\n') },
+      },
+    ],
+  };
+
+  try {
+    await sendChannelMessage(channelId, message);
+  } catch (error) {
+    logger.error({ error, domain: resolution.domain }, 'Failed to send registry review resolution notification');
+  }
+}
+
+/**
+ * Daily backlog signal for the moderator channel (adcp#8338).
+ *
+ * Since #8337 an inconclusive automated review leaves the submission
+ * waiting rather than publishing it, so an Anthropic outage or a missing
+ * `ANTHROPIC_API_KEY` builds a backlog. Count and oldest age are the two
+ * numbers that make that visible before a member notices their record
+ * never appeared.
+ *
+ * Every value here is platform-computed — counts, ages, a fixed link — so
+ * there is nothing submitter-authored in the message at all. Keep it that
+ * way: the per-record detail belongs on the admin page, not in a line the
+ * room reads as ours.
+ */
+export async function notifyRegistryReviewBacklog(backlog: {
+  total: number;
+  pending_records: number;
+  flagged_edits: number;
+  oldest_age_hours: number | null;
+}): Promise<boolean> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured()) return false;
+
+  const oldest = backlog.oldest_age_hours === null
+    ? 'unknown'
+    : backlog.oldest_age_hours < 48
+      ? `${Math.round(backlog.oldest_age_hours)}h`
+      : `${Math.round(backlog.oldest_age_hours / 24)}d`;
+
+  const headline = `${backlog.total} registry submission${backlog.total === 1 ? '' : 's'} waiting on a moderator`;
+  const lines = [
+    `🙋 *${headline}*`,
+    `• ${backlog.pending_records} pending record${backlog.pending_records === 1 ? '' : 's'} (not visible in the registry until approved)`,
+    `• ${backlog.flagged_edits} live edit${backlog.flagged_edits === 1 ? '' : 's'} flagged for a human`,
+    `• Oldest has waited *${oldest}*`,
+    '',
+    `<${APP_URL}/admin/registry-review|Open the review queue>`,
+  ];
+
+  try {
+    await sendChannelMessage(channelId, {
+      text: headline,
+      blocks: [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: lines.join('\n') },
+        },
+      ],
+    });
+    return true;
+  } catch (error) {
+    logger.error({ error }, 'Failed to send registry review backlog digest');
+    return false;
+  }
+}

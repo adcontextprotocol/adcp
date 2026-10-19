@@ -32,7 +32,9 @@ export type SubjectType =
   | 'subscription'
   | 'customer'
   | 'membership'
-  | 'configuration';
+  | 'configuration'
+  /** A community registry submission (brand / property) awaiting moderation. */
+  | 'registry_record';
 
 export interface Violation {
   /** Identifier of the invariant that fired this violation. */
