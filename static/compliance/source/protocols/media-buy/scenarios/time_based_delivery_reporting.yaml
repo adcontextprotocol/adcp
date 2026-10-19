@@ -79,7 +79,13 @@ phases:
         stateful: true
         sample_request:
           brand: $context.sandbox_brand
-          account: $context.sandbox_account
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_time_based_delivery-df8300c2
+            sandbox: true
           start_time: asap
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -107,7 +113,13 @@ phases:
         requires_tool: comply_test_controller
         stateful: true
         sample_request:
-          account: $context.sandbox_account
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_time_based_delivery-df8300c2
+            sandbox: true
           scenario: simulate_delivery
           params:
             media_buy_id: $context.advanced_media_buy_id
@@ -127,7 +139,13 @@ phases:
         doc_ref: /media-buy/task-reference/get_media_buy_delivery
         stateful: true
         sample_request:
-          account: $context.sandbox_account
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_time_based_delivery-df8300c2
+            sandbox: true
           media_buy_ids:
             - $context.advanced_media_buy_id
           requested_metrics:
