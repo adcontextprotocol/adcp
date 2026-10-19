@@ -503,12 +503,14 @@
       text-decoration-thickness: 1px;
     }
     .verification-spec-untested .verification-spec-mark,
-    .verification-spec-unknown .verification-spec-mark {
+    .verification-spec-unknown .verification-spec-mark,
+    .verification-spec-not_applicable .verification-spec-mark {
       background: var(--color-bg-subtle);
       color: var(--color-text-muted);
     }
     .verification-spec-untested code,
-    .verification-spec-unknown code {
+    .verification-spec-unknown code,
+    .verification-spec-not_applicable code {
       background: var(--color-bg-subtle);
       border-color: var(--color-border);
       color: var(--color-text-secondary);
@@ -2780,14 +2782,17 @@
           hint = `Compliance check will run ${nextCheckCopy}. Earn AAO Verified (Spec) by declaring specialisms in <code>get_adcp_capabilities</code> and passing their storyboards. <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.`;
         }
 
+        const gradedVersion = typeof cs?.adcp_version === 'string' ? cs.adcp_version : null;
         const renderSpecialismChip = (s) => {
           const st = specialismStatus[s] || 'untested';
           const className = `verification-spec-chip verification-spec-${st}`;
           const symbol = st === 'passing' ? '<span class="verification-spec-mark" aria-hidden="true">✓</span>'
             : st === 'failing' ? '<span class="verification-spec-mark" aria-hidden="true">✕</span>'
+            : st === 'not_applicable' ? '<span class="verification-spec-mark" aria-hidden="true">–</span>'
             : '<span class="verification-spec-mark" aria-hidden="true">·</span>';
           const title = st === 'passing' ? 'Storyboard passing'
             : st === 'failing' ? 'Storyboard failing'
+            : st === 'not_applicable' ? `Not applicable to the AdCP ${gradedVersion || 'release'} compliance bundle this run graded — AdCP introduced it later`
             : st === 'unknown' ? 'Specialism not recognized — check spelling or update agent capabilities'
             : 'Not yet tested';
           return `<span class="${className}" title="${escapeHtml(title)}">${symbol}<code>${escapeHtml(s)}</code></span>`;
