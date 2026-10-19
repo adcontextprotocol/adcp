@@ -58,7 +58,17 @@ test('projection rules cover exactly the pinnable kinds', () => {
     assert.deepEqual([...rule.exclude].sort(), rule.exclude, `${kind} exclude is sorted`);
     assert.ok(rule.exclude.includes('ext'), `${kind} excludes ext`);
     assert.deepEqual([...rule.set_arrays].sort(), rule.set_arrays, `${kind} set_arrays is sorted`);
-    for (const nested of Object.values(rule.nested || {})) assert.ok(rules[nested]);
+    for (const [key, nested] of Object.entries(rule.nested || {})) {
+      assert.ok(!rule.set_arrays.includes(key), `${kind}.${key} is nested, so it is not also a named set array`);
+      if (typeof nested === 'string') {
+        assert.ok(rules[nested], `${kind}.${key} names a known kind`);
+        continue;
+      }
+      // Inline element rules are not kinds: they never appear as projection_rules keys.
+      assert.deepEqual(Object.keys(nested).sort(), ['exclude', 'set_arrays'], `${kind}.${key} inline rules shape`);
+      assert.deepEqual([...nested.exclude].sort(), nested.exclude, `${kind}.${key} exclude is sorted`);
+      assert.deepEqual([...nested.set_arrays].sort(), nested.set_arrays, `${kind}.${key} set_arrays is sorted`);
+    }
   }
 });
 
@@ -96,12 +106,22 @@ test('the exclusion lists name only members the source schemas define', () => {
     publisher_format_option: Object.keys(formatItems.allOf[1].properties),
   };
   for (const [kind, file] of Object.entries(sources)) {
-    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(SCHEMAS, file), 'utf8')).properties));
+    const schema = JSON.parse(fs.readFileSync(path.join(SCHEMAS, file), 'utf8'));
+    const known = new Set(Object.keys(schema.properties));
     known.add('ext'); // open objects: ext is the universal extension point
     if (kind !== 'data_provider_signal') known.add('publisher_domain'); // origin-dependent, absent from some definitions
     for (const key of extra[kind] || []) known.add(key);
-    for (const key of [...rules[kind].exclude, ...rules[kind].set_arrays]) {
+    for (const key of [...rules[kind].exclude, ...rules[kind].set_arrays, ...Object.keys(rules[kind].nested || {})]) {
       assert.ok(known.has(key), `${kind}: ${key} is not a member of ${file}`);
+    }
+    // Inline nested rules name members of the array's element schema.
+    for (const [key, nested] of Object.entries(rules[kind].nested || {})) {
+      if (typeof nested === 'string') continue;
+      const ref = schema.properties[key].items.$ref;
+      const element = JSON.parse(fs.readFileSync(path.join(SCHEMAS, ref.replace(/^\/schemas\//, '')), 'utf8'));
+      for (const member of [...nested.exclude, ...nested.set_arrays]) {
+        assert.ok(member in element.properties, `${kind}.${key}[]: ${member} is not a member of ${ref}`);
+      }
     }
   }
 });

@@ -79,6 +79,10 @@ Every media buy request involves three entities:
 
 ### Identifiers
 
+Use `platform_id` for an object's ID in the seller's ad platform, consistently across `sync_creatives`, `sync_catalogs`, `sync_event_sources`, and `sync_audiences` results. Reserve `seller_id` for the seller's identity, such as the IAB sellers.json ID in `adagents.json` `contact.seller_id` and publisher identifiers of type `seller_id`.
+
+The existing `seller_id` fields on event source and audience results are deprecated aliases for `platform_id` starting in AdCP 3.3. When reporting a platform identifier in 3.3 and later 3.x responses, sellers MUST emit both names with identical values. Buyers MUST prefer `platform_id` and fall back to `seller_id` only when `platform_id` is absent. These aliases retain their object-ID semantics and MUST NOT be repurposed as seller identity. They remain functional throughout 3.x, with removal no earlier than 4.0 under the [deprecation policy](/docs/reference/versioning#deprecation-policy).
+
 - **`product_id`**: Opaque identifier for a product returned by `get_products`. A non-custom wholesale ID remains stable for the same logical offer within the seller and declared `cache_scope`, including across reads and wholesale-feed webhooks; feed and pricing versions communicate temporal catalog mutation, while retirement or replacement may end the identity. Binding commercial terms are immutable under `pricing_option_id`, so changed price, floor, currency, model, or priced applicability receives a new option ID. An `is_custom: true` ID remains stable only in its issuing discovery/refinement lineage through its promised lifetime. Creating a package with the product and pricing-option IDs accepts the disclosed configuration and commercial option. A caller-authorized custom ID past `expires_at` returns `PRODUCT_EXPIRED`; after its tombstone is no longer retained or outside its account/lineage, `PRODUCT_NOT_FOUND` applies without disclosing cross-tenant existence.
 
 ### Structured requirements and briefs
@@ -598,8 +602,10 @@ the normative form is data:
    Exclusion applies only to top-level members, and to top-level members of each
    element of a nested array. Deeper members stay verbatim.
 3. For each named set array present, de-duplicate its elements by JCS bytes and
-   sort them ascending by the UTF-8 bytes of their JCS serialization. Elements
-   of a nested array are projected with the nested kind's rules first.
+   sort them ascending by the UTF-8 bytes of their JCS serialization. A nested
+   array is a set array whose elements are projected first, either with another
+   kind's rules or with element rules given inline for that array (an exclusion
+   list and named set arrays of the element's own).
 4. Serialize with [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JCS),
    compute SHA-256 over the UTF-8 bytes, and encode as lowercase hex with no
    algorithm prefix.
@@ -608,18 +614,23 @@ the normative form is data:
 | --- | --- | --- |
 | `publisher_format_option` | `display_name`, `ext`, `publisher_domain`, `reference_renderer`, `sample_render_url`, `seller_preference` | `applies_to_channels`, `applies_to_property_ids`, `applies_to_property_tags`, `v1_format_ref` |
 | `publisher_placement` | `description`, `ext`, `name`, `presentation_ref`, `preview_provider`, `publisher_domain`, `tags` | `audio_distribution_types`, `channels`, `collection_ids`, `identifiers`, `property_ids`, `property_tags`, `social_placement_surfaces`, `sponsored_placement_types`, `video_placement_types`; `format_options[]` elements are projected as `publisher_format_option` and then treated as a set |
-| `publisher_collection` | `description`, `ext`, `name`, `publisher_domain`, `related_collections`, `season`, `talent` | `distribution`, `genre` |
+| `publisher_collection` | `description`, `ext`, `images`, `name`, `publisher_domain`, `related_collections`, `sample_content`, `season`, `talent`, `url` | `genre`; `distribution[]` elements are projected with `followers` excluded and then treated as a set |
 | `data_provider_signal` | `criteria_url`, `description`, `ext`, `last_updated`, `name`, `tags` | `allowed_values`, `consent_basis`, `countries`, `data_sources`, `id_types`, `policy_categories`, `restricted_attributes` |
 
-The exclusions are display text, presentation pointers, extension data,
+The exclusions are display text, presentation pointers, collection-card media
+(`images`, `sample_content`, and the collection page `url`), extension data,
 freshness timestamps, cast, tags, and the origin-dependent `publisher_domain`.
-Only a top-level `ext` is excluded (and the top-level `ext` of each nested
-element); an `ext` deeper in the entry, such as inside `params`, stays verbatim.
+Only a top-level `ext` is excluded (and the top-level `ext` of each element
+projected with another kind's rules); an `ext` deeper in the entry, such as
+inside `params` or a `distribution` entry, stays verbatim.
 Excluding `tags` is deliberate: authorization scope is verified through supply
 path, not through pins. Everything else, including members the AdCP schemas do
-not name, is part of the preimage. A rename is not drift; a change to
+not name, is part of the preimage. A rename or a new card thumbnail is not drift; a change to
 `content_rating`, creative `params`, a collection's `status`, or a signal's
-`segmentation_criteria` is. Publishers keep non-material metadata in `ext`.
+`segmentation_criteria` is. A refreshed platform-reported follower count
+(`distribution[].followers`) is not drift; a change to any other member of a
+`distribution` entry, such as an identifier, is. Publishers keep non-material
+metadata in `ext`.
 Arrays that are not named set arrays keep their published order. The table is
 frozen for each `ref_kind`; changing a rule requires a new `ref_kind` value,
 because the pin carries no projection version. The pointer members
@@ -940,6 +951,18 @@ For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-c
 - When `include_snapshot` is true and snapshots are returned, each snapshot MUST include `as_of` and `staleness_seconds`
 - Default `status_filter: ["active"]` applies only when `media_buy_ids` is omitted
 
+#### Creative state freshness
+
+`packages[].creative_assignments_as_of` and `packages[].creative_approvals[].approval_status_as_of` on `get_media_buys`, and `creatives[].status_as_of` and `assignments.assigned_packages[].approval_status_as_of` on [`list_creatives`](/docs/creative/task-reference/list_creatives), apply the `status_as_of` pattern to creative state. Keeping that state current is the seller's job; these fields tell the buyer how current an answer is.
+
+- Each value is the time of the seller's last observation of its source of truth for that state. A rolled-up value MUST NOT be later than the oldest upstream observation that could affect it. Omission makes no freshness assertion; buyers MUST NOT infer that the state is live.
+- `creative_assignments_as_of` covers the package's assignment set, meaning which creatives appear in `creative_approvals`. A creative absent from the set is absent as of that time. `approval_status_as_of` covers `approval_status`, `rejection_reason`, and `approval_scopes`. `status_as_of` covers creative `status`.
+- Accepting an AdCP write (for example, `sync_creatives` or a creative change on `update_media_buy`) MUST NOT by itself advance a value. It advances only when the seller observes the resulting state in its source of truth. A seller whose AdCP store is its source of truth observes at commit time.
+- A value earlier than the buyer's last accepted write for that relationship means the seller has not yet confirmed the write, and the returned state predates it. No separate status value is needed for "not known yet."
+- Sales agents SHOULD include these values when the state is served from a cache or from a source that confirms asynchronously, such as a system that confirms assignments a day after the write.
+- A change that only advances an `*_as_of` value MUST NOT fire `creative.assignment_changed` or `creative.status_changed` and MUST NOT write an account change record.
+- `STALE_RESPONSE` is the complementary signal: a seller that could not reach its source of truth and served cached state past its freshness target emits it alongside the payload. The `*_as_of` values report how old each piece of state is in either case.
+
 ### get_media_buy_delivery
 
 **Schema**: [`media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json) / [`media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)
@@ -983,7 +1006,7 @@ Configure event sources on a seller account for conversion tracking with upsert 
 - Sales agents MUST return per-source results with `action` indicating what happened
 - Sales agents MUST include seller-managed event sources in the response when present
 - Sales agents SHOULD return `setup` instructions for newly created event sources
-- Sales agents MAY include `seller_id` for cross-referencing in the seller's platform
+- Sales agents MAY include `platform_id` for cross-referencing the event source in the seller's platform; in 3.3 and later 3.x responses they MUST also emit the deprecated `seller_id` alias with the same value when reporting this identifier
 
 ### log_event
 

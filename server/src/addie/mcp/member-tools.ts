@@ -55,6 +55,7 @@ import {
   SAMPLE_BRIEFS,
   classifyCapabilityResolutionError,
   classifyCapabilityResolutionErrorWithDeclaredProtocols,
+  complianceDirToleratingUnknownSpecialism,
   presentCapabilityResolutionError,
   complianceResultToDbInput,
   loadComplianceIndex,
@@ -62,6 +63,7 @@ import {
   hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
+  hostedCapabilityDiscoveryOptions,
   selectedComplianceTargetMatchesObservedProfile,
   UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
   type ComplyOptions,
@@ -108,8 +110,8 @@ import {
 import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
 import { resolveUserAgentAuth } from '../../routes/helpers/resolve-user-agent-auth.js';
-import { isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
-import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
+import { isOAuthOwnerReauthorizationError, isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
+import { agentConfigAuthFields, assertOwnerOAuthReady, type SdkAuth } from '../../services/sdk-auth-adapter.js';
 import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
 import {
   findExistingProposalOrFeed,
@@ -252,17 +254,22 @@ function explicitTargetProbeFailureMessage(
 async function explicitTargetOAuthRequiredMessage(
   agentUrl: string,
   organizationId: string | undefined,
+  authorizationError: string,
 ): Promise<string> {
   const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
     agentUrl,
     organizationId,
     agentContextDb,
+    { authorizationError: authorizationError },
   );
   if (authorizeUrl) {
     return (
       `**OAuth authorization required**\n\n` +
       `The agent at \`${agentUrl}\` requires OAuth authentication ` +
       `before I can verify or run the requested compliance target.\n\n` +
+      (isOAuthOwnerReauthorizationError(authorizationError)
+        ? 'A changed authorization server requires independently trusted client configuration; stored clients are not rebound automatically.\n\n'
+        : '') +
       `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
       `After you authorize, retry the diagnostic.`
     );
@@ -272,6 +279,18 @@ async function explicitTargetOAuthRequiredMessage(
     `The agent at \`${agentUrl}\` requires OAuth authentication. ` +
     `An organization is needed to start the OAuth flow — sign in or create one, then retry.`
   );
+}
+
+async function ownerOAuthReadinessPrompt(
+  agentUrl: string, auth: SdkAuth | undefined, organizationId: string | undefined,
+): Promise<string | undefined> {
+  try {
+    await assertOwnerOAuthReady(auth, agentUrl);
+  } catch (error) {
+    if (!isOAuthOwnerReauthorizationError(error)) throw error;
+    return explicitTargetOAuthRequiredMessage(agentUrl, organizationId, (error as Error).message);
+  }
+  return undefined;
 }
 
 function explicitTargetSupportError(
@@ -302,7 +321,7 @@ async function explicitTargetSupportErrorFromAgent(
       }, target)),
     );
     const oauthError = capabilityDiscoveryOAuthError(caps);
-    if (oauthError) return explicitTargetOAuthRequiredMessage(agentUrl, organizationId);
+    if (oauthError) return explicitTargetOAuthRequiredMessage(agentUrl, organizationId, oauthError);
 
     const probeFailure = explicitTargetProbeFailureMessage(input, target, capabilityDiscoveryProbeError(caps));
     if (probeFailure) return probeFailure;
@@ -4751,6 +4770,8 @@ export function createMemberToolHandlers(
       return '**Evaluation temporarily unavailable**\n\nI could not establish the stored credential identity, so no evaluation was started. Please retry shortly.';
     }
     const authOption = buildAuthOption(resolved);
+    const readinessPrompt = await ownerOAuthReadinessPrompt(resolved.resolvedUrl, authOption, organizationId);
+    if (readinessPrompt) return readinessPrompt;
 
     if (!hasExplicitComplianceTarget(input)) {
       const seededSupportedVersions = await complianceDb.getLastKnownSupportedVersions(resolved.resolvedUrl);
@@ -4965,7 +4986,9 @@ export function createMemberToolHandlers(
       const oauthObs = result.observations.find(o =>
         o.category === 'auth' && /^Agent requires OAuth/i.test(o.message),
       );
-      if (oauthObs) {
+      const ownerOAuthError = isOAuthOwnerReauthorizationError(result.agent_profile?.capabilities_probe_error)
+        ? result.agent_profile?.capabilities_probe_error : undefined;
+      if (oauthObs || ownerOAuthError) {
         logger.warn(
           { agentUrl: resolved.resolvedUrl },
           'evaluate_agent_quality: agent requires authentication',
@@ -4974,6 +4997,7 @@ export function createMemberToolHandlers(
           resolved.resolvedUrl,
           organizationId,
           agentContextDb,
+          { authorizationError: ownerOAuthError },
         );
         if (authorizeUrl) {
           return finishCompleted((
@@ -5312,11 +5336,12 @@ export function createMemberToolHandlers(
           { agentUrl: resolved.resolvedUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
           'evaluate_agent_quality: agent requires authentication',
         );
-        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+        if (isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth)) {
           const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
             resolved.resolvedUrl,
             organizationId,
             agentContextDb,
+            { authorizationError: error },
           );
           if (authorizeUrl) {
             return finishFailed((
@@ -5368,16 +5393,14 @@ export function createMemberToolHandlers(
     // protocol baselines and specialism bundles apply — we don't guess from tool
     // lists or ask the member what they're building.
     const authOption = buildAuthOption(resolved);
+    const readinessPrompt = await ownerOAuthReadinessPrompt(resolved.resolvedUrl, authOption, organizationId);
+    if (readinessPrompt) return readinessPrompt;
     let profile: AgentProfile | undefined;
     let discoveryProbeError: string | undefined;
     try {
-      // An explicit target pins the probe to its version; otherwise no target
-      // exists yet, so send only the major rather than the SDK's prerelease default.
-      const probeOptions = { ...(authOption && { auth: authOption }) };
-      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, withSdkSafeTransport(
-        hasExplicitComplianceTarget(input)
-          ? withHostedTestOptions(probeOptions, runTarget)
-          : { ...probeOptions, versionEnvelope: 'major-only' as const },
+      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, hostedCapabilityDiscoveryOptions(
+        { ...(authOption && { auth: authOption }) },
+        hasExplicitComplianceTarget(input) ? runTarget : undefined,
       ));
       profile = caps.profile;
       discoveryProbeError = capabilityDiscoveryProbeError(caps);
@@ -5399,6 +5422,7 @@ export function createMemberToolHandlers(
           resolved.resolvedUrl,
           organizationId,
           agentContextDb,
+          { authorizationError: probeOAuth },
         );
         if (authorizeUrl) {
           return (
@@ -5524,8 +5548,20 @@ export function createMemberToolHandlers(
         major_versions: profile?.adcp_major_versions,
         supported_versions: profile?.adcp_supported_versions,
       };
-      const res = resolveStoryboardsForCapabilities(caps, runOptions);
-      resolvedBundles = res.bundles;
+      try {
+        resolvedBundles = resolveStoryboardsForCapabilities(caps, runOptions).bundles;
+      } catch (initialError) {
+        // A specialism AdCP introduced after this target's release has no
+        // bundle to recommend, but it must not block the whole
+        // recommendation (#8269). Re-resolve against the overlay that treats
+        // it as not applicable; every other fault keeps the coaching below.
+        const overlayDir = await complianceDirToleratingUnknownSpecialism(initialError, runTarget);
+        if (!overlayDir) throw initialError;
+        resolvedBundles = resolveStoryboardsForCapabilities(
+          caps,
+          { ...runOptions, complianceDir: overlayDir },
+        ).bundles;
+      }
     } catch (error) {
       const capsError = classifyCapabilityResolutionError(error, supportedProtocols);
       // specialism ids came from the untrusted agent — fence them so a hostile
@@ -5724,6 +5760,8 @@ export function createMemberToolHandlers(
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
     const authOption = buildAuthOption(resolved);
+    const readinessPrompt = await ownerOAuthReadinessPrompt(resolved.resolvedUrl, authOption, organizationId);
+    if (readinessPrompt) return readinessPrompt;
 
     if (!hasExplicitComplianceTarget(input)) {
       runTarget = await selectComplianceTargetForAgent(
@@ -5805,6 +5843,7 @@ export function createMemberToolHandlers(
           resolved.resolvedUrl,
           organizationId,
           agentContextDb,
+          { authorizationError: oauthStepError },
         );
         if (authorizeUrl) {
           return (
@@ -5948,6 +5987,8 @@ export function createMemberToolHandlers(
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
     const authOption = buildAuthOption(resolved);
+    const readinessPrompt = await ownerOAuthReadinessPrompt(resolved.resolvedUrl, authOption, organizationId);
+    if (readinessPrompt) return readinessPrompt;
     const contextRefMeta = storyboardContextRefMeta(memberContext, storyboardId, resolved.resolvedUrl);
     const context = resolveStoryboardInputContext(input.context, contextRefMeta);
 
@@ -6027,6 +6068,7 @@ export function createMemberToolHandlers(
           resolved.resolvedUrl,
           organizationId,
           agentContextDb,
+          { authorizationError: result.error },
         );
         if (authorizeUrl) {
           return (
@@ -6261,6 +6303,7 @@ export function createMemberToolHandlers(
           resolved.resolvedUrl,
           organizationId,
           agentContextDb,
+          { authorizationError: briefResults.find(r => isOAuthOwnerReauthorizationError(r.error))?.error ?? briefResults[0].error },
         );
         if (authorizeUrl) {
           return (
@@ -6353,11 +6396,12 @@ export function createMemberToolHandlers(
           { agentUrl: resolved.resolvedUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
           'compare_media_kit: agent requires authentication',
         );
-        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+        if (isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth)) {
           const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
             resolved.resolvedUrl,
             organizationId,
             agentContextDb,
+            { authorizationError: error },
           );
           if (authorizeUrl) {
             return (
@@ -6595,11 +6639,12 @@ export function createMemberToolHandlers(
           { agentUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
           'test_rfp_response: agent requires authentication',
         );
-        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+        if (isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth)) {
           const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
             resolved.resolvedUrl,
             organizationId,
             agentContextDb,
+            { authorizationError: error },
           );
           if (authorizeUrl) {
             return (
@@ -7028,11 +7073,12 @@ export function createMemberToolHandlers(
           { agentUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
           'test_io_execution: agent requires authentication',
         );
-        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+        if (isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth)) {
           const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
             resolved.resolvedUrl,
             organizationId,
             agentContextDb,
+            { authorizationError: error },
           );
           if (authorizeUrl) {
             return (

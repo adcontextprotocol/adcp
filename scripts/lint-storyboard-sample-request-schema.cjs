@@ -194,7 +194,15 @@ function placeholderFor(schema, depth = 0) {
   if (types.includes('number')) return resolved.minimum ?? 0;
   if (types.includes('boolean')) return true;
   if (types.includes('array')) return [];
-  if (types.includes('object')) return synthesizeObject(resolved, depth);
+  if (types.includes('object')) {
+    // A discriminated union written as `{ type: "object", discriminator, oneOf: [...] }`
+    // (e.g. core/format-option-ref.json) carries no top-level `properties`, so
+    // synthesizing it directly yields `{}` and ajv then reports the discriminator tag
+    // as missing. Fall back to a concrete branch only in that case; nodes that do
+    // declare `properties` keep their existing resolution untouched.
+    const branch = resolved.properties ? null : firstObjectBranch(resolved);
+    return synthesizeObject(branch ?? resolved, depth);
+  }
   if (types.includes('null')) return null;
   return STRING_PLACEHOLDER;
 }
@@ -263,6 +271,82 @@ function normalizeSubstitutions(value, schema) {
     return out;
   }
   return value;
+}
+
+/**
+ * A well-formed creative-asset directive is runner syntax, not an asset slot.
+ * Exclude only that instruction from the static authoring view: its format is
+ * captured during execution, and the runner expands and validates the concrete
+ * assets before transport (storyboard-schema.yaml, Creative asset expansion).
+ * Keep ordinary slots, malformed instructions, and every other request field
+ * visible to schema validation. Direct validateStep calls remain wire-strict.
+ */
+function normalizeExecutionOnlyAssetDirectives(value, isAssetMap = false) {
+  if (Array.isArray(value)) return value.map(item => normalizeExecutionOnlyAssetDirectives(item));
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isAssetMap && key === '$build_assets_from_format'
+        && typeof item === 'string' && /^\$context\.[A-Za-z_][A-Za-z0-9_]*$/.test(item)) {
+      continue;
+    }
+    out[key] = normalizeExecutionOnlyAssetDirectives(item, key === 'assets');
+  }
+  return out;
+}
+
+/**
+ * Materialize the opt-in build probe's context inputs before static schema
+ * checks, just as the runner does before dispatch. This synthetic catalog is
+ * only a representative authoring fixture, never a live producer prerequisite.
+ * Runtime/catalog applicability and other input modes have executable runner
+ * coverage; this lint must still catch broken bindings and authored payloads.
+ */
+function normalizeStoryboardSampleRequests(storyboard, step, schema) {
+  const sampleRequest = normalizeExecutionOnlyAssetDirectives(step.sample_request);
+  if (!storyboard.creative_build_probe || step.task !== 'build_creative'
+      || step.requires_contract !== 'creative_build_probe_runner') {
+    return [normalizeSubstitutions(sampleRequest, schema)];
+  }
+  const { resolveCreativeBuildProbe } = require('@adcp/sdk/testing');
+  // Exercise every bound source key and both selector paths, without assuming
+  // a particular live agent supports any of these representative modes.
+  const inputs = [
+    undefined, // The resolver's bounded automatic generation recipe.
+    { creative_manifest: { format_kind: 'image', assets: {} } },
+    { creative_id: 'schema-lint-creative' },
+    { transformer_id: 'schema-lint-transformer', config: {} },
+    { creative_id: 'schema-lint-creative', target_format_id: { agent_url: 'https://formats.example', id: 'schema-lint-format' } },
+  ];
+  return inputs.map(input => {
+    const resolution = resolveCreativeBuildProbe({
+      supports_generation: true,
+      supports_transformation: true,
+      has_creative_library: true,
+      supports_transformers: true,
+      supported_formats: [{
+        capability_id: 'schema-lint-build',
+        operations: ['build'],
+        format: { format_kind: 'image', params: {}, technical_requirements_complete: true },
+      }],
+    }, storyboard.creative_build_probe, input && {
+      creative_build_probes: [{ match: [{ path: '/capability_id', operator: 'equals', value: 'schema-lint-build' }], input }],
+    });
+    if (resolution.status !== 'resolved') {
+      throw new Error(`Cannot prepare creative build authoring fixture: ${resolution.detail}`);
+    }
+    const request = structuredClone(sampleRequest);
+    for (const binding of step.context_inputs || []) {
+      if (!Object.hasOwn(resolution.context, binding.key)) continue;
+      // This contract binds top-level build request fields. Do not silently
+      // flatten a malformed injection path or change any other lint contract.
+      if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(binding.inject_at)) {
+        throw new Error(`Invalid creative build authoring fixture path: ${binding.inject_at}`);
+      }
+      request[binding.inject_at] = structuredClone(resolution.context[binding.key]);
+    }
+    return normalizeSubstitutions(request, schema);
+  });
 }
 
 // One shared ajv instance + compile cache keyed by schema_ref. Each schema
@@ -387,9 +471,13 @@ async function lintFile(file) {
       if (!schemaRef || schemaRef.startsWith('$test_kit.')) continue;
       if (!sampleRequest || typeof sampleRequest !== 'object') continue;
       if (isNegativeStep(step)) continue;
-      const result = await validateStep({ schemaRef, payload: sampleRequest });
-      if (!result.ok) {
-        violations.push({ file, phaseId, stepId, schemaRef, errors: result.errors });
+      const schema = loadSchema(schemaRef);
+      const payloads = schema ? normalizeStoryboardSampleRequests(doc, step, schema) : [sampleRequest];
+      for (const payload of payloads) {
+        const result = await validateStep({ schemaRef, payload });
+        if (!result.ok) {
+          violations.push({ file, phaseId, stepId, schemaRef, errors: result.errors });
+        }
       }
     }
   }
@@ -615,6 +703,7 @@ module.exports = {
   lintFile,
   validateStep,
   normalizeSubstitutions,
+  normalizeStoryboardSampleRequests,
   loadSchema,
   formatViolation,
   fingerprintError,
