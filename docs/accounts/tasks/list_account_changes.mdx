@@ -139,6 +139,41 @@ after the checkpoint.
 The webhook's optional `through_cursor` is only a target watermark. Do not
 install it without reading all intervening pages.
 
+## Invoices
+
+A seller that lists `invoice` in `account.change_feed.resource_types` tells the buyer about invoices through this feed. There is no separate invoice notification type; the buyer receives the signed `account.change_recorded` notification and drains the feed like any other resource.
+
+Invoice records name the invoice and point at [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for repair:
+
+```json
+{
+  "change_id": "chg_01K4B2T7QH8V3N5R6D9W0X1Y2Z",
+  "recorded_at": "2026-09-01T09:15:00Z",
+  "resource": {
+    "type": "invoice",
+    "account_id": "acc_luma_shared",
+    "resource_id": "inv_2026_08_0042"
+  },
+  "action": "created",
+  "origin": { "kind": "seller_system" },
+  "repair": { "task": "get_account_financials" }
+}
+```
+
+| Action | When |
+| --- | --- |
+| `created` | The invoice first becomes visible to the buyer, normally at issue. A `draft` invoice is not recorded until it is visible to the buyer. |
+| `status_changed` | A later status transition. `reason` is the new invoice status: `issued`, `paid`, `past_due`, or `void`. |
+| `updated` | An amount or period correction. |
+
+`recorded_at` and `occurred_at` carry the time of the change; the invoice has no separate issue-time field. Changes to spend, credit, or payment status keep `type: "account_financials"` with `resource_id` equal to the account id.
+
+**Repair completeness.** An implementation MUST NOT advertise a resource type whose current material state cannot be recovered through its named read (see the [coverage matrix](https://github.com/adcontextprotocol/adcp/blob/main/specs/account-change-feed.md#authoritative-coverage-matrix)). A seller that lists `invoice` in `resource_types` therefore MUST return, in `get_account_financials.invoices[]` (overriding any seller limit on the list), each invoice that has a change record inside the retention window (`account.change_feed.retention_days`) whenever the request's `period` overlaps that invoice's `period`. A request without `period` MUST return every such invoice whatever its `period`, so a buyer repairing from a change record omits `period`.
+
+**Intermediaries.** An intermediary that consolidates billing is the seller of record for the invoices it issues. It records them on its own feed to its buyer and does not relay upstream sellers' invoice records.
+
+Sellers that do not offer the experimental feed have no invoice notification; buyers keep polling `get_account_financials`.
+
 ## Change granularity
 
 The feed contains at least one record per independently repairable identity.

@@ -32,6 +32,7 @@ Each beta is immutable. The `3.3-beta` documentation selector advances to the la
 - **Platform identifiers:** `platform_id` on `sync_event_sources` and `sync_audiences` results, with deprecated `seller_id` aliases retained throughout 3.x. Sellers reporting an ID send both with identical values; buyers prefer `platform_id` and fall back to `seller_id` when absent (#8290).
 - **Channels:** structured DOOH `location` on placements and `dooh_inventory_summary.venue_counts[]` on products (#7416).
 - **Extensions:** the AdCP-owned `ext.adcp` namespace with an optional `opportunity` binding for 3.2 `get_products` integrations (#7904).
+- **Signals:** optional `age_determination_bases` on signal listings, definitions, and enrichment, so a signal can say whether its members' ages are `verified`, `declared`, or `inferred` (#8145). Stable in 3.3; 3.2 integrations carry it as `ext.adcp.age_determination_bases`.
 - **Conformance:** a new advisory unprovisioned-account storyboard, capability-gated wholesale and replay checks, and a polling-based `sales-guaranteed` path (#7848, #7893, #7854, #7931).
 
 ### Behavior changes to review
