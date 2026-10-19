@@ -7220,6 +7220,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         () => complianceDb.getLatestDeclaredSpecialisms(agentUrl),
         () => complianceDb.getLatestNotices(agentUrl, status.last_run_id),
         () => complianceDb.getLatestObservations(agentUrl, status.last_run_id),
+        () => complianceDb.getLatestV4Readiness(agentUrl, status.last_run_id),
         () =>
           complianceDb.getStoryboardStatuses(agentUrl, {
             requireRowsForLatestRun: true,
@@ -7262,6 +7263,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         declaredSpecialismsResult,
         noticesResult,
         observationsResult,
+        v4ReadinessResult,
         storyboardStatusesResult,
         ownerMembershipResult,
       ] = supplementalResults;
@@ -7303,6 +7305,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         : [];
       if (observationsResult.status === 'rejected') {
         logger.warn({ err: observationsResult.reason, agentUrl }, "Latest observations query failed");
+      }
+      // Advisory 4.0 readiness from the same run. Null for runs ingested
+      // before the report existed; never synthesized here.
+      const v4Readiness = v4ReadinessResult.status === 'fulfilled' ? v4ReadinessResult.value : null;
+      if (v4ReadinessResult.status === 'rejected') {
+        logger.warn({ err: v4ReadinessResult.reason, agentUrl }, "Latest 4.0 readiness query failed (column may not exist yet)");
       }
 
       // Per-specialism status — the dashboard renders pass/fail/untested
@@ -7666,6 +7674,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         // remain verbatim, while private and oversized fields are excluded.
         notices,
         observations,
+        // Advisory AdCP 4.0 readiness (universal/v4-compatibility.yaml). Does
+        // not affect 3.x verification. Null when the latest run predates it.
+        v4_readiness: v4Readiness,
         // Owner-scoped: content is null/false for anonymous and cross-org
         // viewers, populated only when the authenticated viewer owns the
         // agent. Keys are always present so non-owners can't detect
