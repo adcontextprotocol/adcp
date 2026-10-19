@@ -34,6 +34,7 @@ import { TrainingCreativePlatform } from '../v6-creative-platform.js';
 import { accountScopeFromRef } from '../account-scope.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { GovernanceAgentStub } from '@adcp/sdk/testing';
+import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 import {
   clearReportingAccountBindingCacheForTesting,
   reportingMediaBuyCandidateHistoryForTesting,
@@ -2185,7 +2186,7 @@ describe('tenant routing smoke', () => {
             media_buy?: {
               features?: { inline_creative_management?: boolean };
               supported_optimization_metrics?: string[];
-              vendor_metric_optimization?: { supported_targets?: string[] };
+              vendor_metric_optimization?: { supported_targets?: string[]; supported_metrics?: Array<{ vendor: { domain: string }; metric_id: string }> };
               conversion_tracking?: { supported_targets?: string[] };
             };
             creative?: {
@@ -2208,6 +2209,9 @@ describe('tenant routing smoke', () => {
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
+      expect(mediaBuy?.vendor_metric_optimization?.supported_metrics).toContainEqual(
+        expect.objectContaining({ vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_score' }),
+      );
       expect(mediaBuy?.conversion_tracking?.supported_targets).toEqual(['cost_per']);
       expect(previewCapabilityIds.length).toBeGreaterThan(0);
       expect(previewRouteIds).toEqual(previewCapabilityIds);
@@ -2858,6 +2862,68 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 15000);
+
+  it('preserves binding creative format metadata through list_products', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'compact-creative-metadata.example' },
+        operator: 'compact-creative-metadata.example',
+        sandbox: true,
+      };
+      const productId = 'compact_creative_metadata_product';
+      const format = {
+        format_option_id: 'homepage_image', format_kind: 'image',
+        params: { width: 300, height: 250 },
+        technical_requirements_complete: true,
+        tracker_execution_contract: { complete: true, honored: [] },
+        macro_resolution_capabilities: [{
+          dialect: 'adcp', dialect_semantic: 'AD_WIDTH',
+          mapping_status: 'verified_universal', universal_semantic: 'AD_WIDTH',
+          operation: 'resolve_value', performed_by: 'seller',
+          supported_contexts: ['url_query_value'],
+          supported_encodings: [{ kind: 'none', depth: 0 }],
+        }],
+      };
+      const seeded = await callTenantTool(url, 70, 'comply_test_controller', {
+        account, scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            name: 'Compact creative metadata product', channels: ['display'],
+            delivery_type: 'guaranteed',
+            format_options: [{
+              ...format,
+              v1_format_ref: [{
+                agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_300x250_image',
+              }],
+              seller_internal_note: 'Never returned on the compact wire.',
+            }],
+          },
+        },
+      }) as { result?: { structuredContent?: { success?: boolean } } };
+      expect(seeded.result?.structuredContent?.success, JSON.stringify(seeded)).toBe(true);
+      await provisionAccount(url, account);
+
+      for (const [index, fields] of [undefined, ['format_options']].entries()) {
+        const listed = await callTenantTool(url, 72 + index, 'list_products', {
+          account, criteria: { product_ids: [productId] }, ...(fields && { fields }),
+        }) as { result?: { structuredContent?: {
+          products?: Array<{ product_id?: string; format_options?: Array<Record<string, unknown>> }>;
+        } } };
+        const result = listed.result?.structuredContent;
+        expect(result?.products, JSON.stringify(listed)).toHaveLength(1);
+        expect(result?.products?.[0].product_id).toBe(productId);
+        expect(result?.products?.[0].format_options).toEqual([format]);
+        const validation = validateSourceSchema('media-buy/list-products-response.json', result);
+        expect(validation.valid, JSON.stringify(validation.errors)).toBe(true);
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
 
   it('serves the AdCP 3.1 dual product shape through the explicit legacy facade', async () => {
     const { baseUrl, close } = await bootServer();
@@ -3897,6 +3963,51 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 15000);
+
+  // The 3.0 capabilities schema closes compliance_testing.scenarios to six
+  // values. An explicit 3.0 caller on a normal route (not the frozen 3.0
+  // storyboard facade) must not see scenarios added in later releases.
+  it('lists only 3.0 compliance scenarios to explicit 3.0 callers on every tenant route', async () => {
+    const { baseUrl, close } = await bootServer();
+    const validateThreeZero = getCanonicalToolValidator('get_adcp_capabilities', 'sync', { adcpVersion: '3.0' });
+    expect(validateThreeZero).toBeDefined();
+    try {
+      for (const tenant of ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si']) {
+        const url = `${baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        const body = await callTenantTool(url, 2, 'get_adcp_capabilities', { adcp_version: '3.0' }) as {
+          result?: { structuredContent?: { adcp_version?: string; compliance_testing?: unknown } };
+        };
+        const structured = body.result?.structuredContent;
+        expect(structured?.adcp_version, tenant).toBe('3.0');
+        const valid = validateThreeZero!(structured);
+        expect(valid, `${tenant}: ${JSON.stringify(validateThreeZero!.errors)}`).toBe(true);
+      }
+
+      const salesUrl = `${baseUrl}/sales/mcp`;
+      const threeZero = await callTenantTool(salesUrl, 3, 'get_adcp_capabilities', { adcp_version: '3.0' }) as {
+        result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
+      };
+      expect(threeZero.result?.structuredContent?.compliance_testing?.scenarios)
+        .toEqual(SALES_THREE_ZERO_COMPAT_SCENARIOS);
+
+      // 3.2 accepts any scenario name, so it keeps every scenario the
+      // seller implements.
+      const current = await callTenantTool(salesUrl, 4, 'get_adcp_capabilities', { adcp_version: '3.2' }) as {
+        result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
+      };
+      expect(current.result?.structuredContent?.compliance_testing?.scenarios).toEqual(expect.arrayContaining([
+        ...SALES_CURRENT_SCENARIOS,
+        'force_get_products_arm',
+        'force_upstream_unavailable',
+        'evaluate_distributed_brand_resolution',
+        'reporting_core_lifecycle_probe',
+        'expire_account_change_cursor',
+      ]));
+    } finally {
+      await close();
+    }
+  }, 30000);
 
   it('advertises a schema-valid legacy compliance scenario on the 3.0 signals tenant', async () => {
     const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });

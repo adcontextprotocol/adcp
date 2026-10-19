@@ -38,9 +38,10 @@ test('ledger entries include removal conditions and upstream asks', () => {
   }
 });
 
-test('source tree has no remaining private SDK reach-ins', () => {
+test('private SDK reach-ins remain bounded to the owned creative probe installer', () => {
   const findings = collectFindings();
-  assert.deepEqual(findings, []);
+  assert.deepEqual([...new Set(findings.map(finding => finding.file))], ['scripts/install-sdk-creative-build-probe.cjs']);
+  assert.ok(findings.every(finding => finding.term.includes('dist/lib/testing/')));
 });
 
 test('matchingPrivateTerm ignores comment-only lines but catches private SDK code', () => {

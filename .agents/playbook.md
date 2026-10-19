@@ -670,6 +670,8 @@ JSON examples with `$schema` field are validated against schemas in CI.
 ## Format Conventions
 
 ### Field Naming
+- `platform_id` = An object's ID assigned by the seller's ad platform (creative, catalog, event source, or audience).
+- `seller_id` = The seller's identity (for example, IAB sellers.json or publisher identifiers). The deprecated `seller_id` aliases on `sync_event_sources` and `sync_audiences` results retain their object-platform-ID semantics throughout 3.x; do not repurpose them. When reporting a platform ID in 3.3 and later 3.x responses, emit both names with identical values; buyers prefer `platform_id` and fall back to `seller_id` only when absent.
 - `formats` = Array of full format objects
 - `format_ids` = Array of format ID references
 

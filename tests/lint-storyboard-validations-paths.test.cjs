@@ -223,6 +223,44 @@ test('wildcard paths are rejected for checks without wildcard runtime semantics'
   assert.equal(violations[0].check, 'field_value');
 });
 
+function allFieldsPresentDoc(pathValue) {
+  return {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'get_products',
+            task: 'get_products',
+            response_schema_ref: 'media-buy/get-products-response.json',
+            validations: [
+              { check: 'all_fields_present', path: pathValue, description: 'every product carries the field' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+test('all_fields_present accepts one wildcard between an array and a field', () => {
+  assert.deepEqual(lintDoc(allFieldsPresentDoc('products[*].format_options'), '/synth/test.yaml'), []);
+});
+
+test('all_fields_present rejects paths without exactly one wildcard and a field after it', () => {
+  for (const bad of ['products[0].format_options', 'products[*]', 'products[*].format_options[*].format_kind']) {
+    const violations = lintDoc(allFieldsPresentDoc(bad), '/synth/test.yaml');
+    assert.equal(violations.length, 1, bad);
+    assert.equal(violations[0].rule, 'all_fields_present_path_shape', bad);
+  }
+});
+
+test('all_fields_present paths still resolve against the response schema', () => {
+  const violations = lintDoc(allFieldsPresentDoc('products[*].format_optionz'), '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+});
+
 test('non-path-bearing checks are silently skipped', () => {
   const doc = {
     phases: [
@@ -568,6 +606,7 @@ test('PATH_BEARING_CHECKS is the documented set', () => {
   assert.ok(PATH_BEARING_CHECKS.has('field_contains'));
   assert.ok(PATH_BEARING_CHECKS.has('array_length'));
   assert.ok(PATH_BEARING_CHECKS.has('all_fields_in_context_array'));
+  assert.ok(PATH_BEARING_CHECKS.has('all_fields_present'));
   assert.ok(PATH_BEARING_CHECKS.has('envelope_field_present'));
   assert.ok(PATH_BEARING_CHECKS.has('envelope_field_absent'));
   assert.ok(PATH_BEARING_CHECKS.has('envelope_field_pattern'));

@@ -11,14 +11,18 @@
 import { createLogger } from '../logger.js';
 import { sendDirectMessage } from '../slack/client.js';
 import type { SlackBlockMessage } from '../slack/types.js';
+import { sanitizeSlackLine } from '../utils/slack-escape.js';
 
 const logger = createLogger('welcome-social-posts');
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
-function escapeSlackMrkdwn(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+/**
+ * The Slack display name is set by the member themselves and opens a DM that
+ * reads as platform copy, so it goes through the shared single-line
+ * sanitizer rather than a local escape-only pass (adcp#8326).
+ */
+const DISPLAY_NAME_MAX = 160;
 
 /**
  * Send welcome social posts DM to a new Slack member.
@@ -69,7 +73,7 @@ ${BASE_URL}
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `Welcome${data.displayName ? `, ${escapeSlackMrkdwn(data.displayName)}` : ''}! If you'd like to share the news, here are a few ready-to-post options. Pick whichever sounds most like you, or use them as a starting point.`,
+        text: `Welcome${data.displayName ? `, ${sanitizeSlackLine(data.displayName, DISPLAY_NAME_MAX)}` : ''}! If you'd like to share the news, here are a few ready-to-post options. Pick whichever sounds most like you, or use them as a starting point.`,
       },
     },
     { type: 'divider' },

@@ -47,6 +47,7 @@ test('evaluator capability contract grades individual experimental feature decla
     ...storyboard,
     prerequisites: undefined,
     fixtures: undefined,
+    creative_build_probe: undefined,
     phases: [{
       ...contract,
       steps: contract.steps.map(step => ({
@@ -70,6 +71,7 @@ test('evaluator capability contract grades individual experimental feature decla
     const result = await runStoryboard('https://agent.example/mcp', executable, {
       _profile: { tools, raw_capabilities: capabilities },
       agentTools: tools,
+      contracts: ['creative_build_probe_runner'],
       context: { supports_evaluator: true },
       skip_controller_seeding: true,
       _client: {
@@ -950,6 +952,146 @@ test('product refinement requires the advertised refine buying mode', async () =
   );
   assert.equal(supported.overall_passed, true);
   assert.equal(supported.phases[0].phase_id, 'no_phases');
+});
+
+// Exercise the authored phases, gates, context extraction, cascade, and filter
+// assertions through the runner. Schema validation is covered separately; this
+// client stub returns only the fields needed by the filtering contract.
+async function runProductFilterBehavior(buyingModes, brokenMode) {
+  const storyboard = loadMediaBuyStoryboard('product_filter_behavior');
+  const executable = {
+    ...storyboard,
+    prerequisites: undefined,
+    fixtures: undefined,
+    phases: storyboard.phases.map(phase => ({
+      ...phase,
+      steps: phase.steps.map(step => ({
+        ...step,
+        validations: step.validations.filter(validation => validation.check !== 'response_schema'),
+      })),
+    })),
+  };
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const requests = [];
+  const result = await runStoryboard('https://agent.example/mcp', executable, {
+    _profile: {
+      tools,
+      raw_capabilities: {
+        media_buy: buyingModes === undefined ? {} : { buying_modes: buyingModes },
+      },
+    },
+    agentTools: tools,
+    skip_controller_seeding: true,
+    _client: {
+      resetContext() {},
+      async getProducts(request) {
+        requests.push(request);
+        if (request.buying_mode !== 'brief' && !buyingModes?.includes(request.buying_mode)) {
+          throw new Error(`Unsupported buying mode: ${request.buying_mode}`);
+        }
+        const matchingProduct = {
+          product_id: request.buying_mode === 'wholesale'
+            ? 'filter_behavior_matching_olv'
+            : 'product-returned-by-brief',
+          channels: ['olv'],
+          delivery_type: 'non_guaranteed',
+        };
+        const products = request.buying_mode === 'refine' ? [] : [matchingProduct];
+        if (request.buying_mode === brokenMode) {
+          products.push(request.buying_mode === 'refine' ? matchingProduct : {
+            product_id: 'product-that-should-have-been-filtered-out',
+            channels: ['display'],
+            delivery_type: 'guaranteed',
+          });
+        }
+        return { success: true, data: { products, context: request.context } };
+      },
+    },
+  });
+  const steps = Object.fromEntries(result.phases.map(phase => [phase.phase_id, phase.steps[0]]));
+  return { result, requests, steps };
+}
+
+test('product filters always test brief and independently test each advertised optional mode', async t => {
+  for (const buyingModes of [
+    undefined,
+    ['brief'],
+    ['brief', 'wholesale'],
+    ['brief', 'refine'],
+    ['brief', 'wholesale', 'refine'],
+    ['wholesale'],
+    ['refine'],
+  ]) {
+    await t.test(buyingModes?.join(', ') ?? 'buying_modes absent (defaults to brief)', async () => {
+      const { result, requests, steps } = await runProductFilterBehavior(buyingModes);
+      const expectedModes = ['brief', ...['wholesale', 'refine'].filter(mode => buyingModes?.includes(mode))];
+      assert.deepEqual(requests.map(request => request.buying_mode), expectedModes);
+      assert.equal(result.overall_passed, true);
+      assert.equal(result.failed_count, 0);
+      assert.equal(result.passed_count, expectedModes.length);
+      assert.equal(result.skipped_count, 3 - expectedModes.length);
+      assert.equal(steps.brief_filters.passed, true);
+      assert.ok(!steps.brief_filters.skipped, 'universal brief coverage must execute');
+
+      for (const mode of ['wholesale', 'refine']) {
+        const step = steps[`${mode}_filters`];
+        if (buyingModes?.includes(mode)) {
+          assert.equal(step.passed, true);
+          assert.ok(!step.skipped, `${mode} coverage must execute when advertised`);
+        } else {
+          assert.equal(step.skip_reason, 'not_applicable');
+          assert.equal(step.skip.reason, 'not_applicable');
+        }
+      }
+      const refineRequest = requests.find(request => request.buying_mode === 'refine');
+      if (refineRequest) {
+        assert.equal(refineRequest.refine[0].product_id, 'product-returned-by-brief');
+      }
+    });
+  }
+});
+
+test('advertised refine still fails when the seller ignores replacement filters', async t => {
+  for (const buyingModes of [['brief', 'refine'], ['brief', 'wholesale', 'refine']]) {
+    await t.test(buyingModes.join(', '), async () => {
+      const { result, requests, steps } = await runProductFilterBehavior(buyingModes, 'refine');
+      assert.equal(result.overall_passed, false);
+      assert.equal(result.failed_count, 1);
+      assert.equal(steps.refine_filters.passed, false);
+      assert.ok(!steps.refine_filters.skipped);
+      assert.ok(steps.refine_filters.validations.some(validation => !validation.passed));
+      assert.equal(requests.at(-1).refine[0].product_id, 'product-returned-by-brief');
+    });
+  }
+});
+
+test('a wholesale filter failure does not suppress supported refine coverage', async () => {
+  const { result, requests, steps } = await runProductFilterBehavior(['brief', 'wholesale', 'refine'], 'wholesale');
+  assert.deepEqual(requests.map(request => request.buying_mode), ['brief', 'wholesale', 'refine']);
+  assert.equal(result.overall_passed, false);
+  assert.equal(result.failed_count, 1);
+  assert.equal(steps.wholesale_filters.passed, false);
+  assert.equal(steps.refine_filters.passed, true);
+  assert.ok(!steps.refine_filters.skipped);
+  assert.equal(requests.at(-1).refine[0].product_id, 'product-returned-by-brief');
+});
+
+test('a brief filter failure blocks dependent refine but leaves wholesale coverage independent', async t => {
+  for (const buyingModes of [undefined, ['brief', 'refine'], ['brief', 'wholesale', 'refine']]) {
+    await t.test(buyingModes?.join(', ') ?? 'buying_modes absent', async () => {
+      const { result, requests, steps } = await runProductFilterBehavior(buyingModes, 'brief');
+      assert.equal(result.overall_passed, false);
+      assert.equal(steps.brief_filters.passed, false);
+      assert.deepEqual(requests.map(request => request.buying_mode),
+        buyingModes?.includes('wholesale') ? ['brief', 'wholesale'] : ['brief']);
+      assert.equal(steps.refine_filters.skip_reason,
+        buyingModes?.includes('refine') ? 'prerequisite_failed' : 'not_applicable');
+      if (buyingModes?.includes('wholesale')) {
+        assert.equal(steps.wholesale_filters.passed, true);
+        assert.ok(!steps.wholesale_filters.skipped);
+      }
+    });
+  }
 });
 
 test('advanced delivery reporting dispatches wholesale discovery only to opted-in sellers', async () => {
