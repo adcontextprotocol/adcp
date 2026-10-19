@@ -1,6 +1,11 @@
 /**
- * Read-only preflight for #7830. Compares legacy keys with proposed keys,
- * including source manifests so old merges that now require splits are visible.
+ * Read-only preflight for #7830. Compares the pre-migration key with the key
+ * the app now computes, including source manifests so old merges that need a
+ * split are visible.
+ *
+ * Run this before `migrate-registry-agent-url-keys.ts`. It touches nothing;
+ * the rewrite is that script's job, and it refuses to write while any
+ * destructive collision is unresolved.
  *
  * DATABASE_URL=… npx tsx server/src/scripts/audit-agent-url-canonicalization-collisions.ts
  * fly ssh console -a adcp-docs -C 'node /app/dist/scripts/audit-agent-url-canonicalization-collisions.js'
@@ -63,7 +68,10 @@ async function main(): Promise<void> {
     rows.push(...manifests.rows.map(row => ({ store: 'publishers.adagents_json', rowId: row.row_id, rawUrl: row.raw_url })));
     console.log(JSON.stringify({
       issue: 7830,
-      liveKeysChanged: false,
+      // Live readers and writers now compute the new key. Rows still holding
+      // the pre-migration key are exactly `changedRows`; until the rewrite
+      // runs, no reader can find them.
+      liveKeysChanged: true,
       surveyedTables: tables.rows.map(row => row.table_name),
       ...auditAgentUrlKeyMigration(rows),
     }, null, 2));

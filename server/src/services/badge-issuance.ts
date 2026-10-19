@@ -121,7 +121,14 @@ export async function processAgentBadges(
     return result;
   }
 
-  const derivedVerification = deriveVerificationStatus(declaredSpecialisms, storyboardStatuses);
+  // adcpVersion is the public badge line ('3.0'); deriveVerificationStatus
+  // resolves it to that line's bundle so a specialism AdCP introduced after
+  // the release neither earns nor blocks this badge (#8269).
+  const derivedVerification = deriveVerificationStatus(
+    declaredSpecialisms,
+    storyboardStatuses,
+    adcpVersion,
+  );
   const verification = onlyRoles
     ? { ...derivedVerification, roles: derivedVerification.roles.filter(result => onlyRoles.has(result.role)) }
     : derivedVerification;

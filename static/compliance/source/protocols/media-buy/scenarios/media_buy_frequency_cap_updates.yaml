@@ -245,6 +245,12 @@ phases:
             value: 5
             description: "The package cap is echoed at its own location"
 
+  - id: replace_root_cap
+    title: "Replace the root cap through compact control"
+    requires_capability:
+      path: media_buy.lifecycle_tools
+      contains: control_media_buy
+    steps:
       - id: read_root_cap_action
         title: "Read the root-cap action and both caps"
         task: get_media_buys
@@ -315,6 +321,10 @@ phases:
             description: "The independent package cap is unchanged by the root replacement"
 
   - id: guard_and_clear
+    # These requests consume the revision produced by compact replacement.
+    requires_capability:
+      path: media_buy.lifecycle_tools
+      contains: control_media_buy
     title: "Guard the shared counter, then clear it while adding a package"
     steps:
       - id: reject_non_participating_package
@@ -325,7 +335,7 @@ phases:
         doc_ref: "/media-buy/task-reference/update_media_buy"
         expect_error: true
         negative_path: payload_well_formed
-        stateful: false
+        stateful: true
         sample_request:
           account: { account_id: "$context.account_id" }
           media_buy_id: "$context.media_buy_id"
@@ -418,7 +428,7 @@ phases:
         doc_ref: "/media-buy/task-reference/control_media_buy"
         expect_error: true
         negative_path: payload_well_formed
-        stateful: false
+        stateful: true
         sample_request:
           account: { account_id: "$context.account_id" }
           media_buy_id: "$context.media_buy_id"

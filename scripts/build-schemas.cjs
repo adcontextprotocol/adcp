@@ -77,6 +77,7 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'get_reporting_status',
     'get_task_status',
     'list_accounts',
+    'list_collections',
     'list_creatives',
     'list_products',
     'list_tasks',

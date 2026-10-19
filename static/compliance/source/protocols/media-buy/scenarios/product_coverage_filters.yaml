@@ -137,6 +137,7 @@ phases:
       - id: compact_country_and_metro
         title: "Return the same offer through list_products"
         task: list_products
+        requires_tool: list_products
         schema_ref: media-buy/list-products-request.json
         response_schema_ref: media-buy/list-products-response.json
         doc_ref: /media-buy/task-reference/list_products
