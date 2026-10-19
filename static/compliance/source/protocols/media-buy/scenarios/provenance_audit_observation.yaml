@@ -41,6 +41,11 @@ prerequisites:
     Seller publishes a product with creative_policy.accepted_verifiers
     pointing at a governance agent that implements get_creative_features and
     can emit audit_observations[] for oversight/disclosure carve-out claims.
+    The fixture names the public conformance verifier at
+    https://test-agent.adcontextprotocol.org/governance/creative-features/mcp,
+    which needs no bearer and returns fixture-keyed, deterministic results.
+    Sellers allowlist this verifier once in sandbox configuration; sellers MUST NOT
+    call a verifier URL that is not on their own allowlist.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -94,7 +99,7 @@ fixtures:
         templates_available: false
         provenance_required: true
         accepted_verifiers:
-          - agent_url: "https://governance.encypher.seller.example"
+          - agent_url: "https://test-agent.adcontextprotocol.org/governance/creative-features/mcp"
             feature_id: "ai_generated"
             providers: ["Encypher"]
       pricing_options:
@@ -190,7 +195,7 @@ phases:
                   content: "Outdoor gear designed with expert guidance"
                 image:
                   asset_type: "image"
-                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/ai-generated-true.jpg"
+                  url: "https://adcontextprotocol.org/test-assets/acme-outdoor/ai-generated-true.jpg"
                   width: 300
                   height: 250
                 click_url:
@@ -210,7 +215,7 @@ phases:
                   - method: "provenance_markers"
                     provider: "Encypher"
                     verify_agent:
-                      agent_url: "https://governance.encypher.seller.example"
+                      agent_url: "https://test-agent.adcontextprotocol.org/governance/creative-features/mcp"
                       feature_id: "ai_generated"
             - creative_id: "acme_provenance_audit_edited_001"
               name: "Acme provenance audit observation probe — edited"
@@ -223,7 +228,7 @@ phases:
                   content: "Outdoor gear refined with expert guidance"
                 image:
                   asset_type: "image"
-                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/ai-generated-true.jpg"
+                  url: "https://adcontextprotocol.org/test-assets/acme-outdoor/ai-generated-true.jpg"
                   width: 300
                   height: 250
                 click_url:
@@ -243,7 +248,7 @@ phases:
                   - method: "provenance_markers"
                     provider: "Encypher"
                     verify_agent:
-                      agent_url: "https://governance.encypher.seller.example"
+                      agent_url: "https://test-agent.adcontextprotocol.org/governance/creative-features/mcp"
                       feature_id: "ai_generated"
           idempotency_key: "$generate:uuid_v4#provenance_audit_observation_accept_carveout_sync"
           context:
