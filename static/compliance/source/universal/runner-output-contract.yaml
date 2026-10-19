@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.12.0"
+version: "2.13.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -60,6 +60,7 @@ authored_check_kinds:
   - oauth_metadata_graph
   - any_of
   - refs_resolve
+  - property_list_reference
   - a2a_submitted_artifact
   - a2a_context_continuity
   - field_less_than
@@ -100,6 +101,69 @@ cross_response_check_kinds:
   - cross_response_field_equal
   - cross_response_count_distinct
   - replay_not_cached_rate_limit
+
+property_list_reference_check:
+  description: |
+    A property_list_reference validation on a create_property_list response
+    exercises the issued reference as an independent recipient. The runner
+    reads list_id_path and auth_token_path from that response and uses
+    agent_url ($agent_url means the agent under test) as the managing endpoint.
+    It MUST NOT derive an HTTP /lists/{list_id} path.
+
+    Storyboards using this check MUST declare the storyboard-level
+    property_list_reference_runner requirement before controller or any other
+    requirement that may contact the agent. This requirement is available only
+    when the runner implements this entire check, including credential-isolated
+    sessions, pagination, authorization-denial probes, and evidence redaction.
+    A runner that does not implement it MUST return requirement_unmet naming
+    property_list_reference_runner before fixture seeding or task dispatch,
+    with zero executed passing steps. This preserves a visible coverage gap
+    without treating an unknown check as a successful reference resolution.
+
+    The runner MUST create a fresh MCP session using only the issued token as
+    an Authorization: Bearer credential, including initialize and all tool
+    calls. It MUST NOT reuse an owner's authenticated session, account argument,
+    API key, cookies, signing identity, or OAuth credential. The issuer must
+    resolve the list without such additional identity. When the run explicitly
+    selects another advertised AdCP task transport, use its normal envelope
+    with the same credential isolation; MCP remains the required baseline.
+
+    Call get_property_list with list_id, resolve:true, and
+    pagination.max_results=page_size. Follow every returned cursor to the
+    terminal page using the same token. Validate each response against
+    property/get-property-list-response.json, require list.list_id to equal
+    the issued ID on every page, and enforce cursor/has_more integrity. Reject
+    a repeated cursor, duplicate identifier, page larger than page_size, or
+    traversal exceeding max_pages. The aggregate identifiers MUST exactly equal expected_identifiers as an
+    unordered set of (type,value) pairs. When the fixture exceeds page_size,
+    a first-page has_more:false or omitted pagination fails the check.
+
+    In that same token-only session, attempt get_property_list for
+    denied_list_id, an existing second list created under the owner's normal
+    credentials, and update_property_list on the shared list with a changed
+    name and a fresh UUID v4 idempotency_key. Both requests MUST satisfy their
+    canonical request schemas and be denied by the managing agent's authorization rules.
+    An authorization denial may be transport-level or a task error; any success
+    payload, malformed response, unsupported-task error, or unrelated failure
+    MUST NOT count as proof of credential scoping. A valid cross-list lookup
+    denial may conceal existence with REFERENCE_NOT_FOUND. HTTP 401/403 or a
+    task error declaring an authentication, permission, or scope denial is
+    acceptable; INVALID_REQUEST, ACCOUNT_REQUIRED, and timeouts are not scope
+    evidence. No owner credential fallback is permitted.
+
+    A runner that does not implement this validation MUST NOT report complete
+    passing coverage for this storyboard. If an ungated check is encountered,
+    the ordinary unknown-check not_applicable rule applies; it cannot substitute
+    for satisfying the required runtime gate. An ordinary owner-authenticated
+    get_property_list call cannot substitute for this check.
+  evidence: |
+    Emit request/response records for initialization, every page, the cross-list
+    probe, and the mutation probe. Associate failures with the specific probe
+    or page and the schema/JSON Pointer that failed. Redact the issued token
+    in both the create response and all Authorization headers, including
+    diagnostic errors. Never persist plaintext reference credentials in run
+    output. Record only the managing endpoint, issued list ID, page/identifier
+    counts, and the authorization outcome as unredacted observations.
 
 # Conforming implementation: adcp-client PR #611
 # (src/lib/testing/storyboard/types.ts — RunnerRequestRecord,

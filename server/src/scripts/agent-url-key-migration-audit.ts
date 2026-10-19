@@ -1,40 +1,22 @@
-import { canonicalTargetUri } from '@adcp/sdk/signing';
+/**
+ * Collision classes for the #7830 registry-key migration.
+ *
+ * Both algorithms now come from the shared helper: `registryAgentUrlKey` is
+ * what every reader and writer computes after this change, and
+ * `legacyRegistryAgentUrlKey` is the frozen pre-migration form, so before /
+ * after reports stay comparable and the audit can never drift from the code
+ * the migration actually runs.
+ */
+import {
+  legacyRegistryAgentUrlKey,
+  registryAgentUrlKey,
+} from '../db/registry-agent-url-key.js';
 
-/** Frozen pre-migration algorithm so before/after reports stay comparable. */
-function legacyRegistryAgentUrlKey(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (trimmed === '*') return '*';
-  if (!trimmed || trimmed.includes('*') || /[\s\x00-\x1f]/.test(trimmed)) return null;
-  const lower = trimmed.toLowerCase();
-  let end = lower.length;
-  while (end > 0 && lower[end - 1] === '/') end -= 1;
-  return lower.slice(0, end) || null;
-}
-
-/** Candidate keys only: live readers and writers retain their current semantics. */
-export function proposedRegistryAgentUrlKey(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (trimmed === '*') return '*';
-  if (!trimmed || trimmed.includes('*') || trimmed.includes('\\') || /[\s\x00-\x1f\x7f]/.test(trimmed)) return null;
-  try {
-    const url = new URL(trimmed);
-    if (!['https:', 'http:'].includes(url.protocol) || !trimmed.includes('://') || url.username || url.password) return null;
-    // The SDK accepts ASCII URI authorities; WHATWG URL supplies the IDN
-    // A-label first. Preserve the original path/query bytes for SDK handling.
-    const authorityStart = trimmed.indexOf('://') + 3;
-    const suffixOffset = trimmed.slice(authorityStart).search(/[/?#]/);
-    if (suffixOffset === 0) return null;
-    const authority = trimmed.slice(authorityStart, suffixOffset < 0 ? undefined : authorityStart + suffixOffset);
-    if (authority.includes('@')) return null;
-    const suffix = suffixOffset < 0 ? '' : trimmed.slice(authorityStart + suffixOffset);
-    const canonical = canonicalTargetUri(`${url.protocol}//${url.host}${suffix}`, '3.2');
-    // Root-served registry agents keep their existing key when there is no query.
-    const parsed = new URL(canonical);
-    return parsed.pathname === '/' && !canonical.includes('?') ? canonical.slice(0, -1) : canonical;
-  } catch {
-    return null;
-  }
-}
+/**
+ * Historical name for the registry key, kept so the read-only audit script
+ * and its tests keep reading as "what the migration would produce".
+ */
+export const proposedRegistryAgentUrlKey = registryAgentUrlKey;
 
 export interface AgentUrlAuditRow {
   store: string;
@@ -47,7 +29,7 @@ export function auditAgentUrlKeyMigration(rows: AgentUrlAuditRow[]) {
   const entries = rows.map(row => ({
     ...row,
     legacyKey: legacyRegistryAgentUrlKey(row.rawUrl),
-    proposedKey: proposedRegistryAgentUrlKey(row.rawUrl),
+    proposedKey: registryAgentUrlKey(row.rawUrl),
   }));
   const groupBy = (field: 'legacyKey' | 'proposedKey') => {
     const groups = new Map<string, typeof entries>();
@@ -70,10 +52,14 @@ export function auditAgentUrlKeyMigration(rows: AgentUrlAuditRow[]) {
   });
   return {
     rowCount: rows.length,
-    nonRootTrailingSlashRows: entries.filter(row => {
-      if (!row.proposedKey || row.proposedKey === '*') return false;
-      const path = new URL(row.proposedKey).pathname;
-      return path !== '/' && path.endsWith('/');
+    // Rows whose raw URL carries a trailing slash the key folds away. These
+    // are the identity merges, and they are also the rows whose registered
+    // spelling has to be preserved for spec-exact authorization matching
+    // (#7829) — see declaredAgentUrl.
+    trailingSlashFoldedRows: entries.filter(row => {
+      if (row.proposedKey === null || row.proposedKey === '*') return false;
+      const path = row.rawUrl.trim().split('#', 1)[0].split('?', 1)[0];
+      return path.endsWith('/');
     }),
     bareQueryRows: entries.filter(row => row.rawUrl.split('#', 1)[0].endsWith('?')),
     invalidRows: entries.filter(row => row.proposedKey === null),
