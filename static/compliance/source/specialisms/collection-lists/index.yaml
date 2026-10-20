@@ -162,6 +162,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-collection_lists-90c10f16"
+            sandbox: true
           brand:
             domain: "novamotors.example"
           name: "Nova Motors approved programs"
@@ -231,6 +232,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-collection_lists-90c10f16"
+            sandbox: true
           name_contains: "Nova Motors"
 
           context:
@@ -276,6 +278,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-collection_lists-90c10f16"
+            sandbox: true
 
           context:
             correlation_id: "collection_lists--get_collection_list"
@@ -332,6 +335,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-collection_lists-90c10f16"
+            sandbox: true
           base_collections:
             - selection_type: "distribution_ids"
               identifiers:
@@ -392,6 +396,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-collection_lists-90c10f16"
+            sandbox: true
 
           idempotency_key: "$generate:uuid_v4#collection_lists_delete_list_delete_collection_list"
           context:
