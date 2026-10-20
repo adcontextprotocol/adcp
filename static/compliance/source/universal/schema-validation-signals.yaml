@@ -142,6 +142,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-schema_validation_signals-b5b138ab"
+            sandbox: true
 
           context:
             correlation_id: "schema_validation_signals--get_signals_schema"
@@ -192,6 +193,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-schema_validation_signals-b5b138ab"
+            sandbox: true
 
           context:
             correlation_id: "schema_validation_signals--pricing_options_present"

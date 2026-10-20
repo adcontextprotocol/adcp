@@ -441,7 +441,7 @@ Authorization validation checks both sides: the publisher's `adagents.json` (doe
 }
 ```
 
-Entries with `editor_name: "system"` were written by automated enrichment. When `is_rollback` is `true`, `rolled_back_to` contains the revision number that was restored. Pagination uses `limit` (max 100) and `offset` query parameters.
+`editor_name` is a display name. Entries read `system` when the edit came from automated enrichment, and also when the editor had no display name on file — the registry does not publish contributor email addresses. When `is_rollback` is `true`, `rolled_back_to` contains the revision number that was restored. Pagination uses `limit` (max 100) and `offset` query parameters.
 
 ## Anti-abuse and anti-homograph controls
 
