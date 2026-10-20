@@ -639,7 +639,8 @@ describe('registry review queue (Postgres)', () => {
     const [entry] = await ourQueue();
 
     // The content comes from adagents_json, not from a revision
-    // snapshot — a property revision snapshot is the whole row.
+    // snapshot. Snapshots are allowlisted now, but the queue view
+    // predates that and reads the row directly either way.
     expect(entry.submitted_content).toContain('News');
     expect(JSON.stringify(entry)).not.toContain('secret-claim-token');
     expect(JSON.stringify(entry)).not.toContain('secret-verification-token');
