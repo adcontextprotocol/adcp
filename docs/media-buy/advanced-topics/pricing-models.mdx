@@ -597,13 +597,13 @@ When buyer and seller have negotiated discounts and commissions, the `price_brea
 
 - `list_price` — the rate card or base price before any adjustments
 - `adjustments` — ordered list of adjustments, each categorized by `kind`
-- `fixed_price` (on the parent pricing option) — must equal the result of applying all `fee` and `discount` adjustments sequentially to `list_price`
+- `fixed_price` (on the parent pricing option) — must equal the result of applying all `fee` and `discount` adjustments sequentially to `list_price`. A breakdown from the operator's buying platform also applies `operator_fee` adjustments; see [Operator fees](#operator-fees)
 
-Implementations should ignore unrecognized fields in `price_breakdown` and its adjustments to support forward compatibility.
+Implementations should ignore unrecognized fields in `price_breakdown` and its adjustments to support forward compatibility. A reader that meets an unrecognized adjustment `kind` SHOULD skip the invariant check rather than report a mismatch.
 
 ### Adjustment Kinds
 
-Adjustments fall into four kinds based on their economic effect:
+Adjustments fall into five kinds based on their economic effect:
 
 | Kind | Effect on buyer price | Effect on publisher revenue | When applied |
 |------|----------------------|----------------------------|--------------|
@@ -611,14 +611,17 @@ Adjustments fall into four kinds based on their economic effect:
 | `discount` | Reduces it | Reduces it | Before quoting — walks `list_price` down toward `fixed_price` |
 | `commission` | None — budget includes it | Reduces it (revenue split) | Revenue allocation between intermediary and publisher |
 | `settlement` | None — post-invoice | Reduces actual payment | At invoicing or payment time |
+| `operator_fee` | Increases it | None — the operator keeps it | Buyer-side only — walks the seller's price up to what the advertiser pays |
 
 **Fees** increase what the buyer pays. Ad serving fees, data/targeting surcharges, and brand safety verification costs are additive to the base price. Without fee adjustments, these would be opaque within `list_price`.
 
 **Discounts** reduce what the buyer pays. Volume discounts, negotiated rates, and early booking discounts all lower both the buyer's cost and the publisher's revenue.
 
-**Commissions** are revenue splits. The buyer's price and budget don't change — commission determines how the payment is divided between the intermediary (e.g., agency) and the publisher. Budgets are always managed inclusive of commissions. Multiple commission adjustments compound sequentially, like discounts — e.g., a 15% agency commission followed by a 5% trading desk fee means the publisher receives `budget × 0.85 × 0.95`.
+**Commissions** are revenue splits. The buyer's price and budget don't change — commission determines how the payment is divided between the intermediary (e.g., agency) and the publisher. Budgets are always managed inclusive of commissions. Multiple commission adjustments compound sequentially, like discounts — e.g., a 15% agency commission followed by a 5% trading desk fee means the publisher receives `budget × 0.85 × 0.95`. Use `commission` only when the seller has agreed to fund the split; a fee the advertiser pays on top of the seller's price is an [operator fee](#operator-fees).
 
 **Settlement adjustments** are applied at invoicing or payment time (e.g., a cash discount for early payment). They don't affect the committed price or budget. Retroactive rebates and performance incentives are out of scope for `price_breakdown` and would be handled through reconciliation workflows.
+
+**Operator fees** are kept by the account's `operator` out of the advertiser's budget — for example, an agency's 2% insurance fee on every media buy. The advertiser pays it, the operator keeps it, and the seller never sees it. See [Operator fees](#operator-fees).
 
 ### Beneficiary
 
@@ -631,13 +634,15 @@ Each adjustment may include an optional `beneficiary` field identifying who rece
 
 The value can be a sellers.json domain, an AdCP account ID, or a human-readable party name.
 
+For `operator_fee`, `beneficiary` defaults to the account's `operator`. Set it only when another party receives the fee.
+
 ### Invariant
 
-The invariant is: `list_price` with all `fee` and `discount` adjustments applied sequentially equals `fixed_price`. Commission and settlement adjustments don't participate — they're disclosed for transparency. If no fee or discount adjustments are present, `fixed_price` must equal `list_price`.
+The invariant is: `list_price` with all `fee`, `discount`, and `operator_fee` adjustments applied sequentially equals the buyer's effective price — `fixed_price` when the parent object carries it. Commission and settlement adjustments don't participate — they're disclosed for transparency. If no fee, discount, or operator fee adjustments are present, `fixed_price` must equal `list_price`.
 
 This invariant applies only when `fixed_price` is present on the parent object. For auction-based packages, `price_breakdown` is informational — see [On Confirmed Packages](#on-confirmed-packages).
 
-Fee and discount adjustments compound in array order using these formulas:
+Fee, discount, and operator fee adjustments compound in array order using these formulas:
 
 ```
 For rate-based fees:        running = running × (1 + rate)
@@ -645,6 +650,8 @@ For amount-based fees:      running = running + amount
 For rate-based discounts:   running = running × (1 − rate)
 For amount-based discounts: running = running − amount
 ```
+
+Operator fees use the fee formulas.
 
 All monetary values are rounded to the precision of the currency (e.g., 2 decimal places for EUR/USD) at each step. The invariant holds after rounding.
 
@@ -673,13 +680,13 @@ Each adjustment must include exactly one of `rate` or `amount`:
 
 ### Budgets and Commission
 
-Budgets are always denominated at the `fixed_price` level, inclusive of commissions. If a buyer commits €10,000 at an €11.90 CPM, that €10,000 is the buyer's cost. The agency takes their commission from that amount; the publisher receives the remainder.
+Budgets are always denominated at the `fixed_price` level, inclusive of commissions. A buying platform's budget toward the advertiser also includes operator fees; see [Operator fees](#operator-fees). If a buyer commits €10,000 at an €11.90 CPM, that €10,000 is the buyer's cost. The agency takes their commission from that amount; the publisher receives the remainder.
 
 This means a buyer agent comparing rates across sellers can use `fixed_price` directly — it's the actual cost per unit, regardless of the underlying commission structure.
 
 ### On Confirmed Packages
 
-The `price_breakdown` field also appears on the package response (confirmed line item). It is seller-populated — buyer agents should treat it as read-only.
+The `price_breakdown` field also appears on the package response (confirmed line item). On a seller's response it is seller-populated, and buyer agents should treat it as read-only. A buying platform reporting the package to the advertiser may append `operator_fee` adjustments; see [Operator fees](#operator-fees).
 
 **Fixed-price packages** echo the pricing option's breakdown:
 
@@ -720,11 +727,49 @@ The `price_breakdown` field also appears on the package response (confirmed line
 }
 ```
 
+### Operator fees
+
+An account's `operator`, typically an agency buying for a brand, often keeps a fee out of the advertiser's budget on every media buy. Neither `fee` nor `commission` fits: a `fee` is paid to the seller, and a `commission` does not change the buyer's price. An `operator_fee` raises the price the advertiser pays and leaves the seller's revenue unchanged. A buying platform's or trading desk's own fee that the advertiser pays on top of the seller's price is also an `operator_fee`, with `beneficiary` naming the platform.
+
+**Who adds it.** Operator fees appear only in breakdowns the operator's buying platform returns to the operator and the advertiser it buys for. The seller never sees them, so sellers MUST NOT include `operator_fee` in a breakdown or `eligible_adjustments` they author.
+
+**Order and the seller's price.** `operator_fee` adjustments MUST follow every `fee` and `discount` adjustment. The running price just before the first `operator_fee` is the seller's price. Commission and settlement adjustments in the same breakdown apply to the seller's price and budget, not the advertiser's. Several operator fees compound in array order.
+
+**Rate basis.** Like a `fee`, an operator fee's `rate` is a markup on the running price. A contract that sets the fee as a share `g` of the advertiser's gross spend converts to `rate = g / (1 − g)` (2% of gross is a rate of about 0.0204), or uses `amount`.
+
+A buying platform reporting a package to the advertiser echoes the seller's breakdown and appends the operator fee:
+
+```json
+{
+  "package_id": "pkg_24680",
+  "product_id": "run_of_site_display",
+  "pricing_option_id": "cpm_eur_ros",
+  "budget": 10200,
+  "price_breakdown": {
+    "list_price": 10.00,
+    "adjustments": [
+      { "kind": "discount", "name": "volume", "rate": 0.15, "description": "12x frequency discount" },
+      { "kind": "operator_fee", "name": "insurance", "rate": 0.02, "description": "Agency insurance fee" }
+    ]
+  }
+}
+```
+
+```
+list_price: 10.00
+  discount, rate: 0.15       → 10.00 × 0.85 = 8.50   (seller's price)
+  operator_fee, rate: 0.02   → 8.50 × 1.02 = 8.67    (advertiser's price)
+```
+
+The platform states `budget` at the advertiser's price. The advertiser's €10,200 funds a €10,000 media buy at the seller's €8.50 (seller budget = advertiser budget × seller price ÷ advertiser price), and the operator keeps €200. The platform SHOULD report delivered spend to the advertiser on the same basis. `beneficiary` is omitted because the fee goes to the account's operator. A brand operating its own account has no operator fee to declare.
+
+A flat per-campaign fee or retainer is not a per-unit adjustment and is out of scope. Whether the advertiser sees the operator fee is a matter for the platform's permission model and the operator's contract with the advertiser, not the protocol.
+
 ---
 
 ## Eligible Adjustments
 
-Publishers can declare which adjustment kinds apply to a pricing option using `eligible_adjustments`. This tells buyer agents upfront whether discounts, commissions, or settlement terms are available — before any negotiation begins.
+Publishers can declare which adjustment kinds apply to a pricing option using `eligible_adjustments`. This tells buyer agents upfront whether discounts, commissions, or settlement terms are available — before any negotiation begins. Sellers never declare `operator_fee`, which only a buying platform applies.
 
 ```json
 {
