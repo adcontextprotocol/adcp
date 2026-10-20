@@ -345,7 +345,7 @@ There is no inheritance/override block. Each consumer-side question has a single
 | `data_subject_contestation`, compliance policies, regulated-category flags | **Strictest-of** house-level and brand-level. See below. |
 | Mutual-assertion verification | Fetch both brand and house, compare `house_domain` ↔ `brand_refs[]`. |
 
-**Identity fields** (`name`, `names`, `logos`, `colors`, `fonts`, `tone`, `voice`, `tagline`, `visual_guidelines`, `avatar`): brand-level value is authoritative; the house value is not consulted. Brand teams own brand identity.
+**Identity fields** (`name`, `names`, `logos`, `colors`, `fonts`, `tone`, `voice`, `prohibited_terms`, `tagline`, `visual_guidelines`, `avatar`): brand-level value is authoritative; the house value is not consulted. Brand teams own brand identity.
 
 ### Authorized Operator Resolution
 
@@ -469,6 +469,7 @@ Each brand in the `brands` array:
 | `colors` | object | No | Brand color palette |
 | `fonts` | object | No | Brand typography |
 | `tone` | object | No | Brand voice and messaging guidelines. `voice` is a localized scalar; `attributes`, `dos`, and `donts` localize as complete arrays. |
+| `prohibited_terms` | array of strings | No | Words or phrases the brand never uses in copy. See [Prohibited terms](#prohibited-terms). |
 | `tagline` | string | No | Brand tagline or slogan |
 | `visual_guidelines` | object | No | Structured visual rules for generative creative systems |
 | `trademarks` | array | No | Registered trademarks owned or licensed by this brand (`registry`, `number`, `mark`, optional `status`, `license_type`, `countries`). See [Trademarks](#trademarks). |
@@ -510,6 +511,23 @@ Brand architecture classifications from marketing theory:
 | `sub_brand` | Carries parent brand name | Nike SB |
 | `endorsed` | Independent identity, endorsed by parent | Air Jordan "by Nike" |
 | `independent` | Operates separately from house | Converse |
+
+### Prohibited terms
+
+`prohibited_terms` is an optional array of plain strings on the brand: words or phrases the brand never uses in copy, such as `"binge"` or a competitor's name. It sits beside `tone`, not under it, because `tone` also accepts a plain string.
+
+```json
+{
+  "tone": { "voice": "bold and direct" },
+  "prohibited_terms": ["binge", "cheap"]
+}
+```
+
+- **Advisory.** Matching is the receiver's choice; case-insensitive whole-term matching is the expected default. Receivers that cannot enforce the list can still pass it to generation as guidance. Terms apply regardless of copy language; per-locale lists are not defined.
+- **Union with slot lists.** For a text slot, the effective list is the union of the brand's `prohibited_terms` and the format slot's `text-asset-requirements.prohibited_terms`. Neither list weakens the other.
+- **Brand-level only.** The field has no house-level equivalent and is not inherited; a brand's value is authoritative. It is not yet returned by [`get_brand_identity`](/docs/brand-protocol/tasks/get_brand_identity), whose `fields` list is closed; read it from `brand.json`.
+- **No per-call override.** `brand_kit_override` does not carry `prohibited_terms`. Publish a different `brand.json` and reference it by `domain` to change the list.
+- **Not `prohibited_claims`.** The creative brief's `compliance.prohibited_claims` holds claims, which are statements judged by meaning ("clinically proven"); this list is literal words and phrases.
 
 ### Extended color roles
 
