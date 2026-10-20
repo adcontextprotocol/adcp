@@ -271,14 +271,15 @@ On fixed-mode success, `affected_packages` MUST contain the full post-update sta
 
 `revision` is the expected current media-buy revision. Some implementations call this value `expected_revision` internally; on the AdCP wire the field is `revision`. The field is optional for backward compatibility. When it is present, sellers MUST check it atomically with the write that applies a mutating update; reading the current value in application code, comparing it, then writing later can race another writer and lose an update. If the stored revision differs from the request's `revision`, the seller rejects with `CONFLICT` and applies no changes.
 
-Every mutating update increments `revision` and returns the new value in the success response. Validation-only requests, reads, and exact idempotency replays do not increment it; exact replays return the prior revision. Clients SHOULD pass the latest observed revision on every update intended to change state, then reload with `get_media_buys` and retry with a fresh `idempotency_key` when they receive `CONFLICT`.
+Every mutating update increments `revision` and returns the new value in the success response. So does every other committed change to state `get_media_buys` reports, whatever its origin: a seller operator, seller automation, another authorized principal, or a connected platform (see [Revision and confirmation semantics](/docs/media-buy/specification#revision-and-confirmation-semantics)). A buyer that sends a stale `revision` after such a change receives `CONFLICT`. Validation-only requests, reads, and exact idempotency replays do not increment it; exact replays return the prior revision. Clients SHOULD pass the latest observed revision on every update intended to change state, then reload with `get_media_buys` and retry with a fresh `idempotency_key` when they receive `CONFLICT`.
 
 Creative and assignment mutations made through this facade are part of the
-MediaBuy transaction and increment `revision`. The standalone
-[`sync_creatives`](/docs/creative/task-reference/sync_creatives) task does not increment MediaBuy revision and does not share
-this optimistic-concurrency fence. An unchanged revision therefore cannot prove
-that assignment state is unchanged. A client that mixes the two surfaces must
-re-read current assignments before sending a complete replacement.
+MediaBuy transaction and increment `revision`. So do assignment changes made
+through the standalone [`sync_creatives`](/docs/creative/task-reference/sync_creatives) task, which has its own
+idempotency and atomicity boundary and accepts no media-buy `revision`
+precondition. A client that sent `sync_creatives` between its last read and this
+update therefore receives `CONFLICT` and re-reads before sending a complete
+replacement.
 
 ### Accepted-proposal coherence
 
