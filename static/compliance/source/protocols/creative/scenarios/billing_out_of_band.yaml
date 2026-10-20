@@ -143,6 +143,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_billing_out_of_band-07c4ce40"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#creative_billing_out_of_band_report_usage"
           reporting_period:
             start: "2099-07-01T00:00:00Z"
