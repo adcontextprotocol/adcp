@@ -822,6 +822,10 @@
           "$ref": "/schemas/core/principal-declarations-state.json",
           "description": "Declared consumption facts with the seller-computed accepted intersection"
         },
+        "principal-relationship": {
+          "$ref": "/schemas/core/principal-relationship.json",
+          "description": "The seller's commercial relationship with the authenticated caller, returned by get_principal"
+        },
         "principal-changed-webhook": {
           "$ref": "/schemas/core/principal-changed-webhook.json",
           "description": "Caller-anchored invalidation payload for seller-driven connection-state transitions"
@@ -994,6 +998,22 @@
         "brand-id": {
           "$ref": "/schemas/core/brand-id.json",
           "description": "Identifier for a brand within a house portfolio - lowercase alphanumeric with underscores only"
+        },
+        "agent-onboarding": {
+          "$ref": "/schemas/core/agent-onboarding.json",
+          "description": "Seller onboarding posture for buyer agents, per billing party and sandbox"
+        },
+        "agent-onboarding-tier": {
+          "$ref": "/schemas/core/agent-onboarding-tier.json",
+          "description": "One onboarding mode with its requirements"
+        },
+        "buyer-onboarding-posture": {
+          "$ref": "/schemas/core/buyer-onboarding-posture.json",
+          "description": "How a buying agent considers sellers, published in its trust.json"
+        },
+        "agent-onboarding-requirement": {
+          "$ref": "/schemas/core/agent-onboarding-requirement.json",
+          "description": "One onboarding requirement, discriminated by kind"
         },
         "brand-ref": {
           "$ref": "/schemas/core/brand-ref.json",
@@ -1201,6 +1221,14 @@
     "enums": {
       "description": "Enumerated types and constants",
       "schemas": {
+        "agent-onboarding-mode": {
+          "$ref": "/schemas/enums/agent-onboarding-mode.json",
+          "description": "Onboarding mode (open, application, invite_only); a seller's posture toward buyer agents or a buyer's toward sellers, by where it appears"
+        },
+        "agent-onboarding-requirement-kind": {
+          "$ref": "/schemas/enums/agent-onboarding-requirement-kind.json",
+          "description": "Extensible onboarding requirement kinds, each scoped to a direction"
+        },
         "pricing-model": {
           "$ref": "/schemas/enums/pricing-model.json",
           "description": "Supported pricing models for advertising products"
@@ -1276,6 +1304,10 @@
         "audience-status": {
           "$ref": "/schemas/enums/audience-status.json",
           "description": "Matching status of a synced audience on a seller platform"
+        },
+        "principal-relationship-status": {
+          "$ref": "/schemas/enums/principal-relationship-status.json",
+          "description": "State of the seller's commercial relationship with the caller, reported by get_principal"
         },
         "creative-quality": {
           "$ref": "/schemas/enums/creative-quality.json",
