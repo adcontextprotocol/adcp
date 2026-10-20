@@ -6,4 +6,4 @@
 
 An absent `impressions` means the seller did not measure impressions for that row; it does not mean zero. Receivers MUST NOT treat absence as zero or derive impression-denominated values for the row (`cpm`, `ctr`, `completion_rate`, `viewable_rate`), and senders MUST omit impression-denominated rates on such a row. Senders MUST NOT put views, plays, downloads or any other count in `impressions`; those go in `views`, `completed_views`, `plays`, `downloads` or `vendor_metric_values`. When `impressions` is a committed metric, absence is disclosed through `by_package[].missing_metrics`.
 
-Version gate: sellers MUST NOT omit `impressions` from these rows toward callers pinned below AdCP 3.3, and a caller with no declared pin is treated as pinned below 3.3. Toward those callers a seller with no impression count omits the row. The rule applies regardless of `pricing_model`.
+Version gate: a response or webhook served below AdCP 3.3 follows that release's schema, which requires `impressions` ([Serving an older pin](/docs/reference/versioning#serving-an-older-pin)). In it, a seller with no impression count omits the row. The rule applies regardless of `pricing_model`.
