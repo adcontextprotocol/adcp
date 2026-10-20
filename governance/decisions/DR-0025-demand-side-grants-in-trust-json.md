@@ -2,8 +2,10 @@
 id: DR-0025
 title: Demand-side acts-for grants live in trust.json, and a missing grant is a request-level denial
 class: normative
-status: proposed
+status: ratified
 date: 2026-10-12
+decided: 2026-10-20
+decided_by: maintainer approval (PR #8157)
 refs: ["#6033", "#8118", "PR #8119", "PR #8157", "PR #8169", "#7809"]
 dissent: none recorded
 ---
