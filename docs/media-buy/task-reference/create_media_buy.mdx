@@ -1340,7 +1340,7 @@ Media-buy `pacing` is part of the core contract only for `even`. A seller declar
 
 A seller that declares the parent but not a given sub-capability MUST reject a seller-optimized request carrying that package control with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before any over-subscription validation or provider mutation, and MUST NOT silently drop or coerce it. Over-subscription `INVALID_REQUEST` checks apply only to declared controls, so a core-only seller that receives an over-subscribed `min_spend_target` returns `UNSUPPORTED_FEATURE`.
 
-Continuous allocation decisions inside an accepted seller-optimized buy are delivery behavior. They do not mutate package caps, increment the media-buy revision, create history entries, or constitute separate `reallocate_budget` actions.
+Continuous allocation decisions inside an accepted seller-optimized buy are delivery behavior. Distributing spend between packages within the accepted caps and goals mutates no state that [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) reports, so it does not advance the media-buy revision or create a history entry, and it is not a separate `reallocate_budget` action. A seller that changes a value the read does report (a package cap, a minimum-spend target, pacing, pause or cancellation state, or the accepted `budget_allocation`) advances the revision and appends a `history` entry with `origin.kind: "seller_system"`, like any other committed change ([Revision and confirmation semantics](/docs/media-buy/specification#revision-and-confirmation-semantics)).
 
 ```json
 {
