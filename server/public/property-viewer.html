@@ -580,7 +580,7 @@
               ${escapeHtml(rev.edit_summary)}
             </div>
             <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">
-              by ${escapeHtml(rev.editor_name || rev.editor_email || rev.editor_user_id)}
+              by ${escapeHtml(rev.editor_name || 'a community member')}
             </div>
           </div>
         `).join('');
