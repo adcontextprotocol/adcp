@@ -186,7 +186,8 @@ accepted.
 
 **The hold write is atomic** (`inventory_hold` semantics). For each finalized proposal, the seller MUST
 persist the committed successor and reserve the inventory it represents as one
-state transition. A committed proposal MUST NOT become observable without its
+state transition. For a [ranked hold](#hold-ranking-experimental), what is reserved is
+the hold's position in the seller's queue. A committed proposal MUST NOT become observable without its
 corresponding reservation, and a failed finalization MUST NOT leave an orphaned
 reservation. If the seller cannot complete that transition synchronously, it
 uses the task's `submitted` path and exposes the committed proposal only after
@@ -206,7 +207,8 @@ This contract does not define a pDOOH booking horizon, a frame/loop overlap
 model, or a locking or scheduling algorithm for separate concurrent finalize
 requests. Those policies cannot be inferred from `expires_at`. Whatever policy
 a seller implements, every unexpired committed proposal that has not been superseded by
-[`extend_hold`](#extend-a-hold-experimental) retains the existing acceptance
+[`extend_hold`](#extend-a-hold-experimental), and whose [ranked hold](#hold-ranking-experimental) is not behind
+another hold, retains the existing acceptance
 guarantee; sellers cannot issue a committed hold and later reject it
 merely because the same inventory was allocated elsewhere.
 
@@ -215,7 +217,7 @@ Every revised proposal inherits the source proposal's opportunity association. C
 ### Hold policy (experimental)
 
 <Note>
-Experimental (`media_buy.hold_policy`): sellers that emit `hold_policy` or `hold_placed_at` declare the feature id in `experimental_features`, and the shape may change in 3.x with the notice described in [Experimental status](/docs/reference/experimental-status). A seller that lists `media_buy.hold_policy` MUST emit `hold_policy` on every draft and committed proposal it returns to a caller at 3.3 or later. A 3.3+ buyer that relies on a reservation MUST read the committed proposal's `hold_policy.available`; when `hold_policy` is absent, the agent's `hold_semantics` default applies.
+Experimental (`media_buy.hold_policy`): sellers that emit `hold_policy` or `hold_placed_at` declare the feature id in `experimental_features`, and the shape may change in 3.x with the notice described in [Experimental status](/docs/reference/experimental-status). A seller that lists `media_buy.hold_policy` MUST emit `hold_policy` on every draft and committed proposal it returns to a caller at 3.3 or later. A 3.3+ buyer that relies on a reservation MUST read the committed proposal's `hold_policy.available`, and `rankable` and `hold_rank` when the seller lists `media_buy.hold_ranking`; when `hold_policy` is absent, the agent's `hold_semantics` default applies.
 </Note>
 
 Without a declared policy, a buyer cannot know before finalizing whether the hold will outlast its approval chain. `hold_policy` makes the hold plannable. The same object appears in two places:
@@ -232,8 +234,9 @@ Proposal-level policy exists only in the compact lifecycle described on this pag
 | `max_duration` | Longest initial hold the seller will place. |
 | `extendable` | Whether the seller accepts requests to extend a hold placed under this policy. Defaults to `false`. |
 | `max_total_duration` | Ceiling on the total hold across all extensions, measured from the original `hold_placed_at`. Allowed only when `extendable` is `true`. |
+| `rankable` | Whether the hold may be placed behind other buyers' holds (experimental, `media_buy.hold_ranking`; see [Hold ranking](#hold-ranking-experimental)). Defaults to `false`. Allowed only when `available` is `true`. |
 
-Durations are strictly positive ISO 8601 durations in days, hours, minutes, and seconds only (`P2D`, `PT36H`). A duration is elapsed time: a day is exactly 24 hours (86,400 seconds) added to the UTC instant, never a calendar day, so time zones and daylight-saving changes do not affect it. Compare durations after normalizing them, so `P1D` equals `PT24H`, as for [SLA windows](https://adcontextprotocol.org/schemas/v3/core/sla-window.json). Durations and `extendable` are forbidden when `available` is `false`. When present, `min_duration` MUST NOT exceed `max_duration`, and `max_duration` MUST NOT exceed `max_total_duration`. The schema cannot compare durations, so test runners check this ordering after normalizing.
+Durations are strictly positive ISO 8601 durations in days, hours, minutes, and seconds only (`P2D`, `PT36H`). A duration is elapsed time: a day is exactly 24 hours (86,400 seconds) added to the UTC instant, never a calendar day, so time zones and daylight-saving changes do not affect it. Compare durations after normalizing them, so `P1D` equals `PT24H`, as for [SLA windows](https://adcontextprotocol.org/schemas/v3/core/sla-window.json). Durations, `extendable`, and `rankable` are forbidden when `available` is `false`. When present, `min_duration` MUST NOT exceed `max_duration`, and `max_duration` MUST NOT exceed `max_total_duration`. The schema cannot compare durations, so test runners check this ordering after normalizing.
 
 ```json
 {
@@ -251,12 +254,127 @@ A committed proposal whose `hold_policy.available` is `true` also carries `hold_
 - **The bounds are promises.** A successful finalize MUST satisfy `hold_placed_at` + `min_duration` ≤ `expires_at` ≤ `hold_placed_at` + `max_duration`, for whichever of the two durations the draft declares. If the seller cannot honor the minimum, the entry returns `unable` with `reason_code: "hold_unavailable"` and otherwise-eligible siblings return `batch_aborted`, as above. An exact retry under the same idempotency key returns the original committed proposal, with its original `hold_placed_at` and `expires_at`; a retry never restarts the clock. The policy reserves nothing: the draft stays immutable, availability stays live, and finalize can still fail. A buyer whose approval chain needs a known window compares it with `min_duration` before finalizing.
 - **A `submitted` finalize starts the clock at completion.** The hold is placed when the task completes, not when the buyer sent the request, and nothing protects the inventory while the task is pending, so it can still end in `hold_unavailable`. The buyer learns of the hold only when the completion reaches it, so its usable window is shorter than `min_duration` by that notification delay.
 - **A hold never outlives the booking deadline.** When an allocated product's installments have a booking deadline or change cutoff (`deadlines.booking_deadline` or `deadlines.change_cutoff`, declared or computed from `deadline_policy`), `expires_at` MUST NOT be later than the earliest of them. If `hold_placed_at` + `min_duration` would fall after that instant, the seller cannot honor the minimum and returns `hold_unavailable`.
-- **A hold is exclusive.** `available: true` means an exclusive, first-position hold: until `expires_at`, no other buyer's hold or booking takes the held inventory. Ranked holds will be a separate field ([#8086](https://github.com/adcontextprotocol/adcp/issues/8086)); `available` will not be reinterpreted to cover them.
-- **Drafts bind; products plan.** The seller derives a draft's policy from the allocated products' effective policies when it creates the draft. `available` is `false` if any allocated product is non-holdable. `min_duration` and `max_duration` MUST NOT exceed the `max_duration` of any allocated product that declares one, and `max_total_duration` MUST NOT exceed that of any allocated product that declares one. `extendable` is `true` only if every allocated product is extendable. Because the draft is immutable, its policy governs finalize even if a product's policy changes before then.
-- **Terms-only entries finalize without a hold.** There are no partial holds within a proposal. An entry whose effective policy is terms-only (a draft with `available: false`, or a draft without `hold_policy` at a `terms_only` agent) follows the `terms_only` rules above for that entry. Its terms are committed within the same atomic batch, no hold is placed, `expires_at` is the acceptance window, and the seller MUST NOT return `hold_unavailable` for it. In an all-or-none batch where a holdable sibling returns `hold_unavailable`, the terms-only entry returns `batch_aborted`. The 3.3 version rule applies equally: the seller MUST NOT return such a committed proposal to a caller whose `adcp_version` is below 3.3, and fails with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) instead. Declaring `available: false` does not require listing `media_buy.delegated_composition`. Per-allocation hold readback is future work ([#8086](https://github.com/adcontextprotocol/adcp/issues/8086)) and fits this shape unchanged.
+- **A hold is exclusive unless it is ranked.** `available: true` means an exclusive, first-position hold: until `expires_at`, no other buyer's hold or booking takes the held inventory. A policy that also declares `rankable: true` allows a ranked hold instead, which may be placed behind other buyers' holds; see [Hold ranking](#hold-ranking-experimental). `available` is not reinterpreted: without `rankable: true`, a hold is exclusive and first-position.
+- **Drafts bind; products plan.** The seller derives a draft's policy from the allocated products' effective policies when it creates the draft. `available` is `false` if any allocated product is non-holdable. `min_duration` and `max_duration` MUST NOT exceed the `max_duration` of any allocated product that declares one, and `max_total_duration` MUST NOT exceed that of any allocated product that declares one. `extendable` is `true` only if every allocated product is extendable, and `rankable` is `true` if any allocated product's effective policy is rankable. Because the draft is immutable, its policy governs finalize even if a product's policy changes before then.
+- **Terms-only entries finalize without a hold.** There are no partial holds within a proposal. An entry whose effective policy is terms-only (a draft with `available: false`, or a draft without `hold_policy` at a `terms_only` agent) follows the `terms_only` rules above for that entry. Its terms are committed within the same atomic batch, no hold is placed, `expires_at` is the acceptance window, and the seller MUST NOT return `hold_unavailable` for it. In an all-or-none batch where a holdable sibling returns `hold_unavailable`, the terms-only entry returns `batch_aborted`. The 3.3 version rule applies equally: the seller MUST NOT return such a committed proposal to a caller whose `adcp_version` is below 3.3, and fails with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) instead. Declaring `available: false` does not require listing `media_buy.delegated_composition`. Per-installment hold readback ([Installment holds](#installment-holds-experimental)) describes how one hold maps onto installments and does not change this rule.
 - **Agent-level defaults.** A product or draft without `hold_policy` takes the agent's `hold_semantics` (and `inventory_hold` when that is absent too). A `terms_only` agent can hold specific products by declaring `available: true` on them, and an `inventory_hold` agent can mark products non-holdable. When no product or proposal carries `hold_policy`, behavior is unchanged from 3.2.
-- **Callers below 3.3 never see these fields.** `hold_policy` and `hold_placed_at` are 3.3 fields, and 3.2 canonical products and proposals reject unknown properties. A seller MUST omit both from every product and proposal it returns to a caller whose `adcp_version` is below 3.3, as [serving an older pin](/docs/reference/versioning#serving-an-older-pin) recommends, and otherwise applies these rules unchanged. Such a caller still never receives a committed proposal whose effective policy is terms-only.
+- **Callers below 3.3 never see these fields.** `hold_policy` and `hold_placed_at` are 3.3 fields, and 3.2 canonical products and proposals reject unknown properties. A seller MUST omit both, and `hold_rank` and `holds`, from every product and proposal it returns to a caller whose `adcp_version` is below 3.3, as [serving an older pin](/docs/reference/versioning#serving-an-older-pin) recommends, and otherwise applies these rules unchanged, except that it treats `rankable` as `false` for such a caller. Such a caller still never receives a committed proposal whose effective policy is terms-only.
 - **Extension.** Where a seller supports [`extend_hold`](#extend-a-hold-experimental), `extendable` and `max_total_duration` bound it: an extended successor carries `hold_policy` and `hold_placed_at` forward unchanged, and `max_total_duration` counts across the whole extension chain from the original `hold_placed_at`. Exact retries and the active-hold [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) rule above are unchanged, so finalizing again is still not a way to extend a hold.
+
+### Hold ranking (experimental)
+
+<Note>
+Experimental (`media_buy.hold_ranking`): sellers that emit `hold_policy.rankable` or `hold_rank` declare the feature id in `experimental_features`, alongside `media_buy.hold_policy`. The shape may change in 3.x with the notice described in [Experimental status](/docs/reference/experimental-status).
+</Note>
+
+Sellers of scheduled media often hold the same slot for several buyers in order: a first hold, then a second behind it that converts if the first lapses or is released. A seller declares that its holds work this way with `hold_policy.rankable: true`, and the committed proposal reports the buyer's own position in `hold_rank`. Ranking is advisory: AdCP defines no right-of-first-refusal deadline, no rank-change notification, and no way to challenge a hold ahead. Those stay bilateral between buyer and seller.
+
+| `hold_policy` | What a successful finalize places | `hold_rank` on the committed proposal |
+|---|---|---|
+| `available: false` | No hold; terms only | Forbidden |
+| `available: true`, `rankable` absent or `false` | An exclusive, first-position hold, or the entry returns `hold_unavailable` | Forbidden |
+| `available: true`, `rankable: true` | A hold at any position | Required: `1` is first position; `n` means `n - 1` holds are ahead, counting only holds whose booking could prevent this one |
+
+```json
+{
+  "$schema": "/schemas/core/canonical-proposal.json",
+  "proposal_id": "prop_committed_042",
+  "proposal_kind": "new_media_buy",
+  "proposal_status": "committed",
+  "parent_proposal_id": "prop_draft_042",
+  "name": "Creator launch sponsorship",
+  "expires_at": "2027-01-20T17:00:00Z",
+  "commercial_terms": {
+    "brand": { "domain": "nova-athletics.example" },
+    "purchases": [
+      {
+        "product_id": "availnet_creator_slot_0412",
+        "pricing_option_id": "flat_usd",
+        "pricing": { "pricing_option_id": "flat_usd", "pricing_model": "flat_rate", "currency": "USD", "fixed_price": 12000 },
+        "budget": 12000,
+        "start_time": "2027-03-01T00:00:00Z",
+        "end_time": "2027-03-31T23:59:59Z"
+      }
+    ],
+    "start_time": "2027-03-01T00:00:00Z",
+    "end_time": "2027-03-31T23:59:59Z",
+    "total_budget": { "amount": 12000, "currency": "USD" }
+  },
+  "terms_digest": "sha256:IO3B2jLn52O7-u_xeztyhTFDUJWbV4mQrCcTfCWpAQg",
+  "hold_policy": { "available": true, "min_duration": "P2D", "max_duration": "P5D", "rankable": true },
+  "hold_placed_at": "2027-01-16T17:00:00Z",
+  "hold_rank": 2
+}
+```
+
+- **First position keeps the guarantee.** A hold at `hold_rank: 1` has the same acceptance guarantee as an exclusive hold until `expires_at`. The difference between the two is only at placement: an exclusive policy gets first position or `hold_unavailable`, while a rankable one may be placed behind other holds.
+- **A hold behind first position does not.** While a hold ahead of it is live or has been accepted, the seller MAY decline [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) with [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable), or MAY return `submitted` while it settles the holds ahead with their holders outside the protocol. It MUST NOT reprice or substitute products. The proposal stays `committed` until `expires_at`, so the buyer keeps the hold rather than treating `PRODUCT_UNAVAILABLE` as a reason to drop it. A seller that asks a holder ahead to confirm or release (a challenge) cannot shorten that hold's `expires_at` by doing so. Once every hold ahead has lapsed, been released, or been declined, the hold is at first position and has the full guarantee.
+- **Positions never get worse.** A seller MUST NOT move a live hold to a worse position after placing it. No later hold or booking stands ahead of it, an extension keeps its place, and commitments the seller must honor, such as an incumbent's renewal rights, are counted when the hold is placed.
+- **`hold_rank` is a snapshot.** It is the position when the seller created the committed proposal: at `hold_placed_at` for a finalize, or at the extension for an [`extend_hold`](#extend-a-hold-experimental) successor. The proposal is immutable, so the value is never updated, an exact retry replays it, and no notification reports a change. Because positions never get worse, the buyer's current position is at least as good as the one reported. To refresh it, the buyer reads the `hold_rank` on an `extend_hold` successor (where the policy is `extendable`), or calls `accept_proposal` when it is ready to book, which either succeeds or returns `PRODUCT_UNAVAILABLE`. There is no separate read for a committed proposal.
+- **One position per proposal.** Finalize stays atomic and there are no partial holds. When the hold covers inventory at different positions, `hold_rank` is the worst of them, because the proposal can only be accepted as a whole.
+- **Only the buyer's own position.** `hold_rank` tells the buyer how many holds are ahead and nothing else. The seller returns it only on proposals it returns to the buyer that holds them, and MUST NOT disclose any other buyer's identity or terms through any field, `reason`, or error. It MUST NOT disclose another hold's expiry either, except that `expected_confirmation_at` on a `submitted` acceptance MAY reflect when a hold ahead is due to resolve. The existing per-buyer cap on concurrent unexpired holds also limits finalizing just to learn how contested the inventory is.
+- **Drafts and products.** A product's `rankable` is a planning hint. A draft is `rankable` if any allocated product's effective policy is, and its policy binds finalize: a draft without `rankable: true` gets a first-position hold or `hold_unavailable`. A buyer that does not want a hold behind first position can let it lapse or [decline](/docs/media-buy/task-reference/decline_proposals) the committed proposal.
+- **Callers below 3.3.** They never receive `hold_policy` or `hold_rank`, and they read `committed` as an exclusive hold. For them the seller treats `rankable` as `false`: it places a first-position hold or returns `hold_unavailable`.
+
+### Installment holds (experimental)
+
+<Note>
+Experimental (`media_buy.installment_holds`): sellers that emit `holds` declare the feature id in `experimental_features`, alongside `media_buy.hold_policy`. The shape may change in 3.x with the notice described in [Experimental status](/docs/reference/experimental-status).
+</Note>
+
+For installment products such as creator posts, podcast episodes, or linear airings, the thing being held is a specific post date or episode. A committed proposal can list them in `holds`:
+
+```json
+{
+  "$schema": "/schemas/core/canonical-proposal.json",
+  "proposal_id": "prop_committed_043",
+  "proposal_kind": "new_media_buy",
+  "proposal_status": "committed",
+  "parent_proposal_id": "prop_draft_043",
+  "name": "Creator launch sponsorship",
+  "expires_at": "2027-01-20T17:00:00Z",
+  "commercial_terms": {
+    "brand": { "domain": "nova-athletics.example" },
+    "purchases": [
+      {
+        "product_id": "availnet_creator_slot_0412",
+        "pricing_option_id": "flat_usd",
+        "pricing": { "pricing_option_id": "flat_usd", "pricing_model": "flat_rate", "currency": "USD", "fixed_price": 12000 },
+        "budget": 12000,
+        "start_time": "2027-03-01T00:00:00Z",
+        "end_time": "2027-03-31T23:59:59Z"
+      }
+    ],
+    "start_time": "2027-03-01T00:00:00Z",
+    "end_time": "2027-03-31T23:59:59Z",
+    "total_budget": { "amount": 12000, "currency": "USD" }
+  },
+  "terms_digest": "sha256:IO3B2jLn52O7-u_xeztyhTFDUJWbV4mQrCcTfCWpAQg",
+  "hold_policy": { "available": true, "min_duration": "P2D", "max_duration": "P5D", "rankable": true },
+  "hold_placed_at": "2027-01-16T17:00:00Z",
+  "hold_rank": 2,
+  "holds": [
+    {
+      "product_id": "availnet_creator_slot_0412",
+      "installment_ref": { "collection_ref": { "publisher_domain": "availnet.example", "collection_id": "pinnacle_creator" }, "installment_id": "ep_041" },
+      "hold_rank": 1
+    },
+    {
+      "product_id": "availnet_creator_slot_0412",
+      "installment_ref": { "collection_ref": { "publisher_domain": "availnet.example", "collection_id": "pinnacle_creator" }, "installment_id": "ep_042" },
+      "hold_rank": 2
+    }
+  ]
+}
+```
+
+- **Readback of one hold, not partial holds.** `holds` describes how the single hold that finalize placed maps onto installments. Every entry was placed by the same all-or-none finalize: if any installment cannot be held, the finalize entry returns `hold_unavailable` and no installment is held. Every entry shares `hold_placed_at` and the proposal's `expires_at`, and is accepted, extended, superseded, or lapses with the proposal as a whole. No task addresses an entry on its own, and the rule that there are no partial holds within a proposal is unchanged. `holds` is readback, not contract: `commercial_terms` stays authoritative. To hold fewer installments, the buyer [declines](/docs/media-buy/task-reference/decline_proposals) the committed proposal or lets it lapse, then finalizes a revised draft. Until the earlier hold is released, it counts like any other hold, so finalizing the revised draft while it stands can return `hold_unavailable` or a worse position.
+- **One deadline.** Entries carry no `expires_at`. The proposal's `expires_at` is the deadline for every entry, and it is already capped at the earliest `booking_deadline` or `change_cutoff` of the held installments. The same cap applies to each `extend_hold` successor: an extension never moves `expires_at` past it.
+- **Complete when present.** `holds` lists every installment the hold covers, once per `product_id` and `installment_ref`. Every `product_id` is a product in `commercial_terms.purchases`, and every installment is one that product includes, scheduled within that purchase's flight. Inventory that is not a specific installment, such as a run-of-collection product, is not listed. A seller that lists `media_buy.installment_holds` MUST include `holds` on every committed proposal it returns to a 3.3+ caller that allocates a product declaring specific `installments`. It is allowed only on a non-draft proposal whose `hold_policy.available` is `true`, so drafts and terms-only commitments never carry it.
+- **Positions per installment.** Under a [rankable](#hold-ranking-experimental) policy, every entry carries `hold_rank`, the buyer's own position on that installment. The proposal's `hold_rank` is no better than any entry's, and equals the worst entry's unless unlisted inventory is held at a worse position. The snapshot, never-worse, and privacy rules of `hold_rank` apply to each entry. An entry behind first position shows the buyer which installment is contested, so it can drop or move that installment in a revised draft, as above.
+- **Only the buyer's own hold.** `holds` lists this proposal's hold only. A seller MUST NOT include or describe other buyers' holds on the same installments.
+- **Extension.** An `extend_hold` successor lists the same entries, since the extension transfers the same hold. Under a rankable policy, each entry's position is as of the extension and no worse than in the source.
+- **Callers below 3.3** never receive `holds`, together with `hold_policy`.
 
 ## Extend a hold (experimental)
 
@@ -278,7 +396,7 @@ Buyers often need more time for legal review or client sign-off than the seller'
 
 - **Source.** The source MUST be a committed, unexpired proposal that holds inventory and has not already been extended. A draft source fails at task level with [`PROPOSAL_NOT_COMMITTED`](/docs/building/verification/compliance-catalog#error-code-proposal-not-committed); an accepted or already-extended source fails with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state); an expired source fails with [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired), and the buyer finalizes the draft again. An unknown or invisible source returns `unable` with `reason_code: "source_unavailable"`, and otherwise-eligible siblings return `batch_aborted`.
 - **No hold, no extension.** `extend_hold` applies only to committed proposals that hold inventory. A committed proposal with no hold has an acceptance window, not a hold, and carries no `hold_placed_at`: the rule is per entry, for any committed proposal whose effective policy is terms-only (its `hold_policy.available` is `false`, or it has no `hold_policy` and the seller declares `hold_semantics: "terms_only"`). An `extend_hold` entry targeting it fails the request at task level with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state), even when its siblings hold inventory; the batch is atomic, so no successor is created. This keeps the `terms_only` rule that such a seller never returns `hold_unavailable`, and matches `hold_policy`, which forbids `extendable` when `available` is `false`.
-- **Success.** The result is `outcome: "finalized"` with a new committed proposal whose `parent_proposal_id` is the source, whose `commercial_terms` and `terms_digest` equal the source's, and whose `expires_at` is later than the source's. The successor carries the source's `hold_policy` and `hold_placed_at` forward unchanged. The seller MUST persist the successor and transfer the hold to it as one state transition, as for finalize. A buyer tells an extension from a finalize by the request it sent (a batch is all one or the other) and by the source's `proposal_status`; it SHOULD verify the successor's `terms_digest` equals the source's before moving its own approval records to the new `proposal_id`.
+- **Success.** The result is `outcome: "finalized"` with a new committed proposal whose `parent_proposal_id` is the source, whose `commercial_terms` and `terms_digest` equal the source's, and whose `expires_at` is later than the source's. The successor carries the source's `hold_policy` and `hold_placed_at` forward unchanged. Under a [ranked](#hold-ranking-experimental) policy, it reports `hold_rank` as of the extension, which is never worse than the source's. It lists the same [installment holds](#installment-holds-experimental) as the source, and its `expires_at` never passes the earliest booking deadline or change cutoff of the held installments. The seller MUST persist the successor and transfer the hold to it as one state transition, as for finalize. A buyer tells an extension from a finalize by the request it sent (a batch is all one or the other) and by the source's `proposal_status`; it SHOULD verify the successor's `terms_digest` equals the source's before moving its own approval records to the new `proposal_id`.
 - **The source is superseded.** The source snapshot is immutable and keeps `proposal_status: committed`, but from that transition it is superseded by its successor and can no longer be accepted: [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) against it fails with `INVALID_STATE`, and a second `extend_hold` against it also fails with `INVALID_STATE`. To extend again, target the successor. If an `accept_proposal` and an `extend_hold` race on the same source, the seller serializes them: the first to commit wins and the other receives the error above. An accepted source consumes its hold, so a racing extension cannot succeed after it.
 - **Failure.** The entry returns `unable` with `reason_code: "hold_unavailable"` and a `reason`, and otherwise-eligible siblings return `batch_aborted`. The source and its hold are unchanged and remain acceptable until their original `expires_at`.
 - **Batches.** A request containing `extend_hold` contains only `extend_hold` entries and is atomic: every hold is extended or none is, the same pattern as finalize.

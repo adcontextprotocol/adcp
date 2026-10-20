@@ -100,6 +100,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inventory_list_no_m-3e0f302a"
+            sandbox: true
 
           context:
             correlation_id: "inventory_list_no_match--get_products_brief"
@@ -145,6 +146,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inventory_list_no_m-3e0f302a"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#inventory_list_no_match_reject_buy"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"

@@ -10,6 +10,7 @@ import { query } from '../../db/client.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import type { Event } from '../../types.js';
+import { sanitizeSlackLine } from '../../utils/slack-escape.js';
 
 const logger = createLogger('event-recap-nudge');
 
@@ -66,9 +67,12 @@ function formatDate(date: Date): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function escapeSlackMrkdwn(text: string): string {
-  return text.replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]!));
-}
+/**
+ * Event titles are member-authored and the checklist reads as platform copy,
+ * so they go through the shared single-line sanitizer: the old local escaper
+ * left a newline free to forge an extra checklist line (adcp#8326).
+ */
+const EVENT_TITLE_MAX = 160;
 
 export async function runEventRecapNudgeJob(): Promise<RecapNudgeResult> {
   const result: RecapNudgeResult = { eventsChecked: 0, nudgesSent: 0 };
@@ -111,7 +115,7 @@ export async function runEventRecapNudgeJob(): Promise<RecapNudgeResult> {
     }
 
     const eventDate = formatDate(new Date(event.end_time || event.start_time));
-    lines.push(`*${escapeSlackMrkdwn(event.title)}* (${eventDate})`);
+    lines.push(`*${sanitizeSlackLine(event.title, EVENT_TITLE_MAX)}* (${eventDate})`);
     for (const item of items) {
       lines.push(`  • ${item}`);
     }
@@ -123,7 +127,7 @@ export async function runEventRecapNudgeJob(): Promise<RecapNudgeResult> {
   for (const event of needsAttendees) {
     if (needsRecap.some(e => e.id === event.id)) continue; // Already listed
     const eventDate = formatDate(new Date(event.end_time || event.start_time));
-    lines.push(`*${escapeSlackMrkdwn(event.title)}* (${eventDate})`);
+    lines.push(`*${sanitizeSlackLine(event.title, EVENT_TITLE_MAX)}* (${eventDate})`);
     lines.push(`  • Upload attendee list (Luma CSV or Zoom participant report)`);
     lines.push(`  <${APP_URL}/admin/events|Manage Events>`);
     lines.push('');

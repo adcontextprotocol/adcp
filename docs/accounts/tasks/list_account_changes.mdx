@@ -11,7 +11,7 @@ after a snapshot bootstrap, after receiving `account.change_recorded`, or for
 an account-level audit of state transitions.
 
 <Note>
-**Experimental.** The account change feed (`list_account_changes`, the `account.change_recorded` webhook, the `account.change_feed` capability block on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), and the [`CURSOR_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-cursor-expired) error code) is part of AdCP 3.2 as an experimental surface. [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810) is still open, so the surface may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any part of it MUST declare `account.change_feed` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** The account change feed (`list_account_changes`, the `account.change_recorded` webhook, the `account.change_feed` capability block on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), and the [`CURSOR_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-cursor-expired) error code) is part of AdCP 3.2 as an experimental surface. [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810) is still open, so the surface may change between 3.x releases with at least 6 weeks' notice. Release 3.3 adds the `idempotency_key` echo and requires `changed_paths` for `adcp` and `seller_operator` records, both described below. Sellers implementing any part of it MUST declare `account.change_feed` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
 </Note>
 
 The feed is optional and appears only when
@@ -71,8 +71,101 @@ Acquire a high-water checkpoint before reading several snapshots:
 | `source_coverage` | Optional per-account connected-source status and mechanically evaluable freshness. A connected source reporting `current` supplies `last_successful_sync_at` and `stale_after_seconds`. |
 
 Each change record names the changed resource, action, server-derived origin,
-optional changed paths and revision, and an allowlisted read-only
+changed paths, optional revision, and an allowlisted read-only
 `repair.task` hint. It deliberately does not include full before/after values.
+
+### `changed_paths`
+
+`changed_paths` lists RFC 6901 JSON Pointers to the material fields that
+changed, so a buyer can decide whether a change matters before it rereads.
+
+- When `origin.kind` is `adcp` or `seller_operator`, the seller processed the
+  mutation and knows what it changed, so the record MUST carry a non-empty
+  `changed_paths`. When the whole resource was created, deleted, or purged,
+  use the root pointer `""`.
+- When `origin.kind` is `seller_system` or `connected_platform`, `changed_paths`
+  stays best-effort. A seller that observed a change through a source that does
+  not report what moved omits it, and the buyer rereads the resource.
+- Paths are RFC 6901 pointers into the document the `repair.task` read returns
+  for the resource. Array indices are positions at the time of the change and
+  can shift when elements are removed or reordered, so treat a path as a hint
+  about what to look at, not as a stable address.
+- The list is a cover, not an exhaustive diff. When a change touches more than
+  the 64 paths a record can hold, name the nearest common ancestor pointer, or
+  `""` if there is none. Do not truncate.
+- Origin kinds follow where the seller learned of the change: `adcp` is an AdCP
+  task call, `seller_operator` is seller staff acting through the seller's own
+  surface, `seller_system` is seller automation, and `connected_platform` is a
+  change the seller observed in an external system, whoever made it there. A
+  seller does not relabel a change to avoid the `changed_paths` requirement.
+- A `changed_paths` of `""` means reread the whole resource and is the only
+  entry in that list.
+- Paths never carry values, and the buyer still repairs from the authoritative
+  read rather than from the paths.
+- A 3.2 seller can omit `changed_paths` on these origins. Buyers tolerate that,
+  treat it as unknown, and reread the resource.
+
+### Recognizing your own changes
+
+An `adcp` change record can echo the `idempotency_key` of the request that
+produced it, so a buyer on a shared account can tell its own mutations from
+another principal's.
+
+- The seller includes `idempotency_key` only on records whose `origin.kind` is
+  `adcp`, and only on records served to the principal that sent that request.
+  Every other reader of the account sees the record with the field omitted.
+- Apart from that field, records are the same across readers. The seller does
+  not vary whether a record appears, or its `change_id`, `resource`, `action`,
+  `origin.kind`, or `changed_paths`, by reader. Redaction the schema already
+  allows, such as `actor` and `origin.connection_id`, stays reader-specific.
+- The key is a correlation token for the sender's own use. Compare it with the
+  keys the buyer sent; a match means the change came from that request. A buyer
+  that sees no key on an `adcp` record does not conclude another principal made
+  the change, because a seller without the echo omits it for everyone. "The
+  principal that sent the request" is the principal whose authenticated scope
+  the key was evaluated under, the same identity the cursor binds to, not a
+  particular user or credential behind it. A seller that echoes the key keeps the
+  originating principal and key for the full retention window, which outlasts
+  the idempotency replay window.
+- One request can produce several records, such as one per creative, so match
+  the keys you sent as a set. A key can recur outside the replay window, so read
+  a match against a record's `recorded_at`. A mutation that completes
+  asynchronously keeps the original request's key and principal.
+- A seller echoes the key only when the record covers exactly one originating
+  request. A record that coalesces changes from several requests, for example
+  package changes folded under a media buy, omits it. A record never coalesces
+  changes across origin kinds or principals.
+- A match is a dedupe hint, not a substitute for the authoritative read. The
+  seller may have normalized the change, or a later change may have landed since,
+  so reread unless the mutation response already carried the final state. Persist
+  keys before sending requests, and keep them for as long as you want to
+  recognize the record, up to the 90-day retention window.
+- `account.change_recorded` notifications never carry the originating key,
+  because the notification is an invalidation that every subscriber on the
+  account receives, and the key belongs to one principal's view of the feed. The
+  `idempotency_key` on that payload is the delivery key for one
+  fire, never a request key. Read the record from the feed.
+
+```json
+{
+  "change_id": "chg_01K38H2R5D7B0V9N3C4S8E6J1P",
+  "recorded_at": "2026-08-24T12:04:19Z",
+  "resource": {
+    "type": "media_buy",
+    "account_id": "acc_luma_shared",
+    "resource_id": "mb_5512"
+  },
+  "action": "updated",
+  "origin": { "kind": "adcp" },
+  "idempotency_key": "9f2c1d7e-3b5a-4c68-8e10-a7d4b2f6c901",
+  "changed_paths": ["/packages/0/budget"],
+  "repair": { "task": "get_media_buys" }
+}
+```
+
+The same record served to any other principal on `acc_luma_shared` carries the
+same `change_id`, `resource`, `action`, `origin.kind`, and `changed_paths`, minus
+`idempotency_key`.
 
 ```json
 {
@@ -138,6 +231,41 @@ after the checkpoint.
 
 The webhook's optional `through_cursor` is only a target watermark. Do not
 install it without reading all intervening pages.
+
+## Invoices
+
+A seller that lists `invoice` in `account.change_feed.resource_types` tells the buyer about invoices through this feed. There is no separate invoice notification type; the buyer receives the signed `account.change_recorded` notification and drains the feed like any other resource.
+
+Invoice records name the invoice and point at [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for repair:
+
+```json
+{
+  "change_id": "chg_01K4B2T7QH8V3N5R6D9W0X1Y2Z",
+  "recorded_at": "2026-09-01T09:15:00Z",
+  "resource": {
+    "type": "invoice",
+    "account_id": "acc_luma_shared",
+    "resource_id": "inv_2026_08_0042"
+  },
+  "action": "created",
+  "origin": { "kind": "seller_system" },
+  "repair": { "task": "get_account_financials" }
+}
+```
+
+| Action | When |
+| --- | --- |
+| `created` | The invoice first becomes visible to the buyer, normally at issue. A `draft` invoice is not recorded until it is visible to the buyer. |
+| `status_changed` | A later status transition. `reason` is the new invoice status: `issued`, `paid`, `past_due`, or `void`. |
+| `updated` | An amount or period correction. |
+
+`recorded_at` and `occurred_at` carry the time of the change; the invoice has no separate issue-time field. Changes to spend, credit, or payment status keep `type: "account_financials"` with `resource_id` equal to the account id.
+
+**Repair completeness.** An implementation MUST NOT advertise a resource type whose current material state cannot be recovered through its named read (see the [coverage matrix](https://github.com/adcontextprotocol/adcp/blob/main/specs/account-change-feed.md#authoritative-coverage-matrix)). A seller that lists `invoice` in `resource_types` therefore MUST return, in `get_account_financials.invoices[]` (overriding any seller limit on the list), each invoice that has a change record inside the retention window (`account.change_feed.retention_days`) whenever the request's `period` overlaps that invoice's `period`. A request without `period` MUST return every such invoice whatever its `period`, so a buyer repairing from a change record omits `period`.
+
+**Intermediaries.** An intermediary that consolidates billing is the seller of record for the invoices it issues. It records them on its own feed to its buyer and does not relay upstream sellers' invoice records.
+
+Sellers that do not offer the experimental feed have no invoice notification; buyers keep polling `get_account_financials`.
 
 ## Change granularity
 

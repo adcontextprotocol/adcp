@@ -189,15 +189,6 @@ async function sdkVerify(vector, id) {
   );
 }
 
-// @adcp/sdk 14.2.0 in adcpVersion '3.2' mode converts a raw IDN U-label to its A-label instead of
-// rejecting it (docs/reference/url-canonicalization.mdx: the comparer MUST reject raw non-ASCII), so it
-// verifies the single-fault 026 mirror, and it derives @authority from the URL rather than the Host header, so
-// it verifies 031. Both are sibling-repo (adcp-client) fixes; remove an entry when the SDK rejects the vector.
-const SDK_KNOWN_GAPS = {
-  '026-non-ascii-host': '@adcp/sdk 14.2.0 (adcpVersion 3.2) verifies a raw U-label host instead of rejecting it',
-  '031-malformed-host-authority': '@adcp/sdk 14.2.0 (adcpVersion 3.2) derives @authority from the URL and ignores the malformed Host header',
-};
-
 describe('AdCP 3.2 request-signing corpus covers content-digest (adcp#7733)', () => {
   it('mirrors every legacy positive vector under the same number and slug', () => {
     const files = new Set(profilePositive.map(e => e.file));
@@ -377,8 +368,7 @@ describe('AdCP 3.2 request-signing vectors verify independently', () => {
       assert.equal(cryptoVerify(keys.find(k => k.kid === kid), base, bytes), true);
     });
 
-    const sdkTest = SDK_KNOWN_GAPS[key] ? { todo: SDK_KNOWN_GAPS[key] } : {};
-    it(`${id}: @adcp/sdk 3.2 verifier returns the expected outcome`, sdkTest, async () => {
+    it(`${id}: @adcp/sdk 3.2 verifier returns the expected outcome`, async () => {
       const outcome = vector.expected_outcome;
       if (outcome.success) {
         const result = await sdkVerify(vector, id);

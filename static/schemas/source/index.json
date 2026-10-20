@@ -406,6 +406,10 @@
           "$ref": "/schemas/core/opportunity-context.json",
           "description": "Buyer planning-cycle context shared across proposal request, decline, and purchase"
         },
+        "later-proposals-state": {
+          "$ref": "/schemas/core/later-proposals-state.json",
+          "description": "Seller-recorded later-proposal consent and window for one opportunity (experimental)"
+        },
         "datetime-range": {
           "$ref": "/schemas/core/datetime-range.json",
           "description": "Datetime range with inclusive start and end timestamps"
@@ -413,6 +417,10 @@
         "creative-item": {
           "$ref": "/schemas/core/creative-item.json",
           "description": "Item within a multi-asset creative format"
+        },
+        "assignment-tracker": {
+          "$ref": "/schemas/core/assignment-tracker.json",
+          "description": "Assignment-scoped measurement tracker fired in addition to creative trackers"
         },
         "creative-assignment": {
           "$ref": "/schemas/core/creative-assignment.json",
@@ -858,6 +866,10 @@
           "$ref": "/schemas/core/account-change-recorded-webhook.json",
           "description": "Account-level invalidation indicating that a durable account change is available"
         },
+        "proposal-created-webhook": {
+          "$ref": "/schemas/core/proposal-created-webhook.json",
+          "description": "Account-level invalidation indicating that the seller created a later proposal (experimental)"
+        },
         "indicator": {
           "$ref": "/schemas/core/indicator.json",
           "description": "Compact durable seller interpretation attached to an authoritative resource snapshot"
@@ -1205,6 +1217,14 @@
           "$ref": "/schemas/enums/proposal-status.json",
           "description": "Lifecycle status of a proposal (draft or committed)"
         },
+        "proposal-disposition": {
+          "$ref": "/schemas/enums/proposal-disposition.json",
+          "description": "Seller-tracked disposition of a proposal snapshot (experimental)"
+        },
+        "later-proposal-reason": {
+          "$ref": "/schemas/enums/later-proposal-reason.json",
+          "description": "Why the seller created a later proposal (experimental)"
+        },
         "proposal-decline-reason": {
           "$ref": "/schemas/enums/proposal-decline-reason.json",
           "description": "Machine-readable terminal proposal feedback"
@@ -1240,6 +1260,10 @@
         "creative-approval-status": {
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
+        },
+        "creative-merge-rejection-reason": {
+          "$ref": "/schemas/enums/creative-merge-rejection-reason.json",
+          "description": "Why a seller rejected a sync_creatives merge assignment operation"
         },
         "audience-size-precision": {
           "$ref": "/schemas/enums/audience-size-precision.json",
@@ -1520,6 +1544,10 @@
         "auth-scheme": {
           "$ref": "/schemas/enums/auth-scheme.json",
           "description": "Authentication schemes for push notifications"
+        },
+        "webhook-signing-profile": {
+          "$ref": "/schemas/enums/webhook-signing-profile.json",
+          "description": "Webhook-signing profiles a seller can sign deliveries with"
         },
         "creative-sort-field": {
           "$ref": "/schemas/enums/creative-sort-field.json",
@@ -1891,6 +1919,26 @@
           "response": {
             "$ref": "/schemas/media-buy/list-products-response.json",
             "description": "Response payload for list_products"
+          }
+        },
+        "list-proposals": {
+          "request": {
+            "$ref": "/schemas/media-buy/list-proposals-request.json",
+            "description": "Request parameters for reading proposals and their dispositions (experimental)"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/list-proposals-response.json",
+            "description": "Response payload for list_proposals"
+          }
+        },
+        "list-collections": {
+          "request": {
+            "$ref": "/schemas/media-buy/list-collections-request.json",
+            "description": "Experimental: request parameters for reading a seller's collection card catalog by key or with filters"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/list-collections-response.json",
+            "description": "Experimental: response payload for list_collections"
           }
         },
         "request-proposals": {

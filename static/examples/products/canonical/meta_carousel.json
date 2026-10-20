@@ -46,7 +46,7 @@
         "card_aspect_ratio": "1:1",
         "min_cards": 2,
         "max_cards": 10,
-        "allowed_card_asset_types": [
+        "allowed_card_media_asset_types": [
           "image",
           "video"
         ],
@@ -59,7 +59,7 @@
         "slots": [
           {
             "asset_group_id": "cards",
-            "asset_type": "object",
+            "asset_type": "card",
             "required": true,
             "min": 2,
             "max": 10

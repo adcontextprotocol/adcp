@@ -135,8 +135,12 @@ describe('product discovery MCP schema parity', () => {
     // its ResponseCollection item to the four tools (+2,802 bytes; 155.67 KiB
     // measured), bounded at 156 KiB. The experimental extend_hold refinement
     // action adds one enum value and one revise-field-forbidding arm to
-    // refine_proposals (+836 bytes; 156.78 KiB measured), bounded at 157 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(157 * 1024);
+    // refine_proposals (+836 bytes; 156.78 KiB measured). Experimental
+    // opportunity.later_proposals consent on the shared opportunity context
+    // reaches request_proposals and decline_proposals, and decline_proposals
+    // gains the empty-declines-with-opportunity rule (+1,302 bytes on the
+    // pre-merge budget; 161,843 bytes / 158.05 KiB measured), bounded at 159 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(159 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

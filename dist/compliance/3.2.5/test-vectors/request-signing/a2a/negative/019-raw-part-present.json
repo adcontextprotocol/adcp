@@ -1,0 +1,37 @@
+{
+  "name": "Unsigned A2A 1.0 SendMessage with an invocation DataPart plus a raw-bytes Part",
+  "spec_reference": "#verifier-checklist-requests pre-check (operation resolution over A2A)",
+  "signing_profile_version": "3.2",
+  "tier": "hardening",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/a2a/jsonrpc",
+    "headers": {
+      "Content-Type": "application/json",
+      "A2A-Version": "1.0",
+      "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":\"a2a-neg-019\",\"method\":\"SendMessage\",\"params\":{\"message\":{\"messageId\":\"msg-a2a-neg-019\",\"role\":\"ROLE_USER\",\"parts\":[{\"data\":{\"skill\":\"get_products\",\"input\":{\"buying_mode\":\"brief\",\"brief\":\"Premium CTV inventory for a spring campaign\"}}},{\"raw\":\"AAAA\",\"mediaType\":\"application/octet-stream\"}]}}}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "required",
+    "supported_for": [
+      "create_media_buy",
+      "get_products"
+    ],
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_body_malformed",
+    "failed_step": 0
+  },
+  "$comment": "raw and url are both A2A 1.0 file content members; either makes a FilePart, which the invocation profile does not allow."
+}

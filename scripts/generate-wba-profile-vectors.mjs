@@ -1,0 +1,465 @@
+#!/usr/bin/env node
+/**
+ * Generates the Web Bot Auth profile conformance vectors under
+ * static/compliance/source/test-vectors/wba-profile/.
+ *
+ * Keys: every private key is an Ed25519 seed derived as
+ * SHA-256("rfc004-test/<seed_name>"), so anyone can reproduce every signature.
+ * Each kid is the RFC 7638 JWK thumbprint (RFC 8037 Appendix A.3 for Ed25519).
+ * Nonces are base64url(SHA-512("rfc004-test/nonce/<name>")), 64 bytes.
+ *
+ * Signatures: each RFC 9421 signature base is written out component by
+ * component, followed by the "@signature-params" line, and signed with
+ * Ed25519. Ed25519 is deterministic, so the output is byte-stable and
+ * `--check` can compare it with the committed files.
+ *
+ * Negative vectors each break exactly one profile rule. Those that carry a
+ * valid signature verify once the targeted check is skipped; the test suite
+ * (tests/wba-profile-vectors.test.cjs) proves that for each of them.
+ *
+ * Usage:
+ *   node scripts/generate-wba-profile-vectors.mjs          # write
+ *   node scripts/generate-wba-profile-vectors.mjs --check  # verify committed files are current
+ *
+ * The keys are public test keys (Web Bot Auth section 6.8). Never use them in production.
+ */
+
+import { createECDH, createHash, createPrivateKey, createPublicKey, sign } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const VECTOR_DIR = join(ROOT, 'static/compliance/source/test-vectors/wba-profile');
+const SCRIPT = 'scripts/generate-wba-profile-vectors.mjs';
+const SPEC = 'docs/building/by-layer/L1/wba-profile.mdx';
+
+const b64 = buf => Buffer.from(buf).toString('base64');
+const b64u = buf => Buffer.from(buf).toString('base64url');
+const sha = (alg, data) => createHash(alg).update(data).digest();
+
+// PKCS#8 DER prefix for a raw 32-byte Ed25519 seed (RFC 8410).
+const ED25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
+
+function key(seedName) {
+  const seed = sha('sha256', `rfc004-test/${seedName}`);
+  const privateKey = createPrivateKey({ key: Buffer.concat([ED25519_PKCS8_PREFIX, seed]), format: 'der', type: 'pkcs8' });
+  const { x } = createPublicKey(privateKey).export({ format: 'jwk' });
+  const kid = b64u(sha('sha256', JSON.stringify({ crv: 'Ed25519', kty: 'OKP', x })));
+  return { privateKey, jwk: { kty: 'OKP', crv: 'Ed25519', kid, x, use: 'sig' }, d: b64u(seed) };
+}
+
+const nonce = name => b64u(sha('sha512', `rfc004-test/nonce/${name}`));
+const digest = body => `sha-256=:${b64(sha('sha256', body))}:`;
+
+function signBase(privateKey, lines, params) {
+  const base = [...lines, `"@signature-params": ${params}`].join('\n');
+  return [base, b64(sign(null, Buffer.from(base), privateKey))];
+}
+
+// ── Identities and keys ───────────────────────────────────────────────────
+const BUYER = 'https://buyer-7k3q.com';
+const BRAND = 'https://agent.brand-7k3q.com';
+const buyer = key('buyer-request');
+const brand = key('brand-request');
+
+const files = {};
+const write = (rel, doc) => {
+  files[rel] = doc;
+};
+
+write('keys.json', {
+  $comment:
+    "Public test keys for the Web Bot Auth profile conformance vectors. The private seeds are published so that implementations can reproduce every signature. Each seed is SHA-256 of the ASCII string 'rfc004-test/<seed_name>'. Web Bot Auth section 6.8: test keys MUST NOT be used in production, and verifiers SHOULD reject them when detected. Each kid is the RFC 7638 JWK thumbprint (RFC 8037 Appendix A.3 for Ed25519). Each entry's identity is the origin whose key directory publishes the key.",
+  keys: [
+    { identity: BUYER, seed_name: 'buyer-request', ...buyer.jwk, _private_d_for_test_only: buyer.d },
+    { identity: BRAND, seed_name: 'brand-request', ...brand.jwk, _private_d_for_test_only: brand.d },
+  ],
+});
+
+// ── Shared request ────────────────────────────────────────────────────────
+const SELLER = 'seller-7k3q.com';
+const TARGET = `https://${SELLER}/mcp/`;
+const CREATED = 1790841600;
+const EXPIRES = 1790841900;
+const NOW = CREATED + 10;
+const ZERO_SIG = b64(Buffer.alloc(64));
+
+const body = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 7,
+  method: 'tools/call',
+  params: {
+    name: 'create_media_buy',
+    arguments: {
+      idempotency_key: '4f6c1a0e-8d2b-4b7e-9c3a-2e5d7f1b0a96',
+      account: { account_id: 'acc_42' },
+      proposal_id: 'prop_7',
+      total_budget: { amount: 25000, currency: 'USD' },
+    },
+  },
+});
+const bodyDigest = digest(body);
+
+const REQUEST_COMPONENTS = ['@method', '@target-uri', '@authority', 'content-type', 'content-digest'];
+
+function compList(label, extra = [], includeAgent = true) {
+  const comps = REQUEST_COMPONENTS.map(c => `"${c}"`);
+  if (includeAgent) comps.push(`"signature-agent";key="${label}"`);
+  return `(${[...comps, ...extra].join(' ')})`;
+}
+
+function requestLines(label, agentUrl, includeAgent = true) {
+  const lines = [
+    '"@method": POST',
+    `"@target-uri": ${TARGET}`,
+    `"@authority": ${SELLER}`,
+    '"content-type": application/json',
+    `"content-digest": ${bodyDigest}`,
+  ];
+  if (includeAgent) lines.push(`"signature-agent";key="${label}": "${agentUrl}"`);
+  return lines;
+}
+
+function params(comps, kid, n, created = CREATED, expires = EXPIRES) {
+  let p = `${comps};created=${created};expires=${expires}`;
+  if (n !== null) p += `;nonce="${n}"`;
+  return `${p};keyid="${kid}";alg="ed25519";tag="web-bot-auth"`;
+}
+
+const headers = (agent, sigInput, sig) => ({
+  'Content-Type': 'application/json',
+  'Content-Digest': bodyDigest,
+  'Signature-Agent': agent,
+  'Signature-Input': sigInput,
+  Signature: sig,
+});
+
+const request = h => ({ method: 'POST', url: TARGET, headers: h, body });
+
+/** The Accept-Signature member the verifier sends with a 403 or a 429 (RFC 9421 section 5.1). */
+function acceptSignature(label, components, freshNonce = false) {
+  const doc = { label, components, parameters: ['created', 'expires', 'nonce', 'keyid', 'alg', 'tag'], tag: 'web-bot-auth' };
+  if (freshNonce) doc.nonce = 'verifier-chosen';
+  return doc;
+}
+
+const REFUSAL_NOTE =
+  'The profile reports signature failures with HTTP status codes (Web Bot Auth sections 5.3 and 5.4). Conformance grades the status code. On a 403 or 429, the AdCP layer SHOULD add Accept-Signature naming the components and parameters the profile requires, so the signer can sign again (security.mdx, AdCP checks after Web Bot Auth verification); the accept_signature object describes that header, and the exact serialization is RFC 9421 section 5.1.';
+
+// ── Positive 001: single signer ───────────────────────────────────────────
+const c1 = compList('sig1');
+const p1 = params(c1, buyer.jwk.kid, nonce('buyer'));
+const [base1, sig1] = signBase(buyer.privateKey, requestLines('sig1', BUYER), p1);
+const h1 = headers(`sig1="${BUYER}"`, `sig1=${p1}`, `sig1=:${sig1}:`);
+write('positive/001-single-signer-request.json', {
+  name: 'Single signer: buyer agent at https://buyer-7k3q.com sends create_media_buy over MCP',
+  spec_reference: `${SPEC}#profile-rules`,
+  signing_profile: 'web-bot-auth',
+  reference_now: NOW,
+  request: request(h1),
+  directories: { [BUYER]: { keys_ref: [buyer.jwk.kid] } },
+  expected_signature_base: { sig1: base1 },
+  expected_outcome: { success: true, identities: { sig1: BUYER } },
+  $comment:
+    'The Signature-Agent member sig1 names an origin, so the verifier fetches https://buyer-7k3q.com/.well-known/http-message-signatures-directory, selects the key whose kid equals keyid, and attributes the request to that origin. Ed25519 is deterministic, so an implementation signing with the published seed reproduces the Signature value byte for byte.',
+});
+
+// ── Positive 002: signed key directory response ───────────────────────────
+const dirBody = JSON.stringify({ keys: [buyer.jwk] }, null, 2);
+const dirDigest = digest(dirBody);
+const dirParams = `("@authority";req "content-digest");created=1790841000;expires=1790927400;keyid="${buyer.jwk.kid}";alg="ed25519";tag="http-message-signatures-directory"`;
+const [dirBase, dirSig] = signBase(buyer.privateKey, ['"@authority";req: buyer-7k3q.com', `"content-digest": ${dirDigest}`], dirParams);
+write('positive/002-signed-directory-response.json', {
+  name: 'Signed key directory response for https://buyer-7k3q.com, one signature per key',
+  spec_reference: `${SPEC}#key-directories`,
+  signing_profile: 'web-bot-auth',
+  reference_now: NOW,
+  request: {
+    method: 'GET',
+    url: `${BUYER}/.well-known/http-message-signatures-directory`,
+    headers: { Host: 'buyer-7k3q.com', Accept: 'application/http-message-signatures-directory+json' },
+    body: '',
+  },
+  response: {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/http-message-signatures-directory+json',
+      'Cache-Control': 'max-age=300',
+      'Content-Digest': dirDigest,
+      'Signature-Input': `key1=${dirParams}`,
+      Signature: `key1=:${dirSig}:`,
+    },
+    body: dirBody,
+  },
+  expected_signature_base: { key1: dirBase },
+  expected_outcome: { success: true, identities: { key1: BUYER } },
+  $comment:
+    'Web Bot Auth Appendix B.1: the directory server signs the response once per key, covering "@authority";req and content-digest, with created, expires, the key\'s thumbprint as keyid, and tag http-message-signatures-directory. The verifier validates the signature with the key the directory itself provides and validates Content-Digest against the body. Covering the request authority stops the key set from being served again from another domain. The verifier stores the signed response as its audit record of the fetch.',
+});
+
+// ── Negative 001: missing nonce ───────────────────────────────────────────
+const pNn = params(c1, buyer.jwk.kid, null);
+const [baseNn, sigNn] = signBase(buyer.privateKey, requestLines('sig1', BUYER), pNn);
+write('negative/001-missing-nonce.json', {
+  name: 'Signature-Input omits the nonce parameter',
+  spec_reference: `${SPEC}#replay-protection`,
+  signing_profile: 'web-bot-auth',
+  reference_now: NOW,
+  request: request(headers(`sig1="${BUYER}"`, `sig1=${pNn}`, `sig1=:${sigNn}:`)),
+  directories: { [BUYER]: { keys_ref: [buyer.jwk.kid] } },
+  expected_signature_base: { sig1: baseNn },
+  expected_outcome: {
+    success: false,
+    status: 403,
+    accept_signature: acceptSignature('sig1', c1),
+    reason: 'The profile requires an RFC 9421 nonce on every signed request. Without one the verifier cannot detect replay.',
+  },
+  $comment: `The signature is cryptographically valid over its covered components, so a verifier that does not enforce the nonce requirement accepts it. The verifier answers 403, and the Accept-Signature hint lists nonce among the required parameters. ${REFUSAL_NOTE}`,
+});
+
+// ── Negative 002: replayed nonce ──────────────────────────────────────────
+write('negative/002-replayed-nonce.json', {
+  name: 'Second submission of a request whose (identity, nonce) pair the verifier has already accepted',
+  spec_reference: `${SPEC}#replay-protection`,
+  signing_profile: 'web-bot-auth',
+  reference_now: NOW + 5,
+  request: request(h1),
+  directories: { [BUYER]: { keys_ref: [buyer.jwk.kid] } },
+  test_harness_state: {
+    $comment:
+      'Preload the replay cache as if positive/001 was just verified. White-box harnesses inject the entry; black-box runners send positive/001 twice and grade the second response.',
+    replay_cache_entries: [{ identity: BUYER, nonce: nonce('buyer'), ttl_seconds: 360 }],
+  },
+  expected_signature_base: { sig1: base1 },
+  expected_outcome: {
+    success: false,
+    status: 429,
+    accept_signature: acceptSignature('sig1', c1, true),
+    reason: "The verifier MUST reject a nonce it has already seen for the same identity within the signature's lifetime.",
+  },
+  $comment: `The request is byte-identical to positive/001-single-signer-request.json. The verifier checks the nonce per signature and per identity, whether or not an edge verifier ran first. The Accept-Signature hint on the 429 carries a verifier-chosen nonce value (Web Bot Auth section 5.3; RFC 9421 sections 5.1 and 7.2.2), which the signer uses on its next attempt; the value is not pinned by this vector. ${REFUSAL_NOTE}`,
+});
+
+// ── Negative 003: Signature-Agent present but not covered ─────────────────
+const cUnc = compList('sig1', [], false);
+const pUnc = params(cUnc, buyer.jwk.kid, nonce('buyer-uncovered'));
+const [baseUnc, sigUnc] = signBase(buyer.privateKey, requestLines('sig1', BUYER, false), pUnc);
+write('negative/003-signature-agent-not-covered.json', {
+  name: 'Signature-Agent header present, but the sig1 member is not a covered component',
+  spec_reference: `${SPEC}#profile-rules`,
+  signing_profile: 'web-bot-auth',
+  reference_now: NOW,
+  request: request(headers(`sig1="${BUYER}"`, `sig1=${pUnc}`, `sig1=:${sigUnc}:`)),
+  directories: { [BUYER]: { keys_ref: [buyer.jwk.kid] } },
+  expected_signature_base: { sig1: baseUnc },
+  expected_outcome: {
+    success: false,
+    status: 403,
+    accept_signature: acceptSignature('sig1', c1),
+    reason:
+      'Web Bot Auth section 5.2.1: the Signature-Agent member keyed to the signature label MUST be signed as a component. An uncovered member is an unverified claim and MUST NOT be attributed (section 4.1).',
+  },
+  $comment: `The signature verifies over the components it does cover, so a verifier that reads the identity from the uncovered header and skips the coverage check accepts it and attributes the request to an origin nobody signed for. ${REFUSAL_NOTE}`,
+});
+
+// ── Negative 004: key not in the directory the header names ───────────────
+const pWrong = params(c1, buyer.jwk.kid, nonce('buyer-claims-brand'));
+const [baseWrong, sigWrong] = signBase(buyer.privateKey, requestLines('sig1', BRAND), pWrong);
+write('negative/004-key-not-in-named-directory.json', {
+  name: 'Signature-Agent names https://agent.brand-7k3q.com, but the signing key is published only by https://buyer-7k3q.com',
+  spec_reference: `${SPEC}#identity`,
+  signing_profile: 'web-bot-auth',
+  reference_now: NOW,
+  request: request(headers(`sig1="${BRAND}"`, `sig1=${pWrong}`, `sig1=:${sigWrong}:`)),
+  directories: { [BRAND]: { keys_ref: [brand.jwk.kid] }, [BUYER]: { keys_ref: [buyer.jwk.kid] } },
+  expected_signature_base: { sig1: baseWrong },
+  expected_outcome: {
+    success: false,
+    status: 403,
+    accept_signature: acceptSignature('sig1', c1),
+    reason:
+      'Key lookup is keyed on the (origin, keyid) pair, never on keyid alone (Web Bot Auth section 5.4). The directory at the named origin holds no key with this thumbprint, so the request is unverified and MUST NOT be attributed to that origin (section 6.10).',
+  },
+  $comment: `The signature is valid under the buyer agent's key, and the directories object lists that key under its own origin so the harness can show the trap: a verifier that indexes keys by thumbprint alone finds the key, verifies, and attributes the request to the brand agent, an origin that never published the key. A conformant verifier resolves only https://agent.brand-7k3q.com/.well-known/http-message-signatures-directory and rejects. ${REFUSAL_NOTE}`,
+});
+
+// ── Negative 005: unparseable Signature-Agent ─────────────────────────────
+write('negative/005-malformed-signature-agent.json', {
+  name: 'Signature-Agent is not a parseable Structured Field Dictionary (unterminated string)',
+  spec_reference: `${SPEC}#error-responses`,
+  signing_profile: 'web-bot-auth',
+  reference_now: NOW,
+  request: request(headers(`sig1="${BUYER}`, `sig1=${p1}`, `sig1=:${ZERO_SIG}:`)),
+  directories: { [BUYER]: { keys_ref: [buyer.jwk.kid] } },
+  expected_outcome: {
+    success: false,
+    status: 400,
+    reason: 'Web Bot Auth section 5.4: a verifier that fails to parse Signature, Signature-Input, or Signature-Agent answers 400 Bad Request.',
+  },
+  $comment:
+    "Signature is a 64-zero-byte placeholder: parsing fails before any key is resolved or any signature is checked, so a verifier that reaches cryptographic verification has skipped the parse step. No Accept-Signature is sent, because the signer's headers, not its signature, need fixing.",
+});
+
+// ── Negative 006: two web-bot-auth signatures on one request ──────────────
+const c2 = compList('sig2');
+const p2 = params(c2, brand.jwk.kid, nonce('brand'));
+const [base2, sig2] = signBase(brand.privateKey, requestLines('sig2', BRAND), p2);
+write('negative/006-two-signatures.json', {
+  name: 'Two web-bot-auth signatures on one request: positive/001 plus a second valid signature from https://agent.brand-7k3q.com',
+  spec_reference: `${SPEC}#verification`,
+  signing_profile: 'web-bot-auth',
+  reference_now: NOW,
+  request: request(headers(`sig1="${BUYER}", sig2="${BRAND}"`, `sig1=${p1}, sig2=${p2}`, `sig1=:${sig1}:, sig2=:${sig2}:`)),
+  directories: { [BUYER]: { keys_ref: [buyer.jwk.kid] }, [BRAND]: { keys_ref: [brand.jwk.kid] } },
+  expected_signature_base: { sig1: base1, sig2: base2 },
+  expected_outcome: {
+    success: false,
+    status: 403,
+    accept_signature: acceptSignature('sig1', c1),
+    reason:
+      'The profile takes exactly one web-bot-auth signature and one Signature-Agent member per request (RFC 9421 section 3.2.1). Web Bot Auth section 5.2.2 permits more than one signature; the profile does not accept one.',
+  },
+  $comment: `The sig1 label is byte-identical to positive/001-single-signer-request.json, and the sig2 label is a second valid signature over the same request from another identity. Each verifies on its own against its own directory, so a verifier that loops over every label and accepts when each verifies has skipped the count check. ${REFUSAL_NOTE}`,
+});
+
+// ── Failure scenarios ─────────────────────────────────────────────────────
+// Scenarios are data, not signatures: a harness signs each one at run time
+// with the reference library, so nothing committed here expires. Times are
+// offsets in seconds from the harness's clock.
+//
+// tier "wba": the reference library with no AdCP policy already gives the
+// expected outcome. tier "adcp": it gives the opposite outcome, and only the
+// profile's rules give the expected one. A WBA MUST that the library does not
+// enforce is tier "adcp" until it does; the harness reports the change.
+const P256_SEED = sha('sha256', 'rfc004-test/p256-unused');
+const p256 = (() => {
+  const ecdh = createECDH('prime256v1');
+  ecdh.setPrivateKey(P256_SEED);
+  const point = ecdh.getPublicKey();
+  const jwk = { kty: 'EC', crv: 'P-256', x: b64u(point.subarray(1, 33)), y: b64u(point.subarray(33)) };
+  return { ...jwk, kid: b64u(sha('sha256', JSON.stringify({ crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y }))), use: 'sig' };
+})();
+
+// A fixed RSA-PSS public key, which the library imports and the profile does
+// not use. It never signs, so its private half was discarded.
+const rsaPss = (() => {
+  const jwk = { kty: 'RSA', e: 'AQAB', n: 'v-QEO4laYaq_rKgLuz0I8hRW_Ig58qmjv_L9cIX_2dCz6pkvMg953c3P3yNtvjl0eLiZNk1tbaWjfdwiMczGUYqhcFutwjbJpny5rMlSOuTkgJEidDpVpsSfa9OwmkRLgn_hjrAkQzKYljsqSN_U9deB6a_NwWiM03MRFLVtcCHJQMEVNCXGvqRIF0MKRVdb3287cgEQ2lvb0g1a84CYzQtbRdWcHnSjhOwF3Y2IH2A2VvQzeCSWWFy2LUr2H09Ce2pvAc-DJX6BdUF5MijFV9SRt4jbPWG28kcrLUEt1GMDynfvMT419dx03kfaZnHkh4I3xXKhcFAIMK4D1WH9bQ' };
+  return { ...jwk, alg: 'PS512', kid: b64u(sha('sha256', JSON.stringify({ e: jwk.e, kty: jwk.kty, n: jwk.n }))), use: 'sig' };
+})();
+
+const FULL = ['@method', '@target-uri', '@authority', 'content-type', 'content-digest', 'signature-agent;key={label}'];
+const ok = { success: true, identity: BUYER };
+const status = s => ({ success: false, status: s });
+// A directory refusal has no status of its own: the request that needed the key gets 403.
+const refused = { success: false };
+const req = (id, name, tier, expected, basis, fields = {}) => ({ id, name, base: 'post', ...fields, expected, tier, basis });
+const dirScenario = (id, name, tier, expected, basis, fields = {}) => ({ id, name, ...fields, expected, tier, basis });
+// A request the harness signs with `key` and verifies against the scenario's directory.
+const dirRequest = (name, key, tier, expected) => ({ name, kid: key.jwk.kid, expected, tier });
+
+write('scenarios.json', {
+  $comment:
+    'Failure scenarios for the Web Bot Auth profile, as data. A harness signs each request and directory scenario at run time with the reference library (http-message-sig signs any component and parameter set), applies after_signing, and grades the verifier on expected. created and expires are offsets in seconds from the harness clock; a null parameter is omitted; a nonce object asks for that many random bytes in that encoding. tier "wba": the reference library with no AdCP policy already gives the expected outcome. tier "adcp": the bare library gives the opposite outcome and only the profile rules give the expected one; a WBA MUST the library does not enforce stays "adcp" until it does. See README.md.',
+  spec_reference: `${SPEC}#profile-rules`,
+  signing_profile: 'web-bot-auth',
+  signer: { identity: BUYER, kid: buyer.jwk.kid },
+  requests: {
+    post: { method: 'POST', url: TARGET, headers: { 'content-type': 'application/json' }, body },
+    get: { method: 'GET', url: `${TARGET}tasks?id=a%7Eb&x=1`, headers: {}, body: '' },
+  },
+  components: { post: FULL, get: ['@method', '@target-uri', '@authority', 'signature-agent;key={label}'] },
+  parameters: { created: -5, expires: 295, nonce: { bytes: 64, encoding: 'base64url' }, tag: 'web-bot-auth' },
+  request_scenarios: [
+    req('R00', 'Baseline', 'wba', ok, 'Profile rules'),
+    req('R01', 'Body changed after signing', 'adcp', status(403), 'Content-Digest matches the body: RFC 9530; WBA section 5.2', { after_signing: { append_to_body: '\n' } }),
+    req('R02', 'Covered header changed after signing', 'wba', status(403), 'RFC 9421 section 3.2', { after_signing: { headers: { 'content-type': 'text/plain' } } }),
+    req('R03', 'Expired', 'wba', status(403), 'RFC 9421 section 3.2.1', { parameters: { created: -400, expires: -100 } }),
+    req('R04', 'created 120 seconds in the future', 'wba', status(403), 'Profile: 60 seconds of clock skew', { parameters: { created: 120, expires: 400 } }),
+    req('R05', 'created 30 seconds in the future', 'adcp', ok, 'Profile: 60 seconds of clock skew; the library allows none by default', { parameters: { created: 30, expires: 300 } }),
+    req('R06', 'Lifetime of 3600 seconds', 'adcp', status(403), 'Profile: expires at most 300 seconds after created', { parameters: { created: -5, expires: 3595 } }),
+    req('R07', 'Nonce of 32 bytes', 'wba', status(403), 'Profile: 64-byte nonce; validateNonce', { parameters: { nonce: { bytes: 32, encoding: 'base64url' } } }),
+    req('R08', 'Nonce in canonical padded base64', 'wba', ok, 'Profile: unpadded base64url or canonical padded base64', { parameters: { nonce: { bytes: 64, encoding: 'base64' } } }),
+    req('R09', 'Nonce in padded base64url', 'wba', status(403), 'Profile: unpadded base64url or canonical padded base64', { parameters: { nonce: { bytes: 64, encoding: 'base64url-padded' } } }),
+    req('R10', 'No alg parameter', 'wba', status(403), 'Profile: alg required', { parameters: { alg: null } }),
+    req('R11', 'alg other than ed25519', 'wba', status(403), 'Profile: alg is ed25519 and matches the key; RFC 9421 section 3.2', { parameters: { alg: 'ecdsa-p256-sha256' } }),
+    req('R12', 'GET covering only @authority and the Signature-Agent member', 'adcp', status(403), 'Profile: cover @method, @target-uri, and @authority; WBA section 5.2 needs one of @authority or @target-uri', { base: 'get', components: ['@authority', 'signature-agent;key=sig1'] }),
+    req('R13', 'Body without content-digest covered', 'adcp', status(403), 'Profile: a request with a body covers content-type and content-digest; WBA section 5.2', { components: ['@method', '@target-uri', '@authority', 'content-type', 'signature-agent;key=sig1'] }),
+    req('R14', 'tag other than web-bot-auth', 'wba', status(403), 'WBA section 5.2: tag MUST be web-bot-auth', { parameters: { tag: 'adcp/request-signing/v1' } }),
+    req('R15', 'Bare-string Signature-Agent', 'adcp', status(400), 'Profile: dictionary form only, so the field does not parse; WBA section 5.2.1 lets a verifier accept the bare string', { signature_agent: `"${BUYER}"`, components: [...FULL.slice(0, 5), 'signature-agent'] }),
+    req('R16', 'http:// Signature-Agent', 'adcp', status(403), 'WBA section 5.2.1: the origin MUST be https; the library accepts http (cloudflare/web-bot-auth#162)', { signature_agent: 'sig1="http://buyer-7k3q.com"', directories: { 'http://buyer-7k3q.com': [buyer.jwk.kid] } }),
+    req('R17', 'Signature-Agent with a path', 'adcp', status(403), 'WBA section 5.5: a directory member MUST be an origin; the library does not check it', { signature_agent: `sig1="${BUYER}/agents/a"` }),
+    req('R17c', 'Signature-Agent origin with a trailing /', 'adcp', status(403), 'Profile: the value is exactly the serialized origin (RFC 6454 section 6.2), compared without normalizing', { signature_agent: `sig1="${BUYER}/"` }),
+    req('R17d', 'Signature-Agent origin with an uppercase host', 'adcp', status(403), 'Profile: the value is exactly the serialized origin, with a lowercase host, compared without normalizing', { signature_agent: 'sig1="https://BUYER-7k3q.com"' }),
+    req('R17e', 'Signature-Agent origin with an explicit :443', 'adcp', status(403), 'Profile: the value is exactly the serialized origin, with no default port, compared without normalizing', { signature_agent: 'sig1="https://buyer-7k3q.com:443"' }),
+    req('R18', 'Signature-Agent member with type=jwks_uri', 'adcp', status(403), 'Profile: only type=directory; WBA section 5.2.1 lets a verifier ignore other types', { signature_agent: `sig1="${BUYER}";type=jwks_uri` }),
+    req('R18c', 'Signature-Agent member with type=directory as a Token', 'wba', ok, 'WBA section 5.2.1: type is a Token, and directory is the default', { signature_agent: `sig1="${BUYER}";type=directory` }),
+    req('R18d', 'Signature-Agent member with type="directory" as a String', 'wba', ok, 'Profile: a verifier accepts type=directory as a Token or a String, as the reference library does; WBA section 5.2.1 defines a Token', { signature_agent: `sig1="${BUYER}";type="directory"` }),
+    req('R19', 'Signature-Agent member keyed differently from the label', 'adcp', status(403), 'WBA section 5.2.1: the member keyed to the label; the library does not check it', { signature_agent: `agent1="${BUYER}"`, components: [...FULL.slice(0, 5), 'signature-agent;key=agent1'] }),
+    req('R19b', 'Whole Signature-Agent field covered before the member', 'wba', ok, 'RFC 9421 section 2.1: the field and its member are separate components; WBA section 5.2.1 requires only the member keyed to the label', { components: [...FULL.slice(0, 5), 'signature-agent', 'signature-agent;key=sig1'] }),
+    req('R20', 'Second signature with tag cdn-edge', 'adcp', ok, 'Profile: Signature-Input members with other tags are not read; the library requires a label when a request carries two signatures', {
+      extra_signature: { label: 'cdn', kid: brand.jwk.kid, components: ['@method', '@authority'], parameters: { created: -5, expires: 295, nonce: null, tag: 'cdn-edge' } },
+    }),
+    req('R20b', 'Second member with tag cdn-edge whose Signature value is a token', 'wba', status(400), 'RFC 9421 section 4.2: every Signature member value is a Byte Sequence, so the field is malformed whatever the member\'s tag; members with other tags are not read, but the field is still parsed', {
+      after_signing: { append_members: { 'signature-input': 'cdn=("@method" "@authority");tag="cdn-edge"', signature: 'cdn=edge-token' } },
+    }),
+    req('R21', 'Two Signature-Agent members, one signature', 'adcp', status(403), 'Profile: exactly one Signature-Agent member', { signature_agent: `sig1="${BUYER}", sig2="${BRAND}"` }),
+    req('R21b', 'Two web-bot-auth signatures that cover one Signature-Agent member', 'wba', status(403), 'Profile: exactly one web-bot-auth signature; WBA section 5.2.2 lets a request carry more', { extra_signature: { label: 'sig2', kid: buyer.jwk.kid, components: FULL.map(c => c.replace('{label}', 'sig1')), parameters: { created: -5, expires: 295, nonce: { bytes: 64, encoding: 'base64url' }, tag: 'web-bot-auth' } } }),
+    req('R22', 'Label other than sig1', 'wba', ok, 'RFC 9421: the signer chooses the label', { label: 'wba' }),
+    req('R23', 'Components in another order', 'wba', ok, "RFC 9421: the order is the signer's", { components: ['signature-agent;key=sig1', '@authority', 'content-digest', '@target-uri', 'content-type', '@method'] }),
+  ],
+  directory_scenarios: [
+    dirScenario('D00', 'Baseline', 'wba', { success: true }, 'WBA Appendix B.1'),
+    dirScenario('D01', 'Signed for another authority', 'wba', refused, 'WBA Appendix B.1: covers "@authority";req', { authority: 'agent.brand-7k3q.com' }),
+    dirScenario('D02', 'Body changed after signing', 'adcp', refused, 'WBA Appendix B.1: the verifier MUST validate Content-Digest; the library does not compare it with the body', { after_signing: { append_to_body: '\n' } }),
+    dirScenario('D03', 'Unsigned', 'adcp', refused, 'Profile: use only keys with a valid signature, so the directory yields no usable key; WBA Appendix B.1 lets a verifier use an unproven key', { keys: [], unsigned_keys: [buyer.jwk], requests: [dirRequest('signed with the unsigned key', buyer, 'adcp', status(403))] }),
+    dirScenario('D04', 'Signature created in the future', 'wba', refused, 'WBA Appendix B.1: reject a future created', { parameters: { created: 3600, expires: 90000 } }),
+    dirScenario('D05', 'Covers "@authority";req only', 'adcp', refused, 'WBA Appendix B.1: covers content-digest', { components: ['@authority;req'] }),
+    dirScenario('D06', 'Expired signature', 'wba', refused, 'RFC 9421 section 3.2.1', { parameters: { created: -7200, expires: -3600 } }),
+    dirScenario('D07', 'Extra P-256 key that does not sign', 'wba', { success: true }, 'Profile: ignore keys the profile does not use (RFC 7517 section 5)', { unsigned_keys: [p256] }),
+    dirScenario('D08', 'Media type application/json', 'adcp', refused, 'WBA section 5.5.1: the well-known directory MUST be served with application/http-message-signatures-directory+json', { content_type: 'application/json' }),
+    dirScenario('D09', 'Directory served with status 203', 'adcp', refused, 'WBA section 5.5: a status other than 200 is a discovery failure', { status: 203 }),
+    dirScenario('D10', 'Signed with tag web-bot-auth', 'adcp', refused, 'WBA Appendix B.1: tag="http-message-signatures-directory"', { parameters: { tag: 'web-bot-auth' } }),
+    dirScenario('D11', 'Second Ed25519 key that does not sign', 'wba', { success: true }, 'Profile: ignore a key without a valid signature; WBA Appendix B.1; directory draft section 5', {
+      unsigned_keys: [brand.jwk],
+      requests: [dirRequest('signed with the signed key', buyer, 'wba', ok), dirRequest('signed with the unsigned key', brand, 'adcp', status(403))],
+    }),
+    dirScenario('D12', 'Only a P-256 key, unsigned', 'adcp', refused, 'Profile: the directory yields no Ed25519 key with a valid signature', { keys: [], unsigned_keys: [p256] }),
+    dirScenario('D13', 'Extra RSA-PSS key that does not sign', 'wba', { success: true }, 'Profile: ignore keys the profile does not use (RFC 7517 section 5), including a key the library imports', { unsigned_keys: [rsaPss] }),
+    dirScenario('D14', 'Extra P-256 key that carries its private d', 'adcp', refused, 'Profile: refuse a directory in which any key carries a private member, checked before unused keys are skipped; WBA section 5.5.1: a verifier SHOULD reject malformed entries', { unsigned_keys: [{ ...p256, d: b64u(P256_SEED) }] }),
+    dirScenario('D14b', 'Signing Ed25519 key published with its private d', 'adcp', refused, 'Profile: refuse a directory in which any key carries a private member; WBA section 5.5.1: a verifier SHOULD reject malformed entries', { publish_private_members: true }),
+    dirScenario('D14c', 'Extra P-256 key that carries its private scalar as an upper-case D', 'adcp', refused, 'Profile: private member names compare without regard to case; WBA section 5.5.1: a verifier SHOULD reject malformed entries', { unsigned_keys: [{ ...p256, D: b64u(P256_SEED) }] }),
+    dirScenario('D15', 'Extra malformed Ed25519 keys, one with no x and one with a 31-byte x', 'wba', { success: true }, 'Profile: ignore a key the verifier cannot import (RFC 7517 section 5)', {
+      unsigned_keys: [{ kty: 'OKP', crv: 'Ed25519', kid: 'malformed-no-x', use: 'sig' }, { kty: 'OKP', crv: 'Ed25519', kid: 'malformed-short-x', x: b64u(Buffer.alloc(31, 7)), use: 'sig' }],
+      requests: [dirRequest('signed with the valid key', buyer, 'wba', ok)],
+    }),
+  ],
+});
+
+// ── Write or check ────────────────────────────────────────────────────────
+const check = process.argv.includes('--check');
+let stale = 0;
+for (const sub of ['positive', 'negative']) {
+  if (!existsSync(join(VECTOR_DIR, sub))) continue;
+  for (const file of readdirSync(join(VECTOR_DIR, sub)).filter(name => name.endsWith('.json'))) {
+    if (!(`${sub}/${file}` in files)) {
+      console.error(`${sub}/${file} is not produced by ${SCRIPT}; delete it or add it to the generator`);
+      stale++;
+    }
+  }
+}
+for (const [rel, doc] of Object.entries(files)) {
+  const rendered = `${JSON.stringify(doc, null, 2)}\n`;
+  const path = join(VECTOR_DIR, rel);
+  if (check) {
+    if ((existsSync(path) ? readFileSync(path, 'utf8') : '') !== rendered) {
+      console.error(`${rel} is stale; run node ${SCRIPT}`);
+      stale++;
+    }
+  } else {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, rendered);
+  }
+}
+if (stale) process.exitCode = 1;
+else console.log(`${check ? 'verified' : 'wrote'} ${Object.keys(files).length} Web Bot Auth profile vector files`);
