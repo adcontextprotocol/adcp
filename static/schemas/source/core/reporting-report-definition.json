@@ -26,7 +26,8 @@
         "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
         "system": { "type": "string", "minLength": 1, "maxLength": 128 },
         "api_version": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "query_semantics": { "type": "object", "description": "Canonical JSON object containing every source option that can change the numbers, including attribution settings, action-report-time, filters, and mapping version." }
+        "query_semantics": { "type": "object", "description": "Canonical JSON object containing every source option that can change the numbers, including attribution settings, action-report-time, filters, and mapping version." },
+        "custody": { "$ref": "/schemas/enums/reporting-custody.json", "description": "Whether the producer is the system of record for the numbers or derived them from the upstream provider and system named in this source. Optional; omitted means the definition makes no custody claim. Fixed per definition by report_definition_sha256, so no per-revision field exists.", "x-added-in": "3.3.0" }
       },
       "required": ["provider", "system", "api_version", "query_semantics"],
       "additionalProperties": false
