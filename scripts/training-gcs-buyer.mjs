@@ -133,7 +133,7 @@ async function main() {
     if (values.init) { await pool.query('CREATE SCHEMA IF NOT EXISTS training_reporting_buyer'); for (const sql of persistence.migrations.all) await pool.query(sql); }
     await persistence.probe();
     const result = await verifyTrainingGcsBuyer({ grant, expected, storage, client, persistence, consumerScope: `${base}:${grant.principal_id}`, authorize });
-    const evidence = { sdk: '16.0.0', protocol: 'mcp', checked_at: new Date().toISOString(), grant,
+    const evidence = { sdk: '16.1.0', protocol: 'mcp', checked_at: new Date().toISOString(), grant,
       definitive: result.definitive, receipt_batches: receiptBatches, status_batches: statusBatches,
       receipts: result.submittedReceipts, materializations: result.ledger.materializations,
       obligations: result.obligations, failed_consumer_statuses: result.failedConsumerStatuses };
