@@ -95,6 +95,18 @@
     },
     {
       "if": {
+        "required": ["security_profiles"],
+        "properties": { "security_profiles": { "minItems": 1 } }
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "security.profiles" } }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "properties": {
           "adcp": {
             "properties": {
@@ -515,6 +527,18 @@
         "required": ["media_buy", "account"]
       },
       "then": false
+    },
+    {
+      "if": {
+        "required": ["account"],
+        "properties": { "account": { "required": ["agent_onboarding"] } }
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "account.agent_onboarding" } }
+        },
+        "required": ["experimental_features"]
+      }
     }
   ],
   "properties": {
@@ -1323,6 +1347,12 @@
           "type": "boolean",
           "description": "Whether this seller supports sandbox accounts for testing. Buyer-declared accounts use sandbox: true in sync_accounts or, for an unambiguous lazy-provisioning seller, in the natural-key account reference. Sellers with account_id namespaces expose sandbox accounts as pre-existing test accounts through list_accounts or supply them out-of-band. Requests using a sandbox account perform no real platform calls or spend.",
           "default": false
+        },
+        "agent_onboarding": {
+          "$ref": "/schemas/core/agent-onboarding.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "How this seller onboards buyer agents: a mode per billing party and for sandbox, requirements, and where a human starts. Seller-wide and identical for every caller. Experimental: sellers that declare it MUST list account.agent_onboarding in experimental_features. See docs/protocol/get_adcp_capabilities.mdx#accountagent_onboarding."
         }
       },
       "required": ["supported_billing"]
@@ -3226,6 +3256,21 @@
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a"
           }
+        },
+        "profiles": {
+          "x-status": "experimental",
+          "type": "array",
+          "description": "Request-signing profiles this agent verifies, named by the RFC 9421 `tag` value each profile puts in `Signature-Input`. `adcp/request-signing/v1` is the AdCP RFC 9421 profile defined in docs/building/by-layer/L1/security.mdx (Signed Requests (Transport Layer)). `web-bot-auth` is the Web Bot Auth profile, experimental in 3.3, in docs/building/by-layer/L1/wba-profile.mdx: the verifier resolves the signer's keys from the origin named in the covered `Signature-Agent` header, and a verified identity the seller has not approved gets no account access. Omission means `[\"adcp/request-signing/v1\"]`, so every 3.0 to 3.2 capability document keeps its meaning. A buyer signs with a profile the seller lists. The operation lists (`required_for`, `warn_for`, `supported_for`, and the `protocol_methods_*` lists) apply to every listed profile.",
+          "items": {
+            "type": "string",
+            "enum": ["adcp/request-signing/v1", "web-bot-auth"]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["adcp/request-signing/v1"],
+          "x-adcp-validation": {
+            "spec": "docs/building/by-layer/L1/wba-profile.mdx#capability"
+          }
         }
       },
       "required": ["supported"]
@@ -3290,7 +3335,7 @@
         "legacy_hmac_fallback": {
           "type": "boolean",
           "deprecated": true,
-          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_principal.configuration.notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
+          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_principal.configuration.notification_configs[].authentication, sync_agent_notification_configs.notification_configs[].authentication, reporting_webhook.authentication, or create_media_buy.artifact_webhook.authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
           "default": false
         },
         "delivery_retry_horizon_seconds": {
@@ -3298,6 +3343,20 @@
           "description": "Maximum elapsed time from the first delivery attempt during which this agent may retry the same webhook delivery. The publisher retains the immutable delivery-key-to-RFC-8785-JCS-payload binding and sufficient delivery state for at least this interval, and MUST NOT retry that key afterward. Receivers retain the matching payload binding and terminal publication proof for at least max(86400, this value) seconds in AdCP 3.x. Retries do not extend the horizon. A webhook-emitting AdCP 3.2 agent MUST populate this additive field; it remains schema-optional so existing 3.x capability documents stay valid. Minimum 86400 (24h), maximum 604800 (7d).",
           "minimum": 86400,
           "maximum": 604800
+        },
+        "profiles": {
+          "x-status": "experimental",
+          "type": "array",
+          "description": "Webhook-signing profiles this agent can sign outbound webhooks with, named by the RFC 9421 `tag` value. `adcp/webhook-signing/v1` is the AdCP webhook profile named in `profile`. `web-bot-auth` is the Web Bot Auth profile, experimental in 3.3, in docs/building/by-layer/L1/wba-profile.mdx (Webhooks), under which a webhook is an ordinary signed request from the seller's identity. The seller signs each delivery with the one profile the subscriber selected in the registration's `signing_profile` (on `push_notification_config`, `reporting_webhook`, `artifact_webhook`, `accounts[].notification_configs[]`, or an agent-level notification configuration), and rejects a registration that selects a profile not listed here. Omission means `[\"adcp/webhook-signing/v1\"]`. The list includes the value of `profile`.",
+          "items": {
+            "$ref": "/schemas/enums/webhook-signing-profile.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["adcp/webhook-signing/v1"],
+          "x-adcp-validation": {
+            "spec": "docs/building/by-layer/L1/wba-profile.mdx#webhooks"
+          }
         }
       },
       "required": ["supported"]
@@ -3416,6 +3475,18 @@
         }
       },
       "additionalProperties": true
+    },
+    "security_profiles": {
+      "type": "array",
+      "x-status": "experimental",
+      "description": "Named security profiles this endpoint commits to. A profile is a closed set of requirements published at docs/building/by-layer/L1/production-security-profile.mdx. The claim covers the whole endpoint: every tenant and every transport (MCP, A2A, REST) that serves the endpoint's spend-committing operations. It is self-asserted until a registry verifies it. Only agents that verify inbound requests and serve this capabilities response can advertise a profile. Absent or empty means no claim. An id is immutable: new semantics ship under a new id. Consumers MUST ignore ids they do not recognize and MUST NOT treat an unrecognized id as satisfying a requirement. Currently registered: `adcp-prod-security-3.3`. EXPERIMENTAL (x-status: experimental, feature id security.profiles): an endpoint that advertises a profile lists security.profiles in experimental_features.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9.-]{2,63}$",
+        "examples": ["adcp-prod-security-3.3"]
+      },
+      "uniqueItems": true,
+      "x-added-in": "3.3.0"
     },
     "measurement_gateway": {
       "type": "object",
