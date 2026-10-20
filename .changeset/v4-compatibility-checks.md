@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-compliance: add advisory AdCP 4.0 compatibility checks so 3.x agents learn what 4.0 removes or tightens before it ships (#8332).
+Add advisory AdCP 4.0 compatibility checks so 3.x agents learn what 4.0 removes or tightens before it ships (#8332).
 
 - New registry `universal/v4-compatibility.yaml` lists each 4.0 check with a stable id, tracking issue, detection rule, fix, and the validation or runner notice that observes it. A report joins run output against it to show each check as passed, failing, or not observable.
 - New authored check kind `all_fields_present`: every item of an array carries a field. An absent or empty array grades not_applicable instead of passing vacuously.
