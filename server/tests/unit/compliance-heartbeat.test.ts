@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getAgentsDueForCheck: vi.fn(),
   getLastKnownSupportedVersions: vi.fn(),
   getLatestComplianceAttempt: vi.fn(),
+  getRecentHeartbeatAttempts: vi.fn(),
   countComplianceRuns: vi.fn(),
   deferComplianceCheckAfterInconclusiveTarget: vi.fn(),
   deferComplianceCheckAfterContention: vi.fn(),
@@ -52,6 +53,7 @@ vi.mock('../../src/db/compliance-db.js', () => ({
     getAgentsDueForCheck = mocks.getAgentsDueForCheck;
     getLastKnownSupportedVersions = mocks.getLastKnownSupportedVersions;
     getLatestComplianceAttempt = mocks.getLatestComplianceAttempt;
+    getRecentHeartbeatAttempts = mocks.getRecentHeartbeatAttempts;
     countComplianceRuns = mocks.countComplianceRuns;
     deferComplianceCheckAfterInconclusiveTarget = mocks.deferComplianceCheckAfterInconclusiveTarget;
     deferComplianceCheckAfterContention = mocks.deferComplianceCheckAfterContention;
@@ -122,6 +124,7 @@ vi.mock('../../src/services/verification-profile-shadow.js', () => ({
 
 vi.mock('../../src/notifications/compliance.js', () => ({
   notifyComplianceChange: vi.fn(),
+  notifyComplianceTimeout: vi.fn(),
   notifyVerificationChange: vi.fn(),
 }));
 
@@ -153,6 +156,7 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.resolveOwnerAuth.mockResolvedValue(undefined);
     mocks.getLastKnownSupportedVersions.mockResolvedValue(['3.1']);
     mocks.getLatestComplianceAttempt.mockResolvedValue(null);
+    mocks.getRecentHeartbeatAttempts.mockResolvedValue([]);
     mocks.countComplianceRuns.mockResolvedValue(4);
     mocks.adaptAuthForSdk.mockResolvedValue(undefined);
     mocks.selectComplianceTargetForAgentSelection.mockResolvedValue({ target, confirmed: false, source: 'stored' });
@@ -368,6 +372,201 @@ describe('runComplianceHeartbeatJob', () => {
       .toHaveBeenCalledWith('https://agent.example.com/mcp', { exponentialBackoff: true });
     expect(mocks.query.mock.calls.every(([sql]) => !String(sql).includes('last_checked_at'))).toBe(true);
     expect(claimCalls()[0][0]).toContain('next_compliance_check_at');
+  });
+
+  // adcp#8268 — a heartbeat that runs out of time is never published, so the
+  // owner's only signal is a card that silently stops advancing unless we DM
+  // them. Both shapes count: a runner-reported `timed_out`, and a run the hard
+  // deadline had to abort (recorded `not_completed` under a timeout headline).
+  describe('timed-out heartbeat owner notification', () => {
+    const COVERAGE_MESSAGE =
+      'Compliance timeout budget of 600000ms was reached. Stopped starting new storyboards after 68/74 selected storyboard(s).';
+    const AGENT_URL = 'https://agent.example.com/mcp';
+
+    const heartbeatRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'audit-run',
+      tested_at: new Date('2026-10-01T10:07:00Z'),
+      completeness: 'timed_out',
+      headline: 'Assessment stopped at the time budget',
+      total_duration_ms: 654_321,
+      provenance_json: { timeout_ms: 600_000 },
+      observations_json: [{ category: 'performance', severity: 'warning', message: COVERAGE_MESSAGE }],
+      ...overrides,
+    });
+
+    const arrangeTimedOutRun = () => {
+      mocks.comply.mockResolvedValue({
+        completeness: 'timed_out', overall_status: 'passing',
+        observations: [{ category: 'performance', severity: 'warning', message: COVERAGE_MESSAGE }],
+        agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
+        summary: { headline: 'Incomplete run' },
+      });
+      mocks.complianceResultToDbInput.mockReturnValue({
+        agent_url: AGENT_URL, overall_status: 'failing',
+        completeness: 'timed_out', is_authoritative: false, total_duration_ms: 654_321,
+        tracks_json: [], storyboard_statuses: [], replace_storyboard_statuses: true,
+      });
+      mocks.recordComplianceRun.mockResolvedValue({
+        run: { id: 'audit-run' }, statusTransition: null, storyboardStatuses: [],
+      });
+      mocks.getRecentHeartbeatAttempts.mockResolvedValue([heartbeatRow()]);
+    };
+
+    it('tells the owner what timed out, for how long, and against which budget', async () => {
+      arrangeTimedOutRun();
+      const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+      const { notifyComplianceTimeout } = await import('../../src/notifications/compliance.js');
+
+      await runComplianceHeartbeatJob({ limit: 1 });
+
+      expect(notifyComplianceTimeout).toHaveBeenCalledWith({
+        agentUrl: AGENT_URL,
+        summary: 'Last heartbeat timed out at 2026-10-01T10:07:00.000Z after 654s of its 600s budget'
+          + ' (68/74 storyboards completed). The published compliance result was not updated.',
+      });
+    });
+
+    it('also notifies when the hard deadline had to abort a hung runner', async () => {
+      mocks.comply.mockRejectedValue(new Error('The operation timed out'));
+      mocks.recordComplianceRun.mockResolvedValue({
+        run: { id: 'aborted-run' }, statusTransition: null, storyboardStatuses: [],
+      });
+      mocks.getRecentHeartbeatAttempts.mockResolvedValue([heartbeatRow({
+        id: 'aborted-run',
+        completeness: 'not_completed',
+        headline: 'Timed out: assessment did not complete within 600s',
+        total_duration_ms: 912_000,
+        observations_json: [],
+      })]);
+      const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+      const { notifyComplianceTimeout } = await import('../../src/notifications/compliance.js');
+
+      await runComplianceHeartbeatJob({ limit: 1 });
+
+      // The aborted run is recorded with the wall-clock it burned and the
+      // budget it was given, so the DM can name both.
+      expect(mocks.recordComplianceRun).toHaveBeenCalledWith(expect.objectContaining({
+        completeness: 'not_completed',
+        headline: 'Timed out: assessment did not complete within 600s',
+        total_duration_ms: expect.any(Number),
+        provenance_json: expect.objectContaining({ timeout_ms: 600_000 }),
+      }));
+      expect(notifyComplianceTimeout).toHaveBeenCalledWith(expect.objectContaining({
+        summary: expect.stringContaining('after 912s of its 600s budget'),
+      }));
+    });
+
+    it('reports the escalated budget the run actually received', async () => {
+      arrangeTimedOutRun();
+      mocks.getLatestComplianceAttempt.mockResolvedValueOnce({
+        completeness: 'complete', total_duration_ms: 590_000,
+      });
+      mocks.getRecentHeartbeatAttempts.mockResolvedValue([
+        heartbeatRow({ provenance_json: { timeout_ms: 1_800_000 } }),
+      ]);
+      const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+      const { notifyComplianceTimeout } = await import('../../src/notifications/compliance.js');
+
+      await runComplianceHeartbeatJob({ limit: 1 });
+
+      expect(mocks.comply).toHaveBeenCalledWith(
+        AGENT_URL, expect.objectContaining({ timeout_ms: 1_800_000 }), target,
+      );
+      expect(notifyComplianceTimeout).toHaveBeenCalledWith(expect.objectContaining({
+        summary: expect.stringContaining('after 654s of its 1800s budget'),
+      }));
+    });
+
+    it('stays quiet while the agent is already in a timed-out streak', async () => {
+      arrangeTimedOutRun();
+      mocks.getRecentHeartbeatAttempts.mockResolvedValue([heartbeatRow(), heartbeatRow({ id: 'older' })]);
+      const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+      const { notifyComplianceTimeout } = await import('../../src/notifications/compliance.js');
+
+      await runComplianceHeartbeatJob({ limit: 1 });
+
+      expect(notifyComplianceTimeout).not.toHaveBeenCalled();
+    });
+
+    // A co-claiming organization can run its own owner_test against the same
+    // URL at will. Reading the heartbeat stream — not the newest run of any
+    // trigger — keeps it from suppressing or duplicating the owner's alert.
+    it('ignores non-heartbeat runs when deciding whether the streak is new', async () => {
+      arrangeTimedOutRun();
+      mocks.getLatestComplianceAttempt.mockResolvedValueOnce({ completeness: 'timed_out' });
+      const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+      const { notifyComplianceTimeout } = await import('../../src/notifications/compliance.js');
+
+      await runComplianceHeartbeatJob({ limit: 1 });
+
+      expect(mocks.getRecentHeartbeatAttempts).toHaveBeenCalledWith(AGENT_URL, null, 20);
+      expect(notifyComplianceTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not notify for audit-only runs that completed inside the budget', async () => {
+      mocks.comply.mockResolvedValue({
+        completeness: 'complete', overall_status: 'auth_required', observations: [],
+        agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
+        summary: { headline: 'Auth required' },
+      });
+      mocks.complianceResultToDbInput.mockReturnValue({
+        agent_url: AGENT_URL, overall_status: 'failing',
+        completeness: 'complete', is_authoritative: false,
+        tracks_json: [], storyboard_statuses: [], replace_storyboard_statuses: true,
+      });
+      mocks.recordComplianceRun.mockResolvedValue({
+        run: { id: 'audit-run' }, statusTransition: null, storyboardStatuses: [],
+      });
+      const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+      const { notifyComplianceTimeout } = await import('../../src/notifications/compliance.js');
+
+      await runComplianceHeartbeatJob({ limit: 1 });
+
+      expect(notifyComplianceTimeout).not.toHaveBeenCalled();
+      expect(mocks.getRecentHeartbeatAttempts).not.toHaveBeenCalled();
+    });
+
+    it('keeps the batch running when the owner notification fails', async () => {
+      arrangeTimedOutRun();
+      const { notifyComplianceTimeout } = await import('../../src/notifications/compliance.js');
+      vi.mocked(notifyComplianceTimeout).mockRejectedValueOnce(new Error('Slack is down'));
+      const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+
+      await expect(runComplianceHeartbeatJob({ limit: 1 }))
+        .resolves.toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+      expect(mocks.releaseExecutionFence).toHaveBeenCalled();
+    });
+
+    it('keeps the batch running when the streak lookup fails', async () => {
+      arrangeTimedOutRun();
+      mocks.getRecentHeartbeatAttempts.mockRejectedValueOnce(new Error('Transient database failure'));
+      const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+      const { notifyComplianceTimeout } = await import('../../src/notifications/compliance.js');
+
+      await expect(runComplianceHeartbeatJob({ limit: 1 }))
+        .resolves.toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+      expect(notifyComplianceTimeout).not.toHaveBeenCalled();
+    });
+
+    it('stops waiting on a hanging notification instead of holding the suite slot', async () => {
+      arrangeTimedOutRun();
+      const { notifyComplianceTimeout } = await import('../../src/notifications/compliance.js');
+      // Slack has no fetch timeout and sleeps a minute per rate-limited retry.
+      // The agent still holds its execution fence here, so the worker must not
+      // let that decide how long the slot stays occupied.
+      vi.mocked(notifyComplianceTimeout).mockReturnValueOnce(new Promise<void>(() => {}));
+      const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+
+      vi.useFakeTimers();
+      try {
+        const running = runComplianceHeartbeatJob({ limit: 1 });
+        await vi.advanceTimersByTimeAsync(20_000);
+        await expect(running).resolves.toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(mocks.releaseExecutionFence).toHaveBeenCalled();
+    });
   });
 
   it.each(['record', 'defer'])('keeps a timed-out run audit-only after a transient %s failure', async failure => {
@@ -693,6 +892,23 @@ describe('runComplianceHeartbeatJob', () => {
         dry_run: false,
       }),
     );
+  });
+
+  it('bounds the agent-controlled error quoted in the Unreachable headline', async () => {
+    // The stored headline is republished to the registry card, the change
+    // feed, and the owner's notification, so the quoted upstream error is
+    // flattened to one line and capped at the source (adcp#8320).
+    mocks.comply.mockRejectedValueOnce(new Error(
+      `<!channel> connection reset\nStatus: passing ${'A'.repeat(10_000)}`,
+    ));
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    await runComplianceHeartbeatJob({ limit: 1 });
+
+    const recorded = mocks.recordComplianceRun.mock.calls.at(-1)![0] as { headline: string };
+    expect(recorded.headline.startsWith('Unreachable: <!channel> connection reset Status: passing AAA')).toBe(true);
+    expect(recorded.headline).not.toContain('\n');
+    expect(recorded.headline.length).toBeLessThanOrEqual('Unreachable: '.length + 301);
   });
 
   it('records malformed saved Basic auth as audit-only setup evidence', async () => {

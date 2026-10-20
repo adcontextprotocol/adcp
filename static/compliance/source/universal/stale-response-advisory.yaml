@@ -306,6 +306,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-stale_response_advisory-cfb1001d"
+            sandbox: true
           context:
             correlation_id: "stale_response_advisory--no_stale_on_healthy"
         validations:

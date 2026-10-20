@@ -205,6 +205,13 @@
             "description": "ID of the package to assign the creative to",
             "x-entity": "package"
           },
+          "trackers": {
+            "type": "array",
+            "items": { "$ref": "/schemas/core/assignment-tracker.json" },
+            "minItems": 1,
+            "description": "Additional measurement trackers for this creative on this package only, fired alongside the creative's own trackers without changing the library creative, its revision, or its approval. Requires creative.supports_assignment_trackers: true; buyers MUST NOT send this field otherwise and unsupported agents MUST reject it with UNSUPPORTED_FEATURE. The seller MUST fire every accepted tracker at its declared event or reject the assignment through existing assignment errors; trackers MUST NOT be silently dropped. Creative and assignment trackers together count against the effective format's tracker-slot limits, including canonical params.slots[].max and legacy repeatable-group max_count. Each assignment tracker consumes one compatible slot occurrence without moving creative assets; reject if no allocation satisfies each slot's type, event role, and count constraints. Each accepted occurrence fires once per logical event; identical URLs are not deduplicated. A supplied list replaces the prior assignment tracker list. Omission on an additive upsert preserves existing assignment trackers. To clear them, atomically unassign then assign without this field, retaining any other authored assignment settings. Empty arrays and null are not accepted.",
+            "x-added-in": "3.3.0"
+          },
           "landing_page_url": {
             "$ref": "/schemas/core/macro-bearing-url.json",
             "description": "Override the creative's click-through destination for this creative on this package only, without changing the library creative. The override applies to every click-through destination for this assignment, including per-state destinations; partial application MUST be rejected. AdCP macros follow the same rules as the creative's own click-through without declarations, retaining existing 3.x compatibility behavior. Declarations on the original creative assets do not transfer to this URL. Requires creative.supports_assignment_landing_page: true; buyers MUST NOT send this field otherwise and sellers without the capability MUST reject it with UNSUPPORTED_FEATURE. The seller MUST serve the override or reject the assignment through existing assignment errors, including when an embedded HTML, JavaScript, or VAST click cannot be overridden. Creative approval remains valid; destination review applies to the assignment. Omission on an additive upsert preserves an existing override. To restore inheritance, atomically unassign then assign without this field; null is not accepted.",
@@ -264,6 +271,13 @@
               "operation": { "const": "assign" },
               "creative_id": { "type": "string", "minLength": 1, "x-entity": "creative" },
               "package_id": { "type": "string", "minLength": 1, "x-entity": "package" },
+              "trackers": {
+                "type": "array",
+                "items": { "$ref": "/schemas/core/assignment-tracker.json" },
+                "minItems": 1,
+                "description": "Additional measurement trackers for this creative on this package only, fired alongside the creative's own trackers without changing the library creative, its revision, or its approval. Requires creative.supports_assignment_trackers: true; buyers MUST NOT send this field otherwise and unsupported agents MUST reject it with UNSUPPORTED_FEATURE. The seller MUST fire every accepted tracker at its declared event or reject the assignment through existing assignment errors; trackers MUST NOT be silently dropped. Creative and assignment trackers together count against the effective format's tracker-slot limits, including canonical params.slots[].max and legacy repeatable-group max_count. Each assignment tracker consumes one compatible slot occurrence without moving creative assets; reject if no allocation satisfies each slot's type, event role, and count constraints. Each accepted occurrence fires once per logical event; identical URLs are not deduplicated. A supplied list replaces the prior assignment tracker list. Omission on an additive upsert preserves existing assignment trackers. To clear them, atomically unassign then assign without this field, retaining any other authored assignment settings. Empty arrays and null are not accepted.",
+                "x-added-in": "3.3.0"
+              },
               "landing_page_url": {
                 "$ref": "/schemas/core/macro-bearing-url.json",
                 "description": "Override the creative's click-through destination for this creative on this package only, without changing the library creative. The override applies to every click-through destination for this assignment, including per-state destinations; partial application MUST be rejected. AdCP macros follow the same rules as the creative's own click-through without declarations, retaining existing 3.x compatibility behavior. Declarations on the original creative assets do not transfer to this URL. Requires creative.supports_assignment_landing_page: true; buyers MUST NOT send this field otherwise and sellers without the capability MUST reject it with UNSUPPORTED_FEATURE. The seller MUST serve the override or reject the assignment through existing assignment errors, including when an embedded HTML, JavaScript, or VAST click cannot be overridden. Creative approval remains valid; destination review applies to the assignment. Omission on an additive upsert preserves an existing override. To restore inheritance, atomically unassign then assign without this field; null is not accepted.",
@@ -335,6 +349,46 @@
               },
               "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"
             }
+          },
+          {
+            "title": "Merge seller copy",
+            "description": "Declares that merged_creative_id, a seller-assigned creative currently assigned to package_id, is the same creative as creative_id. On success the seller moves that assignment's serving object, approval, weight, and placement routing to (creative_id, package_id) without re-trafficking it, and merged_creative_id no longer has an assignment on the package. Unlike replace, which traffics creative_id as a new object, merge preserves delivery continuity. Requires creative.supports_assignment_merge.",
+            "properties": {
+              "operation": { "const": "merge" },
+              "creative_id": { "type": "string", "minLength": 1, "description": "Buyer's creative that takes over the assignment. It need not already be assigned to package_id.", "x-entity": "creative" },
+              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" },
+              "merged_creative_id": { "type": "string", "minLength": 1, "description": "Seller-created creative (one that entered the library outside sync_creatives, under a seller-assigned creative_id) currently assigned to package_id that the seller verifies is the same creative as creative_id.", "x-entity": "creative" }
+            },
+            "required": ["operation", "creative_id", "package_id", "merged_creative_id"],
+            "additionalProperties": false,
+            "x-added-in": "3.3.0",
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "capability_gate": {
+                  "required_capability": "creative.supports_assignment_merge",
+                  "without_capability": "UNSUPPORTED_FEATURE"
+                },
+                "on_rejection": {
+                  "evaluation": "evaluate_every_merge_in_request; any_rejection_fails_whole_request_and_changes_no_assignment",
+                  "error_code": "CREATIVE_MERGE_REJECTED",
+                  "details": "error-details/creative-merge-rejected.json rejections[] one entry per rejected merge",
+                  "reasons": {
+                    "not_on_package": "merged_creative_id_unknown_or_not_seller_assigned_or_not_assigned_to_package_in_account; reported_uniformly",
+                    "not_supported": "seller_cannot_merge_this_pairing_on_this_package",
+                    "format_mismatch": "creative_id_cannot_take_over_merged_creative_serving_object",
+                    "content_mismatch": "seller_judges_not_same_creative"
+                  }
+                },
+                "on_pending_confirmation": "submitted_task; completion_artifact_carries_merges_or_CREATIVE_MERGE_REJECTED",
+                "on_success": {
+                  "readback": "response_merges_one_entry_per_applied_merge",
+                  "approval": "inherit_merged_creative_approval_on_package_and_must_not_re_review_unless_content_differs",
+                  "merged_creative": "remove_assignment_on_package_only; not_purged",
+                  "delivery_attribution": "report_under_creative_id_from_merge_time; prior_delivery_stays_under_merged_creative_id_and_must_not_be_restated"
+                }
+              },
+              "spec": "docs/creative/task-reference/sync_creatives.mdx#merging-a-seller-created-copy"
+            }
           }
         ]
       }
@@ -349,7 +403,7 @@
     "delete_missing": {
       "type": "boolean",
       "default": false,
-      "description": "When true, creatives not included in this sync will be archived. Use with caution for full library replacement. Invalid when creative_ids is provided — delete_missing applies to the entire library scope, not a filtered subset."
+      "description": "When true, creatives not included in this sync will be archived. Use with caution for full library replacement. A seller that declares creative.stable_creative_ids never archives creatives that entered its library outside sync_creatives; other sellers may archive them, so buyers SHOULD NOT use delete_missing against such sellers when seller-created creatives matter. Invalid when creative_ids is provided — delete_missing applies to the entire library scope, not a filtered subset."
     },
     "dry_run": {
       "type": "boolean",

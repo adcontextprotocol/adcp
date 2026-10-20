@@ -3,7 +3,9 @@
 /**
  * Replays static/compliance/source/test-vectors/hold-policy/vectors.json
  * through a reference grader for experimental hold_policy (#7661) and
- * extend_hold (media_buy.hold_extension, #8086).
+ * extend_hold (media_buy.hold_extension, #8086), hold ranking
+ * (media_buy.hold_ranking, #8086), and installment holds
+ * (media_buy.installment_holds, #8086).
  *
  * The grader below is the reference: implementers port it, not the prose.
  * It is deliberately small and reads only canonical proposals, canonical
@@ -50,6 +52,7 @@ const validate = {
   product: ajv.getSchema('/schemas/core/canonical-product.json'),
   error: ajv.getSchema('/schemas/core/error.json'),
   policy: ajv.getSchema('/schemas/core/hold-policy.json'),
+  deadlines: ajv.getSchema('/schemas/core/installment-deadlines.json'),
 };
 
 // ---------------------------------------------------------------------------
@@ -57,6 +60,8 @@ const validate = {
 // ---------------------------------------------------------------------------
 
 const FEATURE = 'media_buy.hold_policy';
+const RANKING = 'media_buy.hold_ranking';
+const INSTALLMENTS = 'media_buy.installment_holds';
 const DURATION = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/;
 
 /** Duration in milliseconds. A day is 86400 seconds on the UTC instant. */
@@ -88,8 +93,30 @@ const listsFeature = seller => (seller.experimental_features || []).includes(FEA
 
 const sameJson = (a, b) => (a === undefined || b === undefined ? a === b : jcs(a) === jcs(b));
 
+const ranked = h => h && ((h.hold_policy && 'rankable' in h.hold_policy) || 'hold_rank' in h);
+
 function undeclaredExperimental(seller, holders) {
-  return holders.some(h => h && (h.hold_policy || h.hold_placed_at)) && !listsFeature(seller);
+  if (holders.some(h => h && (h.hold_policy || h.hold_placed_at)) && !listsFeature(seller)) return true;
+  const features = seller.experimental_features || [];
+  if (holders.some(ranked) && !features.includes(RANKING)) return true;
+  return holders.some(h => h && 'holds' in h) && !features.includes(INSTALLMENTS);
+}
+
+const holdKey = entry => jcs({ product_id: entry.product_id, installment_ref: entry.installment_ref });
+
+/**
+ * holds is readback of one hold: each (product_id, installment_ref) once, only
+ * allocated products, and a proposal hold_rank no better than any entry's.
+ */
+function checkHolds(committed, violations) {
+  if (!committed.holds) return;
+  const keys = committed.holds.map(holdKey);
+  if (new Set(keys).size !== keys.length) violations.add('holds_duplicate_entry');
+  const allocated = new Set(committed.commercial_terms.purchases.map(p => p.product_id));
+  if (committed.holds.some(e => !allocated.has(e.product_id))) violations.add('holds_product_not_allocated');
+  if (committed.hold_rank && committed.holds.some(e => e.hold_rank > committed.hold_rank)) {
+    violations.add('hold_rank_better_than_entry');
+  }
 }
 
 /** min <= max <= total after normalizing; the schema cannot compare durations. */
@@ -108,7 +135,9 @@ function exceedsProducts(draftPolicy, productPolicies) {
     if (p.max_total_duration && draftPolicy.max_total_duration) {
       if (durationMs(draftPolicy.max_total_duration) > durationMs(p.max_total_duration)) return true;
     }
-    return draftPolicy.extendable === true && p.extendable !== true;
+    if (draftPolicy.extendable === true && p.extendable !== true) return true;
+    // A draft is rankable if any allocated product is: an exclusive draft over a rankable product overpromises.
+    return p.rankable === true && draftPolicy.rankable !== true;
   });
 }
 
@@ -140,6 +169,21 @@ function checkBounds(policy, committed, observation, violations, indeterminate) 
   }
 }
 
+/**
+ * Earliest booking_deadline or change_cutoff across the installments of the
+ * products the draft allocates, or undefined when none is declared. A hold
+ * never outlives it.
+ */
+function earliestInstallmentDeadline(draft, installments) {
+  const allocated = new Set(draft.commercial_terms.purchases.map(p => p.product_id));
+  const instants = (installments || [])
+    .filter(i => allocated.has(i.product_id))
+    .flatMap(i => [i.deadlines.booking_deadline, i.deadlines.change_cutoff])
+    .filter(Boolean)
+    .map(instant);
+  return instants.length ? Math.min(...instants) : undefined;
+}
+
 function gradeFinalize(vector) {
   const violations = new Set();
   const indeterminate = new Set();
@@ -148,6 +192,7 @@ function gradeFinalize(vector) {
   const schemaOk =
     validate.request(request) &&
     drafts.every(d => validate.proposal(d)) &&
+    (vector.installments || []).every(i => validate.deadlines(i.deadlines)) &&
     (taskError ? validate.error(taskError) && !response : validate.response(response));
   if (!schemaOk) return { violations: ['schema_invalid'], indeterminate: [] };
 
@@ -165,7 +210,7 @@ function gradeFinalize(vector) {
     violations.add('hold_policy_durations_unordered');
   }
   if (pre33) {
-    if (served.some(h => h.hold_policy || h.hold_placed_at)) violations.add('hold_policy_sent_below_3_3');
+    if (served.some(h => h.hold_policy || h.hold_placed_at || 'hold_rank' in h || 'holds' in h)) violations.add('hold_policy_sent_below_3_3');
   } else if (listsFeature(seller)) {
     const proposals = [...drafts, ...served.filter(h => h.proposal_status)];
     if (proposals.some(h => !h.hold_policy)) violations.add('hold_policy_missing');
@@ -187,6 +232,11 @@ function gradeFinalize(vector) {
         if (policy.available && draft.hold_policy) {
           checkBounds(draft.hold_policy, committed, observation, violations, indeterminate);
         }
+        if (policy.available) {
+          const cap = earliestInstallmentDeadline(draft, vector.installments);
+          if (cap !== undefined && instant(committed.expires_at) > cap) violations.add('hold_past_installment_deadline');
+        }
+        checkHolds(committed, violations);
       } else if (result.outcome === 'unable') {
         if (result.reason_code === 'hold_unavailable' && !policy.available) {
           violations.add('hold_unavailable_without_hold');
@@ -226,6 +276,39 @@ function gradeDraft(vector) {
 }
 
 /**
+ * Grade an exact retry against the original response. The original is graded
+ * as a finalize; the retry must return the same results, and a finalized entry
+ * keeps its original hold_placed_at and expires_at (a retry never restarts the
+ * clock). The retry is not checked against a new observation window.
+ */
+function gradeReplay(vector) {
+  const original = gradeFinalize({
+    seller: vector.seller,
+    source_drafts: vector.source_drafts,
+    request: vector.request,
+    observation: vector.original.observation,
+    response: vector.original.response,
+  });
+  const violations = new Set(original.violations);
+  if (violations.has('schema_invalid') || !validate.response(vector.replay.response)) {
+    return { violations: ['schema_invalid'] };
+  }
+  const [first, retry] = [vector.original.response.results, vector.replay.response.results];
+  first.forEach((result, i) => {
+    const again = retry[i];
+    const [a, b] = [result.proposal, again && again.proposal];
+    if (a && b && (a.hold_placed_at !== b.hold_placed_at || a.expires_at !== b.expires_at)) {
+      violations.add('replay_hold_restarted');
+    } else if (!sameJson(result, again)) {
+      violations.add('replay_response_changed');
+    }
+  });
+  if (retry.length !== first.length) violations.add('replay_response_changed');
+  if (!sameJson(vector.original.response.products, vector.replay.response.products)) violations.add('replay_response_changed');
+  return { violations: [...violations].sort() };
+}
+
+/**
  * Grade one extend_hold request (experimental, media_buy.hold_extension).
  * Successors carry hold_policy and hold_placed_at forward unchanged, so the
  * max_total_duration ceiling is measured from the root finalize placement.
@@ -256,6 +339,21 @@ function gradeExtend(vector) {
       if (!sameJson(successor.commercial_terms, src.commercial_terms)) violations.add('commercial_terms_changed');
       if (!sameJson(successor.hold_policy, src.hold_policy)) violations.add('hold_policy_not_carried_forward');
       if (successor.hold_placed_at !== src.hold_placed_at) violations.add('hold_placed_at_not_carried_forward');
+      // A live hold never moves to a worse position; the successor's snapshot is as of the extension.
+      if (src.hold_rank && successor.hold_rank > src.hold_rank) violations.add('hold_rank_worsened');
+      checkHolds(successor, violations);
+      if (!src.holds !== !successor.holds) violations.add('holds_changed_on_extension');
+      if (src.holds) {
+        // Extension transfers the same hold: the same entries, each at a position no worse than before.
+        const before = new Map(src.holds.map(e => [holdKey(e), e]));
+        const after = (successor.holds || []).map(e => [holdKey(e), e]);
+        if (after.length !== before.size || after.some(([k]) => !before.has(k))) {
+          violations.add('holds_changed_on_extension');
+        }
+        if (after.some(([k, e]) => before.has(k) && before.get(k).hold_rank && e.hold_rank > before.get(k).hold_rank)) {
+          violations.add('hold_rank_worsened');
+        }
+      }
       if (instant(successor.expires_at) <= instant(src.expires_at)) violations.add('extension_not_later');
       if (src.hold_policy && src.hold_policy.extendable !== true) violations.add('extended_while_not_extendable');
       if (src.hold_policy && src.hold_policy.max_total_duration && src.hold_placed_at) {
@@ -287,6 +385,12 @@ for (const vector of vectors.finalize_vectors) {
   });
 }
 
+for (const vector of vectors.replay_vectors) {
+  test(`replay vector ${vector.id}`, () => {
+    assert.deepEqual(gradeReplay(vector).violations, [...vector.expected.violations].sort(), vector.name);
+  });
+}
+
 for (const vector of vectors.draft_vectors) {
   test(`draft vector ${vector.id}`, () => {
     assert.deepEqual(gradeDraft(vector).violations, [...vector.expected.violations].sort(), vector.name);
@@ -303,7 +407,12 @@ for (const vector of vectors.extend_vectors) {
 // Fixture integrity
 // ---------------------------------------------------------------------------
 
-const allVectors = [...vectors.finalize_vectors, ...vectors.draft_vectors, ...vectors.extend_vectors];
+const allVectors = [
+  ...vectors.finalize_vectors,
+  ...vectors.replay_vectors,
+  ...vectors.draft_vectors,
+  ...vectors.extend_vectors,
+];
 
 function collectPolicies(node, out = []) {
   if (Array.isArray(node)) node.forEach(n => collectPolicies(n, out));
@@ -332,7 +441,19 @@ test('every case has at least one conformant and one non-conformant vector', () 
   }
   assert.deepEqual(
     [...cases.keys()].sort(),
-    ['agent_default', 'draft_consistency', 'extension', 'hold_bounds', 'hold_unavailable', 'terms_only_resolution', 'version_gate'],
+    [
+      'agent_default',
+      'draft_consistency',
+      'extension',
+      'hold_bounds',
+      'hold_unavailable',
+      'installment_deadline',
+      'installment_holds',
+      'ranking',
+      'replay',
+      'terms_only_resolution',
+      'version_gate',
+    ],
   );
   for (const [name, counts] of cases) {
     assert.ok(counts.ok > 0 && counts.bad > 0, `${name} needs both verdicts: ${JSON.stringify(counts)}`);
@@ -340,7 +461,7 @@ test('every case has at least one conformant and one non-conformant vector', () 
 });
 
 test('source drafts are well-formed canonical drafts with recomputable digests', () => {
-  for (const v of vectors.finalize_vectors) {
+  for (const v of [...vectors.finalize_vectors, ...vectors.replay_vectors]) {
     for (const d of v.source_drafts) {
       assert.ok(validate.proposal(d), `${v.id}: ${JSON.stringify(validate.proposal.errors)}`);
       assert.equal(d.proposal_status, 'draft');
@@ -373,17 +494,54 @@ test('source drafts are well-formed canonical drafts with recomputable digests',
 });
 
 test('observations are ordered and carry only the request window', () => {
-  for (const v of vectors.finalize_vectors) {
-    assert.deepEqual(Object.keys(v.observation).sort(), ['request_received_at', 'response_at'], v.id);
-    assert.ok(instant(v.observation.request_received_at) <= instant(v.observation.response_at), v.id);
+  const observed = [
+    ...vectors.finalize_vectors.map(v => [v.id, v.observation]),
+    ...vectors.replay_vectors.map(v => [v.id, v.original.observation]),
+  ];
+  for (const [id, observation] of observed) {
+    assert.deepEqual(Object.keys(observation).sort(), ['request_received_at', 'response_at'], id);
+    assert.ok(instant(observation.request_received_at) <= instant(observation.response_at), id);
+  }
+});
+
+test('installment vectors carry schema-valid deadlines, and only the ignored-product vector names an unallocated product', () => {
+  const installmentVectors = vectors.finalize_vectors.filter(f => f.case === 'installment_deadline');
+  assert.ok(installmentVectors.length > 0);
+  for (const v of installmentVectors) {
+    assert.ok(v.installments && v.installments.length > 0, `${v.id}: installments`);
+    const allocated = new Set(v.source_drafts.flatMap(d => d.commercial_terms.purchases.map(p => p.product_id)));
+    for (const record of v.installments) {
+      assert.deepEqual(Object.keys(record).sort(), ['deadlines', 'product_id'], v.id);
+      assert.ok(validate.deadlines(record.deadlines), `${v.id}: ${JSON.stringify(validate.deadlines.errors)}`);
+      if (v.id !== 'installment-deadline-on-unallocated-product-ignored') {
+        assert.ok(allocated.has(record.product_id), `${v.id}: ${record.product_id} is not allocated by a draft`);
+      }
+    }
+  }
+  for (const v of vectors.finalize_vectors.filter(f => f.installments)) assert.equal(v.case, 'installment_deadline', v.id);
+});
+
+test('a replay presents the original request and a retry whose idempotency key is unchanged', () => {
+  for (const v of vectors.replay_vectors) {
+    assert.ok(v.request.idempotency_key, v.id);
+    assert.equal(v.request.refinements.length, v.original.response.results.length, v.id);
+    assert.ok(v.request.refinements.every(r => r.action === 'finalize'), `${v.id}: finalize only`);
+    const ids = v.request.refinements.map(r => r.proposal_id);
+    assert.deepEqual(ids, v.source_drafts.map(d => d.proposal_id), `${v.id}: request order matches source_drafts`);
+    assert.deepEqual(v.replay.response.results.map(r => r.source_proposal_id), ids, `${v.id}: replay results follow the request`);
+    assert.equal(v.replay.response.replayed, true, `${v.id}: a retry response is flagged replayed`);
   }
 });
 
 test('hold_placed_at is on the wire only for 3.3 callers, and only on committed proposals that hold', () => {
-  for (const v of vectors.finalize_vectors) {
-    if (!v.response) continue;
+  const responses = [
+    ...vectors.finalize_vectors.map(v => [v, v.response]),
+    ...vectors.replay_vectors.flatMap(v => [[v, v.original.response], [v, v.replay.response]]),
+  ];
+  for (const [v, response] of responses) {
+    if (!response) continue;
     const pre33 = belowVersion(v.request.adcp_version, '3.3');
-    for (const r of v.response.results) {
+    for (const r of response.results) {
       const c = r.proposal;
       if (!c || !c.hold_placed_at) continue;
       assert.ok(c.hold_policy && c.hold_policy.available, `${v.id}: hold_placed_at without a hold`);
@@ -425,4 +583,38 @@ test('version comparison is by major and minor', () => {
   assert.equal(belowVersion('3.3-rc.1', '3.3'), false);
   assert.equal(belowVersion('3.10', '3.3'), false);
   assert.equal(belowVersion('2.5', '3.3'), true);
+});
+
+test('hold_rank appears only beside a rankable hold_policy, and rankable only with available true', () => {
+  for (const v of allVectors) {
+    if (v.expected.violations.includes('schema_invalid')) continue;
+    for (const p of collectPolicies(v)) if ('rankable' in p) assert.equal(p.available, true, v.id);
+    const walk = node => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== 'object') return;
+      if ('hold_rank' in node && !('installment_ref' in node)) {
+        assert.equal(node.hold_policy.rankable, true, `${v.id}: hold_rank needs rankable`);
+        assert.notEqual(node.proposal_status, 'draft', `${v.id}: no hold_rank on drafts`);
+      }
+      Object.values(node).forEach(walk);
+    };
+    walk(v);
+  }
+});
+
+test('holds appear only on committed proposals that hold inventory', () => {
+  for (const v of allVectors) {
+    if (v.expected.violations.includes('schema_invalid')) continue;
+    const walk = node => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== 'object') return;
+      if ('holds' in node) {
+        assert.equal(node.proposal_status, 'committed', v.id);
+        assert.equal(node.hold_policy.available, true, v.id);
+        assert.ok(node.hold_placed_at, v.id);
+      }
+      Object.values(node).forEach(walk);
+    };
+    walk(v);
+  }
 });
