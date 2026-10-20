@@ -1,4 +1,5 @@
 import { getClient, query } from './client.js';
+import { agentIdentityContainment } from './agent-identity-match.js';
 import type { BadgeRole } from './compliance-db.js';
 import {
   API_ACCESS_TIERS,
@@ -391,26 +392,33 @@ export async function selectGradingProfile(input: {
     // Repeat the ownership and role check under row locks. Route-level checks
     // provide a fast denial, while these locks make membership deletion, role
     // downgrade, and agent removal serialize with the mutation itself.
+    // The agent is matched by its registry identity, not by one spelling of
+    // its URL (#8322): `input.agentUrl` is the folded key, the owner's
+    // profile may hold `/mcp/`, and an exact match denied the owner their own
+    // agent here with `authorization_changed`. The org and role scoping
+    // (`mp.workos_organization_id = $1`, `om.role IN …`) is unchanged, so an
+    // actor still reaches only their own organization's profile.
+    const ownerAgents = agentIdentityContainment('mp.agents', input.agentUrl, 2);
     const authorization = input.actorKind === 'organization'
       ? await client.query(
           `SELECT 1 FROM member_profiles mp
            JOIN organization_memberships om
              ON om.workos_organization_id = mp.workos_organization_id
            WHERE mp.workos_organization_id = $1
-             AND mp.agents @> $2::jsonb
-             AND om.workos_user_id = $3
+             AND ${ownerAgents.sql}
+             AND om.workos_user_id = $${ownerAgents.nextPlaceholder}
              AND om.role IN ('owner', 'admin')
            LIMIT 1
            FOR SHARE OF mp, om`,
-          [input.actorOrgId, JSON.stringify([{ url: input.agentUrl }]), input.actorUserId],
+          [input.actorOrgId, ...ownerAgents.params, input.actorUserId],
         )
       : await client.query(
           `SELECT 1 FROM member_profiles mp
            WHERE mp.workos_organization_id = $1
-             AND mp.agents @> $2::jsonb
+             AND ${ownerAgents.sql}
            LIMIT 1
            FOR SHARE OF mp`,
-          [input.actorOrgId, JSON.stringify([{ url: input.agentUrl }])],
+          [input.actorOrgId, ...ownerAgents.params],
         );
     if (authorization.rowCount !== 1) {
       throw new GradingProfileConflictError(
