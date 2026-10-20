@@ -53,9 +53,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // shared locale tag its languages filter references.
   // opportunity.later_proposals adds a Duration reference to the shared
   // opportunity context reached from the proposal and purchase tools (+2).
-  assert.equal(report.definition_instances, 696);
-  assert.equal(report.unique_definitions, 189);
-  assert.equal(report.repeated_definitions, 133);
+  assert.equal(report.definition_instances, 704);
+  assert.equal(report.unique_definitions, 190);
+  assert.equal(report.repeated_definitions, 134);
   // The collection-mechanism enum is reached once through
   // billing_measurement.counting_mechanisms (measurement_terms).
   assert.ok(report.repeated_definition_bytes > 180_000);
@@ -181,7 +181,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 189);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 190);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(
