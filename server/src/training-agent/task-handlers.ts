@@ -481,6 +481,9 @@ const CANONICAL_ALLOWED_SLOT_ASSET_TYPES: Record<string, string[]> = {
 // Canonical-specific additive slot types that are valid for declared
 // refinements without belonging in the canonical's default slot set.
 const CANONICAL_ADDITIONAL_SLOT_ASSET_TYPES: Record<string, string[]> = {
+  // Generative hosted-video refinements can accept structured timed prompts
+  // instead of a rendered video file.
+  video_hosted: ['video_brief'],
   // Copy-bearing CTV activations add character-limited text slots such as
   // activation_message; they are not part of every VAST manifest by default.
   video_vast: ['text'],
@@ -3230,7 +3233,7 @@ import {
   getAccountStatus,
   getSeededCreativeFormats,
 } from './comply-test-controller.js';
-import { PUBLISHERS } from './publishers.js';
+import { PUBLISHERS, buildVendorMetricOptimizationCapability } from './publishers.js';
 import { applyPropertyListTargeting, listAgentUrlRejection, packageExtWithPropertyApplication } from './property-list-targeting.js';
 import {
   isMutatingTool,
@@ -7669,12 +7672,16 @@ function compactReportingCapabilityFields(): ReadonlySet<string> {
   return canonicalReportingCapabilityFields;
 }
 
-const COMPACT_FORMAT_OPTION_FIELDS = new Set([
-  'format_option_id', 'format_kind', 'display_name', 'publisher_domain',
-  'applies_to_channels', 'params', 'format_schema', 'format_shape',
-  'locale_policy', 'seller_preference', 'canonical_formats_only',
-  'experimental', 'sample_render_url',
-]);
+let canonicalFormatOptionFields: ReadonlySet<string> | undefined;
+
+/** Keep binding creative metadata as the closed compact schema evolves,
+ * while stripping legacy-only links and seller-internal fields. */
+function compactFormatOptionFields(): ReadonlySet<string> {
+  canonicalFormatOptionFields ??= new Set(Object.keys(
+    (loadSourceSchema('core/canonical-format-option.json').properties ?? {}) as Record<string, unknown>,
+  ));
+  return canonicalFormatOptionFields;
+}
 
 function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<string>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(source)
@@ -7705,7 +7712,7 @@ function compactLifecycleProduct(
   if (selectedFields.has('format_options') && Array.isArray(product.format_options)) {
     projected.format_options = product.format_options
       .filter(isRecord)
-      .map(option => pickCompactFields(option, COMPACT_FORMAT_OPTION_FIELDS));
+      .map(option => pickCompactFields(option, compactFormatOptionFields()));
   }
   if (selectedFields.has('pricing_options') && Array.isArray(product.pricing_options)) {
     projected.pricing_options = product.pricing_options
@@ -19935,9 +19942,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         // The single window the outcome_target planner states on event goals.
         attribution_windows: structuredClone(TRAINING_ATTRIBUTION_WINDOWS),
       },
-      vendor_metric_optimization: {
-        supported_targets: ['threshold_rate'],
-      },
+      // Derived from the catalog's product-level declarations so the rollup
+      // never lists a pair no product supports. Served on every negotiated
+      // version, like supported_targets: the object is additionalProperties:true.
+      vendor_metric_optimization: buildVendorMetricOptimizationCapability(),
       // Seller-level rollup of metric-optimization capabilities. Honest
       // union across catalog products (product-factory.ts assigns these
       // by channel mix). Gate scenarios — clicks_buy_flow / reach_buy_flow

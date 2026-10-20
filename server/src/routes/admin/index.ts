@@ -25,4 +25,5 @@ export { setupBrandEnrichmentRoutes } from './brand-enrichment.js';
 export { setupGeoRoutes } from './geo.js';
 export { setupAnnouncementsRoutes } from './announcements.js';
 export { setupIntegrityRoutes } from './integrity.js';
+export { setupRegistryReviewRoutes } from './registry-review.js';
 export { setupAdminAgentsRoutes } from './agents.js';

@@ -14,7 +14,7 @@ const yaml = require('js-yaml');
 const semver = require('semver');
 const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 const {
-  normalizeSubstitutions,
+  normalizeStoryboardSampleRequests,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 const {
   MCP_ROLE_PROFILE_TOOLS,
@@ -135,8 +135,20 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // webhook types (#8183) reach it through the account notification-config
 // enum, its enumDescriptions and examples, and the longer collection-selector
 // and response-collection descriptions (1_266_010 → 1_270_050 bytes measured
-// against main), bounded at 1_272_000.
-const PARITY_COMPILE_LIMIT = 1_272_000;
+// against main), bounded at 1_272_000. Explicit creative acceptance constraints
+// and verifier guidance add 5,486 bytes (1_270_981 -> 1_276_467 measured),
+// bounded at 1_280_000 to retain compilation of every storyboard fixture.
+// The experimental proposal.created notification type in the account
+// notification-config enums and the simulate_later_proposal scenario reach it
+// (1_281_908 bytes measured), within the beta.0 merge-window bound below.
+// Pre-beta.0 headroom: about 20 approved 3.3 PRs (consent rounds 1 and 2,
+// WG Session B items) each add a few KB through the seeded Product, proposal
+// and capability closures, and would otherwise conflict on this one line.
+// Bounded at 1_300_000 for the 3.3.0-beta.0 merge window (measured in-flight
+// peaks 1_280_490 to 1_283_645). Resume measured per-PR bounding after the cut.
+// This is the parity-test compiler allowance; the independent 4 MiB schema,
+// 22 MiB projection, and role model-context budgets are unchanged.
+const PARITY_COMPILE_LIMIT = 1_300_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -242,9 +254,9 @@ function collectStoryboardRequestFixtures() {
         const sourcePath = path.join(SOURCE_DIR, relativePath);
         if (!fs.existsSync(sourcePath)) continue;
         const sourceSchema = readJson(sourcePath);
-        const fixture = normalizeSubstitutions(step.sample_request, sourceSchema);
+        const prepared = normalizeStoryboardSampleRequests(storyboard, step, sourceSchema);
         if (!fixtures.has(relativePath)) fixtures.set(relativePath, []);
-        fixtures.get(relativePath).push(fixture);
+        fixtures.get(relativePath).push(...prepared);
       }
     }
   }
@@ -352,7 +364,7 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.equal(projected.properties.exactMode.const, 'direct');
   assert.equal(projected.properties.exactMode.type, undefined);
   assert.equal(projected.properties.strict.additionalProperties, undefined);
-  assert.equal(projected.properties.extensions.additionalProperties, true);
+  assert.equal(projected.properties.extensions.additionalProperties, undefined);
   assert.equal(projected.properties.ext, undefined);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');
 
@@ -368,8 +380,40 @@ test('model-context presentation keeps request shape and omits validation-only d
   });
   assert.deepEqual(negotiated.properties.ext, {
     type: 'object',
-    additionalProperties: true,
   });
+});
+
+test('model-context omits default object openness while retaining typed maps and payload values', () => {
+  const source = {
+    type: 'object',
+    properties: {
+      label: { type: 'string' },
+      open: { type: 'object', additionalProperties: true },
+      counts: { type: 'object', additionalProperties: { type: 'integer' } },
+      exact: { const: { additionalProperties: true } },
+    },
+    additionalProperties: true,
+  };
+  const projected = stripModelContextAnnotations(source);
+  assert.equal(source.additionalProperties, true, 'the source validation contract is unchanged');
+  assert.equal(projected.additionalProperties, undefined);
+  assert.equal(projected.properties.open.additionalProperties, undefined);
+  assert.deepEqual(projected.properties.counts.additionalProperties, { type: 'integer' });
+  assert.deepEqual(projected.properties.exact.const, { additionalProperties: true });
+
+  const ajv = new AjvDraft07({ strict: false });
+  const original = ajv.compile(source);
+  const prompt = ajv.compile(projected);
+  for (const value of [
+    {},
+    { open: { arbitrary: ['value'] }, counts: { impressions: 10 }, extra: 'allowed' },
+    { counts: { impressions: 'ten' } },
+    { exact: { additionalProperties: true } },
+    { exact: { additionalProperties: false } },
+    { label: 5 },
+  ]) {
+    assert.equal(prompt(value), original(value), JSON.stringify(value));
+  }
 });
 
 test('model-context pruning removes only unreachable root definitions', () => {
@@ -1828,6 +1872,9 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
   const mediaBuyTools = new Set(MCP_ROLE_PROFILE_TOOLS['media-buy']);
   const activeMediaBuyTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'media-buy')
+    // Tools added for the next minor join the role catalog when the package
+    // enters that line; the build rejects inactive tools in role profiles.
+    .filter(([, tool]) => !tool.added_in || semver.lte(tool.added_in, ACTIVE_SURFACE_VERSION))
     .filter(([, tool]) => !tool.deprecated_in || semver.gt(tool.deprecated_in, ACTIVE_SURFACE_VERSION))
     .map(([toolName]) => toolName)
     .filter(toolName => toolName !== 'build_creative');

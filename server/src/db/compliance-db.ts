@@ -1,6 +1,8 @@
 import type { ComplianceRunProvenance } from '../compliance/run-provenance.js';
 import { isAuthoritativeComplianceRun, type RunCompleteness } from '../compliance/run-publication.js';
 import { query, getClient, getClientWithDeadline, withDatabaseDeadline } from './client.js';
+import { agentIdentityContainment } from './agent-identity-match.js';
+import { registryAgentUrlKeySpellings } from './registry-agent-url-key.js';
 import { decrypt as decryptToken } from './encryption.js';
 import { logger as baseLogger } from '../logger.js';
 import { CatalogEventsDatabase } from './catalog-events-db.js';
@@ -484,12 +486,16 @@ export class ComplianceDatabase {
 
       let isCurrentlyPublic = false;
       if (emitPublicEvent && revoked.length > 0) {
+        // Any spelling of this agent's registry identity counts, the same
+        // way the notifier's `isAgentPublic` folds (#8321/#8322): the gate
+        // asks "did an owner list THIS agent publicly", and an owner who
+        // published it as `/mcp/` published the agent the folded key names.
         const visibilityResult = await client.query(
           `SELECT 1 FROM member_profiles mp
            CROSS JOIN LATERAL jsonb_array_elements(mp.agents) agent
-           WHERE agent->>'url' = $1 AND agent->>'visibility' = 'public'
+           WHERE agent->>'url' = ANY($1::text[]) AND agent->>'visibility' = 'public'
            LIMIT 1`,
-          [agentUrl],
+          [registryAgentUrlKeySpellings(agentUrl)],
         );
         isCurrentlyPublic = visibilityResult.rowCount === 1;
       }
@@ -625,14 +631,23 @@ export class ComplianceDatabase {
    * by the owning organization.
    */
   async hasOwnerAuth(agentUrl: string): Promise<boolean> {
+    // Both halves resolve the agent by its registry identity (#8322). The
+    // callers are fed agent URLs straight out of `member_profiles.agents`
+    // (see `getAgentsDueForCheck`), which may hold either spelling, so
+    // binding one spelling to `ac.agent_url` would miss the owner's saved
+    // credential for exactly the rows this change exists to reach. Every
+    // spelling asked for folds to the same agent, and the join still pins
+    // the credential and the profile to one organization.
+    const spellings = registryAgentUrlKeySpellings(agentUrl);
+    const ownerAgents = agentIdentityContainment('mp.agents', agentUrl, 2);
     const result = await query(
       `SELECT 1 FROM agent_contexts ac
        JOIN member_profiles mp ON mp.workos_organization_id = ac.organization_id
-       WHERE ac.agent_url = $1
-         AND mp.agents @> $2::jsonb
+       WHERE ac.agent_url = ANY($1::text[])
+         AND ${ownerAgents.sql}
          AND ac.auth_token_encrypted IS NOT NULL
        LIMIT 1`,
-      [agentUrl, JSON.stringify([{ url: agentUrl }])],
+      [spellings, ...ownerAgents.params],
     );
     return result.rows.length > 0;
   }
@@ -1351,6 +1366,50 @@ export class ComplianceDatabase {
     return result.rows[0] ?? null;
   }
 
+  /**
+   * Newest scheduled heartbeat attempts, newest first (adcp#8268).
+   *
+   * `orgId` widens rather than narrows compared with `getLatestComplianceAttempt`:
+   * a heartbeat is platform-triggered and only carries a `triggered_org_id`
+   * when the agent happens to have saved owner credentials, so an equality
+   * filter would hide exactly the credential-free agents whose timed-out
+   * heartbeats are most invisible. Unattributed runs are therefore visible to
+   * any owner of the URL, while a run charged to another organization's saved
+   * credentials stays with that organization — its coverage and duration would
+   * otherwise tell a co-claiming org that someone else holds working
+   * credentials. Pass `null` for operator/worker reads that need the whole
+   * stream.
+   *
+   * `observations_json` comes back only on the newest row. It is the only row
+   * whose storyboard coverage is projected, and failure rows store an uncapped
+   * agent error message, so fetching the rest would move unbounded text over
+   * the wire for nothing.
+   */
+  async getRecentHeartbeatAttempts(
+    agentUrl: string,
+    orgId: string | null,
+    limit = 10,
+  ): Promise<Array<Pick<ComplianceRun,
+    'id' | 'tested_at' | 'completeness' | 'headline' | 'total_duration_ms' | 'provenance_json' | 'observations_json'>>> {
+    const boundedLimit = Number.isInteger(limit) ? Math.max(1, Math.min(limit, 50)) : 10;
+    const result = await query(
+      `SELECT id, tested_at, completeness, headline, total_duration_ms, provenance_json,
+              CASE WHEN tested_at = MAX(tested_at) OVER () THEN observations_json END AS observations_json
+         FROM (
+           SELECT id, tested_at, completeness, LEFT(headline, 200) AS headline,
+                  total_duration_ms, provenance_json, observations_json
+             FROM agent_compliance_runs
+            WHERE agent_url = $1 AND triggered_by = 'heartbeat' AND dry_run = FALSE
+              AND ($3::text IS NULL OR triggered_org_id IS NULL OR triggered_org_id = $3)
+            ORDER BY tested_at DESC
+            LIMIT $2
+         ) recent
+        ORDER BY tested_at DESC`,
+      [agentUrl, boundedLimit, orgId],
+    );
+    return result.rows;
+  }
+
   /** Bounded operator snapshot, including audit-only heartbeat evidence. */
   async getRecentOperationalRuns(limit: number = 25): Promise<Array<{
     id: string;
@@ -1971,6 +2030,13 @@ export class ComplianceDatabase {
   ): Promise<ResolvedOwnerAuth | undefined> {
     try {
       await checkpoint?.();
+      // Same as `hasOwnerAuth`: both halves resolve the agent by its
+      // registry identity (#8322), and the join keeps the credential inside
+      // the organization that saved it. `ORDER BY ac.updated_at` below
+      // already decided between co-claiming orgs; the fold only enlarges the
+      // candidate set to the other spelling of the same agent.
+      const spellings = registryAgentUrlKeySpellings(agentUrl);
+      const ownerAgents = agentIdentityContainment('mp.agents', agentUrl, 2);
       const result = await query(
         `SELECT ac.organization_id,
                 ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type,
@@ -1985,8 +2051,8 @@ export class ComplianceDatabase {
          FROM agent_contexts ac
          JOIN member_profiles mp
            ON mp.workos_organization_id = ac.organization_id
-         WHERE ac.agent_url = $1
-           AND mp.agents @> $2::jsonb
+         WHERE ac.agent_url = ANY($1::text[])
+           AND ${ownerAgents.sql}
            AND (
              ac.auth_token_encrypted IS NOT NULL
              OR ac.oauth_access_token_encrypted IS NOT NULL
@@ -1998,7 +2064,7 @@ export class ComplianceDatabase {
            )
          ORDER BY ac.updated_at DESC NULLS LAST
          LIMIT 1`,
-        [agentUrl, JSON.stringify([{ url: agentUrl }])],
+        [spellings, ...ownerAgents.params],
       );
 
       await checkpoint?.();
@@ -2526,13 +2592,15 @@ export class ComplianceDatabase {
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${agentUrl}`],
       );
+      // Folds spellings of the agent's registry identity, like the opt-out
+      // gate above and the notifier's `isAgentPublic` (#8321/#8322).
       const visibilityResult = await client.query(
         `SELECT 1
          FROM member_profiles mp
          CROSS JOIN LATERAL jsonb_array_elements(mp.agents) agent
-         WHERE agent->>'url' = $1 AND agent->>'visibility' = 'public'
+         WHERE agent->>'url' = ANY($1::text[]) AND agent->>'visibility' = 'public'
          LIMIT 1`,
-        [agentUrl],
+        [registryAgentUrlKeySpellings(agentUrl)],
       );
       if (visibilityResult.rowCount !== 1) {
         await client.query('COMMIT');

@@ -503,12 +503,14 @@
       text-decoration-thickness: 1px;
     }
     .verification-spec-untested .verification-spec-mark,
-    .verification-spec-unknown .verification-spec-mark {
+    .verification-spec-unknown .verification-spec-mark,
+    .verification-spec-not_applicable .verification-spec-mark {
       background: var(--color-bg-subtle);
       color: var(--color-text-muted);
     }
     .verification-spec-untested code,
-    .verification-spec-unknown code {
+    .verification-spec-unknown code,
+    .verification-spec-not_applicable code {
       background: var(--color-bg-subtle);
       border-color: var(--color-border);
       color: var(--color-text-secondary);
@@ -2060,7 +2062,7 @@
     // The public verdict and history include only complete authoritative runs.
     // Show the newest owner-visible attempt separately so a timed-out run does
     // not leave owners thinking monitoring stopped at the older verdict date.
-    function renderLatestComplianceAttempt(attempt, agentUrl, orgId) {
+    function renderLatestComplianceAttempt(attempt, agentUrl, orgId, heartbeatTimeout) {
       if (!attempt?.id || !attempt?.tested_at) return '';
 
       const authoritative = attempt.is_authoritative === true && attempt.completeness === 'complete';
@@ -2087,12 +2089,45 @@
         : '';
       const diagnosticsUrl = `/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/diagnostics?run_id=${encodeURIComponent(attempt.id)}${orgId ? `&org=${encodeURIComponent(orgId)}` : ''}`;
 
+      // adcp#8268 — when the newest heartbeat timed out and it is this very
+      // run, fold its budget and streak detail in here instead of rendering a
+      // near-identical second block underneath.
+      const timeoutDetail = heartbeatTimeout?.summary && heartbeatTimeout.run_id === attempt.id
+        ? `<div>${escapeHtml(heartbeatTimeout.summary)}</div>`
+        : '';
+
       return `<div class="agent-latest-attempt${authoritative ? '' : ' agent-latest-attempt--incomplete'}">
         <div class="agent-latest-attempt-title">Latest attempt: ${label}</div>
         <div>${escapeHtml(testedAt)} · ${escapeHtml(source)}${target}${escapeHtml(coverage)}</div>
         ${blocker}
+        ${timeoutDetail}
         ${authoritative ? '' : '<div>This attempt did not update the public result.</div>'}
         <a href="${escapeHtml(diagnosticsUrl)}" target="_blank" rel="noopener">View run diagnostics (JSON)</a>
+      </div>`;
+    }
+
+    // adcp#8268 — a heartbeat that runs out of time is recorded audit-only and
+    // never published, so without this the card silently keeps showing the
+    // last good run. The server returns `heartbeat_timeout` only to owners and
+    // operators, and only while the newest heartbeat timed out.
+    //
+    // `summary` is rendered as the server wrote it. The same sentence goes out
+    // in the owner's DM, and re-deriving it here would give us two copies of
+    // the wording in two languages that drift.
+    function heartbeatTimeoutDetail(timeout, latestAttempt) {
+      if (!timeout?.summary) return '';
+      // Same run as the latest-attempt block above — merge into it rather than
+      // printing a second box with the same timestamp and coverage.
+      if (latestAttempt?.id && latestAttempt.id === timeout.run_id) return '';
+      return `<div>${escapeHtml(timeout.summary)}</div>`;
+    }
+
+    function renderHeartbeatTimeout(timeout, latestAttempt) {
+      const detail = heartbeatTimeoutDetail(timeout, latestAttempt);
+      if (!detail) return '';
+      return `<div class="agent-latest-attempt agent-latest-attempt--incomplete">
+        <div class="agent-latest-attempt-title">Last heartbeat timed out</div>
+        ${detail}
       </div>`;
     }
 
@@ -2246,7 +2281,8 @@
             ${hasAuth
               ? '<div style="padding: var(--space-4) 0; color: var(--color-text-secondary); font-size: var(--text-sm);">Auth configured' + (authInfo?.auth_type === 'oauth' ? ' via OAuth' : authInfo?.auth_type === 'oauth_client_credentials' ? ' via OAuth client credentials' : '') + '. Compliance check will run on the next heartbeat cycle.</div>'
               : buildConnectForm(escapeHtml(agent.url), authInfo?.agent_context_id)}
-            ${renderLatestComplianceAttempt(cs?.latest_attempt, agent.url, orgId)}
+            ${renderLatestComplianceAttempt(cs?.latest_attempt, agent.url, orgId, cs?.heartbeat_timeout)}
+            ${renderHeartbeatTimeout(cs?.heartbeat_timeout, cs?.latest_attempt)}
             ${visibilitySelectorHtml}
             ${renderVerificationPanel(null, agent.url, hasAuth)}
             <div class="agent-meta-row">
@@ -2357,7 +2393,8 @@
             </div>
             ${cs.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
             ${storyboardSummary}
-            ${renderLatestComplianceAttempt(cs.latest_attempt, agent.url, orgId)}
+            ${renderLatestComplianceAttempt(cs.latest_attempt, agent.url, orgId, cs.heartbeat_timeout)}
+            ${renderHeartbeatTimeout(cs.heartbeat_timeout, cs.latest_attempt)}
             ${clickableTrackPills ? '<div class="agent-tracks" title="' + escapeHtml(complianceStatusTitle) + '">' + clickableTrackPills + '</div>' : ''}
             <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
             ${sparkline}
@@ -2745,14 +2782,17 @@
           hint = `Compliance check will run ${nextCheckCopy}. Earn AAO Verified (Spec) by declaring specialisms in <code>get_adcp_capabilities</code> and passing their storyboards. <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.`;
         }
 
+        const gradedVersion = typeof cs?.adcp_version === 'string' ? cs.adcp_version : null;
         const renderSpecialismChip = (s) => {
           const st = specialismStatus[s] || 'untested';
           const className = `verification-spec-chip verification-spec-${st}`;
           const symbol = st === 'passing' ? '<span class="verification-spec-mark" aria-hidden="true">✓</span>'
             : st === 'failing' ? '<span class="verification-spec-mark" aria-hidden="true">✕</span>'
+            : st === 'not_applicable' ? '<span class="verification-spec-mark" aria-hidden="true">–</span>'
             : '<span class="verification-spec-mark" aria-hidden="true">·</span>';
           const title = st === 'passing' ? 'Storyboard passing'
             : st === 'failing' ? 'Storyboard failing'
+            : st === 'not_applicable' ? `Not applicable to the AdCP ${gradedVersion || 'release'} compliance bundle this run graded — AdCP introduced it later`
             : st === 'unknown' ? 'Specialism not recognized — check spelling or update agent capabilities'
             : 'Not yet tested';
           return `<span class="${className}" title="${escapeHtml(title)}">${symbol}<code>${escapeHtml(s)}</code></span>`;
