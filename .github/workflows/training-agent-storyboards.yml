@@ -739,7 +739,7 @@ jobs:
           # three signed-request route profiles; storyboard applicability is
           # reported separately in the aggregate summary.
           MIN_CLEAN: 136
-          MIN_PASSED: 669
+          MIN_PASSED: 680
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
