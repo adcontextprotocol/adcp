@@ -244,6 +244,10 @@ if [[ "$mode" == upload ]]; then
   [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]] ||
     die "Missing R2 publication credentials"
   export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-auto}"
+  # Bound every S3 call the way the verification fetches are bounded. The run
+  # makes three calls per object over a long loop; a single stalled socket on
+  # CLI defaults would hang the publication rather than fail it.
+  aws_timeouts=(--cli-connect-timeout 20 --cli-read-timeout 120)
 
   existing_body="$work/existing"
   existing_type="$work/existing-type"
@@ -262,11 +266,11 @@ if [[ "$mode" == upload ]]; then
     rm -f "$existing_body" "$existing_type" "$head_error"
     if aws s3api head-object --bucket "$BUCKET" --key "$key" \
         --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
-        --no-cli-pager --query ContentType --output text \
+        --no-cli-pager --query ContentType --output text "${aws_timeouts[@]}" \
         </dev/null >"$existing_type" 2>"$head_error"; then
       aws s3 cp "s3://${BUCKET}/${key}" "$existing_body" \
         --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
-        --no-cli-pager --no-progress --only-show-errors </dev/null
+        --no-cli-pager --no-progress --only-show-errors "${aws_timeouts[@]}" </dev/null
       cmp -s "$body_path" "$existing_body" ||
         die "R2 object ${key} exists with different bytes; refusing overwrite"
       # Right bytes served under the wrong type is the same silent-wrong-answer
@@ -288,7 +292,8 @@ if [[ "$mode" == upload ]]; then
       aws s3api put-object --bucket "$BUCKET" --key "$key" --body "$body_path" \
         --if-none-match '*' --endpoint-url "$endpoint" \
         --region "$AWS_DEFAULT_REGION" --no-cli-pager \
-        --cache-control "$immutable_cache" --content-type "$content_type" </dev/null >/dev/null
+        --cache-control "$immutable_cache" --content-type "$content_type" \
+        "${aws_timeouts[@]}" </dev/null >/dev/null
       created=$((created + 1))
     fi
     node "$FENCE_SCRIPT" current </dev/null
