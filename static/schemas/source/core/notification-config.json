@@ -53,8 +53,7 @@
     "product_payload_view": {
       "type": "string",
       "enum": ["canonical", "legacy"],
-      "default": "legacy",
-      "description": "Product webhook representation selected by this subscriber. Use canonical with lifecycle_tools.list_products; legacy is the default for 3.x get_products consumers. Sellers emit exactly canonical_product/canonical_pricing_options or product/pricing_options accordingly. Valid only when event_types includes a product.* event."
+      "description": "Product webhook representation selected by this subscriber. Use canonical with lifecycle_tools.list_products; legacy is for 3.x get_products consumers. When absent, sellers emit the legacy representation. Sellers emit exactly canonical_product/canonical_pricing_options or product/pricing_options accordingly. Valid only when event_types includes a product.* event. The default is stated here rather than as a schema default so serializers that materialize defaults do not add the field to configs without a product.* event. Sellers echoing configs on sync_accounts or list_accounts MUST NOT add product_payload_view to a config whose event_types includes no product.* event."
     },
     "authentication": {
       "type": "object",
