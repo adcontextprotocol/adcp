@@ -74,6 +74,16 @@ Each change record names the changed resource, action, server-derived origin,
 changed paths, optional revision, and an allowlisted read-only
 `repair.task` hint. It deliberately does not include full before/after values.
 
+`resource_revision` carries the resource family's seller revision when one is
+defined: `revision` for a media buy or account, and `seller_revision` for a
+creative. It is the value immediately after that change, in the same JSON type
+the read uses, so a buyer can tell whether a read it already holds reflects
+the change; a read returning a different value reflects later changes. The seller advances that revision on every committed change from
+any origin, including the changes this feed records for seller operators,
+seller automation and connected platforms. Families without a seller revision
+(package, creative assignment, audience, catalog, event source, property list,
+product and signal as of 3.3) omit it, and the buyer repairs by rereading. A record coalesced under its media buy may carry the media buy's `revision`, because the repair read is [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). Records for state the revision does not cover, such as `health` and `impairments`, omit it.
+
 ### `changed_paths`
 
 `changed_paths` lists RFC 6901 JSON Pointers to the material fields that
@@ -183,6 +193,7 @@ same `change_id`, `resource`, `action`, `origin.kind`, and `changed_paths`, minu
         "kind": "connected_platform",
         "connection_id": "conn_social_primary"
       },
+      "resource_revision": 12,
       "changed_paths": ["/name", "/assets/0"],
       "repair": { "task": "list_creatives" }
     }
