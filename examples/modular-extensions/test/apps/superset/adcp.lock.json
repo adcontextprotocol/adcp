@@ -1,0 +1,43 @@
+{
+  "core": {
+    "version": "3.3.0",
+    "bundle_digest": "sha256:26d4e59152abc1d76cd451eef8f902347f780f00e057f03613ffbf5eb25550a8"
+  },
+  "extensions": {
+    "linear_tv_indexed_cpp": {
+      "uri": "https://extensions.adcontextprotocol.org/linear-tv-indexed-cpp",
+      "version": "1.5.0",
+      "digest": "sha256:52f80ee6d7a35c6a803f3967c13ab7005d60d1857993437e608caab0ddde2bd1",
+      "source": "package @adcp-ext/linear-tv-indexed-cpp",
+      "module": "../../../packages/ext-linear-tv-indexed-cpp"
+    },
+    "makegood_units": {
+      "uri": "https://extensions.adcontextprotocol.org/makegood-units",
+      "version": "1.5.0",
+      "digest": "sha256:0debf79a73907c27500528c005c03948e3256a1128e2e74b25d58c7b6ac93bd4",
+      "source": "package @adcp-ext/makegood-units",
+      "module": "../../../packages/ext-makegood-units"
+    },
+    "rate_card_index": {
+      "uri": "https://extensions.adcontextprotocol.org/rate-card-index",
+      "version": "1.5.0",
+      "digest": "sha256:a24ab2ac5282278300002b0fd40b8f2bd625f8197ef6fc4130e06fb417d4d580",
+      "source": "package @adcp-ext/rate-card-index",
+      "module": "../../../packages/ext-rate-card-index"
+    },
+    "seller_adjustable_terms": {
+      "uri": "https://extensions.adcontextprotocol.org/seller-adjustable-terms",
+      "version": "1.6.0",
+      "digest": "sha256:41d05441540d02b84aafa4fa26d94094250c8337a45f3509f7c55ef7867773a9",
+      "source": "package @adcp-ext/seller-adjustable-terms",
+      "module": "../../../packages/ext-seller-adjustable-terms"
+    },
+    "seller_adjustable_terms_v1_0": {
+      "uri": "https://extensions.adcontextprotocol.org/seller-adjustable-terms",
+      "version": "1.0.0",
+      "digest": "sha256:856330354341524a6b3246e48527cca92b27d2eedeb474305da60dbc64f20b66",
+      "source": "registry (schema-only)",
+      "module": "adcp-sdk/ext/seller_adjustable_terms_v1_0"
+    }
+  }
+}

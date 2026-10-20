@@ -10,6 +10,10 @@
       "reason": "Simulation scenarios need a real Postgres (DATABASE_URL) and a single forked worker. Run them on demand with `npm run test:simulation`."
     },
     {
+      "path": "examples/modular-extensions/**",
+      "reason": "Self-contained example for the modular AdCP proposal (docs/reference/proposals/modular-adcp.mdx). It has its own package.json and lockfile, so the root install does not cover it. Run it with `cd examples/modular-extensions && npm ci && npm run build && npm test`."
+    },
+    {
       "path": "tests/e2e/**",
       "reason": "Playwright smoke scripts that drive a running app through dev login (TARGET_URL). Run them manually with `node tests/e2e/<name>.smoke.js` against a local server."
     }

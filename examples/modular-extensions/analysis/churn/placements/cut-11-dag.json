@@ -1,0 +1,55 @@
+{
+ "core": [],
+ "core?orphan": [],
+ "protocol": [
+  "core"
+ ],
+ "identity": [
+  "protocol"
+ ],
+ "account": [
+  "identity"
+ ],
+ "brand": [
+  "identity"
+ ],
+ "creative": [
+  "brand",
+  "account"
+ ],
+ "signals": [
+  "protocol"
+ ],
+ "inventory": [
+  "creative",
+  "identity"
+ ],
+ "discovery": [
+  "inventory",
+  "signals",
+  "account"
+ ],
+ "media-buy": [
+  "discovery"
+ ],
+ "governance": [
+  "media-buy"
+ ],
+ "x-reporting-delivery": [
+  "media-buy"
+ ],
+ "x-sponsored-intelligence": [
+  "brand",
+  "protocol"
+ ],
+ "x-trusted-match": [
+  "governance"
+ ],
+ "x-compliance-testing": [
+  "governance",
+  "x-reporting-delivery"
+ ],
+ "x-measurement": [
+  "media-buy"
+ ]
+}

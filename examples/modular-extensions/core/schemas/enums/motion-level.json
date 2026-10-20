@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/motion-level.json",
+  "title": "Creative Motion Level",
+  "description": "Motion class of a rendered creative, mirroring AdCOM creative attributes 21 (Static Visual), 22 (Limited Motion / Cinemagraph), and 23 (Full-Motion Video). Sellers constrain the accepted level on a format option; buyers declare the level their creative carries. OpenRTB bridges map the value to `attr` on the bid and `battr` on the request.",
+  "type": "string",
+  "enum": [
+    "static",
+    "limited_motion",
+    "full_motion"
+  ]
+}

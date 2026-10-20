@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/macro-encoding.json",
+  "title": "Macro Encoding",
+  "description": "Exact encoding profile applied to a concrete substitution value. `rfc3986` encodes UTF-8 bytes outside the RFC 3986 unreserved set once per depth. `iab_vast_uri` follows the cited IAB VAST macro registry, including its array serialization rules, and is exactly one pass.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["none", "rfc3986", "iab_vast_uri"]
+    },
+    "depth": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": ["kind", "depth"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "none" } }, "required": ["kind"] },
+      "then": { "properties": { "depth": { "const": 0 } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "rfc3986" } }, "required": ["kind"] },
+      "then": { "properties": { "depth": { "minimum": 1 } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "iab_vast_uri" } }, "required": ["kind"] },
+      "then": { "properties": { "depth": { "const": 1 } } }
+    }
+  ]
+}

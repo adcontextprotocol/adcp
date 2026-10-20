@@ -1,0 +1,380 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Rate Card Index Extension",
+  "definitions": {
+    "RateCard": {
+      "title": "Rate Card",
+      "description": "Price per pricing unit = base_price, times each fired index row in row order, then plus each fired premium. The parent pricing option's currency and pricing_model apply. quoted_selection is the selection the parent fixed_price quotes, so a buyer can reproduce fixed_price and price_breakdown.",
+      "type": "object",
+      "properties": {
+        "base_price": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Price before any row (Ster: basisjaarprijs)."
+        },
+        "quoted_selection": {
+          "$ref": "#/definitions/Selection"
+        },
+        "premium_basis": {
+          "type": "string",
+          "enum": [
+            "indexed",
+            "base"
+          ],
+          "default": "indexed",
+          "description": "What a premium rate applies to. adcp#7955 hard-codes indexed; GAM and most EU digital cards use base (rate-card market survey)."
+        },
+        "rounding": {
+          "$ref": "#/definitions/Rounding"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RateCardRow"
+          },
+          "minItems": 1,
+          "maxItems": 500
+        }
+      },
+      "required": [
+        "base_price",
+        "rounding",
+        "rows"
+      ],
+      "additionalProperties": false,
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "rate_card_quote": {
+            "evaluation": "base_x_first_fired_index_row_per_dimension_then_premiums_on_premium_basis_rounded_as_declared",
+            "quote_differs": "warning_seller_quote_binds",
+            "index_points_target": "targets_a_dimension_with_a_fired_index_row",
+            "provisional_rows": "evaluate_at_cap_so_the_result_is_a_ceiling",
+            "on_violation": "warn"
+          }
+        }
+      }
+    },
+    "RateCardBinding": {
+      "title": "Rate Card Binding",
+      "description": "The card signed for one purchase, and the selection it was priced at.",
+      "type": "object",
+      "properties": {
+        "purchase_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Position in commercial_terms.purchases."
+        },
+        "selection": {
+          "$ref": "#/definitions/Selection"
+        },
+        "rate_card": {
+          "$ref": "#/definitions/RateCard"
+        }
+      },
+      "required": [
+        "purchase_index",
+        "selection",
+        "rate_card"
+      ],
+      "additionalProperties": false,
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "rate_card_binding": {
+            "purchase_index": "less_than_purchases_length",
+            "price": "evaluation_at_selection_equals_purchase_pricing_fixed_price",
+            "on_violation": "reject_proposal"
+          }
+        }
+      }
+    },
+    "Dimension": {
+      "type": "string",
+      "pattern": "^(always|[a-z][a-z0-9_]*(:[a-z][a-z0-9_]*)?)$",
+      "description": "Open vocabulary. Well-known values: always, format_option, placement, month, spot_length, buying_option, position, market, audience, geo. Vendor dimensions are namespaced (acmetv:daypart). A dimension the evaluator does not know makes the card non-evaluable locally; the seller's quote still binds (versioning.mdx:64-65)."
+    },
+    "Selection": {
+      "title": "Rate Card Selection",
+      "type": "object",
+      "description": "Selected value per dimension, plus the flight start used for row windows.",
+      "properties": {
+        "values": {
+          "type": "object",
+          "description": "Dimension name to selected value, e.g. {\"month\": \"2027-03\", \"spot_length\": \"20s\"}.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "format_option_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/core/format-option-ref.json"
+        },
+        "start_time": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "additionalProperties": false
+    },
+    "Rounding": {
+      "title": "Rate Card Rounding",
+      "type": "object",
+      "description": "Seller-declared rounding. Ster rounds intermediate results to whole euros (rate-card market survey), which a fixed 4-decimal rule cannot reproduce.",
+      "properties": {
+        "step": {
+          "type": "string",
+          "enum": [
+            "each_row",
+            "final"
+          ]
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "half_away_from_zero",
+            "half_even"
+          ]
+        }
+      },
+      "required": [
+        "step",
+        "decimals",
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "RateCardRow": {
+      "title": "Rate Card Row",
+      "oneOf": [
+        {
+          "$ref": "#/definitions/IndexRow"
+        },
+        {
+          "$ref": "#/definitions/IndexPointsRow"
+        },
+        {
+          "$ref": "#/definitions/PremiumRow"
+        }
+      ]
+    },
+    "IndexRow": {
+      "title": "Index Row",
+      "description": "Multiplies the running price. First applicable row per dimension fires.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "index"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "dimension": {
+          "$ref": "#/definitions/Dimension"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Fires when the selection's value for dimension equals this. Absent for dimension always."
+        },
+        "format_option_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/core/format-option-ref.json",
+          "description": "For dimension format_option: fires when the selection carries this core format option reference."
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Inclusive, compared with selection.start_time."
+        },
+        "valid_until": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Exclusive."
+        },
+        "factor": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "final",
+            "provisional"
+          ],
+          "default": "final",
+          "description": "provisional: the factor is fixed after booking (Ster market index). The evaluator uses cap, so the result is a ceiling."
+        },
+        "cap": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "provisional only: the fixed factor does not exceed this."
+        },
+        "fixed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "provisional only: when the seller fixes the factor."
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "dimension"
+      ],
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "status": {
+            "const": "provisional"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "cap",
+          "fixed_at"
+        ]
+      },
+      "else": {
+        "required": [
+          "factor"
+        ]
+      }
+    },
+    "IndexPointsRow": {
+      "title": "Index Points Row",
+      "description": "Adds points/100 to the factor of the fired index row on target_dimension (Ster: preferred position +30 points on the buying option index).",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "index_points"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "dimension": {
+          "$ref": "#/definitions/Dimension"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Fires when the selection's value for dimension equals this. Absent for dimension always."
+        },
+        "format_option_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/core/format-option-ref.json",
+          "description": "For dimension format_option: fires when the selection carries this core format option reference."
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Inclusive, compared with selection.start_time."
+        },
+        "valid_until": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Exclusive."
+        },
+        "points": {
+          "type": "number"
+        },
+        "target_dimension": {
+          "$ref": "#/definitions/Dimension"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "dimension",
+        "points",
+        "target_dimension"
+      ],
+      "additionalProperties": false
+    },
+    "PremiumRow": {
+      "title": "Premium Row",
+      "description": "Adds (fee) or subtracts (discount) a rate of the premium basis, or a fixed amount. Premiums do not compound with each other.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "fee",
+            "discount"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "dimension": {
+          "$ref": "#/definitions/Dimension"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Fires when the selection's value for dimension equals this. Absent for dimension always."
+        },
+        "format_option_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/core/format-option-ref.json",
+          "description": "For dimension format_option: fires when the selection carries this core format option reference."
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Inclusive, compared with selection.start_time."
+        },
+        "valid_until": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Exclusive."
+        },
+        "rate": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "amount": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "dimension"
+      ],
+      "additionalProperties": false,
+      "if": {
+        "required": [
+          "rate"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "amount"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "amount"
+        ]
+      }
+    }
+  }
+}

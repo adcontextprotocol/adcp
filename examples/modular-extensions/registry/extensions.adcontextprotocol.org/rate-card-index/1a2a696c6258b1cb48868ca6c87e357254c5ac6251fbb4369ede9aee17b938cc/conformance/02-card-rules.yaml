@@ -1,0 +1,124 @@
+id: rate_card_index/card_rules
+version: "1.0.0"
+title: "Rate card rules at discovery and in signed terms"
+category: extension_conformance
+extension: rate-card-index
+summary: "A Ster-style card with a provisional market index; each broken card rule inside signed terms is rejected."
+narrative: |
+  The fixtures carry a Ster-style card: base x buying option (plus preferred-position
+  points) x month x spot length x a market index that the seller fixes after booking,
+  capped at 100. At discovery the card is a planning aid with a ceiling. Inside signed
+  terms it is binding, so a card that can't be evaluated, or disagrees with the signed
+  price, fails closed.
+
+fixture: none
+buyer:
+  extensions: [rate-card-index, seller-adjustable-terms]
+
+phases:
+  - id: discovery
+    title: "The card on a pricing option"
+    steps:
+      - { id: load_option, title: "Load the cpp option", task: load_fixture, with: { name: pricingOption } }
+      - id: provisional_ceiling
+        title: "The provisional market index makes the quote a ceiling"
+        task: validate
+        with: { schema: cpp_option, subject: fixture }
+        covers: [RC-R3, RC-R6]
+        expect:
+          ok: true
+          warning_code: RATE_CARD_PROVISIONAL
+          checks:
+            - path: report.extensions.@rate-card-index.evaluation.price
+              equals: 1898
+            - path: report.extensions.@rate-card-index.evaluation.provisional.0.cap
+              equals: 1
+      - id: grease_ignore
+        title: "GREASE: an unknown optional entry on the option is ignored"
+        task: validate
+        with:
+          schema: cpp_option
+          subject: fixture
+          grease: { at: /extensions, kind: extension-point, must_understand: false }
+        covers: [RC-R1]
+        expect:
+          ok: true
+          status:
+            - { ext: grease, point: pricing_option, status: ignored }
+            - { ext: rate-card-index, point: pricing_option, status: understood }
+
+  - id: signed
+    title: "The card in signed terms"
+    steps:
+      - { id: load_terms, title: "Load the accepted commercial terms", task: load_fixture, with: { name: commercialTerms } }
+      - id: signed_card_agrees
+        title: "The signed card agrees with the signed price"
+        task: validate
+        with: { schema: commercial_terms, subject: fixture }
+        covers: [RC-R8, RC-R9]
+        expect:
+          ok: true
+          status: { ext: rate-card-index, point: commercial_terms, status: understood }
+      - id: signed_price_differs
+        title: "A signed price the card does not give is rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: fixture
+          mutate:
+            - { op: set, path: /purchases/0/pricing/fixed_price, value: 1950 }
+        covers: [RC-R8]
+        expect:
+          ok: false
+          error_code: EXTENSION_SEMANTIC_ERROR
+          error_match: "RATE_CARD_TERMS_INCONSISTENT: signed card gives 1898, purchase 0 pricing.fixed_price is 1950"
+      - id: unknown_purchase
+        title: "A binding for a purchase the terms do not have is rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: fixture
+          mutate:
+            - { op: set, path: /extensions/@rate-card-index/data/purchase_index, value: 3 }
+        covers: [RC-R9]
+        expect:
+          ok: false
+          error_match: "purchase_index 3 is outside commercial_terms.purchases"
+      - id: points_without_index
+        title: "Index points on a dimension with no fired index are rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: fixture
+          mutate:
+            - { op: set, path: /extensions/@rate-card-index/data/rate_card/rows/2/target_dimension, value: daypart }
+        covers: [RC-R5]
+        expect:
+          ok: false
+          error_match: "targets daypart, but no index row fired there"
+      - id: provisional_without_cap
+        title: "A provisional row without a cap fails the schema"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: fixture
+          mutate:
+            - { op: remove, path: /extensions/@rate-card-index/data/rate_card/rows/8/cap }
+        covers: [RC-R6]
+        expect:
+          ok: false
+          error_code: EXTENSION_DATA_INVALID
+      - id: grease_reject
+        title: "GREASE: an unknown entry in signed terms is rejected"
+        task: validate
+        with:
+          schema: commercial_terms
+          subject: fixture
+          grease: { at: /extensions, kind: extension-point }
+        covers: [RC-R7]
+        expect:
+          ok: false
+          error_code: EXTENSION_NOT_UNDERSTOOD
+          status:
+            - { ext: grease, point: commercial_terms, status: rejected }
+            - { ext: rate-card-index, point: commercial_terms, status: understood }

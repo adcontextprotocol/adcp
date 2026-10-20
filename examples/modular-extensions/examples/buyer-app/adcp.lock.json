@@ -1,0 +1,22 @@
+{
+  "core": {
+    "version": "3.3.0",
+    "bundle_digest": "sha256:26d4e59152abc1d76cd451eef8f902347f780f00e057f03613ffbf5eb25550a8"
+  },
+  "extensions": {
+    "seller_adjustable_terms": {
+      "uri": "https://extensions.adcontextprotocol.org/seller-adjustable-terms",
+      "version": "1.6.0",
+      "digest": "sha256:41d05441540d02b84aafa4fa26d94094250c8337a45f3509f7c55ef7867773a9",
+      "source": "package @adcp-ext/seller-adjustable-terms",
+      "module": "../../packages/ext-seller-adjustable-terms"
+    },
+    "makegood_units": {
+      "uri": "https://extensions.adcontextprotocol.org/makegood-units",
+      "version": "1.5.0",
+      "digest": "sha256:0debf79a73907c27500528c005c03948e3256a1128e2e74b25d58c7b6ac93bd4",
+      "source": "package @adcp-ext/makegood-units",
+      "module": "../../packages/ext-makegood-units"
+    }
+  }
+}
