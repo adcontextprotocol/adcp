@@ -108,6 +108,7 @@ export const TRAINING_ACCEPTED_GOVERNANCE_AGENTS = {
 // ── Types ────────────────────────────────────────────────────────
 
 interface SyncAccountsInput extends ToolArgs {
+  idempotency_key?: string;
   accounts: SyncAccountInput[];
   dry_run?: boolean;
 }
@@ -166,6 +167,9 @@ export interface TrainingAccountChange {
     kind: 'adcp' | 'seller_operator' | 'seller_system' | 'connected_platform' | 'unknown';
     connection_id?: string;
   };
+  /** Echo of the originating request's idempotency_key. Held only for
+   * `adcp` origin; served solely to the principal that sent the request. */
+  idempotency_key?: string;
   resource_revision?: number | string;
   changed_paths?: string[];
   repair: {
@@ -180,6 +184,23 @@ export interface TrainingAccountChange {
 interface StoredAccountChange {
   sequence: number;
   change: TrainingAccountChange;
+  /** Principal that sent the originating request. Never serialized. */
+  originPrincipal?: string;
+}
+
+/** Project a stored record for one reader: the idempotency_key echo reaches
+ * only the principal that sent the originating request. */
+function accountChangeForReader(entry: StoredAccountChange, readerPrincipal: string | undefined): TrainingAccountChange {
+  const { idempotency_key: idempotencyKey, ...rest } = entry.change;
+  if (
+    idempotencyKey !== undefined
+    && entry.change.origin.kind === 'adcp'
+    && readerPrincipal !== undefined
+    && entry.originPrincipal === principalScope(readerPrincipal)
+  ) {
+    return { ...rest, idempotency_key: idempotencyKey };
+  }
+  return rest;
 }
 
 interface AccountChangeCursor {
@@ -249,6 +270,7 @@ const accountChangeNextSequence = new Map<string, number>();
 const accountChangeAvailableFrom = new Map<string, number>();
 const accountChangeVisibilityEpochs = new Map<string, number>();
 const ACCOUNT_CHANGE_CURSOR_SECRET = randomUUID();
+const ACCOUNT_CHANGE_IDEMPOTENCY_KEY = /^[A-Za-z0-9_.:-]{16,255}$/;
 const ACCOUNT_CHANGE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 function principalAccountChangeScope(principal: string | undefined, accountId: string): string {
@@ -302,6 +324,10 @@ export function recordAccountChange(
     },
     action: input.action,
     origin: { ...input.origin },
+    ...(input.origin.kind === 'adcp'
+      && typeof input.idempotency_key === 'string'
+      && ACCOUNT_CHANGE_IDEMPOTENCY_KEY.test(input.idempotency_key)
+      && { idempotency_key: input.idempotency_key }),
     ...(input.resource_revision !== undefined && { resource_revision: input.resource_revision }),
     ...(input.changed_paths && { changed_paths: [...input.changed_paths] }),
     repair: {
@@ -318,7 +344,9 @@ export function recordAccountChange(
   const changes = accountChanges(accountScopeId);
   const sequence = (accountChangeNextSequence.get(accountScopeId) ?? 0) + 1;
   accountChangeNextSequence.set(accountScopeId, sequence);
-  changes.push({ sequence, change });
+  // Anonymous callers share one scope, so they cannot be told apart: never
+  // match them as the originating principal.
+  changes.push({ sequence, change, ...(principal && { originPrincipal: principalScope(principal) }) });
   return change;
 }
 
@@ -1890,6 +1918,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
           },
           action: 'updated',
           origin: { kind: 'adcp' },
+          idempotency_key: req.idempotency_key,
           changed_paths: changedPaths,
           repair: { task: 'list_accounts' },
           summary: 'Account settings changed through sync_accounts.',
@@ -2183,7 +2212,8 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         },
         action: existing ? 'updated' : 'created',
         origin: { kind: 'adcp' },
-        changed_paths: provisioningChangedPaths,
+        idempotency_key: req.idempotency_key,
+        changed_paths: provisioningChangedPaths?.length ? provisioningChangedPaths : [''],
         repair: { task: 'list_accounts' },
         summary: existing
           ? 'Account configuration changed through sync_accounts.'
@@ -2588,7 +2618,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
 
   return {
     status: 'completed',
-    changes: page.map(entry => entry.change),
+    changes: page.map(entry => accountChangeForReader(entry, ctx.principal)),
     cursor,
     has_more: hasMore,
     available_since: accountChangeAvailableSince(accountScopeId, nowMs),
