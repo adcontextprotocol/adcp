@@ -196,6 +196,10 @@
       "type": "array",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
+      "x-adcp-validation": {
+        "unique_by": ["agent_url", "list_id"],
+        "spec": "docs/governance/collection/index.mdx#combining-several-collection-lists-experimental"
+      },
       "description": "Experimental. Several collection_list refs: intersection. Not with collection_list. Over max_references is rejected, never truncated.",
       "items": { "$ref": "/schemas/core/collection-list-ref.json" },
       "minItems": 1,
@@ -205,6 +209,10 @@
       "type": "array",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
+      "x-adcp-validation": {
+        "unique_by": ["agent_url", "list_id"],
+        "spec": "docs/governance/collection/index.mdx#combining-several-collection-lists-experimental"
+      },
       "description": "Experimental. Several collection_list_exclude refs: union. Not with collection_list_exclude. Over max_references is rejected, never truncated.",
       "items": { "$ref": "/schemas/core/collection-list-ref.json" },
       "minItems": 1,

@@ -108,6 +108,13 @@ describe('request-only targeting null-clear semantics', () => {
     // Switching singular to plural in one request needs null on the old field.
     assert.equal(validateInput({ collection_list_exclude: null, collection_lists_exclude: [ref('b')] }), true);
     assert.equal(validateInput({ collection_lists_exclude: null }), true);
+    for (const field of ['collection_lists', 'collection_lists_exclude']) {
+      assert.deepEqual(
+        readSchema('/schemas/core/targeting.json').properties[field]['x-adcp-validation'].unique_by,
+        ['agent_url', 'list_id'],
+        `${field} must declare identity uniqueness by (agent_url, list_id)`
+      );
+    }
     // Input cannot see stored state, so the exclusivity rule binds the merged strict state.
     assert.equal(validateInput({ collection_list: ref('a'), collection_lists: [ref('b')] }), true);
   });
