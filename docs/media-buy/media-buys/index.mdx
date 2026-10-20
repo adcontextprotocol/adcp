@@ -74,8 +74,8 @@ the current seller snapshot through [`get_media_buys`](/docs/media-buy/task-refe
 
 | State | Meaning | Terminal? |
 |---|---|---|
-| `pending_creatives` | Commercially accepted; required creative coverage is missing | No |
-| `pending_start` | Ready to serve; waiting for the flight to begin | No |
+| `pending_creatives` | Required creative coverage is missing or not yet approved; the buyer's next step is to supply it. Independent of seller commitment (`confirmed_at`) | No |
+| `pending_start` | Creatives ready and not yet serving: a committed buy (`confirmed_at` set) waiting for its flight to begin, or a provisional buy (`confirmed_at` null) awaiting seller confirmation | No |
 | `active` | Eligible to deliver | No |
 | `paused` | Delivery is intentionally held | No |
 | `completed` | Flight ended, goal completed, or budget exhausted | Yes |
