@@ -95,6 +95,18 @@
     },
     {
       "if": {
+        "required": ["security_profiles"],
+        "properties": { "security_profiles": { "minItems": 1 } }
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "security.profiles" } }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "properties": {
           "adcp": {
             "properties": {
@@ -3463,6 +3475,18 @@
         }
       },
       "additionalProperties": true
+    },
+    "security_profiles": {
+      "type": "array",
+      "x-status": "experimental",
+      "description": "Named security profiles this endpoint commits to. A profile is a closed set of requirements published at docs/building/by-layer/L1/production-security-profile.mdx. The claim covers the whole endpoint: every tenant and every transport (MCP, A2A, REST) that serves the endpoint's spend-committing operations. It is self-asserted until a registry verifies it. Only agents that verify inbound requests and serve this capabilities response can advertise a profile. Absent or empty means no claim. An id is immutable: new semantics ship under a new id. Consumers MUST ignore ids they do not recognize and MUST NOT treat an unrecognized id as satisfying a requirement. Currently registered: `adcp-prod-security-3.3`. EXPERIMENTAL (x-status: experimental, feature id security.profiles): an endpoint that advertises a profile lists security.profiles in experimental_features.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9.-]{2,63}$",
+        "examples": ["adcp-prod-security-3.3"]
+      },
+      "uniqueItems": true,
+      "x-added-in": "3.3.0"
     },
     "measurement_gateway": {
       "type": "object",
