@@ -148,6 +148,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_audit_ob-d4a38e65"
+            sandbox: true
           context:
             correlation_id: "provenance_audit_observation--get_products"
         validations:
@@ -191,6 +192,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_audit_ob-d4a38e65"
+            sandbox: true
           creatives:
             - creative_id: "acme_provenance_audit_directed_001"
               name: "Acme provenance audit observation probe — directed"
