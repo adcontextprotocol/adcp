@@ -670,6 +670,20 @@ feeds therefore do not have to pretend that a platform supplied a final bit it d
 not expose. `schedule.delivery_sla` cannot promise an official revision before its
 selected finality policy can become true.
 
+New in 3.3 and experimental with the rest of this surface, a report definition's
+`source.custody` says whether the seller is the `system_of_record` for the numbers or
+`upstream_derived`, meaning it obtained them from the system named in `source.system`
+and does not control it. It is optional. The pinned report definition fixes it for
+every revision (it is covered by `report_definition_sha256`), so no revision carries
+its own copy. Adding it to an existing definition changes the definition bytes, so publish
+it as a new definition version with a new digest. Read it together with `finality_basis`: an `upstream_derived` definition
+that finalizes by `contractual_cutoff` applies the seller's contractual close to
+figures it obtained from an upstream. A dispute may then have to go to that upstream,
+and a later upstream correction can arrive as an adjustment the seller did not
+originate. An `official` revision is authoritative as the seller's close, not as proof of upstream custody. Custody is a different axis from the reserved `authoritative_party` field,
+which says which party is authoritative for billing (see
+[`sync_reporting_status`](/docs/media-buy/task-reference/sync_reporting_status)).
+
 `scope.ledger_retained_from` and `scope.coverage_complete` prevent expired history from
 looking complete. Metadata may outlive physical resources; each completed obligation
 also states `resource_retained_until`, and at least one exact verified resource remains
