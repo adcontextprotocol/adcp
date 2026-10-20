@@ -300,7 +300,7 @@ Many 3.3 additions sit inside objects that 3.2 closes, so a strict 3.2 validator
 | Seller | `hold_policy` on products and proposals, `committed` proposals under `terms_only` finalize | The fields are not in 3.2, and a 3.2 buyer reads `committed` as an inventory hold. |
 | Seller | `dooh_inventory_summary` on canonical products (`list_products`, `request_proposals`, `refine_proposals`) | 3.2 `canonical-product.json` is closed. |
 
-New enum values (`nmo`, `videoamp`, `mxf`, `mpeg2`, `avc_intra`, `xavc`, `print_metrics` in `available-metric`, `definition_changed`) and error codes (`REFERENCE_DEFINITION_CHANGED`) fall under the 3.x rule that clients tolerate unknown values, but a strict 3.2 validator still rejects them; send them only to 3.3 peers too.
+New enum values (`nmo`, `videoamp`, `mxf`, `mpeg2`, `avc_intra`, `xavc`, `print_metrics` in `available-metric`, `definition_changed`, `operator_fee` in `adjustment-kind`) and error codes (`REFERENCE_DEFINITION_CHANGED`) fall under the 3.x rule that clients tolerate unknown values, but a strict 3.2 validator still rejects them; send them only to 3.3 peers too.
 
 `get_adcp_capabilities` runs before negotiation, so a seller cannot gate its capability document. A 3.3 seller's `media_buy.features.catalog_ingestion` object fails a 3.2 schema that admits only booleans there. Buyers parse capabilities tolerantly, as [Versioning](/docs/reference/versioning) recommends.
 
