@@ -46,11 +46,51 @@ describe('training agent formats', () => {
 describe('reference formats', () => {
   it('loads reference formats and rewrites agent_url', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
-    expect(formats.length).toBe(71);
+    expect(formats.length).toBe(73);
     for (const f of formats) {
       const fid = f.format_id as { agent_url: string; id: string };
       expect(fid.agent_url).toBe(TEST_AGENT_URL);
     }
+  });
+
+  it('projects HTML-markup legacy formats to display_tag with the html_creative slot', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const htmlFormats = formats.filter(f => /^display_(?:\d+x\d+_)?html$/.test((f.format_id as { id: string }).id));
+    expect(htmlFormats.map(f => (f.format_id as { id: string }).id).sort()).toEqual([
+      'display_160x600_html',
+      'display_300x250_html',
+      'display_300x50_html',
+      'display_300x600_html',
+      'display_320x50_html',
+      'display_336x280_html',
+      'display_728x90_html',
+      'display_970x250_html',
+      'display_html',
+    ]);
+
+    for (const format of htmlFormats) {
+      const id = (format.format_id as { id: string }).id;
+      // Erratum: canonical-projection-ref rule 5 requires the projected slots to match
+      // the v1 assets. The only required v1 asset is html markup, not an html5 zip bundle.
+      expect(format.canonical, id).toEqual({
+        kind: 'display_tag',
+        asset_source: 'buyer_uploaded',
+        slots_override: [{ asset_group_id: 'html_creative', asset_type: 'html', required: true }],
+      });
+      const required = (format.assets as Array<Record<string, unknown>>).filter(asset => asset.required);
+      expect(required.map(asset => [asset.asset_id, asset.asset_type]), id).toEqual([['html_creative', 'html']]);
+
+      const sized = id.match(/^display_(\d+)x(\d+)_html$/);
+      if (sized) {
+        expect((format.renders as any[])[0].dimensions, id).toMatchObject({
+          width: Number(sized[1]),
+          height: Number(sized[2]),
+        });
+      }
+    }
+
+    const js = formats.find(f => (f.format_id as { id: string }).id === 'display_js')!;
+    expect(js.canonical).toEqual({ kind: 'display_tag' });
   });
 
   it('includes all expected format categories', () => {
@@ -192,7 +232,7 @@ describe('handleListCreativeFormats', () => {
   it('returns all formats when no filters provided', () => {
     const result = handleListCreativeFormats({}, formats);
     const returned = result.formats as unknown[];
-    expect(returned.length).toBe(71);
+    expect(returned.length).toBe(73);
   });
 
   it('response structure matches schema: { formats: [...] }', () => {
@@ -664,7 +704,7 @@ describe('MCP tool responses include structuredContent', () => {
     });
 
     const structured = result.structuredContent as { formats: unknown[] };
-    expect(structured.formats.length).toBe(71);
+    expect(structured.formats.length).toBe(73);
   });
 
   it('preview_creative batch mode returns structuredContent', async () => {
