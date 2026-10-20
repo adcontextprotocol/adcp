@@ -89,7 +89,9 @@ Decisions: [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governa
 
 ### Governance agent
 
-A governance agent is its own agent, on its own origin. For a JWS artifact, the signing agent's origin comes from `iss` for a governance context, `agent_url` for designated-task response signing, and `rights_agent.url` for a rights attestation. When the trust record derived from that origin lists it, verifiers use a key from the origin's key directory, never the RFC 9421 chain: `alg` is `EdDSA`, `kid` is the key's JWK thumbprint, and revocation is the origin's list. Purpose separation is by origin, so the RFC 9421 key-purpose checks (`use`, `key_ops`, `adcp_use`) don't apply. Historical verification of a governance context uses the existing governance key archive at the origin. An issuer whose origin no trust record lists stays on the RFC 9421 chain, which stays fully functional through 3.x.
+A governance agent is its own agent, on its own origin. For a JWS artifact, the signing agent's origin comes from `iss` for a governance context, `agent_url` for designated-task response signing, and `rights_agent.url` for a rights attestation. When the trust record derived from that origin lists it, verifiers use a key the Web Bot Auth profile uses from the origin's key directory, never the RFC 9421 chain: `alg` is `EdDSA`, `kid` is the key's JWK thumbprint, and revocation is the origin's list. Purpose separation is by origin, so the RFC 9421 key-purpose checks (`use`, `key_ops`, `adcp_use`) don't apply. Historical verification of a governance context uses the existing governance key archive at the origin. An issuer whose origin no trust record lists stays on the RFC 9421 chain, which stays fully functional through 3.x.
+
+Once a trust record lists your origin, JWS artifacts your origin signed under the RFC 9421 profile stop verifying. Before you list the origin, re-sign outstanding JWS artifacts with a key the Web Bot Auth profile uses from your origin's key directory.
 
 ### Publisher
 
