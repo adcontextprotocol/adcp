@@ -177,6 +177,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_template-1543a3c3"
+            sandbox: true
           request_type: "single"
           creative_manifest:
             format_kind: "image"
@@ -272,6 +273,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_template-1543a3c3"
+            sandbox: true
 
           idempotency_key: "$generate:uuid_v4#creative_template_build_build_creative"
           context:
@@ -338,6 +340,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_template-1543a3c3"
+            sandbox: true
 
           idempotency_key: "$generate:uuid_v4#creative_template_build_build_multi_format"
           context:
@@ -417,6 +420,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_template-1543a3c3"
+            sandbox: true
 
           idempotency_key: "$generate:uuid_v4#creative_template_audio_build_build_audio_creative"
           context:

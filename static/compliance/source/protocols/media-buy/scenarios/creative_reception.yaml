@@ -140,6 +140,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_creative_reception-aa5b36ef"
+            sandbox: true
           creatives:
             - creative_id: "acme_summer_native_001"
               name: "Acme Summer Sale — native 2026"
@@ -209,6 +210,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_creative_reception-aa5b36ef"
+            sandbox: true
           request_type: "single"
           creative_manifest:
             creative_id: "acme_summer_native_001"

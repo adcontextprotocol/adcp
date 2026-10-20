@@ -251,6 +251,7 @@ import {
   runWithComplianceRefreshAuthorizationWatchdog,
 } from "../services/compliance-refresh-authorization.js";
 import { getSandboxBrand } from "../services/sandbox-brands.js";
+import { publicEditorName } from "./registry-revision-access.js";
 
 const RegistryAdminAuthorizationUnavailableSchema = z.object({
   error: z.literal('admin_authorization_unavailable'),
@@ -5482,7 +5483,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         total,
         revisions: revisions.map((r) => ({
           revision_number: r.revision_number,
-          editor_name: r.editor_name || "system",
+          editor_name: publicEditorName(r.editor_name) ?? "system",
           edit_summary: r.edit_summary,
           source: (r.snapshot as Record<string, unknown>)?.source_type,
           is_rollback: r.is_rollback,
@@ -6067,7 +6068,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         total,
         revisions: revisions.map((r) => ({
           revision_number: r.revision_number,
-          editor_name: r.editor_name || "system",
+          editor_name: publicEditorName(r.editor_name) ?? "system",
           edit_summary: r.edit_summary,
           source: (r.snapshot as Record<string, unknown>)?.source_type,
           is_rollback: r.is_rollback,
@@ -12619,7 +12620,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         total,
         revisions: revisions.map((r) => ({
           revision_number: r.revision_number,
-          editor_name: r.editor_name || "system",
+          editor_name: publicEditorName(r.editor_name) ?? "system",
           edit_summary: r.edit_summary,
           is_rollback: r.is_rollback,
           rolled_back_to: r.rolled_back_to,
