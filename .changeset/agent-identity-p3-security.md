@@ -13,6 +13,6 @@ Agent identity, P3 (#8118, DR-0023): `security.mdx` adds a **Web Bot Auth identi
 
 **Unsigned requests** to an operation in `required_for`, at a verifier that advertises both profiles, get the RFC 9421 answer plus `Accept-Signature` for the Web Bot Auth profile. Advertising the Web Bot Auth profile depends on #7894.
 
-**Revocation lists** gain optional RFC 5280 `revocation_details` (`reason`, `invalidity_date`), and entries are never weakened once published. Committed work stands on revocation. A request accepted under a `keyCompromise` key at or after its invalidity date is suspect, and sellers SHOULD show the buyer the affected buys.
+**Revocation lists** gain optional RFC 5280 `revocation_details` (`reason`, `invalidity_date`), and entries are never weakened once published. Verifiers poll the list on its `next_update` cadence under either profile and keep every revocation they have seen for an origin. Committed work stands on revocation. A request accepted under a `keyCompromise` key at or after its invalidity date is suspect, and sellers SHOULD show the buyer the affected buys.
 
 The trust.json schema, reference page, and experimental-status row now name the Web Bot Auth profile as the record's reader.
