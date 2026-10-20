@@ -81,11 +81,11 @@ Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model
 |---|---|---|
 | `image` | Static image, file or hosted URL redirect | Impression pixel + click URL via `universal_macros` |
 | `html5` | Interactive HTML5 banner (zip asset) | MRAID + OM-SDK + click-tag macro + backup image |
-| `display_tag` | Third-party JS/iframe tag URL | Opaque to seller |
+| `display_tag` | Third-party tag: ad-request URL, inline markup, or paired redirect | Opaque to seller |
 | `image_carousel` | Multi-card swipe (polymorphic image/video items) | Per-card pixels + carousel engagement |
-| `video_hosted` | Direct video file, orientation parameter | OM-SDK + external impression/click/quartile trackers |
+| `video_hosted` | Direct video file, orientation parameter | OM-SDK + external impression/click trackers + playback `pixel_tracker` events (`start`, `first_quartile`, `midpoint`, `third_quartile`, `complete`; 3.3) |
 | `video_vast` | VAST tag (URL or inline XML), VAST 2-4.x | Inherent VAST events |
-| `audio_hosted` | Direct audio file (or host-read produced via build_creative) | Standard audio impression/completion |
+| `audio_hosted` | Direct audio file (or host-read produced via build_creative) | Impression, playback (`start`, quartiles, `complete`; 3.3) and companion-click pixels |
 | `audio_vast` | VAST audio tag (URL or inline XML); 4.1+ recommended, older versions only when seller-declared | Inherent VAST audio events |
 | `audio_daast` | DAAST tag | Inherent DAAST events |
 | `sponsored_placement` | Retail-media catalog-driven (Amazon SP, Criteo SP, CitrusAd SP) — REQUIRES `source_catalog` slot. Not for IAB in-feed native, content-recommendation, or PMax-style algorithmic surfaces. | Per-item catalog-keyed events |
@@ -1606,7 +1606,7 @@ For the case where brand.json is missing or stale, the BrandRef itself carries a
 }
 ```
 
-Override fields take precedence over `brand.json` for the call carrying this BrandRef. The pattern matches BrandRef's existing inline overrides (`industries`, `data_subject_contestation`) — brand.json is canonical; inline overrides are per-call. Adopters needing to override brand-kit fields outside this subset (`voice_attributes`, `prohibited_terms`) MUST publish a different brand.json and reference it via a different `domain`.
+Override fields take precedence over `brand.json` for the call carrying this BrandRef. The pattern matches BrandRef's existing inline overrides (`industries`, `data_subject_contestation`) — brand.json is canonical; inline overrides are per-call. Adopters needing to override brand-kit fields outside this subset (for example the brand-wide `prohibited_terms` list) MUST publish a different brand.json and reference it via a different `domain`.
 
 ## Platform extensions — distribution
 
@@ -1751,6 +1751,23 @@ When the seller asserts fewer refs than sizes (`v1_format_ref[].length < sizes[]
 **Why MAY-do, not MUST-do or MUST-NOT-do.** SDKs without catalog access can't fan out; making it MUST creates an SDK-feature dependency. Making it MUST-NOT discards real value (a catalog with all three IAB sizes can losslessly expand a multi-size declaration). MAY-do with mandatory advisory preserves SDK choice while keeping the wire shape transparent — downstream consumers can always distinguish synthesized refs from seller-asserted ones via the advisory's `synthesized_refs`.
 
 **Inter-SDK convergence rule.** Two SDKs processing the same input MAY produce different `format_ids[]` (one fans out, one doesn't), but both MUST emit `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE` with consistent `declared_sizes` / `covered_sizes` / `dropped_sizes`. Buyer agents reading the response stream can reconcile divergent `format_ids[]` against the advisory.
+
+#### HTML-markup legacy formats (normative)
+
+The reference catalog's HTML-markup formats (`display_html` and every `display_<width>x<height>_html`) require one `html_creative` asset of type `html`. The seller renders that markup verbatim. These formats project to `display_tag` with inline-markup delivery, not to `html5`:
+
+```json
+"canonical": {
+  "kind": "display_tag",
+  "asset_source": "buyer_uploaded",
+  "slots_override": [{ "asset_group_id": "html_creative", "asset_type": "display_tag", "required": true }],
+  "supported_delivery_types": ["inline_markup"]
+}
+```
+
+The projected declaration carries the format's fixed `width`/`height` (none for `display_html`), `supported_delivery_types: ["inline_markup"]`, and the `html_creative` slot. `html5` remains reserved for seller-hosted zip bundles. A buyer-supplied HTML5 zip can reach these sellers only as buyer-served markup.
+
+The slot keeps the legacy `asset_id` as its `asset_group_id`, so the round trip is lossless. When projecting a `display_tag` creative to a legacy ref, select the exact `display_<width>x<height>_html` whose size equals the `html_creative` asset's `width`/`height`. Emit the markup byte-for-byte as the legacy `html` asset's `content` under `html_creative`. `delivery_type` and `markup_type` have no legacy field and are dropped. When reading a legacy `html_creative` asset back into a canonical manifest, use `markup_type: "standard"` unless the sender supplied a markup type. An unsized creative cannot prove a fixed size and matches only `display_html`. `html5` zip creatives and `tag_url` or `paired_redirect` display tags do not match these formats. The [HTML-markup legacy projection vectors](https://github.com/adcontextprotocol/adcp/blob/main/static/test-vectors/html-markup-legacy-projection.json) cover these cases. `display_js` keeps its bare `display_tag` annotation and the default `tag_url` slot contract.
 
 #### Pixel-density projection (normative)
 

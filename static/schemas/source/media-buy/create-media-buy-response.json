@@ -46,7 +46,7 @@
         },
         "media_buy_status": {
           "$ref": "/schemas/enums/media-buy-status.json",
-          "description": "Initial media buy status. Either 'pending_creatives' (awaiting creative assets), 'pending_start' (ready to serve, waiting for flight date), 'active' (immediate activation), or 'paused' (created with delivery held after all activation prerequisites are satisfied). This field carries the media buy lifecycle state; top-level `status` is reserved for the protocol-envelope TaskStatus (`completed` on synchronous success)."
+          "description": "Initial media buy status. Either 'pending_creatives' (awaiting creative assets), 'pending_start' (creatives in place, not yet serving: a committed buy waiting for its flight date, or a provisional buy with confirmed_at null awaiting seller confirmation), 'active' (immediate activation), or 'paused' (created with delivery held after all activation prerequisites are satisfied). This field carries the media buy lifecycle state; top-level `status` is reserved for the protocol-envelope TaskStatus (`completed` on synchronous success)."
         },
         "confirmed_at": {
           "type": ["string", "null"],
