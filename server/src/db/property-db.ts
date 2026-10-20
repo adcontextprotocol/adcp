@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { query, getClient } from './client.js';
 import type { HostedProperty, ResolvedProperty, RegistryRevision } from '../types.js';
+import { sanitizePropertySnapshot } from './registry-revision-snapshot.js';
 
 /**
  * Input for creating a hosted property
@@ -192,8 +193,21 @@ export class PropertyDatabase {
     return result.rowCount !== null && result.rowCount > 0;
   }
 
-  async deleteHostedPropertyByDomain(domain: string): Promise<boolean> {
-    const result = await query('DELETE FROM hosted_properties WHERE publisher_domain = $1', [domain.toLowerCase()]);
+  /**
+   * `options.onlyIfPending` makes the delete conditional on the row
+   * still being unreviewed, inside the same statement — see
+   * {@link BrandDatabase.deleteDiscoveredBrand} (adcp#8338).
+   */
+  async deleteHostedPropertyByDomain(
+    domain: string,
+    options?: { onlyIfPending?: boolean },
+  ): Promise<boolean> {
+    const result = await query(
+      `DELETE FROM hosted_properties WHERE publisher_domain = $1${
+        options?.onlyIfPending ? " AND review_status = 'pending'" : ''
+      }`,
+      [domain.toLowerCase()],
+    );
     return result.rowCount !== null && result.rowCount > 0;
   }
 
@@ -568,7 +582,7 @@ export class PropertyDatabase {
         ) VALUES ($1, 1, $2, $3, $4, $5, 'Initial record')`,
         [
           property.publisher_domain,
-          JSON.stringify(property),
+          JSON.stringify(sanitizePropertySnapshot(property as unknown as Record<string, unknown>)),
           editor.user_id,
           editor.email || null,
           editor.name || null,
@@ -588,9 +602,11 @@ export class PropertyDatabase {
   /**
    * Approve a pending property (called by Addie after review).
    */
-  async approveProperty(domain: string): Promise<boolean> {
+  async approveProperty(domain: string, options?: { onlyIfPending?: boolean }): Promise<boolean> {
     const result = await query(
-      `UPDATE hosted_properties SET review_status = 'approved' WHERE publisher_domain = $1`,
+      `UPDATE hosted_properties SET review_status = 'approved' WHERE publisher_domain = $1${
+        options?.onlyIfPending ? " AND review_status = 'pending'" : ''
+      }`,
       [domain.toLowerCase()]
     );
     return result.rowCount !== null && result.rowCount > 0;
@@ -670,7 +686,7 @@ export class PropertyDatabase {
         [
           domain.toLowerCase(),
           revisionNumber,
-          JSON.stringify(current),
+          JSON.stringify(sanitizePropertySnapshot(current as unknown as Record<string, unknown>)),
           input.editor_user_id,
           input.editor_email || null,
           input.editor_name || null,
@@ -714,11 +730,23 @@ export class PropertyDatabase {
 
   /**
    * Rollback a property to a previous revision.
+   *
+   * Refuses the same two states {@link editCommunityProperty} refuses,
+   * and for the same reason: if a record is not community-editable, an
+   * older community revision is not a state to restore it to. The
+   * authoritative check matters more here than on the edit path, because
+   * a revert target can outlive the record's community status — a queued
+   * flagged edit (adcp#8338) can still be sitting there weeks after the
+   * real publisher claimed the domain and published their own
+   * adagents.json. {@link BrandDatabase.rollbackBrand} already had both
+   * guards.
    */
   async rollbackProperty(
     domain: string,
     toRevisionNumber: number,
-    editor: { user_id: string; email?: string; name?: string }
+    editor: { user_id: string; email?: string; name?: string },
+    /** See {@link BrandDatabase.rollbackBrand} (adcp#8338). */
+    options?: { onlyIfNoRollbackSince?: boolean },
   ): Promise<{ property: HostedProperty; revision_number: number }> {
     const client = await getClient();
     try {
@@ -733,9 +761,9 @@ export class PropertyDatabase {
         throw new Error(`Revision ${toRevisionNumber} not found for ${domain}`);
       }
 
-      const snapshot = typeof targetResult.rows[0].snapshot === 'string'
+      const snapshot = sanitizePropertySnapshot((typeof targetResult.rows[0].snapshot === 'string'
         ? JSON.parse(targetResult.rows[0].snapshot)
-        : targetResult.rows[0].snapshot;
+        : targetResult.rows[0].snapshot) as Record<string, unknown>);
 
       // Lock current row
       const currentResult = await client.query<HostedProperty>(
@@ -744,6 +772,27 @@ export class PropertyDatabase {
       );
       if (currentResult.rows.length === 0) {
         throw new Error(`Property not found: ${domain}`);
+      }
+
+      const authCheck = await client.query(
+        'SELECT 1 FROM discovered_properties WHERE publisher_domain = $1 LIMIT 1',
+        [domain.toLowerCase()]
+      );
+      if (authCheck.rows.length > 0) {
+        throw new Error('Cannot roll back authoritative property (managed via adagents.json)');
+      }
+      if (currentResult.rows[0].review_status === 'pending') {
+        throw new Error('Cannot roll back property pending review');
+      }
+      if (options?.onlyIfNoRollbackSince) {
+        const since = await client.query(
+          `SELECT 1 FROM property_revisions
+            WHERE publisher_domain = $1 AND is_rollback AND revision_number > $2 LIMIT 1`,
+          [domain.toLowerCase(), toRevisionNumber],
+        );
+        if ((since.rowCount ?? 0) > 0) {
+          throw new Error('Cannot roll back property past a later rollback');
+        }
       }
 
       // Get next revision number
@@ -763,7 +812,7 @@ export class PropertyDatabase {
         [
           domain.toLowerCase(),
           revisionNumber,
-          JSON.stringify(currentResult.rows[0]),
+          JSON.stringify(sanitizePropertySnapshot(currentResult.rows[0] as unknown as Record<string, unknown>)),
           editor.user_id,
           editor.email || null,
           editor.name || null,
@@ -841,7 +890,7 @@ export class PropertyDatabase {
     return {
       ...row,
       domain: row.publisher_domain || row.domain,
-      snapshot: typeof row.snapshot === 'string' ? JSON.parse(row.snapshot) : row.snapshot,
+      snapshot: sanitizePropertySnapshot((typeof row.snapshot === 'string' ? JSON.parse(row.snapshot) : row.snapshot) as Record<string, unknown>),
       created_at: new Date(row.created_at),
     };
   }

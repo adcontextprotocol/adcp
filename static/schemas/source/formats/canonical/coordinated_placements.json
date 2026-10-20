@@ -98,7 +98,7 @@
           "asset_group_id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
           "asset_type": {
             "type": "string",
-            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "published_post", "zip", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"]
+            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "video_brief", "catalog", "published_post", "zip", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"]
           },
           "required": { "type": "boolean", "default": false },
           "min": { "type": "integer", "minimum": 0 },

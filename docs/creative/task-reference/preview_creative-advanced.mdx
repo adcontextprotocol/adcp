@@ -9,162 +9,180 @@ Advanced patterns for creative preview integration including workflows, caching 
 
 For basic usage, see [preview_creative](/docs/creative/task-reference/preview_creative).
 
-## Common Workflows
+## Safe preview grids
 
-### Format Showcase Pages
+Both HTML and URL output contain untrusted content. Use the [empty-sandbox and caller-controlled CSP pattern](/docs/creative/task-reference/preview_creative#html-in-a-sandboxed-frame) for every preview, including previews from publisher-designated providers. HTML output still requires an iframe; a grid or a trusted transport does not permit host-DOM insertion. Shadow DOM provides CSS isolation, not a security boundary.
 
-Build a browsable catalog of available formats:
+This illustrative React component uses the `previewSrcdoc` helper from that pattern. The application supplies schema-validated HTML renders; URL renders require an enforceable policy for the cross-origin document, or a new request for HTML output. The JSX examples use application-provided clients, manifests, and review callbacks and are not standalone scripts.
 
-```typescript
-// 1. List all formats from creative agent
-const capabilities = await creative_agent.get_adcp_capabilities({ protocols: ["creative"] });
-const formats = capabilities.creative.supported_formats;
+```tsx test=false
+function PreviewFrame({ render }) {
+  if (render.output_format !== 'html') {
+    return <p>Request HTML output for this isolated review frame.</p>;
+  }
+  return (
+    <iframe
+      title={`Creative preview: ${render.role}`}
+      sandbox=""
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      srcDoc={previewSrcdoc(render.preview_html)}
+    />
+  );
+}
+```
 
-// 2. Generate format card previews (batch + HTML)
+The baseline blocks scripts and remote assets. If those restrictions prevent a complete review, obtain an inert render and show the limitation; do not add `allow-scripts` or `allow-same-origin`. Keep review controls in the host application. `interactive_url` does not authorize relaxing the preview policy; a separate interactive-testing integration needs its own isolation and credential controls.
+
+### Format showcase pages
+
+Select only advertised preview capabilities and pass their explicit route IDs. These samples describe a renderer's output, not creative approval or publisher acceptance. This application example assumes `createExampleManifest` builds the required assets for each declaration.
+
+```typescript test=false
+const capabilities = await creative_agent.get_adcp_capabilities({ protocols: ['creative'] });
+const routes = capabilities.creative.supported_formats.filter(
+  capability => capability.operations.includes('preview')
+);
 const formatPreviews = await creative_agent.preview_creative({
-  request_type: "batch",
-  output_format: "html",
-  requests: formats.map(capability => ({
+  request_type: 'batch',
+  quality: 'draft',
+  output_format: 'html',
+  requests: routes.slice(0, 50).map(capability => ({
+    target_capability_id: capability.capability_id,
     creative_manifest: createExampleManifest(capability.format)
   }))
 });
-
-// 3. Render in a grid
-function FormatCatalog({ formatPreviews }) {
-  return (
-    <div className="format-grid">
-      {formatPreviews.results.map((result, idx) => (
-        result.success && (
-          <div
-            key={idx}
-            className="format-card"
-            dangerouslySetInnerHTML={{
-              __html: result.response.previews[0].renders[0].preview_html
-            }}
-          />
-        )
-      ))}
-    </div>
-  );
-}
 ```
 
-### Campaign Review Grid
+Render each successful item's `response.previews[].renders[]` with `PreviewFrame`. Show each failed item's `errors[]` as text instead of accessing a nonexistent success response. Split larger catalogs into batches of at most 50.
 
-Review all creatives before launch:
+### Campaign review grids
 
-```typescript
-const campaignCreatives = await getCreativesForCampaign(campaignId);
+Request production quality explicitly, retain `quality_used`, and check each item before enabling a production-fidelity review action. This illustrative component assumes the application has already selected the applicable endpoint and route and retained the publisher delegation separately.
 
-const previews = await creative_agent.preview_creative({
-  request_type: "batch",
-  output_format: "html",
-  requests: campaignCreatives.map(c => ({ creative_manifest: c.manifest }))
-});
-
-function CampaignReview({ previews }) {
+```tsx test=false
+function CampaignReview({ entries, onReview }) {
   return (
     <div className="review-grid">
-      {previews.results.map((result, idx) => (
-        <div className="creative-card">
-          <div dangerouslySetInnerHTML={{
-            __html: result.response.previews[0].renders[0].preview_html
-          }}/>
-          <button onClick={() => approve(idx)}>Approve</button>
-          <button onClick={() => reject(idx)}>Reject</button>
-        </div>
-      ))}
+      {entries.map(({ request, result }, index) => {
+        if (!result.success) {
+          return <p key={index}>{result.errors.map(error => error.message).join('; ')}</p>;
+        }
+        const previewAvailable = previewEntryIsFresh({ result }, Date.now());
+        const productionFidelity = request.quality === 'production' &&
+          result.quality_used === 'production';
+        return (
+          <div className="creative-card" key={index}>
+            <p>Rendered quality: {result.quality_used ?? 'undeclared'}</p>
+            {!previewAvailable && <p>This preview has expired. Request a fresh rendering.</p>}
+            {result.response.previews.flatMap(preview => preview.renders.map(render => (
+              <PreviewFrame key={`${preview.preview_id}:${render.render_id}`} render={render} />
+            )))}
+            <button disabled={!productionFidelity || !previewAvailable} onClick={() => {
+              if (previewEntryIsFresh({ result }, Date.now())) onReview(index);
+            }}>
+              Review production rendering
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
 ```
 
-### Web Component Integration
+`productionFidelity` checks the response's quality claim only. The component uses `previewEntryIsFresh` from the cache example below both when rendering controls and when handling a click. Check expiry again when recording a review decision; an open review page does not extend the artifact's lifetime. Reviewers still verify that the displayed render is complete under the caller's policy and inspect rendering origin and applicable publisher delegation. Neither this button nor a production-quality response grants seller approval or authorization to serve. Cache entries below retain the request, complete result, and discovery provenance for those checks.
 
-For production applications with lazy loading:
+## Choosing output format
 
-```html
-<script src="https://creative.adcontextprotocol.org/static/rendered-creative.js"></script>
+Use URL output when the caller can enforce restrictive CSP on the cross-origin preview document as well as an empty sandbox. A host page's `frame-src` directive restricts frame locations, not the child document's subresources. Do not assume a provider's `embedding` recommendations enforce caller policy.
 
-<div class="grid">
-  <rendered-creative
-    src="https://creative-agent.example.com/preview/abc123"
-    width="300"
-    height="400"
-    lazy="true">
-  </rendered-creative>
-</div>
-```
+Use HTML output when the caller constructs a `srcdoc` document with its own policy before provider markup. It is useful for grids and avoids a separate preview-page fetch, but still requires iframe isolation. Apply the same rules to server-rendered pages; do not interpolate preview markup into their HTML. Both paths may need a self-contained static rendering when scripts or remote media are blocked.
 
-**Benefits:**
-- Shadow DOM for CSS isolation
-- Lazy loading (only loads when visible)
-- Framework agnostic
+## Caching review artifacts
 
-## Choosing Output Format
+A manifest-only key cannot identify a preview. The key must distinguish the endpoint and authenticated principal, exact renderer route, effective quality/output/template/catalog limit, all context and macro inputs, and the source/rendering/authority snapshots. Preserve the complete successful batch item, including its top-level `quality_used`; saving only `result.response` drops that evidence.
 
-**Use `output_format: "url"` (default) when:**
-- Security is paramount (third-party creatives)
-- Building interactive preview tools
-- Need iframe isolation
+The following executable helper defines application-local cache data, not new AdCP fields or SDK methods. The caller provides an existing `client.preview_creative` transport and schema-valid batch items. `context` records the exact endpoint and a non-secret tenant/principal scope matching that client, plus retained discovery evidence. `sourceSnapshot` binds the resolved source assets and any catalog/brand dependencies; `renderingSnapshot` identifies the known rendering configuration; `authoritySnapshot` records the applicable publisher delegation/presentation or an explicit undelegated state. These are local evidence identifiers, not self-granted authority. Do not put access tokens into keys.
 
-**Use `output_format: "html"` when:**
-- Building format catalogs (10+ formats)
-- Creating campaign review grids (20+ creatives)
-- Server-side rendering
-- Working with trusted creative agents only
+If any snapshot is unknown, the helper bypasses the cache. A mutable URL, creative ID, source revision, or manifest hash alone is insufficient. Invalidate on an observed renderer, source, or delegation change; an omitted preview expiry does not freeze those dependencies. This example requires an explicit route and quality so server defaults cannot silently change the cache identity. Batch defaults are materialized onto each item before the request and key are created.
 
-## Caching Strategy
-
-Cache individual preview results by canonical format identity (`format_kind` plus optional `format_option_ref`) + manifest hash:
-
-```typescript
-function cachePreviewResults(results, formatIds, manifests) {
-  results.forEach((result, idx) => {
-    if (result.success) {
-      const cacheKey = `${formatIds[idx]}:${hashManifest(manifests[idx])}`;
-      cache.set(cacheKey, result.response, result.response.expires_at);
+```javascript test=true
+function effectivePreviewItem(item, defaults) {
+  const effective = { ...item };
+  for (const field of ['target_capability_id', 'quality', 'output_format']) {
+    if (effective[field] === undefined && defaults[field] !== undefined) {
+      effective[field] = defaults[field];
     }
-  });
-}
-
-async function getPreviewsWithCache(formatIds, manifests) {
-  const cached = [];
-  const toFetch = [];
-
-  formatIds.forEach((id, idx) => {
-    const cacheKey = `${id}:${hashManifest(manifests[idx])}`;
-    const cachedResult = cache.get(cacheKey);
-
-    if (cachedResult && !isExpired(cachedResult.expires_at)) {
-      cached[idx] = cachedResult;
-    } else {
-      toFetch.push({ idx, id, manifest: manifests[idx] });
-    }
-  });
-
-  // Batch fetch only missing previews
-  if (toFetch.length > 0) {
-    const fetched = await client.preview_creative({
-      request_type: "batch",
-      output_format: "html",
-      requests: toFetch.map(f => ({ creative_manifest: f.manifest }))
-    });
-
-    fetched.results.forEach((result, i) => {
-      cached[toFetch[i].idx] = result.response;
-    });
   }
+  effective.output_format ??= 'url';
+  if (!effective.target_capability_id || !effective.quality) {
+    throw new Error('Select an explicit preview route and quality before caching.');
+  }
+  return effective;
+}
 
-  return cached;
+function previewCacheKey(context, request) {
+  const required = ['endpoint', 'principalScope', 'sourceSnapshot',
+    'renderingSnapshot', 'authoritySnapshot'];
+  if (required.some(field => !context[field])) return null;
+  // Normalize JSON object key order; retain array order and every input value.
+  return JSON.stringify({ context, request }, (_key, value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]));
+    }
+    return value;
+  });
+}
+
+function previewEntryIsFresh(entry, now) {
+  const expiry = entry.result.response.expires_at;
+  return expiry === undefined || Date.parse(expiry) > now;
+}
+
+async function getPreviewsWithCache(client, cache, context, items, defaults = {}) {
+  if (items.length < 1 || items.length > 50) throw new Error('Use 1–50 preview items.');
+  context = structuredClone(context);
+  const entries = new Array(items.length);
+  const missing = [];
+  items.forEach((item, index) => {
+    const request = structuredClone(effectivePreviewItem(item, defaults));
+    const key = previewCacheKey(context, request);
+    const cached = key === null ? undefined : cache.get(key);
+    if (cached && previewEntryIsFresh(cached, Date.now())) {
+      entries[index] = structuredClone(cached);
+    } else {
+      missing.push({ index, key, request });
+    }
+  });
+  if (missing.length === 0) return entries;
+
+  const response = await client.preview_creative({
+    request_type: 'batch',
+    requests: missing.map(item => item.request)
+  });
+  if (response.errors) throw new Error(response.errors.map(error => error.message).join('; '));
+  if (response.response_type !== 'batch' || response.results.length !== missing.length) {
+    throw new Error('Expected one synchronous batch result per requested item.');
+  }
+  response.results.forEach((result, index) => {
+    const pending = missing[index];
+    if (result.success && result.quality_used === undefined) {
+      throw new Error('Missing quality_used for an explicit-quality request.');
+    }
+    if (result.success && !previewEntryIsFresh({ result }, Date.now())) {
+      throw new Error('The fetched preview has expired. Request a fresh rendering.');
+    }
+    const entry = structuredClone({ request: pending.request, result, provenance: context });
+    entries[pending.index] = entry;
+    // Partial failures remain visible and can be retried; never cache them.
+    if (result.success && pending.key !== null) cache.set(pending.key, structuredClone(entry));
+  });
+  return entries;
 }
 ```
 
-**Key points:**
-- Cache by canonical format identity + manifest hash (not the entire batch)
-- Request [A,B,C] → cache each separately
-- Later request [B,C,D] → only fetch D
-- Always check `expires_at` before using cached previews
+A quality downgrade remains a successful result with a different `quality_used`. Keep it attached to the original requested quality; do not label it production or place it in a different request's cache slot. Renderer metadata, output URLs and expiry, echoed inputs, and local discovery provenance survive cache hits unchanged. A cached generative preview reuses the same sample; bypass the cache to request a new sample. Cache lookup does not approve the artifact or establish historical delivery. On terminal transport errors, use the transport's existing error handling; the example keeps `allow_async` at its default false.
 
 ## Preview URL Storage
 
@@ -177,37 +195,26 @@ For production agents, persist enough preview state to resolve every `preview_ur
 - Use shared storage for multi-process or multi-pod deployments: database metadata plus object storage, a shared cache tier, or an authenticated preview route that can recover the render from durable session state.
 - Limit process-local `Map` or LRU storage to single-process demos, local development, or URLs whose advertised lifetime is shorter than the process lifetime you can actually guarantee.
 
-## Error Handling
+## Error handling
 
-```typescript
+Check the batch envelope before reading item data, and check each item's `success` before reading `response`. Batch failures use `errors[]`, not a singular `error`. This illustrative application code assumes a connected client and prepared requests.
+
+```typescript test=false
 const response = await client.preview_creative({
-  request_type: "batch",
+  request_type: 'batch',
   requests: formatRequests
 });
-
-const succeeded = response.results.filter(r => r.success);
-const failed = response.results.filter(r => !r.success);
-
-if (failed.length > 0) {
-  console.log(`${failed.length} previews failed`);
-  failed.forEach((result) => {
-    console.error(`  - ${result.error.code}: ${result.error.message}`);
-  });
-}
-
-// Display successful previews, show error states for failures
-function displayPreviews(results) {
-  return results.map((result, idx) => {
-    if (result.success) {
-      return <Preview html={result.response.previews[0].renders[0].preview_html} />;
-    } else {
-      return <PreviewError
-        code={result.error.code}
-        message={result.error.message}
-        onRetry={() => retryPreview(idx)}
-      />;
+if (response.errors) {
+  console.error(response.errors);
+} else if (response.response_type === 'batch') {
+  for (const result of response.results) {
+    if (!result.success) {
+      for (const error of result.errors) console.error(error.code, error.message);
+      continue;
     }
-  });
+    console.log(result.creative_id, result.quality_used, result.response.expires_at);
+    // Pass renders to PreviewFrame; retain the complete item for review.
+  }
 }
 ```
 
@@ -288,27 +295,27 @@ response = await client.preview_creative(
 
 **Required:**
 1. Return complete HTML pages from `preview_url`
-2. Handle all media types (images, video, audio, interactive)
+2. Render every preview format the endpoint advertises, within the caller's isolation policy
 3. Echo input parameters in response
 4. Validate manifest before rendering
 5. Apply macro values (or use defaults)
 6. Back preview URLs with storage that survives load balancing and restarts for the URL's advertised lifetime
-7. Implement security sandboxing
+7. Produce content compatible with the caller's empty sandbox and restrictive CSP; do not ask consumers to enable scripts or same-origin access
 8. Set reasonable expiration (24-48 hours) for previews that should not be retained indefinitely
 
 **Optional enhancements:**
-- Provide `hints` object (media type, dimensions, duration)
+- Include render dimensions and `renderer` audit metadata when available
 - Provide `embedding` metadata (sandbox policy, CSP)
 - Support responsive design
 - Include accessibility features
 
 ### For Buyers
 
-1. Just iframe the `preview_url` - no special rendering needed
+1. Render only in an empty-sandbox iframe with caller-enforced CSP; use the HTML `srcdoc` path when URL policy cannot be enforced
 2. Use `inputs` array for specific scenarios
 3. Check `input` field to confirm macros applied
-4. Share preview URLs with clients for approval
-5. Use `interactive_url` for advanced testing
+4. Share review artifacts with their quality, rendering origin, delegation provenance, and expiry
+5. Treat `interactive_url` as a separate untrusted testing surface; it never grants preview sandbox permissions
 
 ### For Publishers
 

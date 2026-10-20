@@ -1,1 +1,19 @@
-[]
+[
+  {
+    "id": "creative-build-probe-8240",
+    "title": "Portable evaluator build probe preparation",
+    "kind": "integrity-pinned-package-patch",
+    "status": "temporary",
+    "owner": "adcp compliance maintainers / issue 8240",
+    "upstream": "https://github.com/adcontextprotocol/adcp-client/pull/3332",
+    "problem": "The pinned SDK cannot bind an advertised build route to a valid input for required evaluator security checks, including standalone runs.",
+    "localBehavior": "Patch only reviewed SDK 15.9.5 CJS/ESM loader, runner and declaration preimages; add shared creative build preparation with explicit zero-credit fixture gaps.",
+    "removalCondition": "Remove after the upstream creative-build-probe runner fix is merged, available in a qualified SDK release, and both full and standalone regression suites pass after upgrading the pinned dependency. Do not release the SDK from this task.",
+    "paths": [
+      "scripts/install-sdk-creative-build-probe.cjs"
+    ],
+    "terms": [
+      "dist/lib/testing/"
+    ]
+  }
+]

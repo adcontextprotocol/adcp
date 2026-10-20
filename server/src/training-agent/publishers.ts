@@ -759,3 +759,34 @@ export const PUBLISHERS: PublisherProfile[] = [
   },
   CREATOR_PUBLISHER,
 ];
+
+type VendorMetricOptimizationEntry = NonNullable<PublisherProfile['vendorMetricOptimization']>['supported_metrics'][number];
+
+/**
+ * Seller-level media_buy.vendor_metric_optimization rollup, derived from the
+ * publishers' product-level declarations so it cannot drift from the catalog.
+ * Pairs are keyed on (vendor.domain, vendor.brand_id, metric_id), the match
+ * key the schema defines, so vendor.countries is ignored. Per-pair
+ * supported_targets and the object-level supported_targets are the union
+ * across products. Returns undefined when no product declares a pair.
+ */
+export function buildVendorMetricOptimizationCapability(
+  publishers: readonly PublisherProfile[] = PUBLISHERS,
+): { supported_targets?: Array<'cost_per' | 'threshold_rate'>; supported_metrics: VendorMetricOptimizationEntry[] } | undefined {
+  const rollup = new Map<string, VendorMetricOptimizationEntry>();
+  for (const pub of publishers) {
+    for (const entry of pub.vendorMetricOptimization?.supported_metrics ?? []) {
+      const key = JSON.stringify([entry.vendor.domain, entry.vendor.brand_id ?? null, entry.metric_id]);
+      const existing = rollup.get(key);
+      if (!existing) {
+        rollup.set(key, structuredClone(entry));
+      } else if (entry.supported_targets) {
+        existing.supported_targets = [...new Set([...(existing.supported_targets ?? []), ...entry.supported_targets])];
+      }
+    }
+  }
+  if (rollup.size === 0) return undefined;
+  const supported_metrics = [...rollup.values()];
+  const supported_targets = [...new Set(supported_metrics.flatMap(entry => entry.supported_targets ?? []))];
+  return { ...(supported_targets.length > 0 && { supported_targets }), supported_metrics };
+}

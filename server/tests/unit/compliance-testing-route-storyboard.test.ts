@@ -31,6 +31,10 @@ vi.mock('@adcp/sdk/testing', async importOriginal => ({
 
 vi.mock('../../src/services/hosted-compliance-version.js', () => ({
   hostedComplianceTarget: () => mocks.target,
+  // Read by the forward-introduced-specialism overlay; this fixture target is
+  // synthetic, so no bundled release can define a specialism after it.
+  bundledComplianceVersions: () => [],
+  compareComplianceVersions: () => 0,
   hostedComplianceOptions: (target: { version: string; complianceDir: string; schemaRoot: string }) => ({
     version: target.version,
     complianceDir: target.complianceDir,
