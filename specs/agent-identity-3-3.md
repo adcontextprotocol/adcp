@@ -75,7 +75,7 @@ Characters follow the [character bible](./character-bible.md): Sam's buyer agent
 | D5 | **The 3.2 profile is deprecated in 3.3, stays fully functional through 3.x, and is removed in 4.0. #7942's client-only bootstrap does not ship.** | `versioning.mdx` requires a deprecation notice at least 6 months before removal, and `brand-identity-trust-split.md` already plans to remove the 3.2 key chain in 4.0. The notice tells the next implementer to build WBA. A client-only bootstrap would be a second first-contact mechanism. |
 | D6 | **Key revocation for WBA identities is published at the identity origin; agent revocation is the operator delisting the origin.** The 3.2 profile is unchanged. | Key facts live at one origin; the operator keeps a lever when that origin is compromised (R3a, freshness). |
 | D7 | **Demand-side grants (#6033) move into 3.3.** | Without public grants, a seller cannot verify acts-for without an onboarding record, and self-onboarding stops at identity. |
-| D8 | **Onboarding posture by billing party.** Seller: `account.agent_onboarding` with a mode per `billing-party` value plus a sandbox mode. Buyer: an `onboarding` slot in the trust.json agent profile, with its own modes. **P6 ships on its own**: only `open` and the `grant` kind wait for the identity PRs. | Sandbox carries no spend, and spend under `open` is bounded by an existing billing relationship and a grant (R7). Keying by billing party matches the first question onboarding teams ask (#8113). |
+| D8 | **Onboarding posture by billing party.** Seller: `account.agent_onboarding` with a mode per `billing-party` value plus a sandbox mode. Buyer: an `onboarding` slot in the trust.json agent profile, using the seller's modes. **P6 ships on its own**: only `open` and the `grant` kind wait for the identity PRs. | Sandbox carries no spend, and spend under `open` is bounded by an existing billing relationship and a grant (R7). Keying by billing party matches the first question onboarding teams ask (#8113). |
 | D9 | **`get_principal` reports relationship status and `expires_at`**, including before a principal exists, and `principal.changed` fires before a lapse. | The caller is authenticated, so per-agent state is safe to return. |
 | D10 | **Out of scope: agents accepting contracts** on an operator's behalf. Recorded as a known limitation. | A legal question first. See #6520 and #7064. |
 | D11 | **OAuth and auth.md sellers get an informative mapping in the docs (P8), not a rule.** | Same identity everywhere, without a normative dependency on a young single-vendor spec. |
@@ -193,7 +193,6 @@ Shape (experimental feature `account.agent_onboarding`):
         }
       },
       "url": "https://streamhaus.example/partners/buyer-agents",
-      "documentation_url": "https://docs.streamhaus.example/adcp",
       "message": "Sandbox is open to any verified buying agent. Operator-billed accounts are open when your operator already bills with us and the advertiser has granted your operator."
     }
   }
@@ -205,7 +204,7 @@ Shape (experimental feature `account.agent_onboarding`):
 - Each mode MAY carry its own `url`, which defaults to the top-level `url`.
 - Modes: `open`, `application`, `invite_only`. An absent key means undeclared, not `invite_only`.
 - Requirement kinds are closed, `x-extensible`, and each kind states the direction it applies to:
-  - seller gating a buyer: `agent_identity` (a trust record entry with the required role), `grant` (R6), `billing_entity`, `contract`, `credit_application`;
+  - seller gating a buyer: `grant` (R6), `billing_entity`, `contract`, `credit_application`. A trust-record entry with the required role is a precondition of every binding (R5 rule 2) and of `open` (R3a step 2), so it is not a listed requirement;
   - buyer gating a seller (#8114): `aao_verified` and `storyboard` (seller badges and storyboards exist today), `sandbox`, `experimental_feature`;
   - a kind used in the wrong direction is ignored;
   - an unknown kind falls back to `message` and `url`.
@@ -216,25 +215,25 @@ Shape (experimental feature `account.agent_onboarding`):
 - the `grant` requirement is satisfied by R6, including the implicit case when the operator is the brand;
 - when the account's brand is outside the buyer's operator domain and no grant covers it, the request is denied;
 - spend-committing operations need an existing seller-side billing relationship with the billed party: the operator domain under `operator`, or the brand's domain under `advertiser`;
-- quotas and rate limits for automatic binding are counted per operator domain, not per origin;
-- an origin whose registrable domain comes from the PSL PRIVATE section, such as a tenant subdomain of a hosting platform, is eligible for `sandbox` only.
+- sellers SHOULD count quotas and rate limits for automatic binding per operator domain, not per origin;
+- sellers SHOULD limit an origin whose registrable domain comes from the PSL PRIVATE section, such as a tenant subdomain of a hosting platform, to `sandbox`.
 
 **Uniformity.** The block is seller-wide, identical for every caller, served on the unauthenticated fetch, and absent from error payloads. The oracle clamps in `error-handling.mdx` are unchanged.
 
-**Buyer posture (#8114)** goes in `agents[].profiles.adcp.onboarding` in the buyer's trust record, with record-level `record_profiles.adcp` as an optional default. Its modes are distinct from the seller's: `considers_unsolicited`, `application`, `invite_only`. An agent that serves `get_adcp_capabilities` is authoritative there.
+**Buyer posture (#8114)** goes in `agents[].profiles.adcp.onboarding` in the buyer's trust record, with record-level `profiles.adcp.onboarding` as an optional default. trust.json is its only home. It uses the seller's mode enum (`open`, `application`, `invite_only`), and the direction comes from where the value appears.
 
 ### R8. Relationship status (P4, `get_principal.mdx`)
 
 - `get_principal` adds `relationship: { status, expires_at, setup }` on the `unconfigured`, `recognized`, and `current` results.
 - `relationship` is **omitted** when the seller has no relationship with the caller and no application in progress (the identity-established state of R5 rule 1).
 - Status values, when present:
-  - `pending`: an application or approval is in progress;
+  - `pending_approval`: an application or approval is in progress (the same word `sync_accounts` uses);
   - `active`;
   - `suspended`;
   - `blocked`.
-- While `pending`, an optional `setup { url, message, expires_at }` carries an applicant-specific next step, in the same shape as `sync_accounts` `setup`.
+- While `pending_approval`, an optional `setup { url, message, expires_at }` carries an applicant-specific next step, in the same shape as `sync_accounts` `setup`.
 - It is returned only to the authenticated caller. P4 opens the closed `unconfigured` schema (`get-principal-response.json`) for this one field.
-- `principal.changed` adds the reasons `relationship_changed` and `relationship_expiring`. The second fires at a seller-declared lead time before `expires_at`, following `setup_expiring`.
+- `principal.changed` adds the reasons `relationship_changed` and `relationship_expiring`. The second fires at a seller-chosen lead time before `expires_at`.
 
 ### R9. Revocation and committed work (P3)
 
@@ -270,7 +269,7 @@ The window of exposure is the time between compromise and the revocation reachin
 | Downgrade to a stale 3.2 key | No downgrade after binding; before binding, the operator removes the 3.2 keys from brand.json (R4). |
 | Stale brand.json grants override trust.json | A 200 from trust.json disables `authorized_operators[]` (R4). |
 | Anonymous party opens billed accounts | `open` binds identity only. Spend needs an existing billing relationship, and an out-of-domain brand needs a grant whose chain includes `account.operator` (R6, R7). |
-| Free registrable domains on hosting platforms defeat quotas | PRIVATE-section domains are `sandbox` only; quotas per operator domain (R7). |
+| Free registrable domains on hosting platforms defeat quotas | Sellers SHOULD limit PRIVATE-section domains to `sandbox` and count quotas per operator domain (R7). |
 | Trust-record fetches used as an amplifier or network probe | Evaluated only at gates and, for a JWS artifact, to select the profile (R4); never on the request-signature path. One hop, fetch limits, and one external authorization code (R3a). |
 | Signature errors used to probe which check failed | WBA status and headers only; no signature-specific body detail (R2). |
 | Posture used as an onboarding oracle | Seller-wide, unauthenticated, uniform block. Per-agent state only in authenticated `get_principal` (R7, R8). |
@@ -328,5 +327,5 @@ Tracking: adcp-client#3098, adcp-client-python#1283, adcp-go#548 and #109. Each 
 ## Resolved questions
 
 1. **Revocation path.** One list per origin, at the existing `/.well-known/governance-revocations.json` path and `adcp-gov-revocation+jws` type, covering all of the identity's keys (#7878 §Revocation).
-2. **Lead time for `relationship_expiring`.** Seller-declared, following `setup_expiring`. A protocol minimum can wait for adoption data.
+2. **Lead time for `relationship_expiring`.** Seller-chosen. A protocol minimum can wait for adoption data.
 3. **`authoritative_location` binding.** None added. The operator is derived from `O` and the match is on `O`, so a shared hosted document cannot make one domain's agents another's. `brand-identity-trust-split.md` §Hosting covers grants.
