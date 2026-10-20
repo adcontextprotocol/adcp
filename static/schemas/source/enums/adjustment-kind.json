@@ -8,12 +8,14 @@
     "fee",
     "discount",
     "commission",
-    "settlement"
+    "settlement",
+    "operator_fee"
   ],
   "enumDescriptions": {
     "fee": "Increases the price the buyer pays and the revenue the seller receives. Applied between list_price and fixed_price (e.g., ad serving fees, data/targeting surcharges, brand safety verification).",
     "discount": "Reduces the price the buyer pays and the revenue the seller receives. Applied between list_price and fixed_price (e.g., volume discounts, negotiated rates, early booking).",
     "commission": "Does not change the buyer's price or budget. Represents a revenue split — the portion retained by an intermediary (e.g., agency commission). Budgets are managed inclusive of commissions.",
-    "settlement": "Does not change the committed price or budget. Applied at invoicing or payment time (e.g., cash discount for early payment). Informational for buyer agents; affects actual settlement amount."
+    "settlement": "Does not change the committed price or budget. Applied at invoicing or payment time (e.g., cash discount for early payment). Informational for buyer agents; affects actual settlement amount.",
+    "operator_fee": "Increases the price the advertiser pays without changing the seller's revenue. A fee the account's operator (e.g., an agency buying for a brand) keeps out of the advertiser's budget, such as an insurance or service fee. beneficiary defaults to the account's operator. Appears only in breakdowns the operator's buying platform returns to the operator and its principal. Sellers MUST NOT include it in breakdowns or eligible_adjustments they author, because the seller does not see it."
   }
 }

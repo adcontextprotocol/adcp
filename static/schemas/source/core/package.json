@@ -59,7 +59,7 @@
       "description": "Package-authored bidding policy, echoed only when the buyer authored a package override. `{automatic:true}` is an explicit automatic-bidding override. Omission means the package inherits media-buy bidding or, when both scopes are absent, uses provider automatic delivery. Monetary fields are denominated in the media-buy currency. Sellers MUST NOT materialize inherited media-buy policy here."
     },
     "price_breakdown": {
-      "description": "Breakdown of the effective price for this package. On fixed-price packages, echoes the pricing option's breakdown. On auction packages, shows the clearing price breakdown including any commission or settlement terms.",
+      "description": "Breakdown of the effective price for this package. On fixed-price packages, echoes the pricing option's breakdown. On auction packages, shows the clearing price breakdown including any commission or settlement terms. A buying platform reporting the package to the account's operator and its principal may append operator_fee adjustments; sellers never do.",
       "$ref": "/schemas/pricing-options/price-breakdown.json"
     },
     "impressions": {
