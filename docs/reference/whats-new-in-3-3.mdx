@@ -73,6 +73,7 @@ These narrow what a conformant implementation may do. Each is detailed in the [m
 - **Platform IDs under both names.** A seller reporting an event source or audience platform ID emits `platform_id` and the deprecated `seller_id` alias with identical values. See [Platform object IDs have one name](#platform-object-ids-have-one-name).
 - **Property domain identifiers have an enforceable format.** `domain` and `subdomain` values must be lowercase ASCII hostnames; mixed-case, trailing-dot, and URL-shaped values are rejected. See [the migration guide](/docs/reference/migration/3-2-to-3-3#property-domain-identifiers-have-an-enforceable-format).
 - **Property list references resolve through AdCP tasks.** Issuers expose `get_property_list` over MCP and accept the reference's list-scoped Bearer token; a custom download route alone no longer suffices. See [the migration guide](/docs/reference/migration/3-2-to-3-3#property-list-references-resolve-through-adcp-tasks).
+- **Seller revisions advance on every committed change.** The media-buy `revision` advances on every committed change to the state `get_media_buys` reports, whatever its origin: an AdCP task, a seller operator, seller automation, another authorized principal, a connected platform, or a `sync_creatives` assignment. `history` entries for externally originated changes carry the same `origin.kind` vocabulary as `account.change`, and creatives gain an optional seller-maintained `seller_revision` that `account.change.resource_revision` carries. Buyers that send a stale `revision` will see more `CONFLICT`; that is intended. See [the migration guide](/docs/reference/migration/3-2-to-3-3#seller-revisions-advance-on-every-committed-change).
 
 Two more guarantees loosen here, and the response-size default a third ([below](#bounded-agent-responses)): a 3.2 verifier can reject a brand.json between 256 KiB and 2 MiB that a 3.3 verifier accepts, and a `ready` audience no longer promises match counts. Many new fields sit inside objects 3.2 closes, so send them only to peers that negotiated 3.3; see [Send only to 3.3 peers](/docs/reference/migration/3-2-to-3-3#send-only-to-3-3-peers).
 
@@ -150,6 +151,8 @@ These merged on `main` during the 3.3 cycle and were also released on the 3.2 li
 | If you are… | Review before advertising 3.3 |
 |---|---|
 | A seller that provisions accounts lazily | Stop provisioning on discovery tasks. |
+| A seller with a media-buy, account or creative revision | Advance it on every committed change from any origin, including `sync_creatives` assignments and ingested connected-platform changes; add `origin` to `history` entries. |
+| A buyer that passes `revision` on updates | Expect `CONFLICT` after seller, connected-platform or `sync_creatives` changes; re-read and retry with the new `revision`. |
 | A signing or verifying implementation | Resolve agents by canonical URL from `identity.brand_json_url`, publish every pinned key in your JWKS, apply the A2A hardening clauses, and raise the brand.json cap to 2 MiB. |
 | A seller sending delivery webhooks | Echo `reporting_webhook.operation_id`, and send nothing to a registration without one. |
 | A seller returning proposals | Pin covered third-party definitions for 3.3 callers, and advertise only measurement terms you accept on replay. |
