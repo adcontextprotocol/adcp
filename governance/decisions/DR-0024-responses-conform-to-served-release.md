@@ -34,10 +34,10 @@ The escape valve makes the MUST enforceable: a seller is honest about the releas
 
 ## Implications
 
-The rule applies from 3.3, so no released seller becomes retroactively non-conformant.
+The rule binds a seller that lists 3.3 or a later release in `supported_versions`, for every release it lists, so no released seller becomes retroactively non-conformant.
 
 **Conformance:** the `version_negotiation` storyboard grades it once the runner validates against a per-release schema bundle.
 
-**SDKs:** server frameworks are expected to prune undefined properties against R's schema, apply projection transforms for the non-additive changes, and derive `supported_versions` from the releases they can project to.
+**SDKs:** server frameworks are expected to validate each response against R's published schema and omit what it rejects, apply projection transforms for the non-additive changes, and derive `supported_versions` from the releases they can serve. `x-added-in` annotations are informative and do not decide what a response carries.
 
 **Not settled here:** signing-profile selection by negotiated version, which is tracked separately.

@@ -269,10 +269,9 @@ match exactly, and a release pin never resolves onto a prerelease.
 `update_media_buy` compatibility facades. A seller that exposes only the
 compact tools cannot serve an unchanged 3.1 buyer.
 
-**Response shapes when serving `"3.1"`.** From 3.3, a seller serving `"3.1"`
-MUST emit a response valid under the 3.1 schema, and MUST NOT list `"3.1"` in
-`supported_versions` if it cannot ([Serving an older
-pin](/docs/reference/versioning#serving-an-older-pin)). 3.2 itself did not
+**Response shapes when serving `"3.1"`.** [Serving an older
+pin](/docs/reference/versioning#serving-an-older-pin) says what a seller that
+lists 3.3 or a later release sends under a `"3.1"` pin. 3.2 itself did not
 require this, so a 3.2 seller can still emit the shapes below under a 3.1 pin,
 and a strict 3.1 validator rejects them. Buyers should keep parsing
 tolerantly. The six known divergences:
@@ -283,8 +282,7 @@ tolerantly. The six known divergences:
    failure, a required-field flip. 3.2 also makes `status` optional on
    `action: "failed"` rows.
 2. `get_adcp_capabilities`: `media_buy.execution.targeting.geo_regions` and
-   `.language` can be objects instead of booleans. From 3.3 a seller MUST
-   project them to booleans for a `"3.1"` pin. This is the discovery call
+   `.language` can be objects instead of booleans. This is the discovery call
    itself, so parse it tolerantly when talking to sellers that predate the rule.
 3. `core/pricing-option.json`: new `revenue_share` arm.
 4. `get_products`: terminal `status: "rejected"` response without `products`.
