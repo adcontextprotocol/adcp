@@ -103,11 +103,11 @@ On a `"3.2"` pin the fail-closed rule remains opt-in [interim guidance](/docs/bu
 
 ### Reporting and artifact webhooks can omit `authentication`
 
-`reporting_webhook.authentication` and `create_media_buy.artifact_webhook.authentication` are no longer required for a request served at 3.3 or later. When the block is absent, the seller MUST sign every delivery under the webhook signing profile it advertises in `webhook_signing.profile`, and receivers MUST reject unsigned deliveries. No shared secret crosses the wire, so a 3.3 integration can be fully HMAC-free. A `token` is not authentication ([#8176](https://github.com/adcontextprotocol/adcp/issues/8176)).
+`reporting_webhook.authentication` and `create_media_buy.artifact_webhook.authentication` are required only on a request served below 3.3 ([#8176](https://github.com/adcontextprotocol/adcp/issues/8176)). When this block is absent, the seller signs every delivery under the profile the registration's `signing_profile` selects (`adcp/webhook-signing/v1` when it is omitted), as for `push_notification_config` ([Webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks)). No shared secret crosses the wire, so a 3.3 integration can be fully HMAC-free.
 
-**Buyers.** Omit the block only when the request is served at 3.3 or later and the seller declares `webhook_signing.supported: true`. A buyer pinned to 3.2 keeps sending it, even to a 3.3 seller.
+**Buyers.** Omit the block only on a request served at 3.3 or later. A buyer pinned to 3.2 keeps sending it, even to a 3.3 seller.
 
-**Sellers.** If you sign webhooks, accept a 3.3-served request without the block and sign the deliveries. If you don't sign webhooks, reject it with `INVALID_REQUEST` naming the field. A request served below 3.3 still requires the block. Sending it remains valid everywhere in 3.x, and the block is removed in 4.0 ([#4288](https://github.com/adcontextprotocol/adcp/issues/4288)).
+**Sellers.** Accept a 3.3-served request without the block and sign its deliveries as for `push_notification_config`. On a request served at 3.3 or later, the downgrade and injection rules in [Webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks) now cover both registrations. A request served below 3.3 still requires the block. Sending it remains valid everywhere in 3.x, and the block is removed in 4.0 ([#4288](https://github.com/adcontextprotocol/adcp/issues/4288)).
 
 ### Proposals pin third-party definitions
 

@@ -4,9 +4,9 @@
 
 `reporting_webhook.authentication` and `create_media_buy.artifact_webhook.authentication` are no longer in `required[]` (#8176), so a 3.3 integration can be fully HMAC-free before 4.0.
 
-- **Absent means signed:** when the block is absent, the seller MUST sign every delivery under the profile it advertises in `webhook_signing.profile`, and receivers MUST reject unsigned deliveries.
-- **Non-signing sellers:** a seller that does not sign webhooks rejects an omitted block with `INVALID_REQUEST` naming the field, and never delivers unsigned webhooks.
-- **Version gate:** a buyer MAY omit the block only when the request is served at 3.3 or later and the seller declares `webhook_signing.supported: true`. A request served below 3.3 still requires it, including a 3.3 seller serving a buyer pinned to 3.2.
-- **`token` is not authentication:** it is a correlation echo and never substitutes for the block or a signature.
+- **Version gate:** the block is required on a request served below 3.3, including a 3.3 seller serving a buyer pinned to 3.2.
+- **Absent block:** the seller signs every delivery under the profile the registration's `signing_profile` selects (`adcp/webhook-signing/v1` when it is omitted), as for `push_notification_config`.
+- **One list of webhook registrations:** `security.mdx` §Webhook callbacks now defines the list, including `reporting_webhook` and `artifact_webhook`, and the page's legacy-HMAC, switch, and downgrade rules refer to it. The downgrade and injection rules cover the two new entries on requests served at 3.3 or later.
+- **`token`:** both descriptions now match the push rule: the seller echoes it verbatim, and it never substitutes for verifying the delivery's signature.
 
-How a seller handles a request that carries the block is unchanged and stays in `security.mdx` §Webhook callbacks. Sending the block stays valid throughout 3.x, and #4288 still owns its 4.0 removal. The 3.2→3.3 migration guide and the reporting docs are updated.
+Sending the block stays valid throughout 3.x, and #4288 still owns its 4.0 removal. The 3.2→3.3 migration guide, the reporting docs, and the `update_media_buy` reference are updated.

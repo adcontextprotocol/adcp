@@ -19,13 +19,13 @@
     },
     "token": {
       "type": "string",
-      "description": "Optional client-provided token, echoed back in the webhook payload so the receiver can correlate the delivery with its registration. It is not authentication: it does not prove who sent the delivery and never substitutes for a signature or for authentication.",
+      "description": "Optional client-provided token. The seller echoes it verbatim in every delivery. A receiver MUST NOT treat a valid token echo as a substitute for verifying the delivery's signature.",
       "minLength": 16
     },
     "authentication": {
       "type": "object",
       "deprecated": true,
-      "description": "Legacy authentication for webhook delivery (A2A-compatible): Bearer or HMAC-SHA256, both deprecated and removed in AdCP 4.0 (#4288). **When this block is absent, the seller MUST sign every delivery** under the webhook signing profile it advertises in webhook_signing.profile, verified against its published keys with no shared secret on the wire, and receivers MUST reject unsigned deliveries. A seller that cannot sign webhooks MUST reject a request that omits this block with INVALID_REQUEST naming this field, and MUST NOT accept it and deliver unsigned or unverifiable webhooks. `token` is not authentication: it never substitutes for this block or for a signature. How a seller handles a request that carries this block, and the webhook_mode_mismatch rule, are in docs/building/by-layer/L1/security.mdx#webhook-callbacks. **Version gate:** required when the request is served at a release below 3.3, including a 3.3 seller serving a buyer pinned to 3.2. A buyer MAY omit it only when the request is served at 3.3 or later (the negotiated release, not merely the seller's supported_versions) and the seller declares webhook_signing.supported: true.",
+      "description": "Legacy authentication for webhook delivery (A2A-compatible): Bearer or HMAC-SHA256, both deprecated and removed in AdCP 4.0 (#4288). Required on a request served below 3.3. When this block is absent, the seller signs every delivery under the profile the registration's `signing_profile` selects (`adcp/webhook-signing/v1` when it is omitted), as for `push_notification_config` (docs/building/by-layer/L1/security.mdx#webhook-callbacks).",
       "properties": {
         "schemes": {
           "type": "array",
@@ -66,6 +66,9 @@
       "uniqueItems": true
     }
   },
-  "required": ["url", "reporting_frequency"],
+  "required": [
+    "url",
+    "reporting_frequency"
+  ],
   "additionalProperties": true
 }
