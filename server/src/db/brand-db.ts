@@ -13,6 +13,7 @@ import type {
 } from '../types.js';
 import { isValidRelationshipTrust } from '../types.js';
 import { preserveBrandTrustFields, stripBrandTrustFields } from '../services/brand-trust-fields.js';
+import { BRAND_REVISION_SNAPSHOT_FIELDS, pickSnapshotFields } from './registry-revision-snapshot.js';
 
 /**
  * Brand-manifest keys that must not be accepted from caller-supplied
@@ -37,7 +38,7 @@ import { preserveBrandTrustFields, stripBrandTrustFields } from '../services/bra
  *
  * See issue #3467 and the architecture follow-up there.
  */
-const DISALLOWED_MANIFEST_KEYS: ReadonlySet<string> = new Set(['classification', 'brand_context']);
+export const DISALLOWED_MANIFEST_KEYS: ReadonlySet<string> = new Set(['classification', 'brand_context']);
 
 /**
  * Stable precedence for selecting a registry fact when legacy or partially
@@ -71,7 +72,19 @@ export function sanitizeBrandManifest(
   return stripped ?? manifest;
 }
 
+/**
+ * Reduce a `brands` row to the fields a revision snapshot may carry, then
+ * apply the brand manifest's own rules on top. The row-level allowlist lives
+ * in `registry-revision-snapshot.ts` and is what keeps ownership, contact and
+ * verification columns out of revision history; the manifest pass below keeps
+ * classifier output and private brand context out of it as well.
+ */
 export function sanitizeBrandSnapshot<T extends Record<string, unknown>>(snapshot: T): T {
+  const picked = pickSnapshotFields(snapshot, BRAND_REVISION_SNAPSHOT_FIELDS);
+  return sanitizeBrandSnapshotManifest(picked);
+}
+
+function sanitizeBrandSnapshotManifest<T extends Record<string, unknown>>(snapshot: T): T {
   const rawManifest = snapshot.brand_manifest;
   let manifest: Record<string, unknown> | undefined;
 
