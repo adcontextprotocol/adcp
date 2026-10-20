@@ -714,6 +714,7 @@ async function publishInlineCreativeChanges(
   mutations: InlineCreativeMutation[],
   accountId: string | undefined,
   principal: string | undefined,
+  idempotencyKey: string | undefined,
 ): Promise<void> {
   if (!accountId) return;
   for (const { previous, current } of mutations) {
@@ -725,8 +726,8 @@ async function publishInlineCreativeChanges(
             ? ['/format'] : []),
           ...(!isDeepStrictEqual(previous.manifest, current.manifest) ? ['/manifest'] : []),
         ]
-      : undefined;
-    if (previous && changedPaths!.length === 0) continue;
+      : [''];
+    if (previous && changedPaths.length === 0) continue;
     const change = recordAccountChange(principal, {
       resource: {
         type: 'creative',
@@ -735,6 +736,7 @@ async function publishInlineCreativeChanges(
       },
       action: previous ? 'updated' : 'created',
       origin: { kind: 'adcp' },
+      idempotency_key: idempotencyKey,
       changed_paths: changedPaths,
       repair: { task: 'list_creatives' },
       summary: previous
@@ -16273,7 +16275,7 @@ async function handleCreateMediaBuyUnlocked(
     persistedAccountId,
     now,
   );
-  await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal);
+  await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal, req.idempotency_key);
 
   // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
   const governanceContext = govCtx && govCtx.length <= 4096 ? govCtx : undefined;
@@ -17847,8 +17849,8 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
                 ? ['/format'] : []),
               ...(!isDeepStrictEqual(existingCreative.manifest, storedCreative.manifest) ? ['/manifest'] : []),
             ]
-          : undefined;
-        if (!existingCreative || changedPaths!.length > 0) {
+          : [''];
+        if (!existingCreative || changedPaths.length > 0) {
           const change = recordAccountChange(ctx.principal, {
             resource: {
               type: 'creative',
@@ -17857,6 +17859,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
             },
             action: existingCreative ? 'updated' : 'created',
             origin: { kind: 'adcp' },
+            idempotency_key: req.idempotency_key,
             changed_paths: changedPaths,
             repair: { task: 'list_creatives' },
             summary: existingCreative
@@ -19637,7 +19640,7 @@ async function handleUpdateMediaBuyUnlocked(
       persistedAccountId,
       now,
     );
-    await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal);
+    await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal, req.idempotency_key);
   }
 
   const status = deriveStatus(mb, session);
