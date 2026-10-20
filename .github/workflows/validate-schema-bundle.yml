@@ -3,10 +3,12 @@ name: Validate schema PR bundle
 on:
   pull_request:
     branches: [main]
-    # Preview artifacts are only for changes to canonical schema sources.
-    # Compliance, OpenAPI, and build-tool changes remain covered by normal CI.
+    # Exercise canonical sources and the SDK semantic gate itself.
+    # Compliance, OpenAPI, and other build tools remain covered by normal CI.
     paths:
       - 'static/schemas/source/**'
+      - 'scripts/probe-generated-sdk-creative-assets.cjs'
+      - '.github/workflows/validate-schema-bundle.yml'
 
 concurrency:
   group: schema-pr-bundle-${{ github.event.pull_request.number }}
@@ -109,6 +111,17 @@ jobs:
 
       - uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: protocol
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            scripts/probe-generated-sdk-creative-assets.cjs
+            static/schemas/source/core/assets
+
+      - uses: actions/checkout@v7.0.1
+        with:
           repository: adcontextprotocol/adcp-client
           path: sdk
           fetch-depth: 1
@@ -153,6 +166,8 @@ jobs:
           # the normal public host.
           unset ADCP_BASE_URL ADCP_GITHUB_FALLBACK
           npm --prefix sdk run build:lib
+          node protocol/scripts/probe-generated-sdk-creative-assets.cjs \
+            --source-root protocol/static/schemas/source --sdk-root sdk
 
           bundle_digest="$(node -p "require('./bundle/latest.tgz.provenance.json').bundle_sha256")"
           {

@@ -901,12 +901,20 @@ async function runTests() {
   });
 
   // Test 5: Validate enum schemas
-  await test('All enum schemas have proper enum values', () => {
+  await test('All vocabulary schemas have finite values or constrained parameterized names', () => {
     const enumSchemas = schemas.filter(([path]) => path.includes('/enums/'));
+    const isFiniteEnum = branch => Array.isArray(branch.enum) && branch.enum.length > 0;
+    const isParameterizedName = branch => typeof branch.pattern === 'string' &&
+      branch.pattern.startsWith('^') && branch.pattern.endsWith('$');
 
     for (const [schemaPath, schema] of enumSchemas) {
-      if (!schema.enum || !Array.isArray(schema.enum) || schema.enum.length === 0) {
+      const branches = schema.anyOf || [schema];
+      if (!branches.some(isFiniteEnum)) {
         return `${path.basename(schemaPath)}: Missing or empty enum values`;
+      }
+      if (branches.some(branch => !isFiniteEnum(branch) &&
+        !(schema.type === 'string' && isParameterizedName(branch)))) {
+        return `${path.basename(schemaPath)}: Unconstrained vocabulary branch`;
       }
     }
     return true;

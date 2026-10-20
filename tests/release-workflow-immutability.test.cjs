@@ -82,8 +82,8 @@ assert(
 
 assert.deepStrictEqual(
   schemaPrWorkflowConfig.on.pull_request.paths,
-  ['static/schemas/source/**'],
-  'Schema PR bundle validation must run only for canonical schema source changes.'
+  ['static/schemas/source/**', 'scripts/probe-generated-sdk-creative-assets.cjs', '.github/workflows/validate-schema-bundle.yml'],
+  'Schema PR bundle validation must cover canonical sources and edits to its SDK semantic gate.'
 );
 
 const typescriptCandidateStep = schemaPrWorkflowConfig.jobs['typescript-sdk'].steps.find(
@@ -99,6 +99,28 @@ assert(
 assert(
   !typescriptCandidateStep.includes('sync-version -- --auto-update'),
   'Candidate validation must not bump the TypeScript SDK package release number.'
+);
+const typescriptProtocolCheckout = schemaPrWorkflowConfig.jobs['typescript-sdk'].steps.find(
+  step => step.uses?.startsWith('actions/checkout@') && step.with?.path === 'protocol'
+);
+assert.strictEqual(
+  typescriptProtocolCheckout?.with?.ref,
+  '${{ github.event.pull_request.head.sha }}',
+  'Generated SDK probes must come from the exact protocol PR head.'
+);
+assert.strictEqual(typescriptProtocolCheckout.with['persist-credentials'], false);
+assert.strictEqual(typescriptProtocolCheckout.with['sparse-checkout-cone-mode'], false,
+  'Exact probe file patterns require non-cone sparse checkout.');
+assert(
+  typescriptProtocolCheckout.with['sparse-checkout'].includes('scripts/probe-generated-sdk-creative-assets.cjs') &&
+    typescriptProtocolCheckout.with['sparse-checkout'].includes('static/schemas/source/core/assets'),
+  'The candidate SDK job must check out the probe and source asset feature declarations.'
+);
+const candidateProbeIndex = typescriptCandidateStep.indexOf('node protocol/scripts/probe-generated-sdk-creative-assets.cjs');
+assert(
+  candidateProbeIndex > typescriptCandidateStep.indexOf('npm --prefix sdk run build:lib') &&
+    typescriptCandidateStep.includes('--source-root protocol/static/schemas/source --sdk-root sdk'),
+  'Creative asset semantics must be probed through the built SDK against this PR source.'
 );
 
 const pythonCandidateStep = schemaPrWorkflowConfig.jobs['python-sdk'].steps.find(

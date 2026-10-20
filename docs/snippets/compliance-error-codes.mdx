@@ -48,6 +48,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CREATIVE_DEADLINE_EXCEEDED` | correctable | check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller |
 | `CREATIVE_INACCESSIBLE` | correctable | verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit |
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
+| `CREATIVE_MERGE_REJECTED` | correctable | confirm the pairing via list_creatives, or use a replace assignment operation to traffic creative_id as a new serving object |
 | `CREATIVE_MISSING_CLICK_URL` | correctable | add the required destination URL and resubmit the creative |
 | `CREATIVE_NOT_FOUND` | correctable | verify creative_id via list_creatives, or sync_creatives to register it |
 | `CREATIVE_REJECTED` | correctable | revise the creative according to the applicable advertising policy or validated accessibility criteria |
@@ -459,6 +460,15 @@ A creative governance agent (get_creative_features) could not retrieve the submi
 **Suggested action:** supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default
 
 A creative bound to a locale-constrained product format has no materialized variant matching locale_policy.accepted_language_ranges, lacks protocol-declared locale topology, or uses serve_default with a seller-ineligible default variant. Seller ranges use RFC 4647 Basic Filtering and are applied independently for every placement where the assignment may serve, before buyer Lookup, locale_fallbacks, or default selection. Distinct from CREATIVE_REJECTED because this is a mechanically discoverable assignment-eligibility mismatch, not subjective content review. error.field SHOULD point to the offending creative or assignment; error.details SHOULD include format_option_id when present, accepted_language_ranges, available_variant_locales, and placement identity when applicable. Recovery: correctable (supply or assign a matching materialized locale variant, narrow placement scope, choose a compatible format option, or change an ineligible serve_default).
+
+</Accordion>
+<a id="error-code-creative-merge-rejected"></a>
+
+<Accordion title="CREATIVE_MERGE_REJECTED — correctable">
+
+**Suggested action:** confirm the pairing via list_creatives, or use a replace assignment operation to traffic creative_id as a new serving object
+
+One or more sync_creatives merge assignment operations failed seller verification. The seller evaluates every merge in the request, MUST leave every assignment unchanged (assignment operations are atomic), SHOULD set error.field to the first rejected assignment_operations entry, and SHOULD return details conforming to error-details/creative-merge-rejected.json listing each rejected merge with a reason: content_mismatch (the seller judges the copy is a different creative), format_mismatch (the buyer's creative cannot take over the copy's serving object), not_on_package (merged_creative_id is not a seller-assigned creative assigned to the package in this account, reported uniformly for unknown IDs), or not_supported (the seller cannot merge this pairing on this package). A seller that does not declare creative.supports_assignment_merge returns UNSUPPORTED_FEATURE instead. Recovery: correctable (drop or fix the rejected merges and resubmit; use replace to traffic creative_id as a new serving object).
 
 </Accordion>
 <a id="error-code-creative-missing-click-url"></a>
@@ -962,7 +972,7 @@ One or more referenced product IDs are unknown or are not resolvable within the 
 
 **Suggested action:** choose a different product
 
-The requested product is sold out or no longer available. Recovery: correctable (choose a different product).
+The requested product is sold out or no longer available. On accept_proposal for an experimental ranked hold behind first position (media_buy.hold_ranking), it means a hold ahead still stands: the committed proposal stays acceptable until expires_at and a later acceptance may succeed. Recovery: correctable (choose a different product).
 
 </Accordion>
 <a id="error-code-proposal-expired"></a>

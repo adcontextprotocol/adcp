@@ -1,0 +1,171 @@
+# AdCP 4.0 compatibility checks
+#
+# Registry of the checks that tell a 3.x agent what AdCP 4.0 removes or
+# tightens that the agent still depends on. This file is not a storyboard: it
+# has no phases and the runner does not execute it. It names each check and
+# says where the suite observes it, so a report can join run output against
+# this list and show every check as passed, failing (with the fix), or not
+# observable.
+#
+# Grading on 3.x
+# --------------
+# The checks are advisory throughout 3.x. A check added for 4.0 readiness
+# MUST NOT fail a 3.x conformance run:
+#
+#   - A validation added only for 4.0 readiness declares `severity: advisory`
+#     with `permanent_advisory`. It MUST NOT use `expires_after_version`,
+#     which promotes on runner version, not on the spec version an agent is
+#     graded against.
+#   - A check MAY instead point at a validation that is already required on
+#     3.x for its own reasons (for example, release-precision version
+#     advertisement is a 3.2 certification requirement). Pointing at it adds
+#     no new failure.
+#   - A check observed through a runner notice inherits the notice contract:
+#     notices never change pass/fail counters.
+#
+# Every canonical notice code with `effective_version: "4.0"` in
+# runner-output-contract.yaml is a check here under the same id, whether the
+# registry observes it through that notice or through a validation.
+#
+# Each check is graded in the storyboard step that already makes the call it
+# needs. The suite does not add a separate 4.0 storyboard, because a task
+# error in a new step would itself become a 3.x failure.
+#
+# Deriving the report
+# -------------------
+# For each check, against one compliance run of one agent:
+#
+#   observed_by.validation (a storyboard, the steps that may grade the
+#   check, and a validation whose `id` equals the check id; when several
+#   steps are listed, they are alternative branches and at most one runs)
+#     passed          the validation_result with this `id` has passed: true
+#                     and was graded (not not_applicable).
+#     failing         the validation_result has passed: false. Show `fix`.
+#     not observable  the storyboard did not run, the step was skipped, or
+#                     the validation graded not_applicable (for example, a
+#                     runner older than the check kind, or nothing to inspect).
+#
+#   observed_by.notice (a canonical notice code in runner-output-contract.yaml)
+#     failing         the run emitted a notice with this code. Show `fix`.
+#     passed          one of `storyboards` ran to completion and emitted no
+#                     notice with this code, AND the runner is known to emit
+#                     this code. Canonical notices are SHOULD-emit, so absence
+#                     from a runner that never emits the code proves nothing.
+#     not observable  none of `storyboards` ran, or the runner is not known
+#                     to emit this code.
+#
+#   Prefer a validation. Use a notice only when no existing step can express
+#   the detection rule as a validation.
+#
+#   observed_by.none
+#     not observable  always. `reason` says why a 3.x agent cannot show it.
+#
+# Adding a check
+# --------------
+# Every 4.0 issue that removes or tightens something an agent relies on
+# declares a stable check id and a one-line detection rule, then adds an entry
+# here in the same PR as the validation or notice that observes it. Add a
+# check only once the 4.0 change is decided; proposals still under working
+# group review stay out until they are accepted.
+#
+#   id              stable snake_case id, `<subject>_removed_in_4_0` or
+#                   `<subject>_required_in_4_0`. Never renamed: dashboards
+#                   aggregate by id. Equals the validation `id` or notice
+#                   `code` that observes it.
+#   issue           tracking issue number on adcontextprotocol/adcp.
+#   change          removal | new_requirement
+#   applies_to      the agent roles the check speaks to.
+#   detection       one line: what the check looks for.
+#   fix             what the agent changes before 4.0.
+#   observed_by     exactly one of validation, notice, or none (see above).
+#
+# Each id has an anchor of the same name on the migration guide
+# (`migration_guide` below). `scripts/lint-v4-compatibility-registry.cjs`
+# checks the ids, the observing validations and notices, and the anchors.
+
+id: v4_compatibility
+version: "1.0.0"
+title: "AdCP 4.0 compatibility checks"
+target_version: "4.0"
+migration_guide: "docs/reference/migration/v4-compatibility.mdx"
+
+checks:
+  - id: format_ids_removed_in_4_0
+    issue: 7629
+    change: removal
+    applies_to: [sellers]
+    detection: "A product returned by get_products declares format_ids without format_options."
+    fix: >-
+      Author canonical format_options[] on every product. format_ids may stay
+      as a projection for older 3.x buyers until 4.0, but 4.0 buyers read
+      format_options only.
+    observed_by:
+      validation:
+        storyboard: media_buy_seller
+        steps: [get_products_brief, get_products_brief_buyer_selected_timezone]
+
+  - id: major_versions_removed_in_4_0
+    issue: 3572
+    change: removal
+    applies_to: [all_agents]
+    detection: "get_adcp_capabilities declares adcp.major_versions without adcp.supported_versions."
+    fix: >-
+      Advertise every release you speak in adcp.supported_versions
+      (release-precision strings such as "3.2"). Keep adcp.major_versions
+      through 3.x; 4.0 removes it.
+    observed_by:
+      validation:
+        storyboard: version_negotiation
+        steps: [get_capabilities_with_version]
+
+  - id: adcp_version_echo_required_in_4_0
+    issue: 3572
+    change: new_requirement
+    applies_to: [all_agents]
+    detection: "The response envelope does not echo the served release in adcp_version."
+    fix: >-
+      Echo the release you served in adcp_version on every response envelope.
+      4.0 makes the echo a MUST and removes the adcp_major_version fallback.
+    observed_by:
+      validation:
+        storyboard: version_negotiation
+        steps: [get_capabilities_with_version]
+
+  - id: signed_requests_specialism_deprecated
+    issue: 3078
+    change: removal
+    applies_to: [all_agents]
+    detection: "get_adcp_capabilities lists the signed-requests specialism."
+    fix: >-
+      Drop signed-requests from specialisms and advertise
+      request_signing.supported: true instead. 4.0 removes the enum value.
+    observed_by:
+      notice:
+        storyboards: [signed_requests]
+
+  - id: request_signing_required_in_4_0
+    issue: 2307
+    change: new_requirement
+    applies_to: [sellers]
+    detection: "get_adcp_capabilities does not advertise request_signing.supported: true."
+    fix: >-
+      Verify RFC 9421 request signatures and advertise
+      request_signing.supported: true. 4.0 requires signing on
+      spend-committing operations.
+    observed_by:
+      validation:
+        storyboard: media_buy_seller
+        steps: [get_capabilities]
+
+  - id: legacy_hmac_fallback_removed_in_4_0
+    issue: 4205
+    change: removal
+    applies_to: [all_agents]
+    detection: "get_adcp_capabilities advertises webhook_signing.legacy_hmac_fallback: true."
+    fix: >-
+      Sign webhooks with RFC 9421 only and stop advertising
+      legacy_hmac_fallback. 4.0 removes the HMAC fallback.
+    observed_by:
+      validation:
+        storyboard: capability_discovery
+        steps: [get_capabilities]

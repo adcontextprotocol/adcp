@@ -41,6 +41,7 @@ const UNIVERSAL_SUPPORT_ARTIFACTS = new Set([
   'governance',
   'runner-output-contract',
   'storyboard-schema',
+  'v4-compatibility',
 ]);
 
 const OUTPUTS = {
