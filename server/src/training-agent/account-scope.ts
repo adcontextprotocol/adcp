@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { AccountRef, OperatorUnit } from './types.js';
 
 const ACCOUNT_ID_KEYS = new Set(['account_id']);
-const NATURAL_ACCOUNT_KEYS = new Set(['brand', 'operator', 'operator_unit', 'currency', 'timezone', 'sandbox']);
+export const NATURAL_ACCOUNT_KEYS: ReadonlySet<string> = new Set(['brand', 'operator', 'operator_unit', 'currency', 'timezone', 'sandbox']);
 const BRAND_REF_KEYS = new Set([
   'domain',
   'brand_id',

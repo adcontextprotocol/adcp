@@ -39,7 +39,7 @@ import type {
 } from '@adcp/sdk/server';
 import { AdcpError } from '@adcp/sdk/server';
 import { handleSyncAccounts, isNaturalAccountRefProvisioned } from './account-handlers.js';
-import type { CanonicalAccountRef } from './account-scope.js';
+import { NATURAL_ACCOUNT_KEYS, type CanonicalAccountRef } from './account-scope.js';
 import { pickFromInput } from './v6-input-helpers.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -118,9 +118,20 @@ export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (re
  * the required `sandbox: true` caller assertion, which core AccountRef forbids
  * on account_id refs. Drop the assertion before canonicalizing; the resolved
  * account record, not the flag, decides sandbox status.
+ *
+ * sync_accounts: @adcp/sdk 16 looks up each sync entry's existing account
+ * through `accounts.resolve` and passes the whole entry, so the natural key
+ * arrives alongside settings such as `billing` and `payment_terms`. Keep only
+ * the natural-key fields; every other caller still gets strict validation.
  */
 export function accountRefForResolution(ref: unknown, toolName: string | undefined): unknown {
-  if (toolName !== 'comply_test_controller' || ref == null || typeof ref !== 'object' || Array.isArray(ref)) return ref;
+  if (ref == null || typeof ref !== 'object' || Array.isArray(ref)) return ref;
+  if (toolName === 'sync_accounts') {
+    const record = ref as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(record, 'account_id')) return ref;
+    return Object.fromEntries(Object.entries(record).filter(([key]) => NATURAL_ACCOUNT_KEYS.has(key)));
+  }
+  if (toolName !== 'comply_test_controller') return ref;
   const record = ref as Record<string, unknown>;
   if (!Object.prototype.hasOwnProperty.call(record, 'account_id') || record.sandbox !== true) return ref;
   const { sandbox: _sandbox, ...identity } = record;
