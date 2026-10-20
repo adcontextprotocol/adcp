@@ -128,7 +128,17 @@ function packageSide() {
   return out;
 }
 
-const previous = existsSync(OUT) ? JSON.parse(readFileSync(OUT, 'utf8')) : null;
+/** The numbers written last time, or null on a first run. */
+function readPrevious() {
+  try {
+    return JSON.parse(readFileSync(OUT, 'utf8'));
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+const previous = readPrevious();
 const pr = prSide(previous);
 const packages = packageSide();
 const sat = packages['seller-adjustable-terms'];

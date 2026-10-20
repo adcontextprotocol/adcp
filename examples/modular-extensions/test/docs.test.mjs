@@ -17,6 +17,8 @@ import { createAdcpClient } from '../lib/client.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PKG = (p) => path.join(ROOT, 'packages', p);
 const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'));
+/** s as a literal inside a RegExp: every metacharacter, the backslash included, escaped. */
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** A throwaway copy of a package under its own uri, so it can be published to a scratch registry. */
 function scratchPackage(pkg) {
@@ -105,7 +107,7 @@ test('editing spec.md changes the digest, and the registry refuses the same vers
     // Same version, different bytes: refused. A version bump is accepted.
     publish(after, registry);
     const v = before.manifest.version;
-    assert.throws(() => writeRegistryIndex(after.manifest.id, registry), new RegExp(`version ${v.replace(/\./g, '\\.')} already published`));
+    assert.throws(() => writeRegistryIndex(after.manifest.id, registry), new RegExp(`version ${escapeRegExp(v)} already published`));
     rmSync(registryDocsDir(after.manifest.id, after.digest, registry), { recursive: true });
     rmSync(registryDocsDir(after.manifest.id, after.digest, registry) + '.json');
     const manifest = readJson(path.join(dir, 'extension.json'));

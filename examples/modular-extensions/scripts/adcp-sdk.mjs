@@ -32,7 +32,7 @@
 // --check writes nothing and exits 1 when the layer or the lock is stale against the config (the CI gate).
 // With --core <version> other than the installed core it only resolves (a dry run): it shows what
 // would and would not be compatible with that core.
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkCompat, compareVersions, satisfies } from '../lib/compat.mjs';
@@ -94,10 +94,16 @@ function installedPackage(uri, digest) {
 /** Every file under dir, relative to base, with its bytes. */
 function filesUnder(dir, base) {
   const out = new Map();
-  if (!existsSync(dir)) return out;
-  for (const name of readdirSync(dir).sort()) {
-    const full = path.join(dir, name);
-    if (statSync(full).isDirectory()) for (const [k, v] of filesUnder(full, base)) out.set(k, v);
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (err.code === 'ENOENT') return out;
+    throw err;
+  }
+  for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) for (const [k, v] of filesUnder(full, base)) out.set(k, v);
     else out.set(path.relative(base, full).split(path.sep).join('/'), readFileSync(full));
   }
   return out;

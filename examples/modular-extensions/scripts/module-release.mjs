@@ -19,7 +19,7 @@
 // them; the core build's own gate (build-core.mjs --freeze) refuses the re-stamp too, and nothing is
 // re-stamped. The example itself never changes. Exit 1 unless the release passes
 // and the refused edit is refused.
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -56,10 +56,16 @@ function layerFiles(dir, layer) {
 
 /** Every file under dir, relative to base, with its bytes. */
 function filesUnder(dir, base = dir, out = new Map()) {
-  if (!existsSync(dir)) return out;
-  for (const name of readdirSync(dir).sort()) {
-    const full = path.join(dir, name);
-    if (statSync(full).isDirectory()) filesUnder(full, base, out);
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (err.code === 'ENOENT') return out;
+    throw err;
+  }
+  for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) filesUnder(full, base, out);
     else out.set(path.relative(base, full).split(path.sep).join('/'), readFileSync(full));
   }
   return out;

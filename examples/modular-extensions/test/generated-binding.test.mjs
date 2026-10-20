@@ -6,7 +6,7 @@
 // Run with --experimental-strip-types (npm test does): the layers are TypeScript.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -54,9 +54,9 @@ function recorded(transport) {
 function hashTree(...dirs) {
   const out = {};
   const walk = (d) => {
-    for (const name of readdirSync(d).sort()) {
-      const p = path.join(d, name);
-      if (statSync(p).isDirectory()) walk(p);
+    for (const entry of readdirSync(d, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) walk(p);
       else out[path.relative(ROOT, p)] = createHash('sha256').update(readFileSync(p)).digest('hex');
     }
   };
