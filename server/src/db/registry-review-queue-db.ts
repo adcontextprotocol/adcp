@@ -633,8 +633,9 @@ const QUEUE_SQL = `
       NULL::jsonb AS covered_edits,
       -- A pending record IS the submission, so read the content from the
       -- row rather than from revision 1: enhanceProperty writes no
-      -- revision, and a property revision snapshot carries the row's
-      -- claim and verification tokens.
+      -- revision at all. (Revision snapshots are allowlisted now — see
+      -- db/registry-revision-snapshot.ts — but this view never needed
+      -- one.)
       jsonb_strip_nulls(jsonb_build_object(
         'brand_name', b.brand_name,
         'brand_names', b.brand_names,

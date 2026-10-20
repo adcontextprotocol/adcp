@@ -258,6 +258,9 @@ describe('a forced verdict only ever reaches the submitter who forced it', () =>
 
     await registryReview.reviewNewRecord(newBrandRecord({
       entity_type: 'property',
+      // The reviewer allowlists the snapshot per entity type and refuses one
+      // with no allowlisted field, so a property record needs a property row.
+      snapshot: { publisher_domain: 'acme.example', adagents_json: { authorized_agents: [] } },
       editor_user_id: 'system:addie',
       editor_email: undefined,
     }));

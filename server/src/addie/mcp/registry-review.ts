@@ -67,6 +67,7 @@ import { createLogger } from '../../logger.js';
 const logger = createLogger('addie-registry-review');
 import { ModelConfig } from '../../config/models.js';
 import { BrandDatabase, sanitizeBrandSnapshot } from '../../db/brand-db.js';
+import { sanitizePropertySnapshot } from '../../db/registry-revision-snapshot.js';
 import { PropertyDatabase } from '../../db/property-db.js';
 import { BansDatabase } from '../../db/bans-db.js';
 import { neutralizeAndTruncate, wrapUntrustedInput } from './untrusted-input.js';
@@ -139,8 +140,28 @@ const brandDb = new BrandDatabase();
 const propertyDb = new PropertyDatabase();
 const bansDb = new BansDatabase();
 
+/**
+ * Registry rows reach this module straight from the write paths as well as
+ * from stored revisions, so the snapshot allowlists are applied here too:
+ * the reviewer quotes record content into an LLM prompt and into the
+ * moderator queue, and neither needs the row's ownership, contact or
+ * verification columns.
+ *
+ * Every `snapshot` / `old_snapshot` / `new_snapshot` a caller passes must
+ * therefore be a `brands` or `hosted_properties` **row**. A bare
+ * `adagents.json` or `brand.json` document shares none of the allowlisted
+ * field names, so it sanitizes to `{}` — and a reviewer judging an empty
+ * object finds nothing wrong and approves. Throwing is the fail-safe: every
+ * caller is fire-and-forget behind a `.catch`, so the record stays `pending`
+ * for the moderator queue and the mistake costs one logged error instead of
+ * an unreviewed approval.
+ */
 function reviewSnapshot(entityType: 'brand' | 'property', snapshot: Record<string, unknown>): Record<string, unknown> {
-  return entityType === 'brand' ? sanitizeBrandSnapshot(snapshot) : snapshot;
+  const sanitized = entityType === 'brand' ? sanitizeBrandSnapshot(snapshot) : sanitizePropertySnapshot(snapshot);
+  if (Object.keys(snapshot).length > 0 && Object.keys(sanitized).length === 0) {
+    throw new Error(`reviewSnapshot: ${entityType} snapshot carried no allowlisted field — caller passed a document, not a registry row`);
+  }
+  return sanitized;
 }
 
 let client: Anthropic | null = null;
