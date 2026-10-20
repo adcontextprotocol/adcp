@@ -1,0 +1,78 @@
+{
+  "id": "https://extensions.adcontextprotocol.org/seller-adjustable-terms",
+  "name": "seller-adjustable-terms",
+  "version": "1.6.0",
+  "title": "Seller adjustable terms (pre-authorized unilateral changes)",
+  "description": "Fields of a purchase the buyer pre-authorizes the seller to change without an offer, and the bounds. Ports adcp#8102 core/seller-adjustable-term.json and makes the constraint a tagged union on `kind` (PR #8102 review), so a later kind is another variant, and an unknown kind fails closed instead of being misread.",
+  "owner": "AdCP Working Group",
+  "status": "candidate",
+  "origin": [
+    "https://github.com/adcontextprotocol/adcp/issues/8087",
+    "https://github.com/adcontextprotocol/adcp/pull/8102"
+  ],
+  "requires": {
+    "core": ">=3.3 <5",
+    "points": {
+      "commercial_terms": 1,
+      "media_buy_state": 1
+    }
+  },
+  "extends": [
+    {
+      "point": "commercial_terms",
+      "definition": "SellerAdjustableTerms",
+      "must_understand": "required",
+      "semantics": "Binding allowances under terms_digest."
+    },
+    {
+      "point": "media_buy_state",
+      "definition": "AppliedAdjustments",
+      "must_understand": "optional",
+      "semantics": "Readback in get_media_buys: the changes the seller applied under the accepted allowances. The seller writes it with the same uri@digest as the accepted commercial_terms entry, and announces each change through the core change feed (account.change_recorded, origin seller_system); the extension has no notification type of its own."
+    }
+  ],
+  "adopters": [
+    {
+      "party": "seller B (creator network)",
+      "since": "2026-10-01"
+    },
+    {
+      "party": "seller C (broadcast)",
+      "since": "2026-10-15"
+    }
+  ],
+  "promotion": {
+    "rule": "2+ independent adopters with substantively similar allowances for 90+ days",
+    "target": "/schemas/core/seller-adjustable-term.json"
+  },
+  "changelog": [
+    {
+      "version": "1.6.0",
+      "change": "Current version: allowances in commercial_terms, the media_buy_state readback (AppliedAdjustments), the normative spec, the conformance suite, and the reference code, all pinned by the digest. Uses the kernel container ExtensionEntry with `data`, and the host properties `extensions` and `extensions_state`. The spec and manifest text follow the documentation style guide; the rules and their IDs are unchanged."
+    },
+    {
+      "version": "1.5.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.4.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.3.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.2.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs)."
+    },
+    {
+      "version": "1.1.0",
+      "change": "Registry fixture: the current sources under this version number (scripts/registry-history.mjs). Storyboards use it as a second digest for the same URI."
+    },
+    {
+      "version": "1.0.0",
+      "change": "Registry fixture: the current sources without the media_buy_state readback (scripts/registry-history.mjs). Buyers pinned to it get allowances only."
+    }
+  ]
+}

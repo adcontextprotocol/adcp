@@ -1,0 +1,114 @@
+{
+ "UNREG:ooh_metrics": [
+  "core/delivery-metrics.json"
+ ],
+ "UNREG:print_metrics": [
+  "core/delivery-metrics.json"
+ ],
+ "account.change_feed": [
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "brand.collection_links": [
+  "brand.json",
+  "brand/get-brand-identity-response.json"
+ ],
+ "brand.rights_lifecycle": [
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "creative.broadcast_loudness": [
+  "formats/canonical/video_hosted.json"
+ ],
+ "creative.evaluator": [
+  "media-buy/build-creative-request.json",
+  "media-buy/build-creative-response.json",
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "creative.signal_fanout": [
+  "media-buy/build-creative-request.json",
+  "media-buy/build-creative-response.json",
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "governance.campaign": [
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "measurement.core": [
+  "media-buy/provide-performance-feedback-response.json",
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "measurement.gateway": [
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "media_buy.audience_activation": [
+  "core/product-filters.json",
+  "core/product.json",
+  "media-buy/sync-audiences-response.json",
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "media_buy.collection_cards": [
+  "core/collection-distribution.json",
+  "core/collection.json",
+  "core/talent.json",
+  "media-buy/get-products-request.json",
+  "media-buy/get-products-response.json",
+  "media-buy/list-products-request.json",
+  "media-buy/list-products-response.json",
+  "media-buy/refine-proposals-request.json",
+  "media-buy/refine-proposals-response.json",
+  "media-buy/request-proposals-request.json",
+  "media-buy/request-proposals-response.json"
+ ],
+ "media_buy.collection_catalog": [
+  "core/wholesale-feed-event.json"
+ ],
+ "media_buy.daypart_granularity": [
+  "core/daypart-target.json",
+  "core/targeting-overlay-requirements.json",
+  "core/targeting-overlay-support.json"
+ ],
+ "media_buy.delegated_composition": [
+  "media-buy/product-discovery-criteria.json",
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "media_buy.execution_requirements": [
+  "core/canonical-product.json",
+  "core/product.json"
+ ],
+ "media_buy.hold_extension": [
+  "media-buy/proposal-refinement.json",
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "media_buy.hold_policy": [
+  "core/canonical-product.json",
+  "core/canonical-proposal.json",
+  "core/product.json"
+ ],
+ "media_buy.hold_ranking": [
+  "core/canonical-proposal.json"
+ ],
+ "media_buy.installment_holds": [
+  "core/canonical-proposal.json"
+ ],
+ "media_buy.product_identity": [
+  "core/canonical-product.json",
+  "core/product.json"
+ ],
+ "media_buy.reporting_delivery": [
+  "account/sync-accounts-request.json",
+  "account/sync-accounts-response.json",
+  "core/account.json",
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "media_buy.spot_lifecycle": [
+  "core/spot-reporting-capability.json",
+  "media-buy/get-media-buy-delivery-response.json"
+ ],
+ "protocol.principal": [
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "sponsored_intelligence.core": [
+  "protocol/get-adcp-capabilities-response.json"
+ ],
+ "trusted_match.core": [
+  "protocol/get-adcp-capabilities-response.json"
+ ]
+}

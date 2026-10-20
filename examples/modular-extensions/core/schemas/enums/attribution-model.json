@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/attribution-model.json",
+  "title": "Attribution Model",
+  "description": "Attribution model used for conversion measurement",
+  "type": "string",
+  "enum": [
+    "last_touch",
+    "first_touch",
+    "linear",
+    "time_decay",
+    "data_driven"
+  ]
+}

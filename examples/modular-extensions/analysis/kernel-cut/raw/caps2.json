@@ -1,0 +1,423 @@
+{
+ "total_bytes": 183565,
+ "owners": {
+  "kernel": {
+   "paths": [
+    "adcp (block shell)",
+    "adcp.major_versions",
+    "adcp.supported_versions",
+    "adcp.build_version",
+    "adcp.implementation",
+    "adcp.idempotency",
+    "supported_protocols",
+    "oauth",
+    "specialisms",
+    "extensions_supported",
+    "experimental_features",
+    "last_updated",
+    "errors",
+    "context",
+    "ext"
+   ],
+   "bytes": 16598,
+   "experimental": 0
+  },
+  "module:principal": {
+   "paths": [
+    "adcp.principal"
+   ],
+   "bytes": 5894,
+   "experimental": 1
+  },
+  "module:notifications": {
+   "paths": [
+    "adcp.capability_changes"
+   ],
+   "bytes": 4440,
+   "experimental": 0
+  },
+  "module:campaign-governance": {
+   "paths": [
+    "adcp.governance_enforcement",
+    "media_buy.governance_aware",
+    "governance (block shell)",
+    "governance.runtime_attestations",
+    "governance.aggregation_window_days",
+    "governance.supports_budget_periods"
+   ],
+   "bytes": 8205,
+   "experimental": 1
+  },
+  "module:agent-trust": {
+   "paths": [
+    "adcp.attestations",
+    "identity"
+   ],
+   "bytes": 7117,
+   "experimental": 0
+  },
+  "module:account": {
+   "paths": [
+    "account (block shell)",
+    "account.require_operator_auth",
+    "account.authorization_endpoint",
+    "account.stable_account_id",
+    "account.supported_billing",
+    "account.supported_account_currency_modes",
+    "account.timezone",
+    "account.required_for_products",
+    "account.account_financials",
+    "account.notifications",
+    "account.identity_updates",
+    "account.sandbox"
+   ],
+   "bytes": 11454,
+   "experimental": 0
+  },
+  "module:account-change-feed": {
+   "paths": [
+    "account.change_feed"
+   ],
+   "bytes": 1974,
+   "experimental": 1
+  },
+  "module:media-buy": {
+   "paths": [
+    "media_buy (block shell)",
+    "media_buy.lifecycle_tools",
+    "media_buy.propagation_surfaces",
+    "media_buy.creative_approval_mode",
+    "media_buy.supported_indicator_types",
+    "media_buy.relationship_notifications",
+    "media_buy.features",
+    "media_buy.execution",
+    "media_buy.budget_capping"
+   ],
+   "bytes": 22608,
+   "experimental": 1
+  },
+  "module:products": {
+   "paths": [
+    "media_buy.anonymous_discovery",
+    "media_buy.supported_pricing_models",
+    "media_buy.buying_modes",
+    "media_buy.measurement_terms_acceptance",
+    "media_buy.availability_horizon",
+    "media_buy.outcome_target",
+    "media_buy.audience_targeting",
+    "media_buy.portfolio",
+    "wholesale_feed_versioning",
+    "wholesale_feed_webhooks"
+   ],
+   "bytes": 18338,
+   "experimental": 1
+  },
+  "module:policy": {
+   "paths": [
+    "media_buy.acceptance_policy_discovery"
+   ],
+   "bytes": 1206,
+   "experimental": 0
+  },
+  "module:proposal-negotiation": {
+   "paths": [
+    "media_buy.proposal_refinement",
+    "media_buy.supports_proposals",
+    "media_buy.supports_exclusive_product_ids"
+   ],
+   "bytes": 6136,
+   "experimental": 3
+  },
+  "module:delivery-reporting": {
+   "paths": [
+    "media_buy.reporting_delivery_methods",
+    "media_buy.offline_delivery_protocols"
+   ],
+   "bytes": 1050,
+   "experimental": 0
+  },
+  "module:measurement": {
+   "paths": [
+    "media_buy.performance_feedback",
+    "measurement_gateway",
+    "measurement"
+   ],
+   "bytes": 7591,
+   "experimental": 4
+  },
+  "module:reliable-reporting": {
+   "paths": [
+    "media_buy.reporting_delivery"
+   ],
+   "bytes": 871,
+   "experimental": 1
+  },
+  "module:audiences-events": {
+   "paths": [
+    "media_buy.audience_evidence",
+    "media_buy.conversion_tracking"
+   ],
+   "bytes": 5463,
+   "experimental": 0
+  },
+  "module:brand-rights": {
+   "paths": [
+    "media_buy.rights_attestations",
+    "brand (block shell)",
+    "brand.rights",
+    "brand.right_types",
+    "brand.available_uses",
+    "brand.generation_providers"
+   ],
+   "bytes": 1754,
+   "experimental": 4
+  },
+  "module:metrics": {
+   "paths": [
+    "media_buy.supported_optimization_metrics",
+    "media_buy.vendor_metric_optimization"
+   ],
+   "bytes": 3293,
+   "experimental": 0
+  },
+  "module:targeting": {
+   "paths": [
+    "media_buy.frequency_capping",
+    "media_buy.aggregate_frequency_capping"
+   ],
+   "bytes": 1490,
+   "experimental": 0
+  },
+  "module:content-standards": {
+   "paths": [
+    "media_buy.content_standards",
+    "governance.creative_features"
+   ],
+   "bytes": 2504,
+   "experimental": 0
+  },
+  "module:signals": {
+   "paths": [
+    "signals"
+   ],
+   "bytes": 4985,
+   "experimental": 0
+  },
+  "module:governance-lists": {
+   "paths": [
+    "governance.property_features"
+   ],
+   "bytes": 1308,
+   "experimental": 0
+  },
+  "module:sponsored-intelligence": {
+   "paths": [
+    "sponsored_intelligence"
+   ],
+   "bytes": 1239,
+   "experimental": 1
+  },
+  "module:brand": {
+   "paths": [
+    "brand.description"
+   ],
+   "bytes": 110,
+   "experimental": 0
+  },
+  "module:creative": {
+   "paths": [
+    "creative (block shell)",
+    "creative.supports_compliance",
+    "creative.has_creative_library",
+    "creative.stable_creative_ids",
+    "creative.supports_revisions",
+    "creative.supports_assignment_merge",
+    "creative.supports_assignment_trackers",
+    "creative.supports_assignment_landing_page",
+    "creative.supports_generation",
+    "creative.supports_transformation",
+    "creative.representation_resolution",
+    "creative.supports_transformers",
+    "creative.supports_refinement",
+    "creative.supports_spend_controls",
+    "creative.supports_evaluator",
+    "creative.refinable_retention_seconds",
+    "creative.multiplicity",
+    "creative.preview",
+    "creative.localization",
+    "creative.bills_through_adcp",
+    "creative.canonical_catalog_version"
+   ],
+   "bytes": 19198,
+   "experimental": 4
+  },
+  "module:formats": {
+   "paths": [
+    "creative.supported_formats"
+   ],
+   "bytes": 3451,
+   "experimental": 0
+  },
+  "extension:request-signing-rfc9421": {
+   "paths": [
+    "request_signing"
+   ],
+   "bytes": 9430,
+   "experimental": 0
+  },
+  "extension:webhook-signing": {
+   "paths": [
+    "webhook_signing"
+   ],
+   "bytes": 4041,
+   "experimental": 0
+  },
+  "module:compliance-testing": {
+   "paths": [
+    "compliance_testing"
+   ],
+   "bytes": 1204,
+   "experimental": 0
+  }
+ },
+ "allOf": [
+  {
+   "i": 0,
+   "owners": []
+  },
+  {
+   "i": 1,
+   "owners": []
+  },
+  {
+   "i": 2,
+   "owners": [
+    "kernel",
+    "module:measurement"
+   ]
+  },
+  {
+   "i": 3,
+   "owners": [
+    "kernel",
+    "module:measurement"
+   ]
+  },
+  {
+   "i": 4,
+   "owners": [
+    "kernel",
+    "module:media-buy"
+   ]
+  },
+  {
+   "i": 5,
+   "owners": [
+    "kernel"
+   ]
+  },
+  {
+   "i": 6,
+   "owners": [
+    "kernel"
+   ]
+  },
+  {
+   "i": 7,
+   "owners": [
+    "kernel"
+   ]
+  },
+  {
+   "i": 8,
+   "owners": [
+    "kernel",
+    "module:media-buy"
+   ]
+  },
+  {
+   "i": 9,
+   "owners": [
+    "extension:webhook-signing",
+    "module:media-buy"
+   ]
+  },
+  {
+   "i": 10,
+   "owners": [
+    "kernel",
+    "module:media-buy"
+   ]
+  },
+  {
+   "i": 11,
+   "owners": [
+    "kernel"
+   ]
+  },
+  {
+   "i": 12,
+   "owners": [
+    "kernel",
+    "module:products"
+   ]
+  },
+  {
+   "i": 13,
+   "owners": [
+    "kernel",
+    "module:media-buy"
+   ]
+  },
+  {
+   "i": 14,
+   "owners": [
+    "extension:request-signing-rfc9421",
+    "kernel"
+   ]
+  },
+  {
+   "i": 15,
+   "owners": [
+    "kernel",
+    "module:campaign-governance"
+   ]
+  },
+  {
+   "i": 16,
+   "owners": [
+    "kernel",
+    "module:media-buy"
+   ]
+  },
+  {
+   "i": 17,
+   "owners": [
+    "kernel",
+    "module:media-buy"
+   ]
+  },
+  {
+   "i": 18,
+   "owners": [
+    "extension:webhook-signing",
+    "module:media-buy"
+   ]
+  },
+  {
+   "i": 19,
+   "owners": [
+    "kernel",
+    "module:creative",
+    "module:media-buy"
+   ]
+  },
+  {
+   "i": 20,
+   "owners": [
+    "module:account",
+    "module:media-buy"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,339 @@
+{
+ "name": "formats-split",
+ "modules": {
+  "accounts": {
+   "purpose": "accounts, onboarding, principals, notifications, change feed",
+   "sub_areas": {
+    "account": [
+     "account"
+    ],
+    "onboarding": [
+     "account-onboarding"
+    ],
+    "change-feed": [
+     "account-change-feed"
+    ],
+    "notifications": [
+     "notifications"
+    ],
+    "principal": [
+     "principal"
+    ]
+   }
+  },
+  "identity": {
+   "purpose": "brand identity (brand.json, claims), agent trust (trust.json, attestations)",
+   "sub_areas": {
+    "brand": [
+     "brand"
+    ],
+    "trust": [
+     "agent-trust"
+    ]
+   }
+  },
+  "media-vocabulary": {
+   "purpose": "metrics, measurement terms, forecasts, demographics, identifiers, policy categories",
+   "sub_areas": {
+    "metrics": [
+     "metrics"
+    ],
+    "policy": [
+     "policy"
+    ]
+   }
+  },
+  "creative": {
+   "purpose": "formats, assets, creative library, build, preview, rights",
+   "sub_areas": {
+    "creative": [
+     "creative"
+    ],
+    "rights": [
+     "brand-rights"
+    ]
+   }
+  },
+  "signals": {
+   "purpose": "signals discovery and activation, audiences, events",
+   "sub_areas": {
+    "signals": [
+     "signals"
+    ],
+    "audiences-events": [
+     "audiences-events"
+    ]
+   }
+  },
+  "reporting": {
+   "purpose": "reliable reporting pipelines and measurement",
+   "sub_areas": {
+    "reliable-reporting": [
+     "reliable-reporting"
+    ],
+    "measurement": [
+     "measurement"
+    ]
+   }
+  },
+  "governance": {
+   "purpose": "campaign governance, content standards, property and collection lists",
+   "sub_areas": {
+    "campaign": [
+     "campaign-governance"
+    ],
+    "content-standards": [
+     "content-standards"
+    ],
+    "lists": [
+     "governance-lists"
+    ]
+   }
+  },
+  "sponsored-intelligence": {
+   "purpose": "SI",
+   "sub_areas": {
+    "si": [
+     "sponsored-intelligence"
+    ]
+   }
+  },
+  "trusted-match": {
+   "purpose": "TMP",
+   "sub_areas": {
+    "tmp": [
+     "trusted-match"
+    ]
+   }
+  },
+  "compliance-testing": {
+   "purpose": "test controller (leaf)",
+   "sub_areas": {
+    "controller": [
+     "compliance-testing"
+    ]
+   }
+  },
+  "buying": {
+   "purpose": "product discovery, inventory, catalogs, targeting, proposals, media buys",
+   "sub_areas": {
+    "products": [
+     "products"
+    ],
+    "inventory": [
+     "inventory"
+    ],
+    "catalogs": [
+     "catalogs"
+    ],
+    "targeting": [
+     "targeting"
+    ],
+    "proposals": [
+     "proposal-negotiation"
+    ],
+    "media-buy": [
+     "media-buy"
+    ],
+    "delivery": [
+     "delivery-reporting"
+    ]
+   }
+  },
+  "formats": {
+   "purpose": "format definitions, canonical formats, asset types",
+   "sub_areas": {
+    "formats": [
+     "formats"
+    ]
+   }
+  }
+ },
+ "file_moves": {
+  "enums/asset-content-type.json": {
+   "to": "identity",
+   "sub": "brand",
+   "why": "shared by brand.json and formats; moved down"
+  },
+  "enums/feed-format.json": {
+   "to": "identity",
+   "sub": "brand",
+   "why": "shared by brand.json and catalogs; moved down"
+  },
+  "enums/logo-slot.json": {
+   "to": "identity",
+   "sub": "brand",
+   "why": "brand.json defines logo slots; formats consume them"
+  },
+  "core/identifier.json": {
+   "to": "media-vocabulary",
+   "sub": "identifiers",
+   "why": "property identifier used by inventory, lists, reporting, creative"
+  },
+  "core/feature-requirement.json": {
+   "to": "media-vocabulary",
+   "sub": "identifiers",
+   "why": "used by creative evaluator and property-list filters"
+  },
+  "core/audience-size.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "used by sync_audiences and collections"
+  },
+  "enums/audience-size-precision.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "travels with audience-size"
+  },
+  "enums/identifier-types.json": {
+   "to": "media-vocabulary",
+   "sub": "identifiers",
+   "why": "travels with identifier"
+  },
+  "enums/validation-mode.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with creative; moved down from targeting"
+  },
+  "core/forecast-point.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with signals; moved down from targeting"
+  },
+  "enums/forecast-method.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with signals; moved down from targeting"
+  },
+  "core/demographic-predicate.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with signals; moved down from targeting"
+  },
+  "enums/age-determination-basis.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with signals; moved down from targeting"
+  },
+  "core/demographic-age-range.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "core/forecast-point-dimensions.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "core/forecast-range.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "core/forecast-vendor-metric-value.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "enums/availability-status.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "core/forecast-dimension-audience.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "core/forecast-dimension-device-platform.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "core/forecast-dimension-device-type.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "core/forecast-dimension-geo.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "core/forecast-dimension-placement.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "core/forecast-dimension-signal.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "core/forecast-dimension-time.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "enums/audience-source.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "enums/device-platform.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "enums/device-type.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "core/postal-country-system.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "enums/geo-level.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "enums/legacy-postal-system.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "enums/metro-system.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  },
+  "enums/postal-system.json": {
+   "to": "media-vocabulary",
+   "sub": "dimensions",
+   "why": "shared with media-vocabulary; moved down from targeting"
+  }
+ },
+ "fixes": [],
+ "declared_deps": {
+  "reporting": [
+   "buying",
+   "accounts"
+  ],
+  "compliance-testing": [
+   "accounts",
+   "identity",
+   "media-vocabulary",
+   "creative",
+   "signals",
+   "reporting",
+   "governance",
+   "sponsored-intelligence",
+   "trusted-match",
+   "buying",
+   "formats"
+  ]
+ }
+}

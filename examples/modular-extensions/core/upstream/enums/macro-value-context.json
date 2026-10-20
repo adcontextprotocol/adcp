@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/macro-value-context.json",
+  "title": "Macro Value Context",
+  "description": "Syntactic occurrence context supported by the first macro contract. Substitution inside arbitrary JavaScript, JSON, or HTML text is intentionally not inferred; use `opaque` and preserve it unless a later governed context is added.",
+  "type": "string",
+  "enum": ["url_query_value", "url_path_segment", "opaque"]
+}

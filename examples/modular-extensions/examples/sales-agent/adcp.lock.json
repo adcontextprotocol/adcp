@@ -1,0 +1,15 @@
+{
+  "core": {
+    "version": "3.3.0",
+    "bundle_digest": "sha256:26d4e59152abc1d76cd451eef8f902347f780f00e057f03613ffbf5eb25550a8"
+  },
+  "extensions": {
+    "makegood_units": {
+      "uri": "https://extensions.adcontextprotocol.org/makegood-units",
+      "version": "1.5.0",
+      "digest": "sha256:0debf79a73907c27500528c005c03948e3256a1128e2e74b25d58c7b6ac93bd4",
+      "source": "package @adcp-ext/makegood-units",
+      "module": "../../packages/ext-makegood-units"
+    }
+  }
+}

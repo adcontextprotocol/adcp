@@ -1,0 +1,35 @@
+id: seller_adjustable_terms/negotiation
+version: "1.0.0"
+title: "The seller sends the allowance digest the buyer listed"
+category: extension_conformance
+extension: seller-adjustable-terms
+summary: "A buyer pinned to 1.0.0 gets 1.0.0 allowances and nothing it did not list."
+narrative: |
+  The creator network serves two versions of seller-adjustable-terms side by side. This
+  buyer pinned 1.0.0 in its adcp.config.json and has no make-good module. The SDK
+  assembles a schema-only module for 1.0.0 from the registry. The seller must send the
+  1.0.0 digest and no other extension.
+
+fixture: creator_network
+buyer:
+  config:
+    sat: seller-adjustable-terms@1.0.0
+
+phases:
+  - id: projection
+    title: "Seller projection"
+    steps:
+      - id: pinned_buyer_gets_pinned_digest
+        title: "The draft carries the 1.0.0 digest and no make-good rules"
+        task: request_proposals
+        covers: [SAT-R2]
+        expect:
+          ok: true
+          status: { ext: seller-adjustable-terms, point: commercial_terms, status: understood }
+          checks:
+            - path: draft.commercial_terms.extensions.@seller-adjustable-terms.digest
+              equals: { $digest: seller-adjustable-terms@1.0.0 }
+            - path: draft.commercial_terms.extensions.@makegood-units
+              absent: true
+            - path: draft.commercial_terms.extensions
+              length: 1

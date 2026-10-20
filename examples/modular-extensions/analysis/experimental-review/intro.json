@@ -1,0 +1,363 @@
+{
+ "protocol.principal": {
+  "stable_mod": [
+   "core/agent-notification-config-state.json",
+   "core/agent-notification-config.json",
+   "core/agent-webhook-challenge.json",
+   "core/capabilities-changed-webhook.json",
+   "enums/notification-type.json",
+   "enums/task-type.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 18,
+  "adds": 1809,
+  "dels": 65,
+  "docs": 12
+ },
+ "account.change_feed": {
+  "stable_mod": [
+   "compliance/comply-test-controller-request.json",
+   "core/account.json",
+   "core/notification-config.json",
+   "enums/error-code.json",
+   "enums/notification-type.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 4,
+  "adds": 633,
+  "dels": 3,
+  "docs": 11
+ },
+ "brand.rights_lifecycle": {
+  "stable_mod": [
+   "account/report-usage-request.json",
+   "brand.json",
+   "core/creative-manifest.json",
+   "enums/adcp-domain.json",
+   "enums/task-type.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 17,
+  "adds": 1646,
+  "dels": 10,
+  "docs": 13
+ },
+ "governance.campaign": {
+  "stable_mod": [
+   "account/sync-accounts-request.json",
+   "content-standards/create-content-standards-request.json",
+   "content-standards/update-content-standards-request.json",
+   "core/account.json",
+   "core/product.json",
+   "creative/creative-feature-result.json",
+   "media-buy/create-media-buy-request.json",
+   "media-buy/create-media-buy-response.json",
+   "media-buy/get-products-request.json",
+   "property/property-feature-definition.json"
+  ],
+  "new": 20,
+  "adds": 1629,
+  "dels": 3,
+  "docs": 11
+ },
+ "measurement.core": {
+  "stable_mod": [
+   "core/reporting-capabilities.json",
+   "enums/adcp-protocol.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 0,
+  "adds": 90,
+  "dels": 6,
+  "docs": 2
+ },
+ "measurement.gateway": {
+  "stable_mod": [
+   "core/account-ref.json",
+   "enums/adcp-protocol.json",
+   "media-buy/provide-performance-feedback-request.json",
+   "media-buy/provide-performance-feedback-response.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 3,
+  "adds": 389,
+  "dels": 67,
+  "docs": 7
+ },
+ "trusted_match.core": {
+  "stable_mod": [
+   "content-standards/artifact.json",
+   "protocol/get-adcp-capabilities-response.json",
+   "tmp/context-match-request.json",
+   "tmp/context-match-response.json",
+   "tmp/error.json",
+   "tmp/identity-match-request.json",
+   "tmp/identity-match-response.json",
+   "tmp/package-eligibility.json"
+  ],
+  "new": 0,
+  "adds": 131,
+  "dels": 58,
+  "docs": 31
+ },
+ "trusted_match.verified_identity": {
+  "stable_mod": [
+   "brand.json",
+   "core/x-entity-types.json",
+   "enums/uid-type.json",
+   "tmp/identity-match-request.json"
+  ],
+  "new": 1,
+  "adds": 156,
+  "dels": 3,
+  "docs": 3
+ },
+ "creative.evaluator": {
+  "stable_mod": [
+   "core/x-entity-types.json",
+   "enums/error-code.json",
+   "media-buy/build-creative-request.json",
+   "media-buy/build-creative-response.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 1,
+  "adds": 198,
+  "dels": 0,
+  "docs": 2
+ },
+ "creative.signal_fanout": {
+  "stable_mod": [
+   "core/package-signal-targeting.json",
+   "core/product-signal-targeting-option.json",
+   "enums/error-code.json",
+   "media-buy/build-creative-request.json",
+   "media-buy/build-creative-response.json",
+   "protocol/get-adcp-capabilities-response.json",
+   "signals/get-signals-response.json"
+  ],
+  "new": 1,
+  "adds": 91,
+  "dels": 3,
+  "docs": 6
+ },
+ "media_buy.audience_activation": {
+  "stable_mod": [
+   "core/product-filters.json",
+   "core/product.json",
+   "enums/error-code.json",
+   "media-buy/sync-audiences-request.json",
+   "media-buy/sync-audiences-response.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 2,
+  "adds": 461,
+  "dels": 4,
+  "docs": 6
+ },
+ "media_buy.execution_requirements": {
+  "stable_mod": [
+   "core/canonical-product.json",
+   "core/product.json",
+   "media-buy/product-fields.json"
+  ],
+  "new": 2,
+  "adds": 247,
+  "dels": 0,
+  "docs": 9
+ },
+ "media_buy.product_identity": {
+  "stable_mod": [
+   "compliance/comply-test-controller-request.json",
+   "core/canonical-product.json",
+   "core/product.json",
+   "enums/reach-unit.json",
+   "media-buy/product-fields.json"
+  ],
+  "new": 1,
+  "adds": 116,
+  "dels": 2,
+  "docs": 5
+ },
+ "media_buy.spot_lifecycle": {
+  "stable_mod": [
+   "core/spot-reporting-capability.json",
+   "media-buy/get-media-buy-delivery-request.json",
+   "media-buy/get-media-buy-delivery-response.json"
+  ],
+  "new": 1,
+  "adds": 137,
+  "dels": 7,
+  "docs": 3
+ },
+ "media_buy.reporting_delivery": {
+  "stable_mod": [
+   "account/sync-accounts-request.json",
+   "account/sync-accounts-response.json",
+   "compliance/comply-test-controller-request.json",
+   "compliance/comply-test-controller-response.json",
+   "core/account.json",
+   "core/notification-config.json",
+   "core/reporting-capabilities.json",
+   "core/x-entity-types.json",
+   "enums/notification-type.json",
+   "enums/reporting-finality.json",
+   "enums/task-type.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 41,
+  "adds": 3650,
+  "dels": 79,
+  "docs": 19
+ },
+ "media_buy.hold_extension": {
+  "stable_mod": [
+   "core/canonical-proposal.json",
+   "enums/proposal-refinement-reason.json",
+   "enums/proposal-status.json",
+   "media-buy/proposal-refinement.json",
+   "media-buy/refine-proposals-request.json",
+   "media-buy/refine-proposals-response.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 0,
+  "adds": 79,
+  "dels": 16,
+  "docs": 5
+ },
+ "creative.broadcast_loudness": {
+  "stable_mod": [
+   "enums/demographic-system.json",
+   "formats/canonical/video_hosted.json"
+  ],
+  "new": 0,
+  "adds": 37,
+  "dels": 4,
+  "docs": 3
+ },
+ "media_buy.daypart_granularity": {
+  "stable_mod": [
+   "core/daypart-target.json",
+   "core/targeting-overlay-requirements.json",
+   "core/targeting-overlay-support.json"
+  ],
+  "new": 1,
+  "adds": 77,
+  "dels": 13,
+  "docs": 5
+ },
+ "media_buy.delegated_composition": {
+  "stable_mod": [
+   "core/canonical-proposal.json",
+   "core/proposal.json",
+   "enums/error-code.json",
+   "enums/proposal-refinement-reason.json",
+   "enums/proposal-status.json",
+   "media-buy/product-discovery-criteria.json",
+   "media-buy/refine-proposals-response.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 0,
+  "adds": 29,
+  "dels": 7,
+  "docs": 7
+ },
+ "media_buy.hold_policy": {
+  "stable_mod": [
+   "core/canonical-product.json",
+   "core/canonical-proposal.json",
+   "core/product.json",
+   "enums/proposal-refinement-reason.json",
+   "enums/proposal-status.json",
+   "media-buy/refine-proposals-response.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 1,
+  "adds": 120,
+  "dels": 6,
+  "docs": 9
+ },
+ "media_buy.hold_ranking": {
+  "stable_mod": [
+   "core/canonical-proposal.json",
+   "enums/error-code.json",
+   "enums/proposal-status.json"
+  ],
+  "new": 0,
+  "adds": 55,
+  "dels": 7,
+  "docs": 8
+ },
+ "media_buy.collection_catalog": {
+  "stable_mod": [
+   "core/agent-notification-config.json",
+   "core/collection-distribution.json",
+   "core/collection-selector.json",
+   "core/notification-config.json",
+   "core/wholesale-feed-event.json",
+   "core/wholesale-feed-webhook.json",
+   "enums/notification-type.json",
+   "protocol/get-adcp-capabilities-response.json"
+  ],
+  "new": 2,
+  "adds": 603,
+  "dels": 23,
+  "docs": 11
+ },
+ "media_buy.installment_holds": {
+  "stable_mod": [
+   "core/canonical-proposal.json"
+  ],
+  "new": 0,
+  "adds": 46,
+  "dels": 0,
+  "docs": 4
+ },
+ "identity.trust_json": {
+  "stable_mod": [],
+  "new": 1,
+  "adds": 45,
+  "dels": 0,
+  "docs": 2
+ },
+ "media_buy.collection_cards": {
+  "stable_mod": [
+   "core/collection-distribution.json",
+   "core/collection.json",
+   "core/product-card-reference-asset.json",
+   "core/talent.json",
+   "media-buy/get-products-response.json",
+   "media-buy/list-products-response.json",
+   "media-buy/refine-proposals-response.json",
+   "media-buy/request-proposals-response.json"
+  ],
+  "new": 0,
+  "adds": 42,
+  "dels": 7,
+  "docs": 5
+ },
+ "brand.collection_links": {
+  "stable_mod": [
+   "brand.json",
+   "brand/get-brand-identity-request.json",
+   "brand/get-brand-identity-response.json",
+   "core/canonical-product.json",
+   "core/collection.json",
+   "core/product.json",
+   "core/talent.json",
+   "media-buy/get-products-rejected.json",
+   "media-buy/get-products-request.json",
+   "media-buy/get-products-response.json",
+   "media-buy/list-products-request.json",
+   "media-buy/list-products-response.json",
+   "media-buy/product-fields.json",
+   "media-buy/refine-proposals-request.json",
+   "media-buy/refine-proposals-response.json",
+   "media-buy/request-proposals-request.json",
+   "media-buy/request-proposals-response.json"
+  ],
+  "new": 1,
+  "adds": 168,
+  "dels": 18,
+  "docs": 9
+ }
+}
