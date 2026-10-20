@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { query, getClient } from './client.js';
 import type { HostedProperty, ResolvedProperty, RegistryRevision } from '../types.js';
+import { sanitizePropertySnapshot } from './registry-revision-snapshot.js';
 
 /**
  * Input for creating a hosted property
@@ -581,7 +582,7 @@ export class PropertyDatabase {
         ) VALUES ($1, 1, $2, $3, $4, $5, 'Initial record')`,
         [
           property.publisher_domain,
-          JSON.stringify(property),
+          JSON.stringify(sanitizePropertySnapshot(property as unknown as Record<string, unknown>)),
           editor.user_id,
           editor.email || null,
           editor.name || null,
@@ -685,7 +686,7 @@ export class PropertyDatabase {
         [
           domain.toLowerCase(),
           revisionNumber,
-          JSON.stringify(current),
+          JSON.stringify(sanitizePropertySnapshot(current as unknown as Record<string, unknown>)),
           input.editor_user_id,
           input.editor_email || null,
           input.editor_name || null,
@@ -760,9 +761,9 @@ export class PropertyDatabase {
         throw new Error(`Revision ${toRevisionNumber} not found for ${domain}`);
       }
 
-      const snapshot = typeof targetResult.rows[0].snapshot === 'string'
+      const snapshot = sanitizePropertySnapshot((typeof targetResult.rows[0].snapshot === 'string'
         ? JSON.parse(targetResult.rows[0].snapshot)
-        : targetResult.rows[0].snapshot;
+        : targetResult.rows[0].snapshot) as Record<string, unknown>);
 
       // Lock current row
       const currentResult = await client.query<HostedProperty>(
@@ -811,7 +812,7 @@ export class PropertyDatabase {
         [
           domain.toLowerCase(),
           revisionNumber,
-          JSON.stringify(currentResult.rows[0]),
+          JSON.stringify(sanitizePropertySnapshot(currentResult.rows[0] as unknown as Record<string, unknown>)),
           editor.user_id,
           editor.email || null,
           editor.name || null,
@@ -889,7 +890,7 @@ export class PropertyDatabase {
     return {
       ...row,
       domain: row.publisher_domain || row.domain,
-      snapshot: typeof row.snapshot === 'string' ? JSON.parse(row.snapshot) : row.snapshot,
+      snapshot: sanitizePropertySnapshot((typeof row.snapshot === 'string' ? JSON.parse(row.snapshot) : row.snapshot) as Record<string, unknown>),
       created_at: new Date(row.created_at),
     };
   }

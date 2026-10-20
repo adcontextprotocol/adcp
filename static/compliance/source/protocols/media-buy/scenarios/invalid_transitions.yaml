@@ -100,6 +100,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
           media_buy_id: "does-not-exist-invalid-transitions-v1"
           paused: true
           idempotency_key: "$generate:uuid_v4#update_unknown_media_buy"
@@ -147,6 +148,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -179,6 +181,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#invalid_transitions_create_buy"
           start_time: "asap"
           end_time: "2099-08-31T23:59:59Z"
@@ -231,6 +234,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           idempotency_key: "$generate:uuid_v4#update_unknown_package"
           packages:
@@ -277,6 +281,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Testing NOT_CANCELLABLE on re-cancel"
@@ -310,6 +315,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_invalid_transitions-adb17ad2"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Deliberate re-cancel to force NOT_CANCELLABLE"
