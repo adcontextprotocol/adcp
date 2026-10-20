@@ -234,6 +234,46 @@ test('experimental-status registry lists media_buy.hold_policy', () => {
   assert.match(row, /Availnet/);
 });
 
+test('comply_test_controller force_hold_unavailable requires the draft proposal_id', async () => {
+  const validate = await compile('/schemas/compliance/comply-test-controller-request.json');
+  const request = params => ({
+    adcp_version: '3.3',
+    scenario: 'force_hold_unavailable',
+    account: { sandbox: true },
+    ...params,
+  });
+  assert.equal(validate(request({ params: { proposal_id: 'availnet_draft_01' } })), true, errors(validate));
+  assert.equal(validate(request({})), false, 'params is required');
+  assert.equal(validate(request({ params: {} })), false, 'proposal_id is required');
+  assert.equal(validate(request({ params: { proposal_id: '' } })), false, 'proposal_id is not empty');
+});
+
+test('comply_test_controller reports a registered hold failure as the unable arm with the forced proposal_id', async () => {
+  const validate = await compile('/schemas/compliance/comply-test-controller-response.json');
+  const forced = {
+    adcp_version: '3.3',
+    status: 'completed',
+    success: true,
+    forced: { arm: 'unable', proposal_id: 'availnet_draft_01' },
+  };
+  assert.equal(validate(forced), true, errors(validate));
+  assert.equal(validate({ ...forced, message: 'registered' }), true, errors(validate));
+  assert.equal(validate({ ...forced, forced: { arm: 'unable' } }), false, 'proposal_id is required for the unable arm');
+  assert.equal(validate({ ...forced, forced: { proposal_id: 'availnet_draft_01' } }), false, 'arm is required');
+  assert.equal(validate({ ...forced, forced: { arm: 'unable', proposal_id: 'p', task_id: 't' } }), false, 'no task_id on unable');
+  assert.equal(validate({ ...forced, forced: { arm: 'submitted', proposal_id: 'p', task_id: 't' } }), false, 'proposal_id is only for the unable arm');
+  assert.equal(validate({ ...forced, forced: { arm: 'submitted', task_id: 't' } }), true, 'the existing arm directives are unchanged');
+  assert.equal(validate({ ...forced, previous_state: 'draft' }), false, 'not a state transition');
+
+  const directive = readSchema('compliance/comply-test-controller-response.json').oneOf.find(
+    branch => branch.title === 'ForcedDirectiveSuccess',
+  );
+  const proposalId = directive.properties.forced.properties.proposal_id;
+  assert.equal(proposalId['x-status'], 'experimental');
+  assert.equal(proposalId['x-added-in'], '3.3.0');
+  assert.match(directive.properties.forced.properties.arm.description, /force_hold_unavailable/);
+});
+
 test('rankable is a hold-only boolean that defaults to false', async () => {
   const validate = await compile('/schemas/core/hold-policy.json');
   assert.equal(validate({ ...HOLDABLE, rankable: true }), true, errors(validate));
