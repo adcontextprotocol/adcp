@@ -366,6 +366,10 @@ These change generated types or bundle shape without changing what a conformant 
 
 Optional unless noted. A seller that declares nothing keeps 3.2 behavior.
 
+### Seller onboarding posture (experimental)
+
+Optional. A seller can publish `account.agent_onboarding` on `get_adcp_capabilities`, listing `account.agent_onboarding` in `experimental_features`. It gives a mode (`open`, `application`, `invite_only`) per billing party and for sandbox, the requirements for each, and where a human starts. Buyers read it on the unauthenticated capability fetch to tell which sellers take them now, which need a human, and which are not available. The block is seller-wide and identical for every caller. `open` binds identity, not spend, and needs the Web Bot Auth profile. See [account.agent_onboarding](/docs/protocol/get_adcp_capabilities#accountagent_onboarding).
+
 ### Stable account IDs
 
 Optional. Sellers SHOULD now return `account_id` on every non-failed `sync_accounts` provisioning result. A seller that returns it, accepts `{ "account_id": "..." }` wherever an `AccountRef` is accepted, and never changes it for the life of the account (including across identity reconciliation) declares `account.stable_account_id: true`. Buyer-declared sellers keep accepting the natural key. Buyers and SDKs that see the capability store the returned ID and send it instead of the natural key, keeping the natural key to open accounts and to look IDs up through `list_accounts` after a cold start. Account-id-namespace sellers whose IDs already meet the rules should declare it too. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere).

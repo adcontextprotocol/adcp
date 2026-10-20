@@ -474,6 +474,7 @@ Account and authentication capabilities. All sellers should declare this section
 | `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
 | `change_feed` | object | Optional, experimental (`account.change_feed`). Declares the durable [`list_account_changes`](/docs/accounts/tasks/list_account_changes) feed and `account.change_recorded` wake-up. When supported, includes a retention floor of at least 90 days and the resource types covered. |
 | `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. Account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup. Buyer-declared accounts use `sandbox: true` in `sync_accounts`, or in the natural-key account reference when the seller uses unambiguous lazy provisioning — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
+| `agent_onboarding` | object | Optional, experimental (`account.agent_onboarding`). How the seller onboards buyer agents: a mode per billing party and for sandbox, requirements, and where a human starts. Seller-wide and identical for every caller. See [account.agent_onboarding](#accountagent_onboarding). |
 
 #### account.notifications
 
@@ -545,6 +546,77 @@ weakened into a self-asserted `complete: true` flag. Account-specific connected
 source status and freshness are returned by `list_account_changes`.
 
 See [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough) for the complete discovery, registration, human setup, webhook, and repair sequence.
+
+#### account.agent_onboarding
+
+<Note>
+**Experimental (`account.agent_onboarding`).** A seller that declares this block lists `account.agent_onboarding` in `experimental_features`. Design: [`specs/agent-identity-3-3.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) R7 ([#8113](https://github.com/adcontextprotocol/adcp/issues/8113)).
+</Note>
+
+AdCP leaves contract, credit, and credential issuance to the seller's own systems. This block tells a buyer agent, before its first authenticated call, whether the seller takes unsolicited buyer agents, what it requires of them, and where a human starts. A buyer can then sort sellers into "usable now", "needs a human", and "not available" in one unauthenticated pass, instead of searching each seller's website.
+
+```json
+{
+  "experimental_features": ["account.agent_onboarding"],
+  "account": {
+    "supported_billing": ["operator", "agent"],
+    "sandbox": true,
+    "agent_onboarding": {
+      "sandbox": { "mode": "open", "url": "https://streamhaus.example/sandbox" },
+      "billing": {
+        "operator": { "mode": "open", "requirements": [{ "kind": "grant" }] },
+        "agent": {
+          "mode": "application",
+          "url": "https://streamhaus.example/partners/agent-billing",
+          "requirements": [{ "kind": "billing_entity" }, { "kind": "contract" }]
+        }
+      },
+      "url": "https://streamhaus.example/partners/buyer-agents",
+      "message": "Sandbox is open to any verified buying agent. Operator-billed accounts are open when your operator already bills with us and the advertiser has granted your operator."
+    }
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `sandbox` | Onboarding for sandbox accounts. Valid only when `account.sandbox` is `true`. |
+| `billing` | Onboarding per billing party, keyed by `operator`, `agent`, or `advertiser`. Keys MUST be a subset of `supported_billing`. |
+| `…mode` | `open`, `application`, or `invite_only`. An absent key means undeclared, never `invite_only`. |
+| `…url` | Optional page for that mode. Defaults to the top-level `url`. |
+| `…requirements` | What the buyer must satisfy for that mode. |
+| `url` | Where a human starts; it can also carry the seller's onboarding documentation. An untrusted link: surface it, never fetch or execute it. |
+| `message` | Human-readable summary. The fallback whenever a reader does not understand a requirement. |
+
+**Modes.**
+- **`application`:** the buyer completes an out-of-band step at the mode's `url` before the seller recognizes it for that mode.
+- **`invite_only`:** the seller does not accept unsolicited buyer agents for that mode.
+- **`open`:** a buyer agent that meets every requirement may proceed without prior contact, but only when the seller can establish its identity from the agent's published keys (the [Web Bot Auth](/docs/building/by-layer/L1/security#web-bot-auth-identities) profile). A seller that only maps opaque, seller-issued credentials MUST NOT declare `open`.
+
+**`open` binds identity, not spend.** Under any `open` mode:
+- an account whose brand is outside the buyer's operator domain needs a grant, evaluated as [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental) describes ([spec R6](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md); that section lands with [#8169](https://github.com/adcontextprotocol/adcp/pull/8169)). Without one, the request fails with [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) and `error.details.reason: "grant_absent"`;
+- spend-committing operations need an existing seller-side billing relationship with the billed party ([spec R7](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md));
+- sellers SHOULD count quotas and rate limits for automatic onboarding per operator domain, not per origin;
+- sellers SHOULD limit an origin whose registrable domain comes from the Public Suffix List's PRIVATE section, such as a hosting platform's tenant subdomain, to `sandbox`.
+
+So `open` delivers a verified identity, sandbox access, and joining a billing relationship that already exists. Agent-billed accounts and new commercial relationships still go through the seller's application.
+
+**Requirement kinds** (`enums/agent-onboarding-requirement-kind.json`, extensible). Each kind applies in one direction:
+
+| Kind | Direction | Meaning |
+|---|---|---|
+| `grant` | seller gating a buyer | A demand-side grant chain authorizes the buyer agent to act for the account's brand, evaluated as [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental) describes. |
+| `billing_entity` | seller gating a buyer | The buyer supplies a billing entity on `sync_accounts`. |
+| `contract` | seller gating a buyer | A signed agreement exists; details at `url`. |
+| `credit_application` | seller gating a buyer | A credit application completed at `url`, or later through `sync_accounts` `setup.url`. |
+| `aao_verified`, `storyboard`, `sandbox`, `experimental_feature` | buyer gating a seller | Used in a buyer's own posture (`core/buyer-onboarding-posture.json`), published only in the buyer's trust.json at `profiles.adcp.onboarding`, on its agent entry or as a record default, with the same three modes read from the buyer's side: a seller badge (`role`, optional `verification_modes`, `verified_specialisms`, `adcp_version`, the badge token's own claim names), a passed storyboard (`id`), `account.sandbox: true`, or a listed feature (`id`). |
+
+A kind used in the wrong direction is ignored. An unknown kind falls back to `message` and `url`.
+
+**Uniformity.**
+- The block is seller-wide and identical for every caller. It is served on the unauthenticated capability fetch and never appears in error payloads, so it cannot act as a per-agent onboarding oracle.
+- It changes no error code and no clamp in [error handling](/docs/building/by-layer/L3/error-handling).
+- Per-agent state, such as an application's progress, is returned only to the authenticated caller, through `get_principal`'s `relationship`.
 
 #### account.timezone
 

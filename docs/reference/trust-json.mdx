@@ -31,11 +31,11 @@ The record answers one question: which agents does this organization run, who ma
 
 | Field | Purpose |
 |---|---|
-| `agents[]` | Agents the organization runs: `url`, namespaced `roles`, optional `protocols`, `countries`, and per-protocol `profiles`. One agent per origin, and no keys |
+| `agents[]` | Agents the organization runs: `url`, namespaced `roles`, optional `protocols`, `countries`, and per-protocol `profiles`; the `adcp` profile can carry `onboarding`, a buying agent's posture toward sellers. One agent per origin, and no keys |
 | `grants[]` | Authority the organization delegates: `grantee` registrable domain, optional `agents[]` narrowing, namespaced `scopes`, `countries`, `valid_from` and `valid_until`. Grants never carry keys |
 | `exclusive_grants` | When true, `grants[]` is exhaustive for the scopes it names |
 | `acknowledgements[]` or `acknowledgements_url` (not both) | Grants the organization accepts, by reference: `grantor`, `agent_url`, and `via`. Terms stay in the grantor's document |
-| `profiles` | Record-level per-protocol data |
+| `profiles` | Record-level per-protocol data. The `adcp` profile can carry `onboarding`, a buying agent's default posture toward sellers |
 | `authoritative_location` | Pointer variant for hosted records, instead of the fields above |
 
 The top level of a record is closed. Vendor data goes under `ext.{vendor}`. The `trust-acknowledgements.json` schema is the optional sub-document that `acknowledgements_url` points to, for organizations that accept many grants.
