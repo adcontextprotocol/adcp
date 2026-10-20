@@ -19,7 +19,7 @@
     },
     "auth_token": {
       "type": "string",
-      "description": "Token that can be shared with sellers to authorize fetching this list. Store this - it is only returned at creation time."
+      "description": "Read-only bearer credential shareable with receivers to call get_property_list for this list_id, including all pages, in place of normal agent credentials. MUST NOT authorize other lists or mutations. Store this; it is only returned at creation time."
     },
     "replayed": {
       "type": "boolean",

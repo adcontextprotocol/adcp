@@ -33,9 +33,15 @@
                 "type": "string",
                 "description": "Name of the event source"
               },
+              "platform_id": {
+                "type": "string",
+                "description": "Platform-specific ID assigned to the event source by the seller's ad platform. Introduced in AdCP 3.3. When reporting a platform identifier in 3.3 and later 3.x responses, sellers MUST emit both platform_id and the deprecated seller_id alias with identical values. Buyers MUST prefer platform_id and fall back to seller_id only when platform_id is absent. This identifies the object on the platform, not the seller.",
+                "$comment": "x-entity deliberately omitted: seller-opaque platform identifier; AdCP requests reference event_source_id instead."
+              },
               "seller_id": {
                 "type": "string",
-                "description": "Seller-assigned identifier for this event source (the ID in the seller's ad platform)"
+                "description": "Deprecated in AdCP 3.3. Alias for platform_id, retained throughout 3.x; removal is no earlier than AdCP 4.0 and subject to the deprecation policy's six-month notice window. When both fields are present, their values MUST be identical. Buyers MUST prefer platform_id and fall back to this field only when platform_id is absent. This remains the object's platform identifier, never the seller's identity.",
+                "deprecated": true
               },
               "event_types": {
                 "type": "array",

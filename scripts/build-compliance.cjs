@@ -496,6 +496,7 @@ function verifyEnumParity(specialisms, protocols) {
 }
 
 const { lint: lintUniversalDocParity } = require('./lint-universal-storyboard-doc-parity.cjs');
+const { lint: lintV4CompatibilityRegistry } = require('./lint-v4-compatibility-registry.cjs');
 const {
   formatViolation: formatComplianceSourceAuthorityViolation,
   lintBuiltMirror: lintComplianceBuiltMirror,
@@ -847,6 +848,19 @@ function main() {
     process.exit(1);
   }
 
+  // $context resolution lint: a `$context.<key>` the storyboard never seeds or
+  // captures makes the runner skip the step with `prerequisite_failed`, so the
+  // storyboard can never pass — and once a bundle ships, dist/** is immutable
+  // and the only remedy is another release (#7797 / #7801 / #8317).
+  try {
+    execSync('node scripts/lint-storyboard-context-resolution.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Advisory-expiry lint (warnings only): surface storyboards declaring
   // severity: advisory without expires_after_version (or permanent_advisory),
   // so authors can confirm at PR review whether the drift is on purpose.
@@ -931,6 +945,12 @@ function main() {
   const docParityErrors = lintUniversalDocParity({ sourceDir: SOURCE_DIR });
   if (docParityErrors.length) {
     console.error('Universal-storyboard doc parity drift:\n  - ' + docParityErrors.join('\n  - '));
+    process.exit(1);
+  }
+
+  const v4CompatibilityErrors = lintV4CompatibilityRegistry({ sourceDir: SOURCE_DIR });
+  if (v4CompatibilityErrors.length) {
+    console.error('AdCP 4.0 compatibility registry drift:\n  - ' + v4CompatibilityErrors.join('\n  - '));
     process.exit(1);
   }
 }

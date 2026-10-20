@@ -38,6 +38,11 @@ import {
   withHostedTestOptions,
   type HostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
+import {
+  complianceDirToleratingForwardIntroducedSpecialisms,
+  declaredSpecialismsNotApplicableForTarget,
+  isForwardIntroducedSpecialism,
+} from '../../compliance/forward-introduced-specialisms.js';
 import { classifyComplianceStep } from '../../compliance/step-disposition.js';
 import { createLogger } from '../../logger.js';
 import { withSdkSafeTransport, type SdkTransportOptions } from '../../utils/sdk-safe-fetch.js';
@@ -300,7 +305,7 @@ export async function comply(
   // public receiver is opt-in while the versioned mandatory profile is being
   // prepared; if ingress is unavailable, retain the current grading contract
   // and log the platform gap rather than attributing it to the seller.
-  let receiverLease;
+  let receiverLease: Awaited<ReturnType<typeof createHostedWebhookReceiverLease>> | undefined;
   if (process.env.HOSTED_COMPLIANCE_WEBHOOK_RECEIVER_ENABLED === 'true' && !safeOptions.webhook_receiver) {
     try {
       receiverLease = await createHostedWebhookReceiverLease();
@@ -308,27 +313,156 @@ export async function comply(
       logger.warn({ err: error, agentUrl }, 'Hosted webhook receiver unavailable; webhook storyboards may be not applicable');
     }
   }
+  const runComply = (complianceDir?: string, timeoutMs?: number) => sdkComply(
+    agentUrl,
+    withHostedComplianceTransport(
+      withHostedComplianceRunOptions({
+        ...safeOptions,
+        routeStoryboard,
+        ...(receiverLease ? { webhook_receiver: receiverLease.options } : {}),
+        ...(complianceDir ? { complianceDir } : {}),
+        ...(timeoutMs !== undefined ? { timeout_ms: timeoutMs } : {}),
+      }, target, authDefaults.probeTask, authDefaults.apiKey),
+    ),
+  );
+  const runStartedAt = Date.now();
+  let overlayComplianceDir: string | undefined;
   let rawResult: ComplianceResult;
   try {
-    rawResult = await sdkComply(
-      agentUrl,
-      withHostedComplianceTransport(
-        withHostedComplianceRunOptions({
-          ...safeOptions,
-          routeStoryboard,
-          ...(receiverLease ? { webhook_receiver: receiverLease.options } : {}),
-        }, target, authDefaults.probeTask, authDefaults.apiKey),
-      ),
-    );
+    try {
+      rawResult = await runComply();
+    } catch (error) {
+      // Capability resolution fails closed on a declared specialism with no
+      // bundle in the target cache, before any storyboard runs. When AdCP only
+      // introduced that specialism after the graded release there is nothing
+      // to grade and nothing the seller can fix, so re-resolve against an
+      // overlay that knows about it and grade the rest of the run (#8269).
+      // Any other unknown id, including one a later release removed, keeps the
+      // existing fail-closed behaviour: the retry is never attempted, or (for
+      // a mixed declaration) throws again on the id that is still unknown.
+      overlayComplianceDir = await complianceDirToleratingUnknownSpecialism(error, target);
+      if (!overlayComplianceDir) throw error;
+      logger.warn(
+        { agentUrl, version: target.version, err: error },
+        'Grading run against an overlay that treats specialisms introduced after the release as not applicable',
+      );
+      // The SDK restarts its own budget clock, so hand the retry what is left
+      // of the caller's. The first attempt dies at resolution, before any
+      // storyboard, so this normally costs one capability probe.
+      rawResult = await runComply(
+        overlayComplianceDir,
+        safeOptions.timeout_ms === undefined
+          ? undefined
+          : Math.max(1, safeOptions.timeout_ms - (Date.now() - runStartedAt)),
+      );
+    }
   } finally {
     await receiverLease?.release();
   }
+  // An agent that echoes a newer release in the target's major has its
+  // capabilities validated against that release by the SDK, using the hosted
+  // roots withHostedComplianceOptions supplies (servedReleaseSchemaRoots).
   const result = redactHostedGovernanceSecrets(rawResult, mintedSecrets);
   result.adcp_version ??= target.version;
+  const notApplicableSpecialisms = markSpecialismsNotApplicableForTarget(result, target);
+  if (overlayComplianceDir) restoreReleasedComplianceDirInFixCommands(result, overlayComplianceDir, target);
   (result as ComplianceResult & { hosted_provenance: ComplianceRunProvenance }).hosted_provenance =
-    complianceRunProvenance(result, options);
+    complianceRunProvenance(result, options, overlayComplianceDir ? notApplicableSpecialisms : undefined);
   (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
   return result;
+}
+
+/** Notice code for a declared specialism the graded release does not define. */
+export const SPECIALISM_NOT_IN_RELEASE_NOTICE_CODE = 'specialism_not_in_compliance_release';
+
+/**
+ * The overlay cache to re-resolve against when `error` is capability
+ * resolution rejecting a specialism AdCP introduced after the graded release.
+ * `undefined` for every other fault, which keeps the run failing closed.
+ */
+export function complianceDirToleratingUnknownSpecialism(
+  error: unknown,
+  target: HostedComplianceTarget,
+): Promise<string | undefined> {
+  const info = classifyCapabilityResolutionError(error);
+  if (info?.kind !== 'unknown_specialism' || !info.specialism) return Promise.resolve(undefined);
+  // The classified id is agent-controlled. It only selects the overlay when it
+  // matches a specialism our own compliance catalog says a later release
+  // introduced, so an unrecognized or hostile id cannot silence grading.
+  if (!isForwardIntroducedSpecialism(target.version, info.specialism)) return Promise.resolve(undefined);
+  return complianceDirToleratingForwardIntroducedSpecialisms(target);
+}
+
+/**
+ * Record declared specialisms the graded release does not define as not
+ * applicable for this target, so the run shows a reason instead of a silent
+ * gap. Deliberately not a pass: the release has no storyboards for them, so
+ * they are dropped from the role rollup rather than credited (see
+ * `deriveVerificationStatus`). Returns the ids, for the run's provenance.
+ */
+function markSpecialismsNotApplicableForTarget(
+  result: ComplianceResult,
+  target: HostedComplianceTarget,
+): string[] {
+  const version = result.adcp_version ?? target.version;
+  const notApplicable = declaredSpecialismsNotApplicableForTarget(
+    version,
+    result.agent_profile?.specialisms,
+  );
+  if (notApplicable.length === 0) return notApplicable;
+
+  for (const bundle of result.bundle_results ?? []) {
+    // Only the empty bundle the overlay index produced. A specialism the cache
+    // really does grade must keep whatever verdict its storyboards earned.
+    if (bundle.kind === 'specialism' && bundle.storyboard_ids.length === 0 && notApplicable.includes(bundle.id)) {
+      bundle.status = 'not_applicable';
+    }
+  }
+
+  // Every id here matched our own compliance catalog, so the message
+  // interpolates repo-controlled strings, not raw agent text.
+  const message =
+    `Declared specialisms not applicable to the AdCP ${version} compliance release: ` +
+    `${notApplicable.join(', ')}. AdCP introduced them after this release, so they were not graded. ` +
+    `Advertise a release that defines them in adcp.supported_versions to have them tested.`;
+
+  result.observations ??= [];
+  result.observations.push({
+    category: 'tool_discovery',
+    severity: 'info',
+    message,
+    evidence: { specialisms: notApplicable, compliance_version: version },
+    source: { kind: 'profile', code: 'specialism-not-in-compliance-release' },
+  });
+
+  result.notices ??= [];
+  result.notices.push({
+    // Hosted-only notice code. recordComplianceRun stores notice codes
+    // verbatim, and the public projection passes unknown codes through.
+    severity: 'info',
+    code: SPECIALISM_NOT_IN_RELEASE_NOTICE_CODE,
+    message,
+    storyboard_ids: [],
+  } as unknown as ComplianceResult['notices'][number]);
+
+  return notApplicable;
+}
+
+/**
+ * Point re-run commands at the released bundle rather than the run-scoped
+ * overlay. `fix_command` is meant to be copy-pasteable, and the overlay path
+ * is a temp directory that will not exist for whoever reads the run.
+ */
+function restoreReleasedComplianceDirInFixCommands(
+  result: ComplianceResult,
+  overlayComplianceDir: string,
+  target: HostedComplianceTarget,
+): void {
+  for (const failure of result.failures ?? []) {
+    if (typeof failure.fix_command === 'string' && failure.fix_command.includes(overlayComplianceDir)) {
+      failure.fix_command = failure.fix_command.split(overlayComplianceDir).join(target.complianceDir);
+    }
+  }
 }
 
 export async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
@@ -1322,6 +1456,26 @@ interface EligibilityStoryboardStatusEntry {
 }
 
 /**
+ * Declared specialisms the release behind `gradedComplianceVersion` can
+ * actually grade. Specialisms AdCP introduced later have no bundle in that
+ * release, so a badge derived from it must neither credit nor blame them
+ * (#8269). With no version the full declared list is returned, preserving the
+ * historical behaviour for callers that cannot name the graded release.
+ */
+function specialismsGradableAtRelease(
+  declaredSpecialisms: string[],
+  gradedComplianceVersion?: string | null,
+): string[] {
+  if (!gradedComplianceVersion) return declaredSpecialisms;
+  const notApplicable = new Set(
+    declaredSpecialismsNotApplicableForTarget(gradedComplianceVersion, declaredSpecialisms),
+  );
+  return notApplicable.size === 0
+    ? declaredSpecialisms
+    : declaredSpecialisms.filter(specialism => !notApplicable.has(specialism));
+}
+
+/**
  * Project public, remediation-oriented badge blockers from the raw latest-run
  * storyboard rows. This is intentionally independent from
  * deriveVerificationStatus: badge issuance keeps its existing partial/failing
@@ -1330,11 +1484,13 @@ interface EligibilityStoryboardStatusEntry {
 export function derivePublicComplianceEligibility(
   declaredSpecialisms: string[],
   storyboardStatuses: EligibilityStoryboardStatusEntry[],
+  gradedComplianceVersion?: string | null,
 ): PublicComplianceEligibility {
   const statusMap = new Map(storyboardStatuses.map(status => [status.storyboard_id, status]));
   const specialismsByRole = new Map<BadgeRole, string[]>();
+  const gradableSpecialisms = specialismsGradableAtRelease(declaredSpecialisms, gradedComplianceVersion);
 
-  for (const specialism of declaredSpecialisms.filter(isStableSpecialism)) {
+  for (const specialism of gradableSpecialisms.filter(isStableSpecialism)) {
     const info = SPECIALISM_CATALOG[specialism];
     if (!info) continue;
     const roleSpecialisms = specialismsByRole.get(info.protocol) ?? [];
@@ -1389,7 +1545,7 @@ export interface VerificationResult {
   }>;
 }
 
-export type SpecialismStatus = 'passing' | 'failing' | 'untested' | 'unknown';
+export type SpecialismStatus = 'passing' | 'failing' | 'untested' | 'unknown' | 'not_applicable';
 
 /**
  * Map declared specialisms to per-specialism pass/fail/untested status by
@@ -1401,24 +1557,41 @@ export type SpecialismStatus = 'passing' | 'failing' | 'untested' | 'unknown';
  * `unknown` is returned for specialisms not in `SPECIALISM_CATALOG` (e.g.
  * preview-status specialisms that the agent declared but the catalog
  * doesn't recognize as stable).
+ *
+ * `not_applicable` is returned when `gradedComplianceVersion` is supplied and
+ * AdCP introduced the specialism after that release: the run could not grade
+ * it, and saying "untested" or "unknown" would read as the agent's fault.
  */
 export function computeSpecialismStatus(
   declaredSpecialisms: string[],
   storyboardStatuses: StoryboardStatusEntry[],
+  gradedComplianceVersion?: string | null,
 ): Record<string, SpecialismStatus> {
   const statusMap = new Map<string, StoryboardStatusEntry>();
   for (const entry of storyboardStatuses) {
     statusMap.set(entry.storyboard_id, entry);
   }
+  const notApplicable = new Set(
+    gradedComplianceVersion
+      ? declaredSpecialismsNotApplicableForTarget(gradedComplianceVersion, declaredSpecialisms)
+      : [],
+  );
 
   const result: Record<string, SpecialismStatus> = {};
   for (const specialism of declaredSpecialisms) {
     const info = SPECIALISM_CATALOG[specialism];
+    const sbStatus = info ? statusMap.get(info.storyboard_id) : undefined;
+    // Only when this release produced no evidence. A storyboard row from an
+    // earlier run on a release that does define the specialism is real
+    // evidence and keeps its own verdict.
+    if (notApplicable.has(specialism) && (!sbStatus || sbStatus.steps_total === 0)) {
+      result[specialism] = 'not_applicable';
+      continue;
+    }
     if (!info) {
       result[specialism] = 'unknown';
       continue;
     }
-    const sbStatus = statusMap.get(info.storyboard_id);
     if (!sbStatus) {
       result[specialism] = 'untested';
       continue;
@@ -1443,10 +1616,16 @@ export function computeSpecialismStatus(
  * An agent earns a role badge when ALL declared specialisms that
  * roll up to that domain are passing. Specialisms come from the
  * agent's get_adcp_capabilities response (specialisms field).
+ *
+ * `gradedComplianceVersion` (an exact bundle version or a badge line alias)
+ * drops specialisms AdCP introduced after that release from the rollup. A
+ * release that does not define a specialism can neither pass nor fail it, and
+ * the resulting badge lists only the specialisms it actually graded.
  */
 export function deriveVerificationStatus(
   declaredSpecialisms: string[],
   storyboardStatuses: StoryboardStatusEntry[],
+  gradedComplianceVersion?: string | null,
 ): VerificationResult {
   if (declaredSpecialisms.length === 0) {
     return { verified: false, roles: [] };
@@ -1459,7 +1638,8 @@ export function deriveVerificationStatus(
 
   // Preview specialisms are tested but don't count toward stable badge issuance.
   // They'll be reported separately once the compliance runner emits preview results.
-  const stableSpecialisms = declaredSpecialisms.filter(isStableSpecialism);
+  const stableSpecialisms = specialismsGradableAtRelease(declaredSpecialisms, gradedComplianceVersion)
+    .filter(isStableSpecialism);
 
   // Group declared specialisms by the protocol they roll up to
   const protocolSpecialisms = new Map<BadgeRole, string[]>();

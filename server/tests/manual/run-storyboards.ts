@@ -276,10 +276,6 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
     'The training seller emits no delivery window_update webhooks: on AdCP 3.2 its synchronous create_media_buy completion is silent and it does not push delivery reports on simulated delivery. Every other step of the broadcast transaction is graded. Remove when the training agent emits C3 and C7 window_update webhooks to the registered push_notification_config.',
   ],
   [
-    'media_buy_seller/inline_creatives_without_sync/get_products_legacy_format',
-    'The optional legacy-format branch has no capability gate and therefore executes against the current training seller even though it publishes canonical format_options only. The canonical inline-creative branch remains graded. Remove when the runner gates this branch on an observed format_ids representation.',
-  ],
-  [
     'governance_delivery_monitor/check_governance_drift',
     'The runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
   ],
@@ -317,6 +313,10 @@ const THREE_ZERO_COMPAT_KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new M
   [
     'brand_rights/acquire_rights',
     '3.0.13 compatibility run under @adcp/sdk 8.1 beta.13: frozen brand-rights response schema rejects the current training-agent rights envelope. Current-source brand coverage remains graded by the current matrix.',
+  ],
+  [
+    'webhook_emission/get_capabilities',
+    '@adcp/sdk 15.9.5 validates get_adcp_capabilities against the release the agent echoes (3.2 for a 3.0 pin), whose schema requires an https identity.brand_json_url. This runner swaps the canonical base to its http loopback server for webhook_emission, so the URL is http only here. The current matrix quarantines webhook_emission for the same loopback limits. Remove when the runner serves the agent over https or the current quarantine is lifted.',
   ],
 ]);
 

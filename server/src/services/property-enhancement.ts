@@ -235,13 +235,16 @@ export async function enhanceProperty(
     propertyId = property.id;
     submitted = true;
 
-    // Trigger Addie's async review (fire-and-forget)
+    // Trigger Addie's async review (fire-and-forget). The reviewer takes a
+    // registry row, not a bare adagents.json document — it allowlists the
+    // snapshot's fields, and a document passed straight in would be reduced
+    // to nothing. The row carries the same content under `adagents_json`.
     reviewNewRecord({
       entity_type: 'property',
       domain,
       editor_user_id: submitterUserId,
       editor_email: submitterEmail,
-      snapshot: adagentsJson,
+      snapshot: property as unknown as Record<string, unknown>,
     }).catch((err) => {
       logger.error({ err, domain }, 'Registry review failed for enhanced property');
     });

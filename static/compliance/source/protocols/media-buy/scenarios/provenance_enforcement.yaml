@@ -85,6 +85,22 @@ fixtures:
       description: "Sandbox display inventory exercising AI disclosure provenance enforcement and accepted verifier allowlist"
       delivery_type: "non_guaranteed"
       channels: ["display"]
+      publisher_properties:
+        - publisher_domain: "outdoormagazine.example"
+          selection_type: "all"
+      format_options:
+        - format_kind: "image"
+          format_option_id: "provenance_image_300x250"
+          params:
+            width: 300
+            height: 250
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
       creative_policy:
         co_branding: "optional"
         landing_page: "any"
@@ -100,7 +116,7 @@ fixtures:
       pricing_options:
         - pricing_option_id: "test-pricing-cpm"
           pricing_model: "cpm"
-          rate: 5.00
+          fixed_price: 5.00
           currency: "USD"
 
 phases:
@@ -145,6 +161,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           context:
             correlation_id: "provenance_enforcement--get_products"
         validations:
@@ -194,6 +211,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           creatives:
             - creative_id: "acme_no_provenance_probe_001"
               name: "Acme no-provenance probe"
@@ -263,6 +281,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           creatives:
             - creative_id: "acme_no_dst_probe_001"
               name: "Acme no-digital_source_type probe"
@@ -337,6 +356,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           creatives:
             - creative_id: "acme_off_list_verifier_probe_001"
               name: "Acme off-list verifier probe"
@@ -424,6 +444,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           creatives:
             - creative_id: "acme_disclosure_probe_001"
               name: "Acme disclosure probe — missing block"
@@ -494,6 +515,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_provenance_enforcem-d59c79ac"
+            sandbox: true
           creatives:
             - creative_id: "acme_disclosure_probe_001"
               name: "Acme disclosure probe — disclosure attached, on-list verifier"
