@@ -157,6 +157,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-content_standards-5c6128f1"
+            sandbox: true
           scope:
             languages_any: ["en"]
             description: "Acme Outdoor creative quality standards"
@@ -222,6 +223,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-content_standards-5c6128f1"
+            sandbox: true
 
           context:
             correlation_id: "content_standards--list_content_standards"
@@ -263,6 +265,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-content_standards-5c6128f1"
+            sandbox: true
           standards_id: "$context.content_standards_id"
 
           context:
@@ -311,6 +314,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-content_standards-5c6128f1"
+            sandbox: true
           standards_id: "$context.content_standards_id"
           policies:
             - policy_id: no_violent_imagery
@@ -378,6 +382,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-content_standards-5c6128f1"
+            sandbox: true
           standards_id: "$context.content_standards_id"
           artifact:
             property_rid: "test-publisher.example"
@@ -431,6 +436,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-content_standards-5c6128f1"
+            sandbox: true
           standards_id: "$context.content_standards_id"
           artifact:
             property_rid: "test-publisher.example"
@@ -483,6 +489,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-content_standards-5c6128f1"
+            sandbox: true
           standards_id: "$context.content_standards_id"
           policies:
             - policy_id: no_violent_imagery
@@ -536,6 +543,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-content_standards-5c6128f1"
+            sandbox: true
           standards_id: "$context.content_standards_id"
           artifact:
             property_rid: "test-publisher.example"
@@ -598,6 +606,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-content_standards-5c6128f1"
+            sandbox: true
           standards_id: "$context.content_standards_id"
           records:
             - record_id: "delivery_display_001"

@@ -2,7 +2,7 @@
   "contract_version": "3.3",
   "feature": "media_buy.hold_policy",
   "status": "experimental",
-  "description": "Reference verdicts for experimental hold_policy (docs/media-buy/task-reference/refine_proposals.mdx#hold-policy-experimental). Each finalize vector is a refine_proposals finalize request, the seller's records of the source drafts, the request and response times a grader observed, and the seller response or task-level error; each draft vector is a draft with its allocated products. expected.violations lists every rule the input breaks, using the codes in violation_codes; an empty list means conformant. The shape is experimental and may change with the feature.",
+  "description": "Reference verdicts for experimental hold_policy (docs/media-buy/task-reference/refine_proposals.mdx#hold-policy-experimental). Each finalize vector is a refine_proposals finalize request, the seller's records of the source drafts, the request and response times a grader observed, and the seller response or task-level error; each draft vector is a draft with its allocated products; each replay vector is an exact retry graded against the original response. expected.violations lists every rule the input breaks, using the codes in violation_codes; an empty list means conformant. The shape is experimental and may change with the feature.",
   "conventions": {
     "duration": "Durations are ISO 8601 day, hour, minute, and second parts only. A day is exactly 86400 seconds added to the UTC instant: no calendar, time-zone, or daylight-saving arithmetic. Durations are compared after normalizing to elapsed time, so P1D equals PT24H.",
     "hold_placement": "The hold is placed when the seller creates the committed proposal, and a committed proposal whose hold_policy.available is true records that instant in hold_placed_at. observation.request_received_at is when the seller received the finalize request and observation.response_at is when it responded or, for a submitted finalize, when the task completed; hold_placed_at must lie in that window. Callers below 3.3 receive no hold_placed_at. For them placement lies somewhere in the window, and a bound is a violation only when it fails for every placement in it; a bound that passes for some placements and fails for others is reported in expected.indeterminate and is not a violation.",
@@ -15,7 +15,9 @@
     "adcp_version": "The caller version is request.adcp_version, compared by major and minor.",
     "extension": "An extend_hold vector grades one refine_proposals extend_hold request against source_proposals, the seller records of the committed sources. A successful extension returns a committed successor with the source commercial_terms, terms_digest, hold_policy, and hold_placed_at unchanged and a later expires_at no later than hold_placed_at + max_total_duration. Because hold_placed_at is carried forward, the ceiling is measured from the root finalize placement across the whole chain. extendable defaults to false. A source that holds no inventory fails the request at task level with INVALID_STATE, never hold_unavailable.",
     "ranking": "rankable (experimental, media_buy.hold_ranking) is part of hold_policy, forbidden when available is false, and defaults to false. A committed proposal whose policy has available and rankable true carries hold_rank (1 = first position; the worst position when the hold covers inventory at several). hold_rank is forbidden otherwise and on drafts. A draft is rankable if any allocated product effective policy is rankable, so a draft without rankable true beside a rankable product promises more than the product. An extend_hold successor reports hold_rank as of the extension and never a worse position than its source. A seller emitting rankable or hold_rank lists media_buy.hold_ranking.",
-    "installment_holds": "holds (experimental, media_buy.installment_holds) is readback of the installments one committed hold covers, not separate holds. It appears only on a committed proposal whose hold_policy has available true, lists each (product_id, installment_ref) once, and names only products in commercial_terms.purchases. Entries share the proposal hold_placed_at and expires_at and carry no expires_at of their own. Under a rankable policy every entry carries hold_rank and the proposal hold_rank is the worst entry position. An extend_hold successor lists the same entries, each at a position no worse than in its source. A seller emitting holds lists media_buy.installment_holds."
+    "installment_holds": "holds (experimental, media_buy.installment_holds) is readback of the installments one committed hold covers, not separate holds. It appears only on a committed proposal whose hold_policy has available true, lists each (product_id, installment_ref) once, and names only products in commercial_terms.purchases. Entries share the proposal hold_placed_at and expires_at and carry no expires_at of their own. Under a rankable policy every entry carries hold_rank and the proposal hold_rank is the worst entry position. An extend_hold successor lists the same entries, each at a position no worse than in its source. A seller emitting holds lists media_buy.installment_holds.",
+    "installment_deadlines": "A finalize vector may carry installments, the seller records (after any computation from deadline_policy) of the booking_deadline and change_cutoff (core/installment-deadlines.json) for the installments of each product the drafts allocate. The earliest of them across the draft allocated products is the latest instant a hold may run to: expires_at must not be later (equal is allowed). If placement + min_duration would fall after it, the seller cannot honor the minimum and returns hold_unavailable, with batch_aborted siblings (the grader does not judge whether a hold_unavailable was warranted, since a seller may fail a finalize for its own reasons); committing anyway breaks min_duration (expires_at at the deadline) or the deadline cap (expires_at at placement + min_duration), so no committed result is conformant. Deadlines of products the draft does not allocate are ignored.",
+    "replay": "A replay vector grades an exact retry of a finalize that returned a response (not a task error) (same idempotency_key and request) against the original response. original.observation and original.response are graded as a finalize vector. replay.response is flagged replayed: true and must return the same results, in the same order (results and products are compared): each finalized entry carries the original committed proposal with its original hold_placed_at and expires_at (a retry never restarts the clock; a completed result is replayed as cached, per the idempotency rules in docs/building/by-layer/L1/security.mdx, including an all-unable result), and each unable entry repeats its original reason_code. The retry is not checked against a new observation window, so a replayed hold_placed_at earlier than the retry is expected."
   },
   "violation_codes": {
     "schema_invalid": "A request, draft, product, response, or task error fails its JSON Schema. A grader reports only this code for the vector.",
@@ -44,7 +46,10 @@
     "holds_duplicate_entry": "holds lists the same product_id and installment_ref more than once.",
     "holds_product_not_allocated": "A holds entry names a product_id that is not in the committed proposal commercial_terms.purchases.",
     "hold_rank_better_than_entry": "The proposal hold_rank is a better (smaller) position than some holds entry hold_rank; it must be the worst position.",
-    "holds_changed_on_extension": "An extend_hold successor lists a different set of holds entries than its source. Extension transfers the same hold."
+    "holds_changed_on_extension": "An extend_hold successor lists a different set of holds entries than its source. Extension transfers the same hold.",
+    "hold_past_installment_deadline": "A committed hold expires_at is later than the earliest booking_deadline or change_cutoff of the allocated products installments.",
+    "replay_hold_restarted": "An exact retry under the same idempotency key returns a committed proposal whose hold_placed_at or expires_at differs from the original response.",
+    "replay_response_changed": "An exact retry under the same idempotency key returns results that differ from the original response in any way other than the changed hold times, such as another outcome, reason_code, or committed proposal_id."
   },
   "finalize_vectors": [
     {
@@ -7395,6 +7400,1363 @@
           "schema_invalid"
         ]
       }
+    },
+    {
+      "id": "installment-booking-deadline-caps-hold",
+      "case": "installment_deadline",
+      "name": "expires_at at the earliest booking_deadline, short of the P5D maximum but past the P2D minimum, is conformant",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "installments": [
+        {
+          "product_id": "ctv_prime",
+          "deadlines": {
+            "booking_deadline": "2026-11-06T00:00:00Z"
+          }
+        }
+      ],
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-installment-booking-deadline-caps-hold",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "observation": {
+        "request_received_at": "2026-11-02T15:00:00Z",
+        "response_at": "2026-11-02T15:00:02Z"
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_draft_ctv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_ctv",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_draft_ctv",
+              "name": "Committed prop_draft_ctv",
+              "expires_at": "2026-11-06T00:00:00Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "ctv_prime",
+                    "pricing_option_id": "ctv_prime_cpm",
+                    "pricing": {
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-02T15:00:01Z"
+            }
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": []
+      }
+    },
+    {
+      "id": "installment-change-cutoff-is-earliest",
+      "case": "installment_deadline",
+      "name": "With both deadlines declared, expires_at at the earlier change_cutoff (not the later booking_deadline) is conformant",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "installments": [
+        {
+          "product_id": "ctv_prime",
+          "deadlines": {
+            "booking_deadline": "2026-11-08T00:00:00Z",
+            "change_cutoff": "2026-11-05T12:00:00Z"
+          }
+        }
+      ],
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-installment-change-cutoff-is-earliest",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "observation": {
+        "request_received_at": "2026-11-02T15:00:00Z",
+        "response_at": "2026-11-02T15:00:02Z"
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_draft_ctv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_ctv",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_draft_ctv",
+              "name": "Committed prop_draft_ctv",
+              "expires_at": "2026-11-05T12:00:00Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "ctv_prime",
+                    "pricing_option_id": "ctv_prime_cpm",
+                    "pricing": {
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-02T15:00:01Z"
+            }
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": []
+      }
+    },
+    {
+      "id": "installment-hold-outlives-booking-deadline",
+      "case": "installment_deadline",
+      "name": "A hold that runs to the full P5D maximum, past the product booking_deadline, outlives the deadline",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "installments": [
+        {
+          "product_id": "ctv_prime",
+          "deadlines": {
+            "booking_deadline": "2026-11-06T00:00:00Z"
+          }
+        }
+      ],
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-installment-hold-outlives-booking-deadline",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "observation": {
+        "request_received_at": "2026-11-02T15:00:00Z",
+        "response_at": "2026-11-02T15:00:02Z"
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_draft_ctv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_ctv",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_draft_ctv",
+              "name": "Committed prop_draft_ctv",
+              "expires_at": "2026-11-07T15:00:01Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "ctv_prime",
+                    "pricing_option_id": "ctv_prime_cpm",
+                    "pricing": {
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-02T15:00:01Z"
+            }
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": [
+          "hold_past_installment_deadline"
+        ]
+      }
+    },
+    {
+      "id": "installment-hold-outlives-change-cutoff",
+      "case": "installment_deadline",
+      "name": "expires_at before the booking_deadline but after the earlier change_cutoff still outlives the earliest deadline",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "installments": [
+        {
+          "product_id": "ctv_prime",
+          "deadlines": {
+            "booking_deadline": "2026-11-08T00:00:00Z",
+            "change_cutoff": "2026-11-05T12:00:00Z"
+          }
+        }
+      ],
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-installment-hold-outlives-change-cutoff",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "observation": {
+        "request_received_at": "2026-11-02T15:00:00Z",
+        "response_at": "2026-11-02T15:00:02Z"
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_draft_ctv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_ctv",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_draft_ctv",
+              "name": "Committed prop_draft_ctv",
+              "expires_at": "2026-11-07T15:00:01Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "ctv_prime",
+                    "pricing_option_id": "ctv_prime_cpm",
+                    "pricing": {
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-02T15:00:01Z"
+            }
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": [
+          "hold_past_installment_deadline"
+        ]
+      }
+    },
+    {
+      "id": "installment-deadline-on-unallocated-product-ignored",
+      "case": "installment_deadline",
+      "name": "A booking_deadline on a product the draft does not allocate does not cap the hold",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "installments": [
+        {
+          "product_id": "olv_run",
+          "deadlines": {
+            "booking_deadline": "2026-11-03T00:00:00Z"
+          }
+        }
+      ],
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-installment-deadline-on-unallocated-product-ignored",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "observation": {
+        "request_received_at": "2026-11-02T15:00:00Z",
+        "response_at": "2026-11-02T15:00:02Z"
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_draft_ctv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_ctv",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_draft_ctv",
+              "name": "Committed prop_draft_ctv",
+              "expires_at": "2026-11-07T15:00:01Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "ctv_prime",
+                    "pricing_option_id": "ctv_prime_cpm",
+                    "pricing": {
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-02T15:00:01Z"
+            }
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": []
+      }
+    },
+    {
+      "id": "installment-minimum-short-committed-at-deadline",
+      "case": "installment_deadline",
+      "name": "The minimum cannot fit before the booking_deadline; committing with expires_at at the deadline breaks min_duration",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "installments": [
+        {
+          "product_id": "ctv_prime",
+          "deadlines": {
+            "booking_deadline": "2026-11-04T00:00:00Z"
+          }
+        }
+      ],
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-installment-minimum-short-committed-at-deadline",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "observation": {
+        "request_received_at": "2026-11-02T15:00:00Z",
+        "response_at": "2026-11-02T15:00:02Z"
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_draft_ctv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_ctv",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_draft_ctv",
+              "name": "Committed prop_draft_ctv",
+              "expires_at": "2026-11-04T00:00:00Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "ctv_prime",
+                    "pricing_option_id": "ctv_prime_cpm",
+                    "pricing": {
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-02T15:00:01Z"
+            }
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": [
+          "min_duration_not_honored"
+        ]
+      }
+    },
+    {
+      "id": "installment-minimum-honored-past-deadline",
+      "case": "installment_deadline",
+      "name": "The minimum cannot fit before the booking_deadline; honoring it with expires_at at placement + P2D outlives the deadline",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "installments": [
+        {
+          "product_id": "ctv_prime",
+          "deadlines": {
+            "booking_deadline": "2026-11-04T00:00:00Z"
+          }
+        }
+      ],
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-installment-minimum-honored-past-deadline",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "observation": {
+        "request_received_at": "2026-11-02T15:00:00Z",
+        "response_at": "2026-11-02T15:00:02Z"
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_draft_ctv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_ctv",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_draft_ctv",
+              "name": "Committed prop_draft_ctv",
+              "expires_at": "2026-11-04T15:00:01Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "ctv_prime",
+                    "pricing_option_id": "ctv_prime_cpm",
+                    "pricing": {
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-02T15:00:01Z"
+            }
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": [
+          "hold_past_installment_deadline"
+        ]
+      }
+    },
+    {
+      "id": "installment-minimum-fits-exactly-at-deadline",
+      "case": "installment_deadline",
+      "name": "When placement + min_duration equals the booking_deadline, expires_at at that instant honors both the minimum and the cap",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "installments": [
+        {
+          "product_id": "ctv_prime",
+          "deadlines": {
+            "booking_deadline": "2026-11-04T15:00:01Z"
+          }
+        }
+      ],
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-installment-minimum-fits-exactly-at-deadline",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "observation": {
+        "request_received_at": "2026-11-02T15:00:00Z",
+        "response_at": "2026-11-02T15:00:02Z"
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_draft_ctv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_ctv",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_draft_ctv",
+              "name": "Committed prop_draft_ctv",
+              "expires_at": "2026-11-04T15:00:01Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "ctv_prime",
+                    "pricing_option_id": "ctv_prime_cpm",
+                    "pricing": {
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-02T15:00:01Z"
+            }
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": []
+      }
+    },
+    {
+      "id": "installment-minimum-unfittable-batch",
+      "case": "installment_deadline",
+      "name": "When placement + min_duration falls after the product booking_deadline, the entry returns hold_unavailable and its eligible sibling batch_aborted",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "installments": [
+        {
+          "product_id": "ctv_prime",
+          "deadlines": {
+            "booking_deadline": "2026-11-04T00:00:00Z"
+          }
+        }
+      ],
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        },
+        {
+          "proposal_id": "prop_draft_olv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_olv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "olv_run",
+                "pricing_option_id": "olv_run_cpm",
+                "pricing": {
+                  "pricing_option_id": "olv_run_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-installment-minimum-unfittable-batch",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          },
+          {
+            "proposal_id": "prop_draft_olv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "observation": {
+        "request_received_at": "2026-11-02T15:00:00Z",
+        "response_at": "2026-11-02T15:00:02Z"
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_draft_ctv",
+            "outcome": "unable",
+            "reason_code": "hold_unavailable",
+            "reason": "ctv_prime booking closes before the promised two days."
+          },
+          {
+            "source_proposal_id": "prop_draft_olv",
+            "outcome": "unable",
+            "reason_code": "batch_aborted",
+            "reason": "A sibling finalize failed; no hold was placed."
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          },
+          {
+            "product_id": "olv_run",
+            "name": "Online Video Run of Site",
+            "channels": [
+              "olv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": []
+      }
     }
   ],
   "draft_vectors": [
@@ -11102,6 +12464,2630 @@
       "expected": {
         "violations": [
           "holds_changed_on_extension"
+        ]
+      }
+    },
+    {
+      "id": "extend-batch-all-extended",
+      "case": "extension",
+      "name": "A two-entry extend_hold batch where both successors carry their own hold_placed_at forward and stay within their own ceilings is conformant",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#extend-a-hold-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy",
+          "media_buy.hold_extension"
+        ]
+      },
+      "source_proposals": [
+        {
+          "proposal_id": "prop_committed_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_ctv",
+          "name": "Committed prop_draft_ctv",
+          "expires_at": "2026-11-04T15:00:01Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          },
+          "hold_placed_at": "2026-11-02T15:00:01Z"
+        },
+        {
+          "proposal_id": "prop_committed_olv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_olv",
+          "name": "Committed prop_draft_olv",
+          "expires_at": "2026-11-03T09:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "olv_run",
+                "pricing_option_id": "olv_run_cpm",
+                "pricing": {
+                  "pricing_option_id": "olv_run_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          },
+          "hold_placed_at": "2026-11-01T09:00:00Z"
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "extend-extend-batch-all-extended",
+        "refinements": [
+          {
+            "proposal_id": "prop_committed_ctv",
+            "action": "extend_hold"
+          },
+          {
+            "proposal_id": "prop_committed_olv",
+            "action": "extend_hold"
+          }
+        ]
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_committed_ctv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_ctv_x",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_committed_ctv",
+              "name": "Extended prop_committed_ctv",
+              "expires_at": "2026-11-09T15:00:01Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "ctv_prime",
+                    "pricing_option_id": "ctv_prime_cpm",
+                    "pricing": {
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-02T15:00:01Z"
+            }
+          },
+          {
+            "source_proposal_id": "prop_committed_olv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_olv_x",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_committed_olv",
+              "name": "Extended prop_committed_olv",
+              "expires_at": "2026-11-08T09:00:00Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "olv_run",
+                    "pricing_option_id": "olv_run_cpm",
+                    "pricing": {
+                      "pricing_option_id": "olv_run_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-01T09:00:00Z"
+            }
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          },
+          {
+            "product_id": "olv_run",
+            "name": "Online Video Run of Site",
+            "channels": [
+              "olv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": []
+      }
+    },
+    {
+      "id": "extend-batch-second-exceeds-own-total",
+      "case": "extension",
+      "name": "Each entry is graded against its own source: the second successor passes the first entry ceiling but not its own hold_placed_at + max_total_duration",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#extend-a-hold-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy",
+          "media_buy.hold_extension"
+        ]
+      },
+      "source_proposals": [
+        {
+          "proposal_id": "prop_committed_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_ctv",
+          "name": "Committed prop_draft_ctv",
+          "expires_at": "2026-11-04T15:00:01Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          },
+          "hold_placed_at": "2026-11-02T15:00:01Z"
+        },
+        {
+          "proposal_id": "prop_committed_olv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_olv",
+          "name": "Committed prop_draft_olv",
+          "expires_at": "2026-11-03T09:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "olv_run",
+                "pricing_option_id": "olv_run_cpm",
+                "pricing": {
+                  "pricing_option_id": "olv_run_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          },
+          "hold_placed_at": "2026-11-01T09:00:00Z"
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "extend-extend-batch-second-exceeds-own-total",
+        "refinements": [
+          {
+            "proposal_id": "prop_committed_ctv",
+            "action": "extend_hold"
+          },
+          {
+            "proposal_id": "prop_committed_olv",
+            "action": "extend_hold"
+          }
+        ]
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_committed_ctv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_ctv_x",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_committed_ctv",
+              "name": "Extended prop_committed_ctv",
+              "expires_at": "2026-11-09T15:00:01Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "ctv_prime",
+                    "pricing_option_id": "ctv_prime_cpm",
+                    "pricing": {
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-02T15:00:01Z"
+            }
+          },
+          {
+            "source_proposal_id": "prop_committed_olv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_olv_x",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_committed_olv",
+              "name": "Extended prop_committed_olv",
+              "expires_at": "2026-11-16T00:00:00Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "olv_run",
+                    "pricing_option_id": "olv_run_cpm",
+                    "pricing": {
+                      "pricing_option_id": "olv_run_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-01T09:00:00Z"
+            }
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          },
+          {
+            "product_id": "olv_run",
+            "name": "Online Video Run of Site",
+            "channels": [
+              "olv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": [
+          "max_total_duration_exceeded"
+        ]
+      }
+    },
+    {
+      "id": "extend-batch-decline-aborts-sibling",
+      "case": "extension",
+      "name": "One source is not extendable: its entry returns hold_unavailable and the otherwise-eligible sibling returns batch_aborted, with both holds unchanged",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#extend-a-hold-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy",
+          "media_buy.hold_extension"
+        ]
+      },
+      "source_proposals": [
+        {
+          "proposal_id": "prop_committed_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_ctv",
+          "name": "Committed prop_draft_ctv",
+          "expires_at": "2026-11-04T15:00:01Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          },
+          "hold_placed_at": "2026-11-02T15:00:01Z"
+        },
+        {
+          "proposal_id": "prop_committed_olv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_olv",
+          "name": "Committed prop_draft_olv",
+          "expires_at": "2026-11-03T09:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "olv_run",
+                "pricing_option_id": "olv_run_cpm",
+                "pricing": {
+                  "pricing_option_id": "olv_run_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D"
+          },
+          "hold_placed_at": "2026-11-01T09:00:00Z"
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "extend-extend-batch-decline-aborts-sibling",
+        "refinements": [
+          {
+            "proposal_id": "prop_committed_ctv",
+            "action": "extend_hold"
+          },
+          {
+            "proposal_id": "prop_committed_olv",
+            "action": "extend_hold"
+          }
+        ]
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_committed_ctv",
+            "outcome": "unable",
+            "reason_code": "batch_aborted",
+            "reason": "A sibling extension failed; no hold was extended."
+          },
+          {
+            "source_proposal_id": "prop_committed_olv",
+            "outcome": "unable",
+            "reason_code": "hold_unavailable",
+            "reason": "This hold is not extendable."
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          },
+          {
+            "product_id": "olv_run",
+            "name": "Online Video Run of Site",
+            "channels": [
+              "olv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": []
+      }
+    },
+    {
+      "id": "extend-batch-partial-success",
+      "case": "extension",
+      "name": "A batch where one entry is finalized and a sibling is unable breaks the all-or-none contract and fails the response schema",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#extend-a-hold-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy",
+          "media_buy.hold_extension"
+        ]
+      },
+      "source_proposals": [
+        {
+          "proposal_id": "prop_committed_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_ctv",
+          "name": "Committed prop_draft_ctv",
+          "expires_at": "2026-11-04T15:00:01Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          },
+          "hold_placed_at": "2026-11-02T15:00:01Z"
+        },
+        {
+          "proposal_id": "prop_committed_olv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_olv",
+          "name": "Committed prop_draft_olv",
+          "expires_at": "2026-11-03T09:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "olv_run",
+                "pricing_option_id": "olv_run_cpm",
+                "pricing": {
+                  "pricing_option_id": "olv_run_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D"
+          },
+          "hold_placed_at": "2026-11-01T09:00:00Z"
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "extend-extend-batch-partial-success",
+        "refinements": [
+          {
+            "proposal_id": "prop_committed_ctv",
+            "action": "extend_hold"
+          },
+          {
+            "proposal_id": "prop_committed_olv",
+            "action": "extend_hold"
+          }
+        ]
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_committed_ctv",
+            "outcome": "finalized",
+            "proposal": {
+              "proposal_id": "prop_committed_ctv_x",
+              "proposal_kind": "new_media_buy",
+              "proposal_status": "committed",
+              "parent_proposal_id": "prop_committed_ctv",
+              "name": "Extended prop_committed_ctv",
+              "expires_at": "2026-11-09T15:00:01Z",
+              "commercial_terms": {
+                "brand": {
+                  "domain": "acmeoutdoor.example"
+                },
+                "purchases": [
+                  {
+                    "product_id": "ctv_prime",
+                    "pricing_option_id": "ctv_prime_cpm",
+                    "pricing": {
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing_model": "cpm",
+                      "currency": "USD",
+                      "fixed_price": 24
+                    },
+                    "start_time": "2027-01-04T00:00:00Z",
+                    "end_time": "2027-02-28T00:00:00Z"
+                  }
+                ],
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z",
+                "total_budget": {
+                  "amount": 40000,
+                  "currency": "USD"
+                }
+              },
+              "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              },
+              "hold_placed_at": "2026-11-02T15:00:01Z"
+            }
+          },
+          {
+            "source_proposal_id": "prop_committed_olv",
+            "outcome": "unable",
+            "reason_code": "hold_unavailable",
+            "reason": "This hold is not extendable."
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          },
+          {
+            "product_id": "olv_run",
+            "name": "Online Video Run of Site",
+            "channels": [
+              "olv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": [
+          "schema_invalid"
+        ]
+      }
+    },
+    {
+      "id": "extend-batch-aborted-without-cause",
+      "case": "extension",
+      "name": "Every entry returns batch_aborted although no sibling failed for its own reason",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#extend-a-hold-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy",
+          "media_buy.hold_extension"
+        ]
+      },
+      "source_proposals": [
+        {
+          "proposal_id": "prop_committed_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_ctv",
+          "name": "Committed prop_draft_ctv",
+          "expires_at": "2026-11-04T15:00:01Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          },
+          "hold_placed_at": "2026-11-02T15:00:01Z"
+        },
+        {
+          "proposal_id": "prop_committed_olv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_olv",
+          "name": "Committed prop_draft_olv",
+          "expires_at": "2026-11-03T09:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "olv_run",
+                "pricing_option_id": "olv_run_cpm",
+                "pricing": {
+                  "pricing_option_id": "olv_run_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          },
+          "hold_placed_at": "2026-11-01T09:00:00Z"
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "extend-extend-batch-aborted-without-cause",
+        "refinements": [
+          {
+            "proposal_id": "prop_committed_ctv",
+            "action": "extend_hold"
+          },
+          {
+            "proposal_id": "prop_committed_olv",
+            "action": "extend_hold"
+          }
+        ]
+      },
+      "response": {
+        "adcp_version": "3.3",
+        "status": "completed",
+        "results": [
+          {
+            "source_proposal_id": "prop_committed_ctv",
+            "outcome": "unable",
+            "reason_code": "batch_aborted",
+            "reason": "A sibling extension failed."
+          },
+          {
+            "source_proposal_id": "prop_committed_olv",
+            "outcome": "unable",
+            "reason_code": "batch_aborted",
+            "reason": "A sibling extension failed."
+          }
+        ],
+        "products": [
+          {
+            "product_id": "ctv_prime",
+            "name": "CTV Prime Time",
+            "channels": [
+              "ctv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          },
+          {
+            "product_id": "olv_run",
+            "name": "Online Video Run of Site",
+            "channels": [
+              "olv"
+            ],
+            "hold_policy": {
+              "available": true,
+              "min_duration": "P2D",
+              "max_duration": "P5D",
+              "extendable": true,
+              "max_total_duration": "P14D"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "violations": [
+          "batch_aborted_without_cause"
+        ]
+      }
+    },
+    {
+      "id": "extend-batch-terms-only-member-invalid-state",
+      "case": "extension",
+      "name": "A terms-only entry beside a holdable one fails the whole request at task level with INVALID_STATE, so no successor is created",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#extend-a-hold-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy",
+          "media_buy.hold_extension"
+        ]
+      },
+      "source_proposals": [
+        {
+          "proposal_id": "prop_committed_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_ctv",
+          "name": "Committed prop_draft_ctv",
+          "expires_at": "2026-11-04T15:00:01Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          },
+          "hold_placed_at": "2026-11-02T15:00:01Z"
+        },
+        {
+          "proposal_id": "prop_committed_olv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_olv",
+          "name": "Committed prop_draft_olv",
+          "expires_at": "2026-11-05T09:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "olv_run",
+                "pricing_option_id": "olv_run_cpm",
+                "pricing": {
+                  "pricing_option_id": "olv_run_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+          "hold_policy": {
+            "available": false
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "extend-extend-batch-terms-only-member-invalid-state",
+        "refinements": [
+          {
+            "proposal_id": "prop_committed_ctv",
+            "action": "extend_hold"
+          },
+          {
+            "proposal_id": "prop_committed_olv",
+            "action": "extend_hold"
+          }
+        ]
+      },
+      "task_error": {
+        "code": "INVALID_STATE",
+        "message": "prop_committed_olv holds no inventory and cannot be extended."
+      },
+      "expected": {
+        "violations": []
+      }
+    },
+    {
+      "id": "extend-batch-terms-only-member-wrong-task-error",
+      "case": "extension",
+      "name": "A terms-only entry beside a holdable one fails at task level with a code other than INVALID_STATE",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#extend-a-hold-experimental",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy",
+          "media_buy.hold_extension"
+        ]
+      },
+      "source_proposals": [
+        {
+          "proposal_id": "prop_committed_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_ctv",
+          "name": "Committed prop_draft_ctv",
+          "expires_at": "2026-11-04T15:00:01Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          },
+          "hold_placed_at": "2026-11-02T15:00:01Z"
+        },
+        {
+          "proposal_id": "prop_committed_olv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "committed",
+          "parent_proposal_id": "prop_draft_olv",
+          "name": "Committed prop_draft_olv",
+          "expires_at": "2026-11-05T09:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "olv_run",
+                "pricing_option_id": "olv_run_cpm",
+                "pricing": {
+                  "pricing_option_id": "olv_run_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+          "hold_policy": {
+            "available": false
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "extend-extend-batch-terms-only-member-wrong-task-error",
+        "refinements": [
+          {
+            "proposal_id": "prop_committed_ctv",
+            "action": "extend_hold"
+          },
+          {
+            "proposal_id": "prop_committed_olv",
+            "action": "extend_hold"
+          }
+        ]
+      },
+      "task_error": {
+        "code": "VALIDATION_ERROR",
+        "message": "prop_committed_olv cannot be extended."
+      },
+      "expected": {
+        "violations": [
+          "no_hold_wrong_task_error"
+        ]
+      }
+    }
+  ],
+  "replay_vectors": [
+    {
+      "id": "replay-returns-original-hold",
+      "case": "replay",
+      "name": "An exact retry under the same idempotency key returns the original hold_placed_at and expires_at",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#finalize",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-replay-returns-original-hold",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "original": {
+        "observation": {
+          "request_received_at": "2026-11-02T15:00:00Z",
+          "response_at": "2026-11-02T15:00:02Z"
+        },
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "finalized",
+              "proposal": {
+                "proposal_id": "prop_committed_ctv",
+                "proposal_kind": "new_media_buy",
+                "proposal_status": "committed",
+                "parent_proposal_id": "prop_draft_ctv",
+                "name": "Committed prop_draft_ctv",
+                "expires_at": "2026-11-04T15:00:01Z",
+                "commercial_terms": {
+                  "brand": {
+                    "domain": "acmeoutdoor.example"
+                  },
+                  "purchases": [
+                    {
+                      "product_id": "ctv_prime",
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing": {
+                        "pricing_option_id": "ctv_prime_cpm",
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "fixed_price": 24
+                      },
+                      "start_time": "2027-01-04T00:00:00Z",
+                      "end_time": "2027-02-28T00:00:00Z"
+                    }
+                  ],
+                  "start_time": "2027-01-04T00:00:00Z",
+                  "end_time": "2027-02-28T00:00:00Z",
+                  "total_budget": {
+                    "amount": 40000,
+                    "currency": "USD"
+                  }
+                },
+                "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+                "hold_policy": {
+                  "available": true,
+                  "min_duration": "P2D",
+                  "max_duration": "P5D",
+                  "extendable": true,
+                  "max_total_duration": "P14D"
+                },
+                "hold_placed_at": "2026-11-02T15:00:01Z"
+              }
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "replay": {
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "replayed": true,
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "finalized",
+              "proposal": {
+                "proposal_id": "prop_committed_ctv",
+                "proposal_kind": "new_media_buy",
+                "proposal_status": "committed",
+                "parent_proposal_id": "prop_draft_ctv",
+                "name": "Committed prop_draft_ctv",
+                "expires_at": "2026-11-04T15:00:01Z",
+                "commercial_terms": {
+                  "brand": {
+                    "domain": "acmeoutdoor.example"
+                  },
+                  "purchases": [
+                    {
+                      "product_id": "ctv_prime",
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing": {
+                        "pricing_option_id": "ctv_prime_cpm",
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "fixed_price": 24
+                      },
+                      "start_time": "2027-01-04T00:00:00Z",
+                      "end_time": "2027-02-28T00:00:00Z"
+                    }
+                  ],
+                  "start_time": "2027-01-04T00:00:00Z",
+                  "end_time": "2027-02-28T00:00:00Z",
+                  "total_budget": {
+                    "amount": 40000,
+                    "currency": "USD"
+                  }
+                },
+                "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+                "hold_policy": {
+                  "available": true,
+                  "min_duration": "P2D",
+                  "max_duration": "P5D",
+                  "extendable": true,
+                  "max_total_duration": "P14D"
+                },
+                "hold_placed_at": "2026-11-02T15:00:01Z"
+              }
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "violations": []
+      }
+    },
+    {
+      "id": "replay-restarts-hold-clock",
+      "case": "replay",
+      "name": "An exact retry that places a fresh hold, with a new hold_placed_at and expires_at, restarts the clock",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#finalize",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-replay-restarts-hold-clock",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "original": {
+        "observation": {
+          "request_received_at": "2026-11-02T15:00:00Z",
+          "response_at": "2026-11-02T15:00:02Z"
+        },
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "finalized",
+              "proposal": {
+                "proposal_id": "prop_committed_ctv",
+                "proposal_kind": "new_media_buy",
+                "proposal_status": "committed",
+                "parent_proposal_id": "prop_draft_ctv",
+                "name": "Committed prop_draft_ctv",
+                "expires_at": "2026-11-04T15:00:01Z",
+                "commercial_terms": {
+                  "brand": {
+                    "domain": "acmeoutdoor.example"
+                  },
+                  "purchases": [
+                    {
+                      "product_id": "ctv_prime",
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing": {
+                        "pricing_option_id": "ctv_prime_cpm",
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "fixed_price": 24
+                      },
+                      "start_time": "2027-01-04T00:00:00Z",
+                      "end_time": "2027-02-28T00:00:00Z"
+                    }
+                  ],
+                  "start_time": "2027-01-04T00:00:00Z",
+                  "end_time": "2027-02-28T00:00:00Z",
+                  "total_budget": {
+                    "amount": 40000,
+                    "currency": "USD"
+                  }
+                },
+                "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+                "hold_policy": {
+                  "available": true,
+                  "min_duration": "P2D",
+                  "max_duration": "P5D",
+                  "extendable": true,
+                  "max_total_duration": "P14D"
+                },
+                "hold_placed_at": "2026-11-02T15:00:01Z"
+              }
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "replay": {
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "replayed": true,
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "finalized",
+              "proposal": {
+                "proposal_id": "prop_committed_ctv",
+                "proposal_kind": "new_media_buy",
+                "proposal_status": "committed",
+                "parent_proposal_id": "prop_draft_ctv",
+                "name": "Committed prop_draft_ctv",
+                "expires_at": "2026-11-04T15:40:01Z",
+                "commercial_terms": {
+                  "brand": {
+                    "domain": "acmeoutdoor.example"
+                  },
+                  "purchases": [
+                    {
+                      "product_id": "ctv_prime",
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing": {
+                        "pricing_option_id": "ctv_prime_cpm",
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "fixed_price": 24
+                      },
+                      "start_time": "2027-01-04T00:00:00Z",
+                      "end_time": "2027-02-28T00:00:00Z"
+                    }
+                  ],
+                  "start_time": "2027-01-04T00:00:00Z",
+                  "end_time": "2027-02-28T00:00:00Z",
+                  "total_budget": {
+                    "amount": 40000,
+                    "currency": "USD"
+                  }
+                },
+                "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+                "hold_policy": {
+                  "available": true,
+                  "min_duration": "P2D",
+                  "max_duration": "P5D",
+                  "extendable": true,
+                  "max_total_duration": "P14D"
+                },
+                "hold_placed_at": "2026-11-02T15:40:01Z"
+              }
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "violations": [
+          "replay_hold_restarted"
+        ]
+      }
+    },
+    {
+      "id": "replay-extends-expires-at",
+      "case": "replay",
+      "name": "An exact retry that keeps hold_placed_at but returns a later expires_at silently extends the hold",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#finalize",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-replay-extends-expires-at",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "original": {
+        "observation": {
+          "request_received_at": "2026-11-02T15:00:00Z",
+          "response_at": "2026-11-02T15:00:02Z"
+        },
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "finalized",
+              "proposal": {
+                "proposal_id": "prop_committed_ctv",
+                "proposal_kind": "new_media_buy",
+                "proposal_status": "committed",
+                "parent_proposal_id": "prop_draft_ctv",
+                "name": "Committed prop_draft_ctv",
+                "expires_at": "2026-11-04T15:00:01Z",
+                "commercial_terms": {
+                  "brand": {
+                    "domain": "acmeoutdoor.example"
+                  },
+                  "purchases": [
+                    {
+                      "product_id": "ctv_prime",
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing": {
+                        "pricing_option_id": "ctv_prime_cpm",
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "fixed_price": 24
+                      },
+                      "start_time": "2027-01-04T00:00:00Z",
+                      "end_time": "2027-02-28T00:00:00Z"
+                    }
+                  ],
+                  "start_time": "2027-01-04T00:00:00Z",
+                  "end_time": "2027-02-28T00:00:00Z",
+                  "total_budget": {
+                    "amount": 40000,
+                    "currency": "USD"
+                  }
+                },
+                "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+                "hold_policy": {
+                  "available": true,
+                  "min_duration": "P2D",
+                  "max_duration": "P5D",
+                  "extendable": true,
+                  "max_total_duration": "P14D"
+                },
+                "hold_placed_at": "2026-11-02T15:00:01Z"
+              }
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "replay": {
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "replayed": true,
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "finalized",
+              "proposal": {
+                "proposal_id": "prop_committed_ctv",
+                "proposal_kind": "new_media_buy",
+                "proposal_status": "committed",
+                "parent_proposal_id": "prop_draft_ctv",
+                "name": "Committed prop_draft_ctv",
+                "expires_at": "2026-11-06T15:00:01Z",
+                "commercial_terms": {
+                  "brand": {
+                    "domain": "acmeoutdoor.example"
+                  },
+                  "purchases": [
+                    {
+                      "product_id": "ctv_prime",
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing": {
+                        "pricing_option_id": "ctv_prime_cpm",
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "fixed_price": 24
+                      },
+                      "start_time": "2027-01-04T00:00:00Z",
+                      "end_time": "2027-02-28T00:00:00Z"
+                    }
+                  ],
+                  "start_time": "2027-01-04T00:00:00Z",
+                  "end_time": "2027-02-28T00:00:00Z",
+                  "total_budget": {
+                    "amount": 40000,
+                    "currency": "USD"
+                  }
+                },
+                "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+                "hold_policy": {
+                  "available": true,
+                  "min_duration": "P2D",
+                  "max_duration": "P5D",
+                  "extendable": true,
+                  "max_total_duration": "P14D"
+                },
+                "hold_placed_at": "2026-11-02T15:00:01Z"
+              }
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "violations": [
+          "replay_hold_restarted"
+        ]
+      }
+    },
+    {
+      "id": "replay-returns-new-committed-proposal",
+      "case": "replay",
+      "name": "An exact retry that returns a different committed proposal_id, even with the original hold times, is not the original response",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#finalize",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-replay-returns-new-committed-proposal",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "original": {
+        "observation": {
+          "request_received_at": "2026-11-02T15:00:00Z",
+          "response_at": "2026-11-02T15:00:02Z"
+        },
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "finalized",
+              "proposal": {
+                "proposal_id": "prop_committed_ctv",
+                "proposal_kind": "new_media_buy",
+                "proposal_status": "committed",
+                "parent_proposal_id": "prop_draft_ctv",
+                "name": "Committed prop_draft_ctv",
+                "expires_at": "2026-11-04T15:00:01Z",
+                "commercial_terms": {
+                  "brand": {
+                    "domain": "acmeoutdoor.example"
+                  },
+                  "purchases": [
+                    {
+                      "product_id": "ctv_prime",
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing": {
+                        "pricing_option_id": "ctv_prime_cpm",
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "fixed_price": 24
+                      },
+                      "start_time": "2027-01-04T00:00:00Z",
+                      "end_time": "2027-02-28T00:00:00Z"
+                    }
+                  ],
+                  "start_time": "2027-01-04T00:00:00Z",
+                  "end_time": "2027-02-28T00:00:00Z",
+                  "total_budget": {
+                    "amount": 40000,
+                    "currency": "USD"
+                  }
+                },
+                "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+                "hold_policy": {
+                  "available": true,
+                  "min_duration": "P2D",
+                  "max_duration": "P5D",
+                  "extendable": true,
+                  "max_total_duration": "P14D"
+                },
+                "hold_placed_at": "2026-11-02T15:00:01Z"
+              }
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "replay": {
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "replayed": true,
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "finalized",
+              "proposal": {
+                "proposal_id": "prop_committed_ctv_retry",
+                "proposal_kind": "new_media_buy",
+                "proposal_status": "committed",
+                "parent_proposal_id": "prop_draft_ctv",
+                "name": "Committed prop_draft_ctv",
+                "expires_at": "2026-11-04T15:00:01Z",
+                "commercial_terms": {
+                  "brand": {
+                    "domain": "acmeoutdoor.example"
+                  },
+                  "purchases": [
+                    {
+                      "product_id": "ctv_prime",
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing": {
+                        "pricing_option_id": "ctv_prime_cpm",
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "fixed_price": 24
+                      },
+                      "start_time": "2027-01-04T00:00:00Z",
+                      "end_time": "2027-02-28T00:00:00Z"
+                    }
+                  ],
+                  "start_time": "2027-01-04T00:00:00Z",
+                  "end_time": "2027-02-28T00:00:00Z",
+                  "total_budget": {
+                    "amount": 40000,
+                    "currency": "USD"
+                  }
+                },
+                "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+                "hold_policy": {
+                  "available": true,
+                  "min_duration": "P2D",
+                  "max_duration": "P5D",
+                  "extendable": true,
+                  "max_total_duration": "P14D"
+                },
+                "hold_placed_at": "2026-11-02T15:00:01Z"
+              }
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "violations": [
+          "replay_response_changed"
+        ]
+      }
+    },
+    {
+      "id": "replay-of-failed-finalize-returns-original",
+      "case": "replay",
+      "name": "An exact retry of a finalize that failed hold_unavailable replays the original unable results",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#finalize",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        },
+        {
+          "proposal_id": "prop_draft_olv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_olv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "olv_run",
+                "pricing_option_id": "olv_run_cpm",
+                "pricing": {
+                  "pricing_option_id": "olv_run_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-replay-of-failed-finalize-returns-original",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          },
+          {
+            "proposal_id": "prop_draft_olv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "original": {
+        "observation": {
+          "request_received_at": "2026-11-02T15:00:00Z",
+          "response_at": "2026-11-02T15:00:02Z"
+        },
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "unable",
+              "reason_code": "hold_unavailable",
+              "reason": "ctv_prime cannot be held for the promised two days."
+            },
+            {
+              "source_proposal_id": "prop_draft_olv",
+              "outcome": "unable",
+              "reason_code": "batch_aborted",
+              "reason": "A sibling finalize failed; no hold was placed."
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            },
+            {
+              "product_id": "olv_run",
+              "name": "Online Video Run of Site",
+              "channels": [
+                "olv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "replay": {
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "replayed": true,
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "unable",
+              "reason_code": "hold_unavailable",
+              "reason": "ctv_prime cannot be held for the promised two days."
+            },
+            {
+              "source_proposal_id": "prop_draft_olv",
+              "outcome": "unable",
+              "reason_code": "batch_aborted",
+              "reason": "A sibling finalize failed; no hold was placed."
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            },
+            {
+              "product_id": "olv_run",
+              "name": "Online Video Run of Site",
+              "channels": [
+                "olv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "violations": []
+      }
+    },
+    {
+      "id": "replay-of-failed-finalize-now-finalizes",
+      "case": "replay",
+      "name": "An exact retry of a finalize that failed hold_unavailable must replay the failure, not finalize because inventory has freed up",
+      "spec_reference": "/docs/media-buy/task-reference/refine_proposals#finalize",
+      "seller": {
+        "hold_semantics": "inventory_hold",
+        "experimental_features": [
+          "media_buy.hold_policy"
+        ]
+      },
+      "source_drafts": [
+        {
+          "proposal_id": "prop_draft_ctv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_ctv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "ctv_prime",
+                "pricing_option_id": "ctv_prime_cpm",
+                "pricing": {
+                  "pricing_option_id": "ctv_prime_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        },
+        {
+          "proposal_id": "prop_draft_olv",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Draft prop_draft_olv",
+          "expires_at": "2026-11-05T15:00:00Z",
+          "commercial_terms": {
+            "brand": {
+              "domain": "acmeoutdoor.example"
+            },
+            "purchases": [
+              {
+                "product_id": "olv_run",
+                "pricing_option_id": "olv_run_cpm",
+                "pricing": {
+                  "pricing_option_id": "olv_run_cpm",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 24
+                },
+                "start_time": "2027-01-04T00:00:00Z",
+                "end_time": "2027-02-28T00:00:00Z"
+              }
+            ],
+            "start_time": "2027-01-04T00:00:00Z",
+            "end_time": "2027-02-28T00:00:00Z",
+            "total_budget": {
+              "amount": 40000,
+              "currency": "USD"
+            }
+          },
+          "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+          "hold_policy": {
+            "available": true,
+            "min_duration": "P2D",
+            "max_duration": "P5D",
+            "extendable": true,
+            "max_total_duration": "P14D"
+          }
+        }
+      ],
+      "request": {
+        "adcp_version": "3.3",
+        "idempotency_key": "finalize-replay-of-failed-finalize-now-finalizes",
+        "refinements": [
+          {
+            "proposal_id": "prop_draft_ctv",
+            "action": "finalize"
+          },
+          {
+            "proposal_id": "prop_draft_olv",
+            "action": "finalize"
+          }
+        ]
+      },
+      "original": {
+        "observation": {
+          "request_received_at": "2026-11-02T15:00:00Z",
+          "response_at": "2026-11-02T15:00:02Z"
+        },
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "unable",
+              "reason_code": "hold_unavailable",
+              "reason": "ctv_prime cannot be held for the promised two days."
+            },
+            {
+              "source_proposal_id": "prop_draft_olv",
+              "outcome": "unable",
+              "reason_code": "batch_aborted",
+              "reason": "A sibling finalize failed; no hold was placed."
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            },
+            {
+              "product_id": "olv_run",
+              "name": "Online Video Run of Site",
+              "channels": [
+                "olv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "replay": {
+        "response": {
+          "adcp_version": "3.3",
+          "status": "completed",
+          "replayed": true,
+          "results": [
+            {
+              "source_proposal_id": "prop_draft_ctv",
+              "outcome": "finalized",
+              "proposal": {
+                "proposal_id": "prop_committed_ctv",
+                "proposal_kind": "new_media_buy",
+                "proposal_status": "committed",
+                "parent_proposal_id": "prop_draft_ctv",
+                "name": "Committed prop_draft_ctv",
+                "expires_at": "2026-11-07T15:00:01Z",
+                "commercial_terms": {
+                  "brand": {
+                    "domain": "acmeoutdoor.example"
+                  },
+                  "purchases": [
+                    {
+                      "product_id": "ctv_prime",
+                      "pricing_option_id": "ctv_prime_cpm",
+                      "pricing": {
+                        "pricing_option_id": "ctv_prime_cpm",
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "fixed_price": 24
+                      },
+                      "start_time": "2027-01-04T00:00:00Z",
+                      "end_time": "2027-02-28T00:00:00Z"
+                    }
+                  ],
+                  "start_time": "2027-01-04T00:00:00Z",
+                  "end_time": "2027-02-28T00:00:00Z",
+                  "total_budget": {
+                    "amount": 40000,
+                    "currency": "USD"
+                  }
+                },
+                "terms_digest": "sha256:KSS8-vVWgPId0WL5ItsJFKE1RwPpy_ur_wEMXzIy_d8",
+                "hold_policy": {
+                  "available": true,
+                  "min_duration": "P2D",
+                  "max_duration": "P5D",
+                  "extendable": true,
+                  "max_total_duration": "P14D"
+                },
+                "hold_placed_at": "2026-11-02T15:00:01Z"
+              }
+            },
+            {
+              "source_proposal_id": "prop_draft_olv",
+              "outcome": "finalized",
+              "proposal": {
+                "proposal_id": "prop_committed_olv",
+                "proposal_kind": "new_media_buy",
+                "proposal_status": "committed",
+                "parent_proposal_id": "prop_draft_olv",
+                "name": "Committed prop_draft_olv",
+                "expires_at": "2026-11-07T15:00:01Z",
+                "commercial_terms": {
+                  "brand": {
+                    "domain": "acmeoutdoor.example"
+                  },
+                  "purchases": [
+                    {
+                      "product_id": "olv_run",
+                      "pricing_option_id": "olv_run_cpm",
+                      "pricing": {
+                        "pricing_option_id": "olv_run_cpm",
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "fixed_price": 24
+                      },
+                      "start_time": "2027-01-04T00:00:00Z",
+                      "end_time": "2027-02-28T00:00:00Z"
+                    }
+                  ],
+                  "start_time": "2027-01-04T00:00:00Z",
+                  "end_time": "2027-02-28T00:00:00Z",
+                  "total_budget": {
+                    "amount": 40000,
+                    "currency": "USD"
+                  }
+                },
+                "terms_digest": "sha256:rfD1UpknzByPS-1J5hvmG2HD-8VJbC69cfBJ3aQOd0A",
+                "hold_policy": {
+                  "available": true,
+                  "min_duration": "P2D",
+                  "max_duration": "P5D",
+                  "extendable": true,
+                  "max_total_duration": "P14D"
+                },
+                "hold_placed_at": "2026-11-02T15:00:01Z"
+              }
+            }
+          ],
+          "products": [
+            {
+              "product_id": "ctv_prime",
+              "name": "CTV Prime Time",
+              "channels": [
+                "ctv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            },
+            {
+              "product_id": "olv_run",
+              "name": "Online Video Run of Site",
+              "channels": [
+                "olv"
+              ],
+              "hold_policy": {
+                "available": true,
+                "min_duration": "P2D",
+                "max_duration": "P5D",
+                "extendable": true,
+                "max_total_duration": "P14D"
+              }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "violations": [
+          "replay_response_changed"
         ]
       }
     }
