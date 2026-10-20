@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>Admin - Registry review queue - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    body { background: var(--color-bg-page); min-height: 100vh; }
+    .container { max-width: var(--container-xl); margin: var(--space-8) auto; padding: 0 var(--space-5); }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2_5); color: var(--color-text-heading); }
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: var(--space-5);
+      margin-bottom: var(--space-5);
+    }
+    .subtitle { color: var(--color-text-secondary); font-size: var(--text-sm); }
+
+    .backlog {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-5);
+    }
+    .stat {
+      padding: var(--space-4);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-subtle);
+    }
+    .stat.alert { border-color: var(--color-warning-300); background: var(--color-warning-100); }
+    .stat-value { font-size: var(--text-2xl); font-weight: var(--font-semibold); color: var(--color-text-heading); }
+    .stat-label { color: var(--color-text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .btn {
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-small { padding: var(--space-1_5) var(--space-3); font-size: var(--text-xs); }
+    .btn-secondary { background: var(--color-bg-button-secondary); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-bg-button-secondary-hover); }
+    .btn-danger { background: var(--color-error-500); color: white; }
+    .btn-danger:hover { background: var(--color-error-600); }
+    .btn-success { background: var(--color-success-600); color: white; }
+    .btn-success:hover { background: var(--color-success-700); }
+
+    .status-message {
+      padding: var(--space-2_5) var(--space-4);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-4);
+      font-size: var(--text-sm);
+    }
+    .status-message.success { background: var(--color-success-100); color: var(--color-success-700); }
+    .status-message.error { background: var(--color-error-100); color: var(--color-error-700); }
+    .status-message.info { background: var(--color-info-100); color: var(--color-info-700); }
+
+    .empty-state { text-align: center; padding: var(--space-10); color: var(--color-text-secondary); }
+    .loading { text-align: center; padding: var(--space-8); color: var(--color-text-secondary); }
+
+    .queue { display: grid; gap: var(--space-4); }
+    .queue-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: var(--space-5);
+      padding: var(--space-4);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
+      align-items: start;
+    }
+    .queue-row.acting { opacity: 0.5; pointer-events: none; }
+
+    .meta { display: grid; gap: var(--space-2); font-size: var(--text-sm); min-width: 0; }
+    .meta-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: baseline; }
+    .meta-domain { font-weight: var(--font-semibold); color: var(--color-text-heading); font-size: var(--text-base); word-break: break-all; }
+    .meta-domain a { color: var(--color-brand); text-decoration: none; }
+    .meta-domain a:hover { text-decoration: underline; }
+    .meta-label { color: var(--color-text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; }
+    .meta-value { color: var(--color-text); word-break: break-word; }
+    .meta-submitter { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); word-break: break-all; }
+    .meta-note {
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-bg-subtle);
+      border-left: 3px solid var(--color-warning-300);
+      border-radius: var(--radius-sm);
+      color: var(--color-text);
+      font-size: var(--text-sm);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .badge-brand { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-property { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-pending_record { background: var(--color-gray-100); color: var(--color-gray-700); }
+    .badge-flagged_edit { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-verdict-needs_human_review { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-verdict-malicious { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-verdict-suspicious { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-verdict-ok { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-verdict-none { background: var(--color-gray-100); color: var(--color-gray-700); }
+
+    .submitted {
+      margin-top: var(--space-1);
+      font-size: var(--text-sm);
+    }
+    .submitted summary {
+      cursor: pointer;
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .submitted pre {
+      margin: var(--space-2) 0 0;
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      max-height: 320px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .claimed {
+      color: var(--color-warning-700);
+      font-size: var(--text-xs);
+    }
+    .covered {
+      display: grid;
+      gap: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-sm);
+    }
+    .covered-edit {
+      display: grid;
+      gap: var(--space-1);
+      padding-top: var(--space-2);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+    .covered-edit:first-of-type { border-top: none; padding-top: 0; }
+    .covered-head {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      word-break: break-word;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .pager {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-4);
+      margin-top: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .actions { display: flex; flex-direction: column; gap: var(--space-2); min-width: 150px; }
+    .timestamp { color: var(--color-text-muted); font-size: var(--text-xs); }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div id="loading" class="loading">Loading…</div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h1>Registry review queue</h1>
+            <p class="subtitle">
+              Community brands and properties waiting on a moderator. Automated review fails safe, so an
+              Anthropic outage or an unparseable verdict leaves the submission here instead of publishing it.
+            </p>
+          </div>
+          <button class="btn btn-secondary" id="refreshBtn">↻ Refresh</button>
+        </div>
+
+        <div class="backlog" id="backlog"></div>
+
+        <div id="statusMessage" class="status-message" style="display: none;"></div>
+
+        <div id="empty" class="empty-state" style="display: none;">
+          <p>✅ Queue is clear.</p>
+          <p class="subtitle">Submissions the automated review could not resolve will show up here.</p>
+        </div>
+
+        <div id="queue" class="queue"></div>
+
+        <div id="pager" class="pager" style="display: none;">
+          <span id="pagerSummary"></span>
+          <button class="btn btn-secondary btn-small" id="loadMoreBtn">Load more</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Every submitter- and model-authored value on this page (domain,
+    // record name, edit summary, verdict reason) reaches the DOM through
+    // textContent, never through innerHTML — the reason text is model
+    // output derived from the submitter's own edit summary.
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined && text !== null) node.textContent = String(text);
+      return node;
+    }
+
+    function labelled(labelText, valueText, valueClass) {
+      const wrap = el('span');
+      wrap.appendChild(el('span', 'meta-label', labelText));
+      wrap.appendChild(document.createTextNode(' '));
+      wrap.appendChild(el('span', valueClass || 'meta-value', valueText));
+      return wrap;
+    }
+
+    function showStatus(msg, kind) {
+      const node = document.getElementById('statusMessage');
+      node.className = 'status-message ' + (kind || 'info');
+      node.textContent = msg;
+      node.style.display = 'block';
+      if (kind !== 'error') {
+        setTimeout(function () { node.style.display = 'none'; }, 4000);
+      }
+    }
+
+    function ageLabel(hours) {
+      if (hours === null || hours === undefined) return 'unknown';
+      if (hours < 1) return 'under an hour';
+      if (hours < 48) return Math.round(hours) + 'h';
+      return Math.round(hours / 24) + 'd';
+    }
+
+    function recordUrl(item) {
+      const path = item.entity_type === 'brand' ? '/brand/view/' : '/property/view/';
+      return path + encodeURIComponent(item.domain);
+    }
+
+    function renderBacklog(backlog) {
+      const host = document.getElementById('backlog');
+      host.textContent = '';
+      if (!backlog) return;
+
+      const stats = [
+        { label: 'Decisions waiting', value: backlog.total, alert: backlog.total > 0 },
+        { label: 'Pending records', value: backlog.pending_records },
+        {
+          label: 'Records with flagged edits',
+          value: backlog.flagged_edit_records,
+          // Stacked edits on one record are one decision and one row.
+          note: backlog.flagged_edits > backlog.flagged_edit_records
+            ? backlog.flagged_edits + ' edits in total'
+            : null,
+        },
+        { label: 'Oldest has waited', value: ageLabel(backlog.oldest_age_hours), alert: backlog.oldest_age_hours >= 48 },
+      ];
+
+      stats.forEach(function (stat) {
+        const card = el('div', 'stat' + (stat.alert ? ' alert' : ''));
+        card.appendChild(el('div', 'stat-value', stat.value));
+        card.appendChild(el('div', 'stat-label', stat.label));
+        if (stat.note) card.appendChild(el('div', 'subtitle', stat.note));
+        host.appendChild(card);
+      });
+    }
+
+    // Matches the server's claim TTL.
+    var CLAIM_TTL_MS = 5 * 60 * 1000;
+
+    function isClaimLive(item) {
+      if (!item.claimed_at) return false;
+      const at = new Date(item.claimed_at).getTime();
+      return Number.isFinite(at) && Date.now() - at < CLAIM_TTL_MS;
+    }
+
+    function editCount(item) {
+      return Math.max(1, Number(item.covers_edits) || 1);
+    }
+
+    function actionLabel(item, action, canRevert) {
+      if (action === 'reject') return 'Reject';
+      if (action === 'revert') return editCount(item) > 1 ? 'Revert all edits' : 'Revert edit';
+      if (item.kind === 'pending_record') return 'Approve';
+      if (!canRevert) return 'Mark handled';
+      return editCount(item) > 1 ? 'Keep all edits' : 'Keep edit';
+    }
+
+    function renderRow(item) {
+      const row = el('div', 'queue-row');
+      const meta = el('div', 'meta');
+
+      const title = el('div', 'meta-domain');
+      const link = el('a', null, item.domain);
+      link.href = recordUrl(item);
+      link.target = '_blank';
+      link.rel = 'noopener';
+      title.appendChild(link);
+      if (item.record_name && item.record_name !== item.domain) {
+        title.appendChild(el('span', 'subtitle', ' — ' + item.record_name));
+      }
+      meta.appendChild(title);
+
+      const badges = el('div', 'meta-row');
+      badges.appendChild(el('span', 'badge badge-' + item.entity_type, item.entity_type));
+      badges.appendChild(el(
+        'span',
+        'badge badge-' + item.kind,
+        item.kind === 'pending_record' ? 'pending record' : 'flagged live edit',
+      ));
+      badges.appendChild(el(
+        'span',
+        'badge badge-verdict-' + (item.verdict || 'none'),
+        item.verdict ? item.verdict.replace(/_/g, ' ') : 'no verdict recorded',
+      ));
+      if (item.source_type) badges.appendChild(labelled('Source:', item.source_type));
+      meta.appendChild(badges);
+
+      const detail = el('div', 'meta-row');
+      detail.appendChild(labelled(
+        item.kind === 'flagged_edit' ? 'Reverts to revision:' : 'Revision:',
+        item.revision_number === null || item.revision_number === undefined ? '—' : item.revision_number,
+      ));
+      if (item.kind === 'flagged_edit' && editCount(item) > 1) {
+        // Stacked edits are one decision: restoring the earliest open
+        // revision undoes the later ones too, so the queue shows them
+        // as a single row rather than inviting separate verdicts.
+        detail.appendChild(labelled('Flagged edits on this record:', editCount(item)));
+      }
+      if (item.revision_count) detail.appendChild(labelled('Revisions:', item.revision_count));
+      detail.appendChild(labelled('Age:', ageLabel(item.age_hours)));
+      detail.appendChild(el('span', 'timestamp', new Date(item.created_at).toLocaleString()));
+      meta.appendChild(detail);
+
+      const submitter = el('div', 'meta-row');
+      submitter.appendChild(labelled(
+        'Submitter:',
+        item.submitter_email || item.submitter_user_id || 'unknown',
+        'meta-submitter',
+      ));
+      meta.appendChild(submitter);
+
+      const covered = Array.isArray(item.covered_edits) ? item.covered_edits : [];
+      if (item.kind === 'flagged_edit' && covered.length > 1) {
+        // One verdict covers all of them, so show all of them. A
+        // benign first edit and a payload second must not render as a
+        // harmless card.
+        const list = el('div', 'covered');
+        list.appendChild(el('div', 'meta-label', 'Every edit this decision covers'));
+        covered.forEach(function (edit) {
+          const entry = el('div', 'covered-edit');
+          entry.appendChild(el(
+            'div',
+            'covered-head',
+            'Revision ' + (edit.revision_number === null ? '—' : edit.revision_number)
+              + ' · ' + (edit.submitter_email || 'unknown submitter')
+              + ' · ' + (edit.verdict ? String(edit.verdict).replace(/_/g, ' ') : 'no verdict'),
+          ));
+          if (edit.edit_summary) entry.appendChild(labelled('Summary:', edit.edit_summary));
+          if (edit.reason) entry.appendChild(labelled('Review reason:', edit.reason));
+          list.appendChild(entry);
+        });
+        if (covered.length < editCount(item)) {
+          list.appendChild(el('div', 'subtitle', '…and ' + (editCount(item) - covered.length) + ' more.'));
+        }
+        meta.appendChild(list);
+      } else {
+        if (item.edit_summary) {
+          meta.appendChild(labelled('Summary:', item.edit_summary));
+        }
+        if (item.reason) {
+          const note = el('div', 'meta-note');
+          note.appendChild(el('span', 'meta-label', 'Review reason:'));
+          note.appendChild(document.createTextNode(' ' + item.reason));
+          meta.appendChild(note);
+        }
+      }
+      if (item.action_taken) {
+        meta.appendChild(labelled('Automated action:', item.action_taken));
+      }
+
+      if (item.submitted_content) {
+        // A moderator cannot publish a record they have not read: a
+        // pending record is hidden from the public viewer, so this is
+        // the only place its content appears.
+        const details = el('details', 'submitted');
+        details.appendChild(el(
+          'summary',
+          null,
+          item.submitted_content_truncated ? 'Submitted record (truncated)' : 'Submitted record',
+        ));
+        details.appendChild(el('pre', null, item.submitted_content));
+        meta.appendChild(details);
+      } else if (item.kind === 'flagged_edit') {
+        const hint = el('div', 'subtitle');
+        hint.appendChild(document.createTextNode('The edit is live — '));
+        const link = el('a', null, 'open the record and its revision history');
+        link.href = recordUrl(item);
+        link.target = '_blank';
+        link.rel = 'noopener';
+        hint.appendChild(link);
+        hint.appendChild(document.createTextNode('.'));
+        meta.appendChild(hint);
+      }
+
+      const claimed = isClaimLive(item);
+      if (claimed) {
+        meta.appendChild(el(
+          'div',
+          'claimed',
+          'A moderator is acting on this (claimed ' + new Date(item.claimed_at).toLocaleString()
+            + '). Claims expire after a few minutes — refresh to take it over.',
+        ));
+      }
+
+      row.appendChild(meta);
+
+      const actions = el('div', 'actions');
+      const actionList = item.available_actions || [];
+      const canRevert = actionList.indexOf('revert') !== -1;
+      if (item.kind === 'flagged_edit' && !canRevert) {
+        actions.appendChild(el(
+          'div',
+          'subtitle',
+          'No revision recorded — roll this record back by hand if it needs it.',
+        ));
+      }
+      actionList.forEach(function (action) {
+        const button = el(
+          'button',
+          'btn btn-small ' + (action === 'approve' ? 'btn-success' : action === 'reject' ? 'btn-danger' : 'btn-secondary'),
+          actionLabel(item, action, canRevert),
+        );
+        if (claimed) {
+          // The server refuses a held item anyway; don't invite the click.
+          button.disabled = true;
+          button.title = 'Another moderator is acting on this record.';
+        } else {
+          button.addEventListener('click', function () { act(row, item, action); });
+        }
+        actions.appendChild(button);
+      });
+      row.appendChild(actions);
+
+      return row;
+    }
+
+    var PAGE_SIZE = 50;
+    var loadedCount = 0;
+    var lastBacklogTotal = 0;
+    var lastPageWasFull = false;
+
+    function showEmptyState(message) {
+      const empty = document.getElementById('empty');
+      empty.textContent = '';
+      empty.appendChild(el('p', null, message || '✅ Queue is clear.'));
+      empty.appendChild(el(
+        'p',
+        'subtitle',
+        'Submissions the automated review could not resolve will show up here.',
+      ));
+      empty.style.display = 'block';
+    }
+
+    function renderPager() {
+      const pager = document.getElementById('pager');
+      const summary = document.getElementById('pagerSummary');
+      const more = document.getElementById('loadMoreBtn');
+      if (loadedCount === 0) {
+        pager.style.display = 'none';
+        return;
+      }
+      pager.style.display = 'flex';
+      // The header counts every decision waiting; the list is one page
+      // of it. During the outage this page exists for those numbers
+      // differ, and the page has to say so.
+      summary.textContent = 'Showing ' + loadedCount + ' of ' + lastBacklogTotal + ' waiting.';
+      // Drive the button off the page that came back, not off the
+      // count: a full page means there is probably another one, and a
+      // short page means there is not — whatever the header says.
+      more.style.display = lastPageWasFull ? 'inline-block' : 'none';
+    }
+
+    async function loadQueue(options) {
+      const append = Boolean(options && options.append);
+      const queue = document.getElementById('queue');
+      const empty = document.getElementById('empty');
+      const offset = append ? loadedCount : 0;
+
+      if (!append) {
+        queue.textContent = '';
+        queue.appendChild(el('div', 'loading', 'Loading queue…'));
+        empty.style.display = 'none';
+      }
+
+      try {
+        const resp = await fetch(
+          '/api/admin/registry-review/queue?limit=' + PAGE_SIZE + '&offset=' + offset,
+          { credentials: 'include' },
+        );
+        if (resp.status === 403) {
+          queue.textContent = '';
+          document.getElementById('pager').style.display = 'none';
+          showEmptyState('🔒 Admin access is required for the registry review queue.');
+          return;
+        }
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+        const body = await resp.json();
+        lastBacklogTotal = (body.backlog && body.backlog.total) || 0;
+        renderBacklog(body.backlog);
+
+        const items = Array.isArray(body.items) ? body.items : [];
+        if (!append) {
+          queue.textContent = '';
+          loadedCount = 0;
+        }
+        items.forEach(function (item) { queue.appendChild(renderRow(item)); });
+        loadedCount += items.length;
+        lastPageWasFull = items.length === PAGE_SIZE;
+
+        if (loadedCount === 0) {
+          showEmptyState();
+        } else {
+          empty.style.display = 'none';
+        }
+        renderPager();
+      } catch (err) {
+        if (!append) {
+          queue.textContent = '';
+          // Don't leave stale counts standing next to a failure.
+          document.getElementById('backlog').textContent = '';
+          document.getElementById('pager').style.display = 'none';
+        }
+        showStatus('Failed to load queue: ' + (err && err.message ? err.message : err), 'error');
+      }
+    }
+
+    async function act(row, item, action) {
+      // Say what the server will actually do. A revert restores the
+      // earliest open revision for the record, which undoes every
+      // flagged edit above it — not just the one that was clicked.
+      const edits = editCount(item);
+      const prompts = {
+        approve: item.kind === 'pending_record'
+          ? 'Publish ' + item.domain + ' in the registry?'
+          : edits > 1
+            ? 'Keep all ' + edits + ' flagged edits to ' + item.domain + ' as submitted?'
+            : 'Keep this edit to ' + item.domain + ' as submitted?',
+        reject: 'Reject and permanently remove the pending record for ' + item.domain + '?',
+        revert: edits > 1
+          ? 'Undo all ' + edits + ' flagged edits to ' + item.domain
+            + ', restoring revision ' + item.revision_number + '?'
+          : 'Revert ' + item.domain + ' to revision ' + item.revision_number + '?',
+      };
+      if (!window.confirm(prompts[action])) return;
+
+      let note;
+      if (action === 'reject' || action === 'revert') {
+        note = window.prompt('Reason? (optional, recorded with your decision)') || undefined;
+      }
+
+      const url = item.kind === 'pending_record'
+        ? '/api/admin/registry-review/records/' + encodeURIComponent(item.entity_type) + '/' + encodeURIComponent(item.domain)
+        : '/api/admin/registry-review/items/' + encodeURIComponent(item.review_item_id);
+
+      row.classList.add('acting');
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: action, note: note }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(function () { return { error: 'HTTP ' + resp.status }; });
+          throw new Error(err.error || 'HTTP ' + resp.status);
+        }
+        const result = await resp.json().catch(function () { return {}; });
+        // Report what happened, not what was asked for.
+        let done = 'Recorded ' + (result.resolution || action) + ' for ' + item.domain;
+        if (result.restored_revision) done += ' (restored revision ' + result.restored_revision + ')';
+        if (result.resolved_items > 1) done += ', closing ' + result.resolved_items + ' queued edits';
+        showStatus(done + '.', 'success');
+        await loadQueue();
+      } catch (err) {
+        row.classList.remove('acting');
+        showStatus('Failed to ' + action + ': ' + (err && err.message ? err.message : err), 'error');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+      document.getElementById('refreshBtn').addEventListener('click', function () { loadQueue(); });
+      document.getElementById('loadMoreBtn').addEventListener('click', function () {
+        loadQueue({ append: true });
+      });
+      loadQueue();
+    });
+  </script>
+</body>
+</html>

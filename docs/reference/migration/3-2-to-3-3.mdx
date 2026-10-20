@@ -15,14 +15,14 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 
 Read these first:
 
-- [Required to claim 3.3 behavior](#required-to-claim-3-3-behavior): rules that narrow what a conformant implementation may do, including [bounded counterparty-asserted domain lists](#counterparty-asserted-domain-lists-are-bounded), [enforceable domain identifiers](#property-domain-identifiers-have-an-enforceable-format), [property list references through AdCP tasks](#property-list-references-resolve-through-adcp-tasks), and [dual emission of platform IDs](#platform-ids-are-emitted-under-both-names).
+- [Required to claim 3.3 behavior](#required-to-claim-3-3-behavior): rules that narrow what a conformant implementation may do, including [responses that conform to the served release](#responses-conform-to-the-served-release), [bounded counterparty-asserted domain lists](#counterparty-asserted-domain-lists-are-bounded), [enforceable domain identifiers](#property-domain-identifiers-have-an-enforceable-format), [property list references through AdCP tasks](#property-list-references-resolve-through-adcp-tasks), and [dual emission of platform IDs](#platform-ids-are-emitted-under-both-names).
 - [Brand JSON size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib), [audience match counts](#audience-match-counts-may-be-absent), and the [4 MiB response-size default](#client-response-size-default-rises-to-4-mib): three loosened guarantees, so a 3.2 peer can reject or misread what a 3.3 peer sends.
 - [Recommended: bound agent response size](#recommended-bound-agent-response-size): a new SHOULD that tightens what an adopting buyer accepts.
 - [Send only to 3.3 peers](#send-only-to-3-3-peers): new fields a 3.2 validator rejects.
 - [Deprecations](#deprecations): `seller_id` on event source and audience results, and the natural-key account reference after provisioning; removal no earlier than 4.0.
 - [SDK and code-generator maintainers](#sdk-and-code-generator-maintainers): schema-shape changes that alter generated types.
 
-Everything else is an optional declaration or a clarification. Agent identity (DR-0023), served-release response conformance (DR-0024), and demand-side grants (DR-0025) are WG-approved but their normative text is still in review; they are listed in the [3.3 beta program](/docs/reference/3-3-beta#in-review-for-3-3) and are not part of this guide until they merge. For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3).
+Everything else is an optional declaration or a clarification. Agent identity (DR-0023) and demand-side grants (DR-0025) are WG-approved but their normative text is still in review; they are listed in the [3.3 beta program](/docs/reference/3-3-beta#in-review-for-3-3) and are not part of this guide until they merge. For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3).
 
 ## Upgrade checklist
 
@@ -121,7 +121,7 @@ The schema loosens, and the rules around it narrow:
 
 - **Receivers** MUST NOT treat an absent `impressions` as zero and MUST NOT derive impression-denominated values (`cpm`, `ctr`, `completion_rate`, `viewable_rate`) for that row. SDK-generated row types make the field optional; handle `undefined` or `None`.
 - **Senders** omit impression-denominated rates on such a row, MUST NOT put views, plays, downloads, or any other count in `impressions`, and disclose a committed-but-missing metric through `by_package[].missing_metrics`.
-- **Version gate.** A seller MUST NOT omit `impressions` toward callers pinned below 3.3, and a caller with no declared pin counts as pinned below 3.3. Toward those callers, a seller with no impression count omits the row.
+- **Version gate.** A response served below 3.3 follows the 3.2 schema, which requires `impressions` ([Serving an older pin](/docs/reference/versioning#serving-an-older-pin)). In it, a seller with no impression count omits the row and never substitutes `impressions: 0`.
 
 See [Rows without impressions](/docs/media-buy/media-buys/optimization-reporting#rows-without-impressions).
 
@@ -229,6 +229,14 @@ the 1 MiB publisher-origin cap rather than a bare `fetch` — the domain pattern
 admits dotless labels like `localhost`. See
 [Authorization validation workflow](/docs/governance/property/authorized-properties#authorization-validation-workflow).
 
+### Responses conform to the served release
+
+Once you list 3.3 in `supported_versions`, every release you list is a promise about response shape: [Serving an older pin](/docs/reference/versioning#serving-an-older-pin) has the rule, which covers `get_adcp_capabilities` and webhook payloads ([DR-0024](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0024-responses-conform-to-served-release.md)).
+
+**Sellers.** Check each response against the published schema of the release you echo, and stop listing a release you can't serve that way. 3.2 sellers serving a `"3.1"` pin could emit six shapes a strict 3.1 validator rejects, led by the `sync_accounts` required-field flip; see the [3.1 to 3.2 list](/docs/reference/migration/3-1-to-3-2#version-negotiation-across-3-1-and-3-2).
+
+**Buyers.** Keep parsing tolerantly, because sellers that list no release later than 3.2 aren't bound by the rule.
+
 ### Platform IDs are emitted under both names
 
 A seller reporting an event source or audience platform ID in a 3.3 or later 3.x response MUST emit both `platform_id` and the deprecated `seller_id` alias with identical values, including discovery responses and seller-managed event sources. A legacy-only result stays schema-valid, but a 3.3 seller needs dual emission to conform. Buyers prefer `platform_id`. See [Deprecations](#deprecations).
@@ -274,6 +282,14 @@ The recommended client safety limit on a whole MCP message or A2A call rises fro
 **Fan-out clients.** This is the change to size before adopting. A per-call default is not an aggregate budget: at 4 MiB and 64 concurrent peers the raw ceiling is 256 MiB, and the resident-object figure is several times that. If your aggregate budget is smaller than concurrency times the per-call default, lower one of the two.
 
 **Sellers.** The extra headroom is not a licence to grow. The 128 KiB producer interoperability target is unchanged, and while counterparties remain on 3.2-era clients a response between 1 MiB and 4 MiB will be rejected by some of them with no protocol error you can see — the same transition window the brand.json cap change created, in the opposite direction. Paginate instead.
+
+## Recommended: bound inbound push and webhook bodies
+
+Receivers of A2A push notifications and AdCP webhooks SHOULD bound the request body, the receiver-side counterpart of the response bound above. Enforce the cap while the body streams, pre-reject an over-limit `Content-Length`, apply the 64-deep, 100,000-member parse bounds after the byte cap and **before** RFC 9421 or Web Bot Auth verification, apply connect, idle, and total deadlines, and reject with HTTP 413 rather than truncating. The default is 4 MiB, the same number as the attestation task-body cap, and a tighter per-feature cap governs (the 1 MB webhook payload limit still applies to webhook deliveries). See [Inbound body bounds](/docs/building/by-layer/L1/security#inbound-body-bounds).
+
+**Receivers.** A 3.2 receiver that buffered whatever a seller posted is not wrong under 3.2, but it is the surface this closes. Add the cap in front of signature verification, not behind it, and do not truncate.
+
+**Senders.** A 413 is a deterministic failure: the same body fails the same way on every attempt, so retrying it on the non-2xx backoff schedule only repeats the cost. Keep webhook payloads well under the cap.
 
 ## Send only to 3.3 peers
 
@@ -335,6 +351,10 @@ Optional. Sellers SHOULD now return `account_id` on every non-failed `sync_accou
 
 Creatives that entered a seller's library outside `sync_creatives`, for example before the buyer connected, are listed under a seller-assigned `creative_id`. A seller that keeps those IDs stable, never reuses a buyer's ID, and keeps those creatives out of `delete_missing` declares `creative.stable_creative_ids`. Without it, 3.2 behavior stands: buyers must not rely on those IDs staying the same, and `delete_missing` may archive those creatives. `list_creatives` also returns `platform_id`, the seller's own identifier, which was previously only on the `sync_creatives` response. See [Creatives created outside AdCP](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp).
 
+### Account change feed records
+
+Only for sellers that declare the experimental `account.change_feed`. Records whose `origin.kind` is `adcp` or `seller_operator` MUST now carry a non-empty `changed_paths` (use the root pointer `""` when the whole resource was created, deleted, or purged); it stays best-effort for `seller_system` and `connected_platform`. A seller that omitted it on those origins in 3.2 must add it before claiming 3.3 behavior for this surface, and buyers should tolerate its absence from a 3.2 seller by treating the change as unknown and rereading the resource. This tightens an experimental surface, so it carries the 6-week notice that [experimental status](/docs/reference/experimental-status#contract-for-experimental-surfaces) requires. Separately and optionally, a seller can echo the originating request's `idempotency_key` on `adcp` records, only on records served to the principal that sent the request; other readers see the record without it, and notifications never carry it. Buyers use the echo to recognize their own changes and treat its absence as unknown. See [`list_account_changes`](/docs/accounts/tasks/list_account_changes#recognizing-your-own-changes).
+
 ### Scheduled and human-gated buying
 
 - **`expected_confirmation_at`.** Set it on a `submitted` response from `create_media_buy`, `buy_products`, or `accept_proposal` when confirmation waits on a scheduled event; on `buy_products` and `accept_proposal`, only for callers negotiating 3.3. `refine_proposals` can also carry it on a `submitted` response to a finalize-only request whose hold waits on a person's agreement, such as a creator or host (#8104); never on a `completed` response, and only for callers negotiating 3.3. It is an estimate; buyers check status at that time instead of polling tightly. See [Expected confirmation time](/docs/media-buy/task-reference/create_media_buy#expected-confirmation-time).
@@ -373,6 +393,10 @@ Agents can report `adcp.implementation.sdks[]` with a package `name`, exact reso
 ### Targeting errors
 
 A seller that rejects an unsupported or removed targeting dimension with `UNSUPPORTED_FEATURE` SHOULD use the new `error-details/unsupported-targeting-dimension.json` details shape (`unsupported_dimension`, optional `supported_dimensions`, `deprecated`, `replacement_dimension`, `product_id`, `package_index`) and point `error.field` at the targeting path (#8052). No new error code is added; adapters minting `UNSUPPORTED_TARGETING_DIMENSION` or `DEPRECATED_TARGETING_DIMENSION` should migrate. See [Rejected targeting dimensions](/docs/media-buy/advanced-topics/targeting#rejected-targeting-dimensions).
+
+### Open opportunities and later proposals
+
+Optional and experimental (`media_buy.open_opportunities`). Advertise the parts you implement under `media_buy.open_opportunities` and list the feature id in `experimental_features`. `list_proposals: true` is the read; it is required before `later_proposals.supported: true`, which also requires `max_open_duration`. `keep_open_after_purchase: true` lets `accept_proposal` and `buy_products` accept `opportunity.status: "open"`. A seller creating later proposals needs the buyer's `opportunity.later_proposals` consent and an open window, honors `max_count` and `min_interval`, issues drafts with `opportunity_id`, `expires_at`, and a `later_reason`, and announces them with `proposal.created` on account `notification_configs[]`, never on a task's `push_notification_config`. Buyers send none of these fields, nor an empty `decline_proposals` `declines` array, to a seller that does not advertise the matching part; 3.2 sellers reject them. See [Open opportunities and later proposals](/docs/media-buy/product-discovery/proposal-negotiation#open-opportunities-and-later-proposals).
 
 ### `age_determination_bases` on signals
 
@@ -452,6 +476,7 @@ Existing 3.2 deprecations keep their published removal windows.
 
 ## Compliance and grading
 
+- `version_negotiation` gains an optional scenario for 3.1-pinned response shapes. Its checks stay advisory until runners can validate against the served release's schema bundle.
 - `sales-broadcast-tv` (`sales_broadcast_tv` 1.1.0) now certifies one authorized TV transaction on either a guaranteed or a non-guaranteed fixed-price path (#8046). Existing claimants should expect new failures: seeded products are demo-priced `cpm` with Live/C3/C7 windows, creatives are assigned through `sync_creatives` `assignment_operations`, and Live and C7 reads must carry `measurement_window`, `is_final`, and `finalized_at`. Claims graded on 1.0.x have a grace window recorded in the compliance catalog. A spot-lifecycle phase runs only for sellers that list `media_buy.spot_lifecycle`.
 - `media_buy_seller/unprovisioned_account_reference` is new and advisory until runner capability `14.1.0`.
 - `media_buy_seller/stable_account_id` is new and runs only for buyer-declared sellers that declare `account.stable_account_id: true`. It addresses the account by `account_id` on `get_media_buys` and requires `@adcp/sdk` 15.8.0 or later, whose storyboard runner sends an authored `account_id` as written.
@@ -462,7 +487,7 @@ These change grading results, not the wire.
 
 ## Rollback
 
-Stay on, or return to, `"3.2"`: every 3.3 declaration is optional, so removing it restores 3.2 behavior. The [required rules](#required-to-claim-3-3-behavior) are the exception: they apply as soon as you claim 3.3 behavior, so keep a 3.2-pinned route until your discovery, verification, and delivery-webhook paths pass against the beta.
+Stay on, or return to, `"3.2"`: every 3.3 declaration is optional, so removing it restores 3.2 behavior. The [required rules](#required-to-claim-3-3-behavior) are the exception: they apply as soon as you claim 3.3 behavior (for [served-release conformance](#responses-conform-to-the-served-release), as soon as you list 3.3 in `supported_versions`), so keep a 3.2-pinned route until your discovery, verification, and delivery-webhook paths pass against the beta.
 
 ## Related
 
