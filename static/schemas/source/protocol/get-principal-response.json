@@ -24,6 +24,12 @@
               "type": "string",
               "const": "current"
             },
+            "relationship": {
+              "$ref": "/schemas/core/principal-relationship.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
+            },
             "principal_id": {
               "type": "string",
               "minLength": 1,
@@ -55,6 +61,12 @@
               "type": "string",
               "const": "recognized"
             },
+            "relationship": {
+              "$ref": "/schemas/core/principal-relationship.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
+            },
             "principal_id": {
               "type": "string",
               "minLength": 1,
@@ -76,6 +88,12 @@
             "kind": {
               "type": "string",
               "const": "unconfigured"
+            },
+            "relationship": {
+              "$ref": "/schemas/core/principal-relationship.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
             }
           },
           "required": ["kind"],
@@ -133,7 +151,7 @@
   "x-adcp-validation": {
     "recognized_identity": "Return recognized only when the authenticated caller maps to a durable principal record that existed before the read and has no standing configuration. It MUST include principal_id and principal_kind and MUST NOT include configuration_version or configuration. The read MUST NOT create a record or mint principal_id to produce this result.",
     "identity_continuity": "When a renewed or rotated credential maps to an existing durable principal record, recognized MUST return that record's stable principal_id. Never derive principal_id from a raw credential, signing key identifier, key thumbprint, or transient session.",
-    "unconfigured_identity": "Return unconfigured when stable authentication succeeds but no durable principal record exists. Preserve its exact kind-only shape; the read MUST NOT create a record, mint principal_id, issue configuration_version, or return configuration.",
+    "unconfigured_identity": "Return unconfigured when stable authentication succeeds but no durable principal record exists. It carries kind and, only when the seller has a relationship or an application in progress with this caller, relationship; nothing else. The read MUST NOT create a record, mint principal_id, issue configuration_version, or return configuration.",
     "non_disclosure": "Return identity facts only for the authenticated caller. Failed and unconfigured results MUST NOT carry principal_kind, principal_id, configuration_version, or configuration, and no result arm may become an oracle for any other principal's existence or state."
   },
   "examples": [

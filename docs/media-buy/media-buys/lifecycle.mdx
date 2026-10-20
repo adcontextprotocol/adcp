@@ -98,13 +98,28 @@ value outside the accepted commercial terms.
 
 | State | Meaning | Terminal? |
 |-------|---------|-----------|
-| `pending_creatives` | Approved; no creatives assigned yet | No |
-| `pending_start` | Creatives assigned; waiting for flight date | No |
+| `pending_creatives` | Creatives missing or not yet approved; the buyer's next step is to supply them | No |
+| `pending_start` | Creatives ready and not yet serving: a committed buy (`confirmed_at` set) waiting for its flight date, or a provisional buy (`confirmed_at` null) awaiting seller confirmation | No |
 | `active` | Delivering impressions | No |
 | `paused` | Temporarily halted | No |
 | `completed` | Flight ended, goal met, or budget exhausted | Yes |
 | `rejected` | Seller declined the buy | Yes |
 | `canceled` | Buyer or seller terminated before completion | Yes |
+
+<Note>
+**Status and commitment are separate axes.** `status` tells the buyer what is
+actionable next (supply creatives, wait for the flight, and so on). Whether the
+seller has committed to the buy is the independent `confirmed_at` field, which
+is `null` until the seller commits. A seller that reviews buys before
+committing returns a provisional buy: synchronous success, `media_buy_id`
+issued, `confirmed_at: null`, and the `status` the buy will have on
+confirmation. Commitment is keyed off `confirmed_at`, never off `status`, and a
+buy with `confirmed_at: null` is never `active`. While a buy is
+provisional, `get_media_buys` MAY carry an informational
+`expected_confirmation_at` estimate; it is absent once `confirmed_at` is set and
+never replaces `confirmed_at` as the commitment signal. See
+[provisional buys](/docs/media-buy/specification#provisional-buys-seller-review-hold).
+</Note>
 
 <Note>
 `submitted`, `working`, and `input-required` are **task-level** statuses. They
@@ -172,16 +187,16 @@ changing it increments the MediaBuy revision without changing the accepted
 terms or creating an accepted-proposal successor.
 
 Use `sync_creatives.assignment_operations` for creative changes. Creative
-assignment is independent from commercial control and does not increment the
-MediaBuy revision merely because an assignment changed. There is no shared
-optimistic-concurrency fence between `sync_creatives` and
-`control_media_buy`: a successful sync can change assignment state while the
-MediaBuy `revision` remains unchanged. By contrast, a creative-assignment or
-inline-creative mutation performed inside the `update_media_buy` compatibility
-facade is part of that atomic MediaBuy update and MUST increment `revision`.
-Clients mixing the two surfaces must re-read both package assignments and the
-MediaBuy before computing a replacement; the revision alone cannot prove that
-assignment state is unchanged.
+assignment is independent from commercial control: it does not create an
+accepted-proposal successor or change the accepted terms. It does advance the
+MediaBuy `revision`, because assignment state is reported on `get_media_buys`.
+`sync_creatives` accepts no media-buy `revision` precondition, so it cannot be
+fenced by `control_media_buy`'s token, but a successful sync invalidates it: a
+stale `control_media_buy` `revision` fails with `CONFLICT`. A creative-assignment or inline-creative
+mutation performed inside the `update_media_buy` compatibility facade is part
+of that atomic MediaBuy update and MUST increment `revision` as well. Clients
+mixing the two surfaces re-read the MediaBuy after a `CONFLICT` before
+computing a replacement.
 
 ## Guaranteed / PG deal variation
 

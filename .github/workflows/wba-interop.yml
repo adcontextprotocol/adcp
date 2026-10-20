@@ -1,0 +1,52 @@
+name: Web Bot Auth interop
+
+# Grades the Web Bot Auth profile vectors and scenarios with the judge in
+# tests/wba-interop: Cloudflare's web-bot-auth and http-message-sig at pinned
+# versions, bare and with the profile's rules. `run.mjs --self` also checks
+# each scenario's tier against the bare library, so a library upgrade that
+# changes what the library enforces fails here first.
+
+on:
+  pull_request:
+    paths:
+      - 'tests/wba-interop/**'
+      - 'tests/wba-profile-vectors.test.cjs'
+      - 'scripts/generate-wba-profile-vectors.mjs'
+      - 'static/compliance/source/test-vectors/wba-profile/**'
+      - '.github/workflows/wba-interop.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tests/wba-interop/**'
+      - 'tests/wba-profile-vectors.test.cjs'
+      - 'scripts/generate-wba-profile-vectors.mjs'
+      - 'static/compliance/source/test-vectors/wba-profile/**'
+      - '.github/workflows/wba-interop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  self:
+    name: Judge self-check and profile vectors
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: tests/wba-interop/package-lock.json
+      - run: npm ci --prefix tests/wba-interop --ignore-scripts
+      - run: node scripts/generate-wba-profile-vectors.mjs --check
+      - run: node --test --test-force-exit --test-timeout=30000 tests/wba-profile-vectors.test.cjs
+      - run: node tests/wba-interop/run.mjs --self --junit wba-interop.xml
+      - name: Retain the JUnit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: wba-interop
+          path: wba-interop.xml
+          retention-days: 14

@@ -257,7 +257,7 @@ The identity, governance, and pointer-file layers above all rest on the same hid
 
 - **RFC 9421 buyer keys** — JWKS fetched from the buyer agent's own domain or `.well-known` path.
 - **Governance JWS keys** — JWKS fetched from the governance agent's own domain.
-- **Agent signing keys** — operator-attested through `brand.json` `agents[].jwks_uri`, with publisher `adagents.json` `authorized_agents[].signing_keys[]` pins for mutating seller authorizations.
+- **Agent signing keys** — under the RFC 9421 profile (deprecated in 3.3), operator-attested through `brand.json` `agents[].jwks_uri`. Under the Web Bot Auth profile (experimental in 3.3), served from the agent's own origin, with the operator's attestation in its trust.json listing (see [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). Under both, publisher `adagents.json` `authorized_agents[].signing_keys[]` pins narrow keys for mutating seller authorizations.
 - **`adagents.json` authoritative pointers** — fetched from the publisher's own `/.well-known`, with the pointer-swap threat documented in [managed-networks security](/docs/governance/property/managed-networks#security-considerations).
 
 Every one of those steps trusts the counterparty's own infrastructure as the root of trust. TLS does not close this — the certificate is issued to the hostname the attacker has compromised, so it verifies clean. An attacker who controls a counterparty's CDN, DNS, or `/.well-known` path can therefore serve attacker-controlled keys, and every signature made with those keys will verify against them.
