@@ -101,6 +101,14 @@ On a `"3.2"` pin the fail-closed rule remains opt-in [interim guidance](/docs/bu
 
 **Buyers** add a unique `operation_id` to every `reporting_webhook` registration, and update existing registrations before relying on scheduled delivery. **Sellers** store it with the registration and, when it is absent, send no `media_buy_delivery` webhook to that registration and never fabricate a value. 3.2 integrations that adopted the interim agreement already send the same wire shape. See [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks).
 
+### Reporting and artifact webhooks can omit `authentication`
+
+`reporting_webhook.authentication` and `create_media_buy.artifact_webhook.authentication` are required only on a request served below 3.3 ([#8176](https://github.com/adcontextprotocol/adcp/issues/8176)). When this block is absent, the seller signs every delivery under the profile the registration's `signing_profile` selects (`adcp/webhook-signing/v1` when it is omitted), as for `push_notification_config` ([Webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks)). No shared secret crosses the wire, so a 3.3 integration can be fully HMAC-free.
+
+**Buyers.** Omit the block only on a request served at 3.3 or later. A buyer pinned to 3.2 keeps sending it, even to a 3.3 seller.
+
+**Sellers.** Accept a 3.3-served request without the block and sign its deliveries as for `push_notification_config`. On a request served at 3.3 or later, the downgrade and injection rules in [Webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks) now cover both registrations. A request served below 3.3 still requires the block. Sending it remains valid everywhere in 3.x, and the block is removed in 4.0 ([#4288](https://github.com/adcontextprotocol/adcp/issues/4288)).
+
 ### Proposals pin third-party definitions
 
 For callers negotiating 3.3, a seller MUST emit one `commercial_terms.definition_pins[]` entry for every covered third-party definition its `purchases[]` reference (publisher-catalog format options and placements, `adagents.json` collections, data-provider signals) on every `new_media_buy` and `media_buy_update` proposal, and MUST NOT emit such terms without the pins. It re-verifies the pins at finalize, reporting drift as `unable` with `definition_changed` and `drifted_pins[]`, and before `accept_proposal` mutates, returning `REFERENCE_DEFINITION_CHANGED`. Only sellers author pins; requests that carry them are rejected. Pins and `definition_changed` are never sent to callers pinned below 3.3. See [Definition pins](/docs/media-buy/specification#definition-pins).
