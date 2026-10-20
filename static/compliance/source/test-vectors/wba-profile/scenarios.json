@@ -599,6 +599,17 @@
           "use": "sig"
         }
       ],
+      "requests": [
+        {
+          "name": "signed with the unsigned key",
+          "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I",
+          "expected": {
+            "success": false,
+            "status": 403
+          },
+          "tier": "adcp"
+        }
+      ],
       "expected": {
         "success": false
       },
@@ -706,6 +717,26 @@
           "use": "sig"
         }
       ],
+      "requests": [
+        {
+          "name": "signed with the signed key",
+          "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I",
+          "expected": {
+            "success": true,
+            "identity": "https://buyer-7k3q.com"
+          },
+          "tier": "wba"
+        },
+        {
+          "name": "signed with the unsigned key",
+          "kid": "hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI",
+          "expected": {
+            "success": false,
+            "status": 403
+          },
+          "tier": "adcp"
+        }
+      ],
       "expected": {
         "success": true
       },
@@ -800,6 +831,41 @@
       },
       "tier": "adcp",
       "basis": "Profile: private member names compare without regard to case; WBA section 5.5.1: a verifier SHOULD reject malformed entries"
+    },
+    {
+      "id": "D15",
+      "name": "Extra malformed Ed25519 keys, one with no x and one with a 31-byte x",
+      "unsigned_keys": [
+        {
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "kid": "malformed-no-x",
+          "use": "sig"
+        },
+        {
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "kid": "malformed-short-x",
+          "x": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBw",
+          "use": "sig"
+        }
+      ],
+      "requests": [
+        {
+          "name": "signed with the valid key",
+          "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I",
+          "expected": {
+            "success": true,
+            "identity": "https://buyer-7k3q.com"
+          },
+          "tier": "wba"
+        }
+      ],
+      "expected": {
+        "success": true
+      },
+      "tier": "wba",
+      "basis": "Profile: ignore a key the verifier cannot import (RFC 7517 section 5)"
     }
   ]
 }
