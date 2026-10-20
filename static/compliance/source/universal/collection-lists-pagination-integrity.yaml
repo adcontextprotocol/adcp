@@ -141,6 +141,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-pagination_integrity_collection_list-2726a1a2"
+            sandbox: true
           name: "Primetime Drama Allowlist"
           description: "Collection of approved primetime drama programs."
           idempotency_key: "$generate:uuid_v4#pagination_integrity_collection_lists_setup_create_list_1"
@@ -173,6 +174,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-pagination_integrity_collection_list-2726a1a2"
+            sandbox: true
           name: "News Programs Allowlist"
           description: "Approved national news broadcast programs."
           idempotency_key: "$generate:uuid_v4#pagination_integrity_collection_lists_setup_create_list_2"
@@ -205,6 +207,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-pagination_integrity_collection_list-2726a1a2"
+            sandbox: true
           name: "Sports Programs Allowlist"
           description: "Approved live sports broadcasts."
           idempotency_key: "$generate:uuid_v4#pagination_integrity_collection_lists_setup_create_list_3"
@@ -259,6 +262,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-pagination_integrity_collection_list-2726a1a2"
+            sandbox: true
           pagination:
             max_results: 2
 
@@ -311,6 +315,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-pagination_integrity_collection_list-2726a1a2"
+            sandbox: true
           pagination:
             cursor: "$context.next_cursor"
             max_results: 2

@@ -166,6 +166,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-schema_validation-b852786a"
+            sandbox: true
 
           context:
             correlation_id: "schema_validation--get_products_schema"
@@ -218,6 +219,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-schema_validation-b852786a"
+            sandbox: true
 
           context:
             correlation_id: "schema_validation--pricing_options_present"
@@ -291,6 +293,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-schema_validation-b852786a"
+            sandbox: true
           context:
             correlation_id: "schema_validation--get_products_for_formats"
 
@@ -356,6 +359,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-schema_validation-b852786a"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#schema-validation-reversed-dates"
           start_time: "2099-12-31T00:00:00Z"
           end_time: "2099-01-01T00:00:00Z"
@@ -418,6 +422,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-schema_validation-b852786a"
+            sandbox: true
           start_time: "2020-01-01T00:00:00Z"
           end_time: "2099-12-31T23:59:59Z"
           packages:

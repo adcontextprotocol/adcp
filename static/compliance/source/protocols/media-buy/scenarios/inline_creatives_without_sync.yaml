@@ -235,6 +235,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           context:
             correlation_id: "inline_creatives_without_sync--get_products_canonical"
         context_outputs:
@@ -312,6 +313,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_create_unnamed_option"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
@@ -379,6 +381,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           media_buy_id: "$context.unnamed_option_media_buy_id"
           packages:
             - package_id: "$context.unnamed_option_package_id"
@@ -446,6 +449,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           media_buy_ids:
             - "$context.unnamed_option_media_buy_id"
           context:
@@ -505,6 +509,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_create_product_scoped"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
@@ -589,6 +594,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           media_buy_id: "$context.product_scoped_media_buy_id"
           packages:
             - package_id: "$context.product_scoped_package_id"
@@ -656,6 +662,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           media_buy_ids:
             - "$context.product_scoped_media_buy_id"
           context:
@@ -718,6 +725,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_create_publisher_scoped"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
@@ -802,6 +810,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           media_buy_id: "$context.publisher_scoped_media_buy_id"
           packages:
             - package_id: "$context.publisher_scoped_package_id"
@@ -869,6 +878,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           media_buy_ids:
             - "$context.publisher_scoped_media_buy_id"
           context:
@@ -939,6 +949,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           context:
             correlation_id: "inline_creatives_without_sync--get_products_legacy"
         context_outputs:
@@ -1002,6 +1013,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#inline_creatives_without_sync_create_legacy"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
@@ -1069,6 +1081,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           media_buy_id: "$context.legacy_media_buy_id"
           packages:
             - package_id: "$context.legacy_package_id"
@@ -1136,6 +1149,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_inline_creatives_wi-6f62b55a"
+            sandbox: true
           media_buy_ids:
             - "$context.legacy_media_buy_id"
           context:

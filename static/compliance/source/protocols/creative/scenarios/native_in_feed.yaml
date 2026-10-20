@@ -175,6 +175,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_native_in_feed-39ac3445"
+            sandbox: true
           creatives:
             - creative_id: "native_trail_pro_full_bundle"
               name: "Trail Pro 3000 — Native Content Recommendation"
@@ -284,6 +285,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_native_in_feed-39ac3445"
+            sandbox: true
           creatives:
             - creative_id: "native_reject_title_long"
               name: "Reject — title too long"
@@ -337,6 +339,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_native_in_feed-39ac3445"
+            sandbox: true
           creatives:
             - creative_id: "native_reject_image_size"
               name: "Reject — image wrong size"
@@ -394,6 +397,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_native_in_feed-39ac3445"
+            sandbox: true
           creatives:
             - creative_id: "native_reject_cta_enum"
               name: "Reject — CTA not in enum"
@@ -449,6 +453,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_native_in_feed-39ac3445"
+            sandbox: true
           creatives:
             - creative_id: "native_reject_custom_tracker"
               name: "Reject — pixel_tracker custom without name"
@@ -517,6 +522,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_native_in_feed-39ac3445"
+            sandbox: true
           request_type: "single"
           creative_manifest:
             creative_id: "native_trail_pro_full_bundle"
