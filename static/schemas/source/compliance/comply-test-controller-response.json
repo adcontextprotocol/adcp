@@ -27,7 +27,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive releases. Adopters who advertise `catalog_item_availability_probe` support deterministic cross-principal reference, eligibility-gate, expiry-clock, and catalog-generation tests for the catalog availability storyboard. Adopters who advertise `compact_product_lifecycle_probe` support deterministic synchronous list/request/finalize/decline/accept/control/readback behavior for a prepared product and strict post-deadline expiry of a committed proposal. Adopters who advertise `compact_direct_buy_lifecycle_probe` support deterministic synchronous list/buy/control/readback behavior for a prepared product. Adopters who advertise `reporting_core_lifecycle_probe` support deterministic obligation-before-report, clock-health, zero-row reporting, provisional-restatement, and post-received restatement-grace tests without wall-clock waits. `reliable_reporting_core_integrity_probe`, `reliable_reporting_managed_delivery_probe`, and `reliable_reporting_reconciled_billing_probe` seed the source-calendar/checkpoint, managed-resource, and receipt/adjustment workflows used by the Reliable Reporting tier storyboards. Adopters who advertise `force_creative_purge` opt in to deterministic creative purge coverage for account-level lifecycle webhooks. Adopters who advertise `force_media_buy_purge` opt in to deterministic deletion-independent idempotency replay coverage. Adopters who advertise `seed_measurement_catalog` opt in to deterministic measurement-catalog fixtures used by vendor_metric precondition storyboards. Adopters who advertise `query_upstream_traffic` opt in to the upstream-traffic conformance contract; storyboards that declare `check: upstream_traffic` grade not_applicable against adopters who do not advertise it. Adopters who advertise `query_provenance_audit_observations` opt in to sandbox-only audit-observation assertions for accepted creatives. Adopters who advertise `force_upstream_unavailable` opt in to stale-cache conformance testing via the `stale_response_advisory` storyboard."
+          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive releases. Adopters who advertise `catalog_item_availability_probe` support deterministic cross-principal reference, eligibility-gate, expiry-clock, and catalog-generation tests for the catalog availability storyboard. Adopters who advertise `compact_product_lifecycle_probe` support deterministic synchronous list/request/finalize/decline/accept/control/readback behavior for a prepared product and strict post-deadline expiry of a committed proposal. Adopters who advertise `compact_direct_buy_lifecycle_probe` support deterministic synchronous list/buy/control/readback behavior for a prepared product. Adopters who advertise `reporting_core_lifecycle_probe` support deterministic obligation-before-report, clock-health, zero-row reporting, provisional-restatement, and post-received restatement-grace tests without wall-clock waits. `reliable_reporting_core_integrity_probe`, `reliable_reporting_managed_delivery_probe`, and `reliable_reporting_reconciled_billing_probe` seed the source-calendar/checkpoint, managed-resource, and receipt/adjustment workflows used by the Reliable Reporting tier storyboards. Adopters who advertise `force_creative_purge` opt in to deterministic creative purge coverage for account-level lifecycle webhooks. Adopters who advertise `force_media_buy_purge` opt in to deterministic deletion-independent idempotency replay coverage. Adopters who advertise `seed_measurement_catalog` opt in to deterministic measurement-catalog fixtures used by vendor_metric precondition storyboards. Adopters who advertise `query_upstream_traffic` opt in to the upstream-traffic conformance contract; storyboards that declare `check: upstream_traffic` grade not_applicable against adopters who do not advertise it. Adopters who advertise `query_provenance_audit_observations` opt in to sandbox-only audit-observation assertions for accepted creatives. Adopters who advertise `force_upstream_unavailable` opt in to stale-cache conformance testing via the `stale_response_advisory` storyboard. Adopters who advertise `force_hold_unavailable` opt in to deterministic hold-failure coverage for `refine_proposals` finalize (experimental, `media_buy.hold_policy`)."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -216,7 +216,7 @@
     },
     {
       "title": "ForcedDirectiveSuccess",
-      "description": "A forced response-arm directive was registered. The directive shapes the next matching operation call from this caller's authenticated sandbox account into the requested arm, then is consumed. No entity transitioned yet, so this branch carries 'forced' rather than previous_state/current_state.",
+      "description": "A forced response-arm directive was registered. The directive shapes the next matching operation call from this caller's authenticated sandbox account into the requested arm, then is consumed. No entity transitioned yet, so this branch carries 'forced' rather than previous_state/current_state. The experimental force_hold_unavailable scenario (media_buy.hold_policy) registers the 'unable' arm for one draft proposal, echoed in forced.proposal_id: the next refine_proposals finalize that includes it fails with hold_unavailable, siblings with batch_aborted, and the directive is then consumed.",
       "type": "object",
       "properties": {
         "success": {
@@ -233,9 +233,10 @@
                 "submitted",
                 "completed",
                 "input-required",
-                "rejected"
+                "rejected",
+                "unable"
               ],
-              "description": "Arm the seller will emit on the next forced operation response."
+              "description": "Arm the seller will emit on the next forced operation response. 'unable' (experimental, media_buy.hold_policy; added in 3.3) is the per-entry refine_proposals finalize outcome registered by force_hold_unavailable: the named draft returns unable with reason_code hold_unavailable, its otherwise-eligible batch siblings return unable with reason_code batch_aborted, no committed proposal is created and no hold is placed."
             },
             "task_id": {
               "type": "string",
@@ -266,6 +267,14 @@
                 "minLength": 1,
                 "maxLength": 1000
               }
+            },
+            "proposal_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Echo of the draft proposal whose next finalize will fail with hold_unavailable. Present only when arm is 'unable'.",
+              "x-entity": "proposal",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0"
             }
           },
           "required": [
@@ -313,6 +322,51 @@
                         "suggestions"
                       ]
                     }
+                  ]
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "arm": {
+                    "const": "unable"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "proposal_id"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "task_id"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "evaluation_id"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "reason"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "suggestions"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "else": {
+                "not": {
+                  "required": [
+                    "proposal_id"
                   ]
                 }
               }
@@ -1006,6 +1060,18 @@
             "status_code": 200
           }
         ]
+      }
+    },
+    {
+      "description": "Hold-failure directive registered (force_hold_unavailable)",
+      "data": {
+        "status": "completed",
+        "success": true,
+        "forced": {
+          "arm": "unable",
+          "proposal_id": "prop_draft_ctv"
+        },
+        "message": "The next finalize of prop_draft_ctv will fail with hold_unavailable"
       }
     }
   ],
