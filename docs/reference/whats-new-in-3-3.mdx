@@ -55,6 +55,10 @@ A buyer agent can now make itself known to a seller it has never spoken to. The 
 - **Broadcast formats and currencies.** `demographic-system` gains `nmo` (Netherlands) and `videoamp`. `video_hosted` gains the `mxf` container and the `mpeg2`, `avc_intra`, and `xavc` codecs as stable values, plus an experimental `loudness` object (feature id `creative.broadcast_loudness`). See [Broadcast creative](/docs/creative/channels/broadcast#loudness-experimental).
 - **Broadcast TV guide.** The [broadcast guide](/docs/creative/channels/broadcast) now states the reconciliation contract between as-run logs and audience data and walks a CPM-on-demo buy end to end.
 
+## Playback events for hosted video and audio trackers
+
+The `pixel_tracker` `event` enum adds `start`, `first_quartile`, `midpoint`, `third_quartile` and `complete`, so a buyer can attach quartile measurement to `video_hosted` and `audio_hosted` files instead of sending `event: custom` names no seller is obliged to recognize. Downgrades to 3.0.x sellers drop these trackers with an advisory, and 3.2 buyers send them as `custom` events named for the 3.3 value until they move. See the [migration guide](/docs/reference/migration/3-2-to-3-3#hosted-video-and-audio-playback-trackers).
+
 ## Platform object IDs have one name
 
 `sync_event_sources` and `sync_audiences` results now use optional `platform_id` for the object's ID in the seller's ad platform, matching creatives and catalogs. A seller reporting this ID in 3.3 and later 3.x responses MUST emit both `platform_id` and the deprecated `seller_id` alias with identical values, including discovery responses. Buyers MUST prefer `platform_id` and fall back to `seller_id` only when the new field is absent. Continue using `event_source_id` and `audience_id` in AdCP requests. The aliases keep working throughout 3.x; removal is no earlier than 4.0 under the six-month notice policy. Seller identity in `adagents.json` and publisher identifiers is unchanged. See [Deprecations](/docs/reference/migration/3-2-to-3-3#deprecations).
