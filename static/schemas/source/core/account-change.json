@@ -100,7 +100,7 @@
     },
     "resource_revision": {
       "type": ["integer", "string"],
-      "description": "Post-change revision exposed by the repair read, when that resource family defines one."
+      "description": "Post-change seller revision from the repair read (`revision` or `seller_revision`), when that family defines one."
     },
     "changed_paths": {
       "type": "array",

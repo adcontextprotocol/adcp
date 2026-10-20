@@ -53,6 +53,10 @@ Total monetary allocation for a media buy, which can be distributed across multi
 
 ## C
 
+**Canonical origin**
+The scheme and authority of a URL after steps 1 to 4 of [URL canonicalization](/docs/reference/url-canonicalization#canonical-origin), with no path. The identity of a Web Bot Auth signer and of a trust.json agent entry.
+
+
 **Context Match**
 TMP operation that evaluates available packages against content context. Contains artifact IDs, context signals (topics, sentiment, keywords, embedding), and available packages. Carries no user identity. See [Trusted Match Protocol](/docs/trusted-match).
 
@@ -157,6 +161,10 @@ Size unit representing unique household addresses, useful for geographic and fam
 Protocol feature allowing publishers to require manual approval for operations.
 
 ## I
+
+**Identity-established**
+The state of a Web Bot Auth signer the seller has verified but not bound to a principal. It gets what an anonymous caller gets, plus `get_principal` (which returns `unconfigured`). See [First contact and binding](/docs/building/by-layer/L2/accounts-and-agents#first-contact-and-binding).
+
 
 **Identity Match**
 TMP operation that evaluates user eligibility against package criteria using an opaque user token. Returns a boolean `eligible` flag and optional `intent_score` per package. Carries no page context. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. See [Trusted Match Protocol](/docs/trusted-match).
@@ -368,6 +376,10 @@ The `snake_case` identifier in a storyboard's `category:` frontmatter field. For
 
 ## T
 
+**Trust record (trust.json)**
+An organization's `/.well-known/trust.json`: the agents it runs, identified by origin, and the grants it makes. It carries no keys. A verifier derives its location from an agent's origin. See [trust.json](/docs/reference/trust-json).
+
+
 **Takeover**
 Exclusive 100% share of voice placement on DOOH inventory for a specific time period. Priced as flat_rate with sov_percentage: 100.
 
@@ -428,6 +440,11 @@ Named collection of DOOH screens across specific venues (e.g., 'times_square_net
 - **UCP**: Universal Commerce Protocol
 - **UID**: Universal Identifier
 - **UTC**: Coordinated Universal Time
+
+## W
+
+**Web Bot Auth profile**
+The experimental AdCP 3.3 request-signing profile built on the IETF Web Bot Auth draft. Identity is the signer's origin, named by a covered `Signature-Agent` header, and keys come from that origin's key directory. It replaces the RFC 9421 profile, which is deprecated in 3.3. See [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities).
 
 ## Units and Measurements
 

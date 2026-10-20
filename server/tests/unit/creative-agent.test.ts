@@ -11,6 +11,25 @@ import { sanitizeCreativeCapabilities } from '../../src/capabilities.js';
 const TEST_BASE_URL = 'http://localhost:3000';
 const TEST_AGENT_URL = `${TEST_BASE_URL}/api/creative-agent`;
 const TEST_TRAINING_URL = `${TEST_BASE_URL}/api/training-agent`;
+const INLINE_MARKUP_CANONICAL = {
+  kind: 'display_tag',
+  asset_source: 'buyer_uploaded',
+  slots_override: [{ asset_group_id: 'html_creative', asset_type: 'display_tag', required: true }],
+  supported_delivery_types: ['inline_markup'],
+};
+const inlineMarkupManifest = (markup: string, size?: { width: number; height: number }) => ({
+  format_kind: 'display_tag',
+  assets: {
+    html_creative: {
+      asset_type: 'display_tag',
+      delivery_type: 'inline_markup',
+      markup_type: 'standard',
+      markup,
+      ...size,
+    },
+  },
+});
+const getId = (format: Record<string, unknown>) => (format.format_id as { id: string }).id;
 
 // ── Training agent formats (shared/formats.ts) ─────────────────────
 
@@ -36,7 +55,7 @@ describe('training agent formats', () => {
       ['display_300x50_html', 300],
     ] as const) {
       const format = byId.get(id)!;
-      expect(format.canonical).toEqual({ kind: 'html5' });
+      expect(format.canonical).toEqual(INLINE_MARKUP_CANONICAL);
       expect(format.renders).toEqual([
         {
           dimensions: {
@@ -274,6 +293,31 @@ describe('reference formats', () => {
     expect(byId.get('preview_audio_standard_30s')).toMatchObject({
       format: { params: { max_file_size_mb: 10 } },
     });
+    expect(byId.get('preview_display_300x250_html')).toEqual(expect.objectContaining({
+      format: {
+        format_kind: 'display_tag',
+        params: {
+          width: 300,
+          height: 250,
+          asset_source: 'buyer_uploaded',
+          slots: INLINE_MARKUP_CANONICAL.slots_override,
+          supported_delivery_types: ['inline_markup'],
+        },
+      },
+    }));
+    expect(byId.get('preview_display_js')).toMatchObject({ format: { format_kind: 'display_tag', params: {} } });
+    expect((byId.get('preview_display_js')!.format as { params: Record<string, unknown> }).params)
+      .not.toHaveProperty('supported_delivery_types');
+  });
+
+  it('projects HTML-markup legacy formats to display_tag inline markup, never html5', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const html = formats.filter(format => /^display_(?:\d+x\d+_)?html$/.test(getId(format)));
+    expect(html).toHaveLength(9);
+    for (const format of html) expect(format.canonical, getId(format)).toEqual(INLINE_MARKUP_CANONICAL);
+    // html5 is reserved for seller-hosted zip bundles; no legacy catalog entry takes a zip.
+    expect(formats.filter(format => (format.canonical as { kind?: string } | undefined)?.kind === 'html5')).toEqual([]);
+    expect(formats.find(format => getId(format) === 'display_js')?.canonical).toEqual({ kind: 'display_tag' });
   });
 
   it('emits a schema-valid canonical capability catalog', async () => {
@@ -444,6 +488,67 @@ describe('handlePreviewCreative', () => {
     expect(result.errors).toEqual([expect.objectContaining({
       code: 'FORMAT_NOT_SUPPORTED',
       message: expect.stringContaining('matches multiple preview capabilities'),
+    })]);
+  });
+
+  it('routes a sized inline-markup display_tag manifest to the matching legacy HTML route', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: inlineMarkupManifest('<b>markup-300x250</b>', { width: 300, height: 250 }),
+    }, formats, TEST_BASE_URL);
+    expect(result.errors).toBeUndefined();
+    expect((result.previews as unknown[])).toHaveLength(1);
+
+    const resolved = formats.find(format => getId(format) === 'display_300x250_html')!;
+    const meta = getPreviewRendererMetadata(inlineMarkupManifest('<b>m</b>', { width: 300, height: 250 }), resolved);
+    expect(meta.export).toBe('renderHtmlDisplay');
+    const html = renderPreview(inlineMarkupManifest('<b>markup-300x250</b>', { width: 300, height: 250 }), resolved);
+    expect(html).toContain('markup-300x250');
+    expect(html).toContain('300px');
+    expect(html).toContain('sandbox');
+  });
+
+  it('routes an unsized inline-markup manifest to display_html and a tag URL to display_js', () => {
+    const markup = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: inlineMarkupManifest('<b>any-size</b>'),
+    }, formats, TEST_BASE_URL);
+    expect(markup.errors).toBeUndefined();
+
+    const tagUrl = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: {
+        format_kind: 'display_tag',
+        assets: { tag_url: { asset_type: 'url', url_type: 'ad_request', url: 'https://ads.example.com/tag' } },
+      },
+    }, formats, TEST_BASE_URL);
+    expect(tagUrl.errors).toBeUndefined();
+  });
+
+  it('does not match an html5 zip creative to the HTML-markup legacy formats', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: {
+        format_kind: 'html5',
+        assets: { html5_bundle: { asset_type: 'zip', url: 'https://cdn.example.com/ad.zip', width: 300, height: 250 } },
+      },
+    }, formats, TEST_BASE_URL);
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('No advertised preview capability matches canonical format_kind "html5"'),
+    })]);
+
+    const targeted = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_html',
+      creative_manifest: {
+        format_kind: 'html5',
+        assets: { html5_bundle: { asset_type: 'zip', url: 'https://cdn.example.com/ad.zip', width: 300, height: 250 } },
+      },
+    }, formats, TEST_BASE_URL);
+    expect(targeted.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('renders format_kind "display_tag", not "html5"'),
     })]);
   });
 
