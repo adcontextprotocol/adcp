@@ -261,7 +261,10 @@ export async function joinWorkingGroup({ user, slug }: JoinWorkingGroupInput): P
   });
 
   if (group.leaders) {
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // No escaping here: `notifyUser` stores the plain title and escapes it
+    // once per surface (mrkdwn for Slack, HTML for the web list). Escaping
+    // at this call site used to double-encode the stored row, so an org
+    // named "Ben & Co" rendered as "Ben &amp; Co" on the notifications page.
     void (async () => {
       const otherWgNames: string[] = [];
       try {
@@ -272,8 +275,12 @@ export async function joinWorkingGroup({ user, slug }: JoinWorkingGroupInput): P
       } catch {
         // Non-critical — leaders still get notified, just without other-WG context.
       }
-      const orgContext = orgName ? ` (${esc(orgName)})` : '';
-      const wgContext = otherWgNames.length > 0 ? `. Also active in ${otherWgNames.map(esc).join(', ')}` : '';
+      const orgContext = orgName ? ` (${orgName})` : '';
+      // The other-groups list has no natural bound, so it goes in the body
+      // rather than pushing the names out of a capped title (adcp#8320).
+      const wgContext = otherWgNames.length > 0
+        ? `Also active in ${otherWgNames.join(', ')}.`
+        : undefined;
       for (const leader of group.leaders!) {
         notifyUser({
           recipientUserId: leader.canonical_user_id,
@@ -281,7 +288,8 @@ export async function joinWorkingGroup({ user, slug }: JoinWorkingGroupInput): P
           type: 'wg_member_joined',
           referenceId: group.id,
           referenceType: 'working_group',
-          title: `${esc(userName)}${orgContext} joined ${esc(group.name)}${wgContext}`,
+          title: `${userName}${orgContext} joined ${group.name}`,
+          body: wgContext,
           url: `/working-groups/${group.slug}`,
         }).catch((err) => logger.error({ err }, 'Failed to send WG join notification'));
       }

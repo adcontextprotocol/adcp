@@ -244,7 +244,7 @@ This request assigns one existing creative to two packages with different measur
 
 New 3.2 integrations use `format_kind` with `format_option_ref` when routing depends on a product's declared option. A compatibility implementation may accept the legacy branch from an older peer, but never mixes both shapes.
 
-Before uploading, buyers MUST verify each creative manifest against the target product's canonical `format_options[]`. The manifest MUST include every asset slot that the selected format option declares as required, keyed by that slot's `asset_group_id`.
+When uploading for a known target product, buyers MUST verify each creative manifest against that product's canonical `format_options[]`. The manifest MUST include every asset slot that the selected format option declares as required, keyed by that slot's `asset_group_id`. A library creative may be stored before selecting inventory; product-specific validation applies when the target becomes known, before assignment. Library storage alone does not establish product acceptance.
 
 ### Creative revisions
 
@@ -563,6 +563,8 @@ For published-post reference products, the asset role is usually `published_post
 ### Assignments structure
 
 Assignments are at the request level, mapping creative IDs to package IDs. Standalone creative agents that do not manage media buys ignore this field.
+
+**Revisions.** Each applied assignment change (`assignments` and `assign`, `unassign` or `replace` in `assignment_operations`) advances the `revision` of every media buy whose package assignments it changed, once per buy per committed request, in the same atomic write as that buy's assignment change, and appends a `history` entry to that buy. This is new in 3.3; 3.2 sellers did not advance it. `sync_creatives` accepts no media-buy `revision` precondition, so a buyer that holds a media-buy `revision` read before the sync and then sends `update_media_buy` or [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) receives [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) and re-reads. A dry run, a rejected assignment, a no-op assignment and an exact idempotency replay advance nothing. Each created or changed creative also advances its own [`seller_revision`](/docs/creative/task-reference/list_creatives#seller-revision) when the seller maintains one.
 
 ```json test=false
 {

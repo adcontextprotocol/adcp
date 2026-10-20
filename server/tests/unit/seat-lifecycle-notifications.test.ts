@@ -1,40 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { escapeSlackMrkdwn } from "../../src/slack/org-group-dm.js";
 import {
   getSeatLimits,
   inferMembershipTier,
 } from "../../src/db/organization-db.js";
-
-describe("escapeSlackMrkdwn", () => {
-  it("escapes < and > to prevent link injection", () => {
-    expect(escapeSlackMrkdwn("<https://evil.com|click here>")).toBe(
-      "&lt;https://evil.com|click here&gt;"
-    );
-  });
-
-  it("escapes & to prevent entity injection", () => {
-    expect(escapeSlackMrkdwn("AT&T")).toBe("AT&amp;T");
-  });
-
-  it("escapes combined special characters", () => {
-    expect(escapeSlackMrkdwn("a<b&c>d")).toBe("a&lt;b&amp;c&gt;d");
-  });
-
-  it("passes through safe mrkdwn formatting characters", () => {
-    // Bold, italic, strike, code are safe in Slack mrkdwn
-    expect(escapeSlackMrkdwn("*bold* _italic_ ~strike~ `code`")).toBe(
-      "*bold* _italic_ ~strike~ `code`"
-    );
-  });
-
-  it("handles empty string", () => {
-    expect(escapeSlackMrkdwn("")).toBe("");
-  });
-
-  it("handles normal text without special characters", () => {
-    expect(escapeSlackMrkdwn("Alice Smith")).toBe("Alice Smith");
-  });
-});
 
 describe("Seat Limits", () => {
   it("returns correct limits for each tier", () => {

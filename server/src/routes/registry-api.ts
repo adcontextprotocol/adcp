@@ -2,8 +2,15 @@ import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js'
 import { AgentService } from "../agent-service.js";
 import type { SupplyPathInput } from '../services/supply-path-contract.js';
 import { domain as supplyPathDomain, agentIdentity as supplyPathAgentIdentity } from '../services/supply-path-input.js';
+import { declaredSpecialismsNotApplicableForTarget } from '../compliance/forward-introduced-specialisms.js';
 import { isAuthoritativeComplianceRun } from '../compliance/run-publication.js';
 import { withStoryboardSkipDetails } from '../compliance/storyboard-skip-details.js';
+import {
+  HEARTBEAT_TIMEOUT_STREAK_WINDOW,
+  parseStoryboardCoverage,
+  projectHeartbeatTimeout,
+  type HeartbeatTimeoutState,
+} from '../compliance/heartbeat-timeout.js';
 /**
  * Public Registry API routes.
  *
@@ -39,6 +46,7 @@ import { query, withDatabaseDeadline } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
+import { isRegistryDomain } from "../services/registry-domain.js";
 import { AsyncSemaphore, SemaphoreOverloadedError } from "../utils/async-semaphore.js";
 import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, capabilityProbeRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { compareAdcpVersions, listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
@@ -60,6 +68,7 @@ import {
   redactForDiagnostics,
   isNonExecutableCoverageGapScenario,
   classifyCapabilityResolutionError,
+  complianceDirToleratingUnknownSpecialism,
   presentCapabilityResolutionError,
   computeSpecialismStatus,
   derivePublicComplianceEligibility,
@@ -208,6 +217,8 @@ import { respondToAdminAuthorizationError } from "../auth/admin-authorization-re
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId, sendCallerOrganizationAuthError } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
+import { agentIdentityContainment } from "../db/agent-identity-match.js";
+import { specExactAgentUrl } from "../db/registry-agent-url-key.js";
 import { buildCreativeCapabilities } from "../creative-agent/task-handlers.js";
 import {
   AuthorizationSnapshotDatabase,
@@ -240,6 +251,7 @@ import {
   runWithComplianceRefreshAuthorizationWatchdog,
 } from "../services/compliance-refresh-authorization.js";
 import { getSandboxBrand } from "../services/sandbox-brands.js";
+import { publicEditorName } from "./registry-revision-access.js";
 
 const RegistryAdminAuthorizationUnavailableSchema = z.object({
   error: z.literal('admin_authorization_unavailable'),
@@ -846,22 +858,11 @@ function publicComplianceHeadline(status: string, headline: string | null): stri
 /** Owner-only view of the newest attempt; never used to update the public verdict. */
 function projectLatestComplianceAttempt(run: ComplianceRun | null) {
   if (!run) return null;
-  const observations = Array.isArray(run.observations_json) ? run.observations_json : [];
-  const timeoutObservation = observations.find((value: unknown) => {
-    if (!value || typeof value !== 'object') return false;
-    const message = (value as { message?: unknown }).message;
-    return typeof message === 'string' && /Stopped starting new storyboards after \d+\/\d+ selected storyboard/.test(message);
-  }) as { message: string } | undefined;
-  const coverage = timeoutObservation?.message.match(/Stopped starting new storyboards after (\d+)\/(\d+) selected storyboard/);
-  const completed = coverage ? Number(coverage[1]) : null;
-  const total = coverage ? Number(coverage[2]) : null;
-  const hasValidCoverage = completed !== null && total !== null
-    && Number.isSafeInteger(completed) && Number.isSafeInteger(total)
-    && total > 0 && completed >= 0 && completed <= total;
+  const coverage = parseStoryboardCoverage(run.observations_json);
   const statuses = Array.isArray(run.storyboard_statuses_json) ? run.storyboard_statuses_json : [];
   const firstFailure = statuses.find(s => typeof s.first_failure_message === 'string' && s.first_failure_message.length > 0);
   const blocker = run.completeness === 'timed_out'
-    ? timeoutObservation?.message ?? 'The assessment reached its time budget.'
+    ? coverage.message ?? run.headline ?? 'The assessment reached its time budget.'
     : firstFailure?.first_failure_message ?? run.headline;
   return {
     id: run.id,
@@ -870,10 +871,41 @@ function projectLatestComplianceAttempt(run: ComplianceRun | null) {
     completeness: run.completeness,
     is_authoritative: run.is_authoritative,
     requested_compliance_target: run.requested_compliance_target,
-    storyboards_completed: hasValidCoverage ? completed : null,
-    storyboards_total: hasValidCoverage ? total : null,
+    storyboards_completed: coverage.completed,
+    storyboards_total: coverage.total,
     first_blocker: blocker ? String(redactForDiagnostics(blocker)).slice(0, 240) : null,
   };
+}
+
+/**
+ * Owner/operator view of a heartbeat that ran out of budget (adcp#8268).
+ *
+ * `latest_attempt` already shows the newest *attempt*, but only when that run
+ * carries the caller's `triggered_org_id` — heartbeats against an agent with
+ * no saved credentials have none, so the owner of a consistently slow agent
+ * sees nothing at all. This reads the heartbeat stream directly and is gated
+ * on agent ownership instead.
+ */
+async function loadHeartbeatTimeoutState(
+  agentUrl: string,
+  orgId: string | null | undefined,
+  publishedAt: Date | null,
+): Promise<HeartbeatTimeoutState | null> {
+  if (orgId === undefined) return null;
+  try {
+    const runs = await complianceDb.getRecentHeartbeatAttempts(
+      agentUrl,
+      orgId,
+      HEARTBEAT_TIMEOUT_STREAK_WINDOW,
+    );
+    return projectHeartbeatTimeout(runs, {
+      publishedAt,
+      windowLimit: HEARTBEAT_TIMEOUT_STREAK_WINDOW,
+    });
+  } catch (error) {
+    logger.warn({ err: error, agentUrl }, 'Heartbeat timeout state query failed');
+    return null;
+  }
 }
 
 async function loadOwnerLatestComplianceAttempt(agentUrl: string, orgId: string | null | undefined) {
@@ -1527,7 +1559,7 @@ registry.registerPath({
   operationId: "saveProperty",
   summary: "Save property",
   description:
-    "Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.\n\nThis is an identity-only write surface: the stored document always carries `authorized_agents: []`. Sales authorization lives solely in the publisher's own origin `adagents.json`; the community registry cannot mint or carry it. Any `authorized_agents` sent in the request body is ignored.",
+    "Save or update a hosted property in the registry. Requires authentication. For bulk identifier contributions use resolveIdentifiers instead (up to 10,000 identifiers per request). This endpoint is limited to 60 requests/hour per user/IP. publisher_domain must be a lowercase hostname without a URL, port, whitespace, wildcard, or trailing dot. Reserved test domains are rejected unless sandbox is true. With sandbox: true the request is validated and a simulated result is returned without reading or writing a hosted property; the ID is ephemeral. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.\n\nThis is an identity-only write surface: the stored document always carries `authorized_agents: []`. Sales authorization lives solely in the publisher's own origin `adagents.json`; the community registry cannot mint or carry it. Any `authorized_agents` sent in the request body is ignored.",
   tags: ["Property Resolution"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -1536,6 +1568,7 @@ registry.registerPath({
         "application/json": {
           schema: z.object({
             publisher_domain: z.string().openapi({ example: "examplepub.com" }),
+            sandbox: z.boolean().default(false).openapi({ description: "Validate and simulate a save without persisting it. Allows reserved test hostnames." }),
             authorized_agents: z.array(z.object({ url: z.string(), authorized_for: z.string().optional() })).optional().openapi({
               description:
                 "Ignored. Community-registry rows never assert sales authorization — the owner's origin adagents.json is the sole authorization source — so any value here is dropped and the stored document carries authorized_agents:[].",
@@ -1557,6 +1590,7 @@ registry.registerPath({
             success: z.literal(true),
             message: z.string(),
             id: z.string(),
+            sandbox: z.literal(true).optional(),
             revision_number: z.number().int().optional(),
           }),
         },
@@ -1884,7 +1918,14 @@ const AgentPublishersOpenApi = {
     "signing-key pin status, and lifecycle state (`authorized` / `revoked`).\n\n" +
     "Spec: [docs/aao/directory-api.mdx](/docs/aao/directory-api) (adcp#4823). This endpoint is the spec-compliant " +
     "richer-shape replacement for the legacy `/api/registry/lookup/agent/{agentUrl}/domains`, which returns " +
-    "domain strings only.",
+    "domain strings only.\n\n" +
+    "`agent_url` is matched with [AdCP URL canonicalization](/docs/reference/url-canonicalization) and a " +
+    "**non-root trailing slash is significant**: `https://a.example/mcp` and `https://a.example/mcp/` are " +
+    "different agents and can return different publisher sets, the same rule the SDK applies in " +
+    "`verify_agent_authorization`. Ask for the spelling the publisher's adagents.json lists. " +
+    "(Through 2026-10-18 this endpoint folded the two spellings together and answered both with the " +
+    "slashless agent's publishers; that disagreed with the spec and with the validator.) The `agent_url` " +
+    "in the response echoes the canonicalized lookup key, slash included.",
   tags: ["Authorization Lookups"],
   request: {
     params: z.object({ encodedUrl: z.string().openapi({ description: "Percent-encoded agent_url" }) }),
@@ -3357,7 +3398,7 @@ registry.registerPath({
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
     query: z.object({
-      agent_url: z.string().openapi({ description: "Agent URL to look up. Canonicalized server-side (lowercased, trailing slashes trimmed)." }),
+      agent_url: z.string().openapi({ description: "Agent URL to look up. Canonicalized server-side per AdCP URL canonicalization: the scheme and host fold, the path does not." }),
       include: z.enum(["raw", "effective"]).optional().openapi({ description: "`effective` (default) applies override layer; `raw` reads base table." }),
       evidence: z.string().optional().openapi({ description: "Comma-separated evidence allowlist. Defaults to `adagents_json`.", example: "adagents_json,agent_claim" }),
     }),
@@ -4743,6 +4784,7 @@ registry.registerPath({
               })),
             })),
             total_storyboards: z.number().int(),
+            specialisms_not_applicable: z.array(z.string()).optional().openapi({ description: "Declared specialisms AdCP introduced after this compliance release. They have no bundle to run here, so they are listed separately instead of failing resolution." }),
           }),
         },
       },
@@ -5441,7 +5483,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         total,
         revisions: revisions.map((r) => ({
           revision_number: r.revision_number,
-          editor_name: r.editor_name || "system",
+          editor_name: publicEditorName(r.editor_name) ?? "system",
           edit_summary: r.edit_summary,
           source: (r.snapshot as Record<string, unknown>)?.source_type,
           is_rollback: r.is_rollback,
@@ -6026,7 +6068,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         total,
         revisions: revisions.map((r) => ({
           revision_number: r.revision_number,
-          editor_name: r.editor_name || "system",
+          editor_name: publicEditorName(r.editor_name) ?? "system",
           edit_summary: r.edit_summary,
           source: (r.snapshot as Record<string, unknown>)?.source_type,
           is_rollback: r.is_rollback,
@@ -6203,17 +6245,27 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.post("/properties/save", ...saveMiddleware, async (req, res) => {
     try {
-      const { properties, contact } = req.body;
-      const rawDomain = req.body.publisher_domain as string;
+      const { properties, contact, publisher_domain, sandbox = false } = req.body ?? {};
 
-      if (!rawDomain || typeof rawDomain !== "string") {
+      if (typeof sandbox !== "boolean") {
+        return res.status(400).json({ error: "sandbox must be a boolean" });
+      }
+
+      if (!publisher_domain || typeof publisher_domain !== "string") {
         return res.status(400).json({ error: "publisher_domain is required" });
       }
 
-      const publisher_domain = extractDomain(rawDomain);
-      const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-      if (!domainPattern.test(publisher_domain)) {
-        return res.status(400).json({ error: "Invalid domain format" });
+      if (!isRegistryDomain(publisher_domain, { sandbox })) {
+        return res.status(400).json({ error: "Invalid publisher_domain: expected a lowercase hostname; reserved test domains require sandbox: true" });
+      }
+
+      if (sandbox) {
+        return res.json({
+          success: true,
+          sandbox: true,
+          message: `Sandbox: validated property for ${publisher_domain}; nothing was saved`,
+          id: randomUUID(),
+        });
       }
 
       // Identity, not authorization: a community-registry row never asserts
@@ -6849,6 +6901,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
       }
 
+      const declaredByKey = new Map<string, string>();
+      for (const fa of federatedAgents) {
+        if (fa.declared_url) declaredByKey.set(fa.url, fa.declared_url);
+      }
+
       let agents = federatedAgents.map((fa) => ({
         name: fa.name || fa.url,
         url: fa.url,
@@ -6887,6 +6944,36 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         prefetchedBadgeMap = verificationBadgeMap;
       }
 
+
+      // The registry lists an agent once, under its folded identity key
+      // (#7830), but the directory answers authorization questions
+      // spec-exactly, with a non-root trailing slash significant (#7829,
+      // #8314): a publisher that declared `https://a.example/mcp/` has not
+      // authorized `https://a.example/mcp`. A consumer holding only the
+      // listed URL therefore cannot ask the directory the right question for
+      // such an agent — it would ask about the folded spelling and correctly
+      // be told nothing. `declared_urls` is every spelling the directory has
+      // indexed under this identity, the listed URL always first, so
+      // `GET /v1/agents/{agent_url}/publishers` can be asked once per
+      // spelling and the answers merged. One bulk query for the whole page.
+      let declaredUrlsByKey = new Map<string, string[]>();
+      try {
+        declaredUrlsByKey = await federatedIndex.bulkDeclaredAgentUrls(agents.map((a) => a.url));
+      } catch (err) {
+        // Never fail the listing over this: without it every agent keeps the
+        // single-spelling behaviour the page had before.
+        logger.warn({ err }, "Declared agent URL lookup failed; listing falls back to the identity URL");
+      }
+      // Listed URL first, then the owner's registered spelling, then every
+      // spelling a publisher declared. Deduplicated, never empty.
+      const declaredUrlsFor = (url: string): string[] => [
+        ...new Set([
+          url,
+          ...(declaredByKey.has(url) ? [declaredByKey.get(url)!] : []),
+          ...(declaredUrlsByKey.get(url) ?? []),
+        ]),
+      ];
+      agents = agents.map((agent) => ({ ...agent, declared_urls: declaredUrlsFor(agent.url) }));
 
       if (!withHealth && !withCapabilities && !withProperties && !withCompliance) {
         return res.json({ agents, count: agents.length });
@@ -6961,9 +7048,24 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           const promises = [];
 
           if (withProperties && enrichedAgent.type === "sales") {
+            // Same spec-exact split as `declared_urls` above: these two
+            // reads are authorization reads, so asking with the folded URL
+            // alone would show no properties for an agent whose publishers
+            // declared it with a trailing slash. Ask per declared spelling
+            // and merge. Single-spelling agents — almost all of them — make
+            // exactly the same two calls as before.
+            const spellings = declaredUrlsFor(agent.url);
             promises.push(
-              federatedIndex.getPropertiesForAgent(agent.url),
-              federatedIndex.getPublisherDomainsForAgent(agent.url)
+              Promise.all(spellings.map((spelling) => federatedIndex.getPropertiesForAgent(spelling)))
+                .then((perSpelling) => {
+                  const byPropertyId = new Map<string, any>();
+                  for (const property of perSpelling.flat()) {
+                    byPropertyId.set(property.property_id ?? JSON.stringify(property), property);
+                  }
+                  return Array.from(byPropertyId.values());
+                }),
+              Promise.all(spellings.map((spelling) => federatedIndex.getPublisherDomainsForAgent(spelling)))
+                .then((perSpelling) => Array.from(new Set(perSpelling.flat()))),
             );
           }
 
@@ -7048,10 +7150,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   router.get("/registry/agents/:encodedUrl/compliance", agentReadRateLimiter, optAuth, async (req, res) => {
     try {
       res.setHeader("Cache-Control", "no-store");
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       const metadata = await complianceDb.getRegistryMetadata(agentUrl);
       let statusWithCounts: Awaited<ReturnType<typeof complianceDb.getComplianceStatusWithStoryboardCounts>> = null;
       try {
@@ -7081,7 +7187,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       if (!status) {
         const attemptOrgId = await resolveComplianceReadScope(req, agentUrl);
-        const latestAttempt = await loadOwnerLatestComplianceAttempt(agentUrl, attemptOrgId);
+        const [latestAttempt, heartbeatTimeout] = await Promise.all([
+          loadOwnerLatestComplianceAttempt(agentUrl, attemptOrgId),
+          loadHeartbeatTimeoutState(agentUrl, attemptOrgId, null),
+        ]);
         return res.json({
           agent_url: agentUrl,
           status: "unknown",
@@ -7096,6 +7205,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           storyboards_passing: 0,
           storyboards_total: 0,
           latest_attempt: latestAttempt,
+          heartbeat_timeout: heartbeatTimeout,
         });
       }
 
@@ -7226,6 +7336,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
             steps_passed: s.steps_passed,
             steps_total: s.steps_total,
           })),
+          // Lets a specialism the graded release predates render as
+          // "not applicable" rather than as an untested agent defect (#8269).
+          status.adcp_version,
         );
       }
 
@@ -7254,13 +7367,23 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const includeVerdictDiagnostics = attemptOrgId === null
         || (typeof attemptOrgId === 'string' && status.last_run_org_id === attemptOrgId);
       const includeComparisonDiagnostics = includeDiagnostics && includeVerdictDiagnostics;
-      const latestAttempt = await loadOwnerLatestComplianceAttempt(agentUrl, attemptOrgId);
+      // Both are owner-scoped single-row reads with no dependency on each
+      // other. Keep them concurrent — this handler already sits close to the
+      // dashboard's request budget on agents with large storyboard sets.
+      const [latestAttempt, heartbeatTimeout] = await Promise.all([
+        loadOwnerLatestComplianceAttempt(agentUrl, attemptOrgId),
+        loadHeartbeatTimeoutState(agentUrl, attemptOrgId, status.last_checked_at ?? null),
+      ]);
       const observations = rawObservations.map(obs => toPublicComplianceObservation(obs, includeVerdictDiagnostics))
         .filter((obs): obs is PublicComplianceObservation => obs !== null);
       const serializedStoryboardStatuses = storyboardStatuses.map(s =>
         serializeStoryboardStatus(s, { includeDiagnostics: canReadStoryboardRunDiagnostics(s, attemptOrgId) }),
       );
-      const eligibility = derivePublicComplianceEligibility(declaredSpecialisms, storyboardStatuses);
+      const eligibility = derivePublicComplianceEligibility(
+        declaredSpecialisms,
+        storyboardStatuses,
+        status.adcp_version,
+      );
       const eligibilityOwner = {
         criteria_version: ELIGIBILITY_CRITERIA_VERSION,
         eligible: ownerMembership.is_owner ? ownerMembership.is_api_access_tier : null,
@@ -7525,6 +7648,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         storyboards_passing: sbCounts.passing,
         storyboards_total: sbCounts.total,
         latest_attempt: latestAttempt,
+        // Owner/operator-scoped staleness signal (adcp#8268). Non-null only
+        // while the newest scheduled heartbeat ended at its time budget, so a
+        // later complete run clears it. Publication is unchanged: the fields
+        // above still describe the last authoritative run.
+        heartbeat_timeout: heartbeatTimeout,
         check_interval_hours: metadata?.check_interval_hours ?? 12,
         declared_specialisms: declaredSpecialisms,
         specialism_status: specialismStatus,
@@ -7605,10 +7733,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     async (req, res) => {
       const principal = captureRegistryPrincipal(req);
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateExternalUrl(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateExternalUrl(rawAgentUrl)) {
           return res.status(400).json({ error: 'Invalid agent URL' });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
         if (!req.user?.id || isStaticAdminRequest(req)) {
           return res.status(401).json({ error: 'An authenticated user is required' });
         }
@@ -7652,10 +7784,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
               error: 'An owner/admin of the selected organization is required; registry admin overrides require a reason',
             });
           }
+          // Same identity fold as the owner path above and as the locked
+          // re-check inside `selectGradingProfile` (#8322): a registry-admin
+          // override must not be denied for an agent whose owning org holds
+          // the other spelling, when that is the very org this check names.
+          const overrideAgents = agentIdentityContainment('agents', agentUrl, 2);
           const orgOwnsAgent = await query(
             `SELECT 1 FROM member_profiles
-             WHERE workos_organization_id = $1 AND agents @> $2::jsonb LIMIT 1`,
-            [organizationId, JSON.stringify([{ url: agentUrl }])],
+             WHERE workos_organization_id = $1 AND ${overrideAgents.sql} LIMIT 1`,
+            [organizationId, ...overrideAgents.params],
           );
           if (orgOwnsAgent.rowCount !== 1) {
             return res.status(403).json({ error: 'The selected organization does not own this agent' });
@@ -7732,10 +7869,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/compliance/history", agentReadRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       // If opted out, return empty history (no ownership check needed —
       // the opt-out preference is enforced uniformly for public endpoints)
       const metadata = await complianceDb.getRegistryMetadata(agentUrl);
@@ -7796,10 +7937,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/verification", bulkResolveRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       let badges: Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>> = [];
       try {
@@ -7862,11 +8007,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/badge/:role.svg", agentReadRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
-      if (!validateAgentUrlParam(agentUrl)) {
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!VALID_BADGE_ROLES.includes(role as any)) {
         return res.status(400).json(invalidBadgeRoleBody(role));
       }
@@ -7914,12 +8063,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   // or "Not Verified" if the agent never earned a badge at this version.
   router.get("/registry/agents/:encodedUrl/badge/:role/:version.svg", agentReadRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
       const version = req.params.version;
-      if (!validateAgentUrlParam(agentUrl)) {
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!VALID_BADGE_ROLES.includes(role as any)) {
         return res.status(400).json(invalidBadgeRoleBody(role));
       }
@@ -8001,11 +8154,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/badge/:role/embed", agentReadRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
-      if (!validateAgentUrlParam(agentUrl)) {
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!VALID_BADGE_ROLES.includes(role as any)) {
         return res.status(400).json(invalidBadgeRoleBody(role));
       }
@@ -8045,12 +8202,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   // this instead of the legacy `/badge/:role/embed`.
   router.get("/registry/agents/:encodedUrl/badge/:role/:version/embed", agentReadRateLimiter, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
       const role = req.params.role;
       const version = req.params.version;
-      if (!validateAgentUrlParam(agentUrl)) {
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!VALID_BADGE_ROLES.includes(role as any)) {
         return res.status(400).json(invalidBadgeRoleBody(role));
       }
@@ -8124,10 +8285,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...memberReadMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required. Storyboard detail is available to members." });
@@ -8340,10 +8505,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.put("/registry/agents/:encodedUrl/lifecycle", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
@@ -8440,10 +8609,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/monitoring/settings", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -8462,10 +8635,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.put("/registry/agents/:encodedUrl/monitoring/pause", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -8490,10 +8667,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.put("/registry/agents/:encodedUrl/monitoring/interval", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -8532,10 +8713,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.post("/registry/agents/:encodedUrl/monitoring/requeue", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -9275,10 +9460,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
         }
@@ -9329,10 +9518,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
   router.get("/registry/agents/:encodedUrl/monitoring/requests", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      // Identity-keyed route: key the requested URL so either spelling of a folded
+      // agent resolves to the same row, and the response echoes the
+      // canonical form (#7830). Authorization routes stay spec-exact.
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -9809,16 +10002,38 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const runTarget = selectCanonicalHostedComplianceTargetForProfile(profile, complianceTarget);
       const runOptions = hostedComplianceOptions(runTarget);
 
-      let resolved;
+      const caps = {
+        supported_protocols: supportedProtocols,
+        specialisms,
+        major_versions: profile?.adcp_major_versions,
+        supported_versions: profile?.adcp_supported_versions,
+      };
+      const specialismsNotApplicable = declaredSpecialismsNotApplicableForTarget(
+        runTarget.version,
+        specialisms,
+      );
+      let resolved: ReturnType<typeof resolveStoryboardsForCapabilities> | undefined;
+      let resolveErr: unknown;
       try {
-        const caps = {
-          supported_protocols: supportedProtocols,
-          specialisms,
-          major_versions: profile?.adcp_major_versions,
-          supported_versions: profile?.adcp_supported_versions,
-        };
         resolved = resolveStoryboardsForCapabilities(caps, runOptions);
-      } catch (resolveErr) {
+      } catch (initialErr) {
+        resolveErr = initialErr;
+        // A specialism AdCP introduced after this target's release has nothing
+        // to list, but it must not 422 the whole listing (#8269). Re-resolve
+        // against the overlay that treats it as not applicable; any other
+        // resolution fault still falls through to the fail-closed response.
+        const overlayDir = await complianceDirToleratingUnknownSpecialism(initialErr, runTarget);
+        if (overlayDir) {
+          try {
+            resolved = resolveStoryboardsForCapabilities(caps, { ...runOptions, complianceDir: overlayDir });
+            resolveErr = undefined;
+          } catch (overlayErr) {
+            resolveErr = overlayErr;
+          }
+        }
+      }
+
+      if (!resolved) {
         // Fail-closed: agent capabilities are malformed. Distinguish the two
         // concrete cases the resolver throws for — parent-protocol-missing vs
         // unknown-specialism — via the shared presenter so the response
@@ -9885,6 +10100,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         adcp_version: runTarget.version,
         bundles,
         total_storyboards: bundles.reduce((n, b) => n + b.storyboards.length, 0),
+        ...(specialismsNotApplicable.length > 0 && { specialisms_not_applicable: specialismsNotApplicable }),
       };
       if (profile?.capabilities_probe_error) {
         // Cap length + strip control chars. The string is agent-reported and
@@ -9917,10 +10133,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
@@ -10056,10 +10276,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
@@ -10233,10 +10457,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        // Identity-keyed route: key the requested URL so either spelling of a folded
+        // agent resolves to the same row, and the response echoes the
+        // canonical form (#7830). Authorization routes stay spec-exact.
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
@@ -11250,6 +11478,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
   router.get("/registry/lookup/agent/:agentUrl/domains", registryReadRateLimiter, async (req, res) => {
     try {
       const federatedIndex = crawler.getFederatedIndex();
+      // AUTHORIZATION route — deliberately NOT keyed here. "Which publishers
+      // authorize this agent" is decided spec-exactly, trailing slash
+      // significant (#7829); getDomainsForAgent keys internally for the
+      // index and then filters on the raw agent_url. Keying the parameter
+      // here would make /mcp/ inherit /mcp's authorizations.
       const agentUrl = decodeURIComponent(req.params.agentUrl);
       const domains = await federatedIndex.getDomainsForAgent(agentUrl);
       res.json({ agent_url: agentUrl, domains, count: domains.length });
@@ -11280,10 +11513,28 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       } catch {
         return res.status(400).json({ error: "Malformed agent_url percent-encoding" });
       }
-      const agentUrl = canonicalizeAgentUrl(rawAgentUrl);
-      if (!agentUrl) {
+      // AUTHORIZATION route — the parameter is matched SPEC-EXACTLY, with a
+      // non-root trailing slash significant (#7829), exactly as the validator
+      // and the sibling /registry/lookup/agent/:agentUrl/domains route match
+      // it, and as docs/aao/directory-api.mdx has always specified.
+      //
+      // `canonicalizeAgentUrl` is the registry IDENTITY key, which folds
+      // `/mcp/` into `/mcp` (#7830). It is used here ONLY as a validity gate:
+      // an input the registry cannot key at all cannot name an indexed agent.
+      // It MUST NOT become the lookup value — that made a `/mcp/` request
+      // answer with `/mcp`'s publishers, a different authorization question.
+      // `getPublishersForAgentDetail` keys internally for the index and then
+      // restricts to the raw `agent_url` spellings that match spec-exactly,
+      // so it takes the URL as the caller wrote it.
+      if (!canonicalizeAgentUrl(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent_url after canonicalization" });
       }
+      // The echo is the AdCP canonicalization of what was asked for (host
+      // lowercased, default port and dot segments resolved) with the trailing
+      // slash PRESERVED, so it never reads as a different agent than the one
+      // that was matched. `?? rawAgentUrl` cannot normally fire — the gate
+      // above already rejected anything unparseable.
+      const agentUrl = specExactAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       const sinceParam = typeof req.query.since === 'string' ? req.query.since : null;
       let since: Date | undefined;
@@ -11380,7 +11631,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       // We also filter status server-side via includeRevoked in the DB call;
       // if the caller requested only `revoked`, drop rows whose status is
       // `authorized` in TS (small set, simpler than another SQL branch).
-      const rawRows = await federatedIndex.getPublishersForAgentDetail(agentUrl, {
+      const rawRows = await federatedIndex.getPublishersForAgentDetail(rawAgentUrl, {
         cursor,
         since,
         includeRevoked,
@@ -11413,7 +11664,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         && includeAuthorized
         && !includeRevoked
       ) {
-        const everRows = await federatedIndex.getPublishersForAgentDetail(agentUrl, {
+        const everRows = await federatedIndex.getPublishersForAgentDetail(rawAgentUrl, {
           includeRevoked: true,
           limit: 1,
         });
@@ -12369,7 +12620,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         total,
         revisions: revisions.map((r) => ({
           revision_number: r.revision_number,
-          editor_name: r.editor_name || "system",
+          editor_name: publicEditorName(r.editor_name) ?? "system",
           edit_summary: r.edit_summary,
           is_rollback: r.is_rollback,
           rolled_back_to: r.rolled_back_to,
@@ -12796,6 +13047,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
 
         const { rows, cursor } = await authSnapshotDb.getNarrow({
+          // The URL asked about decides the authorization answer; the key
+          // decides which index is used (#7829 / #7830).
+          agentUrl: rawAgentUrl,
           agentUrlCanonical,
           evidence,
           include,

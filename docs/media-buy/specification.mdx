@@ -79,6 +79,10 @@ Every media buy request involves three entities:
 
 ### Identifiers
 
+Use `platform_id` for an object's ID in the seller's ad platform, consistently across `sync_creatives`, `sync_catalogs`, `sync_event_sources`, and `sync_audiences` results. Reserve `seller_id` for the seller's identity, such as the IAB sellers.json ID in `adagents.json` `contact.seller_id` and publisher identifiers of type `seller_id`.
+
+The existing `seller_id` fields on event source and audience results are deprecated aliases for `platform_id` starting in AdCP 3.3. When reporting a platform identifier in 3.3 and later 3.x responses, sellers MUST emit both names with identical values. Buyers MUST prefer `platform_id` and fall back to `seller_id` only when `platform_id` is absent. These aliases retain their object-ID semantics and MUST NOT be repurposed as seller identity. They remain functional throughout 3.x, with removal no earlier than 4.0 under the [deprecation policy](/docs/reference/versioning#deprecation-policy).
+
 - **`product_id`**: Opaque identifier for a product returned by `get_products`. A non-custom wholesale ID remains stable for the same logical offer within the seller and declared `cache_scope`, including across reads and wholesale-feed webhooks; feed and pricing versions communicate temporal catalog mutation, while retirement or replacement may end the identity. Binding commercial terms are immutable under `pricing_option_id`, so changed price, floor, currency, model, or priced applicability receives a new option ID. An `is_custom: true` ID remains stable only in its issuing discovery/refinement lineage through its promised lifetime. Creating a package with the product and pricing-option IDs accepts the disclosed configuration and commercial option. A caller-authorized custom ID past `expires_at` returns `PRODUCT_EXPIRED`; after its tombstone is no longer retained or outside its account/lineage, `PRODUCT_NOT_FOUND` applies without disclosing cross-tenant existence.
 
 ### Structured requirements and briefs
@@ -673,7 +677,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - Sales agents MAY return `active`, `paused`, `pending_creatives`, or `pending_start` from `create_media_buy` (seller's choice based on platform setup time and the buyer's create-time `paused` request)
 - Sales agents MUST transition media buys from `pending_start` to `active` when the flight date arrives. Sales agents SHOULD notify orchestrators via webhook when this transition occurs.
 - A successful committed `create_media_buy` response constitutes **order confirmation**. Sales agents MUST include `confirmed_at` in create/get responses; the value is the seller commitment timestamp, or `null` for a provisional buy that exists but is still waiting for seller commitment.
-- Sales agents MUST include `revision` in create, get, and update responses. The revision number MUST increment on every mutating state change or update.
+- Sales agents MUST include `revision` in create, get, and update responses. The revision number MUST advance on every committed change to the state `get_media_buys` reports, whatever the change's origin; see [Revision and confirmation semantics](#revision-and-confirmation-semantics).
 - `active` ↔ `paused` transitions use `update_media_buy` with `paused: true` or `paused: false`
 - `create_media_buy` with top-level `paused: true` creates a held media buy when it would otherwise be `active`. Setup blockers still take precedence: no creatives yields `pending_creatives`, and a future flight yields `pending_start` until the start condition is satisfied. The hold is latent while those blockers are visible; once creatives are present and the flight can start, the buy enters `paused` instead of `active`.
 - `update_media_buy` with `paused: false` resumes a buy that is currently `paused` or clears a latent create-time hold while the visible state is still `pending_creatives` or `pending_start`. Clearing a latent hold does not bypass setup blockers; the visible status remains pending until creatives are supplied and the flight can start.
@@ -700,17 +704,28 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 
 Sellers MUST enforce the revision check atomically at the persistence boundary for every mutating update. A read-compare-write sequence in application memory can race with another writer and allow lost updates. The update and compare belong in one database transaction, conditional update, or equivalent atomic primitive. On mismatch, return `CONFLICT` and leave the media buy unchanged.
 
-Mutating updates increment `revision` and return the new value. This includes budget, flight date, targeting, status, package, creative-assignment, inline-creative, reporting-webhook, invoice-recipient, and committed-metric changes made through `update_media_buy`. Validation-only requests, exact idempotency replay of an already-applied operation, and reads via `get_media_buys` do not bump revision.
+**Any-origin rule.** For every resource that carries a seller-maintained revision, the seller MUST advance it on every committed change to state that resource's authoritative read reports, whatever the origin of the change:
 
-`sync_creatives` has its own idempotency and atomicity boundary. Library uploads
-and assignment operations performed there do not increment the MediaBuy
-`revision`; there is no shared revision fence between creative sync and MediaBuy
-control. Consequently, the same logical assignment change increments revision
-when it is part of the `update_media_buy` compatibility mutation but does not
-when it is performed through `sync_creatives`. Buyers MUST NOT use an unchanged
-MediaBuy revision as proof that package-assignment state is unchanged.
+- an AdCP task, from any authorized principal;
+- a seller operator, for example an edit in the seller's own console or ad server;
+- seller automation, for example a policy action, an expiry or an approval decision; or
+- a connected platform, whose change the seller observes and ingests.
 
-Buyers SHOULD pass the latest observed `revision` on every `update_media_buy` call intended to change state. The request field remains optional for backward compatibility. When `revision` is present, sellers MUST compare it atomically with the write and reject stale values with `CONFLICT`. On `CONFLICT`, reload the media buy with `get_media_buys`, reconcile against the current state, then retry with the new `revision` and a fresh `idempotency_key`.
+An externally observed change advances the revision when the seller ingests it, within the source's declared freshness bound (`source_coverage[].stale_after_seconds` on [`list_account_changes`](/docs/accounts/tasks/list_account_changes)). Reads, validation-only calls and exact idempotency replays do not advance it, and neither does an ingestion pass that observes no change in reported state. A platform report that matches state the seller already committed, such as the ad server echoing an update the seller just pushed, is not a change; if it were counted, the revision `update_media_buy` returns would be stale on arrival. A seller MAY coalesce the changes it commits in one atomic ingestion transaction into a single revision step. The fence is only as fresh as the seller's ingestion, so a `CONFLICT` is not proof that nothing else changed. A seller that does not ingest external changes is unaffected until it does.
+
+The rule covers the media-buy `revision`, the account `revision` and the creative [`seller_revision`](/docs/creative/task-reference/list_creatives#seller-revision). For the media buy it applies to configuration and lifecycle state: status, flight dates, budget and caps, pacing, bidding, targeting, packages and their pause and cancellation state, creative assignments and per-package creative approval, invoice recipient and reporting-webhook configuration. It does not apply to delivery measurements (`snapshot`, `get_media_buy_delivery`), `indicators`, `health`, `impairments` or `webhook_activity`, which are derived observation rather than configuration, lifecycle or decision state, and carry their own `as_of`, `observed_at` or freshness fields. Refreshing `status_as_of` or `updated_at` advances nothing by itself. A committed change to configuration or lifecycle state advances the revision even when a measurement changes with it.
+
+A seller that returns `history` appends an entry for each such change. For a change that did not arrive through an AdCP task, the entry MUST carry `origin` with the same `kind` vocabulary as [`account.change.origin`](https://adcontextprotocol.org/schemas/v3/core/account-change.json) (`seller_operator`, `seller_system`, `connected_platform` or `unknown`). When the seller cannot classify the origin, or the caller is not authorized to see it, it uses `unknown`; it still advances the revision and appends the entry.
+
+Mutating updates therefore increment `revision` and return the new value. This includes budget, flight date, targeting, status, package, creative-assignment, inline-creative, reporting-webhook, invoice-recipient, and committed-metric changes made through `update_media_buy`, and the same changes made by any other origin.
+
+Creative assignment changes made through [`sync_creatives`](/docs/creative/task-reference/sync_creatives) (`assignment_operations`, or the deprecated `assignments` shorthand) are committed changes to package state and advance the MediaBuy `revision` of every affected media buy, once per buy per committed request, in the same atomic write as that buy's assignment change (one transaction per buy; no cross-buy atomicity is required). A no-op assignment (already assigned, an unassign of nothing, an identical `replace`) advances nothing. A seller that applies assignments asynchronously advances it when the change commits. `sync_creatives` still has its own idempotency and atomicity boundary and does not accept a media-buy `revision` precondition; it advances the revision but cannot be fenced by it. A seller review decision that changes a package's creative approval (`creative_approvals`) is seller automation or a seller operator change and advances the revision likewise. A library-only upload or edit that no package reports does not advance the MediaBuy revision; it advances the creative's `seller_revision`.
+
+Seller-optimized allocation follows the same rule. A change to any allocation, cap, target, pacing or lifecycle value that `get_media_buys` reports advances the revision and appends a `history` entry with `origin.kind: "seller_system"`. Spend distribution between packages inside the accepted caps and goals is delivery behavior: no media-buy read reports it as state, so it advances nothing and is observable only through delivery measurement. This restates the 3.2 position more precisely rather than tightening it; if a later release adds a current per-package allocation to `get_media_buys`, changes to it advance the revision.
+
+Buyers that send a `revision` they have not refreshed will see more `CONFLICT` than under 3.2. Buyers that omit `revision` are not fenced, as before. The extra `CONFLICT` is by design: those updates would otherwise overwrite a change the seller or a connected platform made.
+
+Buyers SHOULD pass the latest observed `revision` on every `update_media_buy` call intended to change state. The request field remains optional for backward compatibility. When `revision` is present, sellers MUST compare it atomically with the write and reject stale values with `CONFLICT`. On `CONFLICT`, reload the media buy with `get_media_buys`, reconcile against the current state, then retry with the new `revision` and a fresh `idempotency_key`. Do not retry with the same stale `revision`.
 
 When a MediaBuy has `accepted_proposal` state and a successful
 `update_media_buy` compatibility request changes the commercial envelope, the
@@ -940,7 +955,7 @@ When `pending_creatives` or `pending_start` is masking a create-time hold from `
 
 For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-change action label, not proof that the `sync_creatives` task exists. Buyers use the creative path the seller advertises: `sync_creatives` and `creative_assignments` for sellers with `creative.has_creative_library: true`, or `packages[].creatives` on `update_media_buy` for inline-only sellers that advertise `media_buy.features.inline_creative_management: true`.
 
-- Orchestrators MAY request revision history by setting `include_history` to the number of most-recent entries desired. Sales agents SHOULD return a `history` array per media buy when `include_history > 0`, containing revision number, timestamp, server-derived actor identity, action type, and optional summary. History entries MUST be ordered most-recent-first.
+- Orchestrators MAY request revision history by setting `include_history` to the number of most-recent entries desired. Sales agents SHOULD return a `history` array per media buy when `include_history > 0`, containing revision number, timestamp, server-derived actor identity, `origin` (required on entries for changes that did not arrive through an AdCP task), action type, and optional summary. History entries MUST be ordered most-recent-first.
 - Sales agents MUST include one media-buy currency for every AdCP-authored buy. `total_budget`, package budget/minimum constraints, and canonical BiddingPolicy monetary fields use that denomination, and every selected pricing option MUST declare it. Packages requiring another currency belong in a separate media buy. `package.currency` remains a legacy/external-buy readback field; `snapshot.currency` may identify an upstream reporting denomination but MUST NOT reinterpret authored budget or bidding values.
 - Sales agents SHOULD include creative approval outcomes and pending format requirements when available
 - If `include_snapshot` is true and snapshot data is omitted for a package, sales agents MUST return `snapshot_unavailable_reason`
@@ -1002,7 +1017,7 @@ Configure event sources on a seller account for conversion tracking with upsert 
 - Sales agents MUST return per-source results with `action` indicating what happened
 - Sales agents MUST include seller-managed event sources in the response when present
 - Sales agents SHOULD return `setup` instructions for newly created event sources
-- Sales agents MAY include `seller_id` for cross-referencing in the seller's platform
+- Sales agents MAY include `platform_id` for cross-referencing the event source in the seller's platform; in 3.3 and later 3.x responses they MUST also emit the deprecated `seller_id` alias with the same value when reporting this identifier
 
 ### log_event
 

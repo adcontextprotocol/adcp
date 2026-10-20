@@ -1,15 +1,15 @@
 ---
 title: trust.json (experimental)
 sidebarTitle: trust.json (experimental)
-description: "Experimental trust.json v1 schemas, shipped in AdCP 3.3 as schemas only. Describes the document shape for agents, grants, and acknowledgements, and states plainly that nothing consumes it yet."
+description: "Experimental trust.json v1: the agents an organization runs, identified by origin, and the grants it makes. Read in AdCP 3.3 by the experimental Web Bot Auth signing profile."
 "og:title": "AdCP — trust.json (experimental)"
 ---
 
-`trust.json` is a proposed organization-level record of which agents an organization runs, who may act for it, and whose grants it accepts. AdCP 3.3 ships its v1 JSON schemas as an **experimental, schemas-only** foothold. It exists so implementers can review the document shape and try it out before the behavior that would use it is specified.
+`trust.json` is an organization-level record of which agents an organization runs, who may act for it, and whose grants it accepts. AdCP 3.3 ships its v1 JSON schemas as an **experimental** surface. Its first reader is the experimental Web Bot Auth signing profile.
 
-<Warning>
-**Nothing consumes `trust.json` in AdCP 3.3.** No verifier, resolver, registry, or storyboard reads it. No agent, publisher, or buyer is required to publish it, and no capability field points to it. `brand.json` behavior is unchanged: agent resolution, request signing, webhook signing, and governance still resolve through `brand.json` and `identity.brand_json_url`. Publishing a `trust.json` today has no protocol effect, and third parties, crawlers, and registries must not treat one as authority.
-</Warning>
+<Note>
+**What reads `trust.json` in AdCP 3.3.** The experimental Web Bot Auth signing profile derives an agent's trust record from its origin and reads the listing (origin and roles) when it binds a principal or evaluates `open` onboarding ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). Grants are read when a seller evaluates acts-for authority, at `sync_accounts` and on the freshness schedule ([Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033)). Nothing else consumes it, no one is required to publish it, and brand.json behavior is unchanged for the RFC 9421 signing profile. Outside those uses, third parties, crawlers, and registries must not treat a published `trust.json` as authority.
+</Note>
 
 ## Status
 
@@ -23,7 +23,7 @@ description: "Experimental trust.json v1 schemas, shipped in AdCP 3.3 as schemas
 
 **The document name and path may change.** The [JournalList](https://journallist.net) `trust.txt` naming outreach is still open, so both the `trust.json` name and the `/.well-known/trust.json` location are provisional. This is one reason the surface is experimental. Do not hard-code either into anything you cannot change.
 
-Because no seller implements a task or capability from this surface, there is nothing to declare in `experimental_features`. The feature id exists so that, when behavior arrives, the same id carries the stability contract.
+Publishing a `trust.json` is not implementing a task, so a publisher declares nothing in `experimental_features`. A verifier that evaluates trust records advertises the Web Bot Auth profile (capability fields added by [#7894](https://github.com/adcontextprotocol/adcp/pull/7894)), and the feature id carries this document's stability contract.
 
 ## What the schemas describe
 
@@ -32,7 +32,7 @@ The record answers one question: which agents does this organization run, who ma
 | Field | Purpose |
 |---|---|
 | `agents[]` | Agents the organization runs: `url`, namespaced `roles`, optional `protocols`, `countries`, and per-protocol `profiles`; the `adcp` profile can carry `onboarding`, a buying agent's posture toward sellers. One agent per origin, and no keys |
-| `grants[]` | Authority the organization delegates: `grantee` domain, optional `agents[]` narrowing, namespaced `scopes`, `countries`, `valid_from` and `valid_until`. Grants never carry keys |
+| `grants[]` | Authority the organization delegates: `grantee` registrable domain, optional `agents[]` narrowing, namespaced `scopes`, `countries`, `valid_from` and `valid_until`. Grants never carry keys |
 | `exclusive_grants` | When true, `grants[]` is exhaustive for the scopes it names |
 | `acknowledgements[]` or `acknowledgements_url` (not both) | Grants the organization accepts, by reference: `grantor`, `agent_url`, and `via`. Terms stay in the grantor's document |
 | `profiles` | Record-level per-protocol data. The `adcp` profile can carry `onboarding`, a buying agent's default posture toward sellers |
@@ -84,6 +84,8 @@ A brand house that delegates authority and runs no agents. A grant names a grant
 }
 ```
 
+Grants for `adcp:media_buying` SHOULD narrow with `agents[]` on the link that reaches the buying agent, because a grant to a platform's domain otherwise covers every agent that platform lists. Which link that is, and why a narrowed first link ends a chain through an intermediary, is in [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental).
+
 An ad network that accepts publisher grants by reference, with the bulk entries in a sub-document:
 
 ```json
@@ -123,13 +125,10 @@ The record carries no keys. An agent publishes its signing keys in the Web Bot A
 
 ## What is not in 3.3
 
-These are planned for a later release and are deliberately absent. The MUST and SHOULD wording in the schema descriptions records the intended design for them and is not enforced by anything today.
-
-- Resolution from an agent's origin to its trust record. The planned design derives the record's location from the origin, so there is no `identity.trust_url` back-pointer.
-- Resolver changes, the agent-to-trust-record binding, precedence over `brand.json`, and no-downgrade rules.
-- Storyboard dual-source modes and the seller-setup rewrite.
+- Any reader beyond the Web Bot Auth profile and the grant check, which runs at `sync_accounts` and on the freshness schedule.
+- Storyboard dual-source modes and the seller-setup rewrite (planned in the same 3.3 program, [#8118](https://github.com/adcontextprotocol/adcp/issues/8118)).
 - Any requirement to publish `/.well-known/trust.json`.
-- Deprecating or removing any `brand.json` field.
+- Removing any `brand.json` field. The brand.json trust fields keep working through 3.x with the RFC 9421 profile, which is deprecated in 3.3 and removed in 4.0.
 
 ## Background
 

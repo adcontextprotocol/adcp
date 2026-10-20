@@ -180,7 +180,7 @@
           },
           "revision": {
             "type": "integer",
-            "description": "Current optimistic concurrency token. Pass this in update_media_buy requests intended to change state. Sellers increment it on mutating state changes/updates and reject stale tokens with CONFLICT when a revision token is provided.",
+            "description": "Current optimistic concurrency token. Pass this in update_media_buy requests intended to change state. Sellers advance it on every committed change to state this read reports, whatever its origin (AdCP task, seller operator, seller automation, another authorized principal, or a connected platform), and reject stale tokens with CONFLICT when a revision token is provided.",
             "minimum": 1
           },
           "created_at": {
@@ -242,7 +242,12 @@
                 },
                 "actor": {
                   "type": "string",
-                  "description": "Identity of who made the change — derived from authentication context, not caller-provided. Format is seller-defined (e.g., agent URL, user email, API key label)."
+                  "description": "Identity of who made the change — derived from authentication context, not caller-provided. Format is seller-defined (e.g., agent URL, user email, API key label). For a change not made through an AdCP task, identify the seller operator, seller system, or connected platform at the granularity the caller is authorized to see, and classify it in origin. Sellers SHOULD omit direct personal identifiers for these changes unless the authenticated caller is authorized for them."
+                },
+                "origin": {
+                  "$ref": "/schemas/core/account-change.json#/properties/origin",
+                  "description": "Server-derived origin classification of the change, using the same kind vocabulary as account.change.origin (adcp, seller_operator, seller_system, connected_platform, unknown). A seller MUST include it on every entry for a change that did not arrive through an AdCP task, using unknown when it cannot classify the origin or the caller is not authorized to see it, and SHOULD include kind adcp on entries for AdCP task changes. The seller MUST NOT trust a caller-supplied origin. Entries recorded before the seller adopted it omit it.",
+                  "x-added-in": "3.3.0"
                 },
                 "action": {
                   "type": "string",
@@ -729,7 +734,9 @@
                           "audience_saturation",
                           "inventory_shortfall_forecast",
                           "pacing_risk",
-                          "budget_constrained"
+                          "budget_constrained",
+                          "flight_extension_opportunity",
+                          "scale_budget_opportunity"
                         ]
                       }
                     },
@@ -742,7 +749,9 @@
                               "audience_saturation",
                               "inventory_shortfall_forecast",
                               "pacing_risk",
-                              "budget_constrained"
+                              "budget_constrained",
+                              "flight_extension_opportunity",
+                              "scale_budget_opportunity"
                             ]
                           }
                         }
@@ -855,7 +864,9 @@
               "indicator_types_evaluated": {
                 "items": {
                   "enum": [
-                    "budget_constrained"
+                    "budget_constrained",
+                    "flight_extension_opportunity",
+                    "scale_budget_opportunity"
                   ]
                 }
               },
@@ -864,7 +875,9 @@
                   "properties": {
                     "type": {
                       "enum": [
-                        "budget_constrained"
+                        "budget_constrained",
+                        "flight_extension_opportunity",
+                        "scale_budget_opportunity"
                       ]
                     }
                   }
