@@ -355,6 +355,8 @@ const status = s => ({ success: false, status: s });
 const refused = { success: false };
 const req = (id, name, tier, expected, basis, fields = {}) => ({ id, name, base: 'post', ...fields, expected, tier, basis });
 const dirScenario = (id, name, tier, expected, basis, fields = {}) => ({ id, name, ...fields, expected, tier, basis });
+// A request the harness signs with `key` and verifies against the scenario's directory.
+const dirRequest = (name, key, tier, expected) => ({ name, kid: key.jwk.kid, expected, tier });
 
 write('scenarios.json', {
   $comment:
@@ -410,7 +412,7 @@ write('scenarios.json', {
     dirScenario('D00', 'Baseline', 'wba', { success: true }, 'WBA Appendix B.1'),
     dirScenario('D01', 'Signed for another authority', 'wba', refused, 'WBA Appendix B.1: covers "@authority";req', { authority: 'agent.brand-7k3q.com' }),
     dirScenario('D02', 'Body changed after signing', 'adcp', refused, 'WBA Appendix B.1: the verifier MUST validate Content-Digest; the library does not compare it with the body', { after_signing: { append_to_body: '\n' } }),
-    dirScenario('D03', 'Unsigned', 'adcp', refused, 'Profile: use only keys with a valid signature, so the directory yields no usable key; WBA Appendix B.1 lets a verifier use an unproven key', { keys: [], unsigned_keys: [buyer.jwk] }),
+    dirScenario('D03', 'Unsigned', 'adcp', refused, 'Profile: use only keys with a valid signature, so the directory yields no usable key; WBA Appendix B.1 lets a verifier use an unproven key', { keys: [], unsigned_keys: [buyer.jwk], requests: [dirRequest('signed with the unsigned key', buyer, 'adcp', status(403))] }),
     dirScenario('D04', 'Signature created in the future', 'wba', refused, 'WBA Appendix B.1: reject a future created', { parameters: { created: 3600, expires: 90000 } }),
     dirScenario('D05', 'Covers "@authority";req only', 'adcp', refused, 'WBA Appendix B.1: covers content-digest', { components: ['@authority;req'] }),
     dirScenario('D06', 'Expired signature', 'wba', refused, 'RFC 9421 section 3.2.1', { parameters: { created: -7200, expires: -3600 } }),
@@ -418,12 +420,19 @@ write('scenarios.json', {
     dirScenario('D08', 'Media type application/json', 'adcp', refused, 'WBA section 5.5.1: the well-known directory MUST be served with application/http-message-signatures-directory+json', { content_type: 'application/json' }),
     dirScenario('D09', 'Directory served with status 203', 'adcp', refused, 'WBA section 5.5: a status other than 200 is a discovery failure', { status: 203 }),
     dirScenario('D10', 'Signed with tag web-bot-auth', 'adcp', refused, 'WBA Appendix B.1: tag="http-message-signatures-directory"', { parameters: { tag: 'web-bot-auth' } }),
-    dirScenario('D11', 'Second Ed25519 key that does not sign', 'wba', { success: true }, 'Profile: ignore a key without a valid signature; WBA Appendix B.1; directory draft section 5', { unsigned_keys: [brand.jwk] }),
+    dirScenario('D11', 'Second Ed25519 key that does not sign', 'wba', { success: true }, 'Profile: ignore a key without a valid signature; WBA Appendix B.1; directory draft section 5', {
+      unsigned_keys: [brand.jwk],
+      requests: [dirRequest('signed with the signed key', buyer, 'wba', ok), dirRequest('signed with the unsigned key', brand, 'adcp', status(403))],
+    }),
     dirScenario('D12', 'Only a P-256 key, unsigned', 'adcp', refused, 'Profile: the directory yields no Ed25519 key with a valid signature', { keys: [], unsigned_keys: [p256] }),
     dirScenario('D13', 'Extra RSA-PSS key that does not sign', 'wba', { success: true }, 'Profile: ignore keys the profile does not use (RFC 7517 section 5), including a key the library imports', { unsigned_keys: [rsaPss] }),
     dirScenario('D14', 'Extra P-256 key that carries its private d', 'adcp', refused, 'Profile: refuse a directory in which any key carries a private member, checked before unused keys are skipped; WBA section 5.5.1: a verifier SHOULD reject malformed entries', { unsigned_keys: [{ ...p256, d: b64u(P256_SEED) }] }),
     dirScenario('D14b', 'Signing Ed25519 key published with its private d', 'adcp', refused, 'Profile: refuse a directory in which any key carries a private member; WBA section 5.5.1: a verifier SHOULD reject malformed entries', { publish_private_members: true }),
     dirScenario('D14c', 'Extra P-256 key that carries its private scalar as an upper-case D', 'adcp', refused, 'Profile: private member names compare without regard to case; WBA section 5.5.1: a verifier SHOULD reject malformed entries', { unsigned_keys: [{ ...p256, D: b64u(P256_SEED) }] }),
+    dirScenario('D15', 'Extra malformed Ed25519 keys, one with no x and one with a 31-byte x', 'wba', { success: true }, 'Profile: ignore a key the verifier cannot import (RFC 7517 section 5)', {
+      unsigned_keys: [{ kty: 'OKP', crv: 'Ed25519', kid: 'malformed-no-x', use: 'sig' }, { kty: 'OKP', crv: 'Ed25519', kid: 'malformed-short-x', x: b64u(Buffer.alloc(31, 7)), use: 'sig' }],
+      requests: [dirRequest('signed with the valid key', buyer, 'wba', ok)],
+    }),
   ],
 });
 
