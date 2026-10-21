@@ -106,8 +106,14 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // collection_lists_exclude targeting (#7834) adds ~0.5 KiB to the targeting
 // input reached by create/update_media_buy (461,599 → 462,288 bytes measured
 // on top of main), bounded at 452 KiB.
+// The 3.3.0-beta.0 merge window then landed several small additions to the same
+// create/update/get inputs (multi-qualifier totals wording, rights channel
+// restrictions, hold and lineage fields): main measured 462,963 bytes at
+// 2b9df1bae, past the 452 KiB bound. Media-buy lineage (#8038) adds 763 bytes
+// on top of that (462,963 -> 463,726 bytes / 452.9 KiB measured against main),
+// bounded at 454 KiB to leave about 1 KiB for the x-added-in sweep (#8077).
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 452,
+  'media-buy': 454,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

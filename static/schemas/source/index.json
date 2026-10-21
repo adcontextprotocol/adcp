@@ -1293,6 +1293,10 @@
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
         },
+        "media-buy-lineage-reason": {
+          "$ref": "/schemas/enums/media-buy-lineage-reason.json",
+          "description": "Why a media buy succeeds an earlier buy of the same seller (renewal, terms_change, migration, sunset)"
+        },
         "creative-merge-rejection-reason": {
           "$ref": "/schemas/enums/creative-merge-rejection-reason.json",
           "description": "Why a seller rejected a sync_creatives merge assignment operation"
