@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/installment-publication.json",
+  "title": "Installment Publication",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Seller-reported proof that a digital installment (creator post, newsletter edition, podcast episode) was published: when, and where. Echoed on a by_installment delivery row. Seller-reported unless verified_by names an independent verifier. Evidence only: it is not by itself a billing event, because billing follows the accepted terms.",
+  "type": "object",
+  "properties": {
+    "published_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-added-in": "3.3.0",
+      "description": "When the installment was first published."
+    },
+    "posts": {
+      "type": "array",
+      "minItems": 1,
+      "x-added-in": "3.3.0",
+      "items": { "$ref": "/schemas/core/assets/published-post-asset.json" },
+      "description": "Each place the installment was published. Cross-posts are separate entries. A buyer can pass an entry to sync_creatives for paid amplification."
+    },
+    "evidence": {
+      "$ref": "/schemas/core/placement-evidence.json",
+      "x-added-in": "3.3.0",
+      "description": "Optional capture or archive of the live post."
+    },
+    "verified_by": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "x-added-in": "3.3.0",
+      "description": "Independent verifier of the publication. Absent means the record is seller-reported."
+    }
+  },
+  "required": ["published_at", "posts"],
+  "additionalProperties": true
+}

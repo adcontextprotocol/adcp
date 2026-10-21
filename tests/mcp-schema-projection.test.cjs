@@ -102,9 +102,12 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // media-buy role profile (3,159 bytes of model-context input), and the
 // collection card event types widen the notification enums on sync_accounts
 // and sync_principal (458,185 → 461,599 bytes / 450.8 KiB measured against
-// main), bounded at 451 KiB.
+// main), bounded at 451 KiB. Experimental collection_lists /
+// collection_lists_exclude targeting (#7834) adds ~0.5 KiB to the targeting
+// input reached by create/update_media_buy (461,599 → 462,288 bytes measured
+// on top of main), bounded at 452 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 451,
+  'media-buy': 452,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -146,6 +149,8 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // and capability closures, and would otherwise conflict on this one line.
 // Bounded at 1_300_000 for the 3.3.0-beta.0 merge window (measured in-flight
 // peaks 1_280_490 to 1_283_645). Resume measured per-PR bounding after the cut.
+// collection_lists / collection_lists_exclude (#7834) measured +1,756 bytes
+// (1_280_033 → 1_281_789 against its base); fits the merge-window bound.
 // This is the parity-test compiler allowance; the independent 4 MiB schema,
 // 22 MiB projection, and role model-context budgets are unchanged.
 const PARITY_COMPILE_LIMIT = 1_300_000;

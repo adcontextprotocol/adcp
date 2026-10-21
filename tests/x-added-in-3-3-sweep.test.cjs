@@ -83,6 +83,14 @@ const PROPERTIES_3_3 = [
   ['core/canonical-projection-ref.json', ['properties', 'supported_delivery_types']],
   ['media-buy/request-proposals-response.json', ['properties', 'later_proposals']],
   ['creative/validate-input-result.json', ['properties', 'warnings', 'items', 'properties', 'field']],
+  ['core/targeting.json', ['properties', 'collection_lists']],
+  ['core/targeting.json', ['properties', 'collection_lists_exclude']],
+  ['core/targeting-input.json', ['properties', 'collection_lists']],
+  ['core/targeting-input.json', ['properties', 'collection_lists_exclude']],
+  ['core/targeting-overlay-requirements.json', ['properties', 'collection_lists']],
+  ['core/targeting-overlay-requirements.json', ['properties', 'collection_lists_exclude']],
+  ['core/targeting-overlay-support.json', ['properties', 'collection_lists']],
+  ['core/targeting-overlay-support.json', ['properties', 'collection_lists_exclude']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the

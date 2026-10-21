@@ -72,6 +72,8 @@ const ALLOWED = new Set([
   'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/identifier|value',
   'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/installment_ref|collection_ref',
   'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/installment_ref|installment_id',
+  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_delivery/items/properties/installment_ref|collection_ref',
+  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_delivery/items/properties/installment_ref|installment_id',
   'compliance/comply-test-controller-request.json|/properties/params/properties/property_delivery/items/properties/identifier|type',
   'compliance/comply-test-controller-request.json|/properties/params/properties/property_delivery/items/properties/identifier|value',
   // `params` is an open per-format_kind object that declares neither `width` nor `height` (#8345).
