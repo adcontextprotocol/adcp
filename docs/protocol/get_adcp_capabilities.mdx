@@ -1379,6 +1379,10 @@ Seller-level conversion tracking capabilities. Declares what the seller supports
 | `supported_action_sources`     | string[] | Action sources this seller accepts events from.                                                                                                                                                                                             |
 | `attribution_windows`          | object[] | Available attribution windows. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via `attribution_window` on optimization goals.                                   |
 
+#### event_source_archive
+
+`media_buy.event_source_archive: true` declares that the seller supports the per-item `archived` field on [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources#archiving-an-event-source). A seller without it MUST reject a request that sends `archived` with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) rather than ignore it. When `false` or absent, buyers fall back to `delete_missing` or seller-side tooling.
+
 #### portfolio
 
 Inventory portfolio information. Media-buy sellers SHOULD declare both routing
@@ -1432,6 +1436,7 @@ Signals protocol capabilities. Only present if `signals` is in `supported_protoc
 | `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal definitions and to verify authorization. Counterparty-asserted and non-exhaustive, with the same bounds and the same cautions as [`media_buy.portfolio.publisher_domains`](#portfolio): ≤ 100 unique entries, each ≤ 253 chars, 8,192 bytes as served. Absence is not a denial. |
 | `data_provider_domains_complete` | boolean | Whether `data_provider_domains` is complete as served (default `true`). Set `false` when truncated |
 | `discovery_modes` | string[] | Discovery modes the agent supports on [`get_signals`](/docs/signals/tasks/get_signals). `"brief"` (semantic discovery via `signal_spec` / `signal_refs`, with deprecated `signal_ids` accepted for older clients) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_refs` / `signal_ids` and enumerate the full priced signals feed. Agents not declaring `"wholesale"` MAY return [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) for wholesale calls. Absent declaration is treated as `["brief"]`. |
+| `features.signal_lifecycle` | boolean | **Experimental** (`x-status: experimental`). `true` means the agent builds segments on demand and may emit `signal_status` (`processing` or `failed`) and `source_audience_id` on [`get_signals`](/docs/signals/tasks/get_signals#custom-segments-built-from-a-seed-audience) results. Agents declaring it MUST list `signals.signal_lifecycle` in `experimental_features`. |
 | `features.catalog_signals` | boolean | **Deprecated.** Legacy wire flag for structured `signal_ref` references to provider-published signal definitions in adagents.json `signals[]`. |
 
 <Note>
