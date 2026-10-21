@@ -9,6 +9,11 @@ Patches and minors follow the same shape — just skip the "exit pre mode" step.
 - Release notes + migration guide drafted in `docs/reference/release-notes.mdx`
   and `docs/reference/migration/prerelease-upgrades.mdx`.
 - GA banner wording ready for `docs.json`.
+- Scheduled removals are done. Every schema node marked
+  `"x-removed-in": "<X>.0.0"` is gone from `static/schemas/source/`, and the
+  advisory checks in `static/compliance/source/universal/v<X>-compatibility.yaml`
+  are retired, because the new schemas enforce them directly. The registry also
+  lists the removals no check covered, so it doubles as the removal checklist.
 - GA docs/site flip plan ready: version selector, default-version policy,
   release notes, migration guide, and SDK/package tags must stop presenting the
   release as RC/beta before announcements.
