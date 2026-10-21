@@ -406,6 +406,10 @@
           "$ref": "/schemas/core/opportunity-context.json",
           "description": "Buyer planning-cycle context shared across proposal request, decline, and purchase"
         },
+        "later-proposals-state": {
+          "$ref": "/schemas/core/later-proposals-state.json",
+          "description": "Seller-recorded later-proposal consent and window for one opportunity (experimental)"
+        },
         "datetime-range": {
           "$ref": "/schemas/core/datetime-range.json",
           "description": "Datetime range with inclusive start and end timestamps"
@@ -818,6 +822,10 @@
           "$ref": "/schemas/core/principal-declarations-state.json",
           "description": "Declared consumption facts with the seller-computed accepted intersection"
         },
+        "principal-relationship": {
+          "$ref": "/schemas/core/principal-relationship.json",
+          "description": "The seller's commercial relationship with the authenticated caller, returned by get_principal"
+        },
         "principal-changed-webhook": {
           "$ref": "/schemas/core/principal-changed-webhook.json",
           "description": "Caller-anchored invalidation payload for seller-driven connection-state transitions"
@@ -861,6 +869,10 @@
         "account-change-recorded-webhook": {
           "$ref": "/schemas/core/account-change-recorded-webhook.json",
           "description": "Account-level invalidation indicating that a durable account change is available"
+        },
+        "proposal-created-webhook": {
+          "$ref": "/schemas/core/proposal-created-webhook.json",
+          "description": "Account-level invalidation indicating that the seller created a later proposal (experimental)"
         },
         "indicator": {
           "$ref": "/schemas/core/indicator.json",
@@ -986,6 +998,22 @@
         "brand-id": {
           "$ref": "/schemas/core/brand-id.json",
           "description": "Identifier for a brand within a house portfolio - lowercase alphanumeric with underscores only"
+        },
+        "agent-onboarding": {
+          "$ref": "/schemas/core/agent-onboarding.json",
+          "description": "Seller onboarding posture for buyer agents, per billing party and sandbox"
+        },
+        "agent-onboarding-tier": {
+          "$ref": "/schemas/core/agent-onboarding-tier.json",
+          "description": "One onboarding mode with its requirements"
+        },
+        "buyer-onboarding-posture": {
+          "$ref": "/schemas/core/buyer-onboarding-posture.json",
+          "description": "How a buying agent considers sellers, published in its trust.json"
+        },
+        "agent-onboarding-requirement": {
+          "$ref": "/schemas/core/agent-onboarding-requirement.json",
+          "description": "One onboarding requirement, discriminated by kind"
         },
         "brand-ref": {
           "$ref": "/schemas/core/brand-ref.json",
@@ -1193,6 +1221,14 @@
     "enums": {
       "description": "Enumerated types and constants",
       "schemas": {
+        "agent-onboarding-mode": {
+          "$ref": "/schemas/enums/agent-onboarding-mode.json",
+          "description": "Onboarding mode (open, application, invite_only); a seller's posture toward buyer agents or a buyer's toward sellers, by where it appears"
+        },
+        "agent-onboarding-requirement-kind": {
+          "$ref": "/schemas/enums/agent-onboarding-requirement-kind.json",
+          "description": "Extensible onboarding requirement kinds, each scoped to a direction"
+        },
         "pricing-model": {
           "$ref": "/schemas/enums/pricing-model.json",
           "description": "Supported pricing models for advertising products"
@@ -1208,6 +1244,14 @@
         "proposal-status": {
           "$ref": "/schemas/enums/proposal-status.json",
           "description": "Lifecycle status of a proposal (draft or committed)"
+        },
+        "proposal-disposition": {
+          "$ref": "/schemas/enums/proposal-disposition.json",
+          "description": "Seller-tracked disposition of a proposal snapshot (experimental)"
+        },
+        "later-proposal-reason": {
+          "$ref": "/schemas/enums/later-proposal-reason.json",
+          "description": "Why the seller created a later proposal (experimental)"
         },
         "proposal-decline-reason": {
           "$ref": "/schemas/enums/proposal-decline-reason.json",
@@ -1260,6 +1304,10 @@
         "audience-status": {
           "$ref": "/schemas/enums/audience-status.json",
           "description": "Matching status of a synced audience on a seller platform"
+        },
+        "principal-relationship-status": {
+          "$ref": "/schemas/enums/principal-relationship-status.json",
+          "description": "State of the seller's commercial relationship with the caller, reported by get_principal"
         },
         "creative-quality": {
           "$ref": "/schemas/enums/creative-quality.json",
@@ -1528,6 +1576,10 @@
         "auth-scheme": {
           "$ref": "/schemas/enums/auth-scheme.json",
           "description": "Authentication schemes for push notifications"
+        },
+        "webhook-signing-profile": {
+          "$ref": "/schemas/enums/webhook-signing-profile.json",
+          "description": "Webhook-signing profiles a seller can sign deliveries with"
         },
         "creative-sort-field": {
           "$ref": "/schemas/enums/creative-sort-field.json",
@@ -1899,6 +1951,16 @@
           "response": {
             "$ref": "/schemas/media-buy/list-products-response.json",
             "description": "Response payload for list_products"
+          }
+        },
+        "list-proposals": {
+          "request": {
+            "$ref": "/schemas/media-buy/list-proposals-request.json",
+            "description": "Request parameters for reading proposals and their dispositions (experimental)"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/list-proposals-response.json",
+            "description": "Response payload for list_proposals"
           }
         },
         "list-collections": {

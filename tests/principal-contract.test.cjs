@@ -501,6 +501,26 @@ describe('sync_principal contract', () => {
 
     assert.equal(validateReadResponse({
       status: 'completed',
+      result: {
+        kind: 'unconfigured',
+        relationship: { status: 'pending_approval', setup: { message: 'Upload your billing entity details.' } },
+      },
+    }), true, JSON.stringify(validateReadResponse.errors));
+
+    assert.equal(validateReadResponse({
+      status: 'completed',
+      result: { kind: 'unconfigured', relationship: { status: 'paused' } },
+    }), false);
+
+    const relationship = JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, 'core/principal-relationship.json'), 'utf8'));
+    const relationshipStatus = JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, 'enums/principal-relationship-status.json'), 'utf8'));
+    assert.equal(relationship['x-added-in'], '3.3.0');
+    assert.equal(relationship.properties.status.$ref, '/schemas/enums/principal-relationship-status.json');
+    assert.equal(relationshipStatus['x-added-in'], '3.3.0');
+    assert.deepEqual(relationshipStatus.enum, ['pending_approval', 'active', 'suspended', 'blocked']);
+
+    assert.equal(validateReadResponse({
+      status: 'completed',
       result: { kind: 'recognized', principal_kind: 'operator' },
     }), false);
 
@@ -535,7 +555,7 @@ describe('sync_principal contract', () => {
     assert.match(response['x-adcp-validation'].recognized_identity, /MUST include principal_id and principal_kind/);
     assert.match(response['x-adcp-validation'].recognized_identity, /MUST NOT create a record/);
     assert.match(response['x-adcp-validation'].identity_continuity, /renewed or rotated credential/);
-    assert.match(response['x-adcp-validation'].unconfigured_identity, /exact kind-only shape/);
+    assert.match(response['x-adcp-validation'].unconfigured_identity, /carries kind and, only when the seller has a relationship or an application in progress with this caller, relationship; nothing else/);
     assert.match(response['x-adcp-validation'].non_disclosure, /unconfigured results MUST NOT carry principal_kind/);
   });
 
