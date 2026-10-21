@@ -1,4 +1,4 @@
--- Migration 627: add v4_readiness_json to agent_compliance_runs (adcp#8332).
+-- Migration 628: add v4_readiness_json to agent_compliance_runs (adcp#8332).
 --
 -- Advisory AdCP 4.0 readiness report computed at ingest from the runner
 -- result, graded against universal/v4-compatibility.yaml. Passed validations
