@@ -206,6 +206,7 @@
           "valid_actions": {
             "type": "array",
             "deprecated": true,
+            "x-removed-in": "4.0.0",
             "description": "Flat-vocabulary actions the buyer can perform on this media buy in its current state. Eliminates the need for agents to internalize the state machine — the seller declares what is permitted right now. Deprecated in favor of `available_actions[]`, which carries mode, optional SLA, and a 3.2 change_term_id link. Sellers SHOULD populate both during the 3.x deprecation window; consumers MUST prefer `available_actions[]` when both are present. Removed in 4.0.",
             "items": {
               "$ref": "/schemas/enums/media-buy-valid-action.json"
@@ -342,6 +343,7 @@
                 "format_ids": {
                   "type": "array",
                   "deprecated": true,
+                  "x-removed-in": "4.0.0",
                   "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where another selector won precedence.",
                   "items": {
                     "$ref": "/schemas/core/format-id.json"

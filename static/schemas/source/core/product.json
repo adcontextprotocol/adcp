@@ -40,6 +40,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format compatibility path. Products MUST carry `format_ids`, `format_options`, or both during the 3.x migration window. New products MUST author canonical `format_options[]`; sellers MAY additionally project those declarations to `format_ids` for legacy buyers. When both fields are present they MUST describe the same underlying formats, and buyers MUST prefer `format_options`. Do not author a new product from `format_ids` alone.",
       "items": {
         "$ref": "/schemas/core/format-id.json"

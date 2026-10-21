@@ -65,6 +65,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format selector retained for older 3.x peers. New buyers MUST NOT emit this field. Sellers MUST normalize every entry through the canonical mapping path before product satisfaction checks; an entry that cannot be normalized is rejected with `UNSUPPORTED_FEATURE` before any equivalence check. When this field coexists with `format_option_refs` or `format_kind` plus `params`, sellers MUST compare the product option sets selected by each resolved route. Legacy parameter compatibility follows the asymmetric v2-narrows-v1 relation defined by canonical formats, not raw object equality. Different format shapes, selected option sets, or incompatible dimensions are rejected with `CONFLICTING_SELECTORS`; sellers MUST NOT silently ignore the legacy projection. Equivalent dual emission remains valid during the 3.x compatibility window. If omitted and no canonical selector is present, all formats supported by the product are active.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
