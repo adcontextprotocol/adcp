@@ -187,6 +187,7 @@ The response provides creative data with optional enrichment:
       "creative_id": "ft_88201",
       "platform_id": "cr_400918",
       "revision_id": "rev_2026_08_23_01",
+      "seller_revision": 7,
       "name": "Holiday Sale - Medium Rectangle",
       "format_kind": "image",
       "status": "approved",
@@ -219,6 +220,32 @@ is the current buyer-authored input revision for that creative. It is exact
 readback of the value accepted by [`sync_creatives`](/docs/creative/task-reference/sync_creatives), not a seller processing or
 transcode version. Older creatives without revision identity may omit it.
 
+### Seller revision
+
+`seller_revision` is the seller's own change token for the creative, added in
+3.3. It is separate from `revision_id`: `revision_id` is assigned by the buyer
+and names the input content the buyer sent, while `seller_revision` is
+assigned by the seller and changes whenever the state this read reports
+changes. Sellers MUST NOT mint a `revision_id`, and a `revision_id` never
+substitutes for `seller_revision`.
+
+A seller that returns it MUST advance it on every committed change to state
+`list_creatives` reports, whatever its origin: an AdCP task, a seller operator,
+seller automation such as a review decision, another authorized principal, or a
+connected platform. An externally observed change advances it when the seller
+ingests it, within the source's declared freshness bound. Reads, validation-only
+calls and exact idempotency replays do not advance it, and a `sync_creatives`
+item reported `unchanged` does not either. The value never repeats for a
+different state of the same creative and never moves backward.
+
+Buyers treat the value as opaque. Equal values mean the same state as the seller has observed; a
+different value means the creative changed. Integer values also order
+numerically. When a drained [`account.change`](/docs/accounts/tasks/list_account_changes) record for the creative carries
+`resource_revision`, it is the value immediately after that change. A read that
+returns the same value reflects the change; a different value reflects later
+changes too. The field is optional: a seller that does
+not maintain it omits it and the buyer falls back to rereading.
+
 ### Provenance readback
 
 `provenance` echoes the creative-level [provenance](/docs/creative/provenance) the seller accepted on [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for the returned revision, so a reviewer can see AI-disclosure metadata without a separate lookup. It is a read-only echo of the buyer's claim, not seller verification, and not a second source of truth. It is the creative-level default only: an asset's own `provenance` inside `assets` still replaces it entirely (no field-level merging). This adds no new revision rule. Provenance is not among the fields excluded from [canonical revision content](/docs/creative/task-reference/sync_creatives#creative-revisions), so it stays part of revision identity as it is today, and a change to it needs a new `revision_id`. The seller returns the buyer-submitted object unaltered and MUST NOT add or change members; seller-side verification is not part of this echo. Sellers that persist creative-level provenance SHOULD echo it; sellers that do not persist it omit the field, but the revision fingerprint still covers submitted provenance, so a same-`revision_id` resync with changed provenance is a [`CREATIVE_REVISION_CONTENT_MISMATCH`](/docs/building/verification/compliance-catalog#error-code-creative-revision-content-mismatch) either way. Buyers should select it through `fields` only against sellers on a release that defines it. Select it with `fields: ["provenance"]`. [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) does not carry provenance.
@@ -230,6 +257,7 @@ transcode version. Older creatives without revision identity may omit it.
 | `creative_id` | string | Unique creative identifier. Assigned by the seller for creatives created outside AdCP. |
 | `platform_id` | string | The seller's identifier for the creative in its source of truth. Same value `sync_creatives` returns. |
 | `revision_id` | string | Current buyer-authored input revision when the current content is revision-bound. Omitted for legacy/unversioned current content. |
+| `seller_revision` | integer or string | Optional seller-maintained, monotonic, opaque change token, distinct from `revision_id`. Advances on every committed change to the creative from any origin. See [Seller revision](#seller-revision). Added in 3.3. |
 | `name` | string | Human-readable name |
 | `format_kind` | string | Canonical format kind |
 | `format_option_ref` | object | Optional exact publisher/product option reference |

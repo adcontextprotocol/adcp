@@ -614,6 +614,88 @@ const NEGATIVE_CASES = {
       },
     },
     {
+      label: 'valid pixel_tracker for 3.3 playback event start',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'start',
+        method: 'img',
+        url: 'https://measurement.example.com/start?cid={CREATIVE_ID}',
+      },
+    },
+    {
+      label: 'valid pixel_tracker for 3.3 playback event first_quartile',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'first_quartile',
+        method: 'img',
+        url: 'https://measurement.example.com/first_quartile?cid={CREATIVE_ID}',
+      },
+    },
+    {
+      label: 'valid pixel_tracker for 3.3 playback event midpoint',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'midpoint',
+        method: 'img',
+        url: 'https://measurement.example.com/midpoint?cid={CREATIVE_ID}',
+      },
+    },
+    {
+      label: 'valid pixel_tracker for 3.3 playback event third_quartile',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'third_quartile',
+        method: 'img',
+        url: 'https://measurement.example.com/third_quartile?cid={CREATIVE_ID}',
+      },
+    },
+    {
+      label: 'valid pixel_tracker for 3.3 playback event complete',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'complete',
+        method: 'img',
+        url: 'https://measurement.example.com/complete?cid={CREATIVE_ID}',
+      },
+    },
+    {
+      label: 'VAST camelCase firstQuartile rejected (pixel_tracker events are snake_case)',
+      expected: false,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'firstQuartile',
+        method: 'img',
+        url: 'https://measurement.example.com/q1?cid={CREATIVE_ID}',
+      },
+    },
+    {
+      label: 'playback event WITH custom_event_name rejected (only valid when event=custom)',
+      expected: false,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'midpoint',
+        custom_event_name: 'midpoint',
+        method: 'img',
+        url: 'https://measurement.example.com/mid?cid={CREATIVE_ID}',
+      },
+    },
+    {
+      label: 'valid pixel_tracker for 3.2 interim form: event=custom, custom_event_name=first_quartile',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'custom',
+        custom_event_name: 'first_quartile',
+        method: 'img',
+        url: 'https://measurement.example.com/q1?cid={CREATIVE_ID}',
+      },
+    },
+    {
       label: 'valid pixel_tracker for custom event with custom_event_name',
       expected: true,
       doc: {

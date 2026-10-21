@@ -44,6 +44,7 @@ import {
   isForwardIntroducedSpecialism,
 } from '../../compliance/forward-introduced-specialisms.js';
 import { classifyComplianceStep } from '../../compliance/step-disposition.js';
+import { v4ReadinessReportForComplianceResult } from '../../compliance/v4-readiness.js';
 import { createLogger } from '../../logger.js';
 import { withSdkSafeTransport, type SdkTransportOptions } from '../../utils/sdk-safe-fetch.js';
 import { createHostedRouteStoryboard } from '../../compliance/hosted-route-storyboard.js';
@@ -1404,6 +1405,7 @@ const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
   'sales-broadcast-tv': { protocol: 'media-buy', storyboard_id: 'sales_broadcast_tv' },
   'sales-catalog-driven': { protocol: 'media-buy', storyboard_id: 'sales_catalog_driven' },
   'sales-dooh': { protocol: 'media-buy', storyboard_id: 'sales_dooh' },
+  'sales-fixed-rate': { protocol: 'media-buy', storyboard_id: 'sales_fixed_rate' },
   'sales-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_guaranteed' },
   'sales-non-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_non_guaranteed' },
   'sales-proposal-mode': { protocol: 'media-buy', storyboard_id: 'sales_proposal_mode' },
@@ -1750,6 +1752,9 @@ export function complianceResultToDbInput(
     // Unknown fields, codes, and severities are stored verbatim for forward
     // compatibility with newer runner contracts.
     notices_json: notices,
+    // Advisory AdCP 4.0 readiness (adcp#8332). Derived here because passed
+    // validations are not persisted anywhere else.
+    v4_readiness_json: v4ReadinessReportForComplianceResult(result),
   };
 }
 
