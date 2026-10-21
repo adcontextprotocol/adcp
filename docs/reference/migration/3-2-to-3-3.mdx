@@ -11,7 +11,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 **3.3 is in its beta cycle.** Keep production traffic pinned to `"3.2"` while validating 3.3 in staging. See the [3.3 beta program](/docs/reference/3-3-beta) for artifact and SDK timing.
 </Warning>
 
-3.3 is a minor release over 3.2. It adds optional fields, enum values, and capability declarations. No stable field, enum value, or task is removed. `seller_id` on event source and audience results is deprecated in favor of the new `platform_id` field, and natural-key account references after provisioning are deprecated (see [Deprecations](#deprecations)). A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
+3.3 is a minor release over 3.2. It adds optional fields, enum values, and capability declarations. No stable field, enum value, or task is removed; the one removal is the experimental `build_creative.evaluator.evaluator_id` source form (see [below](#experimental-creative-evaluator-drops-evaluator_id)). `seller_id` on event source and audience results is deprecated in favor of the new `platform_id` field, and natural-key account references after provisioning are deprecated (see [Deprecations](#deprecations)). A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
 Read these first:
 
@@ -55,6 +55,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 25 | Buyers that update media buys | Pass the latest `revision`, and expect `CONFLICT` after a seller or connected-platform change; re-read and retry. |
 | 26 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
 | 27 | Buyers and sellers of hosted video or audio | Optionally move playback trackers from `event: custom` to the new `pixel_tracker` playback events. |
+| 28 | Users of the experimental `creative.evaluator` surface | Replace `evaluator_id` with an allowlisted `agent_url` or inline `exemplars` ([details](#experimental-creative-evaluator-drops-evaluator_id)). |
 
 ## Required to claim 3.3 behavior
 
@@ -496,6 +497,18 @@ The field is stable in 3.3, not experimental. It completes the basis vocabulary 
 - **`ext.adcp.opportunity`.** Cooperating `get_products` integrations can carry an opportunity binding under `ext.adcp.opportunity`, declared by listing `adcp` in `extensions_supported`. Durable association needs an authorized account scope, and a mismatched ID on refine is rejected with `INVALID_REQUEST`. The core `opportunity` field is still in review. See [AdCP opportunity extension](/docs/building/by-layer/L2/context-sessions#adcp-opportunity-extension).
 
 ## Experimental surface notices
+
+### Experimental creative evaluator drops `evaluator_id`
+
+Applies only to sellers and buyers that use the experimental `creative.evaluator` surface (`build_creative.evaluator`). The `evaluator_id` source form is removed from `core/evaluator-spec.json`, and the `evaluator` entity is removed from `x-entity-types`. The evaluator object stays the request primitive, with two source forms: inline `exemplars` or an external `agent_url`. A seller's house evaluator is an evaluator agent it lists in `creative_policy.accepted_verifiers[]`. The `list_evaluators` follow-on that existed only to resolve `evaluator_id` is withdrawn.
+
+| Before (3.1 and 3.2) | After (3.3) |
+|---|---|
+| `"evaluator": { "evaluator_id": "quality-default", "rank_by": [...] }` | `"evaluator": { "agent_url": "https://quality-evaluator.example/adcp", "rank_by": [...] }` |
+
+The seller exposes the evaluator behind an agent that implements `get_creative_features`, adds its URL to `creative_policy.accepted_verifiers[]`, and the buyer names that URL. An `evaluator` carrying only `evaluator_id` no longer validates, because no source form matches, so a 3.3 validator rejects the whole `build_creative` request where 3.2 degraded to seller-default ranking. A stale `evaluator_id` sent alongside `exemplars` or `agent_url` still validates (the object stays open) and sellers ignore it. No alias is offered: the id had no on-wire resolution path, and an unknown id already degraded to seller-default ranking.
+
+This is a removal on an experimental surface, which the [experimental status](/docs/reference/experimental-status#contract-for-experimental-surfaces) contract allows with notice; 3.1 and 3.2 keep `evaluator_id`. The 6-week pre-landing notice is waived: beta.0 is the notice vehicle, and 3.3 GA ships no earlier than 6 weeks after the beta.0 tag. A fourth source form for conversion-outcome evaluators stays open, and `supports_evaluator_gate` and hard-gate semantics stay reserved. See [Evaluator source model](/docs/creative/buyer-attached-inputs#evaluator-source-model).
 
 ### Superseded reporting snapshots may be compacted
 
