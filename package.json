@@ -121,7 +121,7 @@
     "test:pagination-invariant": "node --test --test-force-exit --test-timeout=30000 tests/lint-pagination-invariant.test.cjs",
     "test:version-envelope": "node --test --test-force-exit --test-timeout=30000 tests/lint-version-envelope.test.cjs tests/compact-version-envelope.test.cjs",
     "test:test-dynamic-imports": "node --test --test-force-exit --test-timeout=30000 tests/lint-test-dynamic-imports.test.cjs",
-    "test:sdk-shims": "node --test --test-force-exit --test-timeout=30000 tests/lint-sdk-shims.test.cjs tests/sdk-runtime-compat.test.cjs tests/sdk-creative-build-probe-bridge.test.cjs",
+    "test:sdk-shims": "node --test --test-force-exit --test-timeout=30000 tests/lint-sdk-shims.test.cjs tests/sdk-runtime-compat.test.cjs",
     "test:tenant-routing": "vitest run --config server/vitest.config.ts server/src/training-agent/tenants/tenant-smoke.test.ts",
     "test:format-identity-boundaries": "node --test --test-force-exit --test-timeout=30000 tests/lint-format-identity-boundaries.test.cjs",
     "test:sdk-runner-capability-gates": "node --test --test-force-exit --test-timeout=30000 tests/sdk-runner-capability-gates.test.cjs && node --test --test-timeout=30000 tests/evaluator-allowlist-runner.test.cjs",
@@ -202,11 +202,11 @@
     "eval:addie-fixed-traces-direct-full-suite": "tsx --import dotenv/config server/tests/manual/fixed-trace-direct-full-suite-eval.ts",
     "eval:addie-gemini-direct-ablation": "tsx --import dotenv/config server/tests/manual/gemini-direct-ablation-eval.ts",
     "eval:addie-matched-v4-plan": "tsx server/tests/manual/matched-v4-evaluation-plan.ts",
-    "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts",
-    "postinstall": "node scripts/install-sdk-creative-build-probe.cjs"
+    "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts"
   },
   "dependencies": {
-    "@adcp/sdk": "15.9.5",
+    "@adcp/reporting-storage": "0.1.0",
+    "@adcp/sdk": "16.1.0",
     "@anthropic-ai/sdk": "^0.127.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.7",
