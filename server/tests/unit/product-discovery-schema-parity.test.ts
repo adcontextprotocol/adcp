@@ -140,7 +140,11 @@ describe('product discovery MCP schema parity', () => {
     // reaches request_proposals and decline_proposals, and decline_proposals
     // gains the empty-declines-with-opportunity rule (+1,302 bytes on the
     // pre-merge budget; 161,843 bytes / 158.05 KiB measured), bounded at 159 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(159 * 1024);
+    // Experimental collection_lists / collection_lists_exclude add two short
+    // array properties and their requirement keys to the shared targeting
+    // graph; with open opportunities on main, 163,607 bytes / 159.77 KiB
+    // measured, bounded at 160 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(160 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);
