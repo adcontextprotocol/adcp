@@ -19,7 +19,7 @@
     },
     "event_types": {
       "type": "array",
-      "description": "Account-anchored notification types this subscriber wishes to receive on the registered `url`. The seller MUST NOT fire other types against this endpoint, and MUST NOT silently widen the filter when new account-anchored types are added. Creative lifecycle, assignment, indicator, account status, wholesale feed, collection card (collection_card.* and collection_catalog.bulk_change, experimental: register them only with a seller that lists them in wholesale_feed_webhooks.event_types), reporting.delivery_ready, reporting.status_changed, and reporting.ledger_changed events are valid here; media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) and agent-anchored types (`capabilities.changed`) are schema-invalid on this surface and sellers MUST reject those entries as per-account validation failures with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at the invalid `event_types` entry rather than silently dropping them.",
+      "description": "Account-anchored notification types this subscriber wishes to receive on the registered `url`. The seller MUST NOT fire other types against this endpoint, and MUST NOT silently widen the filter when new account-anchored types are added. Creative lifecycle, assignment, indicator, account status, wholesale feed, collection card (collection_card.* and collection_catalog.bulk_change, experimental: register them only with a seller that lists them in wholesale_feed_webhooks.event_types), reporting.delivery_ready, reporting.status_changed, reporting.ledger_changed, and experimental proposal.created events are valid here; media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) and agent-anchored types (`capabilities.changed`) are schema-invalid on this surface and sellers MUST reject those entries as per-account validation failures with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at the invalid `event_types` entry rather than silently dropping them.",
       "items": {
         "type": "string",
         "enum": [
@@ -43,7 +43,8 @@
           "collection_catalog.bulk_change",
           "reporting.delivery_ready",
           "reporting.status_changed",
-          "reporting.ledger_changed"
+          "reporting.ledger_changed",
+          "proposal.created"
         ]
       },
       "minItems": 1,
@@ -58,6 +59,7 @@
     "authentication": {
       "type": "object",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Legacy authentication selector. Same precedence and semantics as `push-notification-config.authentication` — presence opts the seller into Bearer or HMAC-SHA256 signing; absence selects the default RFC 9421 webhook profile keyed off the seller's brand.json `agents[]` JWKS. The same signed-registration downgrade-resistance rules apply to accounts[].notification_configs[].authentication. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on `list_accounts` reads.",
       "properties": {
         "schemes": {
@@ -78,6 +80,11 @@
         "schemes"
       ],
       "additionalProperties": false
+    },
+    "signing_profile": {
+      "x-status": "experimental",
+      "$ref": "/schemas/enums/webhook-signing-profile.json",
+      "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the entry as a per-account validation failure with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at it. MUST NOT be combined with `authentication`."
     },
     "active": {
       "type": "boolean",
@@ -105,6 +112,7 @@
       }
     }
   ],
+  "not": { "required": ["authentication", "signing_profile"] },
   "additionalProperties": false,
   "examples": [
     {

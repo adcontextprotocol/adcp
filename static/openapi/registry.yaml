@@ -4653,6 +4653,24 @@ components:
               - severity
               - message
           description: Public-safe advisory observations from the latest non-dry-run compliance run. Raw evidence is intentionally omitted; this array is not merged across runs, so cleared advisories disappear on the next fresh run.
+        v4_readiness:
+          type:
+            - object
+            - "null"
+          properties:
+            registry_version:
+              type: string
+            target_version:
+              type: string
+            checks:
+              type: array
+              items:
+                $ref: "#/components/schemas/V4ReadinessCheck"
+          required:
+            - registry_version
+            - target_version
+            - checks
+          description: Advisory AdCP 4.0 readiness from the latest non-dry-run compliance run, graded against universal/v4-compatibility.yaml. Does not affect 3.x verification or conformance. Null when the latest run predates the report.
         membership_tier:
           type:
             - string
@@ -4850,6 +4868,57 @@ components:
         - code
         - message
       additionalProperties: false
+    V4ReadinessCheck:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Stable check id from universal/v4-compatibility.yaml.
+        status:
+          type: string
+          enum:
+            - passed
+            - failing
+            - not_observable
+        reason:
+          type:
+            - string
+            - "null"
+          enum:
+            - storyboard_not_run
+            - step_not_run
+            - step_skipped
+            - not_graded
+            - notice_absent
+            - not_observed_by_suite
+            - null
+          description: Why a not_observable check could not be graded. Null for passed and failing.
+        issue:
+          type:
+            - integer
+            - "null"
+        change:
+          type:
+            - string
+            - "null"
+        detection:
+          type: string
+        fix:
+          type: string
+        guide_url:
+          type:
+            - string
+            - "null"
+          description: Migration guide anchor for the check.
+      required:
+        - id
+        - status
+        - reason
+        - issue
+        - change
+        - detection
+        - fix
+        - guide_url
     OwnerComplianceEligibility:
       type: object
       properties:
@@ -4915,6 +4984,7 @@ components:
               - sales-catalog-driven
               - sales-dooh
               - sales-exchange
+              - sales-fixed-rate
               - sales-guaranteed
               - sales-non-guaranteed
               - sales-proposal-mode

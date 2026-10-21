@@ -32,6 +32,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Return only these specific named-format IDs. Use canonical-format discovery in 4.0.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
@@ -124,11 +125,13 @@
       "type": "boolean",
       "default": false,
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "**DEPRECATED in 3.1. Removed at 4.0.** Use `list_transformers` with `include_pricing` and `account` for transformation and generation pricing. *Legacy 3.x behavior:* include `pricing_options` on each returned format. Requires `account`; when false or omitted, pricing is not computed. Agents supporting the 3.1 format-pricing surface MUST continue to honor this field through 3.x."
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "**DEPRECATED for `list_creative_formats` in 3.1. Removed at 4.0.** Use the account-scoped `list_transformers` request instead. *Legacy 3.x behavior:* identifies the rate card used when `include_pricing` is true."
     },
     "pagination": {

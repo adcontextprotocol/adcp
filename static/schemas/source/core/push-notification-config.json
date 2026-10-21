@@ -26,6 +26,7 @@
     "authentication": {
       "type": "object",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Legacy authentication configuration (A2A-compatible). Opts the seller into Bearer or HMAC-SHA256 signing instead of the default RFC 9421 webhook profile. Deprecated; removed in AdCP 4.0. **Precedence is a switch, not a fallback:** presence of this block selects the legacy scheme; absence selects 9421. A seller MUST NOT sign the same webhook both ways, and a buyer MUST NOT attempt 'try 9421 first, fall back to HMAC' verification — signature mode is determined solely by whether this block was present at registration time. The seller's baseline 9421 webhook key is published at its brand.json `agents[]` `jwks_uri` using `adcp_use: \"request-signing\"` (deprecated `webhook-signing` keys remain accepted during the compatibility window); it does not override this selector and is only used when `authentication` is omitted. See docs/building/by-layer/L1/security.mdx#webhook-callbacks for the full precedence and downgrade-resistance rules (including the `webhook_mode_mismatch` rejection a buyer MUST apply when a received webhook's signing mode does not match the registered mode).",
       "properties": {
         "schemes": {
@@ -48,9 +49,15 @@
         "credentials"
       ],
       "additionalProperties": false
+    },
+    "signing_profile": {
+      "x-status": "experimental",
+      "$ref": "/schemas/enums/webhook-signing-profile.json",
+      "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the registration with `INVALID_REQUEST`. MUST NOT be combined with `authentication`."
     }
   },
   "required": [
     "url"
-  ]
+  ],
+  "not": { "required": ["authentication", "signing_profile"] }
 }

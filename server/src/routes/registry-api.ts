@@ -217,6 +217,7 @@ import { respondToAdminAuthorizationError } from "../auth/admin-authorization-re
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId, sendCallerOrganizationAuthError } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
+import { agentIdentityContainment } from "../db/agent-identity-match.js";
 import { specExactAgentUrl } from "../db/registry-agent-url-key.js";
 import { buildCreativeCapabilities } from "../creative-agent/task-handlers.js";
 import {
@@ -250,6 +251,7 @@ import {
   runWithComplianceRefreshAuthorizationWatchdog,
 } from "../services/compliance-refresh-authorization.js";
 import { getSandboxBrand } from "../services/sandbox-brands.js";
+import { publicEditorName } from "./registry-revision-access.js";
 
 const RegistryAdminAuthorizationUnavailableSchema = z.object({
   error: z.literal('admin_authorization_unavailable'),
@@ -5481,7 +5483,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         total,
         revisions: revisions.map((r) => ({
           revision_number: r.revision_number,
-          editor_name: r.editor_name || "system",
+          editor_name: publicEditorName(r.editor_name) ?? "system",
           edit_summary: r.edit_summary,
           source: (r.snapshot as Record<string, unknown>)?.source_type,
           is_rollback: r.is_rollback,
@@ -6066,7 +6068,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         total,
         revisions: revisions.map((r) => ({
           revision_number: r.revision_number,
-          editor_name: r.editor_name || "system",
+          editor_name: publicEditorName(r.editor_name) ?? "system",
           edit_summary: r.edit_summary,
           source: (r.snapshot as Record<string, unknown>)?.source_type,
           is_rollback: r.is_rollback,
@@ -7220,6 +7222,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         () => complianceDb.getLatestDeclaredSpecialisms(agentUrl),
         () => complianceDb.getLatestNotices(agentUrl, status.last_run_id),
         () => complianceDb.getLatestObservations(agentUrl, status.last_run_id),
+        () => complianceDb.getLatestV4Readiness(agentUrl, status.last_run_id),
         () =>
           complianceDb.getStoryboardStatuses(agentUrl, {
             requireRowsForLatestRun: true,
@@ -7262,6 +7265,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         declaredSpecialismsResult,
         noticesResult,
         observationsResult,
+        v4ReadinessResult,
         storyboardStatusesResult,
         ownerMembershipResult,
       ] = supplementalResults;
@@ -7303,6 +7307,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         : [];
       if (observationsResult.status === 'rejected') {
         logger.warn({ err: observationsResult.reason, agentUrl }, "Latest observations query failed");
+      }
+      // Advisory 4.0 readiness from the same run. Null for runs ingested
+      // before the report existed; never synthesized here.
+      const v4Readiness = v4ReadinessResult.status === 'fulfilled' ? v4ReadinessResult.value : null;
+      if (v4ReadinessResult.status === 'rejected') {
+        logger.warn({ err: v4ReadinessResult.reason, agentUrl }, "Latest 4.0 readiness query failed (column may not exist yet)");
       }
 
       // Per-specialism status — the dashboard renders pass/fail/untested
@@ -7666,6 +7676,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         // remain verbatim, while private and oversized fields are excluded.
         notices,
         observations,
+        // Advisory AdCP 4.0 readiness (universal/v4-compatibility.yaml). Does
+        // not affect 3.x verification. Null when the latest run predates it.
+        v4_readiness: v4Readiness,
         // Owner-scoped: content is null/false for anonymous and cross-org
         // viewers, populated only when the authenticated viewer owns the
         // agent. Keys are always present so non-owners can't detect
@@ -7782,10 +7795,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
               error: 'An owner/admin of the selected organization is required; registry admin overrides require a reason',
             });
           }
+          // Same identity fold as the owner path above and as the locked
+          // re-check inside `selectGradingProfile` (#8322): a registry-admin
+          // override must not be denied for an agent whose owning org holds
+          // the other spelling, when that is the very org this check names.
+          const overrideAgents = agentIdentityContainment('agents', agentUrl, 2);
           const orgOwnsAgent = await query(
             `SELECT 1 FROM member_profiles
-             WHERE workos_organization_id = $1 AND agents @> $2::jsonb LIMIT 1`,
-            [organizationId, JSON.stringify([{ url: agentUrl }])],
+             WHERE workos_organization_id = $1 AND ${overrideAgents.sql} LIMIT 1`,
+            [organizationId, ...overrideAgents.params],
           );
           if (orgOwnsAgent.rowCount !== 1) {
             return res.status(403).json({ error: 'The selected organization does not own this agent' });
@@ -12613,7 +12631,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         total,
         revisions: revisions.map((r) => ({
           revision_number: r.revision_number,
-          editor_name: r.editor_name || "system",
+          editor_name: publicEditorName(r.editor_name) ?? "system",
           edit_summary: r.edit_summary,
           is_rollback: r.is_rollback,
           rolled_back_to: r.rolled_back_to,

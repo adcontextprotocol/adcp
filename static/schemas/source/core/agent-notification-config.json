@@ -54,6 +54,7 @@
     "authentication": {
       "type": "object",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Legacy authentication selector. Same precedence and semantics as `push-notification-config.authentication` and account-level `notification-config.authentication`: presence opts the seller into Bearer or HMAC-SHA256 signing; absence selects the default RFC 9421 webhook profile keyed off the seller's brand.json `agents[]` JWKS. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on reads.",
       "properties": {
         "schemes": {
@@ -74,6 +75,11 @@
         "schemes"
       ],
       "additionalProperties": false
+    },
+    "signing_profile": {
+      "x-status": "experimental",
+      "$ref": "/schemas/enums/webhook-signing-profile.json",
+      "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the entry with `INVALID_REQUEST` or `VALIDATION_ERROR`. MUST NOT be combined with `authentication`."
     },
     "active": {
       "type": "boolean",
@@ -111,7 +117,8 @@
             "wholesale_feed.bulk_change",
             "collection_card.updated",
             "collection_card.removed",
-            "collection_catalog.bulk_change"
+            "collection_catalog.bulk_change",
+            "proposal.created"
           ]
         }
       }
@@ -126,6 +133,7 @@
     },
     "required": ["all_authorized_accounts"]
   },
+  "not": { "required": ["authentication", "signing_profile"] },
   "additionalProperties": false,
   "examples": [
     {

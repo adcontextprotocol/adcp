@@ -95,6 +95,18 @@
     },
     {
       "if": {
+        "required": ["security_profiles"],
+        "properties": { "security_profiles": { "minItems": 1 } }
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "security.profiles" } }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "properties": {
           "adcp": {
             "properties": {
@@ -220,6 +232,34 @@
             "required": ["supported", "profile", "algorithms", "legacy_hmac_fallback"]
           }
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "signals": {
+            "properties": {
+              "features": {
+                "properties": {
+                  "signal_lifecycle": {
+                    "const": true
+                  }
+                },
+                "required": ["signal_lifecycle"]
+              }
+            },
+            "required": ["features"]
+          }
+        },
+        "required": ["signals"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "signals.signal_lifecycle" }
+          }
+        },
+        "required": ["experimental_features"]
       }
     },
     {
@@ -515,6 +555,18 @@
         "required": ["media_buy", "account"]
       },
       "then": false
+    },
+    {
+      "if": {
+        "required": ["account"],
+        "properties": { "account": { "required": ["agent_onboarding"] } }
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "account.agent_onboarding" } }
+        },
+        "required": ["experimental_features"]
+      }
     }
   ],
   "properties": {
@@ -525,6 +577,7 @@
         "major_versions": {
           "type": "array",
           "deprecated": true,
+          "x-removed-in": "4.0.0",
           "description": "DEPRECATED in favor of `supported_versions` (release-precision strings). Servers MUST continue to emit this field through 3.x for backwards compatibility. Removed in 4.0. Original semantics: AdCP major versions supported by this seller. Major versions indicate breaking changes.",
           "items": {
             "type": "integer",
@@ -1325,6 +1378,12 @@
           "type": "boolean",
           "description": "Whether this seller supports sandbox accounts for testing. Buyer-declared accounts use sandbox: true in sync_accounts or, for an unambiguous lazy-provisioning seller, in the natural-key account reference. Sellers with account_id namespaces expose sandbox accounts as pre-existing test accounts through list_accounts or supply them out-of-band. Requests using a sandbox account perform no real platform calls or spend.",
           "default": false
+        },
+        "agent_onboarding": {
+          "$ref": "/schemas/core/agent-onboarding.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "How this seller onboards buyer agents: a mode per billing party and for sandbox, requirements, and where a human starts. Seller-wide and identical for every caller. Experimental: sellers that declare it MUST list account.agent_onboarding in experimental_features. See docs/protocol/get_adcp_capabilities.mdx#accountagent_onboarding."
         }
       },
       "required": ["supported_billing"]
@@ -1401,7 +1460,7 @@
           "description": "Compact product and MediaBuy lifecycle operation names this seller supports. Added in AdCP 3.2 as task-specific contracts that form the 4.0 lifecycle foundation. Sellers may advertise any supported subset while retaining the deprecated get_products/create_media_buy/update_media_buy facades throughout 3.x. Each stateful split task has its own idempotency identity; callers MUST retry with the same tool name.",
           "items": {
             "type": "string",
-            "enum": ["list_products", "request_proposals", "refine_proposals", "decline_proposals", "buy_products", "accept_proposal", "control_media_buy"]
+            "enum": ["list_products", "request_proposals", "refine_proposals", "decline_proposals", "buy_products", "accept_proposal", "control_media_buy", "list_proposals"]
           },
           "minItems": 1,
           "uniqueItems": true
@@ -1452,6 +1511,56 @@
             }
           ],
           "additionalProperties": true
+        },
+        "open_opportunities": {
+          "type": "object",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Open-opportunity support: reading proposals (including seller offers against accepted media buys, when the seller also declares media_buy.seller_offers), keeping an opportunity open past a purchase, and creating later proposals under buyer consent. Each part is advertised separately so sellers can adopt them independently. Experimental (media_buy.open_opportunities): sellers declaring this object MUST list the feature id in experimental_features. Buyers MUST NOT send later_proposals consent, opportunity.status open on accept_proposal or buy_products, or an empty decline_proposals declines array to a seller that does not advertise the matching part.",
+          "properties": {
+            "list_proposals": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the seller implements list_proposals. Required true when later_proposals.supported is true, because list_proposals is the repair read for proposal.created. Sellers declaring media_buy.seller_offers also require it, as the repair read for proposal.offered, the buy-scoped sibling notification for seller offers against accepted media buys. Seller offers are distinct from later proposals: later_proposals covers new_media_buy drafts under buyer consent, and media_buy_update proposals are out of scope for it."
+            },
+            "keep_open_after_purchase": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether accept_proposal and buy_products accept an explicit opportunity.status open."
+            },
+            "later_proposals": {
+              "type": "object",
+              "description": "Whether the seller creates proposals after the creating task completes, for opportunities whose buyer gave later_proposals consent.",
+              "properties": {
+                "supported": { "type": "boolean" },
+                "max_open_duration": {
+                  "allOf": [{ "$ref": "/schemas/core/duration.json" }, { "not": { "properties": { "unit": { "const": "campaign" } }, "required": ["unit"] } }],
+                  "description": "Longest window the seller keeps an opportunity open for later proposals, measured from the call that last set consent. It always caps the window, which ends at the earliest of this, later_proposals.until, planning_horizon.end, and closure. The campaign unit is invalid here."
+                }
+              },
+              "required": ["supported"],
+              "if": {
+                "properties": { "supported": { "const": true } },
+                "required": ["supported"]
+              },
+              "then": { "required": ["max_open_duration"] },
+              "additionalProperties": false
+            }
+          },
+          "if": {
+            "properties": {
+              "later_proposals": {
+                "properties": { "supported": { "const": true } },
+                "required": ["supported"]
+              }
+            },
+            "required": ["later_proposals"]
+          },
+          "then": {
+            "properties": { "list_proposals": { "const": true } },
+            "required": ["list_proposals"]
+          },
+          "additionalProperties": false
         },
         "reporting_delivery_methods": {
           "type": "array",
@@ -2079,6 +2188,10 @@
           },
           "additionalProperties": true
         },
+        "event_source_archive": {
+          "type": "boolean",
+          "description": "Whether this seller supports the per-source `archived` field on `sync_event_sources` request items. When true, `archived: true` archives an event source and `archived: false` undoes it. When false or absent, the seller MUST reject a request that sends `archived` with `UNSUPPORTED_FEATURE`, so a buyer never mistakes an ignored field for an archive."
+        },
         "conversion_tracking": {
           "type": "object",
           "description": "Seller-level conversion tracking capabilities. Presence of this object indicates the seller supports sync_event_sources and log_event for conversion event tracking.",
@@ -2418,6 +2531,12 @@
           "type": "object",
           "description": "Optional signals features supported",
           "properties": {
+            "signal_lifecycle": {
+              "type": "boolean",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "true means this signals agent builds segments on demand and may emit signal_status ('processing' or 'failed') and source_audience_id on get_signals results. Absent or false means every returned signal is ready. Experimental (x-status: experimental): agents declaring this MUST list signals.signal_lifecycle in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice."
+            },
             "catalog_signals": {
               "type": "boolean",
               "description": "DEPRECATED. Legacy wire flag for structured signal_ref references to provider-published signal definitions. New agents SHOULD omit this flag; callers MUST NOT require it before using signal_ref with the Signals protocol.",
@@ -2768,7 +2887,7 @@
           "type": "boolean",
           "default": false,
           "x-status": "experimental",
-          "description": "Experimental (x-status: experimental) — agents setting this true MUST also list `creative.evaluator` in `experimental_features`; the surface MAY change between 3.x releases with notice (see docs/reference/experimental-status). When true, build_creative accepts an advisory `evaluator` input (exemplars / account-arranged evaluator_id / agent_url, plus an optional `feature_requirement[]` gate, a `rank_by` ordering, and an allowlisted `feature_agent` pointer). Feature discovery uses this response's governance.creative_features catalog: rank_by, feature_requirement, and eval.features[] all share the same creative-feature vocabulary as get_creative_features. evaluator_id is not discovered from this catalog; it is a pre-provisioned account preset whose emitted feature_ids still come from it. The evaluator populates a per-leaf `eval` block of creative-feature values (creative-feature-result[], the same shape get_creative_features returns) on BuildCreativeVariantSuccess leaves, which is what the recommended/rank it sets on the best_of_n axis are computed over. The agent runs a gate-then-rank pipeline over its best_of_n exploration: it evaluates each leaf, DROPS leaves failing `feature_requirement[]` from its recommended survivors, then orders survivors by `rank_by`. The gate is internal pruning of which leaves the agent recommends/returns from its own exploration — it never blocks an already-produced billable leaf: what is produced and billed is governed by max_variants/max_creatives/max_spend, not the evaluator. When the evaluator names an external agent, it MUST appear in `creative_policy.accepted_verifiers[]` (off-list → EVALUATOR_AGENT_NOT_ACCEPTED), and the producing agent authenticates the outbound evaluator call on the transport. Evaluator credentials and caller-supplied trust material MUST NOT be passed in the build_creative payload; credential- or trust-material payload keys should be rejected with CREDENTIAL_IN_ARGS. When false or absent, the `evaluator` input is ignored and no `eval` block is emitted."
+          "description": "Experimental (x-status: experimental) — agents setting this true MUST also list `creative.evaluator` in `experimental_features`; the surface MAY change between 3.x releases with notice (see docs/reference/experimental-status). When true, build_creative accepts an advisory `evaluator` input (exemplars / agent_url, plus an optional `feature_requirement[]` gate, a `rank_by` ordering, and an allowlisted `feature_agent` pointer). Feature discovery uses this response's governance.creative_features catalog: rank_by, feature_requirement, and eval.features[] all share the same creative-feature vocabulary as get_creative_features. A seller's house evaluator is an agent it lists in `creative_policy.accepted_verifiers[]`, named via `agent_url`; its emitted feature_ids still come from this catalog. The evaluator populates a per-leaf `eval` block of creative-feature values (creative-feature-result[], the same shape get_creative_features returns) on BuildCreativeVariantSuccess leaves, which is what the recommended/rank it sets on the best_of_n axis are computed over. The agent runs a gate-then-rank pipeline over its best_of_n exploration: it evaluates each leaf, DROPS leaves failing `feature_requirement[]` from its recommended survivors, then orders survivors by `rank_by`. The gate is internal pruning of which leaves the agent recommends/returns from its own exploration — it never blocks an already-produced billable leaf: what is produced and billed is governed by max_variants/max_creatives/max_spend, not the evaluator. When the evaluator names an external agent, it MUST appear in `creative_policy.accepted_verifiers[]` (off-list → EVALUATOR_AGENT_NOT_ACCEPTED), and the producing agent authenticates the outbound evaluator call on the transport. Evaluator credentials and caller-supplied trust material MUST NOT be passed in the build_creative payload; credential- or trust-material payload keys should be rejected with CREDENTIAL_IN_ARGS. When false or absent, the `evaluator` input is ignored and no `eval` block is emitted."
         },
         "refinable_retention_seconds": {
           "type": "integer",
@@ -3181,6 +3300,21 @@
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a"
           }
+        },
+        "profiles": {
+          "x-status": "experimental",
+          "type": "array",
+          "description": "Request-signing profiles this agent verifies, named by the RFC 9421 `tag` value each profile puts in `Signature-Input`. `adcp/request-signing/v1` is the AdCP RFC 9421 profile defined in docs/building/by-layer/L1/security.mdx (Signed Requests (Transport Layer)). `web-bot-auth` is the Web Bot Auth profile, experimental in 3.3, in docs/building/by-layer/L1/wba-profile.mdx: the verifier resolves the signer's keys from the origin named in the covered `Signature-Agent` header, and a verified identity the seller has not approved gets no account access. Omission means `[\"adcp/request-signing/v1\"]`, so every 3.0 to 3.2 capability document keeps its meaning. A buyer signs with a profile the seller lists. The operation lists (`required_for`, `warn_for`, `supported_for`, and the `protocol_methods_*` lists) apply to every listed profile.",
+          "items": {
+            "type": "string",
+            "enum": ["adcp/request-signing/v1", "web-bot-auth"]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["adcp/request-signing/v1"],
+          "x-adcp-validation": {
+            "spec": "docs/building/by-layer/L1/wba-profile.mdx#capability"
+          }
         }
       },
       "required": ["supported"]
@@ -3245,7 +3379,8 @@
         "legacy_hmac_fallback": {
           "type": "boolean",
           "deprecated": true,
-          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_principal.configuration.notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
+          "x-removed-in": "4.0.0",
+          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_principal.configuration.notification_configs[].authentication, sync_agent_notification_configs.notification_configs[].authentication, reporting_webhook.authentication, or create_media_buy.artifact_webhook.authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
           "default": false
         },
         "delivery_retry_horizon_seconds": {
@@ -3253,6 +3388,20 @@
           "description": "Maximum elapsed time from the first delivery attempt during which this agent may retry the same webhook delivery. The publisher retains the immutable delivery-key-to-RFC-8785-JCS-payload binding and sufficient delivery state for at least this interval, and MUST NOT retry that key afterward. Receivers retain the matching payload binding and terminal publication proof for at least max(86400, this value) seconds in AdCP 3.x. Retries do not extend the horizon. A webhook-emitting AdCP 3.2 agent MUST populate this additive field; it remains schema-optional so existing 3.x capability documents stay valid. Minimum 86400 (24h), maximum 604800 (7d).",
           "minimum": 86400,
           "maximum": 604800
+        },
+        "profiles": {
+          "x-status": "experimental",
+          "type": "array",
+          "description": "Webhook-signing profiles this agent can sign outbound webhooks with, named by the RFC 9421 `tag` value. `adcp/webhook-signing/v1` is the AdCP webhook profile named in `profile`. `web-bot-auth` is the Web Bot Auth profile, experimental in 3.3, in docs/building/by-layer/L1/wba-profile.mdx (Webhooks), under which a webhook is an ordinary signed request from the seller's identity. The seller signs each delivery with the one profile the subscriber selected in the registration's `signing_profile` (on `push_notification_config`, `reporting_webhook`, `artifact_webhook`, `accounts[].notification_configs[]`, or an agent-level notification configuration), and rejects a registration that selects a profile not listed here. Omission means `[\"adcp/webhook-signing/v1\"]`. The list includes the value of `profile`.",
+          "items": {
+            "$ref": "/schemas/enums/webhook-signing-profile.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["adcp/webhook-signing/v1"],
+          "x-adcp-validation": {
+            "spec": "docs/building/by-layer/L1/wba-profile.mdx#webhooks"
+          }
         }
       },
       "required": ["supported"]
@@ -3371,6 +3520,18 @@
         }
       },
       "additionalProperties": true
+    },
+    "security_profiles": {
+      "type": "array",
+      "x-status": "experimental",
+      "description": "Named security profiles this endpoint commits to. A profile is a closed set of requirements published at docs/building/by-layer/L1/production-security-profile.mdx. The claim covers the whole endpoint: every tenant and every transport (MCP, A2A, REST) that serves the endpoint's spend-committing operations. It is self-asserted until a registry verifies it. Only agents that verify inbound requests and serve this capabilities response can advertise a profile. Absent or empty means no claim. An id is immutable: new semantics ship under a new id. Consumers MUST ignore ids they do not recognize and MUST NOT treat an unrecognized id as satisfying a requirement. Currently registered: `adcp-prod-security-3.3`. EXPERIMENTAL (x-status: experimental, feature id security.profiles): an endpoint that advertises a profile lists security.profiles in experimental_features.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9.-]{2,63}$",
+        "examples": ["adcp-prod-security-3.3"]
+      },
+      "uniqueItems": true,
+      "x-added-in": "3.3.0"
     },
     "measurement_gateway": {
       "type": "object",

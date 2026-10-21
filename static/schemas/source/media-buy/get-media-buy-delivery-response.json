@@ -125,6 +125,7 @@
       "type": "string",
       "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Optional legacy response-wide ISO 4217 currency code. It may be used only when every monetary value in the response has that denomination. A delivery response can contain media buys with different currencies, so buyers MUST NOT interpret this field as an aggregation currency or evidence of currency conversion. Prefer media_buy_deliveries[].currency when present and package-level currency otherwise.",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "pattern": "^[A-Z]{3}$"
     },
     "attribution_window": {
@@ -135,6 +136,7 @@
       "type": "object",
       "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Legacy combined metrics across all returned media buys. When this field is present, the deprecated response-wide currency is required and denominates its spend. Cross-buy totals are unsafe when currencies, metric qualifiers, measurement windows, finality, or deduplication semantics differ. Sellers SHOULD omit this field; buyers SHOULD aggregate media_buy_deliveries[] only when the relevant row semantics are compatible.",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "allOf": [
         {
           "if": {
@@ -397,6 +399,12 @@
                       "type": "number",
                       "description": "Package delivery pace relative to its package-level pacing plan (1.0 = on track, <1.0 = behind, >1.0 = ahead). In seller-optimized mode this is a subordinate diagnostic and may be absent when no package pacing preference exists.",
                       "minimum": 0
+                    },
+                    "projection": {
+                      "$ref": "/schemas/core/delivery-projection.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0",
+                      "description": "Optional seller projection of where this package's delivery will end up at flight end. Forward-looking counterpart to the backward-looking `pacing_index`, and the numeric counterpart to the categorical `pacing_risk` indicator on `get_media_buys`. Experimental: sellers that emit it MUST list `media_buy.delivery_projection` in `experimental_features`. An advisory forecast, not a delivery record: it carries no contractual meaning on its own, and any commercial use is governed by the parties' terms. Defined on top-level `by_package[]` rows of GET responses; it is not part of the `windows[].by_package` or exact `reporting_revision_id` contracts, and this field does not define webhook use. Sellers that do not project omit it; absence carries no meaning."
                     },
                     "pricing_model": {
                       "$ref": "/schemas/enums/pricing-model.json",

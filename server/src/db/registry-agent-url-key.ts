@@ -286,6 +286,9 @@ export function declaredAgentUrl(agent: { url: string; declared_url?: string }):
  * URLs in the database is banned (see the module header), and the fold is not
  * expressible as a `jsonb` containment anyway. Such a reader can only ask for
  * the spellings that fold to the same key, which is what this returns.
+ * `db/agent-identity-match.ts` wraps it as the `@>` containment filter the
+ * ownership and badge predicates share (#8322); call this directly only for
+ * the `= ANY(...::text[])` shape a `jsonb_array_elements` read needs.
  *
  * The registry's fold over AdCP canonicalization is exactly the trailing
  * slash on the PATH, so the set is the key, the key's path carrying the slash

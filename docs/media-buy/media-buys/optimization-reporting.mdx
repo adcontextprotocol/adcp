@@ -286,7 +286,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 }
 ```
 
-**Or with HMAC signature (recommended for production):**
+**Or with legacy HMAC signature:**
 ```json
 {
   "packages": [...],
@@ -302,12 +302,12 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 }
 ```
 
-**Security is Required:**
-- `authentication` configuration is mandatory (minimum 32 characters)
-- **Bearer tokens**: Simple, good for development (Authorization header)
-- **HMAC-SHA256**: Production-recommended, prevents replay attacks (signature headers)
-- Credentials exchanged out-of-band during publisher onboarding
-- See [Security](/docs/building/by-layer/L1/security) for implementation details
+**Webhook security:**
+- **Signed webhooks (recommended):** omit `authentication` on a request served at 3.3 or later. When this block is absent, the seller signs every delivery under the profile the registration's `signing_profile` selects (`adcp/webhook-signing/v1` when it is omitted), as for `push_notification_config`, and no shared secret crosses the wire.
+- **`authentication` is required on a request served below 3.3** (credentials at least 32 characters), including when a 3.3 seller serves a buyer pinned to 3.2.
+- **Bearer tokens** (legacy): Authorization header. **HMAC-SHA256** (legacy): signature headers. Both are deprecated and removed in 4.0.
+- Legacy credentials are exchanged out-of-band during publisher onboarding.
+- See [Webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks) for the switch rule and verification details.
 
 #### Supported Frequencies
 
@@ -1421,7 +1421,7 @@ From AdCP 3.3, `impressions` is optional on `daily_breakdown` rows and on every 
 - Receivers MUST NOT treat absence as zero, and MUST NOT derive impression-denominated values for the row (`cpm`, `ctr`, `completion_rate`, `viewable_rate`, and similar). Senders MUST omit impression-denominated rates on such a row.
 - Senders MUST NOT put views, plays, downloads, or any other count in `impressions`. Report them in `views`, `completed_views`, `plays`, `downloads`, or `vendor_metric_values`.
 - When `impressions` is a committed metric for the package, disclose the absence through `by_package[].missing_metrics`. Do not add `missing_metrics` to rows.
-- Sellers MUST NOT omit `impressions` toward callers pinned below AdCP 3.3. A caller with no declared pin (see `adcp_version` in [Versioning](/docs/reference/versioning)) is treated as pinned below 3.3, and reporting webhooks follow the pin of the registration that receives them. Toward those callers, a seller with no impression count omits the row, since every one of these breakdowns is optional, and never substitutes `impressions: 0`.
+- A response or webhook served below AdCP 3.3 follows that release's schema, which requires `impressions` ([Serving an older pin](/docs/reference/versioning#serving-an-older-pin)). In it, a seller with no impression count omits the row, since every one of these breakdowns is optional, and never substitutes `impressions: 0`.
 - A channel that already reports `ooh_metrics.estimated_impressions` SHOULD keep `impressions` present on the row, as that field specifies.
 - The rule applies regardless of `pricing_model`. `pricing_model` lives on `by_package`, not on `daily_breakdown` rows, so the schema cannot condition on it.
 
@@ -1446,7 +1446,7 @@ One `by_spot` row can follow a spot from plan to as-run. A sales house places sp
 - **Ordering.** Rows are ordered ascending by `aired_at`, or by `scheduled_at` when there is no `aired_at`. A spot that moved from `scheduled` to `aired` therefore re-sorts by its actual airing time.
 - **Seller identity mapping.** Broadcast traffic systems often keep the pre-air schedule and the as-run log as separate record sets. A seller that reports `scheduled` rows MUST reconcile them so the `spot_id` a buyer saw while the spot was scheduled is the one it sees after airing or preemption.
 - **Not reported versus not delivered.** `supports_spot_breakdown.available_statuses` lists the statuses the seller reports. A status that is not listed is not reported, so the absence of `scheduled`, `preempted`, or `makegood` rows proves nothing. A buyer MUST NOT read it as nothing planned, nothing preempted, or no makegoods. `supports_spot_breakdown.supports_break_position` says whether `break_position` is populated. When the declaration is absent, or `available_statuses` is empty, the seller reports aired rows only, as in AdCP 3.2. A seller that lists `scheduled` does not promise a planning horizon, so an empty plan this early is not evidence that nothing will be placed.
-- **Compatibility.** Rows with no `spot_status` and an `aired_at` stay valid and mean `aired`, so AdCP 3.2 documents are unchanged. AdCP 3.2 validators require `aired_at` on every row, so sellers MUST NOT send `scheduled` or `preempted` rows, or the new capability fields, to callers pinned below AdCP 3.3. A caller with no declared pin is treated as pinned below 3.3, and reporting webhooks follow the pin of the registration that receives them. `aired` and `makegood` rows carry `aired_at` and are valid there, because 3.2 validators ignore the new properties.
+- **Compatibility.** Rows with no `spot_status` and an `aired_at` stay valid and mean `aired`, so AdCP 3.2 documents are unchanged. A response or webhook served below AdCP 3.3 follows that release's schema ([Serving an older pin](/docs/reference/versioning#serving-an-older-pin)), and AdCP 3.2 requires `aired_at` on every row, so it carries no `scheduled` or `preempted` rows. `aired` and `makegood` rows carry `aired_at` and are valid there, because 3.2 validators ignore the new properties.
 
 `break_position` places a spot in its commercial break: `position_in_break` (1-based), `spots_in_break` (total spots in that break, at least `position_in_break`), and an optional `break_id` shared by spots in the same break. On a `scheduled` row it is the planned position and can change before airing. Validators SHOULD check `spots_in_break >= position_in_break`, which JSON Schema cannot express. Position pricing is outside this reporting contract. A seller that returns any of these fields MUST list `media_buy.spot_lifecycle` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
 
