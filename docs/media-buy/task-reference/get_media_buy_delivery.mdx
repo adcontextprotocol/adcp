@@ -148,7 +148,7 @@ Returns delivery data as per-media-buy rows:
 | `media_buy_id` | Media buy identifier |
 | `currency` | ISO 4217 denomination for monetary values in this row. Sellers SHOULD populate it when the row has one currency. Every package currency in an AdCP-authored buy MUST match it. Legacy or external mixed-currency buys omit it and report monetary values only at package level. |
 | `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`). In webhook context, may also be `reporting_delayed` or `failed`. Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
-| `totals` | Metrics aggregated within this media buy. Legacy or external mixed-currency buys omit monetary totals such as `spend`. |
+| `totals` | Metrics aggregated within this media buy. Legacy or external mixed-currency buys omit monetary totals such as `spend`. When the buy's packages report a `metric_id` under more than one qualifier set (in `by_package[].metric_values` or a package's flat carrier), sellers MUST omit that metric's flat carrier (the whole nested object, such as `viewability` or `brand_lift`) from `totals` and from every window slice's `totals` rather than combine rows; read the package rows instead. One row is one `(scope, metric_id, qualifier)` key. |
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
 | `daily_breakdown` | Day-by-day delivery for single-currency rows, one row per calendar date in the reporting timezone. Omitted for legacy/external mixed-currency buys because daily rows have no package currency grain. |
 
