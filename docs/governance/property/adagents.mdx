@@ -206,13 +206,16 @@ Placement catalog formats describe what the public placement can support. When a
   "catalog_etag": "daily-pulse-2026-05-25",
   "formats": [
     {
-      "format_kind": "html5",
-      "format_option_id": "publisher_takeover_html5",
-      "display_name": "Publisher takeover HTML5",
+      "format_kind": "display_tag",
+      "format_option_id": "publisher_takeover_tag",
+      "display_name": "Publisher takeover third-party tag",
       "params": {
         "width": 970,
         "height": 250,
-        "max_file_size_kb": 200
+        "supported_delivery_types": ["inline_markup"],
+        "slots": [
+          { "asset_group_id": "html_creative", "asset_type": "display_tag", "required": true }
+        ]
       }
     }
   ],
@@ -232,13 +235,13 @@ Placement catalog formats describe what the public placement can support. When a
         "authority": "publisher_designated",
         "routes": [
           {
-            "format_option_id": "publisher_takeover_html5",
-            "capability_id": "preview_display_300x250_html"
+            "format_option_id": "publisher_takeover_tag",
+            "capability_id": "preview_display_970x250_html"
           }
         ]
       },
       "format_options": [
-        { "format_option_id": "publisher_takeover_html5" },
+        { "format_option_id": "publisher_takeover_tag" },
         {
           "format_kind": "image",
           "params": {

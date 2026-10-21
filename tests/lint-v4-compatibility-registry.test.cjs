@@ -55,6 +55,7 @@ function makeFixture({
   validations = [validValidation()],
   canonicalCodes = {},
   anchors = ['widget_ids_removed_in_4_0'],
+  notChecked,
 } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lint-v4-compat-'));
   const sourceDir = path.join(root, 'source');
@@ -64,7 +65,12 @@ function makeFixture({
 
   fs.writeFileSync(
     path.join(sourceDir, 'universal/v4-compatibility.yaml'),
-    yaml.dump({ id: 'v4_compatibility', migration_guide: GUIDE_REL, checks }),
+    yaml.dump({
+      id: 'v4_compatibility',
+      migration_guide: GUIDE_REL,
+      checks,
+      ...(notChecked && { schema_removals_not_checked: notChecked }),
+    }),
   );
   fs.writeFileSync(
     path.join(sourceDir, 'universal/demo.yaml'),
@@ -84,10 +90,15 @@ function makeFixture({
   return { root, sourceDir, repoRoot };
 }
 
-function run(options) {
+function run(options = {}) {
   const fixture = makeFixture(options);
+  const schemaDir = path.join(fixture.root, 'schemas');
+  for (const [rel, doc] of Object.entries(options.schemas || {})) {
+    fs.mkdirSync(path.dirname(path.join(schemaDir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(schemaDir, rel), JSON.stringify(doc));
+  }
   try {
-    return lint({ sourceDir: fixture.sourceDir, repoRoot: fixture.repoRoot });
+    return lint({ sourceDir: fixture.sourceDir, repoRoot: fixture.repoRoot, schemaDir });
   } finally {
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }
@@ -185,4 +196,41 @@ test('validation_id_suffix: validation-observed ids end in _in_4_0', () => {
 test('migration_anchor_missing and stray_migration_anchor', () => {
   assertRule(run({ anchors: [] }), 'migration_anchor_missing');
   assertRule(run({ anchors: ['widget_ids_removed_in_4_0', 'ghost_removed_in_4_0'] }), 'stray_migration_anchor');
+});
+
+const WIDGET_SCHEMA = {
+  'core/widget.json': {
+    properties: {
+      widget_ids: { type: 'array', deprecated: true, 'x-removed-in': '4.0.0' },
+      gadget: { type: 'string', deprecated: true, 'x-removed-in': '4.0.0' },
+    },
+  },
+};
+
+test('schema sites listed in a check or as not checked are clean', () => {
+  const checks = [validCheck({ schema_sites: ['core/widget.json#/properties/widget_ids'] })];
+  const notChecked = [{ change: 'Gadget', reason: 'Buyer-sent.', sites: ['core/widget.json#/properties/gadget'] }];
+  const errors = run({ checks, schemas: WIDGET_SCHEMA, notChecked });
+  assert.deepEqual(errors, []);
+});
+
+test('schema_site_unlisted: a node marked for 4.0 removal is not in the registry', () => {
+  const checks = [validCheck({ schema_sites: ['core/widget.json#/properties/widget_ids'] })];
+  assertRule(run({ checks, schemas: WIDGET_SCHEMA, notChecked: [] }), 'schema_site_unlisted');
+});
+
+test('schema_site_invalid and schema_site_duplicate', () => {
+  const checks = [validCheck({ schema_sites: ['core/widget.json#/properties/widget_ids', 'core/widget.json#/properties/nope'] })];
+  const notChecked = [
+    { change: 'Gadget', reason: 'Buyer-sent.', sites: ['core/widget.json#/properties/gadget', 'core/widget.json#/properties/widget_ids'] },
+  ];
+  const errors = run({ checks, schemas: WIDGET_SCHEMA, notChecked: notChecked });
+  assertRule(errors, 'schema_site_invalid');
+  assertRule(errors, 'schema_site_duplicate');
+});
+
+test('registry_shape: a not-checked group needs a reason', () => {
+  const notChecked = [{ change: 'Gadget', sites: ['core/widget.json#/properties/gadget'] }];
+  const checks = [validCheck({ schema_sites: ['core/widget.json#/properties/widget_ids'] })];
+  assertRule(run({ checks, schemas: WIDGET_SCHEMA, notChecked: notChecked }), 'registry_shape');
 });
