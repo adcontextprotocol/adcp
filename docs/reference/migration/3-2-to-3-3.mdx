@@ -54,6 +54,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 24 | Sellers with a media-buy, account or creative revision | Advance it on every committed change from any origin, including `sync_creatives` assignments and ingested connected-platform changes; add `origin` to `history` entries; optionally return `seller_revision` on `list_creatives`. |
 | 25 | Buyers that update media buys | Pass the latest `revision`, and expect `CONFLICT` after a seller or connected-platform change; re-read and retry. |
 | 26 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
+| 27 | Buyers and sellers of hosted video or audio | Optionally move playback trackers from `event: custom` to the new `pixel_tracker` playback events. |
 
 ## Required to claim 3.3 behavior
 
@@ -330,8 +331,9 @@ Many 3.3 additions sit inside objects that 3.2 closes, so a strict 3.2 validator
 | Seller | `by_spot[]` rows with `spot_status: "scheduled"` or `"preempted"`, and `available_statuses` / `supports_break_position` on `supports_spot_breakdown` | 3.2 requires `aired_at` on every row and closes the spot capability. |
 | Seller | `hold_policy` on products and proposals, `committed` proposals under `terms_only` finalize | The fields are not in 3.2, and a 3.2 buyer reads `committed` as an inventory hold. |
 | Seller | `dooh_inventory_summary` on canonical products (`list_products`, `request_proposals`, `refine_proposals`) | 3.2 `canonical-product.json` is closed. |
+| Buyer | `pixel_tracker` `event` values `start`, `first_quartile`, `midpoint`, `third_quartile`, `complete` | 3.2 closes the `event` enum; send them as `event: custom` until the seller negotiates 3.3 ([below](#hosted-video-and-audio-playback-trackers)). |
 
-New enum values (`nmo`, `videoamp`, `mxf`, `mpeg2`, `avc_intra`, `xavc`, `print_metrics` in `available-metric`, `definition_changed`) and error codes (`REFERENCE_DEFINITION_CHANGED`) fall under the 3.x rule that clients tolerate unknown values, but a strict 3.2 validator still rejects them; send them only to 3.3 peers too.
+New enum values (`nmo`, `videoamp`, `mxf`, `mpeg2`, `avc_intra`, `xavc`, `print_metrics` in `available-metric`, `definition_changed`, `operator_fee` in `adjustment-kind`) and error codes (`REFERENCE_DEFINITION_CHANGED`) fall under the 3.x rule that clients tolerate unknown values, but a strict 3.2 validator still rejects them; send them only to 3.3 peers too.
 
 `get_adcp_capabilities` runs before negotiation, so a seller cannot gate its capability document. A 3.3 seller's `media_buy.features.catalog_ingestion` object fails a 3.2 schema that admits only booleans there. Buyers parse capabilities tolerantly, as [Versioning](/docs/reference/versioning) recommends.
 
@@ -365,6 +367,14 @@ These change generated types or bundle shape without changing what a conformant 
 ## Adopt by capability
 
 Optional unless noted. A seller that declares nothing keeps 3.2 behavior.
+
+### Production security profile (experimental)
+
+Optional. A seller that verifies inbound requests can advertise `security_profiles: ["adcp-prod-security-3.3"]`, listing `security.profiles` in `experimental_features`. The profile covers signed spend-committing operations under either signing profile (`adcp/request-signing/v1` or `web-bot-auth`), a 15-minute revocation freshness ceiling with T/3 polling, acts-for checks for the verified signer only, governance binding, least privilege, and outbound fetch safety. In 3.3, rejecting non-conforming counterparties is a SHOULD, and a per-principal spend ceiling is recommended but not part of the id. Buyers that require the profile refuse spend-committing calls when it is absent. See the [production security profile](/docs/building/by-layer/L1/production-security-profile).
+
+### Seller onboarding posture (experimental)
+
+Optional. A seller can publish `account.agent_onboarding` on `get_adcp_capabilities`, listing `account.agent_onboarding` in `experimental_features`. It gives a mode (`open`, `application`, `invite_only`) per billing party and for sandbox, the requirements for each, and where a human starts. Buyers read it on the unauthenticated capability fetch to tell which sellers take them now, which need a human, and which are not available. The block is seller-wide and identical for every caller. `open` binds identity, not spend, and needs the Web Bot Auth profile. See [account.agent_onboarding](/docs/protocol/get_adcp_capabilities#accountagent_onboarding).
 
 ### Stable account IDs
 
@@ -407,6 +417,37 @@ Optional. `list_creatives` may return `seller_revision` on each creative: a sell
 ### Assignment landing pages and trackers
 
 A seller that declares `creative.supports_assignment_landing_page: true` (requires a creative library) accepts `landing_page_url` on a package creative assignment, `sync_creatives` `assignments[]`, and `assign` operations. The override changes the destination for one creative on one package without changing the library creative or its approval; the seller serves it everywhere it applies or rejects the assignment, and returns the actual destination from `list_creatives` and `get_media_buys`. Agents without the capability reject the field with `UNSUPPORTED_FEATURE`. Likewise, a seller that declares `creative.supports_assignment_trackers: true` accepts assignment-scoped measurement `trackers`, fires them alongside the creative's own without changing its revision or approval, enforces the format's tracker-slot limits, and returns the assignment-only list from `list_creatives` and `get_media_buys` (#8220). See [Assignment landing pages](/docs/creative/task-reference/sync_creatives#assignment-landing-pages).
+
+### Hosted video and audio playback trackers
+
+Optional. The `pixel_tracker` `event` enum gains `start`, `first_quartile`, `midpoint`, `third_quartile` and `complete`, with the same meaning as the VAST events of the same name, spelled in snake_case. They apply to `video_hosted` and `audio_hosted` and are ignored on formats with no playback timeline, as `viewable_video_50` is. `complete` means played to the end whether or not audio was on; `audible_video_complete` remains the audio-on variant. Tracker execution selectors share the enum, so a seller with a [tracker execution contract](/docs/creative/tracker-execution-contracts) declares which of them it fires. See [Pixel tracker asset](/docs/creative/asset-types#pixel-tracker-asset) for the event definitions and a non-normative Google Ad Manager and FreeWheel mapping.
+
+**Buyers sending to 3.2 sellers.** A 3.2 schema rejects the new values, so do not send them yet. Send each as `event: custom` with `custom_event_name` set to the 3.3 value:
+
+```json
+{
+  "asset_type": "pixel_tracker",
+  "event": "first_quartile",
+  "method": "img",
+  "url": "https://measurement.example.com/q1?cid={CREATIVE_ID}"
+}
+```
+
+becomes, on 3.2:
+
+```json
+{
+  "asset_type": "pixel_tracker",
+  "event": "custom",
+  "custom_event_name": "first_quartile",
+  "method": "img",
+  "url": "https://measurement.example.com/q1?cid={CREATIVE_ID}"
+}
+```
+
+An SDK talking to a seller that does not advertise 3.3 MAY make this rewrite itself. Sellers can recognize those names now, and moving to 3.3 is a rename of `event`. A seller with no tracker execution contract silently skips a custom event it does not recognize, so confirm the seller maps the names before relying on them for measurement.
+
+**Downgrade to 3.0.x sellers.** An SDK that downgrades `pixel_tracker` to the v1 `tracker_pixel` shape drops these trackers, including the `event: custom` interim form above, and emits `PIXEL_TRACKER_LOSSY_DOWNGRADE`. It never emits them as `impression_tracker`, because a quartile URL fired at impression time would count every impression as a quartile view.
 
 ### Linear TV
 
@@ -494,9 +535,10 @@ Adopters of these patches have already seen these; their changesets reappear in 
 
 ## Deprecations
 
-3.3 deprecates two result fields and one usage; all remain functional throughout 3.x:
+3.3 deprecates two result fields, the RFC 9421 signing profiles, and one usage; all remain functional throughout 3.x:
 
 - **`seller_id` on `sync_event_sources` and `sync_audiences` results.** Use the new optional `platform_id` for the object's ID in the seller's ad platform, matching `sync_creatives` and `sync_catalogs`. **Sellers** reporting a platform identifier in 3.3 and later 3.x responses MUST emit both fields with identical values, including discovery responses and seller-managed event sources. **Buyers** MUST prefer `platform_id` and fall back to `seller_id` only when `platform_id` is absent. Either field may be absent in legacy responses, and both may be absent when no platform identifier is available. Continue using `event_source_id` and `audience_id` in AdCP requests. The aliases keep their object-ID semantics; they are never seller identity. `adagents.json` `contact.seller_id` and publisher identifiers of type `seller_id` are unchanged. Removal is no earlier than 4.0 and subject to the [six-month notice policy](/docs/reference/versioning#deprecation-policy). See [event source migration](/docs/media-buy/task-reference/sync_event_sources#platform-identifier-migration-adcp-3-3) and [audience migration](/docs/media-buy/task-reference/sync_audiences#platform-identifier-migration-adcp-3-3) ([#8290](https://github.com/adcontextprotocol/adcp/issues/8290)).
+- **The AdCP RFC 9421 signing profiles**, for requests (`adcp/request-signing/v1`) and webhooks (`adcp/webhook-signing/v1`), with keys found through brand.json and `identity.brand_json_url`. They keep working throughout 3.x and are removed in AdCP 4.0, together with the brand.json trust fields ([DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md)). Their replacement is the experimental Web Bot Auth profile ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities); role-by-role steps in the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3)): identity is the signer's origin, keys come from that origin's key directory, and no capabilities call is needed. **Signers** that serve no capabilities endpoint can move now. **Verifiers** keep accepting RFC 9421 signatures through 3.x, under the no-downgrade rule once an origin is bound.
 - **The natural key as the account reference after provisioning.** Sending the natural-key `AccountRef` on account-scoped tasks once the account exists is deprecated and planned for removal in AdCP 4.0 ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850)). It keeps working throughout 3.x. The natural key itself stays: buyers use it to open accounts with `sync_accounts` and as a `list_accounts` filter to look up an account's ID. **Sellers** SHOULD return `account_id` from `sync_accounts` and declare `account.stable_account_id: true` during 3.x. **Buyers** store the returned ID and send it to sellers that declare the capability. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere).
 
 Existing 3.2 deprecations keep their published removal windows.

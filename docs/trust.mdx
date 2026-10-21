@@ -119,7 +119,7 @@ These are the wire-level hooks deployers implement. They are seams, not guarante
 | Regulated-category block | Schema-level rejection of `authority_level: agent_full` on `fair_housing`, `fair_lending`, `fair_employment` | Three categories only; others require governance-agent implementation |
 | Brand identity declaration | `brand.json` `house`, `brands[]`, `authorized_operators[]`, house-level `trademarks[]` | Discoverable; deployer / ecosystem resolves against public registries |
 | Mutual-assertion trust state | `brand.json` `house_domain` ↔ `brand_refs[]` (RFC #3533) | `relationship_trust` signal; deployer policy decides what's required |
-| Agent identity | `brand.json` `agents[].jwks_uri`, `adagents.json` `signing_keys` | Verifiable signing keys; key-transparency layer is 4.0 |
+| Agent identity | `brand.json` `agents[].jwks_uri` (RFC 9421 profile, deprecated in 3.3), or the agent origin's key directory plus a trust.json listing (Web Bot Auth profile, experimental in 3.3); `adagents.json` `signing_keys` | Verifiable signing keys; key-transparency layer is 4.0 |
 | Behavioral verification | AAO Verified `(Live)` continuous attestation via canonical test campaigns | Issued and revoked by AAO; deployer trusts the mark, not the AdCP runtime |
 
 **See [Known Limitations](/docs/reference/known-limitations)** for what AdCP explicitly does not do — that page is the adversarial read this one assumes you've taken.

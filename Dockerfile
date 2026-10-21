@@ -5,12 +5,9 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-COPY scripts/install-sdk-creative-build-probe.cjs ./scripts/install-sdk-creative-build-probe.cjs
-COPY patches/sdk-creative-build-probe ./patches/sdk-creative-build-probe
 
 # Install ALL dependencies (including dev dependencies for TypeScript build)
-RUN npm ci --ignore-scripts \
- && node scripts/install-sdk-creative-build-probe.cjs
+RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY . .
@@ -171,13 +168,10 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-COPY scripts/install-sdk-creative-build-probe.cjs ./scripts/install-sdk-creative-build-probe.cjs
-COPY patches/sdk-creative-build-probe ./patches/sdk-creative-build-probe
 
 # --ignore-scripts blocks arbitrary postinstall lifecycle scripts from the full
 # dep tree; native deps are rebuilt explicitly per-package.
 RUN npm ci --omit=dev --ignore-scripts \
- && node scripts/install-sdk-creative-build-probe.cjs \
  && npm rebuild sharp \
  && npm cache clean --force
 
