@@ -1,4 +1,5 @@
 import type { ComplianceRunProvenance } from '../compliance/run-provenance.js';
+import type { V4ReadinessReport } from '../compliance/v4-readiness.js';
 import { isAuthoritativeComplianceRun, type RunCompleteness } from '../compliance/run-publication.js';
 import { query, getClient, getClientWithDeadline, withDatabaseDeadline } from './client.js';
 import { agentIdentityContainment } from './agent-identity-match.js';
@@ -142,6 +143,8 @@ export interface ComplianceRun {
   storyboard_statuses_json: StoryboardStatusEntry[] | null;
   provenance_json: ComplianceRunProvenance | null;
   notices_json: NoticeEntry[] | null;
+  /** Advisory AdCP 4.0 readiness report; NULL for runs ingested before adcp#8332. */
+  v4_readiness_json: V4ReadinessReport | null;
 }
 
 export interface TrackSummaryEntry {
@@ -361,6 +364,11 @@ export interface RecordComplianceRunInput {
    * See NoticeEntry and runner-output-contract.yaml.
    */
   notices_json?: NoticeEntry[] | null;
+  /**
+   * Advisory AdCP 4.0 readiness report derived from this run
+   * (universal/v4-compatibility.yaml). Never affects 3.x grading.
+   */
+  v4_readiness_json?: V4ReadinessReport | null;
   /**
    * Exact role/version grading evidence precomputed from this same full run.
    * Persisted in the run transaction so a selection can never reference a
@@ -740,8 +748,8 @@ export class ComplianceDatabase {
           observations_json, triggered_by, triggered_org_id, dry_run,
           notices_json, refresh_operation_id, agent_quality_evaluation_id,
           completeness, is_authoritative, storyboard_statuses_json, provenance_json,
-          runner_capability_version
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+          runner_capability_version, v4_readiness_json
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
         ON CONFLICT DO NOTHING
         RETURNING *`,
         [
@@ -770,6 +778,7 @@ export class ComplianceDatabase {
           JSON.stringify(input.storyboard_statuses ?? []),
           input.provenance_json ? JSON.stringify(input.provenance_json) : null,
           input.runner_capability_version ?? null,
+          input.v4_readiness_json ? JSON.stringify(input.v4_readiness_json) : null,
         ],
       );
       let run = runResult.rows[0] as ComplianceRun | undefined;
@@ -1619,6 +1628,27 @@ export class ComplianceDatabase {
     const raw = result.rows[0]?.notices_json;
     if (!Array.isArray(raw)) return [];
     return raw as NoticeEntry[];
+  }
+
+  /**
+   * Return the advisory AdCP 4.0 readiness report stored on the same run
+   * getLatestNotices reads. Null when no run exists or the run predates the
+   * report (adcp#8332) — callers must not fabricate one.
+   */
+  async getLatestV4Readiness(agentUrl: string, runId?: string | null): Promise<V4ReadinessReport | null> {
+    if (runId === null) return null;
+    const result = await query(
+      `SELECT v4_readiness_json
+       FROM agent_compliance_runs
+       WHERE agent_url = $1 AND dry_run = FALSE AND is_authoritative = TRUE
+         AND ($2::uuid IS NULL OR id = $2::uuid)
+       ORDER BY tested_at DESC
+       LIMIT 1`,
+      [agentUrl, runId ?? null],
+    );
+    const raw = result.rows[0]?.v4_readiness_json;
+    if (!raw || typeof raw !== 'object' || !Array.isArray((raw as V4ReadinessReport).checks)) return null;
+    return raw as V4ReadinessReport;
   }
 
   /**
