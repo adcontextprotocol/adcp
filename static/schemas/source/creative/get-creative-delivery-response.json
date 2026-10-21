@@ -151,7 +151,8 @@
           "type": "integer",
           "description": "**Deprecated** — use `total_count` instead. Retained as a legacy alias for 3.x backward compatibility; removed in AdCP 4.0. Sellers populating this field MUST also populate `total_count` with the same value.",
           "minimum": 0,
-          "deprecated": true
+          "deprecated": true,
+          "x-removed-in": "4.0.0"
         }
       },
       "required": [

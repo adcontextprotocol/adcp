@@ -25,6 +25,7 @@
     "authentication": {
       "type": "object",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Legacy authentication for webhook delivery (A2A-compatible): Bearer or HMAC-SHA256, both deprecated and removed in AdCP 4.0 (#4288). Required on a request served below 3.3. When this block is absent, the seller signs every delivery under the profile the registration's `signing_profile` selects (`adcp/webhook-signing/v1` when it is omitted), as for `push_notification_config` (docs/building/by-layer/L1/security.mdx#webhook-callbacks).",
       "properties": {
         "schemes": {
