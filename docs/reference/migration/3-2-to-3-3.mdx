@@ -15,7 +15,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 
 Read these first:
 
-- [Required to claim 3.3 behavior](#required-to-claim-3-3-behavior): rules that narrow what a conformant implementation may do, including [responses that conform to the served release](#responses-conform-to-the-served-release), [bounded counterparty-asserted domain lists](#counterparty-asserted-domain-lists-are-bounded), [seller revisions that advance on every committed change](#seller-revisions-advance-on-every-committed-change), [enforceable domain identifiers](#property-domain-identifiers-have-an-enforceable-format), [property list references through AdCP tasks](#property-list-references-resolve-through-adcp-tasks), and [dual emission of platform IDs](#platform-ids-are-emitted-under-both-names).
+- [Required to claim 3.3 behavior](#required-to-claim-3-3-behavior): rules that narrow what a conformant implementation may do, including [responses that conform to the served release](#responses-conform-to-the-served-release), [refinement that carries compliance forward](#refinement-carries-compliance-forward), [bounded counterparty-asserted domain lists](#counterparty-asserted-domain-lists-are-bounded), [seller revisions that advance on every committed change](#seller-revisions-advance-on-every-committed-change), [enforceable domain identifiers](#property-domain-identifiers-have-an-enforceable-format), [property list references through AdCP tasks](#property-list-references-resolve-through-adcp-tasks), and [dual emission of platform IDs](#platform-ids-are-emitted-under-both-names).
 - [Brand JSON size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib), [audience match counts](#audience-match-counts-may-be-absent), and the [4 MiB response-size default](#client-response-size-default-rises-to-4-mib): three loosened guarantees, so a 3.2 peer can reject or misread what a 3.3 peer sends.
 - [Recommended: bound agent response size](#recommended-bound-agent-response-size): a new SHOULD that tightens what an adopting buyer accepts.
 - [Send only to 3.3 peers](#send-only-to-3-3-peers): new fields a 3.2 validator rejects.
@@ -56,6 +56,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 26 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
 | 27 | Buyers and sellers of hosted video or audio | Optionally move playback trackers from `event: custom` to the new `pixel_tracker` playback events. |
 | 28 | Users of the experimental `creative.evaluator` surface | Replace `evaluator_id` with an allowlisted `agent_url` or inline `exemplars` ([details](#experimental-creative-evaluator-drops-evaluator_id)). |
+| 29 | Creative agents that advertise `creative.supports_refinement` | Retain each leaf's compliance inputs for as long as the leaf, apply them to every refinement, and never treat a refined leaf as approved ([details](#refinement-carries-compliance-forward)). |
 
 ## Required to claim 3.3 behavior
 
@@ -261,6 +262,14 @@ Once you list 3.3 in `supported_versions`, every release you list is a promise a
 **Sellers.** Check each response against the published schema of the release you echo, and stop listing a release you can't serve that way. 3.2 sellers serving a `"3.1"` pin could emit six shapes a strict 3.1 validator rejects, led by the `sync_accounts` required-field flip; see the [3.1 to 3.2 list](/docs/reference/migration/3-1-to-3-2#version-negotiation-across-3-1-and-3-2).
 
 **Buyers.** Keep parsing tolerantly, because sellers that list no release later than 3.2 aren't bound by the rule.
+
+### Refinement carries compliance forward
+
+A `build_creative` refinement (`refine_from_build_variant_id`) inherits the parent leaf's compliance set (`required_disclosures`, `prohibited_claims`). A refine request can add to it and never remove or narrow it; `message` and `config` cannot reduce it. An instruction such as "remove the disclaimer" fails the whole call with `COMPLIANCE_UNSATISFIED`. A refined leaf gets its own `creative_id`, and neither seller nor buyer-side approval of the parent extends to it. Schemas gain no field or error code.
+
+**Creative agents.** If you advertise `creative.supports_refinement`, retain each leaf's compliance inputs for the same window you retain the leaf. An agent that retains none can newly fail refinements of briefed leaves. See [Compliance and approval across refinement](/docs/creative/task-reference/build_creative#compliance-and-approval-across-refinement).
+
+**Buyers.** Re-send nothing: the parent's compliance carries forward. Treat each refined leaf as unapproved until it goes through your own review.
 
 ### Platform IDs are emitted under both names
 
