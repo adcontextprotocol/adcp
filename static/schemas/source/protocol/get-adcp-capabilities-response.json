@@ -237,6 +237,34 @@
     {
       "if": {
         "properties": {
+          "signals": {
+            "properties": {
+              "features": {
+                "properties": {
+                  "signal_lifecycle": {
+                    "const": true
+                  }
+                },
+                "required": ["signal_lifecycle"]
+              }
+            },
+            "required": ["features"]
+          }
+        },
+        "required": ["signals"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "signals.signal_lifecycle" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "media_buy": {
             "properties": {
               "proposal_refinement": {
@@ -2157,6 +2185,10 @@
           },
           "additionalProperties": true
         },
+        "event_source_archive": {
+          "type": "boolean",
+          "description": "Whether this seller supports the per-source `archived` field on `sync_event_sources` request items. When true, `archived: true` archives an event source and `archived: false` undoes it. When false or absent, the seller MUST reject a request that sends `archived` with `UNSUPPORTED_FEATURE`, so a buyer never mistakes an ignored field for an archive."
+        },
         "conversion_tracking": {
           "type": "object",
           "description": "Seller-level conversion tracking capabilities. Presence of this object indicates the seller supports sync_event_sources and log_event for conversion event tracking.",
@@ -2496,6 +2528,12 @@
           "type": "object",
           "description": "Optional signals features supported",
           "properties": {
+            "signal_lifecycle": {
+              "type": "boolean",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "true means this signals agent builds segments on demand and may emit signal_status ('processing' or 'failed') and source_audience_id on get_signals results. Absent or false means every returned signal is ready. Experimental (x-status: experimental): agents declaring this MUST list signals.signal_lifecycle in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice."
+            },
             "catalog_signals": {
               "type": "boolean",
               "description": "DEPRECATED. Legacy wire flag for structured signal_ref references to provider-published signal definitions. New agents SHOULD omit this flag; callers MUST NOT require it before using signal_ref with the Signals protocol.",
@@ -2845,7 +2883,7 @@
           "type": "boolean",
           "default": false,
           "x-status": "experimental",
-          "description": "Experimental (x-status: experimental) — agents setting this true MUST also list `creative.evaluator` in `experimental_features`; the surface MAY change between 3.x releases with notice (see docs/reference/experimental-status). When true, build_creative accepts an advisory `evaluator` input (exemplars / account-arranged evaluator_id / agent_url, plus an optional `feature_requirement[]` gate, a `rank_by` ordering, and an allowlisted `feature_agent` pointer). Feature discovery uses this response's governance.creative_features catalog: rank_by, feature_requirement, and eval.features[] all share the same creative-feature vocabulary as get_creative_features. evaluator_id is not discovered from this catalog; it is a pre-provisioned account preset whose emitted feature_ids still come from it. The evaluator populates a per-leaf `eval` block of creative-feature values (creative-feature-result[], the same shape get_creative_features returns) on BuildCreativeVariantSuccess leaves, which is what the recommended/rank it sets on the best_of_n axis are computed over. The agent runs a gate-then-rank pipeline over its best_of_n exploration: it evaluates each leaf, DROPS leaves failing `feature_requirement[]` from its recommended survivors, then orders survivors by `rank_by`. The gate is internal pruning of which leaves the agent recommends/returns from its own exploration — it never blocks an already-produced billable leaf: what is produced and billed is governed by max_variants/max_creatives/max_spend, not the evaluator. When the evaluator names an external agent, it MUST appear in `creative_policy.accepted_verifiers[]` (off-list → EVALUATOR_AGENT_NOT_ACCEPTED), and the producing agent authenticates the outbound evaluator call on the transport. Evaluator credentials and caller-supplied trust material MUST NOT be passed in the build_creative payload; credential- or trust-material payload keys should be rejected with CREDENTIAL_IN_ARGS. When false or absent, the `evaluator` input is ignored and no `eval` block is emitted."
+          "description": "Experimental (x-status: experimental) — agents setting this true MUST also list `creative.evaluator` in `experimental_features`; the surface MAY change between 3.x releases with notice (see docs/reference/experimental-status). When true, build_creative accepts an advisory `evaluator` input (exemplars / agent_url, plus an optional `feature_requirement[]` gate, a `rank_by` ordering, and an allowlisted `feature_agent` pointer). Feature discovery uses this response's governance.creative_features catalog: rank_by, feature_requirement, and eval.features[] all share the same creative-feature vocabulary as get_creative_features. A seller's house evaluator is an agent it lists in `creative_policy.accepted_verifiers[]`, named via `agent_url`; its emitted feature_ids still come from this catalog. The evaluator populates a per-leaf `eval` block of creative-feature values (creative-feature-result[], the same shape get_creative_features returns) on BuildCreativeVariantSuccess leaves, which is what the recommended/rank it sets on the best_of_n axis are computed over. The agent runs a gate-then-rank pipeline over its best_of_n exploration: it evaluates each leaf, DROPS leaves failing `feature_requirement[]` from its recommended survivors, then orders survivors by `rank_by`. The gate is internal pruning of which leaves the agent recommends/returns from its own exploration — it never blocks an already-produced billable leaf: what is produced and billed is governed by max_variants/max_creatives/max_spend, not the evaluator. When the evaluator names an external agent, it MUST appear in `creative_policy.accepted_verifiers[]` (off-list → EVALUATOR_AGENT_NOT_ACCEPTED), and the producing agent authenticates the outbound evaluator call on the transport. Evaluator credentials and caller-supplied trust material MUST NOT be passed in the build_creative payload; credential- or trust-material payload keys should be rejected with CREDENTIAL_IN_ARGS. When false or absent, the `evaluator` input is ignored and no `eval` block is emitted."
         },
         "refinable_retention_seconds": {
           "type": "integer",
