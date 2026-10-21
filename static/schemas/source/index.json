@@ -542,6 +542,10 @@
           "$ref": "/schemas/core/product-allocation.json",
           "description": "A budget allocation for a specific product within a proposal"
         },
+        "delivery-projection": {
+          "$ref": "/schemas/core/delivery-projection.json",
+          "description": "Advisory seller projection of a package's end-of-flight delivery (projected_impressions, projected_spend, projected_end_state, basis, as_of)"
+        },
         "delivery-forecast": {
           "$ref": "/schemas/core/delivery-forecast.json",
           "description": "Forecasted delivery metrics for a proposal or product allocation"
@@ -969,7 +973,7 @@
         },
         "evaluator-spec": {
           "$ref": "/schemas/core/evaluator-spec.json",
-          "description": "Advisory buyer-attached evaluator input for build_creative — the rank-side of the get_creative_features feature oracle, driving a gate-then-rank pipeline. Declares the SOURCE of feature evaluation via one of three forms (inline pass/fail exemplars calibrating a single predicted_performance feature, an account-scoped evaluator_id, or an external get_creative_features-capable agent_url), an optional hard feature_requirement[] GATE (drop fails — internal best_of_n pruning), an explicit rank_by ordering ({feature_id, direction}), an allowlisted feature_agent pointer (accepted_verifiers; off-list → EVALUATOR_AGENT_NOT_ACCEPTED), plus an optional soft eval_budget. Informs best_of_n recommended/rank; never blocks an already-produced billable leaf."
+          "description": "Advisory buyer-attached evaluator input for build_creative — the rank-side of the get_creative_features feature oracle, driving a gate-then-rank pipeline. Declares the SOURCE of feature evaluation via one of two forms (inline pass/fail exemplars calibrating a single predicted_performance feature, or an external get_creative_features-capable agent_url), an optional hard feature_requirement[] GATE (drop fails — internal best_of_n pruning), an explicit rank_by ordering ({feature_id, direction}), an allowlisted feature_agent pointer (accepted_verifiers; off-list → EVALUATOR_AGENT_NOT_ACCEPTED), plus an optional soft eval_budget. Informs best_of_n recommended/rank; never blocks an already-produced billable leaf."
         },
         "property-id": {
           "$ref": "/schemas/core/property-id.json",
@@ -1444,6 +1448,14 @@
         "feedback-source": {
           "$ref": "/schemas/enums/feedback-source.json",
           "description": "Source of performance feedback data"
+        },
+        "delivery-projection-end-state": {
+          "$ref": "/schemas/enums/delivery-projection-end-state.json",
+          "description": "Projected end-of-flight state of a package (on_pace, complete, underdelivery, early_exhaustion)"
+        },
+        "delivery-projection-basis": {
+          "$ref": "/schemas/enums/delivery-projection-basis.json",
+          "description": "Class of method behind a delivery projection (trailing_daily_avg, trailing_hourly_avg, platform_model, seller_defined)"
         },
         "forecast-method": {
           "$ref": "/schemas/enums/forecast-method.json",
