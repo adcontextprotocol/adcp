@@ -454,7 +454,7 @@ A media buy MAY declare the earlier buy it succeeds — a renewal onto a new fli
 
 **Experimental in AdCP 3.3** (`media_buy.lineage`). A seller that implements lineage MUST list `media_buy.lineage` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), and buyers send the fields only to sellers that do; a seller that does not list it MUST NOT record them, and rejects them with `UNSUPPORTED_FEATURE` as above. See [Experimental Status](/docs/reference/experimental-status).
 
-Buy-level lineage is distinct from spot-level `replaces_spot_id`, which links airings inside a delivery report (`media_buy.spot_lifecycle`). Seller-initiated replacement offers are a separate flow; lineage is the persistent link recorded once a replacement buy exists, whatever initiated it. Decision record: DR-XXXX.
+Buy-level lineage is distinct from spot-level `replaces_spot_id`, which links airings inside a delivery report (`media_buy.spot_lifecycle`). Seller-initiated replacement offers are a separate flow; lineage is the persistent link recorded once a replacement buy exists, whatever initiated it. Decision record: DR-0030.
 
 ### Asynchronous Operations
 

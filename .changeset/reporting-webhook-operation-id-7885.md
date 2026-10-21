@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-feat(schema): add `operation_id` to `core/reporting-webhook.json` (fixes #7885).
+Add `operation_id` to `core/reporting-webhook.json` (fixes #7885).
 
 `media_buy_delivery` webhook payloads require `operation_id`, but a buyer who registers only `reporting_webhook` in `create_media_buy` had no way to supply one — sellers had to invent a value (spec-forbidden), emit a schema-invalid payload, or send nothing (Embedded Sales Agent fails closed and skips delivery webhooks entirely). The registration schema now carries `operation_id` with the same constraints as `push_notification_config.operation_id` (`minLength: 1`, `maxLength: 255`, `^[A-Za-z0-9_.:-]{1,255}$`).
 

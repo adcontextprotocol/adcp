@@ -2,7 +2,7 @@
 "adcontextprotocol": patch
 ---
 
-compliance: fix two storyboard assertions that compared against an unresolved `$context` token, and gate assertion comparands at build time.
+Fix two storyboard assertions that compared against an unresolved `$context` token, and gate assertion comparands at build time.
 
 The runner substitutes `validations[].value`, `validations[].allowed_values[]`
 and a webhook step's `filter` against the context as it stood *before* the

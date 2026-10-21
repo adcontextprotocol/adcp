@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-spec(creative): buyers can now tell how current creative assignment and approval state is. Four optional `date-time` fields apply the `media_buys[].status_as_of` pattern to creative state:
+Buyers can now tell how current creative assignment and approval state is. Four optional `date-time` fields apply the `media_buys[].status_as_of` pattern to creative state:
 
 - `get_media_buys` `packages[].creative_assignments_as_of`: when the seller last refreshed the package's assignment set (which creatives appear in `creative_approvals`). A creative's absence is asserted only as of that time.
 - `get_media_buys` `packages[].creative_approvals[].approval_status_as_of`: when `approval_status`, `rejection_reason`, and `approval_scopes` were last refreshed.

@@ -1,5 +1,5 @@
 ---
-id: DR-XXXX  # placeholder; next free number assigned at merge
+id: DR-0027
 title: Failed mutations report their outcome on the error object, not a new code
 class: normative
 status: proposed

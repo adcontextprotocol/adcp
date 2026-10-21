@@ -2,7 +2,7 @@
 "adcontextprotocol": patch
 ---
 
-compliance: seed `media_buy_id` in the `buyer_monitoring` storyboard and reject unresolvable `$context` tokens at build time.
+Seed `media_buy_id` in the `buyer_monitoring` storyboard and reject unresolvable `$context` tokens at build time.
 
 `buyer_monitoring` polls delivery for the buy declared in
 `fixtures.fixture_publisher.active_buy`, but no step in the storyboard creates

@@ -1,5 +1,5 @@
 ---
-id: DR-XXXX
+id: DR-0030
 title: Media-buy lineage is forward-only, same-seller, and set once at creation
 class: normative
 status: proposed
@@ -7,8 +7,6 @@ date: 2026-10-08
 refs: ["#5849"]
 dissent: none
 ---
-
-The `DR-XXXX` number and this filename are placeholders. The number is assigned at merge.
 
 ## Decision
 

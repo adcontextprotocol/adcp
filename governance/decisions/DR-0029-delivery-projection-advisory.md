@@ -1,5 +1,5 @@
 ---
-id: DR-XXXX
+id: DR-0029
 title: Delivery projections are advisory forecasts, not delivery records
 class: normative
 status: proposed
@@ -7,8 +7,6 @@ date: 2026-10-09
 refs: ["#5850"]
 dissent: none
 ---
-
-The `DR-XXXX` number and this filename are placeholders. The number is assigned at merge.
 
 ## Decision
 
