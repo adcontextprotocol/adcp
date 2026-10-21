@@ -1,5 +1,5 @@
 ---
-id: DR-XXXX
+id: DR-0028
 title: A fixed-price, non-guaranteed seller claims `sales-fixed-rate`, and seller review is a commitment axis, not a status
 class: normative
 status: proposed
