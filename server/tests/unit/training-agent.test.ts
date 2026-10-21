@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildCatalog, buildProposals } from '../../src/training-agent/product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from '../../src/training-agent/formats.js';
-import { PUBLISHERS } from '../../src/training-agent/publishers.js';
+import { PUBLISHERS, buildVendorMetricOptimizationCapability } from '../../src/training-agent/publishers.js';
 import { SIGNAL_PROVIDERS, getAllSignals } from '../../src/training-agent/signal-providers.js';
 import {
   getSession,
@@ -1776,6 +1776,13 @@ describe('createTrainingAgentServer', () => {
 
     expect(mediaBuy.vendor_metric_optimization).toEqual({
       supported_targets: ['threshold_rate'],
+      supported_metrics: [
+        {
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_score',
+          supported_targets: ['threshold_rate'],
+        },
+      ],
     });
     expect(mediaBuy.performance_feedback).toEqual({
       reports_application_status: true,
@@ -1829,10 +1836,71 @@ describe('createTrainingAgentServer', () => {
     expect(legacyCaps.media_buy.audience_targeting).not.toHaveProperty('supported_activation_methods');
   });
 
+  it('keeps the seller-level vendor_metric_optimization.supported_metrics rollup consistent with the catalog', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+    const rollup = ((result as Record<string, any>).media_buy.vendor_metric_optimization.supported_metrics) as Array<{
+      vendor: { domain: string; brand_id?: string };
+      metric_id: string;
+      supported_targets?: string[];
+    }>;
+    const keyOf = (e: { vendor: { domain: string; brand_id?: string }; metric_id: string }) =>
+      `${e.vendor.domain}|${e.vendor.brand_id ?? ''}|${e.metric_id}`;
+    const catalogPairs = new Map<string, Set<string>>();
+    for (const cp of buildCatalog()) {
+      const supported = (cp.product as {
+        vendor_metric_optimization?: { supported_metrics?: Array<{ vendor: { domain: string; brand_id?: string }; metric_id: string; supported_targets?: string[] }> };
+      }).vendor_metric_optimization?.supported_metrics ?? [];
+      for (const entry of supported) {
+        const targets = catalogPairs.get(keyOf(entry)) ?? new Set<string>();
+        for (const t of entry.supported_targets ?? []) targets.add(t);
+        catalogPairs.set(keyOf(entry), targets);
+      }
+    }
+    expect(rollup.length).toBeGreaterThan(0);
+    // No pair listed unless at least one product supports it, and none omitted.
+    expect(rollup.map(keyOf).sort()).toEqual([...catalogPairs.keys()].sort());
+    for (const entry of rollup) {
+      expect([...(entry.supported_targets ?? [])].sort()).toEqual([...catalogPairs.get(keyOf(entry))!].sort());
+    }
+  });
+
+  it('rolls up vendor_metric_optimization pairs across publishers on (domain, brand_id, metric_id)', () => {
+    const pub = (entries: NonNullable<(typeof PUBLISHERS)[number]['vendorMetricOptimization']>['supported_metrics']) =>
+      ({ vendorMetricOptimization: { supported_metrics: entries } }) as (typeof PUBLISHERS)[number];
+    const v = { domain: 'v.example' };
+    const capability = buildVendorMetricOptimizationCapability([
+      pub([{ vendor: v, metric_id: 'm', supported_targets: ['cost_per'] }]),
+      pub([
+        { vendor: v, metric_id: 'm', supported_targets: ['threshold_rate'] },
+        { vendor: { ...v, brand_id: 'b' }, metric_id: 'm' },
+      ]),
+      {} as (typeof PUBLISHERS)[number],
+    ]);
+    expect(capability?.supported_metrics).toEqual([
+      { vendor: v, metric_id: 'm', supported_targets: ['cost_per', 'threshold_rate'] },
+      { vendor: { ...v, brand_id: 'b' }, metric_id: 'm' },
+    ]);
+    expect(capability?.supported_targets).toEqual(['cost_per', 'threshold_rate']);
+    expect(buildVendorMetricOptimizationCapability([{} as (typeof PUBLISHERS)[number]])).toBeUndefined();
+
+    // The rollup is a copy: mutating it never touches the catalog declaration.
+    const live = buildVendorMetricOptimizationCapability()!;
+    live.supported_metrics[0].metric_id = 'mutated';
+    expect(buildVendorMetricOptimizationCapability()!.supported_metrics[0].metric_id).not.toBe('mutated');
+  });
+
   it('keeps v6 sales vendor_metric_optimization capabilities aligned with legacy discovery', () => {
     const platform = new TrainingSalesPlatform();
     expect((platform.capabilities as Record<string, unknown>).vendor_metric_optimization).toEqual({
       supported_targets: ['threshold_rate'],
+      supported_metrics: [
+        {
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_score',
+          supported_targets: ['threshold_rate'],
+        },
+      ],
     });
     expect((platform.capabilities as Record<string, unknown>).performance_feedback).toEqual({
       reports_application_status: true,

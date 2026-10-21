@@ -153,6 +153,15 @@ Extensions MUST use an owner-controlled namespace. Vendor/platform keys identify
 }
 ```
 
+### AdCP extension bindings
+
+The `ext.adcp` namespace has these documented bindings:
+
+| Binding | Carried on | Applies to | Notes |
+|---|---|---|---|
+| `opportunity` | `get_products` request `ext` | AdCP 3.2 | See [AdCP opportunity extension](#adcp-opportunity-extension). Declared through `extensions_supported`. |
+| `age_determination_bases` | Signal-listing entry `ext` (for example `Product.included_signals[]`) | AdCP 3.2 interim; a core field in 3.3 | Interim carrier for the 3.3 field of the same name. Same array and matching rule; migrating is a rename. See [Migrating from 3.2 to 3.3](/docs/reference/migration/3-2-to-3-3#age_determination_bases-on-signals). |
+
 ### AdCP opportunity extension
 
 The AdCP-owned `ext.adcp.opportunity` binding supplies planning-cycle context on the AdCP 3.2 [`get_products`](/docs/media-buy/task-reference/get_products) compatibility task. It reuses the complete [published 3.2.1 OpportunityContext](https://adcontextprotocol.org/schemas/3.2.1/core/opportunity-context.json) object and its seller/account scope. This is an optional extension agreement; it adds no requirement to baseline 3.2 implementations.

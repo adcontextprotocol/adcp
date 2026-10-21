@@ -62,11 +62,11 @@ These operations are publicly accessible:
 
 AdCP 3.0 unifies webhook signing on the [AdCP RFC 9421 profile](#webhook-callbacks) — the seller signs outbound webhooks with a key published through its operator `brand.json` `agents[].jwks_uri`, and the buyer verifies against that JWKS. When the publisher's `adagents.json` pins `signing_keys[]` for that seller, the pin narrows the accepted keys for webhooks about that publisher's inventory; it never adds a key. Nothing secret crosses the wire; identity is cryptographically established the same way it is for inbound requests.
 
-**9421 webhook signing is baseline-required in 3.0.** Any seller that emits webhooks MUST sign them per the [Webhook callbacks](#webhook-callbacks) profile unless the buyer explicitly opts into the legacy scheme below by populating `push_notification_config.authentication`, `accounts[].notification_configs[].authentication`, `sync_principal.configuration.notification_configs[].authentication`, or `sync_agent_notification_configs.notification_configs[].authentication`.
+**9421 webhook signing is baseline-required in 3.0.** Any seller that emits webhooks MUST sign them per the [Webhook callbacks](#webhook-callbacks) profile unless the buyer explicitly opts into the legacy scheme below by populating the `authentication` block of a [webhook registration](#webhook-callbacks).
 
 ### Legacy HMAC-SHA256 fallback (deprecated, removed in 4.0)
 
-Buyers who need to interoperate with receivers that have not yet adopted the 9421 profile MAY opt in by populating `push_notification_config.authentication.credentials`, `accounts[].notification_configs[].authentication.credentials`, `sync_principal.configuration.notification_configs[].authentication.credentials`, or `sync_agent_notification_configs.notification_configs[].authentication.credentials`. When `authentication` is present on the buyer's request, the seller signs with HMAC-SHA256 using the semantics defined in [Push Notifications](/docs/building/by-layer/L3/webhooks#legacy-hmac-sha256-fallback). The legacy scheme is a 3.x-only compatibility affordance; sellers MAY decline to support it, and it is removed in AdCP 4.0.
+Buyers who need to interoperate with receivers that have not yet adopted the 9421 profile MAY opt in by populating `authentication.credentials` on a [webhook registration](#webhook-callbacks). When `authentication` is present on the registration, the seller signs with HMAC-SHA256 using the semantics defined in [Push Notifications](/docs/building/by-layer/L3/webhooks#legacy-hmac-sha256-fallback). The legacy scheme is a 3.x-only compatibility affordance; sellers MAY decline to support it, and it is removed in AdCP 4.0.
 
 Normative rules for the legacy scheme when a seller elects to support it:
 
@@ -96,7 +96,7 @@ Normative rules for the legacy scheme when a seller elects to support it:
 
 ### Webhook URL validation (SSRF)
 
-Any URL that a buyer, seller, or governance agent provides for another party to fetch is an SSRF vector. This includes `push_notification_config.url`, `accounts[].notification_configs[].url`, `sync_principal.configuration.notification_configs[].url`, `sync_agent_notification_configs.notification_configs[].url`, `accounts[].governance_agents[].url` (the seller fetches this when it calls `check_governance`), collection-list `webhook_url`, TMP provider `endpoint`, `adagents.json` `authoritative_location`, and `reporting_bucket.setup_instructions`.
+Any URL that a buyer, seller, or governance agent provides for another party to fetch is an SSRF vector. This includes the `url` of every [webhook registration](#webhook-callbacks), `accounts[].governance_agents[].url` (the seller fetches this when it calls `check_governance`), collection-list `webhook_url`, TMP provider `endpoint`, `adagents.json` `authoritative_location`, and `reporting_bucket.setup_instructions`.
 
 Account-level webhook subscribers registered through `sync_accounts.accounts[].notification_configs[]` and agent-level subscribers registered through `sync_principal.configuration.notification_configs[]` or `sync_agent_notification_configs.notification_configs[]` also require endpoint ownership proof before activation. SSRF validation proves the seller is not calling an internal network address; it does not prove the buyer controls the public HTTPS endpoint. Sellers MUST complete an RFC 9421-signed activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active. Account-level challenge signatures bind the account, subscriber ID, exact normalized webhook URL through the covered `@target-uri`, expiry through the signature's `expires` parameter, delivery auth metadata, and normalized event type set; the receiver MUST verify every binding before echoing the single-use nonce. Paused subscribers (`active: false`) may skip only the outbound proof challenge while inactive; sellers MUST still enforce URL parsing, HTTPS, hostname normalization, and reserved-range rejection at write time, and paused subscribers MUST NOT receive fires until reactivated. Account-level challenges use [`webhook-challenge.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-challenge.json) and bind `account_id`; agent-level challenges use [`agent-webhook-challenge.json`](https://adcontextprotocol.org/schemas/v3/core/agent-webhook-challenge.json) and bind `scope: "agent"` instead of an account.
 
@@ -422,9 +422,9 @@ Rules 1–10 apply to state-mutating requests and to any optional-key request fo
     This preserves the byte-stable cache property uniformly and keeps the idempotency layer decoupled from resource lifecycle — sellers don't need to update cache entries when task or resource state changes. The alternative ("refresh state fields on replay") would force every seller to thread the resource state machine through the idempotency cache, multiply the number of valid cache contents for a given key (a single key's replay would no longer be deterministic across calls), and break the canonical-replay invariant the rest of these rules build on. Sellers MUST NOT implement a hybrid where some state-tracking fields refresh on replay and others do not — partial refresh is the worst of both options and is non-conformant.
 
     **Resource deletion does not end the replay window.** The idempotency key record, canonical request hash, and cached response MUST remain available independently of every resource the request created for the full `replay_ttl_seconds`, measured from the successful mutation's durable commit time (`committed_at`). Eviction MUST occur no earlier than `committed_at + replay_ttl_seconds`, even when an operator or later task independently deletes or purges that resource. A `UNIQUE` constraint on an `idempotency_key` column of the resource row alone does not satisfy this requirement: deleting the row would free the key and permit a retry to create a second resource. A replay after resource deletion still returns the historical cached response under rule 4; the buyer then uses the appropriate read task to observe that the resource is gone.
-3. **Only unsuccessful operations release their keys.** On any error before a mutation commits — validation, governance denial, transport failure, internal error — the key is **not** stored. A retry re-executes. This matches buyer intent: a retry after a 5xx should try again, not replay a failure. It also prevents a buyer's malformed request from being locked into a key for its full TTL.
+3. **Only unsuccessful operations release their keys.** On any error before a mutation commits — validation, governance denial, transport failure, internal error — the key is **not** stored. A retry re-executes. This matches buyer intent: a retry after a 5xx should try again, not replay a failure. It also prevents a buyer's malformed request from being locked into a key for its full TTL. An error whose outcome is ambiguous is not released here; rule 9 fences its key. A seller declaring AdCP 3.3 or later SHOULD mark that error with [`mutation_outcome`](/docs/building/by-layer/L3/error-handling#mutation-outcome) `unknown` (or `applied`; a MUST from 3.4), so the buyer can tell it from a pre-commit rejection that released its key.
 
-    `COMMITTED_RESOURCE_PURGED` is the narrow exception to the ordinary error-response rule because it reports a successful write followed by an independent deletion, not an unsuccessful operation or a requested delete operation. When a mutation commits but its affected resource is independently deleted or purged before the seller can durably record the canonical success response, the seller MUST retain a committed-outcome tombstone and canonical request hash until at least `committed_at + replay_ttl_seconds`, return `COMMITTED_RESOURCE_PURGED` with `recovery: terminal`, and return the same terminal outcome with `replayed: true` on equivalent replays without re-executing the mutation. If the canonical success response was already durably recorded, rule 4 takes precedence and the seller returns that historical response even though a current-state read shows the resource is gone. The tombstone MUST be stored independently of the deleted resource. Buyers MUST NOT automatically retry that logical operation with either the same or a fresh key; they MUST first reconcile through the resource read task and seller audit or operator records, and may initiate a new operation only when reconciliation confirms that is intended. Sellers MUST NOT use `CONFLICT` for this case: its transient recovery would instruct the buyer to retry a write that already committed.
+    `COMMITTED_RESOURCE_PURGED` is the narrow exception to the ordinary error-response rule because it reports a successful write followed by an independent deletion, not an unsuccessful operation or a requested delete operation. When a mutation commits but its affected resource is independently deleted or purged before the seller can durably record the canonical success response, the seller MUST retain a committed-outcome tombstone and canonical request hash until at least `committed_at + replay_ttl_seconds`, return `COMMITTED_RESOURCE_PURGED` with `recovery: terminal` and `mutation_outcome: "applied"` (sellers MUST NOT set `not_applied` on it), and return the same terminal outcome with `replayed: true` on equivalent replays without re-executing the mutation. If the canonical success response was already durably recorded, rule 4 takes precedence and the seller returns that historical response even though a current-state read shows the resource is gone. The tombstone MUST be stored independently of the deleted resource. Buyers MUST NOT automatically retry that logical operation with either the same or a fresh key; they MUST first reconcile through the resource read task and seller audit or operator records, and may initiate a new operation only when reconciliation confirms that is intended. Sellers MUST NOT use `CONFLICT` for this case: its transient recovery would instruct the buyer to retry a write that already committed.
 4. **Replay returns the cached response.** A subsequent request with the same `idempotency_key` AND an equivalent canonical-form payload (see "Payload equivalence" below) MUST return the stored inner response without re-executing side effects. The seller injects `replayed: true` onto the outgoing protocol envelope at response time — including when replaying a committed-outcome tombstone — and `replayed` is NOT part of the stored inner response or tombstone. Injection at replay time keeps the stored payload byte-stable across replays regardless of envelope changes (new `timestamp`, rotated `governance_context`, etc.). Transport-specific note for MCP: MCP tool responses do not have a separate envelope slot; servers MAY expose `replayed` inside the tool result object itself (e.g., at the top of the structured return) or via a response metadata field. REST and A2A responses use the envelope field directly.
 5. **Key reuse with a different canonical payload is a conflict.** Same key, different canonical hash within the replay window MUST be rejected with `IDEMPOTENCY_CONFLICT`. Sellers MUST NOT silently apply the second request.
 6. **Expired keys are rejected explicitly.** After `committed_at + replay_ttl_seconds` the seller MAY evict a completed cache entry or committed-outcome tombstone. An unresolved in-flight or reconciliation-required claim is not a completed entry and MUST NOT be evicted merely because this interval elapsed. A request arriving after eviction with a key the seller has seen SHOULD be rejected with `IDEMPOTENCY_EXPIRED` rather than silently treated as new — silent re-execution is exactly the double-booking footgun the key was meant to prevent. Sellers SHOULD allow a ±60s clock-skew window at the TTL boundary (the same tolerance applied to JWS `exp` elsewhere in this document) so that a retry arriving seconds after nominal expiry is still replayed from cache rather than treated as fresh.
@@ -448,7 +448,7 @@ Rules 1–10 apply to state-mutating requests and to any optional-key request fo
 
     A second request with the same key AND a *different* canonical payload during the in-flight window MUST return `IDEMPOTENCY_CONFLICT` (rule 5), not `IDEMPOTENCY_IN_FLIGHT` — the canonical-form mismatch is computable at INSERT time against the row's stored hash, so the conflict is detectable without waiting for the first request's response. Sellers whose backing store cannot persist the real canonical hash until the handler completes (e.g., a placeholder-sentinel pattern) MUST upgrade the store to persist the hash at INSERT time before declaring rule 9 conformance — the alternative (returning `IDEMPOTENCY_IN_FLIGHT` on a same-key-different-payload race and only surfacing the conflict after the first request completes) silently delays detection of a real client bug.
 
-    Per rule 3, the seller may release the `(in_flight)` claim only after it has definitive evidence that no local or downstream mutation committed. Schema rejection and errors raised before any side-effecting call are definitive pre-commit failures. A downstream timeout, handler timeout, lost response, process crash, or any other unknown outcome is not proof of failure: the seller MUST retain the durable claim, transition it from active execution to a reconciliation-required state, and MUST NOT invoke the mutation again until reconciliation establishes the outcome. Equivalent retries MAY wait, receive `IDEMPOTENCY_IN_FLIGHT`, or drive the rule-10 reconciliation path; a different canonical hash still returns `IDEMPOTENCY_CONFLICT`. When reconciliation proves non-commit, the seller releases the claim; when it proves commit, the seller records the canonical success response or, after an independent purge, the `COMMITTED_RESOURCE_PURGED` tombstone. Whenever the resource write and idempotency ledger share a transactional boundary, the seller MUST atomically commit the mutation and completed ledger state. Implementations that cannot make that transition atomic MUST use the same fail-closed reconciliation discipline.
+    Per rule 3, the seller may release the `(in_flight)` claim only after it has definitive evidence that no local or downstream mutation committed. Schema rejection and errors raised before any side-effecting call are definitive pre-commit failures. A downstream timeout, handler timeout, lost response, process crash, or any other unknown outcome is not proof of failure: the seller MUST retain the durable claim, transition it from active execution to a reconciliation-required state, and MUST NOT invoke the mutation again until reconciliation establishes the outcome. Equivalent retries MAY wait, receive `IDEMPOTENCY_IN_FLIGHT`, or drive the rule-10 reconciliation path; a different canonical hash still returns `IDEMPOTENCY_CONFLICT`. A seller declaring AdCP 3.3 or later SHOULD return `mutation_outcome: "unknown"` (or `applied` when it holds committed evidence) on the error for a fenced claim; this becomes a MUST in 3.4. Releasing a claim does not by itself license `not_applied`: that value needs the stricter [pre-commit evidence](/docs/building/by-layer/L3/error-handling#mutation-outcome) test, under which a timeout or exception from within or after a write is never enough. When reconciliation proves non-commit, the seller releases the claim; when it proves commit, the seller records the canonical success response or, after an independent purge, the `COMMITTED_RESOURCE_PURGED` tombstone. Whenever the resource write and idempotency ledger share a transactional boundary, the seller MUST atomically commit the mutation and completed ledger state. Implementations that cannot make that transition atomic MUST use the same fail-closed reconciliation discipline.
 
     Sellers MUST bound the active execution lease to the declared per-task handler timeout so a hung worker can be stopped or replaced. Lease expiry changes the claim to reconciliation-required; it never releases or evicts the claim. Sellers using reject-and-redirect MUST set top-level `error.retry_after` to a value no greater than `replay_ttl_seconds` (declared in `capabilities.idempotency`). Sellers SHOULD also declare `capabilities.idempotency.in_flight_max_seconds` — the maximum active execution lease before reconciliation takes over, scoped to the seller's per-task handler timeout. Buyers SHOULD use that declared value as the primary bound for an individual retry wait when present; when absent, fall back to the order-of-magnitude heuristic (a value derived from the seller's typical handler latency, an order of magnitude below the replay TTL, never the TTL ceiling itself). This value is not permission for a buyer to mint a fresh key or for a seller to release an unresolved claim.
 
@@ -579,6 +579,8 @@ For replay-protected operations, ask whether the buyer's intent is **"complete t
 **Bootstrap carve-out — `get_adcp_capabilities`.** The discovery call itself is exempt from any schema-level key requirement. `get_adcp_capabilities` is how the buyer learns whether the seller declares `adcp.idempotency.replay_ttl_seconds`, so a fail-closed rule against the discovery call would deadlock the bootstrap. Buyers MAY omit `idempotency_key`, and sellers MUST accept the call without it. A supplied key may be ignored and does not create a portable replay guarantee. The fail-closed obligation below applies to retry-sensitive mutations once the capability fetch has completed.
 
 **When the seller's capability declaration is missing.** A seller whose `get_adcp_capabilities` response omits `adcp.idempotency.replay_ttl_seconds` is non-compliant. After a successful capability fetch, client SDKs MUST fail closed before any state-mutating task — including `request_proposals`, `refine_proposals`, and `decline_proposals` — so the buyer learns about the non-compliance before a silent duplicate. A guaranteed pure-read task whose schema leaves the key optional MAY proceed without replay protection, but the client MUST NOT silently treat a retry as deduplicated.
+
+**Failed mutations with an uncertain outcome.** `recovery: transient` says a retry may succeed; it does not say the request had no effect. When an error for a state-changing request carries [`mutation_outcome`](/docs/building/by-layer/L3/error-handling#mutation-outcome) `unknown`, `applied`, or an unrecognized value, buyers MUST NOT mint a new `idempotency_key`, change the payload, report the operation as definitively failed, or undo their own record of the change on the strength of that error alone, and MUST read current state before any re-plan. This applies equally to the terminal error of an async task that ends in `failed`, however delivered. A same-bytes, same-key resend remains correct. When the field is absent on a `transient` error, buyers SHOULD read current state before a re-plan; that is a SHOULD, costs one read, and is safe against every seller.
 
 **Decoding seller-emitted error codes.** Sellers MAY return error codes (`IDEMPOTENCY_CONFLICT`, `IDEMPOTENCY_EXPIRED`, `IDEMPOTENCY_IN_FLIGHT`, `INVALID_REQUEST`, or codes added in later minor versions) that buyers' pinned vocabulary may not recognize. Receivers MUST decode these per [Forward-compatible decoding (normative)](/docs/building/by-layer/L3/error-handling#forward-compatible-decoding-normative) — read `error.recovery` for the recovery classification, default to `transient` when `recovery` is absent, and never reject the response because the code value is unfamiliar. The retry semantics for `transient`-classified errors are bounded by [§ Retry Logic](/docs/building/by-layer/L3/error-handling#retry-logic) (`maxRetries` and exponential backoff with jitter) — buyers MUST NOT loop indefinitely on a `transient` default.
 
@@ -820,9 +822,19 @@ The payload (JWS-flattened JSON serialization; compact form is also acceptable):
   "updated": "2026-04-18T14:00:00Z",
   "next_update": "2026-04-18T14:15:00Z",
   "revoked_jtis": ["01HWZX..."],
-  "revoked_kids": ["gov-2026-03"]
+  "revoked_kids": ["gov-2026-03", "gov-2026-01"],
+  "revocation_details": {
+    "gov-2026-03": { "reason": "keyCompromise", "invalidity_date": "2026-04-17T09:00:00Z" },
+    "gov-2026-01": { "reason": "superseded" }
+  }
 }
 ```
+
+`revocation_details` is optional, and keyed by `kid` for keys that appear in `revoked_kids`. Each entry MAY carry two fields:
+- `reason`: a reason code from RFC 5280 §5.3.1, in the JSON spelling RFC 8555 §7.6 uses (`keyCompromise`, `superseded`, `cessationOfOperation`, and so on);
+- `invalidity_date`: the date on which the private key is known or suspected to have been compromised (RFC 5280 §5.3.2). It may be earlier than the revocation.
+
+A revoked key is rejected whatever its detail. As in X.509, an entry is never withdrawn or weakened once published. Verifiers keep the most severe detail they have seen for a key: a `keyCompromise` reason, and the earliest `invalidity_date`. A signer that revoked a key by mistake publishes a new key.
 
 - `revoked_jtis` invalidates individual decisions (e.g., a plan was rescinded). Revocation applies to any token with that `jti`, regardless of signing key.
 - `revoked_kids` invalidates every token ever signed under that `kid` (before or after the revocation timestamp), not just tokens issued after.
@@ -997,6 +1009,14 @@ The field name and schema shape (single string, ≤4096 chars) do not change bet
 ### Signed Requests (Transport Layer)
 
 [Signed Governance Context](#signed-governance-context) signs an authorization artifact. Request signing signs the request itself — method, target URI, headers, and (by default) body bytes — proving control of a request-signing key with replay and tampering protection. A valid signature alone proves only that the key signed the request. Agent identity is established after the verified publication chain binds that key to exactly one canonical operator `brand.json` `agents[].url`. Whether that Agent is *authorized* to act for the brand named in the request body is a separate concern, governed by the target house's `authorized_operator[]` in brand.json. This section defines authentication only; authorization lookup is specified by the brand.json schema and happens whether requests are signed or not.
+
+<Note>
+**Two signing profiles in 3.3.**
+- **The AdCP RFC 9421 profiles** (`adcp/request-signing/v1` for requests and `adcp/webhook-signing/v1` for webhooks, keys through brand.json) are **deprecated in 3.3**. They stay fully functional through 3.x and are removed in 4.0.
+- **The Web Bot Auth profile** (`web-bot-auth`) is experimental in 3.3. Identity is the signer's origin, keys come from that origin's key directory, and no capabilities call is needed. See [Web Bot Auth identities](#web-bot-auth-identities). New implementations should build it.
+
+This section describes the RFC 9421 profile unless a subsection says otherwise. The decision is [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md).
+</Note>
 
 AdCP 3.0 defines this profile as **optional and capability-advertised** via `request_signing` on `get_adcp_capabilities`. AdCP 3.2 keeps signing optional but makes body integrity mandatory whenever signing is used: every accepted signature on a request with a body covers `content-digest`. AdCP 4.0 — the next breaking-changes accumulation window — additionally requires signing for spend-committing operations. See [Transport migration timeline](#transport-migration-timeline).
 
@@ -1336,7 +1356,7 @@ Verifiers MUST NOT accept signatures from a `keyid` they cannot resolve to a spe
 
 #### Agent resolution
 
-Every AdCP surface that verifies a signature by agent URL uses this one algorithm: request signing, webhook signing, governance JWS `iss`, designated-task response signing, and rights attestations. Surface sections define their own error codes and MAY add stricter selectors, such as a required `type` or an exact `id`. They MUST NOT define a looser way to match an agent or another way to pick its keys. TMP is not covered: its match-time signatures use publisher keys distributed through the property registry, as the [TMP specification](/docs/trusted-match/specification) defines.
+Under the RFC 9421 profile, every AdCP surface that verifies a signature by agent URL uses this one algorithm: request signing, webhook signing, governance JWS `iss`, designated-task response signing, and rights attestations. Requests and webhooks signed under the Web Bot Auth profile, and JWS artifacts from an issuer whose trust record lists its origin, use [Web Bot Auth identities](#web-bot-auth-identities) instead. Surface sections define their own error codes and MAY add stricter selectors, such as a required `type` or an exact `id`. They MUST NOT define a looser way to match an agent or another way to pick its keys. TMP is not covered: its match-time signatures use publisher keys distributed through the property registry, as the [TMP specification](/docs/trusted-match/specification) defines.
 
 Given agent URL `A`, a verifier first selects the brand.json that must list `A`. There are two selection rules, and each surface uses exactly one of them:
 
@@ -1351,9 +1371,9 @@ Every surface then applies the same steps to the selected record:
 4. **Fetch safely.** Every fetch in this algorithm follows the SSRF rules in [Webhook URL validation](#webhook-url-validation-ssrf), uses zero HTTP redirects on explicit URLs, parses strictly with duplicate keys rejected, and respects the budgets and cache bounds in the discovery chain below. On a `kid` miss, refetch the JWKS once, subject to the 30-second cooldown between refetches.
 5. **Result.** The canonical URL of the matched entry is the verified agent identity. For an operator record, the host of `identity.brand_json_url` is the agent's operator.
 
-**Shortcuts must be bound both ways.** Onboarding records, registry caches, and crawler indexes MAY stand in for steps 1–4 of the discovery chain. Such a mapping from `A` to an operator record MUST have been established by, or re-confirmed against, `A`'s `identity.brand_json_url`, and re-confirmed at least as often as the brand.json cache lifetime in step 4 of the discovery chain. If several brand.json files list `A`, only the one `A` points to counts.
+**Shortcuts must be bound both ways (RFC 9421 profile).** Onboarding records, registry caches, and crawler indexes MAY stand in for steps 1–4 of the discovery chain. Such a mapping from `A` to an operator record MUST have been established by, or re-confirmed against, `A`'s `identity.brand_json_url`, and re-confirmed at least as often as the brand.json cache lifetime in step 4 of the discovery chain. If several brand.json files list `A`, only the one `A` points to counts.
 
-Agent resolution starts with `get_adcp_capabilities` at `A`, even when the agent hosts no other tools. This includes a buyer agent that only calls sellers. Request signing and non-legacy webhook discovery bind the operator record to `A`'s `identity.brand_json_url`. The 3.x legacy webhook fallback may instead use the agent-origin well-known brand.json when that pointer is absent, but still starts with the capabilities call and is never used for request signatures. An onboarding record does not replace the capabilities endpoint, because its mapping must be established or re-confirmed through discovery. A signer that serves nothing at `A` fails discovery step 1 with `request_signature_capabilities_unreachable`. A bootstrap for signers with no capabilities endpoint is under discussion in [#6105](https://github.com/adcontextprotocol/adcp/issues/6105).
+Under the RFC 9421 profile, agent resolution starts with `get_adcp_capabilities` at `A`, even when the agent hosts no other tools. This includes a buyer agent that only calls sellers. Request signing and non-legacy webhook discovery bind the operator record to `A`'s `identity.brand_json_url`. The 3.x legacy webhook fallback may instead use the agent-origin well-known brand.json when that pointer is absent, but still starts with the capabilities call and is never used for request signatures. An onboarding record does not replace the capabilities endpoint, because its mapping must be established or re-confirmed through discovery. A signer that serves nothing at `A` fails discovery step 1 with `request_signature_capabilities_unreachable`. A signer with no capabilities endpoint uses the [Web Bot Auth profile](#web-bot-auth-identities), which needs none.
 
 #### Discovering an agent's signing keys via `brand_json_url`
 
@@ -1476,9 +1496,52 @@ The 8-step algorithm ships in three SDKs — pick the one matching your runtime.
 
 Each SDK ships a CLI for dev-loop debugging — `npx @adcp/sdk@latest resolve <url>`, `adcp resolve <url>` (also `python -m adcp resolve <url>`), `adcp resolve <url>` (Go binary, same name as the Python one — disambiguate by `$PATH` or vendor) — printing the trace with per-step `fetched_at`/`age_seconds`/`ok` so an operator triaging a `request_signature_brand_*` failure can see exactly which step rejected and why. Both the Python (`[project.scripts]` console_scripts entry) and Go (binary `adcp`, distinct from the Go module path `github.com/adcontextprotocol/adcp-go`) toolchains install a top-level `adcp` command so a single muscle-memory invocation works across runtimes.
 
+#### Web Bot Auth identities
+
+<Note>
+**Experimental in 3.3.** This section covers requests and webhooks signed under the Web Bot Auth profile (`web-bot-auth`). The profile's wire rules (the `Signature-Agent` header, signature parameters and algorithms, the key directory, the nonce and replay protection, and the failure statuses) are defined once, on the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) page ([#7894](https://github.com/adcontextprotocol/adcp/pull/7894)). This section covers identity, trust records, binding, and authorization, and does not restate them. JWS artifacts (governance context, designated-task response signing, rights attestations) from a Web Bot Auth identity are verified with keys from its key directory, as the JWS artifacts rule under Coexistence below says ([#8299](https://github.com/adcontextprotocol/adcp/pull/8299)). A seller advertises the profile with `web-bot-auth` in `request_signing.profiles` and `webhook_signing.profiles`. Design: [`specs/agent-identity-3-3.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) R3, R3a, R4 and R9.
+</Note>
+
+**Identity is an origin.** A Web Bot Auth identity is the [canonical origin](/docs/reference/url-canonicalization#canonical-origin) `O` named by the signature's covered `Signature-Agent` member. One agent per origin; a governance agent is its own agent.
+
+**Verifying identity.** Identity is established when the signature verifies under a key from `O`'s key directory (`https://O/.well-known/http-message-signatures-directory`), and that key is not revoked in the identity's revocation list. That list is at `O`, at `/.well-known/governance-revocations.json` with the `adcp-gov-revocation+jws` type, and covers all of the identity's keys. [Transport revocation](#transport-revocation) says what a request signed with a revoked key gets, and what happens when the list is missing or stale.
+
+Discovery failures and key removal follow WBA §6.10. A request the verifier cannot attribute to `O` is unverified, and what the verifier does with it is local policy under the draft: it handles the request as an anonymous caller's, or answers `403` with `Accept-Signature`.
+
+There is no capabilities fetch and no brand.json lookup, and verification creates no principal. A verified origin the seller has not bound is *identity-established*: it gets what an anonymous caller gets.
+
+**Evaluating the trust record.** The operator's trust record is evaluated when something is gated on it: binding a principal, evaluating a grant ([Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental)), or `open` onboarding. It is never evaluated on the request-signature path. For a JWS artifact, step 1 derives it to select the profile, as the JWS artifacts rule under Coexistence below says.
+
+1. **Derive it.** `R = https://{eTLD+1(host(O))}/.well-known/trust.json`, using a pinned, dated Public Suffix List snapshot that includes the ICANN and PRIVATE sections.
+   - An `O` whose host is an IP literal or a public suffix, or has no defined eTLD+1, has no trust record.
+   - Fetch `R` under the [Webhook URL validation](#webhook-url-validation-ssrf) rules, with a 2 MiB streaming body cap and strict parsing (duplicate keys rejected, nesting depth 32).
+   - Follow at most one `authoritative_location` hop, with zero HTTP redirects. A hop target that itself carries `authoritative_location` is rejected.
+   - The **operator** is `eTLD+1(host(O))`: never a value inside the document, and never the host of a hop target.
+2. **Match.** Exactly one `agents[]` entry has a canonical origin equal to `O` and carries the role the gate requires (`adcp:buying` for a buyer).
+3. **Failure.** A failed derivation or match is an authorization outcome. It returns `PERMISSION_DENIED` with no `details`, one externally visible code, under the cross-tenant oracle clamp. The cause goes to logs only.
+
+**Freshness and operator revocation.**
+- A binding is a cache of the trust-record evaluation, not a standing grant. Verifiers MUST re-evaluate it at least as often as the revocation polling interval, and before a spend-committing call when the cached result is older than that.
+- A fetch failure is not absence: the last record the verifier read stays authoritative, and spend-committing operations fail closed with the retryable `SERVICE_UNAVAILABLE`. A seller MAY keep serving non-spend operations under the cached evaluation during an outage and SHOULD bound how long.
+- An operator revokes an agent by removing its origin from the trust record. That ends every binding and grant that reaches the agent through the operator within one cache lifetime. The origin falls back to identity-established: it gets what an anonymous caller gets, as at first contact. An operator that retires all of its agents publishes an empty `agents[]`.
+- Verifiers SHOULD rate-limit, single-flight, and negative-cache trust-record fetches by host, by eTLD+1, and by hop target host, and SHOULD cache negatives for at most 60 seconds.
+
+**Errors.** Signature failures use the status codes and headers the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) page defines. An AdCP error body, when sent, is the generic authentication error with no signature-specific detail.
+
+Once identity is established, every authorization outcome uses the standard AdCP error envelope with existing codes, under the cross-tenant oracle clamp. A request signed with a revoked key gets the answer in [Transport revocation](#transport-revocation). A correctly signed request never gets `403` with `Accept-Signature`, which tells the signer to sign again.
+
+**Cross-organization hosting.** A platform that runs an agent for a brand lists the agent in its own trust record, and the brand grants the platform's domain. There is no hosting-delegation fallback.
+
+**Coexistence with the RFC 9421 profile.**
+- **Profile selection.** A signed message that carries `Signature-Agent` or the `web-bot-auth` tag is verified under the Web Bot Auth profile only, never under the RFC 9421 profile. An uncovered `Signature-Agent` member is never attributed to the signature.
+- **Unsigned requests.** The answer to an unsigned request for an operation in `required_for` is defined on the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) page, including when a verifier advertises both profiles.
+- **JWS artifacts.** Spec [R4](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md#r4-coexistence-with-the-32-profile-p3), as amended by [#8299](https://github.com/adcontextprotocol/adcp/pull/8299), says which profile verifies a JWS artifact and what the verifier checks under each.
+- **No downgrade.** Once a verifier has bound `O`, it refuses RFC 9421 signatures for any agent URL whose origin is `O`. Before binding, an operator ends RFC 9421 use for an agent by removing its brand.json entry and keys.
+- **Grants.** A 200 from a grantor's trust.json makes it the grantor's only source of grants, and brand.json `authorized_operators[]` is ignored, as `specs/brand-identity-trust-split.md` §No downgrade sets out.
+
 #### Agent identity
 
-A valid signature establishes exactly one fact: **the request was issued by the agent whose `jwks_uri` contains the `keyid`.** The verifier learns which specific agent signed, not just which operator. The agent's containing brand.json (discovered via the verifier's existing agent mapping) tells the verifier which operator runs that agent. That's the agent's operator, not the account operator a buyer names in `account.operator`.
+Under the RFC 9421 profile, a valid signature establishes exactly one fact: **the request was issued by the agent whose `jwks_uri` contains the `keyid`.** (Under the Web Bot Auth profile, the identity is the signer's origin; see [Web Bot Auth identities](#web-bot-auth-identities).) The verifier learns which specific agent signed, not just which operator. The agent's containing brand.json (discovered via the verifier's existing agent mapping) tells the verifier which operator runs that agent. That's the agent's operator, not the account operator a buyer names in `account.operator`.
 
 **`agent_url` derivation.** The canonical buyer-agent identifier on the verifier's request context is the `url` field of the `agents[]` entry whose `jwks_uri` resolved the `keyid` at step 7 of the [verifier checklist](#verifier-checklist-requests). `agent_url` is **not** a JWK claim, JWS claim, or signed envelope field — it is the publication coordinate the verifier already used to fetch the JWKS. This makes derivation deterministic from inputs the verifier has fully controlled (the agent mapping established at onboarding, plus the JWKS it just fetched) and removes any wire affordance for the signer to assert a different `agent_url` than the one whose key signed the request. SDKs that surface a resolved-signer object to adopters MUST source `agent_url` from this derivation; they MUST NOT accept a buyer-asserted `agent_url` field on the envelope and treat it as cryptographically established. (Buyer-asserted *verifier* references like `creative.verify_agent.agent_url` and `governance.accepted_verifiers[].agent_url` are a separate construct — they name agents the seller will invoke under a published allowlist, not the signer of the inbound request, and remain permitted.)
 
@@ -1599,12 +1662,58 @@ Verifiers MUST NOT use the request bearer token, IP, or any non-`(keyid, nonce)`
 
 #### Transport revocation
 
-Operators SHOULD serve a single combined revocation list at the brand.json origin covering governance, request-signing, and any other agent signing keys published under their `agents[]` entries. Format and signing semantics match the governance revocation list (see [Revocation](#revocation) above). For request-signing keys:
+Under the RFC 9421 profile, operators SHOULD serve a single combined revocation list at the brand.json origin, covering governance, request-signing, and any other agent signing keys published under their `agents[]` entries. A Web Bot Auth identity serves its list at its own origin ([Web Bot Auth identities](#web-bot-auth-identities)).
+
+Under the Web Bot Auth profile:
+
+- A request signed with a revoked key gets the generic authentication error (`AUTH_INVALID`) without `Accept-Signature`: the signer must stop using that key, so a hint to sign again would be wrong.
+- An identity whose revocation list the verifier has never read is identity-established; its spend-committing operations fail closed with `PERMISSION_DENIED` and no `details`, as a failed trust-record match does. Once the verifier has read a list for `O`, a failed fetch, a `404` included, falls under the next bullet.
+- A list the verifier has not refreshed within `next_update + grace` fails spend-committing operations closed with the retryable `SERVICE_UNAVAILABLE`, as a trust-record fetch failure does; `request_signature_revocation_stale` stays with the RFC 9421 profile.
+- A verifier keeps every revocation it has seen for `O`; a later list cannot un-revoke a key.
+
+Format and signing semantics match the governance revocation list (see [Revocation](#revocation) above). For request-signing keys:
 
 - `revoked_kids` invalidates every request ever signed under that `kid` (before or after the revocation timestamp).
 - `revoked_jtis` is not used (request signatures don't have a `jti`; nonce uniqueness is per-key).
 
-Verifiers accepting request-signed mutations MUST poll the revocation list on the cadence declared in `next_update` (floor 1 min, ceiling 30 min). The fetch-failure safe-default applies with grace = 4× the previous polling interval: verifiers that have not refreshed within `next_update + grace` MUST reject new request-signed mutations with `request_signature_revocation_stale` until the list is refreshed.
+Verifiers accepting request-signed mutations MUST poll the revocation list on the cadence declared in `next_update` (floor 1 min, ceiling 30 min), under either profile. The fetch-failure safe-default applies with grace = 4× the previous polling interval. Under the RFC 9421 profile, verifiers that have not refreshed within `next_update + grace` MUST reject new request-signed mutations with `request_signature_revocation_stale` until the list is refreshed.
+
+**Revocation and committed work.** These rules apply under both signing profiles.
+- **Committed work stands.** A media buy the seller accepted while the key verified stays in force. A seller MUST NOT pause, cancel, or otherwise unwind a buy on revocation alone, because a compromised origin could otherwise stop a buyer's campaigns.
+- **Exposure.** A request verified under a key revoked with `reason: keyCompromise` is **suspect** if the seller received it at or after the key's `invalidity_date`, or at any time when there is no date. The comparison uses the seller's receipt time, never the signature's `created`, which the signer controls. A key revoked for any other reason, or with no detail, exposes nothing.
+- **Showing the buyer.** A seller SHOULD show the buyer the buys it accepted under suspect requests, by a means of its choice. To make that possible, a seller SHOULD retain the `verified_signer` it records for each verified request (see the [verifier checklist](#verifier-checklist-requests)), together with the request's receipt time, alongside the buys that request created or changed. The buyer resolves each buy with the existing `control_media_buy` actions (`paused`, `canceled`), signed with a current key.
+- **Governed buys.** A revoked governance key stops new delivery-phase tokens until the governance agent issues a fresh one, as in [Revocation](#revocation).
+
+#### AdCP checks after Web Bot Auth verification
+
+<Note>
+These checks belong to the [Web Bot Auth request-signing profile](/docs/building/by-layer/L1/wba-profile), which is experimental in AdCP 3.3, adopted by [DR-0023](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0023-agent-identity-is-an-origin.md).
+</Note>
+
+A Web Bot Auth (WBA) verifier configured with the profile's rules decides whether a request is validly signed and which origin signed it. AdCP adds two checks that run after that verifier returns, each on a different outcome. The revocation-list check runs only after verification succeeds. The `Accept-Signature` field goes only on the verifier's `403` or `429` refusal. A standard WBA library does not perform them, so an implementation runs them in its AdCP layer. The WBA profile's conformance vectors do not grade them.
+
+**Revocation list.** After WBA verification succeeds, the verifier checks the signing identity's revocation list, the list that [Transport revocation](#transport-revocation) defines. The following rules apply under the profile:
+
+- The identity's origin serves the list, with the path and media type that Transport revocation uses. The verifier accepts the list only from that origin.
+- A key in the identity's key directory signs the list, with the JWS `alg` `EdDSA`.
+- Entries in `revoked_kids` are JWK thumbprints. The verifier matches them against the signature's `keyid`.
+
+[Transport revocation](#transport-revocation) states the polling cadence and what a request gets when its key is revoked or the list is missing or stale.
+
+The list lives on the same origin as the key directory. An outage that keeps a stale directory in use also leaves the list unrefreshed, so the safe default bounds how long a removed key commits spend during a discovery failure.
+
+**`Accept-Signature` on a refusal.** When WBA verification refuses a request with `403` or `429`, the verifier SHOULD add an `Accept-Signature` field (RFC 9421 section 5.1). WBA section 5.3 lets an origin request a signature this way. The field names the label, the covered components, and the parameters the profile requires:
+
+```http
+NOTE: '\' line wrapping per RFC 8792
+
+HTTP/1.1 403 Forbidden
+Accept-Signature: sig1=("@method" "@target-uri" "@authority" "content-type" \
+    "content-digest" "signature-agent";key="sig1");created;expires;nonce;ke\
+    yid;alg;tag="web-bot-auth"
+```
+
+On a `429`, the field SHOULD also carry a fresh `nonce` for the signer's next attempt. The verifier SHOULD add the same field to its answer to an unsigned request for an operation in `required_for`. A `400`, a revoked key, and an AdCP authorization error carry no `Accept-Signature`.
 
 #### Transport capability advertisement
 
@@ -1675,9 +1784,23 @@ Servers MUST NOT echo internal verification details beyond the stable code; log 
 
 #### Webhook callbacks
 
-Push-notification webhooks (POSTs to the `push_notification_config.url` a buyer registers), account-level webhooks (POSTs to `accounts[].notification_configs[].url`), agent-level webhooks (POSTs to `sync_principal.configuration.notification_configs[].url` or `sync_agent_notification_configs.notification_configs[].url`), and similar asynchronous seller-initiated callbacks are signed under a symmetric variant of this profile. Role direction is inverted relative to request signing: the **seller signs outbound**, the **buyer verifies**. 9421 webhook signing is baseline-required for any 3.0 seller that emits webhooks, with a deprecated HMAC fallback described in [Webhook Security](#webhook-security).
+<Note>
+**Deprecated in 3.3.** The RFC 9421 webhook profile described here (`adcp/webhook-signing/v1`, keys through brand.json) is deprecated in 3.3 together with the request profile. It stays fully functional through 3.x and is removed in 4.0. Under the experimental Web Bot Auth profile, a webhook is an ordinary Web Bot Auth request from the seller's origin ([Web Bot Auth identities](#web-bot-auth-identities)); advertising it in `webhook_signing.profiles` depends on [#7894](https://github.com/adcontextprotocol/adcp/pull/7894).
+</Note>
 
-**Baseline with programmatic advertisement.** 9421 webhook signing is baseline-required for any seller that emits webhooks — the default is signed, not a negotiated option. The `webhook_signing` capability block on `get_adcp_capabilities` exists so buyers can detect a non-signing seller *at onboarding* rather than discovering it by traffic inspection (which is how the asymmetry with `request_signing` manifested before this block was restored). A seller whose capability surface advertises mutating-webhook emission elsewhere (e.g., `media_buy.reporting_delivery_methods` includes `webhook`, `media_buy.content_standards.supports_webhook_delivery: true`, or `wholesale_feed_webhooks.supported: true`) MUST include this block with `supported: true`. A seller that emits no webhooks MAY omit the block entirely; `supported: false` is reserved for the unsafe posture of emitting unsigned webhooks and MUST NOT be used to signal absence-of-webhooks. Buyers that integrate with a seller whose surface advertises mutating-webhook emission while the `webhook_signing` block advertises `supported: false` or is omitted MUST fail onboarding with a user-actionable error — a seller that emits but does not sign webhooks is unsafe to integrate with for any mutating-webhook use case.
+A **webhook registration** is an object in which a buyer gives the seller a `url` to deliver webhooks to. These are the webhook registrations, and every rule on this page that names a webhook registration applies to each of them:
+
+- `push_notification_config` (push-notification webhooks);
+- `accounts[].notification_configs[]` (account-level webhooks);
+- `sync_principal.configuration.notification_configs[]` and `sync_agent_notification_configs.notification_configs[]` (agent-level webhooks);
+- `reporting_webhook` (delivery reports);
+- `create_media_buy.artifact_webhook` (content artifacts).
+
+On `reporting_webhook` and `artifact_webhook`, `authentication` is required on a request served below 3.3.
+
+Deliveries to a webhook registration, and similar asynchronous seller-initiated callbacks, are signed under a symmetric variant of this profile, or as ordinary Web Bot Auth requests from the seller's origin. Role direction is inverted relative to request signing: the **seller signs outbound**, the **buyer verifies**. The HMAC fallback described in [Webhook Security](#webhook-security) is deprecated.
+
+**Baseline with programmatic advertisement.** Signed webhooks are baseline-required for any seller that emits webhooks, under either signing profile — the default is signed, not a negotiated option. The `webhook_signing` capability block on `get_adcp_capabilities` exists so buyers can detect a non-signing seller *at onboarding* rather than discovering it by traffic inspection (which is how the asymmetry with `request_signing` manifested before this block was restored). A seller whose capability surface advertises mutating-webhook emission elsewhere (e.g., `media_buy.reporting_delivery_methods` includes `webhook`, `media_buy.content_standards.supports_webhook_delivery: true`, or `wholesale_feed_webhooks.supported: true`) MUST include this block with `supported: true`. A seller that emits no webhooks MAY omit the block entirely; `supported: false` is reserved for the unsafe posture of emitting unsigned webhooks and MUST NOT be used to signal absence-of-webhooks. Buyers that integrate with a seller whose surface advertises mutating-webhook emission while the `webhook_signing` block advertises `supported: false` or is omitted MUST fail onboarding with a user-actionable error — a seller that emits but does not sign webhooks is unsafe to integrate with for any mutating-webhook use case.
 
 ```json
 {
@@ -1694,12 +1817,12 @@ Push-notification webhooks (POSTs to the `push_notification_config.url` a buyer 
 - `supported`: MUST be `true` when the seller advertises mutating-webhook emission elsewhere in its capability surface. Buyers reject onboarding when `supported: false` or the block is missing and the seller's surface advertises webhook emission. Sellers that emit no webhooks SHOULD omit the entire block.
 - `profile`: MUST be exactly `adcp/webhook-signing/v1` for this profile version. Future profile versions bump the string.
 - `algorithms`: subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithm set this seller will sign with. Matches the webhook-signing verifier allowlist (see step 4 of the [verifier checklist](#verifier-checklist-requests), reused for webhooks via the substitutions noted above). Buyers MUST reject onboarding with a user-actionable error if the advertised `algorithms` array contains any value outside this set; an out-of-set algorithm indicates a misconfigured or non-conforming seller and silent acceptance would defeat the allowlist.
-- `legacy_hmac_fallback`: `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`, `accounts[].notification_configs[].authentication.credentials`, `sync_principal.configuration.notification_configs[].authentication.credentials`, or `sync_agent_notification_configs.notification_configs[].authentication.credentials`. `false` is the recommended posture in 3.x.
+- `legacy_hmac_fallback`: `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `authentication.credentials` on a webhook registration. `false` is the recommended posture in 3.x.
 - `delivery_retry_horizon_seconds`: maximum interval from the first attempt during which the seller can retry one delivery. Required for `supported: true` in 3.2; minimum 24h, maximum 7 days. Receivers retain the immutable delivery-key binding and terminal publication proof for at least this interval.
 
-The buyer opts into the legacy HMAC-SHA256 scheme by populating `push_notification_config.authentication.credentials`, `accounts[].notification_configs[].authentication.credentials`, `sync_principal.configuration.notification_configs[].authentication.credentials`, or `sync_agent_notification_configs.notification_configs[].authentication.credentials`; otherwise the seller signs with the 9421 webhook profile. Sellers MAY decline to support the legacy scheme — see the `legacy_hmac_fallback` flag above.
+The buyer opts into the legacy HMAC-SHA256 scheme by populating `authentication.credentials` on a webhook registration; otherwise the seller signs under the profile the registration selects, as the switch rule below says. Sellers MAY decline to support the legacy scheme — see the `legacy_hmac_fallback` flag above.
 
-**Mode selection is a switch, not both.** The presence of `push_notification_config.authentication`, `accounts[].notification_configs[].authentication`, `sync_principal.configuration.notification_configs[].authentication`, or `sync_agent_notification_configs.notification_configs[].authentication` selects exactly one signing mode for every webhook delivered to that URL: `authentication` present → legacy HMAC-SHA256 (or Bearer); `authentication` absent → 9421. Sellers MUST NOT sign the same webhook both ways. Buyers MUST NOT attempt "try 9421 first, fall back to HMAC" verification — that pattern creates downgrade oracle behavior and accepts signatures the buyer did not ask for. Verifiers key the verification path strictly off whether the receiver has a configured HMAC secret for the webhook registration.
+**Mode selection is a switch, not both.** The presence of `authentication` on a webhook registration selects exactly one signing mode for every webhook delivered under that registration: `authentication` present → legacy HMAC-SHA256 (or Bearer); `authentication` absent → 9421, under the profile the registration's `signing_profile` selects (`adcp/webhook-signing/v1` when it is omitted). Sellers MUST NOT sign the same webhook both ways. Buyers MUST NOT attempt "try 9421 first, fall back to HMAC" verification — that pattern creates downgrade oracle behavior and accepts signatures the buyer did not ask for. Verifiers key the verification path strictly off whether the receiver has a configured HMAC secret for the webhook registration.
 
 **Key publication.** Signing keys are published by the seller in its **own brand.json** `agents[]` entry at the signing agent's operator domain, at the `jwks_uri` member of that entry — the same publication pattern as any other AdCP agent key. Webhooks are signed with the agent's **`adcp_use: "request-signing"`** key; there is no separate webhook key purpose. Domain separation between requests and webhooks is carried by the signature `tag` (`adcp/request-signing/v1` vs `adcp/webhook-signing/v1`), not by the key purpose. Each signing JWK MUST declare:
 
@@ -1739,14 +1862,16 @@ Every resolution failure in steps 1–3 (a missing or unreachable record, origin
 
 Buyers MUST NOT derive signer identity from webhook payload fields (`task_id`, `operation_id`, etc.) or from `adagents.json` entries — those are publisher authorization, not signer identity. A publisher pin can narrow the accepted keys but never identifies the signer. Identity is established solely via the signature → JWKS → seller `agents[]` entry chain.
 
-**Downgrade and injection resistance.** The buyer's webhook-signing preference is communicated by the presence or absence of `push_notification_config.authentication`, `accounts[].notification_configs[].authentication`, `sync_principal.configuration.notification_configs[].authentication`, or `sync_agent_notification_configs.notification_configs[].authentication` on the inbound request that registers the webhook. In 3.0 that inbound request is frequently bearer-authenticated rather than 9421-signed, so an on-path mutator (misconfigured proxy, compromised intermediary) could strip or inject the `authentication` block silently. The following rules contain the blast radius:
+**Downgrade and injection resistance.** The buyer's webhook-signing preference is communicated by the presence or absence of `authentication` on the webhook registration, in the inbound request that registers the webhook. In 3.0 that inbound request is frequently bearer-authenticated rather than 9421-signed, so an on-path mutator (misconfigured proxy, compromised intermediary) could strip or inject the `authentication` block silently. The following rules contain the blast radius. On `reporting_webhook` and `artifact_webhook`, they apply only to a request served at 3.3 or later, because a request served below 3.3 must carry the block:
 
 - **Sellers MUST log** every request that arrives with a non-empty `authentication` block. Ops alarms on unexpected HMAC selection protect the buyer side when the buyer thought it was getting 9421.
-- **Sellers that support request signing MUST require** the inbound request to be 9421-signed (per the [request verifier checklist](#verifier-checklist-requests)) when `authentication` is present on `push_notification_config.authentication`, any `accounts[].notification_configs[].authentication`, any `sync_principal.configuration.notification_configs[].authentication`, or any `sync_agent_notification_configs.notification_configs[].authentication`, rejecting with `request_signature_required` (the same code used for `required_for` operations — see [Transport error taxonomy](#transport-error-taxonomy)). When a signed request cryptographically commits to the body, the `authentication` block cannot be injected or stripped without also invalidating the signature. Sellers that do not support request signing at all have no way to enforce this rule and fall back to the log-and-alarm posture in the preceding bullet — 3.0 migration note, not an exemption: the [request-signing migration timeline](#transport-migration-timeline) makes request signing required for spend-committing operations in 4.0, at which point no seller is unsigned-only.
+- **Sellers that support request signing MUST require** the inbound request to be 9421-signed (per the [request verifier checklist](#verifier-checklist-requests)) when any webhook registration in the request carries `authentication`, rejecting with `request_signature_required` (the same code used for `required_for` operations — see [Transport error taxonomy](#transport-error-taxonomy)). When a signed request cryptographically commits to the body, the `authentication` block cannot be injected or stripped without also invalidating the signature. Sellers that do not support request signing at all have no way to enforce this rule and fall back to the log-and-alarm posture in the preceding bullet — 3.0 migration note, not an exemption: the [request-signing migration timeline](#transport-migration-timeline) makes request signing required for spend-committing operations in 4.0, at which point no seller is unsigned-only.
 - **Buyers MUST reject with `webhook_mode_mismatch` and alarm**, not silently downgrade, when they receive a 9421-signed webhook after registering with `authentication.credentials`, or when they receive HMAC-signed webhooks after registering without `authentication`. Rejection is the safety property; alarming is the telemetry — a buyer that alarms but accepts the payload has already handed authority to the mismatched signing scheme. The rejection surfaces as HTTP `401` with the stable error code so sender-side retry logic can route it to incident response rather than replaying identically.
 - **Buyers SHOULD negotiate HMAC-mode out-of-band** at onboarding when interoperating with sellers that have not yet implemented 9421. Durable per-counterparty mode selection in operator records is not MITM-mutable the way a per-request field is.
 
 **Verifier checklist for webhooks.** Apply these 15 checks (14 numbered steps plus sub-step 9a) in order, short-circuiting on the first failure. Step 14 decomposes into 14a (strict-parse requirement) and 14b (logging discipline) — both apply whenever step 14 runs; they are elaborations of one check, not separate checks in the count. The steps below are the [request verifier checklist](#verifier-checklist-requests) with **three profile substitutions** — the `tag` value (`adcp/webhook-signing/v1` instead of `adcp/request-signing/v1`), the direction-of-trust resolution (seller's brand.json `agents[]` entry instead of the buyer's), and webhook v1's legacy unpadded Base64URL binary-value decoder instead of the 3.2 request profile's RFC 8941 Base64 decoder. Parser mode comes from the trusted webhook route/profile configuration before header parsing; it is not a lenient fallback after request-profile parsing fails. Step 14 (body well-formedness) is identical across the two profiles; only the error-code prefix differs (`webhook_body_malformed` vs `request_body_malformed`). Implementations SHOULD share verifier code between the two profiles, branch on the three profile parameters, and configure the profile-specific error codes — NOT fork the implementation. Error codes are prefixed `webhook_*` — most carry the `webhook_signature_*` infix, plus structural codes without it (currently `webhook_target_uri_malformed`, `webhook_mode_mismatch`, `webhook_body_malformed`) — so caller-side error handling distinguishes the two profiles.
+
+**Before step 1: bound the body.** Receivers SHOULD apply the [inbound body bounds](#inbound-body-bounds) — the byte cap (4 MiB default), the depth-64 and 100,000-member parse bounds, and the connect, idle, and total deadlines — before running step 1, since the checklist parses signature parameters and computes `content-digest` over the full body before it reaches step 14. An over-limit request is rejected with HTTP 413 and is not one of the 15 checks below or a `webhook_*` code.
 
 1. Parse `Signature-Input` structure per RFC 9421 §4 and decode the `Signature` binary token with the webhook-v1 unpadded Base64URL profile. Reject if malformed (`webhook_signature_header_malformed`). If `Signature` or `Signature-Input` is present without the other, reject with the same code — a bound pair, not a guessable one.
 2. Reject if any of `created`, `expires`, `nonce`, `keyid`, `alg`, or `tag` is absent from the `Signature-Input` parameters (`webhook_signature_params_incomplete`).
@@ -1858,7 +1983,8 @@ Codes parallel the [request-signing error taxonomy](#transport-error-taxonomy), 
 |---|---|
 | 3.0 GA | 9421 webhook signing is baseline for any seller that emits webhooks. Legacy HMAC-SHA256 fallback available when buyer populates `push_notification_config.authentication.credentials` or `accounts[].notification_configs[].authentication.credentials`; sellers MAY decline to support it. |
 | 3.x | HMAC fallback is deprecated. Sellers SHOULD log warnings when selected. SDKs SHOULD surface a deprecation notice to buyers that still configure `authentication`. |
-| 4.0 | `authentication` on `push_notification_config` and `accounts[].notification_configs[]` is removed from the schema. 9421 webhook signing is the only supported path. |
+| 3.3 | The RFC 9421 webhook profile (`adcp/webhook-signing/v1`) is deprecated and stays fully functional through 3.x. The experimental Web Bot Auth profile signs a webhook as an ordinary request from the seller's origin. |
+| 4.0 | `authentication` on `push_notification_config` and `accounts[].notification_configs[]` is removed from the schema. The RFC 9421 webhook profile is removed; webhooks are signed under the Web Bot Auth profile. |
 
 #### TMP cross-reference
 
@@ -1884,7 +2010,8 @@ AdCP 4.0 is the next breaking-changes accumulation window. Mandatory request sig
 | 3.0 GA | Optional, capability-advertised | Verifiers MAY validate; `required_for: []` by default. Signers MAY sign. Reference vectors ship; reference SDK pilots begin. |
 | 3.0–3.1 | Reference SDKs ship; pilots surface bugs | `covers_content_digest` defaults to `"either"`; explicit `"forbidden"` remains available for legacy body-rewriting infrastructure. Early adopters turn on `required_for` incrementally. |
 | 3.2 | Signing remains optional; body integrity becomes mandatory when used | An agent advertising request signing MUST explicitly emit `covers_content_digest: "required"`. Every accepted signature on a request with a body covers `content-digest`; legacy modes require a separately configured 3.0/3.1 endpoint. |
-| 4.0 | Required for spend-committing operations | `required_for` MUST include `create_media_buy`, `acquire_*`, and every spend-committing operation the verifier supports. Signers MUST sign; legacy digest modes are removed. |
+| 3.3 | Web Bot Auth profile added (experimental); RFC 9421 request and webhook profiles deprecated | Signers MAY sign with `web-bot-auth` (origin identity, key directory at the origin, no capabilities call). The RFC 9421 profiles (`adcp/request-signing/v1`, `adcp/webhook-signing/v1`) stay fully functional through 3.x. Verifiers that advertise both apply the coexistence rules in [Web Bot Auth identities](#web-bot-auth-identities). |
+| 4.0 | Required for spend-committing operations | `required_for` MUST include `create_media_buy`, `acquire_*`, and every spend-committing operation the verifier supports. Signers MUST sign; legacy digest modes are removed. The RFC 9421 request and webhook profiles are removed, so signatures use the Web Bot Auth profile. |
 
 Implementations that ship signing in 3.x SHOULD enable verifier-side `required_for` selectively (per-counterparty pilot, then broader rollout) before 4.0 to validate end-to-end paths against real traffic — this is what makes the 4.0 transition feasible without ecosystem-wide breakage.
 
@@ -2404,8 +2531,9 @@ is the producing agent bounding what it mirrors.
 
 **Scope.** This section covers responses a client reads on its own call path.
 Inbound deliveries a buyer *receives* — A2A push notifications and
-[AdCP webhooks](#webhook-callbacks) — are a server-side surface that needs its
-own request-body cap; the same streaming discipline applies there.
+[AdCP webhooks](#webhook-callbacks) — are a server-side surface with its
+own request-body cap; see [Inbound body bounds](#inbound-body-bounds). The same
+streaming discipline applies there.
 
 These bounds are the discipline the [SSRF fetch rules](#webhook-url-validation-ssrf)
 already apply to counterparty-supplied URLs and the
@@ -2416,6 +2544,93 @@ on its own call path. They do not replace the per-field hygiene in
 — length limits on seller strings, control-character stripping,
 prototype-pollution filtering. A size bound is what keeps the process alive
 long enough to apply them.
+
+### Inbound body bounds
+
+A webhook endpoint is reachable by anyone who learns its URL, and its request
+body is untrusted until signature verification passes. The memory-exhaustion
+shape from [Response Size Bounds](#response-size-bounds) applies unchanged: the
+peer chooses the byte count, and the expensive work — decompression, JSON
+parsing, RFC 9421 or Web Bot Auth (WBA) verification — runs before any trust
+decision. An unauthenticated peer that can force that path has an allocation
+primitive.
+
+Receivers of A2A push notifications (`push_notification_config.url`
+deliveries) and of AdCP webhooks — reporting, artifact, collection-list, and
+account notification subscribers — **SHOULD** bound the request body. The bound
+is the same discipline as the client-side one, applied to what a peer pushes
+rather than what a client pulls:
+
+1. **It pre-rejects on `Content-Length`.** A declared length over the cap is
+   rejected before the first body byte is read. A request with no
+   `Content-Length`, such as chunked transfer, is not exempt; the streaming
+   count below is what bounds it.
+2. **It counts decoded bytes while streaming.** The count covers bytes after
+   any `Content-Encoding` is decoded, and the decoder output buffer is bounded,
+   so a small compressed body cannot expand past the cap. Raw bytes off the wire
+   are counted against the same cap as well, whichever trips first, so a chunked
+   body with no `Content-Length` cannot run unbounded. The receiver aborts the
+   read the moment a count passes the cap rather than buffering the body and
+   measuring it afterwards. A receiver MAY reject any `Content-Encoding` other
+   than identity on a webhook route; nothing in the webhook profile requires a
+   compressed body. A request carrying both `Content-Length` and
+   `Transfer-Encoding: chunked`, or conflicting `Content-Length` values, is
+   rejected rather than reconciled, as on the response side.
+3. **It bounds what the bytes become, before verification.** After the byte
+   cap passes, the receiver enforces a maximum JSON nesting depth of 64 and at
+   most 100,000 aggregate object members and array elements, matching the
+   task-body caps in [Attestation resolution fetch contract](#attestation-resolution-fetch-contract),
+   and rejects an over-limit document **before** RFC 9421 or WBA verification
+   (and before any legacy HMAC or Bearer check). The bounds are enforced
+   incrementally, by a streaming or abort-on-limit parser, not by buffering the
+   body and running a full parse that has already allocated the document: a
+   counting scanner that aborts at depth 65 or member 100,001 does not itself
+   become the allocation primitive. Verification parses and canonicalizes the
+   request — signature parameters, a `content-digest` or HMAC computed over the
+   full body, and, for webhooks, the body-well-formedness check that is the
+   only step to parse the body itself — and a legacy or receiver-specific path
+   may parse the body earlier still. Bounding first keeps every one of those
+   paths away from input an unauthenticated peer chose. The order is: byte cap,
+   then depth and member bounds, then verification.
+4. **It applies deadlines.** A connect deadline (for a server, the connection
+   and TLS handshake together with the request-header read), a read-idle
+   deadline, and a total deadline for the whole request. The request header
+   section is bounded separately from the body. The spec fixes no values here;
+   the numeric budgets on the [brand.json fetch](#discovering-an-agents-signing-keys-via-brand_json_url)
+   are a reasonable reference. A peer that opens a connection and
+   trickles bytes, or stalls mid-body, otherwise holds a worker for as long as
+   it likes without ever tripping a byte cap.
+5. **It errors; it does not truncate.** An over-limit request is rejected with
+   HTTP `413 Content Too Large`, for a byte, depth, or member violation alike.
+   A truncated body is a payload the receiver
+   might still parse, and the signature and `content-digest` would not cover
+   it. The rejection is an HTTP status, not an `adcp_error.code` and not a
+   `webhook_*` verification code, because it happens before verification
+   runs. The receiver MUST NOT log, echo, or process any excerpt of the
+   rejected body, which has passed none of the verification or string hygiene
+   checks. The same body fails the same way on every attempt, so a sender that
+   retries a `413` on its non-2xx backoff schedule (see
+   [retry semantics](#webhook-callbacks)) only repeats the cost. The receiver
+   closes the connection when it has not read the full body.
+
+**Default.** The cap defaults to no more than 4 MiB (4,194,304 bytes). This
+generalizes the 4 MiB task-body cap in
+[Attestation resolution fetch contract](#attestation-resolution-fetch-contract)
+to inbound push and webhook deliveries rather than adding a second number, and the depth and
+member bounds are that section's 64 and 100,000. The limit SHOULD be
+configurable per endpoint, so a receiver with a specific reason to accept a
+larger body from a known sender raises it deliberately rather than globally. A
+receiver that implements this bound MUST NOT ship an unbounded mode as the
+default. This section does not weaken the attestation task-body cap, which
+remains a MUST wherever a task can carry portable attestations.
+
+**Precedence.** As in the response-side [Precedence](#response-size-bounds)
+paragraph, 4 MiB is a ceiling on what a default may be, not a target and not a
+license to raise a tighter cap. Where a feature defines its own inbound cap,
+that cap governs that feature's deliveries — for example, the 1 MB payload
+limit in [Webhooks](/docs/building/by-layer/L3/webhooks#security-requirements)
+governs webhook deliveries. A tighter default is always
+conformant; a larger one is not.
 
 ## Audit Logging
 
@@ -2472,6 +2687,7 @@ function logSecurityEvent(eventType, details) {
 - [ ] Rotate credentials every 90 days
 - [ ] Use HTTPS for all AdCP communications
 - [ ] Bound every agent response, enforced while the body streams, defaulting to no more than 4 MiB ([response size bounds](#response-size-bounds))
+- [ ] Bound every inbound push-notification and webhook body, enforced before signature verification, defaulting to no more than 4 MiB ([inbound body bounds](#inbound-body-bounds))
 - [ ] Validate responses from publishers
 - [ ] Implement alerts for unusual spending patterns
 

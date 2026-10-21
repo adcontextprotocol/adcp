@@ -58,14 +58,6 @@ test('explicitly deprecated schema nodes carry deprecated: true', () => {
   assert.deepEqual(missing, [], `Missing deprecated: true annotations:\n${missing.join('\n')}`);
 });
 
-// Deprecated nodes whose description says 4.0 drops a requirement, not the
-// node itself, so they keep no x-removed-in marker.
-const REMOVAL_WORDING_EXEMPT = new Set([
-  // #4288: 4.0 drops required: ["authentication"]; the field stays optional.
-  'core/reporting-webhook.json#/properties/authentication',
-  'media-buy/create-media-buy-request.json#/properties/artifact_webhook/properties/authentication',
-]);
-
 test('deprecated nodes scheduled for 4.0 removal carry x-removed-in: 4.0.0', () => {
   const missing = [];
   const unscheduled = [];
@@ -78,7 +70,7 @@ test('deprecated nodes scheduled for 4.0 removal carry x-removed-in: 4.0.0', () 
       const site = `${path.relative(SOURCE_DIR, file).split(path.sep).join('/')}#${pointer}`;
       const description = typeof node.description === 'string' ? node.description : '';
       const saysRemovedIn4 = /\bremoved (?:in|at) (?:AdCP )?4\.0\b/i.test(description);
-      if (node.deprecated === true && saysRemovedIn4 && node['x-removed-in'] !== '4.0.0' && !REMOVAL_WORDING_EXEMPT.has(site)) {
+      if (node.deprecated === true && saysRemovedIn4 && node['x-removed-in'] !== '4.0.0') {
         missing.push(site);
       }
       if (node['x-removed-in'] !== undefined && node.deprecated !== true) unscheduled.push(site);

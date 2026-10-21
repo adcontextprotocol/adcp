@@ -182,6 +182,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_generative-91bf69ab"
+            sandbox: true
           quality: "draft"
           include_preview: true
 
@@ -252,6 +253,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_generative-91bf69ab"
+            sandbox: true
           quality: "draft"
           include_preview: true
 
@@ -329,6 +331,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_generative-91bf69ab"
+            sandbox: true
           quality: "production"
 
           idempotency_key: "$generate:uuid_v4#creative_generative_multi_format_build_multi_format"
@@ -397,6 +400,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_generative-91bf69ab"
+            sandbox: true
           quality: "production"
           include_preview: true
 
@@ -459,6 +463,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_generative-91bf69ab"
+            sandbox: true
           catalogs:
             - catalog_id: "acme_generative_source"
               type: "product"
@@ -522,6 +527,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_generative-91bf69ab"
+            sandbox: true
           quality: "draft"
           include_preview: true
 
@@ -610,6 +616,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_generative-91bf69ab"
+            sandbox: true
           catalogs:
             - catalog_id: "creative_generative_substitution_probe_v1"
               type: "product"
@@ -693,6 +700,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_generative-91bf69ab"
+            sandbox: true
           quality: "draft"
           include_preview: true
 

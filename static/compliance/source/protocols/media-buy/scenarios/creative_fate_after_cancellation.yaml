@@ -114,6 +114,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
+            sandbox: true
           context:
             correlation_id: "creative_fate--get_products"
         context_outputs:
@@ -157,6 +158,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#creative_fate_after_cancellation_create_buy"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
@@ -204,6 +206,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
+            sandbox: true
           creatives:
             - creative_id: "acme_reuse_banner_001"
               name: "Acme Outdoor reuse banner"
@@ -257,6 +260,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
+            sandbox: true
           filters:
             creative_ids:
               - "$context.creative_id"
@@ -299,6 +303,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           canceled: true
           cancellation_reason: "Creative-fate scenario: releasing assignment to verify library persistence."
@@ -340,6 +345,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
+            sandbox: true
           filters:
             creative_ids:
               - "$context.creative_id"
@@ -389,6 +395,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#creative_fate_after_cancellation_create_second_buy"
           start_time: "asap"
           end_time: "2099-10-31T23:59:59Z"
@@ -436,6 +443,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_creative_fate_after-cf33d42e"
+            sandbox: true
           creatives:
             # Buyer-authoritative id set in sync_creative_with_assignment —
             # use it literally instead of round-tripping through

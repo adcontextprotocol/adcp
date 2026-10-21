@@ -95,6 +95,18 @@
     },
     {
       "if": {
+        "required": ["security_profiles"],
+        "properties": { "security_profiles": { "minItems": 1 } }
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "security.profiles" } }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "properties": {
           "adcp": {
             "properties": {
@@ -515,6 +527,18 @@
         "required": ["media_buy", "account"]
       },
       "then": false
+    },
+    {
+      "if": {
+        "required": ["account"],
+        "properties": { "account": { "required": ["agent_onboarding"] } }
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "account.agent_onboarding" } }
+        },
+        "required": ["experimental_features"]
+      }
     }
   ],
   "properties": {
@@ -1324,6 +1348,12 @@
           "type": "boolean",
           "description": "Whether this seller supports sandbox accounts for testing. Buyer-declared accounts use sandbox: true in sync_accounts or, for an unambiguous lazy-provisioning seller, in the natural-key account reference. Sellers with account_id namespaces expose sandbox accounts as pre-existing test accounts through list_accounts or supply them out-of-band. Requests using a sandbox account perform no real platform calls or spend.",
           "default": false
+        },
+        "agent_onboarding": {
+          "$ref": "/schemas/core/agent-onboarding.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "How this seller onboards buyer agents: a mode per billing party and for sandbox, requirements, and where a human starts. Seller-wide and identical for every caller. Experimental: sellers that declare it MUST list account.agent_onboarding in experimental_features. See docs/protocol/get_adcp_capabilities.mdx#accountagent_onboarding."
         }
       },
       "required": ["supported_billing"]
@@ -1400,7 +1430,7 @@
           "description": "Compact product and MediaBuy lifecycle operation names this seller supports. Added in AdCP 3.2 as task-specific contracts that form the 4.0 lifecycle foundation. Sellers may advertise any supported subset while retaining the deprecated get_products/create_media_buy/update_media_buy facades throughout 3.x. Each stateful split task has its own idempotency identity; callers MUST retry with the same tool name.",
           "items": {
             "type": "string",
-            "enum": ["list_products", "request_proposals", "refine_proposals", "decline_proposals", "buy_products", "accept_proposal", "control_media_buy"]
+            "enum": ["list_products", "request_proposals", "refine_proposals", "decline_proposals", "buy_products", "accept_proposal", "control_media_buy", "list_proposals"]
           },
           "minItems": 1,
           "uniqueItems": true
@@ -1451,6 +1481,56 @@
             }
           ],
           "additionalProperties": true
+        },
+        "open_opportunities": {
+          "type": "object",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Open-opportunity support: reading proposals (including seller offers against accepted media buys, when the seller also declares media_buy.seller_offers), keeping an opportunity open past a purchase, and creating later proposals under buyer consent. Each part is advertised separately so sellers can adopt them independently. Experimental (media_buy.open_opportunities): sellers declaring this object MUST list the feature id in experimental_features. Buyers MUST NOT send later_proposals consent, opportunity.status open on accept_proposal or buy_products, or an empty decline_proposals declines array to a seller that does not advertise the matching part.",
+          "properties": {
+            "list_proposals": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the seller implements list_proposals. Required true when later_proposals.supported is true, because list_proposals is the repair read for proposal.created. Sellers declaring media_buy.seller_offers also require it, as the repair read for proposal.offered, the buy-scoped sibling notification for seller offers against accepted media buys. Seller offers are distinct from later proposals: later_proposals covers new_media_buy drafts under buyer consent, and media_buy_update proposals are out of scope for it."
+            },
+            "keep_open_after_purchase": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether accept_proposal and buy_products accept an explicit opportunity.status open."
+            },
+            "later_proposals": {
+              "type": "object",
+              "description": "Whether the seller creates proposals after the creating task completes, for opportunities whose buyer gave later_proposals consent.",
+              "properties": {
+                "supported": { "type": "boolean" },
+                "max_open_duration": {
+                  "allOf": [{ "$ref": "/schemas/core/duration.json" }, { "not": { "properties": { "unit": { "const": "campaign" } }, "required": ["unit"] } }],
+                  "description": "Longest window the seller keeps an opportunity open for later proposals, measured from the call that last set consent. It always caps the window, which ends at the earliest of this, later_proposals.until, planning_horizon.end, and closure. The campaign unit is invalid here."
+                }
+              },
+              "required": ["supported"],
+              "if": {
+                "properties": { "supported": { "const": true } },
+                "required": ["supported"]
+              },
+              "then": { "required": ["max_open_duration"] },
+              "additionalProperties": false
+            }
+          },
+          "if": {
+            "properties": {
+              "later_proposals": {
+                "properties": { "supported": { "const": true } },
+                "required": ["supported"]
+              }
+            },
+            "required": ["later_proposals"]
+          },
+          "then": {
+            "properties": { "list_proposals": { "const": true } },
+            "required": ["list_proposals"]
+          },
+          "additionalProperties": false
         },
         "reporting_delivery_methods": {
           "type": "array",
@@ -2055,6 +2135,15 @@
           "type": "object",
           "description": "Seller-level rollup of vendor-metric optimization capabilities supported by at least one product. Product-level vendor_metric_optimization.supported_metrics[] remains authoritative for the specific (vendor, metric_id) pairs and target kinds a buyer may bind on a package; this seller-level object exists so buyers and compliance runners can discover whether vendor_metric goals are in scope before walking the catalog. Sellers MUST keep this in sync with product-level vendor_metric_optimization declarations.",
           "properties": {
+            "supported_metrics": {
+              "type": "array",
+              "description": "(vendor, metric_id) pairs this seller can optimize toward on at least one of its products. Seller-level rollup of product-level vendor_metric_optimization.supported_metrics[] declarations (core/product.json); each entry has the product-level shape, and its supported_targets, when present, are the target kinds at least one product supports for the pair. Pairs are matched on vendor.domain and vendor.brand_id, as at the product level, and sellers MUST list each pair once, with supported_targets unioned across products; the object-level supported_targets covers the union of the per-pair values. Buyers SHOULD check this list before sending a vendor_metric goal, including an outcome_target vendor_metric goal, rather than learning an unsupported pair from an INVALID_REQUEST rejection. Product-level declarations remain authoritative for a specific package. Sellers MUST keep this in sync with their product catalog — if no product supports a pair, it must not appear here. Omitting this field means the seller declares no specific guarantees about which pairs it supports; buyers should fall back to per-product inspection of vendor_metric_optimization.supported_metrics.",
+              "items": {
+                "$ref": "/schemas/core/vendor-metric-optimization-supported-metric.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
             "supported_targets": {
               "type": "array",
               "description": "Target kinds this seller can support for vendor_metric optimization goals on at least one product. Values match optimization_goals[].target.kind for kind: vendor_metric. A target-less vendor_metric goal maximizes the metric within budget and does not require a target-kind declaration.",
@@ -3168,6 +3257,21 @@
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a"
           }
+        },
+        "profiles": {
+          "x-status": "experimental",
+          "type": "array",
+          "description": "Request-signing profiles this agent verifies, named by the RFC 9421 `tag` value each profile puts in `Signature-Input`. `adcp/request-signing/v1` is the AdCP RFC 9421 profile defined in docs/building/by-layer/L1/security.mdx (Signed Requests (Transport Layer)). `web-bot-auth` is the Web Bot Auth profile, experimental in 3.3, in docs/building/by-layer/L1/wba-profile.mdx: the verifier resolves the signer's keys from the origin named in the covered `Signature-Agent` header, and a verified identity the seller has not approved gets no account access. Omission means `[\"adcp/request-signing/v1\"]`, so every 3.0 to 3.2 capability document keeps its meaning. A buyer signs with a profile the seller lists. The operation lists (`required_for`, `warn_for`, `supported_for`, and the `protocol_methods_*` lists) apply to every listed profile.",
+          "items": {
+            "type": "string",
+            "enum": ["adcp/request-signing/v1", "web-bot-auth"]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["adcp/request-signing/v1"],
+          "x-adcp-validation": {
+            "spec": "docs/building/by-layer/L1/wba-profile.mdx#capability"
+          }
         }
       },
       "required": ["supported"]
@@ -3233,7 +3337,7 @@
           "type": "boolean",
           "deprecated": true,
           "x-removed-in": "4.0.0",
-          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_principal.configuration.notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
+          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_principal.configuration.notification_configs[].authentication, sync_agent_notification_configs.notification_configs[].authentication, reporting_webhook.authentication, or create_media_buy.artifact_webhook.authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
           "default": false
         },
         "delivery_retry_horizon_seconds": {
@@ -3241,6 +3345,20 @@
           "description": "Maximum elapsed time from the first delivery attempt during which this agent may retry the same webhook delivery. The publisher retains the immutable delivery-key-to-RFC-8785-JCS-payload binding and sufficient delivery state for at least this interval, and MUST NOT retry that key afterward. Receivers retain the matching payload binding and terminal publication proof for at least max(86400, this value) seconds in AdCP 3.x. Retries do not extend the horizon. A webhook-emitting AdCP 3.2 agent MUST populate this additive field; it remains schema-optional so existing 3.x capability documents stay valid. Minimum 86400 (24h), maximum 604800 (7d).",
           "minimum": 86400,
           "maximum": 604800
+        },
+        "profiles": {
+          "x-status": "experimental",
+          "type": "array",
+          "description": "Webhook-signing profiles this agent can sign outbound webhooks with, named by the RFC 9421 `tag` value. `adcp/webhook-signing/v1` is the AdCP webhook profile named in `profile`. `web-bot-auth` is the Web Bot Auth profile, experimental in 3.3, in docs/building/by-layer/L1/wba-profile.mdx (Webhooks), under which a webhook is an ordinary signed request from the seller's identity. The seller signs each delivery with the one profile the subscriber selected in the registration's `signing_profile` (on `push_notification_config`, `reporting_webhook`, `artifact_webhook`, `accounts[].notification_configs[]`, or an agent-level notification configuration), and rejects a registration that selects a profile not listed here. Omission means `[\"adcp/webhook-signing/v1\"]`. The list includes the value of `profile`.",
+          "items": {
+            "$ref": "/schemas/enums/webhook-signing-profile.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": ["adcp/webhook-signing/v1"],
+          "x-adcp-validation": {
+            "spec": "docs/building/by-layer/L1/wba-profile.mdx#webhooks"
+          }
         }
       },
       "required": ["supported"]
@@ -3359,6 +3477,18 @@
         }
       },
       "additionalProperties": true
+    },
+    "security_profiles": {
+      "type": "array",
+      "x-status": "experimental",
+      "description": "Named security profiles this endpoint commits to. A profile is a closed set of requirements published at docs/building/by-layer/L1/production-security-profile.mdx. The claim covers the whole endpoint: every tenant and every transport (MCP, A2A, REST) that serves the endpoint's spend-committing operations. It is self-asserted until a registry verifies it. Only agents that verify inbound requests and serve this capabilities response can advertise a profile. Absent or empty means no claim. An id is immutable: new semantics ship under a new id. Consumers MUST ignore ids they do not recognize and MUST NOT treat an unrecognized id as satisfying a requirement. Currently registered: `adcp-prod-security-3.3`. EXPERIMENTAL (x-status: experimental, feature id security.profiles): an endpoint that advertises a profile lists security.profiles in experimental_features.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9.-]{2,63}$",
+        "examples": ["adcp-prod-security-3.3"]
+      },
+      "uniqueItems": true,
+      "x-added-in": "3.3.0"
     },
     "measurement_gateway": {
       "type": "object",

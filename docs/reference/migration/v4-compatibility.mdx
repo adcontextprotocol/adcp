@@ -117,7 +117,7 @@ A check is added once its 4.0 change is decided. These changes are still proposa
 - the `account_id` from `sync_accounts` as the only account reference after provisioning ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850))
 - nested `status` renamed to `media_buy_status` ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905))
 
-The schemas also mark 44 deprecated fields with `x-removed-in: "4.0.0"`. The registry lists each one, either under the check that covers it or in `schema_removals_not_checked` with the reason no check covers it yet. Most uncovered fields are sent by buyers, so a seller run can't observe them. A few are seller-emitted and checkable but not graded yet: flat `valid_actions`, response-wide delivery `currency` and `aggregated_totals`, `inline_creative_management`, and the format-level build and pricing surface that `list_transformers` replaces.
+The schemas also mark 46 deprecated fields with `x-removed-in: "4.0.0"`. The registry lists each one, either under the check that covers it or in `schema_removals_not_checked` with the reason no check covers it yet. Most uncovered fields are sent by buyers, so a seller run can't observe them. A few are seller-emitted and checkable but not graded yet: flat `valid_actions`, response-wide delivery `currency` and `aggregated_totals`, `inline_creative_management`, and the format-level build and pricing surface that `list_transformers` replaces.
 
 The full list of planned 4.0 work is the [4.0 milestone](https://github.com/adcontextprotocol/adcp/milestone/5).
 

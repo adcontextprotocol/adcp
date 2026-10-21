@@ -85,7 +85,7 @@ The `filters` object supports these optional, composable filters:
 | `media_buy_ids` | string[] | Filter by media buy assignments * |
 | `unassigned` | boolean | Filter for unassigned creatives * |
 | `has_served` | boolean | Filter for creatives that have served at least one impression * |
-| `indicator_types` | `IndicatorType[]` | Filter for creatives with at least one package assignment carrying any requested current indicator type. See the [standard indicator catalog](/docs/media-buy/media-buys/indicators#standard-indicator-types). * |
+| `indicator_types` | `IndicatorType[]` | Filter for creatives with at least one package assignment carrying any requested current indicator type. See the [standard indicator catalog](/docs/media-buy/media-buys/indicators#standard-indicator-catalog). * |
 
 \* Assignment-related filters are specific to sales agents. Standalone creative agents ignore these.
 
@@ -187,6 +187,7 @@ The response provides creative data with optional enrichment:
       "creative_id": "ft_88201",
       "platform_id": "cr_400918",
       "revision_id": "rev_2026_08_23_01",
+      "seller_revision": 7,
       "name": "Holiday Sale - Medium Rectangle",
       "format_kind": "image",
       "status": "approved",
@@ -219,6 +220,32 @@ is the current buyer-authored input revision for that creative. It is exact
 readback of the value accepted by [`sync_creatives`](/docs/creative/task-reference/sync_creatives), not a seller processing or
 transcode version. Older creatives without revision identity may omit it.
 
+### Seller revision
+
+`seller_revision` is the seller's own change token for the creative, added in
+3.3. It is separate from `revision_id`: `revision_id` is assigned by the buyer
+and names the input content the buyer sent, while `seller_revision` is
+assigned by the seller and changes whenever the state this read reports
+changes. Sellers MUST NOT mint a `revision_id`, and a `revision_id` never
+substitutes for `seller_revision`.
+
+A seller that returns it MUST advance it on every committed change to state
+`list_creatives` reports, whatever its origin: an AdCP task, a seller operator,
+seller automation such as a review decision, another authorized principal, or a
+connected platform. An externally observed change advances it when the seller
+ingests it, within the source's declared freshness bound. Reads, validation-only
+calls and exact idempotency replays do not advance it, and a `sync_creatives`
+item reported `unchanged` does not either. The value never repeats for a
+different state of the same creative and never moves backward.
+
+Buyers treat the value as opaque. Equal values mean the same state as the seller has observed; a
+different value means the creative changed. Integer values also order
+numerically. When a drained [`account.change`](/docs/accounts/tasks/list_account_changes) record for the creative carries
+`resource_revision`, it is the value immediately after that change. A read that
+returns the same value reflects the change; a different value reflects later
+changes too. The field is optional: a seller that does
+not maintain it omits it and the buyer falls back to rereading.
+
 ### Per-creative fields
 
 | Field | Type | Description |
@@ -226,6 +253,7 @@ transcode version. Older creatives without revision identity may omit it.
 | `creative_id` | string | Unique creative identifier. Assigned by the seller for creatives created outside AdCP. |
 | `platform_id` | string | The seller's identifier for the creative in its source of truth. Same value `sync_creatives` returns. |
 | `revision_id` | string | Current buyer-authored input revision when the current content is revision-bound. Omitted for legacy/unversioned current content. |
+| `seller_revision` | integer or string | Optional seller-maintained, monotonic, opaque change token, distinct from `revision_id`. Advances on every committed change to the creative from any origin. See [Seller revision](#seller-revision). Added in 3.3. |
 | `name` | string | Human-readable name |
 | `format_kind` | string | Canonical format kind |
 | `format_option_ref` | object | Optional exact publisher/product option reference |

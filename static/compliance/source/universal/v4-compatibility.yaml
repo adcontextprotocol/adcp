@@ -242,7 +242,9 @@ schema_removals_not_checked:
       - "core/agent-notification-config.json#/properties/authentication"
       - "core/notification-config.json#/properties/authentication"
       - "core/push-notification-config.json#/properties/authentication"
+      - "core/reporting-webhook.json#/properties/authentication"
       - "enums/auth-scheme.json#"
+      - "media-buy/create-media-buy-request.json#/properties/artifact_webhook/properties/authentication"
 
   - change: "Major-precision version fields outside capabilities"
     issue: 3572
