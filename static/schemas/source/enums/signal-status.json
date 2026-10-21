@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-status.json",
+  "title": "Signal Status",
+  "description": "Construction readiness of a signal returned by get_signals. Experimental in AdCP 3.3 (media signals.signal_lifecycle). Vocabulary note: 'processing' is shared with audience-status.json for the 'being built' state. Unlike audience-status.json, 'failed' is terminal here, and there are no 'too_small' or 'suspended' values because those are seller-side matching and policy outcomes of a synced audience, not properties of a signal agent's segment. Absent on a signal means 'ready'.",
+  "type": "string",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "enum": [
+    "processing",
+    "ready",
+    "failed"
+  ],
+  "enumDescriptions": {
+    "processing": "The signal agent is still building the segment (for example, a custom or lookalike segment derived from a seed audience). The signal is not usable yet. Transitions to 'ready' or 'failed'. Agents MUST NOT report is_live: true or return an activation_key while a signal is 'processing'.",
+    "ready": "The segment is built and can be activated or targeted. This is the implicit value when signal_status is absent, so agents that do not build segments on demand are unchanged.",
+    "failed": "Construction failed and this signal will not become ready. Terminal. The agent MAY offer a replacement under a new signal_ref. Agents MUST NOT report is_live: true or return an activation_key for a failed signal."
+  }
+}
