@@ -164,13 +164,15 @@
       "anyOf": [
         { "$ref": "/schemas/core/targeting.json#/properties/collection_lists" },
         { "type": "null" }
-      ]
+      ],
+      "x-added-in": "3.3.0"
     },
     "collection_lists_exclude": {
       "anyOf": [
         { "$ref": "/schemas/core/targeting.json#/properties/collection_lists_exclude" },
         { "type": "null" }
-      ]
+      ],
+      "x-added-in": "3.3.0"
     },
     "placement_selection": {
       "anyOf": [

@@ -348,8 +348,8 @@
     "property_list_exclude": { "$ref": "#/definitions/supported" },
     "collection_list": { "$ref": "#/definitions/supported" },
     "collection_list_exclude": { "$ref": "#/definitions/supported" },
-    "collection_lists": { "$ref": "#/definitions/collectionListsSupport" },
-    "collection_lists_exclude": { "$ref": "#/definitions/collectionListsSupport" },
+    "collection_lists": { "$ref": "#/definitions/collectionListsSupport", "x-added-in": "3.3.0" },
+    "collection_lists_exclude": { "$ref": "#/definitions/collectionListsSupport", "x-added-in": "3.3.0" },
     "placement_selection": {
       "anyOf": [
         { "$ref": "#/definitions/supported" },

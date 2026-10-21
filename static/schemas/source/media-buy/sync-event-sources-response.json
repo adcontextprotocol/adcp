@@ -34,6 +34,7 @@
                 "description": "Name of the event source"
               },
               "platform_id": {
+                "x-added-in": "3.3.0",
                 "type": "string",
                 "description": "Platform-specific ID assigned to the event source by the seller's ad platform. Introduced in AdCP 3.3. When reporting a platform identifier in 3.3 and later 3.x responses, sellers MUST emit both platform_id and the deprecated seller_id alias with identical values. Buyers MUST prefer platform_id and fall back to seller_id only when platform_id is absent. This identifies the object on the platform, not the seller.",
                 "$comment": "x-entity deliberately omitted: seller-opaque platform identifier; AdCP requests reference event_source_id instead."
@@ -115,7 +116,8 @@
               },
               "archived": {
                 "type": "boolean",
-                "description": "Whether the source is archived. Archived sources keep their configuration but stop accepting events and stop resolving for new optimization goals. Sellers MAY omit it for sources that are not archived."
+                "description": "Whether the source is archived. Archived sources keep their configuration but stop accepting events and stop resolving for new optimization goals. Sellers MAY omit it for sources that are not archived.",
+                "x-added-in": "3.3.0"
               },
               "health": {
                 "$ref": "/schemas/core/event-source-health.json",

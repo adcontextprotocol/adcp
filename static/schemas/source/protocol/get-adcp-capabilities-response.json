@@ -608,6 +608,7 @@
           ]
         },
         "implementation": {
+          "x-added-in": "3.3.0",
           "type": "object",
           "description": "Optional, self-reported AdCP SDK identity and integration metadata, introduced in 3.3. Omission means SDK use is unknown. An empty sdks array explicitly reports no AdCP SDK use. This metadata is advisory: it does not establish SDK approval, prove deployed code execution, change capability obligations, or justify skipping conformance checks without independently trusted evidence covering this endpoint and integration. Buyers MUST NOT use it for version negotiation.",
           "properties": {
@@ -1158,6 +1159,7 @@
           "description": "OAuth authorization endpoint for obtaining operator-level credentials. Present when the seller supports OAuth for operator authentication. The agent directs the operator to this URL to authenticate and obtain a bearer token. If absent and require_operator_auth is true, operators obtain credentials out-of-band (e.g., seller portal, API key)."
         },
         "stable_account_id": {
+          "x-added-in": "3.3.0",
           "type": "boolean",
           "description": "Whether the seller-assigned account_id is a durable AccountRef for every account the caller can operate, including buyer-declared accounts. When true, the seller MUST return account_id on every non-failed sync_accounts provisioning result, MUST accept { account_id } wherever an AccountRef is accepted, and MUST NOT change an account's account_id for the life of the account, including across identity reconciliation. A buyer-declared seller that declares true still accepts the account's current natural key throughout 3.x. Buyers holding an account_id from a seller that declares true SHOULD send it in place of the natural key. When false or absent, buyers follow the account model declared by require_operator_auth and MUST NOT assume a buyer-declared seller accepts its returned account_id. Sellers whose accounts already use account_id references (require_operator_auth: true) SHOULD declare true when their ids meet these rules. Using the natural key as the reference after provisioning is deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare true during 3.x to give buyers a migration path.",
           "default": false
@@ -2164,6 +2166,7 @@
           "description": "Seller-level rollup of vendor-metric optimization capabilities supported by at least one product. Product-level vendor_metric_optimization.supported_metrics[] remains authoritative for the specific (vendor, metric_id) pairs and target kinds a buyer may bind on a package; this seller-level object exists so buyers and compliance runners can discover whether vendor_metric goals are in scope before walking the catalog. Sellers MUST keep this in sync with product-level vendor_metric_optimization declarations.",
           "properties": {
             "supported_metrics": {
+              "x-added-in": "3.3.0",
               "type": "array",
               "description": "(vendor, metric_id) pairs this seller can optimize toward on at least one of its products. Seller-level rollup of product-level vendor_metric_optimization.supported_metrics[] declarations (core/product.json); each entry has the product-level shape, and its supported_targets, when present, are the target kinds at least one product supports for the pair. Pairs are matched on vendor.domain and vendor.brand_id, as at the product level, and sellers MUST list each pair once, with supported_targets unioned across products; the object-level supported_targets covers the union of the per-pair values. Buyers SHOULD check this list before sending a vendor_metric goal, including an outcome_target vendor_metric goal, rather than learning an unsupported pair from an INVALID_REQUEST rejection. Product-level declarations remain authoritative for a specific package. Sellers MUST keep this in sync with their product catalog — if no product supports a pair, it must not appear here. Omitting this field means the seller declares no specific guarantees about which pairs it supports; buyers should fall back to per-product inspection of vendor_metric_optimization.supported_metrics.",
               "items": {
@@ -2187,7 +2190,8 @@
         },
         "event_source_archive": {
           "type": "boolean",
-          "description": "Whether this seller supports the per-source `archived` field on `sync_event_sources` request items. When true, `archived: true` archives an event source and `archived: false` undoes it. When false or absent, the seller MUST reject a request that sends `archived` with `UNSUPPORTED_FEATURE`, so a buyer never mistakes an ignored field for an archive."
+          "description": "Whether this seller supports the per-source `archived` field on `sync_event_sources` request items. When true, `archived: true` archives an event source and `archived: false` undoes it. When false or absent, the seller MUST reject a request that sends `archived` with `UNSUPPORTED_FEATURE`, so a buyer never mistakes an ignored field for an archive.",
+          "x-added-in": "3.3.0"
         },
         "conversion_tracking": {
           "type": "object",
@@ -2587,6 +2591,7 @@
           "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (buyer_agent, seller_agent, account_id) and spans all spend-commit task types. Upper bound 365 represents a one-year trailing window (fiscal-year alignment with grace); governance agents needing longer scopes negotiate via operator sign-off, not this capability. No schema default: absence of this field indicates the governance agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). A declared value of 30 is a common starting point but is not implied by omission. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push."
         },
         "supports_budget_periods": {
+          "x-added-in": "3.3.0",
           "type": "boolean",
           "description": "Whether this governance agent accepts `plans[].budget.periods[]` on sync_plans and enforces it on check_governance: deriving the containing period for dated actions, denying straddling or over-period commitments, and returning `budget_period_id`. When false or absent, buyers MUST NOT rely on period limits being enforced and SHOULD NOT send `budget.periods`; an agent that does not implement the field cannot honor a time-partitioned budget."
         },
@@ -3284,6 +3289,7 @@
           }
         },
         "operation_sources": {
+          "x-added-in": "3.3.0",
           "type": "array",
           "description": "Transport bindings from which this verifier resolves the AdCP operation name it matches against supported_for, warn_for, and required_for. 'mcp_tools_call' resolves from the decoded params.name of a JSON-RPC tools/call request. 'a2a_invocation_skill' resolves from the decoded skill of the sole DataPart of an A2A message (SendMessage, SendStreamingMessage, message/send, message/stream, and the HTTP+JSON and gRPC equivalents), and commits the verifier to the fail-closed and skill-to-handler binding rules and the hardening clauses in docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a for every A2A version and binding the endpoint serves. A verifier MUST list a source only if it implements that source's rules and passes its conformance vectors, including the hardening tier, and a present array MUST list every source the verifier supports. Absent means a verifier that has not declared this: a counterparty MUST NOT infer that required_for is enforced over A2A. The field is self-attested and informational; buyers SHOULD sign any operation listed in required_for regardless of it. It never changes the protocol_methods_* namespace, which matches the JSON-RPC method only.",
           "items": {
@@ -3309,7 +3315,8 @@
           "default": ["adcp/request-signing/v1"],
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/wba-profile.mdx#capability"
-          }
+          },
+          "x-added-in": "3.3.0"
         }
       },
       "required": ["supported"]
@@ -3396,7 +3403,8 @@
           "default": ["adcp/webhook-signing/v1"],
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/wba-profile.mdx#webhooks"
-          }
+          },
+          "x-added-in": "3.3.0"
         }
       },
       "required": ["supported"]

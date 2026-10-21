@@ -117,7 +117,8 @@
           "type": "string",
           "format": "uri",
           "pattern": "^https://",
-          "description": "URL of an external get_creative_features-capable judge agent the seller calls to score the produced leaves. MUST match an entry in the seller's `creative_policy.accepted_verifiers[].agent_url` (off-list → `EVALUATOR_AGENT_NOT_ACCEPTED`); an on-list agent that is unreachable or rejects the producing agent's transport authentication degrades to seller-default ranking (advisory errors[] note), not a failure. Authentication and trust material for this call belongs on the transport or in account provisioning, not in the evaluator payload."
+          "description": "URL of an external get_creative_features-capable judge agent the seller calls to score the produced leaves. MUST match an entry in the seller's `creative_policy.accepted_verifiers[].agent_url` (off-list → `EVALUATOR_AGENT_NOT_ACCEPTED`); an on-list agent that is unreachable or rejects the producing agent's transport authentication degrades to seller-default ranking (advisory errors[] note), not a failure. Authentication and trust material for this call belongs on the transport or in account provisioning, not in the evaluator payload.",
+          "x-added-in": "3.3.0"
         }
       },
       "additionalProperties": true

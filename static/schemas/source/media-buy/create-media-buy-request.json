@@ -317,7 +317,8 @@
         "signing_profile": {
           "x-status": "experimental",
           "$ref": "/schemas/enums/webhook-signing-profile.json",
-          "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the registration with `INVALID_REQUEST`. MUST NOT be combined with `authentication`."
+          "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the registration with `INVALID_REQUEST`. MUST NOT be combined with `authentication`.",
+          "x-added-in": "3.3.0"
         },
         "sampling_rate": {
           "type": "number",

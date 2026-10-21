@@ -219,7 +219,8 @@
           },
           "provenance": {
             "$ref": "/schemas/core/provenance.json",
-            "description": "Read-only echo of the creative-level provenance accepted on sync_creatives for the returned revision. Default for assets in this creative; an asset's own provenance replaces it entirely. Omitted when none was declared."
+            "description": "Read-only echo of the creative-level provenance accepted on sync_creatives for the returned revision. Default for assets in this creative; an asset's own provenance replaces it entirely. Omitted when none was declared.",
+            "x-added-in": "3.3.0"
           },
           "tags": {
             "type": "array",
