@@ -8,13 +8,17 @@ const storyboardPath = fileURLToPath(new URL(
 ));
 
 describe('property-list reference runner requirement', () => {
-  it('reports unsupported coverage before owner calls or controller fixture seeding', async () => {
+  // @adcp/sdk 16 implements the credential-isolated check over MCP only, so an
+  // A2A run is the unsupported case: it must report the coverage gap before
+  // any owner call or controller fixture seeding.
+  it('reports unsupported A2A coverage before owner calls or controller fixture seeding', async () => {
     const storyboard = loadStoryboardFile(storyboardPath);
     const fetchFn = vi.fn(async () => {
       throw new Error('An unsupported runner must not contact the agent');
     });
 
-    const result = await runStoryboard('https://agent.example/mcp', storyboard, {
+    const result = await runStoryboard('https://agent.example/a2a', storyboard, {
+      protocol: 'a2a',
       auth: { type: 'bearer', token: 'owner-test-credential' },
       agentTools: [...(storyboard.required_tools ?? []), 'comply_test_controller'],
       transport: { fetchFn },
@@ -29,7 +33,7 @@ describe('property-list reference runner requirement', () => {
     expect(result.phases[0].steps).toHaveLength(1);
     expect(result.phases[0].steps[0].skip).toMatchObject({
       reason: 'requirement_unmet',
-      detail: expect.stringContaining('property_list_reference_runner'),
+      requirement: 'property_list_reference_runner',
     });
   });
 });

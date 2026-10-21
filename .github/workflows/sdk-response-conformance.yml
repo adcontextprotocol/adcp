@@ -32,7 +32,6 @@ jobs:
           go-version-file: scripts/sdk-response-conformance/go/go.mod
           cache-dependency-path: scripts/sdk-response-conformance/go/go.sum
       - run: npm ci --ignore-scripts
-      - run: node scripts/install-sdk-creative-build-probe.cjs
       - run: python3 -m pip install -r scripts/sdk-response-conformance/requirements.txt
       - run: npm run test:sdk-response-conformance
       - name: Capture and validate real SDK responses
