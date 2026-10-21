@@ -75,7 +75,8 @@
           },
           "archived": {
             "type": "boolean",
-            "description": "`true` archives the source and `false` undoes the archive. When present it is the item's only change: every field except `event_source_id` is ignored. An archived source keeps its configuration, stops accepting events, and stops resolving for new optimization goals. Buyers SHOULD omit `archived` unless changing archive state. Sellers that do not declare `media_buy.event_source_archive` in `get_adcp_capabilities` MUST reject the whole request with an operation-level `UNSUPPORTED_FEATURE` error and apply none of its items."
+            "description": "`true` archives the source and `false` undoes the archive. When present it is the item's only change: every field except `event_source_id` is ignored. An archived source keeps its configuration, stops accepting events, and stops resolving for new optimization goals. Buyers SHOULD omit `archived` unless changing archive state. Sellers that do not declare `media_buy.event_source_archive` in `get_adcp_capabilities` MUST reject the whole request with an operation-level `UNSUPPORTED_FEATURE` error and apply none of its items.",
+            "x-added-in": "3.3.0"
           }
         },
         "required": [

@@ -7,5 +7,6 @@
   "enum": [
     "adcp/webhook-signing/v1",
     "web-bot-auth"
-  ]
+  ],
+  "x-added-in": "3.3.0"
 }

@@ -116,7 +116,8 @@
               },
               "archived": {
                 "type": "boolean",
-                "description": "Whether the source is archived. Archived sources keep their configuration but stop accepting events and stop resolving for new optimization goals. Sellers MAY omit it for sources that are not archived."
+                "description": "Whether the source is archived. Archived sources keep their configuration but stop accepting events and stop resolving for new optimization goals. Sellers MAY omit it for sources that are not archived.",
+                "x-added-in": "3.3.0"
               },
               "health": {
                 "$ref": "/schemas/core/event-source-health.json",

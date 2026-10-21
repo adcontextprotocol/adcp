@@ -25,9 +25,10 @@ const WHOLE_FILE_3_3 = [
   'error-details/unsupported-targeting-dimension.json',
   'trust/v1/trust.json',
   'trust/v1/trust-acknowledgements.json',
-  'media-buy/list-collections-request.json',
-  'media-buy/list-collections-response.json',
   'core/assets/video-brief-asset.json',
+  'core/identity-relying-party.json',
+  'enums/webhook-signing-profile.json',
+  'extensions/adcp.json',
 ];
 
 const PROPERTIES_3_3 = [
@@ -65,8 +66,28 @@ const PROPERTIES_3_3 = [
   ['core/assets/zip-asset.json', ['properties', 'sizes']],
   ['core/assets/html-asset.json', ['properties', 'sizes']],
   ['core/assets/display-tag-asset.json', ['properties', 'sizes']],
+  ['brand.json', ['definitions', 'brand', 'properties', 'prohibited_terms']],
+  ['core/agent-notification-config.json', ['properties', 'signing_profile']],
+  ['core/notification-config.json', ['properties', 'signing_profile']],
+  ['core/push-notification-config.json', ['properties', 'signing_profile']],
+  ['core/reporting-webhook.json', ['properties', 'signing_profile']],
+  ['media-buy/create-media-buy-request.json', ['properties', 'artifact_webhook', 'properties', 'signing_profile']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'request_signing', 'properties', 'profiles']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'webhook_signing', 'properties', 'profiles']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'event_source_archive']],
+  ['media-buy/sync-event-sources-request.json', ['properties', 'event_sources', 'items', 'properties', 'archived']],
+  ['media-buy/sync-event-sources-response.json', ['oneOf', 0, 'properties', 'event_sources', 'items', 'properties', 'archived']],
+  ['creative/list-creatives-response.json', ['properties', 'creatives', 'items', 'properties', 'provenance']],
+  ['core/error.json', ['properties', 'mutation_outcome']],
+  ['core/evaluator-spec.json', ['oneOf', 1, 'properties', 'agent_url']],
+  ['core/canonical-projection-ref.json', ['properties', 'supported_delivery_types']],
+  ['media-buy/request-proposals-response.json', ['properties', 'later_proposals']],
+  ['creative/validate-input-result.json', ['properties', 'warnings', 'items', 'properties', 'field']],
 ];
 
+// Task request schemas are deliberately absent: `x-added-in` on a request makes the
+// tool's `added_in` 3.3.0, and the 3.2.1 production MCP profile then rejects any
+// role profile that names it (list_collections), so tools are gated by `x-status`.
 test('whole-file 3.3 schemas and enums carry x-added-in 3.3.0', () => {
   for (const f of WHOLE_FILE_3_3) assert.equal(load(f)['x-added-in'], '3.3.0', f);
 });
