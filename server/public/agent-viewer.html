@@ -200,6 +200,76 @@
         color: var(--color-text-secondary);
       }
 
+      .v4-readiness {
+        margin-top: 16px;
+      }
+
+      .advisory-note {
+        margin: 0 0 14px;
+        color: var(--color-text-secondary);
+        font-size: 0.88rem;
+        line-height: 1.5;
+      }
+
+      .v4-summary {
+        margin: 0 0 12px;
+        color: var(--color-text-secondary);
+        font-size: 0.84rem;
+      }
+
+      .v4-check-list {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .v4-check {
+        display: grid;
+        grid-template-columns: 8.5rem minmax(0, 1fr);
+        gap: 6px 12px;
+        align-items: start;
+        padding: 12px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-subtle);
+      }
+
+      .v4-check-body {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .v4-check > .pill {
+        justify-self: start;
+      }
+
+      .v4-check-id {
+        color: var(--color-text-heading);
+        font-family: var(--font-mono);
+        font-size: 0.9rem;
+        font-weight: var(--font-semibold);
+        overflow-wrap: anywhere;
+      }
+
+      .v4-check-id a {
+        color: var(--color-brand);
+      }
+
+      .v4-meta {
+        color: var(--color-text-secondary);
+        font-size: 0.84rem;
+        line-height: 1.45;
+      }
+
+      @media (max-width: 840px) {
+        .v4-check {
+          grid-template-columns: 1fr;
+        }
+      }
+
       @media (max-width: 840px) {
         .hero,
         .section-grid,
@@ -263,6 +333,21 @@
           <h2 id="tracksHeading">Tracks</h2>
           <div id="tracks" class="chips"></div>
         </div>
+      </section>
+
+      <section
+        id="v4ReadinessPanel"
+        class="panel v4-readiness"
+        aria-labelledby="v4ReadinessHeading"
+        hidden
+      >
+        <h2 id="v4ReadinessHeading">AdCP 4.0 readiness</h2>
+        <p class="advisory-note">
+          Advisory only. These checks show what AdCP 4.0 removes or tightens
+          that this agent may still rely on. They do not affect 3.x
+          verification, badges, or conformance.
+        </p>
+        <div id="v4Readiness"></div>
       </section>
     </main>
 
@@ -473,6 +558,80 @@
           : '<div class="empty">No track summary is available yet.</div>';
       }
 
+      const V4_STATUS = {
+        failing: { label: "Failing", kind: "error", rank: 0 },
+        not_observable: { label: "Not observable", kind: "", rank: 1 },
+        passed: { label: "Passed", kind: "success", rank: 2 },
+      };
+
+      const V4_REASONS = {
+        storyboard_not_run: "The storyboard that grades this check did not run.",
+        step_not_run: "The step that grades this check did not run.",
+        step_skipped: "The step that grades this check was skipped.",
+        not_graded: "The run reported no graded result for this check.",
+        notice_absent:
+          "No notice was emitted, but absence alone does not prove the check passes.",
+        not_observed_by_suite:
+          "The compliance suite cannot observe this check on a 3.x agent.",
+      };
+
+      function renderV4Readiness(compliance) {
+        const panel = document.getElementById("v4ReadinessPanel");
+        const report = compliance.v4_readiness;
+        const checks = report && Array.isArray(report.checks) ? report.checks : null;
+        // Runs ingested before the report existed carry none; show nothing.
+        if (!checks || checks.length === 0) {
+          panel.hidden = true;
+          return;
+        }
+
+        const counts = { failing: 0, passed: 0, not_observable: 0 };
+        for (const check of checks) {
+          if (check.status in counts) counts[check.status] += 1;
+        }
+        const sorted = [...checks].sort(
+          (a, b) =>
+            (V4_STATUS[a.status]?.rank ?? 1) - (V4_STATUS[b.status]?.rank ?? 1)
+        );
+
+        const items = sorted
+          .map((check) => {
+            const status = V4_STATUS[check.status] || V4_STATUS.not_observable;
+            const guide =
+              typeof check.guide_url === "string" &&
+              check.guide_url.startsWith("https://adcontextprotocol.org/")
+                ? check.guide_url
+                : "";
+            const idHtml = guide
+              ? `<a href="${escapeHtml(guide)}" target="_blank" rel="noopener" title="Open the migration guide for this check">${escapeHtml(check.id)}</a>`
+              : escapeHtml(check.id);
+            const reason =
+              check.status === "not_observable" && V4_REASONS[check.reason]
+                ? `<div class="v4-meta">${escapeHtml(V4_REASONS[check.reason])}</div>`
+                : "";
+            return `
+          <li class="v4-check">
+            ${pill(status.label, status.kind)}
+            <div class="v4-check-body">
+              <div class="v4-check-id">${idHtml}</div>
+              <div class="v4-meta"><strong>Looks for:</strong> ${escapeHtml(check.detection)}</div>
+              ${reason}
+              <div class="v4-meta"><strong>Fix:</strong> ${escapeHtml(check.fix)}</div>
+            </div>
+          </li>
+        `;
+          })
+          .join("");
+
+        document.getElementById("v4Readiness").innerHTML = `
+          <p class="v4-summary">${escapeHtml(
+            `${counts.failing} failing, ${counts.passed} passed, ${counts.not_observable} not observable`
+          )}</p>
+          <ul class="v4-check-list">${items}</ul>
+        `;
+        panel.hidden = false;
+      }
+
       async function init() {
         parseAgentUrl();
         renderShell();
@@ -497,6 +656,7 @@
 
           renderBadges(verification);
           renderCompliance(compliance, verification);
+          renderV4Readiness(compliance);
           renderAgentName(verification);
         } catch (error) {
           document.getElementById("statusRow").innerHTML = pill(

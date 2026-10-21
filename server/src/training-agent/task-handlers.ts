@@ -54,7 +54,7 @@ import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
-import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -714,6 +714,7 @@ async function publishInlineCreativeChanges(
   mutations: InlineCreativeMutation[],
   accountId: string | undefined,
   principal: string | undefined,
+  idempotencyKey: string | undefined,
 ): Promise<void> {
   if (!accountId) return;
   for (const { previous, current } of mutations) {
@@ -725,8 +726,8 @@ async function publishInlineCreativeChanges(
             ? ['/format'] : []),
           ...(!isDeepStrictEqual(previous.manifest, current.manifest) ? ['/manifest'] : []),
         ]
-      : undefined;
-    if (previous && changedPaths!.length === 0) continue;
+      : [''];
+    if (previous && changedPaths.length === 0) continue;
     const change = recordAccountChange(principal, {
       resource: {
         type: 'creative',
@@ -735,6 +736,7 @@ async function publishInlineCreativeChanges(
       },
       action: previous ? 'updated' : 'created',
       origin: { kind: 'adcp' },
+      idempotency_key: idempotencyKey,
       changed_paths: changedPaths,
       repair: { task: 'list_creatives' },
       summary: previous
@@ -4755,6 +4757,12 @@ export function deriveStatus(mb: MediaBuyState, session?: SessionState): string 
     : mb.packages.some(pkg => pkg.creativeAssignments.length === 0);
   if (needsCreative && mb.status !== 'completed' && !mb.complyControllerForced) {
     return 'pending_creatives';
+  }
+  // A provisional buy (confirmed_at null) is held for seller review. It reports
+  // the status it will have on confirmation and is never active, even when its
+  // flight has started: it stays pending_start until the seller commits.
+  if (mb.confirmedAt === null && (mb.status === 'active' || mb.status === 'paused')) {
+    return 'pending_start';
   }
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
@@ -14965,6 +14973,18 @@ async function handleCreateMediaBuyUnlocked(
     };
   }
 
+  // Peek at a force_media_buy_confirmation `hold` directive. It is consumed only
+  // when this call actually creates a media buy, so a request that fails
+  // validation leaves it in place for the buyer's retry.
+  let holdSession: SessionState | undefined = session.complyExtensions.forcedMediaBuyHold ? session : undefined;
+  if (!holdSession) {
+    const ownerKey = controllerPublicTaskSessionKey(req, ctx);
+    if (ownerKey && ownerKey !== sessionKey) {
+      const ownerSession = await getSession(ownerKey);
+      if (ownerSession.complyExtensions.forcedMediaBuyHold) holdSession = ownerSession;
+    }
+  }
+
   // Enforce account status gates set by comply_test_controller
   const accountId = (req as unknown as Record<string, unknown>).account as { account_id?: string } | undefined;
   if (accountId?.account_id) {
@@ -16255,7 +16275,7 @@ async function handleCreateMediaBuyUnlocked(
     persistedAccountId,
     now,
   );
-  await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal);
+  await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal, req.idempotency_key);
 
   // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
   const governanceContext = govCtx && govCtx.length <= 4096 ? govCtx : undefined;
@@ -16301,7 +16321,7 @@ async function handleCreateMediaBuyUnlocked(
     startTime: resolvedStart,
     endTime: buyEnd,
     revision: 1,
-    confirmedAt: now,
+    confirmedAt: holdSession ? null : now,
     ...(governanceContext && { governanceContext }),
     ...(isRecord(req.context) && { context: req.context }),
     createdAt: now,
@@ -16361,6 +16381,7 @@ async function handleCreateMediaBuyUnlocked(
       }
     }
   }
+  if (holdSession) holdSession.complyExtensions.forcedMediaBuyHold = undefined;
   session.mediaBuys.set(mediaBuyId, mediaBuy);
   await captureMediaBuyReportingState(
     ctx,
@@ -16422,7 +16443,7 @@ async function handleCreateMediaBuyUnlocked(
       ...(pkg.propertyListApplication && {
         ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
       }),
-      ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
+      ...(pkg.committedMetrics && mediaBuy.confirmedAt !== null && { committed_metrics: pkg.committedMetrics }),
       creative_assignments: pkg.creativeAssignmentDetails
         ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     })),
@@ -16603,7 +16624,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
               ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
             }),
             ...(pkg.optimizationGoals && { optimization_goals: pkg.optimizationGoals }),
-            ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
+            ...(pkg.committedMetrics && mb.confirmedAt !== null && { committed_metrics: pkg.committedMetrics }),
             ...(pkg.canceledAt && {
               cancellation: {
                 canceled_at: pkg.canceledAt,
@@ -17828,8 +17849,8 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
                 ? ['/format'] : []),
               ...(!isDeepStrictEqual(existingCreative.manifest, storedCreative.manifest) ? ['/manifest'] : []),
             ]
-          : undefined;
-        if (!existingCreative || changedPaths!.length > 0) {
+          : [''];
+        if (!existingCreative || changedPaths.length > 0) {
           const change = recordAccountChange(ctx.principal, {
             resource: {
               type: 'creative',
@@ -17838,6 +17859,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
             },
             action: existingCreative ? 'updated' : 'created',
             origin: { kind: 'adcp' },
+            idempotency_key: req.idempotency_key,
             changed_paths: changedPaths,
             repair: { task: 'list_creatives' },
             summary: existingCreative
@@ -19618,7 +19640,7 @@ async function handleUpdateMediaBuyUnlocked(
       persistedAccountId,
       now,
     );
-    await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal);
+    await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal, req.idempotency_key);
   }
 
   const status = deriveStatus(mb, session);
@@ -19756,6 +19778,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     'force_account_status',
     'force_media_buy_status',
     'force_create_media_buy_arm',
+    ...(!isThreeZeroResponse && supportsSalesFixedRate(servedAdcpVersion) ? ['force_media_buy_confirmation'] : []),
     'force_task_completion',
     'force_creative_purge',
     'force_session_status',

@@ -22,9 +22,10 @@ It does not accept creatives, creative assignments, new products/packages, fligh
 
 One `control_media_buy` request is atomic under the supplied MediaBuy
 `revision`. That fence covers only the operational fields in this request.
-[`sync_creatives`](/docs/creative/task-reference/sync_creatives) has a separate idempotency and atomicity boundary, does not
-increment MediaBuy revision for assignment changes, and cannot join this
-transaction. There is no shared fence between control and assignment state.
+[`sync_creatives`](/docs/creative/task-reference/sync_creatives) has a separate idempotency and atomicity boundary and
+cannot join this transaction, but an assignment change it commits does
+advance the MediaBuy revision. A control request that carries a revision read
+before that sync is rejected with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict), so re-read before retrying.
 
 `name` is revision-checked non-commercial metadata. Changing it updates the
 shared trafficking display label and increments MediaBuy revision, but does not

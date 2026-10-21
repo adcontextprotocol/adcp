@@ -1,0 +1,871 @@
+{
+  "$comment": "Failure scenarios for the Web Bot Auth profile, as data. A harness signs each request and directory scenario at run time with the reference library (http-message-sig signs any component and parameter set), applies after_signing, and grades the verifier on expected. created and expires are offsets in seconds from the harness clock; a null parameter is omitted; a nonce object asks for that many random bytes in that encoding. tier \"wba\": the reference library with no AdCP policy already gives the expected outcome. tier \"adcp\": the bare library gives the opposite outcome and only the profile rules give the expected one; a WBA MUST the library does not enforce stays \"adcp\" until it does. See README.md.",
+  "spec_reference": "docs/building/by-layer/L1/wba-profile.mdx#profile-rules",
+  "signing_profile": "web-bot-auth",
+  "signer": {
+    "identity": "https://buyer-7k3q.com",
+    "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+  },
+  "requests": {
+    "post": {
+      "method": "POST",
+      "url": "https://seller-7k3q.com/mcp/",
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"create_media_buy\",\"arguments\":{\"idempotency_key\":\"4f6c1a0e-8d2b-4b7e-9c3a-2e5d7f1b0a96\",\"account\":{\"account_id\":\"acc_42\"},\"proposal_id\":\"prop_7\",\"total_budget\":{\"amount\":25000,\"currency\":\"USD\"}}}}"
+    },
+    "get": {
+      "method": "GET",
+      "url": "https://seller-7k3q.com/mcp/tasks?id=a%7Eb&x=1",
+      "headers": {},
+      "body": ""
+    }
+  },
+  "components": {
+    "post": [
+      "@method",
+      "@target-uri",
+      "@authority",
+      "content-type",
+      "content-digest",
+      "signature-agent;key={label}"
+    ],
+    "get": [
+      "@method",
+      "@target-uri",
+      "@authority",
+      "signature-agent;key={label}"
+    ]
+  },
+  "parameters": {
+    "created": -5,
+    "expires": 295,
+    "nonce": {
+      "bytes": 64,
+      "encoding": "base64url"
+    },
+    "tag": "web-bot-auth"
+  },
+  "request_scenarios": [
+    {
+      "id": "R00",
+      "name": "Baseline",
+      "base": "post",
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "wba",
+      "basis": "Profile rules"
+    },
+    {
+      "id": "R01",
+      "name": "Body changed after signing",
+      "base": "post",
+      "after_signing": {
+        "append_to_body": "\n"
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Content-Digest matches the body: RFC 9530; WBA section 5.2"
+    },
+    {
+      "id": "R02",
+      "name": "Covered header changed after signing",
+      "base": "post",
+      "after_signing": {
+        "headers": {
+          "content-type": "text/plain"
+        }
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "wba",
+      "basis": "RFC 9421 section 3.2"
+    },
+    {
+      "id": "R03",
+      "name": "Expired",
+      "base": "post",
+      "parameters": {
+        "created": -400,
+        "expires": -100
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "wba",
+      "basis": "RFC 9421 section 3.2.1"
+    },
+    {
+      "id": "R04",
+      "name": "created 120 seconds in the future",
+      "base": "post",
+      "parameters": {
+        "created": 120,
+        "expires": 400
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "wba",
+      "basis": "Profile: 60 seconds of clock skew"
+    },
+    {
+      "id": "R05",
+      "name": "created 30 seconds in the future",
+      "base": "post",
+      "parameters": {
+        "created": 30,
+        "expires": 300
+      },
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "adcp",
+      "basis": "Profile: 60 seconds of clock skew; the library allows none by default"
+    },
+    {
+      "id": "R06",
+      "name": "Lifetime of 3600 seconds",
+      "base": "post",
+      "parameters": {
+        "created": -5,
+        "expires": 3595
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Profile: expires at most 300 seconds after created"
+    },
+    {
+      "id": "R07",
+      "name": "Nonce of 32 bytes",
+      "base": "post",
+      "parameters": {
+        "nonce": {
+          "bytes": 32,
+          "encoding": "base64url"
+        }
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "wba",
+      "basis": "Profile: 64-byte nonce; validateNonce"
+    },
+    {
+      "id": "R08",
+      "name": "Nonce in canonical padded base64",
+      "base": "post",
+      "parameters": {
+        "nonce": {
+          "bytes": 64,
+          "encoding": "base64"
+        }
+      },
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "wba",
+      "basis": "Profile: unpadded base64url or canonical padded base64"
+    },
+    {
+      "id": "R09",
+      "name": "Nonce in padded base64url",
+      "base": "post",
+      "parameters": {
+        "nonce": {
+          "bytes": 64,
+          "encoding": "base64url-padded"
+        }
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "wba",
+      "basis": "Profile: unpadded base64url or canonical padded base64"
+    },
+    {
+      "id": "R10",
+      "name": "No alg parameter",
+      "base": "post",
+      "parameters": {
+        "alg": null
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "wba",
+      "basis": "Profile: alg required"
+    },
+    {
+      "id": "R11",
+      "name": "alg other than ed25519",
+      "base": "post",
+      "parameters": {
+        "alg": "ecdsa-p256-sha256"
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "wba",
+      "basis": "Profile: alg is ed25519 and matches the key; RFC 9421 section 3.2"
+    },
+    {
+      "id": "R12",
+      "name": "GET covering only @authority and the Signature-Agent member",
+      "base": "get",
+      "components": [
+        "@authority",
+        "signature-agent;key=sig1"
+      ],
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Profile: cover @method, @target-uri, and @authority; WBA section 5.2 needs one of @authority or @target-uri"
+    },
+    {
+      "id": "R13",
+      "name": "Body without content-digest covered",
+      "base": "post",
+      "components": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-type",
+        "signature-agent;key=sig1"
+      ],
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Profile: a request with a body covers content-type and content-digest; WBA section 5.2"
+    },
+    {
+      "id": "R14",
+      "name": "tag other than web-bot-auth",
+      "base": "post",
+      "parameters": {
+        "tag": "adcp/request-signing/v1"
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "wba",
+      "basis": "WBA section 5.2: tag MUST be web-bot-auth"
+    },
+    {
+      "id": "R15",
+      "name": "Bare-string Signature-Agent",
+      "base": "post",
+      "signature_agent": "\"https://buyer-7k3q.com\"",
+      "components": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-type",
+        "content-digest",
+        "signature-agent"
+      ],
+      "expected": {
+        "success": false,
+        "status": 400
+      },
+      "tier": "adcp",
+      "basis": "Profile: dictionary form only, so the field does not parse; WBA section 5.2.1 lets a verifier accept the bare string"
+    },
+    {
+      "id": "R16",
+      "name": "http:// Signature-Agent",
+      "base": "post",
+      "signature_agent": "sig1=\"http://buyer-7k3q.com\"",
+      "directories": {
+        "http://buyer-7k3q.com": [
+          "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I"
+        ]
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "WBA section 5.2.1: the origin MUST be https; the library accepts http (cloudflare/web-bot-auth#162)"
+    },
+    {
+      "id": "R17",
+      "name": "Signature-Agent with a path",
+      "base": "post",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com/agents/a\"",
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "WBA section 5.5: a directory member MUST be an origin; the library does not check it"
+    },
+    {
+      "id": "R17c",
+      "name": "Signature-Agent origin with a trailing /",
+      "base": "post",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com/\"",
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Profile: the value is exactly the serialized origin (RFC 6454 section 6.2), compared without normalizing"
+    },
+    {
+      "id": "R17d",
+      "name": "Signature-Agent origin with an uppercase host",
+      "base": "post",
+      "signature_agent": "sig1=\"https://BUYER-7k3q.com\"",
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Profile: the value is exactly the serialized origin, with a lowercase host, compared without normalizing"
+    },
+    {
+      "id": "R17e",
+      "name": "Signature-Agent origin with an explicit :443",
+      "base": "post",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com:443\"",
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Profile: the value is exactly the serialized origin, with no default port, compared without normalizing"
+    },
+    {
+      "id": "R18",
+      "name": "Signature-Agent member with type=jwks_uri",
+      "base": "post",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com\";type=jwks_uri",
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Profile: only type=directory; WBA section 5.2.1 lets a verifier ignore other types"
+    },
+    {
+      "id": "R18c",
+      "name": "Signature-Agent member with type=directory as a Token",
+      "base": "post",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com\";type=directory",
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "wba",
+      "basis": "WBA section 5.2.1: type is a Token, and directory is the default"
+    },
+    {
+      "id": "R18d",
+      "name": "Signature-Agent member with type=\"directory\" as a String",
+      "base": "post",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com\";type=\"directory\"",
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "wba",
+      "basis": "Profile: a verifier accepts type=directory as a Token or a String, as the reference library does; WBA section 5.2.1 defines a Token"
+    },
+    {
+      "id": "R19",
+      "name": "Signature-Agent member keyed differently from the label",
+      "base": "post",
+      "signature_agent": "agent1=\"https://buyer-7k3q.com\"",
+      "components": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-type",
+        "content-digest",
+        "signature-agent;key=agent1"
+      ],
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "WBA section 5.2.1: the member keyed to the label; the library does not check it"
+    },
+    {
+      "id": "R19b",
+      "name": "Whole Signature-Agent field covered before the member",
+      "base": "post",
+      "components": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-type",
+        "content-digest",
+        "signature-agent",
+        "signature-agent;key=sig1"
+      ],
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "wba",
+      "basis": "RFC 9421 section 2.1: the field and its member are separate components; WBA section 5.2.1 requires only the member keyed to the label"
+    },
+    {
+      "id": "R20",
+      "name": "Second signature with tag cdn-edge",
+      "base": "post",
+      "extra_signature": {
+        "label": "cdn",
+        "kid": "hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI",
+        "components": [
+          "@method",
+          "@authority"
+        ],
+        "parameters": {
+          "created": -5,
+          "expires": 295,
+          "nonce": null,
+          "tag": "cdn-edge"
+        }
+      },
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "adcp",
+      "basis": "Profile: Signature-Input members with other tags are not read; the library requires a label when a request carries two signatures"
+    },
+    {
+      "id": "R20b",
+      "name": "Second member with tag cdn-edge whose Signature value is a token",
+      "base": "post",
+      "after_signing": {
+        "append_members": {
+          "signature-input": "cdn=(\"@method\" \"@authority\");tag=\"cdn-edge\"",
+          "signature": "cdn=edge-token"
+        }
+      },
+      "expected": {
+        "success": false,
+        "status": 400
+      },
+      "tier": "wba",
+      "basis": "RFC 9421 section 4.2: every Signature member value is a Byte Sequence, so the field is malformed whatever the member's tag; members with other tags are not read, but the field is still parsed"
+    },
+    {
+      "id": "R21",
+      "name": "Two Signature-Agent members, one signature",
+      "base": "post",
+      "signature_agent": "sig1=\"https://buyer-7k3q.com\", sig2=\"https://agent.brand-7k3q.com\"",
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "adcp",
+      "basis": "Profile: exactly one Signature-Agent member"
+    },
+    {
+      "id": "R21b",
+      "name": "Two web-bot-auth signatures that cover one Signature-Agent member",
+      "base": "post",
+      "extra_signature": {
+        "label": "sig2",
+        "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I",
+        "components": [
+          "@method",
+          "@target-uri",
+          "@authority",
+          "content-type",
+          "content-digest",
+          "signature-agent;key=sig1"
+        ],
+        "parameters": {
+          "created": -5,
+          "expires": 295,
+          "nonce": {
+            "bytes": 64,
+            "encoding": "base64url"
+          },
+          "tag": "web-bot-auth"
+        }
+      },
+      "expected": {
+        "success": false,
+        "status": 403
+      },
+      "tier": "wba",
+      "basis": "Profile: exactly one web-bot-auth signature; WBA section 5.2.2 lets a request carry more"
+    },
+    {
+      "id": "R22",
+      "name": "Label other than sig1",
+      "base": "post",
+      "label": "wba",
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "wba",
+      "basis": "RFC 9421: the signer chooses the label"
+    },
+    {
+      "id": "R23",
+      "name": "Components in another order",
+      "base": "post",
+      "components": [
+        "signature-agent;key=sig1",
+        "@authority",
+        "content-digest",
+        "@target-uri",
+        "content-type",
+        "@method"
+      ],
+      "expected": {
+        "success": true,
+        "identity": "https://buyer-7k3q.com"
+      },
+      "tier": "wba",
+      "basis": "RFC 9421: the order is the signer's"
+    }
+  ],
+  "directory_scenarios": [
+    {
+      "id": "D00",
+      "name": "Baseline",
+      "expected": {
+        "success": true
+      },
+      "tier": "wba",
+      "basis": "WBA Appendix B.1"
+    },
+    {
+      "id": "D01",
+      "name": "Signed for another authority",
+      "authority": "agent.brand-7k3q.com",
+      "expected": {
+        "success": false
+      },
+      "tier": "wba",
+      "basis": "WBA Appendix B.1: covers \"@authority\";req"
+    },
+    {
+      "id": "D02",
+      "name": "Body changed after signing",
+      "after_signing": {
+        "append_to_body": "\n"
+      },
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "WBA Appendix B.1: the verifier MUST validate Content-Digest; the library does not compare it with the body"
+    },
+    {
+      "id": "D03",
+      "name": "Unsigned",
+      "keys": [],
+      "unsigned_keys": [
+        {
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I",
+          "x": "yIxM3SIY89_Yhr6EA9hik-AJjWSDPraK5chDqQ3Xlf0",
+          "use": "sig"
+        }
+      ],
+      "requests": [
+        {
+          "name": "signed with the unsigned key",
+          "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I",
+          "expected": {
+            "success": false,
+            "status": 403
+          },
+          "tier": "adcp"
+        }
+      ],
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "Profile: use only keys with a valid signature, so the directory yields no usable key; WBA Appendix B.1 lets a verifier use an unproven key"
+    },
+    {
+      "id": "D04",
+      "name": "Signature created in the future",
+      "parameters": {
+        "created": 3600,
+        "expires": 90000
+      },
+      "expected": {
+        "success": false
+      },
+      "tier": "wba",
+      "basis": "WBA Appendix B.1: reject a future created"
+    },
+    {
+      "id": "D05",
+      "name": "Covers \"@authority\";req only",
+      "components": [
+        "@authority;req"
+      ],
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "WBA Appendix B.1: covers content-digest"
+    },
+    {
+      "id": "D06",
+      "name": "Expired signature",
+      "parameters": {
+        "created": -7200,
+        "expires": -3600
+      },
+      "expected": {
+        "success": false
+      },
+      "tier": "wba",
+      "basis": "RFC 9421 section 3.2.1"
+    },
+    {
+      "id": "D07",
+      "name": "Extra P-256 key that does not sign",
+      "unsigned_keys": [
+        {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "ayhQePn14MyJGqrKHsp_A06Z0N6IZoE0-7wbn66qLLc",
+          "y": "k98dk4yymVze93JE_EpboBD6oaZbcII4Lvf_Oqu8kII",
+          "kid": "4rrLPtiRac4zmWwTBQeJlzgNyb5jai8HSOTJONOIKFY",
+          "use": "sig"
+        }
+      ],
+      "expected": {
+        "success": true
+      },
+      "tier": "wba",
+      "basis": "Profile: ignore keys the profile does not use (RFC 7517 section 5)"
+    },
+    {
+      "id": "D08",
+      "name": "Media type application/json",
+      "content_type": "application/json",
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "WBA section 5.5.1: the well-known directory MUST be served with application/http-message-signatures-directory+json"
+    },
+    {
+      "id": "D09",
+      "name": "Directory served with status 203",
+      "status": 203,
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "WBA section 5.5: a status other than 200 is a discovery failure"
+    },
+    {
+      "id": "D10",
+      "name": "Signed with tag web-bot-auth",
+      "parameters": {
+        "tag": "web-bot-auth"
+      },
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "WBA Appendix B.1: tag=\"http-message-signatures-directory\""
+    },
+    {
+      "id": "D11",
+      "name": "Second Ed25519 key that does not sign",
+      "unsigned_keys": [
+        {
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "kid": "hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI",
+          "x": "JB8XPw49dSvDh0kqkCxtoxiNb_RZFhxPdlc-1GedFSc",
+          "use": "sig"
+        }
+      ],
+      "requests": [
+        {
+          "name": "signed with the signed key",
+          "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I",
+          "expected": {
+            "success": true,
+            "identity": "https://buyer-7k3q.com"
+          },
+          "tier": "wba"
+        },
+        {
+          "name": "signed with the unsigned key",
+          "kid": "hHurKlVBnPJ4AGiPyl6HWMhxgkIcRBzaC8qWwEtnuVI",
+          "expected": {
+            "success": false,
+            "status": 403
+          },
+          "tier": "adcp"
+        }
+      ],
+      "expected": {
+        "success": true
+      },
+      "tier": "wba",
+      "basis": "Profile: ignore a key without a valid signature; WBA Appendix B.1; directory draft section 5"
+    },
+    {
+      "id": "D12",
+      "name": "Only a P-256 key, unsigned",
+      "keys": [],
+      "unsigned_keys": [
+        {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "ayhQePn14MyJGqrKHsp_A06Z0N6IZoE0-7wbn66qLLc",
+          "y": "k98dk4yymVze93JE_EpboBD6oaZbcII4Lvf_Oqu8kII",
+          "kid": "4rrLPtiRac4zmWwTBQeJlzgNyb5jai8HSOTJONOIKFY",
+          "use": "sig"
+        }
+      ],
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "Profile: the directory yields no Ed25519 key with a valid signature"
+    },
+    {
+      "id": "D13",
+      "name": "Extra RSA-PSS key that does not sign",
+      "unsigned_keys": [
+        {
+          "kty": "RSA",
+          "e": "AQAB",
+          "n": "v-QEO4laYaq_rKgLuz0I8hRW_Ig58qmjv_L9cIX_2dCz6pkvMg953c3P3yNtvjl0eLiZNk1tbaWjfdwiMczGUYqhcFutwjbJpny5rMlSOuTkgJEidDpVpsSfa9OwmkRLgn_hjrAkQzKYljsqSN_U9deB6a_NwWiM03MRFLVtcCHJQMEVNCXGvqRIF0MKRVdb3287cgEQ2lvb0g1a84CYzQtbRdWcHnSjhOwF3Y2IH2A2VvQzeCSWWFy2LUr2H09Ce2pvAc-DJX6BdUF5MijFV9SRt4jbPWG28kcrLUEt1GMDynfvMT419dx03kfaZnHkh4I3xXKhcFAIMK4D1WH9bQ",
+          "alg": "PS512",
+          "kid": "ugCZP3qkO8gkwu8s71HuHjbt75oPFuBK0Tgb4WkL37k",
+          "use": "sig"
+        }
+      ],
+      "expected": {
+        "success": true
+      },
+      "tier": "wba",
+      "basis": "Profile: ignore keys the profile does not use (RFC 7517 section 5), including a key the library imports"
+    },
+    {
+      "id": "D14",
+      "name": "Extra P-256 key that carries its private d",
+      "unsigned_keys": [
+        {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "ayhQePn14MyJGqrKHsp_A06Z0N6IZoE0-7wbn66qLLc",
+          "y": "k98dk4yymVze93JE_EpboBD6oaZbcII4Lvf_Oqu8kII",
+          "kid": "4rrLPtiRac4zmWwTBQeJlzgNyb5jai8HSOTJONOIKFY",
+          "use": "sig",
+          "d": "IyiPVggq91xZTs3CxpETaAbK6Qca0DuuD9-DZx7ueHs"
+        }
+      ],
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "Profile: refuse a directory in which any key carries a private member, checked before unused keys are skipped; WBA section 5.5.1: a verifier SHOULD reject malformed entries"
+    },
+    {
+      "id": "D14b",
+      "name": "Signing Ed25519 key published with its private d",
+      "publish_private_members": true,
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "Profile: refuse a directory in which any key carries a private member; WBA section 5.5.1: a verifier SHOULD reject malformed entries"
+    },
+    {
+      "id": "D14c",
+      "name": "Extra P-256 key that carries its private scalar as an upper-case D",
+      "unsigned_keys": [
+        {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "ayhQePn14MyJGqrKHsp_A06Z0N6IZoE0-7wbn66qLLc",
+          "y": "k98dk4yymVze93JE_EpboBD6oaZbcII4Lvf_Oqu8kII",
+          "kid": "4rrLPtiRac4zmWwTBQeJlzgNyb5jai8HSOTJONOIKFY",
+          "use": "sig",
+          "D": "IyiPVggq91xZTs3CxpETaAbK6Qca0DuuD9-DZx7ueHs"
+        }
+      ],
+      "expected": {
+        "success": false
+      },
+      "tier": "adcp",
+      "basis": "Profile: private member names compare without regard to case; WBA section 5.5.1: a verifier SHOULD reject malformed entries"
+    },
+    {
+      "id": "D15",
+      "name": "Extra malformed Ed25519 keys, one with no x and one with a 31-byte x",
+      "unsigned_keys": [
+        {
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "kid": "malformed-no-x",
+          "use": "sig"
+        },
+        {
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "kid": "malformed-short-x",
+          "x": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBw",
+          "use": "sig"
+        }
+      ],
+      "requests": [
+        {
+          "name": "signed with the valid key",
+          "kid": "6WsKMCObba49V3uN0vIENnk1BKAk7c9zjBJcWKyQ9_I",
+          "expected": {
+            "success": true,
+            "identity": "https://buyer-7k3q.com"
+          },
+          "tier": "wba"
+        }
+      ],
+      "expected": {
+        "success": true
+      },
+      "tier": "wba",
+      "basis": "Profile: ignore a key the verifier cannot import (RFC 7517 section 5)"
+    }
+  ]
+}
