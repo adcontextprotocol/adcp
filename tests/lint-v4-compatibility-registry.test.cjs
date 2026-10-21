@@ -209,7 +209,7 @@ const WIDGET_SCHEMA = {
 
 test('schema sites listed in a check or as not checked are clean', () => {
   const checks = [validCheck({ schema_sites: ['core/widget.json#/properties/widget_ids'] })];
-  const notChecked = [{ change: 'Gadget', reason: 'Buyer-sent.', sites: ['core/widget.json#/properties/gadget'] }];
+  const notChecked = [{ change: 'Gadget', issue: 2, reason: 'Buyer-sent.', sites: ['core/widget.json#/properties/gadget'] }];
   const errors = run({ checks, schemas: WIDGET_SCHEMA, notChecked });
   assert.deepEqual(errors, []);
 });
@@ -222,15 +222,17 @@ test('schema_site_unlisted: a node marked for 4.0 removal is not in the registry
 test('schema_site_invalid and schema_site_duplicate', () => {
   const checks = [validCheck({ schema_sites: ['core/widget.json#/properties/widget_ids', 'core/widget.json#/properties/nope'] })];
   const notChecked = [
-    { change: 'Gadget', reason: 'Buyer-sent.', sites: ['core/widget.json#/properties/gadget', 'core/widget.json#/properties/widget_ids'] },
+    { change: 'Gadget', issue: 2, reason: 'Buyer-sent.', sites: ['core/widget.json#/properties/gadget', 'core/widget.json#/properties/widget_ids'] },
   ];
   const errors = run({ checks, schemas: WIDGET_SCHEMA, notChecked: notChecked });
   assertRule(errors, 'schema_site_invalid');
   assertRule(errors, 'schema_site_duplicate');
 });
 
-test('registry_shape: a not-checked group needs a reason', () => {
-  const notChecked = [{ change: 'Gadget', sites: ['core/widget.json#/properties/gadget'] }];
+test('registry_shape: a not-checked group needs a reason and a tracking issue', () => {
   const checks = [validCheck({ schema_sites: ['core/widget.json#/properties/widget_ids'] })];
-  assertRule(run({ checks, schemas: WIDGET_SCHEMA, notChecked: notChecked }), 'registry_shape');
+  const noReason = [{ change: 'Gadget', issue: 2, sites: ['core/widget.json#/properties/gadget'] }];
+  assertRule(run({ checks, schemas: WIDGET_SCHEMA, notChecked: noReason }), 'registry_shape');
+  const noIssue = [{ change: 'Gadget', reason: 'Buyer-sent.', sites: ['core/widget.json#/properties/gadget'] }];
+  assertRule(run({ checks, schemas: WIDGET_SCHEMA, notChecked: noIssue }), 'registry_shape');
 });
