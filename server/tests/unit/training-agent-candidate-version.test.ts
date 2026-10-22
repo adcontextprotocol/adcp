@@ -87,6 +87,11 @@ describe('local candidate wire contract', () => {
       expect(result.adcp.supported_versions).toContain('3.2');
       expect(result.adcp.supported_versions.filter((version: string) => version === '3.3-beta.0')).toHaveLength(1);
       expect(result.experimental_features ?? []).not.toContain('media_buy.gender_targeting');
+      if (tenant === 'sales') {
+        if (adcp_version === '3.3-beta.0') expect(result.specialisms).toContain('sales-fixed-rate');
+        else expect(result.specialisms).not.toContain('sales-fixed-rate');
+        expect(result.compliance_testing.scenarios).toContain('force_media_buy_confirmation');
+      }
     }
   }, 60_000);
 

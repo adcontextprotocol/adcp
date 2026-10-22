@@ -95,12 +95,18 @@ test('candidate-version negotiation is explicit and established before runtime i
     'candidate mode must be limited to the generated current bundle matching package.json',
   );
   assert.ok(source.indexOf('process.env.ADCP_TRAINING_CANDIDATE_VERSION =') < source.indexOf("await import('../../src/training-agent/types.js')"));
-  assert.doesNotMatch(source, /hostedStableLineAlias/,
+  assert.doesNotMatch(source, /hostedStableLineAlias|candidatePrereleasePin/,
     'a candidate must negotiate its actual release instead of borrowing a stable release alias');
-  assert.doesNotMatch(
+  assert.match(
     source,
-    /supported_versions:\s*\[[^\]]*releasedComplianceVersion/,
+    /supported_versions:\s*profile\.adcp_supported_versions,/,
     'candidate mode must not rewrite the seller capability declaration',
+  );
+  // A separate published stable root remains available for explicit stable
+  // requests when the source candidate opens a newer minor line.
+  assert.match(
+    source,
+    /const candidateOpensNewerLine = \(\(\) => \{\s*if \(!candidateVersionMode \|\| releasedComplianceVersion === undefined\) return false;/,
   );
 });
 

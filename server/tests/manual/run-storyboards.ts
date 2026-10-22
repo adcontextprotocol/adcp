@@ -17,7 +17,7 @@ import express from 'express';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
 import type { Socket } from 'node:net';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import YAML from 'yaml';
 import {
@@ -148,6 +148,40 @@ const { getCanonicalBase } = await import('../../src/training-agent/canonical-ba
 // runs also pin the current wire release: capability discovery must describe
 // the surface being graded instead of falling back to the agent's legacy 3.0
 // unpinned default.
+// A source candidate can serve a newer minor line while explicit requests
+// still select the training agent's stable line. Keep the published stable
+// schemas available alongside the candidate root for those requests.
+const candidateOpensNewerLine = (() => {
+  if (!candidateVersionMode || releasedComplianceVersion === undefined) return false;
+  const candidate = /^(\d+)\.(\d+)\.\d+-(?:beta|rc)\.\d+$/.exec(releasedComplianceVersion);
+  const served = /^(\d+)\.(\d+)/.exec(TRAINING_AGENT_CURRENT_ADCP_VERSION);
+  if (!candidate || !served) return false;
+  const [cMajor, cMinor, sMajor, sMinor] = [candidate[1], candidate[2], served[1], served[2]].map(Number);
+  return cMajor > sMajor || (cMajor === sMajor && cMinor > sMinor);
+})();
+// The candidate root covers the actual candidate wire contract. Register a
+// separate published stable root for explicit stable requests; this does not
+// change the candidate's advertised versions, wire version, or schema root.
+const servedLineSchemaRoot = (() => {
+  if (!candidateOpensNewerLine) return undefined;
+  const line = /^(\d+\.\d+)/.exec(TRAINING_AGENT_CURRENT_ADCP_VERSION)?.[1];
+  if (!line) return undefined;
+  const schemasDir = resolve('dist', 'schemas');
+  const released = readdirSync(schemasDir)
+    .filter(name => new RegExp(`^${line.replace('.', '\\.')}\\.\\d+$`).test(name))
+    .filter(name => existsSync(join(schemasDir, name, 'index.json')))
+    .sort((a, b) => Number(a.split('.')[2]) - Number(b.split('.')[2]));
+  const newest = released.at(-1);
+  if (!newest) {
+    throw new Error(`No published dist/schemas/${line}.x bundle for the served wire line`);
+  }
+  return join(schemasDir, newest);
+})();
+function inServedLineScope<T>(fn: () => Promise<T>): Promise<T> {
+  return servedLineSchemaRoot
+    ? withExternalSchemaRoot(TRAINING_AGENT_CURRENT_ADCP_VERSION, servedLineSchemaRoot, fn)
+    : fn();
+}
 const wireAdcpVersion = isThreeZeroCompatRun
   ? '3.0'
   : isCurrentSourceRun
@@ -658,12 +692,12 @@ async function selectStoryboardsForTenant(
   agentUrl: string,
   everything: Storyboard[],
 ): Promise<StoryboardSelection> {
-  const discover = () => testCapabilityDiscovery(agentUrl, {
+  const discover = () => inServedLineScope(() => testCapabilityDiscovery(agentUrl, {
     auth: { type: 'bearer', token: AUTH_TOKEN },
     allow_http: true,
     ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
     ...(wireAdcpVersion && { wireAdcpVersion }),
-  });
+  }));
   // A Version Packages PR creates the next schema bundle before any published
   // SDK can embed it. Register that candidate root around capability discovery
   // just as runStoryboard does around execution; otherwise SDK construction
@@ -1044,7 +1078,7 @@ async function main() {
         const variantLabel = `${storyboard.id}${variant.routeSuffix.replace('/mcp', '')}`;
         try {
           const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
-          const result = await runStoryboard(targetUrl, storyboard, {
+          const result = await inServedLineScope(() => runStoryboard(targetUrl, storyboard, {
             ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
             ...(wireAdcpVersion && { wireAdcpVersion }),
             ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
@@ -1069,7 +1103,7 @@ async function main() {
             },
             ...(brand && { brand }),
             ...(testKit && { test_kit: testKit }),
-          });
+          }));
           applyStepSkipList(storyboard.id, result);
           const summary = { ...summarize(storyboard, result), id: variantLabel };
           results.push(summary);
@@ -1104,7 +1138,7 @@ async function main() {
           console.log(`    [multi-agent] ${storyboard.id} routes ${Object.entries(routing.agents)
             .map(([key, entry]) => `${key}=${entry.url}`).join(', ')} (default_agent=${routing.default_agent}; context ${JSON.stringify(routing.context)})`);
         }
-        const result = await runStoryboard(routing.kind === 'routed' ? '' : agentUrl, storyboard, {
+        const result = await inServedLineScope(() => runStoryboard(routing.kind === 'routed' ? '' : agentUrl, storyboard, {
           ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
           ...(wireAdcpVersion && { wireAdcpVersion }),
           ...(complianceOptions?.schemaRoot && { schemaRoot: complianceOptions.schemaRoot }),
@@ -1124,7 +1158,7 @@ async function main() {
             default_agent: routing.default_agent,
             context: routing.context,
           }),
-        });
+        }));
         applyStepSkipList(storyboard.id, result);
         const summary = summarize(storyboard, result);
         results.push(summary);
