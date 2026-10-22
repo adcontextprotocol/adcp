@@ -26,18 +26,15 @@ For scoped approvals, every applicable review scope must reach an approved or
 rejected decision; a partially approved assignment with a pending scope has
 not completed review.
 
-{/* Using latest because these fields are unreleased. Update after release. */}
+For example, this is the value of `creative_policy.review_sla`:
+
+{/* Using latest because this SLA type is unreleased. Update after release. */}
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/creative-policy.json",
-  "co_branding": "none",
-  "landing_page": "any",
-  "templates_available": false,
-  "review_sla": {
-    "clock": "business",
-    "business_calendar_id": "review_team_2027_q1",
-    "completion_max": "P1D"
-  }
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/creative-review-sla.json",
+  "clock": "business",
+  "business_calendar_id": "review_team_2027_q1",
+  "completion_max": "P1D"
 }
 ```
 
@@ -192,17 +189,14 @@ action covers all packages. A package-scoped report MUST NOT inherit a different
 package's promise. A separately negotiated, tighter commitment remains binding
 even if a conservative aggregate projection also covers slower packages.
 
+For example, the report action can declare this `sla`:
+
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/canonical-product-action.json",
-  "action": "report_media_buy_issue",
-  "modes": ["seller_managed"],
-  "allowed_statuses": ["active", "paused"],
-  "sla": {
-    "clock": "elapsed",
-    "response_max": "PT15M",
-    "completion_max": "PT2H"
-  }
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/escalation-sla.json",
+  "clock": "elapsed",
+  "response_max": "PT15M",
+  "completion_max": "PT2H"
 }
 ```
 
