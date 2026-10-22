@@ -14,6 +14,7 @@
  */
 
 import { Router } from 'express';
+import { mountCreativeFeaturesVerifier } from './creative-features-verifier.js';
 import type { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { WorkOS } from '@workos-inc/node';
@@ -341,6 +342,12 @@ export function createTrainingAgentRouter(options: {
       });
     },
   });
+
+  // Public conformance verifier for provenance truth-of-claim storyboards
+  // (adcp#8199). Unauthenticated by design, rate limited per IP, and serves
+  // get_creative_features only. Mounted before the tenant routes so the
+  // tenant resolver never sees it.
+  mountCreativeFeaturesVerifier(router, { rateLimit: !options.disableRateLimit });
 
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via
