@@ -36,6 +36,11 @@
       "$ref": "/schemas/core/sla-window.json",
       "description": "Optional SLA commitment for this action on this product. Absence means no commitment."
     },
+    "review_sla": {
+      "$ref": "/schemas/core/creative-review-sla.json",
+      "x-added-in": "3.3.0",
+      "description": "Optional review-decision commitment for creative submissions, separate from action ingestion. Overrides creative_policy.review_sla for this action."
+    },
     "constraints": {
       "$ref": "/schemas/media-buy/change-term-constraints.json",
       "description": "Optional advisory machine-readable bounds buyers can use during product selection. The proposal must restate any binding bounds in commercial_terms.change_terms[].constraints."
@@ -46,5 +51,15 @@
     }
   },
   "required": ["action", "modes"],
+  "allOf": [
+    {
+      "if": { "properties": { "action": { "const": "report_media_buy_issue" } }, "required": ["action"] },
+      "then": { "properties": { "sla": { "$ref": "/schemas/core/escalation-sla.json" }, "modes": { "items": { "const": "seller_managed" } } } }
+    },
+    {
+      "if": { "required": ["review_sla"] },
+      "then": { "properties": { "action": { "enum": ["sync_creatives", "replace_creative", "update_creative_assignments"] } } }
+    }
+  ],
   "additionalProperties": false
 }

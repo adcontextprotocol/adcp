@@ -20,6 +20,30 @@
   },
   "allOf": [
     {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": { "issue_reporting": { "const": true } },
+            "required": ["issue_reporting"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "idempotency": {
+                "properties": { "supported": { "const": true } },
+                "required": ["supported", "replay_ttl_seconds"]
+              }
+            },
+            "required": ["idempotency"]
+          }
+        }
+      }
+    },
+    {
       "$ref": "/schemas/core/version-envelope.json"
     },
     {
@@ -570,6 +594,14 @@
     }
   ],
   "properties": {
+    "business_calendars": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/business-calendar.json" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-added-in": "3.3.0",
+      "description": "Seller working-time calendars, uniquely keyed by immutable calendar_id. Every published business-clock SLA MUST resolve to one declaration here. Retain earlier declarations while requests referencing them remain pending. Presence declares calendar support, not any product-level timing commitment."
+    },
     "adcp": {
       "type": "object",
       "description": "Core AdCP protocol information",
@@ -1392,6 +1424,12 @@
       "type": "object",
       "description": "Media-buy protocol capabilities. Expected when media_buy is in supported_protocols. Sellers declaring media_buy should also include account with supported_billing.",
       "properties": {
+        "issue_reporting": {
+          "type": "boolean",
+          "default": false,
+          "x-added-in": "3.3.0",
+          "description": "Supports report_media_buy_issue and get_media_buy_issue, including durable human acknowledgement and resolution polling. Products advertise the report_media_buy_issue action and any critical-report SLA through allowed_actions; each buy resolves current support and commitment in available_actions. Absence or false means unsupported. Reporting is separate from controls and does not pause delivery."
+        },
         "anonymous_discovery": {
           "type": "boolean",
           "description": "Whether this seller accepts product discovery without caller credentials. This applies to list_products and to get_products in brief or wholesale mode; it does not apply to proposal refinement or finalization, purchasing, account-scoped reads, or mutations. true means an anonymous discovery request can produce a successful response, but the response may be a public subset and may differ from results for an authenticated principal or selected account. false means these discovery calls require an authenticated principal. Absence means unspecified legacy behavior, so callers probe and handle AUTH_MISSING. A valid authenticated request is never rejected merely because credentials were supplied. true is inconsistent with account.required_for_products=true because an anonymous caller cannot select protected account context.",

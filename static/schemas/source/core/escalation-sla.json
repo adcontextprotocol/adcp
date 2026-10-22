@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/escalation-sla.json",
+  "title": "Escalation SLA",
+  "x-added-in": "3.3.0",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/sla-window.json"
+    }
+  ],
+  "required": [
+    "response_max"
+  ],
+  "properties": {
+    "clock": {
+      "type": "string",
+      "const": "elapsed"
+    },
+    "response_max": {
+      "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
+    },
+    "completion_max": {
+      "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
+    }
+  },
+  "description": "Critical-report commitment. response_max is human acknowledgement from receipt; completion_max, when present, is resolution from the same receipt. Business time is forbidden."
+}

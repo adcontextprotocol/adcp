@@ -34,7 +34,12 @@
     },
     "processing_sla": {
       "$ref": "/schemas/core/sla-window.json",
-      "description": "Binding elapsed-time acknowledgement and completion commitment. Sellers account for weekends and non-working periods when declaring the maximum."
+      "description": "Binding acknowledgement and completion commitment. The default elapsed clock includes weekends and non-working periods; an explicit business clock references an immutable seller calendar."
+    },
+    "review_sla": {
+      "$ref": "/schemas/core/creative-review-sla.json",
+      "x-added-in": "3.3.0",
+      "description": "Binding terminal creative-review commitment, independent of processing_sla for the mutation. Permitted only for replace_creative or update_creative_assignments. The resulting available_actions projection MUST preserve this commitment."
     },
     "conditions": {
       "type": "array",
@@ -52,5 +57,20 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["term_id", "action", "service_mode"],
+  "allOf": [
+    {
+      "if": { "required": ["review_sla"] },
+      "then": { "properties": { "action": { "enum": ["replace_creative", "update_creative_assignments"] } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "report_media_buy_issue" } }, "required": ["action"] },
+      "then": {
+        "properties": {
+          "service_mode": { "const": "seller_managed" },
+          "processing_sla": { "$ref": "/schemas/core/escalation-sla.json" }
+        }
+      }
+    }
+  ],
   "additionalProperties": false
 }

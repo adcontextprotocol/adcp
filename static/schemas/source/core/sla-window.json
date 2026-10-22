@@ -2,21 +2,54 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/sla-window.json",
   "title": "SLA Window",
-  "description": "Service-level commitment a seller declares for a given action. Optional throughout: absence means no commitment, not zero commitment — buyers querying SLA fields via #4425's `requires` predicate grammar MUST compose with `present` to avoid silently matching sellers who never declared one. Durations are ISO 8601 duration strings (e.g., `PT4H`, `PT24H`, `P1D`). Predicate evaluators that compare durations MUST normalize before comparison; `P1D` and `PT24H` are equal.",
+  "description": "Optional service-level commitment. Absence means no commitment, not zero; duration predicates MUST also require presence. The default clock is elapsed, including weekends and non-working time, where P1D equals PT24H. A business clock counts only working time in the immutable business_calendar_id declaration from get_adcp_capabilities.business_calendars. Business durations MUST be converted to a deadline for the particular receipt time before comparison with elapsed commitments; P1D uses that calendar's business_day_minutes, not 24 hours. See the service commitments reference for clock and snapshot rules.",
   "type": "object",
   "properties": {
+    "clock": {
+      "type": "string",
+      "enum": ["elapsed", "business"],
+      "default": "elapsed",
+      "x-added-in": "3.3.0",
+      "description": "Elapsed time by default. Business time counts only the referenced calendar's working periods, starting at receipt or the next working period if receipt is outside working time."
+    },
+    "business_calendar_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "business_calendar",
+      "x-added-in": "3.3.0",
+      "description": "Immutable seller-local calendar identity. Required only with clock business and MUST resolve uniquely in get_adcp_capabilities.business_calendars. Changes require a new identity; pending requests retain their original calendar."
+    },
     "response_max": {
       "type": "string",
-      "description": "Maximum elapsed time from when the buyer issues the action to when the seller acknowledges receipt (mode-appropriate: synchronous response for self_serve, tolerance decision for conditional_self_serve, or queue acknowledgement for seller_managed and legacy requires_approval). Sellers include weekends and non-working periods in the maximum. ISO 8601 duration.",
+      "description": "Maximum time under the selected clock until acknowledgement (synchronous response for self_serve, tolerance decision for conditional_self_serve, or queue acknowledgement for seller_managed and legacy requires_approval). Elapsed action commitments run from buyer issuance and include weekends and non-working periods. On creative review_sla this means receipt acknowledgement measured from seller receipt of the review submission. For report_media_buy_issue it means a human acknowledging the report, measured from seller receipt; an automated receipt does not satisfy it. ISO 8601 duration.",
       "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
       "examples": ["PT5M", "PT4H", "P1D"]
     },
     "completion_max": {
       "type": "string",
-      "description": "Maximum elapsed time from buyer issuing the action to the seller completing it (mutation applied, proposal finalized, or seller-managed decision resolved). Sellers include weekends and non-working periods in the maximum. ISO 8601 duration.",
+      "description": "Maximum time under the selected clock until completion (mutation applied, proposal finalized, or seller-managed decision resolved), measured from buyer issuance for elapsed action SLAs. On creative_policy.review_sla or an action's review_sla, completion is an approved or rejected review decision, measured from seller receipt of the review submission. On report_media_buy_issue it is resolution from seller receipt, never an additional duration after acknowledgement. ISO 8601 duration.",
       "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
       "examples": ["PT1H", "PT24H", "P2D"]
     }
   },
-  "additionalProperties": false
+  "allOf": [
+    {
+      "if": { "properties": { "clock": { "const": "business" } }, "required": ["clock"] },
+      "then": {
+        "required": ["business_calendar_id"],
+        "properties": {
+          "response_max": { "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$" },
+          "completion_max": { "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$" }
+        }
+      },
+      "else": { "not": { "required": ["business_calendar_id"] } }
+    }
+  ],
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "calendar_reference": "A business_calendar_id resolves to exactly one immutable get_adcp_capabilities.business_calendars declaration whose coverage includes receipt and the computed deadline. Invalid or unresolved calendars never fall back to elapsed time.",
+      "request_snapshot": "Pending requests retain the SLA and calendar resolved at receipt. Maxima are independent upper bounds; a completion maximum shorter than the response maximum does not invalidate either commitment."
+    }
+  }
 }

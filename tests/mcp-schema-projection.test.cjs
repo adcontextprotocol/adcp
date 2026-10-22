@@ -164,7 +164,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // (1_280_033 → 1_281_789 against its base); fits the merge-window bound.
 // This is the parity-test compiler allowance; the independent 4 MiB schema,
 // 22 MiB projection, and role model-context budgets are unchanged.
-const PARITY_COMPILE_LIMIT = 1_300_000;
+// Product review/escalation SLAs and business-clock metadata (#8408) expand
+// the seeded Product/action closure to 1_304_121 bytes. Retain compilation of
+// every storyboard fixture with a small allowance for this additive surface.
+const PARITY_COMPILE_LIMIT = 1_325_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

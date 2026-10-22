@@ -5,13 +5,23 @@
   "description": "A currently available MediaBuy action with the compact-lifecycle task an SDK calls to exercise it. Deprecated coarse action values are absent.",
   "x-adcp-validation": {
     "verifier_constraints": {
-      "change_term_link": "When change_term_id is present, it resolves to the accepted proposal change term governing this action.",
+      "change_term_link": "When change_term_id is present, it resolves to the accepted proposal change term governing this action. The projected sla agrees with processing_sla, and review_sla independently preserves the term's terminal creative-review commitment when declared.",
       "legacy_alias_agreement": "When both change_term_id and deprecated terms_ref are emitted as proposal-term links, their values are identical."
     }
   },
   "type": "object",
   "discriminator": { "propertyName": "task" },
   "oneOf": [
+    {
+      "allOf": [{ "$ref": "/schemas/core/canonical-media-buy-action-fields.json" }],
+      "required": ["task"],
+      "properties": {
+        "task": { "type": "string", "const": "report_media_buy_issue" },
+        "action": { "type": "string", "const": "report_media_buy_issue" },
+        "mode": { "type": "string", "const": "seller_managed" },
+        "sla": { "$ref": "/schemas/core/escalation-sla.json" }
+      }
+    },
     {
       "allOf": [{ "$ref": "/schemas/core/canonical-media-buy-action-fields.json" }],
       "required": ["task"],

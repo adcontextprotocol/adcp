@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/get-media-buy-issue-response.json",
+  "title": "Get Media Buy Issue Response",
+  "x-added-in": "3.3.0",
+  "description": "Stored issue snapshot or terminal task error, never both. The issue status is a domain lifecycle distinct from completion of the reporting/read task.",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "found"
+        },
+        "issue": {
+          "$ref": "/schemas/core/media-buy-issue.json"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "outcome",
+        "issue"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "failed"
+        },
+        "errors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "outcome",
+        "errors"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "discriminator": {
+    "propertyName": "outcome"
+  }
+}

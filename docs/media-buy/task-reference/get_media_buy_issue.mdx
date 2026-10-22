@@ -1,0 +1,42 @@
+---
+title: get_media_buy_issue
+description: "Read human acknowledgement and resolution of a reported media-buy issue."
+testable: true
+---
+
+`get_media_buy_issue` synchronously returns the latest seller-owned snapshot
+of one issue created by
+[`report_media_buy_issue`](/docs/media-buy/task-reference/report_media_buy_issue).
+It requires `media_buy.issue_reporting: true`. Poll this task with bounded
+backoff to observe human acknowledgement and terminal resolution; an automated
+`reported` receipt is not human acknowledgement. Compare issue revisions so an
+older in-flight read cannot overwrite a newer observation.
+
+{/* Using latest because this task is unreleased. Update after release. */}
+**Request schema:** [get-media-buy-issue-request.json](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-issue-request.json)
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-issue-request.json",
+  "account": { "account_id": "account_123" },
+  "media_buy_id": "media_buy_789",
+  "issue_id": "issue_123"
+}
+```
+
+**Response schema:** [get-media-buy-issue-response.json](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-issue-response.json)
+
+A successful response has `outcome: "found"` and carries `issue`, with the same shape and frozen
+commitment as the reporting task. A failure has `outcome: "failed"` and carries `errors[]`, never `issue`.
+`reported` has no acknowledgement or resolution fields. `acknowledged` requires
+`acknowledged_at`. `resolved` additionally requires `resolved_at` and a
+`resolution` summary. Resolution can explain why no seller change was warranted;
+it does not assert buyer agreement or settle a delivery dispute.
+
+The seller authorizes every read against the selected account and media buy.
+An issue ID alone conveys no authority. Unknown, mismatched, and inaccessible
+identifiers use the same [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) response. Reads never mutate
+report state or restart a deadline. Sellers MUST retain open reports and make
+this read available after the buy is paused, canceled, or completed. Resolved
+reports MUST remain readable for at least 30 days after resolution; sellers may
+retain them longer. No webhook subscription is implied by this polling contract.

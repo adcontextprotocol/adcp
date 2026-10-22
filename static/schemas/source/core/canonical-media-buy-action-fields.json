@@ -7,11 +7,12 @@
   "properties": {
     "task": {
       "type": "string",
-      "enum": ["control_media_buy", "refine_proposals", "sync_creatives"]
+      "enum": ["control_media_buy", "refine_proposals", "sync_creatives", "report_media_buy_issue"]
     },
     "action": { "type": "string" },
     "mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
     "sla": { "$ref": "/schemas/core/sla-window.json" },
+    "review_sla": { "$ref": "/schemas/core/creative-review-sla.json", "x-added-in": "3.3.0" },
     "change_term_id": { "$ref": "/schemas/core/media-buy-change-term-id.json" },
     "terms_ref": { "$ref": "/schemas/core/media-buy-legacy-terms-ref.json" },
     "applicable_package_ids": {
@@ -23,5 +24,11 @@
     }
   },
   "required": ["task", "action", "mode"],
+  "allOf": [
+    {
+      "if": { "required": ["review_sla"] },
+      "then": { "properties": { "task": { "const": "sync_creatives" }, "action": { "enum": ["replace_creative", "update_creative_assignments"] } } }
+    }
+  ],
   "additionalProperties": false
 }

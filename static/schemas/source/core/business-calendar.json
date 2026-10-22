@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/business-calendar.json",
+  "title": "Business Calendar",
+  "description": "Immutable seller working-time calendar. A changed schedule, timezone, holiday list, or coverage horizon requires a new calendar_id. Sellers retain old declarations while requests using them are pending. Non-working dates are complete over the inclusive coverage dates and published at least 30 calendar days before taking effect. Sellers MUST NOT offer a business commitment whose deadline falls beyond this coverage.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "calendar_id": { "type": "string", "minLength": 1, "x-entity": "business_calendar" },
+    "timezone": { "$ref": "/schemas/core/iana-timezone.json" },
+    "published_at": { "type": "string", "format": "date-time" },
+    "valid_from": { "type": "string", "format": "date" },
+    "valid_through": { "type": "string", "format": "date" },
+    "business_day_minutes": {
+      "type": "integer", "minimum": 1, "maximum": 1440,
+      "description": "Working minutes represented by P1D. P1DT4H consumes this many minutes plus four working hours, even with unequal daily schedules."
+    },
+    "working_periods": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "description": "Non-overlapping half-open local-time periods. start_time MUST precede end_time. Split overnight periods at midnight; 24:00 is accepted only as an end. On DST transitions nonexistent local boundaries advance to the first existing instant; ambiguous starts use the earlier instant and ambiguous ends the later instant. Count actual elapsed seconds within the resulting union of working intervals.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "days": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] } },
+          "start_time": { "type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$" },
+          "end_time": { "type": "string", "pattern": "^(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]|24:00)$" }
+        },
+        "required": ["days", "start_time", "end_time"],
+        "additionalProperties": false
+      }
+    },
+    "non_working_dates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "format": "date" }, "description": "Complete list of local non-working dates within coverage, overriding weekly periods. An empty list explicitly means no additional closures in that interval." }
+  },
+  "required": ["calendar_id", "timezone", "published_at", "valid_from", "valid_through", "business_day_minutes", "working_periods", "non_working_dates"],
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "calendar_integrity": "valid_from <= valid_through; working periods have start < end and never overlap on a shared weekday; all non_working_dates are within coverage and published at least 30 calendar days in advance; timezone resolves in IANA TZDB; calendar_id is immutable and unique within the seller."
+    }
+  }
+}
