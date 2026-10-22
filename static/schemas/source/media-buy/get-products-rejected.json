@@ -56,6 +56,11 @@
       },
       {
         "required": [
+          "collections"
+        ]
+      },
+      {
+        "required": [
           "proposals"
         ]
       },

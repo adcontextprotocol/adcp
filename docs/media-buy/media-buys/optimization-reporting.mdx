@@ -62,6 +62,7 @@ Same lifecycle, with the `(vendor, metric_id)` tuple replacing the plain `metric
 | Does the vendor define this metric? | Vendor's capabilities | `get_adcp_capabilities.measurement.metrics[]` |
 | Can the product report this vendor metric? | Product capability | `reporting_capabilities.vendor_metrics[]` |
 | Who produced the number, relative to the seller? | Product capability | `reporting_capabilities.vendor_metrics[].vendor_relationship` (`first_party` / `affiliated` / `third_party`) |
+| Which vendor metrics can this seller optimize, across its catalog? | Seller capability | `get_adcp_capabilities.media_buy.vendor_metric_optimization.supported_metrics[]` (rollup; product level stays authoritative) |
 | Can the product optimize for this vendor metric? | Product capability | `vendor_metric_optimization.supported_metrics[]` |
 | Will the seller commit to reporting it? | Package | `committed_metrics[]` (scope: `vendor`) |
 | Which methodology version is contracted? | Package | `committed_metrics[].methodology_version` (pins the vendor catalog's `methodology_version`) |
@@ -201,6 +202,30 @@ The seller's bidding stack steered toward higher Adelaide attention scores; the 
 
 If Adelaide's coverage on the inventory dropped below the seller's confidence threshold and they couldn't populate `vendor_metric_values` for this period, the same `(vendor, metric_id)` shows up in `missing_metrics` — same key across the entire lifecycle, so buyer reconciliation is a row-level join.
 
+## Where did this number come from
+
+A delivery or audience figure can carry several independent provenance fields. Each answers a different question, and none substitutes for another: the provider that produced a row is not the demographic notation it is written in, and neither says how the figure was derived. Read them together.
+
+| Field | Question it answers | Value | Where it rides | Scope |
+|---|---|---|---|---|
+| `measurement_source` | Which audience-measurement **provider's data** produced this row? | Lowercase provider slug (`nielsen`, `geopath`, `barb`) | Row-level on [`delivery-metrics.json`](https://adcontextprotocol.org/schemas/v3/core/delivery-metrics.json), mirroring `delivery-forecast.json` so a forecast and its delivery reconcile on the same declaration | One delivery row (measured channels: radio, broadcast, OOH) |
+| `vendor` | Which **vendor defined and computed** this vendor-defined metric? | BrandRef resolving to the vendor's `brand.json` and its `measurement` agent catalog | `reporting_capabilities.vendor_metrics[]` (declaration), `committed_metrics[]`, and `vendor_metric_values[]` (delivery) | One `(vendor, metric_id)` metric |
+| `vendor_relationship` | How is that vendor related to the **seller**? | `first_party`, `affiliated`, or `third_party`; absence means undeclared, never `third_party` | Declared on `reporting_capabilities.vendor_metrics[]`; optionally echoed on `vendor_metric_values[]` | One `(seller, vendor)` pair |
+| `completion_source` | Who **attested to the completion event** behind `completion_rate`? | `seller_attested` or `vendor_attested` | `qualifier.completion_source` on commitments, missing metrics, and delivery values | The `completion_rate` metric only |
+| `demographic_system` | What **notation** is the demographic code written in? | Notation enum (for example `nielsen`, `barb`, `nmo`, `videoamp`, `custom`) | `by_demographic` rows, demographic reporting capability, forecasts, and `cpp` pricing | One demographic code. Notation only: it does not say whose panel produced the number. |
+| `estimation_basis` | How was `estimated_impressions` **derived** (static OOH)? | `currency_measured` or `seller_modeled` | `ooh_metrics.estimated_impressions` (experimental) | One OOH delivery row |
+| `circulation_basis` | How was `circulation_delivered` **derived** (print)? | `audited` or `seller_modeled` | `print_metrics.circulation_basis` on `by_installment` rows (experimental) | One print installment |
+| `match_rate_basis` | Did the platform **report** `effective_match_rate`, or did the seller compute it? | `platform_reported` or `derived` | Each audience in a [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) result, beside `audience_size` and `targetable_size` | One audience match result |
+
+How the fields combine:
+
+- **Provider versus vendor.** `measurement_source` names a provider as a slug on a measured-channel row. `vendor` names a vendor as a BrandRef on a vendor-defined metric, and `vendor_relationship` says how that vendor stands relative to the seller. Neither is a quality ranking, and neither implies the other.
+- **Tier, not provider.** `estimation_basis` and `circulation_basis` record how a figure was derived. The provider rides `measurement_source`, so an `audited` circulation figure still names its auditor there. Currencies change over time, so tier values stay stable while provider slugs vary.
+- **Notation, not provenance.** `demographic_system` only fixes how `P25-54` or `M25-54` is written. Report the provider that measured the audience in `measurement_source`.
+- **Attestation.** `completion_source` and `vendor_relationship` both distinguish seller-produced from independent figures. `completion_source` applies to `completion_rate` only. `vendor_relationship` applies to every vendor-defined metric.
+- **Basis of a rate.** `match_rate_basis` qualifies a rate, not a count: a `derived` rate computed from approximate or bucketed `audience_size` values is itself approximate.
+- **Different provenance, different measurement.** Rows that differ on `measurement_source`, `vendor`, `completion_source`, or a `*_basis` value are different measurements. Compare them with care rather than summing them into one figure.
+
 ## Performance Monitoring
 
 ### Real-Time Metrics
@@ -261,7 +286,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 }
 ```
 
-**Or with HMAC signature (recommended for production):**
+**Or with legacy HMAC signature:**
 ```json
 {
   "packages": [...],
@@ -277,12 +302,12 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 }
 ```
 
-**Security is Required:**
-- `authentication` configuration is mandatory (minimum 32 characters)
-- **Bearer tokens**: Simple, good for development (Authorization header)
-- **HMAC-SHA256**: Production-recommended, prevents replay attacks (signature headers)
-- Credentials exchanged out-of-band during publisher onboarding
-- See [Security](/docs/building/by-layer/L1/security) for implementation details
+**Webhook security:**
+- **Signed webhooks (recommended):** omit `authentication` on a request served at 3.3 or later. When this block is absent, the seller signs every delivery under the profile the registration's `signing_profile` selects (`adcp/webhook-signing/v1` when it is omitted), as for `push_notification_config`, and no shared secret crosses the wire.
+- **`authentication` is required on a request served below 3.3** (credentials at least 32 characters), including when a 3.3 seller serves a buyer pinned to 3.2.
+- **Bearer tokens** (legacy): Authorization header. **HMAC-SHA256** (legacy): signature headers. Both are deprecated and removed in 4.0.
+- Legacy credentials are exchanged out-of-band during publisher onboarding.
+- See [Webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks) for the switch rule and verification details.
 
 #### Supported Frequencies
 
@@ -306,9 +331,9 @@ Metric availability is declared at two levels:
 1. **Product level**: `reporting_capabilities.available_metrics` declares what the platform can report
 2. **Format level**: `reported_metrics` on a creative format declares what the format can produce (see [Reported Metrics](/docs/creative/formats#reported-metrics))
 
-Buyers receive the intersection of both. `impressions` and `spend` are always reported regardless of the intersection. Standard metrics include:
+Buyers receive the intersection of both. `spend`, and `impressions` where the seller measured it for the row, are always reported regardless of the intersection. Standard metrics include:
 
-- **`impressions`**: Ad views (always available)
+- **`impressions`**: Ad views (always available at totals and package level; optional on delivery rows, see [Rows without impressions](#rows-without-impressions))
 - **`spend`**: Amount spent (always available)
 - **`clicks`**: Click events
 - **`ctr`**: Click-through rate
@@ -337,6 +362,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
 - **`ooh_metrics`**: Classic (static) OOH metrics — panels, posting period, posting records with photo evidence, and modeled `estimated_impressions` with a declared `estimation_basis`; the channel has no play events
 - **`print_metrics`**: Print-specific metrics (experimental) — per-issue proof of insertion (tearsheet evidence, page, position) and circulation, reported on `by_installment` rows; see [Print creative](/docs/creative/channels/print#delivery-evidence-and-circulation)
+- **`publication`**: Proof that a digital installment was published (`published_at`, `posts[]`, optional `evidence` and `verified_by`), reported on `by_installment` rows (experimental); see [Installment lifecycle and proof of publication](#installment-lifecycle-and-proof-of-publication)
 - **`cost_per_click`**: Cost per click (`spend / clicks`)
 - **`cost_per_completed_view`**: Cost per completed view (`spend / completed_views`); CPCV pricing scalar for video/audio inventory
 - **`cpm`**: Cost per thousand impressions (`(spend / impressions) × 1000`); universal pricing scalar across CTV, display, mobile/web video, native, audio, and DOOH
@@ -1333,20 +1359,20 @@ Delivery data can be broken down across multiple dimensions within each package.
 
 | Dimension | Breakdown field | Required fields | Additional fields | Capability declaration |
 |-----------|----------------|-----------------|-------------------|------------------------|
-| Geography | `by_geo` | `geo_level`, `geo_code`, `impressions`, `spend` | `system`, `country`, `geo_name` | `supports_geo_breakdown` |
-| Device type | `by_device_type` | `device_type`, `impressions`, `spend` | — | `supports_device_type_breakdown` |
-| Device platform | `by_device_platform` | `device_platform`, `impressions`, `spend` | — | `supports_device_platform_breakdown` |
-| Creative format | `by_format` | `format_kind`, `impressions`, `spend` | Other delivery metrics | `supports_format_breakdown` |
-| Audience | `by_audience` | `audience_id`, `audience_source`, `impressions`, `spend` | `audience_name` | `supports_audience_breakdown` |
-| Demographic | `by_demographic` | `demographic`, `demographic_system`, `impressions`, `spend` | `age`, other delivery metrics | `supports_demographic_breakdown` |
-| Placement | `by_placement` | `placement_id`, `impressions`, `spend` | `placement_identity`, `placement_name`, `publisher_domain` | `supports_placement_breakdown` |
-| Property | `by_property` | `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, `property_name` | `supports_property_breakdown` |
-| Collection | `by_collection` | `collection_ref`, `impressions`, `spend` | `collection_name` | `supports_collection_breakdown` |
-| Installment | `by_installment` | `installment_ref`, `impressions`, `spend` | `installment_name`, `scheduled_at` | `supports_installment_breakdown` |
-| Collection × property | `by_collection_property` | `collection_ref`, `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, `collection_name`, `property_name` | `supports_collection_property_breakdown` |
-| Installment × property | `by_installment_property` | `installment_ref`, `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, `installment_name`, `scheduled_at`, `property_name` | `supports_installment_property_breakdown` |
-| Placement × property | `by_placement_property` | `placement_id`, `placement_identity`, `publisher_domain`, `identifier`, `impressions`, `spend` | `property_ref`, convenience names | `supports_placement_property_breakdown` |
-| Creative | `by_creative` | `creative_id`, `impressions`, `spend` | `creative_name`, `weight`, other delivery metrics | `supports_creative_breakdown` |
+| Geography | `by_geo` | `geo_level`, `geo_code`, `spend` | `system`, `country`, `geo_name` | `supports_geo_breakdown` |
+| Device type | `by_device_type` | `device_type`, `spend` | — | `supports_device_type_breakdown` |
+| Device platform | `by_device_platform` | `device_platform`, `spend` | — | `supports_device_platform_breakdown` |
+| Creative format | `by_format` | `format_kind`, `spend` | Other delivery metrics | `supports_format_breakdown` |
+| Audience | `by_audience` | `audience_id`, `audience_source`, `spend` | `audience_name` | `supports_audience_breakdown` |
+| Demographic | `by_demographic` | `demographic`, `demographic_system`, `spend` | `age`, other delivery metrics | `supports_demographic_breakdown` |
+| Placement | `by_placement` | `placement_id`, `spend` | `placement_identity`, `placement_name`, `publisher_domain` | `supports_placement_breakdown` |
+| Property | `by_property` | `publisher_domain`, `identifier`, `spend` | `property_ref`, `property_name` | `supports_property_breakdown` |
+| Collection | `by_collection` | `collection_ref`, `spend` | `collection_name` | `supports_collection_breakdown` |
+| Installment | `by_installment` | `installment_ref`, `spend` | `installment_name`, `scheduled_at` | `supports_installment_breakdown` |
+| Collection × property | `by_collection_property` | `collection_ref`, `publisher_domain`, `identifier`, `spend` | `property_ref`, `collection_name`, `property_name` | `supports_collection_property_breakdown` |
+| Installment × property | `by_installment_property` | `installment_ref`, `publisher_domain`, `identifier`, `spend` | `property_ref`, `installment_name`, `scheduled_at`, `property_name` | `supports_installment_property_breakdown` |
+| Placement × property | `by_placement_property` | `placement_id`, `placement_identity`, `publisher_domain`, `identifier`, `spend` | `property_ref`, convenience names | `supports_placement_property_breakdown` |
+| Creative | `by_creative` | `creative_id`, `spend` | `creative_name`, `weight`, other delivery metrics | `supports_creative_breakdown` |
 | Spot/as-run | `by_spot` | `spot_id`; `aired_at` on aired and makegood rows, `scheduled_at` on scheduled and preempted rows | `creative_id`, `impressions`, `network`, `station`, `daypart`, other delivery metrics; experimental `spot_status`, `scheduled_at`, `replaces_spot_id`, `break_position` | `supports_spot_breakdown` |
 
 Each breakdown entry inherits all fields from `delivery-metrics` (clicks, conversions, and other optional metrics) plus its dimension-specific fields. Every entry requires the fields shown in the required fields column. Check `reporting_capabilities` on the product to discover which dimensions are available; product-level capabilities are authoritative because different products from the same seller may support different breakdowns. `supports_geo_breakdown`, `supports_demographic_breakdown`, and `supports_spot_breakdown` are structured declarations; the other capability declarations in this table are boolean flags. Within `supports_geo_breakdown`, `country` and `region` are booleans, while `metro` is keyed by `metro-system` values and native `postal_area` is keyed by ISO 3166-1 alpha-2 country with arrays of country-local `postal-system` values. Geo rows use `system` for `geo_level: "metro"` and `"postal_area"`; native postal rows also include `country`. Deprecated country-fused postal systems remain accepted for compatibility.
@@ -1388,6 +1414,18 @@ The optional `creative_id` identifies the creative that aired, matching the pack
 
 Spot metrics are optional because airing evidence and audience measurement mature independently. `supports_spot_breakdown.available_metrics` tells the buyer which metrics the product can eventually produce at spot grain. A Live row may contain only `{ spot_id, aired_at }`; the same `spot_id` can reappear under C3 or C7 with `impressions`. An absent `impressions` field means unavailable at that measurement window or not declared at spot grain. `impressions: 0` means a measured zero and is never interchangeable with omission; sellers do not emit `null`.
 
+#### Rows without impressions
+
+From AdCP 3.3, `impressions` is optional on `daily_breakdown` rows and on every dimensional breakdown row (`by_format`, `by_device_type`, `by_device_platform`, `by_audience`, `by_demographic`, and the placement, property, collection, installment, geo, creative, keyword, and catalog-item rows). `by_spot` rows already treated `impressions` as optional. Identity keys and `spend` stay required. `aggregated_totals` still requires `impressions`.
+
+- Absent `impressions` means the seller did not measure impressions for that row. It does not mean zero; an explicit `0` is a measured zero.
+- Receivers MUST NOT treat absence as zero, and MUST NOT derive impression-denominated values for the row (`cpm`, `ctr`, `completion_rate`, `viewable_rate`, and similar). Senders MUST omit impression-denominated rates on such a row.
+- Senders MUST NOT put views, plays, downloads, or any other count in `impressions`. Report them in `views`, `completed_views`, `plays`, `downloads`, or `vendor_metric_values`.
+- When `impressions` is a committed metric for the package, disclose the absence through `by_package[].missing_metrics`. Do not add `missing_metrics` to rows.
+- A response or webhook served below AdCP 3.3 follows that release's schema, which requires `impressions` ([Serving an older pin](/docs/reference/versioning#serving-an-older-pin)). In it, a seller with no impression count omits the row, since every one of these breakdowns is optional, and never substitutes `impressions: 0`.
+- A channel that already reports `ooh_metrics.estimated_impressions` SHOULD keep `impressions` present on the row, as that field specifies.
+- The rule applies regardless of `pricing_model`. `pricing_model` lives on `by_package`, not on `daily_breakdown` rows, so the schema cannot condition on it.
+
 #### Spot lifecycle, makegoods, and break position
 
 <Note>
@@ -1409,7 +1447,7 @@ One `by_spot` row can follow a spot from plan to as-run. A sales house places sp
 - **Ordering.** Rows are ordered ascending by `aired_at`, or by `scheduled_at` when there is no `aired_at`. A spot that moved from `scheduled` to `aired` therefore re-sorts by its actual airing time.
 - **Seller identity mapping.** Broadcast traffic systems often keep the pre-air schedule and the as-run log as separate record sets. A seller that reports `scheduled` rows MUST reconcile them so the `spot_id` a buyer saw while the spot was scheduled is the one it sees after airing or preemption.
 - **Not reported versus not delivered.** `supports_spot_breakdown.available_statuses` lists the statuses the seller reports. A status that is not listed is not reported, so the absence of `scheduled`, `preempted`, or `makegood` rows proves nothing. A buyer MUST NOT read it as nothing planned, nothing preempted, or no makegoods. `supports_spot_breakdown.supports_break_position` says whether `break_position` is populated. When the declaration is absent, or `available_statuses` is empty, the seller reports aired rows only, as in AdCP 3.2. A seller that lists `scheduled` does not promise a planning horizon, so an empty plan this early is not evidence that nothing will be placed.
-- **Compatibility.** Rows with no `spot_status` and an `aired_at` stay valid and mean `aired`, so AdCP 3.2 documents are unchanged. AdCP 3.2 validators require `aired_at` on every row, so sellers MUST NOT send `scheduled` or `preempted` rows, or the new capability fields, to callers pinned below AdCP 3.3. A caller with no declared pin is treated as pinned below 3.3, and reporting webhooks follow the pin of the registration that receives them. `aired` and `makegood` rows carry `aired_at` and are valid there, because 3.2 validators ignore the new properties.
+- **Compatibility.** Rows with no `spot_status` and an `aired_at` stay valid and mean `aired`, so AdCP 3.2 documents are unchanged. A response or webhook served below AdCP 3.3 follows that release's schema ([Serving an older pin](/docs/reference/versioning#serving-an-older-pin)), and AdCP 3.2 requires `aired_at` on every row, so it carries no `scheduled` or `preempted` rows. `aired` and `makegood` rows carry `aired_at` and are valid there, because 3.2 validators ignore the new properties.
 
 `break_position` places a spot in its commercial break: `position_in_break` (1-based), `spots_in_break` (total spots in that break, at least `position_in_break`), and an optional `break_id` shared by spots in the same break. On a `scheduled` row it is the planned position and can change before airing. Validators SHOULD check `spots_in_break >= position_in_break`, which JSON Schema cannot express. Position pricing is outside this reporting contract. A seller that returns any of these fields MUST list `media_buy.spot_lifecycle` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
 
@@ -1585,6 +1623,118 @@ A seller that reports these rows declares them in the product's reporting capabi
     "available_statuses": ["scheduled", "preempted", "makegood"],
     "supports_break_position": true
   }
+}
+```
+
+#### Installment lifecycle and proof of publication
+
+<Note>
+Experimental in AdCP 3.3 (`media_buy.installment_lifecycle` in `experimental_features`). `installment_status`, `publication`, and `available_installment_statuses` can change within 3.x with the notice described in [experimental status](/docs/reference/experimental-status). Notifying the buyer when an installment publishes is not part of 3.3.
+</Note>
+
+A `by_installment` row can follow one installment from plan to proof. `installment_status` reuses the [installment status](https://adcontextprotocol.org/schemas/v3/enums/installment-status.json) vocabulary, and `publication` is the buyer's evidence that a digital installment (creator post, newsletter edition, podcast episode) went out.
+
+- **Absent status.** A row with no `installment_status` is a delivery row, as in AdCP 3.2. A seller that reports a digital installment as published SHOULD set `installment_status: published` and populate `publication`.
+- **Postponed.** A `postponed` installment keeps its `installment_ref` and gets a new `scheduled_at`.
+- **Cancelled.** A `cancelled` row carries no delivery metrics. It omits `impressions`, and `spend` reflects only what the accepted terms bill. A seller that declares `cancelled` MUST report a sold installment that will not run as `cancelled` rather than drop the row.
+- **Expected versus actual.** Metrics on a `scheduled` or `tentative` row are expectations, not delivery, and buyers MUST NOT add them to actuals or to package totals. The no-delivery-metrics rule for `cancelled` rows is a prose rule; the schema does not enforce it.
+- **Publication.** `publication` has a required `published_at` and a `posts[]` array with at least one entry. Each entry is a [`published_post`](https://adcontextprotocol.org/schemas/v3/core/assets/published-post-asset.json) reference, one per place the installment was published, so cross-posts are separate entries and a buyer can pass an entry to [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for paid amplification. Optional `evidence` is a capture or archive of the live post. Optional `verified_by` names an independent verifier; when it is absent the record is seller-reported. `publication` MUST be absent on `scheduled`, `tentative`, `postponed`, `cancelled`, and `live` rows. Sellers SHOULD populate it on each `by_installment` row for a digital installment they report as `published`.
+- **Not a billing event.** `publication` is seller-reported evidence. Billing follows the accepted terms, and invoices surface through [`get_account_financials`](/docs/accounts/tasks/get_account_financials).
+- **No notification.** There is no new notification type. A buyer reads publication from the next reporting fire or from `get_media_buy_delivery`, and a change-feed seller records a `delivery_report` change.
+- **Not reported versus not delivered.** `reporting_capabilities.available_installment_statuses` lists the statuses a seller reports and is meaningful only with `supports_installment_breakdown: true`. A status that is not listed is not reported, so the absence of such rows proves nothing. `published`, `aired`, and `live` are delivery statuses and need not be listed. A seller that has committed to `publication` and cannot yet produce it reports `{ "scope": "standard", "metric_id": "publication" }` in `by_package[].missing_metrics`.
+- **Compatibility.** Rows with no `installment_status` stay valid. Sellers MUST NOT send rows with `installment_status` `scheduled`, `tentative`, `postponed`, or `cancelled` to callers pinned below AdCP 3.3, because AdCP 3.2 validators require `impressions` on every installment row. A caller with no declared pin is treated as pinned below 3.3, and reporting webhooks follow the pin of the registration that receives them. Sellers also MUST NOT send `available_installment_statuses` to those callers, so their view of the capability is unchanged. 3.2 validators ignore `publication` and `installment_status` on delivery rows. A `published` row that reports views and omits `impressions`, as in the example below, is subject to the general rule for optional `impressions`: a seller MUST NOT omit it toward a caller pinned below AdCP 3.3 and instead omits the row.
+- **Registry.** A seller that returns `installment_status`, `publication`, or `available_installment_statuses` MUST list `media_buy.installment_lifecycle` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). These fields apply to `by_installment` only, not to `by_installment_property`.
+
+**Creator video with two cross-posts.** The installment is reported with views rather than impressions, and each place it was published is a separate `posts[]` entry:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json",
+  "status": "completed",
+  "reporting_period": { "start": "2026-10-12T00:00:00Z", "end": "2026-10-19T00:00:00Z" },
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_nova_creators",
+      "status": "active",
+      "totals": { "impressions": 0, "spend": 8000 },
+      "by_package": [
+        {
+          "package_id": "pkg_creator_video",
+          "spend": 8000,
+          "pricing_model": "flat_rate",
+          "rate": 8000,
+          "currency": "USD",
+          "by_installment": [
+            {
+              "installment_ref": {
+                "collection_ref": { "publisher_domain": "pinnacle-creators.example.com", "collection_id": "pinnacle_unboxed" },
+                "installment_id": "ep_2026_10_12"
+              },
+              "installment_name": "Unboxed: the autumn drop",
+              "installment_status": "published",
+              "scheduled_at": "2026-10-12T15:00:00Z",
+              "views": 52000,
+              "spend": 8000,
+              "publication": {
+                "published_at": "2026-10-12T15:04:00Z",
+                "posts": [
+                  {
+                    "asset_type": "published_post",
+                    "post_url": "https://video.example.com/watch/abc123",
+                    "platform": "example_video",
+                    "published_at": "2026-10-12T15:04:00Z"
+                  },
+                  {
+                    "asset_type": "published_post",
+                    "post_url": "https://shorts.example.com/p/xyz789",
+                    "platform": "example_shorts",
+                    "published_at": "2026-10-12T15:10:00Z"
+                  },
+                  {
+                    "asset_type": "published_post",
+                    "platform": "example_social",
+                    "platform_post_id": "9876543210"
+                  }
+                ],
+                "evidence": {
+                  "url": "https://archive.example.com/captures/abc123.png",
+                  "captured_at": "2026-10-12T16:00:00Z"
+                }
+              }
+            },
+            {
+              "installment_ref": {
+                "collection_ref": { "publisher_domain": "pinnacle-creators.example.com", "collection_id": "pinnacle_unboxed" },
+                "installment_id": "ep_2026_10_19"
+              },
+              "installment_status": "scheduled",
+              "scheduled_at": "2026-10-19T15:00:00Z",
+              "spend": 0
+            }
+          ],
+          "by_installment_truncated": false,
+          "by_installment_sorted_by": "spend",
+          "by_installment_sort_direction": "desc"
+        }
+      ]
+    }
+  ]
+}
+```
+
+A seller that reports these rows declares them in the product's reporting capabilities:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/reporting-capabilities.json",
+  "available_reporting_frequencies": ["daily"],
+  "expected_delay_minutes": 240,
+  "timezone": "America/New_York",
+  "supports_webhooks": false,
+  "available_metrics": ["views", "spend", "publication"],
+  "date_range_support": "date_range",
+  "supports_installment_breakdown": true,
+  "available_installment_statuses": ["scheduled", "postponed", "cancelled"]
 }
 ```
 

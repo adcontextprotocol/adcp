@@ -1,5 +1,5 @@
 id: media_buy_seller/vendor_metric_accountability
-version: "1.0.1"
+version: "1.0.2"
 title: "End-to-end vendor-metric accountability: declaration → commitment → delivery audit"
 category: media_buy_seller
 summary: "Buyer commits vendor metrics on two packages, then verifies one clean package, one overdue gap, and one not-yet-measurable omission."
@@ -196,6 +196,8 @@ phases:
       Package 0 commits attention plus a post-flight metric; package 1 commits
       the same attention metric. The seller stamps both package contracts with
       `committed_at`, allowing the report to prove package-scoped isolation.
+      A read-back then settles the normative day-1 equality
+      `committed_at == confirmed_at` against the persisted buy.
     steps:
       - id: create_media_buy
         title: "Create media buy"
@@ -244,6 +246,12 @@ phases:
             key: "media_buy_id"
           - path: "confirmed_at"
             key: "confirmed_at"
+          - path: "packages[0].committed_metrics[0].committed_at"
+            key: "day_one_committed_at_pkg0_attention"
+          - path: "packages[0].committed_metrics[1].committed_at"
+            key: "day_one_committed_at_pkg0_brand_lift"
+          - path: "packages[1].committed_metrics[0].committed_at"
+            key: "day_one_committed_at_pkg1_attention"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -262,13 +270,68 @@ phases:
             path: "packages[0].committed_metrics[0].committed_at"
             description: "Seller stamps the commitment time used by delivery reconciliation"
           - check: field_value
-            path: "packages[0].committed_metrics[0].committed_at"
-            value: "$context.confirmed_at"
-            description: "Day-1 commitment time equals the media buy confirmed_at timestamp"
-          - check: field_value
             path: "packages[1].committed_metrics[0].metric_id"
             value: "attention_units"
             description: "Breach package commits the same metric, proving values are package-scoped"
+
+      # `each such entry's committed_at MUST equal confirmed_at` for the day-1
+      # set (/media-buy/task-reference/create_media_buy, core/package.json)
+      # cannot be asserted on the create step itself: the runner resolves a
+      # validation comparand from the context as it stood *before* the step,
+      # and that step's own context_outputs land after its validations run, so
+      # both operands would still be unresolved `$context.` tokens (#8328).
+      # Every day-1 committed_at is captured on create and settled here against
+      # the persisted confirmed_at, which `confirmed_at` is normatively stable
+      # for ("Once populated, remains stable", get-media-buys-response.json).
+      #
+      # `get_media_buys` stays a step-level `requires_tool` rather than joining
+      # the storyboard's `required_tools`: that list is an any-of gate
+      # (hasAnyRequiredTool), so adding a tool to it widens selection instead of
+      # tightening it. A seller that does not advertise get_media_buys skips
+      # this step; the equality is then ungraded, which is a property of the
+      # runner's skip-is-not-a-failure model rather than of this assertion.
+      - id: read_back_commitment_timestamps
+        title: "Read the buy back and settle committed_at = confirmed_at"
+        task: get_media_buys
+        requires_tool: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: |
+          Return the buy under test, echoing the confirmed_at the create
+          response returned. That timestamp is the one the seller stamped on
+          every day-1 committed_metrics entry, on both packages.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "media_buy_id"
+            description: "Read-back returns the buy under test, not another buy"
+          - check: field_equals_context
+            path: "media_buys[0].confirmed_at"
+            context_key: "confirmed_at"
+            description: "Persisted confirmed_at is the one create_media_buy returned"
+          - check: field_equals_context
+            path: "media_buys[0].confirmed_at"
+            context_key: "day_one_committed_at_pkg0_attention"
+            description: "Package 0 attention commitment time equals the media buy confirmed_at timestamp"
+          - check: field_equals_context
+            path: "media_buys[0].confirmed_at"
+            context_key: "day_one_committed_at_pkg0_brand_lift"
+            description: "Package 0 brand-lift commitment time equals the media buy confirmed_at timestamp"
+          - check: field_equals_context
+            path: "media_buys[0].confirmed_at"
+            context_key: "day_one_committed_at_pkg1_attention"
+            description: "Package 1 attention commitment time equals the media buy confirmed_at timestamp"
 
   - id: simulate_and_validate_vendor_metrics
     title: "Simulate delivery with vendor-metric values and validate emission"

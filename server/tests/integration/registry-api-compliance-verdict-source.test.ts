@@ -22,7 +22,7 @@
  *     npx vitest run server/tests/integration/registry-api-compliance-verdict-source.test.ts
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import type { Pool } from 'pg';
 import { HTTPServer } from '../../src/http.js';
@@ -358,6 +358,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
   const OWNER_ONLY_KEYS = [
     'verdict_source',
     'latest_attempt',
+    'heartbeat_timeout',
     'membership_tier',
     'membership_tier_label',
     'subscription_status',
@@ -461,6 +462,154 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     } finally {
       await pool.query('DELETE FROM agent_compliance_runs WHERE id = $1', [inserted.rows[0].id]);
     }
+  });
+
+  // adcp#8268 — a heartbeat that runs out of time is recorded audit-only and
+  // never published. `latest_attempt` can't show it when the agent has no
+  // saved credentials (the run then carries no triggered_org_id), which is
+  // exactly the case that went silent in production.
+  describe('timed-out heartbeat visibility', () => {
+    const TIMEOUT_MESSAGE =
+      'Compliance timeout budget of 600000ms was reached. Stopped starting new storyboards after 68/74 selected storyboard(s).';
+    const insertedRunIds: string[] = [];
+
+    const insertHeartbeatRun = async (opts: {
+      completeness: 'timed_out' | 'complete' | 'not_completed';
+      offsetSeconds: number;
+      durationMs?: number | null;
+      headline?: string;
+      orgId?: string | null;
+    }) => {
+      const inserted = await pool.query<{ id: string }>(
+        `INSERT INTO agent_compliance_runs (
+           agent_url, lifecycle_stage, overall_status, headline,
+           tracks_json, tracks_passed, tracks_failed, tracks_skipped, tracks_partial,
+           triggered_by, triggered_org_id, dry_run, tested_at, adcp_version,
+           requested_compliance_target, total_duration_ms,
+           completeness, is_authoritative, observations_json, provenance_json
+         ) VALUES ($1, 'production', 'partial', $7,
+                   '[]'::jsonb, 0, 0, 0, 0, 'heartbeat', $8, FALSE,
+                   NOW() + ($2 || ' seconds')::interval, '3.1.20', '3.1', $3,
+                   $4, FALSE, $5::jsonb, $6::jsonb)
+         RETURNING id`,
+        [
+          AGENT_URL,
+          String(opts.offsetSeconds),
+          opts.durationMs ?? null,
+          opts.completeness,
+          JSON.stringify([{ category: 'performance', severity: 'warning', message: TIMEOUT_MESSAGE }]),
+          JSON.stringify({ timeout_ms: 600_000 }),
+          opts.headline ?? 'Assessment stopped at the time budget',
+          opts.orgId ?? null,
+        ],
+      );
+      insertedRunIds.push(inserted.rows[0].id);
+      return inserted.rows[0].id;
+    };
+
+    afterEach(async () => {
+      if (insertedRunIds.length === 0) return;
+      await pool.query('DELETE FROM agent_compliance_runs WHERE id = ANY($1::uuid[])', [insertedRunIds]);
+      insertedRunIds.length = 0;
+    });
+
+    it('shows the owner a credential-free timed-out heartbeat the published verdict hides', async () => {
+      const runId = await insertHeartbeatRun({
+        completeness: 'timed_out', offsetSeconds: 1, durationMs: 654_321,
+      });
+
+      currentUserId = OWNER_USER_ID;
+      const owner = await request(app).get(endpoint);
+      expect(owner.status).toBe(200);
+      // Publication is untouched: the card still grades on the last complete run.
+      expect(owner.body.status).toBe('passing');
+      // The org-scoped projection cannot see this run — that is the gap.
+      expect(owner.body.latest_attempt?.id).not.toBe(runId);
+      expect(owner.body.heartbeat_timeout).toMatchObject({
+        run_id: runId,
+        duration_ms: 654_321,
+        timeout_ms: 600_000,
+        storyboards_completed: 68,
+        storyboards_total: 74,
+        consecutive: 1,
+        consecutive_capped: false,
+      });
+      expect(owner.body.heartbeat_timeout.summary)
+        .toContain('after 654s of its 600s budget (68/74 storyboards completed)');
+      expect(owner.body.heartbeat_timeout.published_at).not.toBeNull();
+    });
+
+    // A hard-deadline abort means the runner blew past its own budget. It is
+    // recorded `not_completed` so it never earns the extended budget, but it
+    // leaves the published grade just as stale, so the owner still sees it.
+    it('shows a hard-deadline abort the worker had to record as not_completed', async () => {
+      const runId = await insertHeartbeatRun({
+        completeness: 'not_completed',
+        offsetSeconds: 1,
+        durationMs: 912_000,
+        headline: 'Timed out: assessment did not complete within 600s',
+      });
+
+      currentUserId = OWNER_USER_ID;
+      const owner = await request(app).get(endpoint);
+      expect(owner.body.heartbeat_timeout).toMatchObject({ run_id: runId, duration_ms: 912_000 });
+      expect(owner.body.heartbeat_timeout.summary).toContain('after 912s of its 600s budget');
+    });
+
+    it('does not treat other incomplete heartbeats as timeouts', async () => {
+      await insertHeartbeatRun({
+        completeness: 'not_completed', offsetSeconds: 1, headline: 'Unreachable: ECONNRESET',
+      });
+
+      currentUserId = OWNER_USER_ID;
+      const owner = await request(app).get(endpoint);
+      expect(owner.body.heartbeat_timeout).toBeNull();
+    });
+
+    it('counts a timed-out streak and clears once a heartbeat completes', async () => {
+      await insertHeartbeatRun({ completeness: 'timed_out', offsetSeconds: 1 });
+      await insertHeartbeatRun({ completeness: 'timed_out', offsetSeconds: 2 });
+
+      currentUserId = OWNER_USER_ID;
+      const streak = await request(app).get(endpoint);
+      expect(streak.body.heartbeat_timeout).toMatchObject({ consecutive: 2, consecutive_capped: false });
+      expect(streak.body.heartbeat_timeout.summary).toContain('2 heartbeats in a row have timed out.');
+
+      await insertHeartbeatRun({ completeness: 'complete', offsetSeconds: 3 });
+      const recovered = await request(app).get(endpoint);
+      expect(recovered.body.heartbeat_timeout).toBeNull();
+    });
+
+    it('stays owner-scoped for anonymous and cross-org callers', async () => {
+      await insertHeartbeatRun({ completeness: 'timed_out', offsetSeconds: 1 });
+
+      currentUserId = null;
+      const anonymous = await request(app).get(endpoint);
+      expect(anonymous.status).toBe(200);
+      expect(anonymous.body).toHaveProperty('heartbeat_timeout');
+      expect(anonymous.body.heartbeat_timeout).toBeNull();
+
+      currentUserId = CROSS_ORG_USER_ID;
+      const cross = await request(app).get(endpoint);
+      expect(cross.status).toBe(200);
+      expect(cross.body).toHaveProperty('heartbeat_timeout');
+      expect(cross.body.heartbeat_timeout).toBeNull();
+      expect(JSON.stringify(cross.body)).not.toContain('storyboards completed');
+    });
+
+    // Coverage and duration on a credentialed heartbeat would tell a
+    // co-claiming org that someone else holds working credentials for the URL.
+    it('hides a heartbeat charged to another organization, keeping the unattributed one', async () => {
+      await insertHeartbeatRun({ completeness: 'timed_out', offsetSeconds: 1, orgId: CROSS_ORG_ID });
+
+      currentUserId = OWNER_USER_ID;
+      const owner = await request(app).get(endpoint);
+      expect(owner.body.heartbeat_timeout).toBeNull();
+
+      const ownRunId = await insertHeartbeatRun({ completeness: 'timed_out', offsetSeconds: 2 });
+      const withOwnRun = await request(app).get(endpoint);
+      expect(withOwnRun.body.heartbeat_timeout).toMatchObject({ run_id: ownRunId, consecutive: 1 });
+    });
   });
 
   it('keeps same-URL run details inside the selected organization', async () => {
@@ -755,7 +904,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         const response = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics?run_id=${run.id}`);
         expect(response.status).toBe(200);
         expect(response.body).toMatchObject({ run_id: run.id, completeness: 'timed_out', is_authoritative: false,
-          provenance: { compliance_bundle_version: '3.1.20', sdk_version: '14.2.0', agent_build_version: 'build-immutable-42', agent_library_version: 'seller-sdk-2' },
+          provenance: { compliance_bundle_version: '3.1.20', sdk_version: '16.2.0', agent_build_version: 'build-immutable-42', agent_library_version: 'seller-sdk-2' },
           diagnostics_visibility: 'owner_or_operator' });
         expect(response.body.diagnostics[0].error_text).toBe('Expected products array');
         expect(JSON.stringify(response.body)).not.toContain('fixture-secret-value');

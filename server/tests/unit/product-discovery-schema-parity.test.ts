@@ -85,7 +85,7 @@ describe('product discovery MCP schema parity', () => {
         additionalProperties: false,
         // Definition annotations are intentionally stripped from tools/list;
         // dispatch still applies the source-schema default semantics.
-        properties: { action: { enum: ['revise', 'finalize'] } },
+        properties: { action: { enum: ['revise', 'finalize', 'extend_hold'] } },
         oneOf: expect.any(Array),
       });
     const declineTool = tools.get('decline_proposals')!;
@@ -130,10 +130,24 @@ describe('product discovery MCP schema parity', () => {
     // 152 KiB. Experimental minute-resolution dayparts add the clock-time
     // pair, its exclusion, and the time_granularity requirement to the shared
     // daypart graph (~0.45 KiB per tool; 152.93 KiB measured), bounded at
-    // 154 KiB. Core gender adds its shared predicate and overlay support;
-    // merged compact discovery measures 158,094 bytes (154.39 KiB), bounded
-    // at the next KiB without relaxing standalone-schema parity.
-    expect(totalBytes).toBeLessThanOrEqual(155 * 1024);
+    // 154 KiB. Experimental response collections (#8137) add the
+    // include_collections flag and the response-level collections array with
+    // its ResponseCollection item to the four tools (+2,802 bytes; 155.67 KiB
+    // measured), bounded at 156 KiB. The experimental extend_hold refinement
+    // action adds one enum value and one revise-field-forbidding arm to
+    // refine_proposals (+836 bytes; 156.78 KiB measured). Experimental
+    // opportunity.later_proposals consent on the shared opportunity context
+    // reaches request_proposals and decline_proposals, and decline_proposals
+    // gains the empty-declines-with-opportunity rule (+1,302 bytes on the
+    // pre-merge budget; 161,843 bytes / 158.05 KiB measured), bounded at 159 KiB.
+    // Experimental collection_lists / collection_lists_exclude add two short
+    // array properties and their requirement keys to the shared targeting
+    // graph; with open opportunities on main, 163,607 bytes / 159.77 KiB
+    // measured, bounded at 160 KiB.
+    // Core gender adds its shared predicate and overlay support; merged
+    // discovery measures 165,140 bytes / 161.27 KiB, bounded at the next KiB
+    // without relaxing standalone-schema parity.
+    expect(totalBytes).toBeLessThanOrEqual(162 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

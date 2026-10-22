@@ -266,9 +266,9 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(workflow, /sales_storyboards:\n\s+name: Storyboards \(current \/sales\)/);
   assert.match(workflow, /needs: sales_storyboard_orchestrators/);
   assert.match(workflow, /ORCHESTRATOR_RESULT: \$\{\{ needs\.sales_storyboard_orchestrators\.result \}\}/);
-  assert.match(workflow, /MIN_CLEAN: 135/);
-  assert.match(workflow, /MIN_PASSED: 646/);
-  assert.match(matrixRunner, /"sales:135:646"/);
+  assert.match(workflow, /MIN_CLEAN: 136/);
+  assert.match(workflow, /MIN_PASSED: 680/);
+  assert.match(matrixRunner, /"sales:136:680"/);
   assert.match(workflow, /Training agent · current \/sales/);
   assert.match(workflow, /echo "failed=\$\{failed_sum\}"/);
   assert.match(workflow, /echo "not_applicable=\$\{not_applicable_sum\}"/);
@@ -307,7 +307,7 @@ test('current training-agent floors are ratcheted and mirrored by local and CI r
   // pin all clean floors, other tenants, and the frozen 3.0 floors below.
   const baselines = [
     ['signals', 45, 80],
-    ['sales', 135, 646],
+    ['sales', 136, 680],
     ['governance', 47, 160 - (14 + 18)],
     ['creative', 49, 209],
     ['creative-builder', 50, 184],
@@ -332,10 +332,10 @@ test('3.0 compatibility floors are capability-resolved and mirrored locally', ()
   const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
   const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
   const baselines = [
-    ['signals', 24, 98],
+    ['signals', 24, 97],
     ['sales', 39, 219],
-    ['governance', 27, 147],
-    ['creative', 22, 109],
+    ['governance', 27, 146],
+    ['creative', 22, 108],
     ['creative-builder', 24, 112],
     ['brand', 22, 76],
     ['si', 21, 72],

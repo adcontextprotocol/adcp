@@ -287,6 +287,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-brand_rights-cb7142f1"
+            sandbox: true
           rights_id: "$context.rights_id"
           pricing_option_id: "$context.pricing_option_id"
           buyer:
@@ -352,6 +353,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-brand_rights-cb7142f1"
+            sandbox: true
           rights_id: "$context.rights_grant_id"
           paused: true
           idempotency_key: "$generate:uuid_v4#brand_rights_rights_update"
@@ -413,6 +415,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-brand_rights-cb7142f1"
+            sandbox: true
           rights_id: "$context.rights_id"
           pricing_option_id: "$context.pricing_option_id"
           buyer:

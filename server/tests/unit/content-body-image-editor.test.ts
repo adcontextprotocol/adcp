@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import vm from 'node:vm';
+import { JSDOM } from 'jsdom';
 import { describe, expect, it, vi } from 'vitest';
 
 const publicRoot = join(process.cwd(), 'server/public');
@@ -80,10 +81,40 @@ describe('content body image editor', () => {
 
     expect(html).toContain('<script src="/content-image-upload.js"></script>');
     expect(html).toContain('id="insertBodyImageBtn"');
-    expect(html).toContain('id="bodyImageAlt" required');
     expect(html).toContain('id="bodyImageLink"');
     expect(html).toContain("getSlug: () => editingContent?.slug || ''");
     expect(html).toContain('.preview-pane img { max-width: 100%; height: auto; }');
+  });
+
+  it.each(
+    ['my-content.html', 'admin-content.html'].flatMap(file =>
+      ['draft', 'pending_review', 'published'].map(status => ({ file, status }))
+    )
+  )('allows $status submission in $file without adding an image', ({ file, status }) => {
+    const dom = new JSDOM(readFileSync(join(publicRoot, file), 'utf8'));
+    try {
+      const document = dom.window.document;
+      const form = document.getElementById('contentForm') as HTMLFormElement;
+      const collection = document.getElementById('collection') as HTMLSelectElement;
+      collection.replaceChildren(new dom.window.Option('Perspectives', 'perspectives'));
+      (document.getElementById('title') as HTMLInputElement).value = 'A new perspective';
+      (document.getElementById('articleContent') as HTMLTextAreaElement).value = 'Article content.';
+      (document.getElementById('statusSelect') as HTMLSelectElement).value = status;
+      const onSubmit = vi.fn((event: Event) => event.preventDefault());
+      form.addEventListener('submit', onSubmit);
+      const saveButton = document.getElementById('saveBtn') as HTMLButtonElement;
+
+      expect(form.checkValidity()).toBe(true);
+      saveButton.click();
+      expect(onSubmit).toHaveBeenCalledOnce();
+
+      // Normal content validation must still block incomplete submissions.
+      (document.getElementById('title') as HTMLInputElement).value = '';
+      saveButton.click();
+      expect(onSubmit).toHaveBeenCalledOnce();
+    } finally {
+      dom.window.close();
+    }
   });
 
   it('keeps published body images within the article width', () => {
@@ -169,6 +200,11 @@ describe('content body image editor', () => {
       .rejects.toThrow('Choose a JPEG, PNG, WebP, or GIF image.');
     await expect(helper.uploadImage({ ...base, file: { name: 'x.png', type: 'image/png', size: helper.MAX_IMAGE_BYTES + 1 } }))
       .rejects.toThrow('Image files must be under 10MB.');
+    for (const altText of ['', '   ']) {
+      await expect(helper.uploadImage({
+        ...base, altText, file: { name: 'x.png', type: 'image/png', size: 10 },
+      })).rejects.toThrow('Alt text is required.');
+    }
     expect(fetchImpl).not.toHaveBeenCalled();
 
     fetchImpl.mockResolvedValue({ ok: false, status: 403, json: async () => ({}) });

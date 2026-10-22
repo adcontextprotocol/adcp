@@ -23,6 +23,7 @@ import {
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 import { loadTrancoList, lookupTrancoRanks, isTrancoLoaded } from '../services/tranco-ingestion.js';
 import { createLogger } from '../logger.js';
+import { CatalogResolveRequestSchema } from '../schemas/catalog-resolve.js';
 
 const logger = createLogger('catalog-api');
 const catalogDb = new CatalogDatabase();
@@ -31,11 +32,6 @@ const catalogEventsDb = new CatalogEventsDatabase();
 const disputesDb = new CatalogDisputesDatabase();
 
 // ── Zod Schemas ─────────────────────────────────────────────────
-
-const IdentifierSchema = z.object({
-  type: z.string(),
-  value: z.string(),
-});
 
 const DistributionIdentifierSchema = z.object({
   type: z.enum(DISTRIBUTION_IDENTIFIER_TYPE_VALUES),
@@ -60,20 +56,6 @@ const CommunityCollectionUpsertSchema = z.object({
   kind: z.enum(COLLECTION_KIND_VALUES).optional(),
   distribution: z.array(CollectionDistributionSchema).min(1).max(100),
 }).passthrough();
-
-const ProvenanceSchema = z.object({
-  type: z.enum([
-    'agency_allowlist', 'publisher_declaration', 'impression_log',
-    'ssp_inventory', 'deal_history', 'crawl', 'data_partner', 'member_assertion',
-  ]),
-  context: z.string().optional(),
-});
-
-const ResolveRequestSchema = z.object({
-  identifiers: z.array(IdentifierSchema).min(1).max(10000),
-  provenance: ProvenanceSchema,
-  mode: z.enum(['resolve', 'lookup']).default('resolve'),
-});
 
 const DisputeRequestSchema = z.object({
   dispute_type: z.enum(['identifier_link', 'classification', 'property_data', 'false_merge']),
@@ -164,12 +146,12 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
 
   router.post('/resolve', async (req, res) => {
     try {
-      const parsed = ResolveRequestSchema.safeParse(req.body);
+      const parsed = CatalogResolveRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: 'Invalid request', details: parsed.error.issues });
       }
 
-      const { identifiers, provenance, mode } = parsed.data;
+      const { identifiers, provenance, mode, sandbox } = parsed.data;
 
       // resolve mode requires authentication
       if (mode === 'resolve' && !req.user) {
@@ -181,7 +163,8 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
         identifiers,
         mode as ResolveMode,
         memberId,
-        provenance as Provenance
+        provenance as Provenance,
+        { sandbox },
       );
 
       return res.json(result);

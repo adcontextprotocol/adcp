@@ -30,6 +30,7 @@ import {
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { REPLAY_TTL_SECONDS } from './idempotency.js';
+import { TRAINING_REPORTING_SCHEMA } from './gcs-reporting-config.js';
 
 const logger = createLogger('training-agent-state');
 
@@ -268,6 +269,7 @@ function createSession(): SessionState {
     governanceOutcomes: new Map(),
     governanceAdjustments: new Map(),
     propertyLists: new Map(),
+    propertyListCache: new Map(),
     collectionLists: new Map(),
     contentStandards: new Map(),
     rightsGrants: new Map(),
@@ -518,6 +520,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     governanceOutcomes: asMap(hydrated.governanceOutcomes, fresh.governanceOutcomes),
     governanceAdjustments: asMap(hydrated.governanceAdjustments, fresh.governanceAdjustments),
     propertyLists: asMap(hydrated.propertyLists, fresh.propertyLists),
+    propertyListCache: asMap(hydrated.propertyListCache, fresh.propertyListCache),
     collectionLists: asMap(hydrated.collectionLists, fresh.collectionLists),
     contentStandards: asMap(hydrated.contentStandards, fresh.contentStandards),
     rightsGrants: asMap(hydrated.rightsGrants, fresh.rightsGrants),
@@ -550,6 +553,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       seededMeasurementCatalogs: asMap(hydratedComply.seededMeasurementCatalogs, fresh.complyExtensions.seededMeasurementCatalogs),
       provenanceAuditObservations: asMap(hydratedComply.provenanceAuditObservations, fresh.complyExtensions.provenanceAuditObservations),
       forcedCreateMediaBuyArm: hydratedComply.forcedCreateMediaBuyArm,
+      forcedMediaBuyHold: hydratedComply.forcedMediaBuyHold,
       forcedGetSignalsArm: hydratedComply.forcedGetSignalsArm,
       forcedGetProductsArm: hydratedComply.forcedGetProductsArm,
       forcedGetProductsRejections: asMap(hydratedComply.forcedGetProductsRejections, fresh.complyExtensions.forcedGetProductsRejections),
@@ -691,6 +695,35 @@ function canonicalOpenKey(scope: string, preferred?: string): string {
 
 const trustedSessionPartitionHint = Symbol('trustedSessionPartitionHint');
 
+/**
+ * Maps a seller-assigned account_id to the natural AccountRef of the account
+ * it names, within one principal's accounts. Routes that declare
+ * `account.stable_account_id` run requests inside `runWithAccountIdAliasScope`
+ * so `{ account_id }` and the natural key reach the same stored state.
+ * account-handlers.ts registers the resolver (it owns the account store).
+ * Outside a scope (legacy, strict, and frozen 3.0 routes), or when the
+ * resolver returns undefined, the id keeps its opaque `a:` partition.
+ */
+export type AccountIdAliasResolver = (accountId: string, principal: string) => AccountRef | undefined;
+
+let accountIdAliasResolver: AccountIdAliasResolver | undefined;
+
+export function setAccountIdAliasResolver(resolver: AccountIdAliasResolver | undefined): void {
+  accountIdAliasResolver = resolver;
+}
+
+const accountIdAliasScope = new AsyncLocalStorage<{ principal: string }>();
+
+/** Run `fn` with account_id aliasing enabled for the authenticated principal. */
+export function runWithAccountIdAliasScope<T>(principal: string, fn: () => T): T {
+  return accountIdAliasScope.run({ principal }, fn);
+}
+
+function accountIdAlias(accountId: string): AccountRef | undefined {
+  const scope = accountIdAliasScope.getStore();
+  return scope ? accountIdAliasResolver?.(accountId, scope.principal) : undefined;
+}
+
 /** Attach a framework-derived storage hint without changing the AccountRef the
  * business layer receives. The WeakMap prevents callers from forging the hint
  * through wire input and avoids persisting transport-only partition metadata. */
@@ -749,6 +782,14 @@ export function sessionKeyFromArgs(
   if (account !== undefined) {
     try {
       const canonical = canonicalizeAccountRef(account);
+      if (canonical.kind === 'account_id') {
+        // One account, one partition: key a known account_id exactly as its
+        // natural key. The spread keeps the trusted partition hint symbol.
+        const alias = accountIdAlias(canonical.account_id);
+        if (alias) {
+          return sessionKeyFromArgs({ ...args, account: alias }, mode, userId, moduleId, principal);
+        }
+      }
       const scope = accountScopeFromRef(account);
       // The symbol is framework-owned, cannot be forged by JSON input, and is
       // intentionally enumerable so the ordinary handler argument spreads
@@ -851,18 +892,58 @@ export function sessionRetentionCutoff(nowMs = Date.now()): Date {
   return new Date(nowMs - SESSION_RETENTION_MS);
 }
 
+/** Preserve accepted business state while its private reporting destination is
+ * authorized. The replay TTL alone is shorter than a full post-install UTC
+ * day plus its delivery SLA. Revocation releases the session to normal GC;
+ * read-only requests still never extend updated_at. */
+export async function cleanupExpiredSessions(): Promise<number> {
+  // Authorization remains authoritative when delivery is paused or the
+  // configured canary principal changes. Older stores can lack this schema.
+  const { rows } = await getPool().query<{ reporting_grants: string | null }>(
+    'SELECT to_regclass($1)::text AS reporting_grants',
+    [`${TRAINING_REPORTING_SCHEMA}.host_grants`],
+  );
+  if (rows.length !== 1 || (rows[0].reporting_grants !== null && typeof rows[0].reporting_grants !== 'string')) {
+    throw new Error(SESSION_STORE_UNAVAILABLE_MESSAGE);
+  }
+  const reportingProtection = rows[0]?.reporting_grants ? `
+    AND NOT EXISTS (
+      SELECT 1
+        FROM ${TRAINING_REPORTING_SCHEMA}.host_accounts binding
+        JOIN ${TRAINING_REPORTING_SCHEMA}.host_grants destination_grant
+          ON destination_grant.account_id = binding.account_id
+         AND destination_grant.destination_ref = binding.destination_ref
+        JOIN ${TRAINING_REPORTING_SCHEMA}.adcp_reporting_destination_authorizations auth
+          ON auth.account_id = destination_grant.account_id
+         AND auth.destination_ref = destination_grant.destination_ref
+         AND auth.generation = destination_grant.generation
+       WHERE auth.revoked_at IS NULL
+         AND stored_session.data->'mediaBuys'->>'__adcpType' = 'Map'
+         AND EXISTS (
+           SELECT 1 FROM jsonb_array_elements(
+             CASE WHEN jsonb_typeof(stored_session.data->'mediaBuys'->'entries') = 'array'
+               THEN stored_session.data->'mediaBuys'->'entries' ELSE '[]'::jsonb END
+           ) AS buy_entry(value)
+           WHERE binding.media_buy_ids ? (buy_entry.value->>0)
+             AND buy_entry.value->>0 = buy_entry.value->1->>'mediaBuyId'
+         )
+    )` : '';
+  const { rowCount } = await getPool().query(
+    `DELETE FROM adcp_state stored_session WHERE collection = $1 AND updated_at < $2${reportingProtection}`,
+    [SESSIONS_COLLECTION, sessionRetentionCutoff()],
+  );
+  return rowCount ?? 0;
+}
+
 /** Start the TTL cleanup interval. Deletes stale sessions from the store. */
 export function startSessionCleanup(): void {
   if (cleanupTimer) return;
   cleanupTimer = setInterval(async () => {
     try {
       if (isDatabaseInitialized()) {
-        const { rowCount } = await getPool().query(
-          `DELETE FROM adcp_state WHERE collection = $1 AND updated_at < $2`,
-          [SESSIONS_COLLECTION, sessionRetentionCutoff()],
-        );
-        if ((rowCount ?? 0) > 0) {
-          logger.info({ deleted: rowCount }, 'Cleaned up expired training-agent sessions');
+        const deleted = await cleanupExpiredSessions();
+        if (deleted > 0) {
+          logger.info({ deleted }, 'Cleaned up expired training-agent sessions');
         }
         const taskDeleted = await cleanupExpiredTasks(getPool());
         if (taskDeleted > 0) {

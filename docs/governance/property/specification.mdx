@@ -88,6 +88,15 @@ For large property sets, use property list references instead of embedding prope
 }
 ```
 
+The receiving agent MUST resolve the reference by calling `get_property_list`
+at `agent_url` over MCP (or another advertised AdCP task transport by agreement),
+presenting `auth_token` as a Bearer credential in place of normal authentication
+and following pagination to completion. The credential grants read-only access
+to this `list_id`, including continuation pages. A custom HTTP download URL
+alone does not satisfy the reference contract. See
+[reference resolution](/docs/governance/property/tasks/property_lists#resolving-a-property-list-reference)
+for authentication, error handling, and atomic cache refresh requirements.
+
 The receiving agent fetches and caches the list independently, enabling:
 - **Scale**: Pass 50,000+ properties without payload bloat
 - **Updates**: Lists evolve without changing requests

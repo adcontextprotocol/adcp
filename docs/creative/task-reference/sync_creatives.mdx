@@ -142,16 +142,91 @@ Implementations that acknowledge a creative on the synchronous success branch bu
 | ----------------- | ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `account`         | object     | Yes      | Account reference identifying the advertiser/workspace for this sync ([account-ref](/docs/accounts/overview)) |
 | `idempotency_key` | string     | Yes      | Client-generated key that makes retries safe. Use a fresh UUID or other unique value per request. |
-| `creatives`       | Creative[] | Yes      | Creative assets to upload/update (max 100)                                                                                                                               |
+| `creatives`       | Creative[] | Conditional | Creative assets to upload/update (max 100); at least one of `creatives`, `assignments`, or `assignment_operations` is required.                                                                                                                               |
 | `creative_ids`    | string[]   | No       | Optional filter to limit sync scope to specific creative IDs. Only these creatives are affected, others remain untouched. Useful for partial updates and error recovery. |
-| `assignments`     | array      | No       | Array of `{creative_id, package_id}` objects for bulk assignment. Optional `weight` and `placement_ids` per assignment.                                                  |
+| `assignments`     | array      | No       | Deprecated additive `{creative_id, package_id}` shorthand. Optional `weight`, `placement_ids`, and capability-gated `landing_page_url` and `trackers` per assignment.                                                  |
+| `assignment_operations` | array | Conditional | Ordered `assign`, `unassign`, or `replace` operations for existing creative IDs, without requiring creative uploads. Only `assign` accepts capability-gated `landing_page_url` and `trackers`. The request is atomic and requires strict validation. |
 | `dry_run`         | boolean    | No       | When true, rehearse this exact sync operation without applying it (default: false). Use this for seller trafficking acceptance checks; use [`validate_input`](https://adcontextprotocol.org/schemas/v3/creative/validate-input-request.json) for manifest-only preflight against canonical/product format targets. |
 | `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
-| `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. |
+| `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. Sellers that declare `creative.stable_creative_ids` never archive [seller-created creatives](#seller-assigned-creative-ids); others may. |
 
 Every `creatives[]` item in one request MUST have a unique `creative_id`.
 Duplicate IDs make response correlation and write ordering ambiguous, so the
 seller rejects the request rather than applying last-write-wins behavior.
+
+### Assignment landing pages
+
+In AdCP 3.3, optional `landing_page_url` on `assignments[]`, the `assign` variant of `assignment_operations[]`, and package `creative_assignments` in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) replaces the click-through destination for that one creative on that one package. The library creative does not change. The override applies to every click-through destination for that assignment, including per-state destinations; the seller MUST serve it everywhere it applies or reject the assignment through existing assignment errors, and MUST NOT silently ignore it or apply it partially. This includes clicks embedded in HTML, JavaScript, or a VAST tag that the seller cannot override. The creative's approval stands; a seller that reviews destinations reviews the assignment, not the creative.
+
+Buyers MUST NOT send the field unless [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) declares `creative.supports_assignment_landing_page: true` (default false, requiring `has_creative_library: true`); an agent without that capability MUST reject the field with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). The URL may contain [AdCP macros](/docs/creative/universal-macros) under the same rules as the creative's own click-through without declarations, including the existing 3.x compatibility behavior. This field introduces no assignment-level `macro_declarations`; declarations on the original creative assets do not transfer to the override, and neither URL syntax nor this capability proves declared token resolution. Existing governed catalog substitution and encoding rules still apply.
+
+On additive `assignments[]` upserts and `assign` operations, omitting `landing_page_url` preserves an existing override. To restore inheritance without changing the library creative, atomically `unassign` then `assign` the same creative/package without the field; include any weight, placement settings, or assignment trackers that must remain on the new assignment. `null` is not accepted. For a complete `update_media_buy` package `creative_assignments` replacement, omission from a supplied assignment row restores inheritance; omitting the entire replacement array leaves assignments unchanged.
+
+The unassign/assign reset recreates assignment state. Its `assign` operation cannot carry `rotation_mode`, `group_id`, `sequence_position`, or structured `placement_refs`. To retain those controls, use a complete `update_media_buy` package `creative_assignments` replacement instead: retain every other assignment and its authored settings, retain the target's rotation/group/placement settings and assignment trackers, and omit only the target's `landing_page_url`. Readback URLs are effective destinations, so do not blindly copy them into override fields when reconstructing authored assignment state.
+
+Supporting sellers MUST return the effective serving destination in [`list_creatives`](/docs/creative/task-reference/list_creatives) assignments and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) package creative assignment rows (`packages[].creative_approvals[]`). Return the override when present, otherwise the creative's own destination when unique; a macro-bearing destination remains the effective URL template. Omit the scalar when no destination exists or an unoverridden creative has multiple destinations, whose URLs remain in its creative assets. Sellers MUST NOT pick one arbitrarily and present it as applying to every click. Buyers reconcile assignment `approval_status` separately from the library creative's `status`.
+
+After an assignment `merge`, the buyer creative's landing page for that package applies: its assignment override when present, otherwise its own click-through. The same serve-or-reject and assignment destination-review rules apply when the merge changes the effective destination; inherited creative approval MUST NOT bypass destination policy. A seller that cannot apply the destination rejects the atomic merge instead of keeping the seller copy's old destination silently.
+
+After checking the capability and setting an override with an `assign` operation, the buyer can restore inheritance with this atomic reset. This reset uses existing operations, so its example references the released `v3` request schema.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "account": { "account_id": "acct_acme" },
+  "idempotency_key": "assignment-landing-page-reset-0001",
+  "assignment_operations": [
+    { "operation": "unassign", "creative_id": "hero", "package_id": "pkg_display" },
+    { "operation": "assign", "creative_id": "hero", "package_id": "pkg_display", "weight": 50 }
+  ]
+}
+```
+
+### Assignment trackers
+
+In AdCP 3.3, optional `trackers` on `assignments[]`, the `assign` variant of `assignment_operations[]`, and package `creative_assignments` in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) attaches measurement URLs to one creative on one package. A buyer can reuse a library creative across media buys while giving each assignment its own campaign and package values. The seller fires these trackers **in addition to** the creative's own trackers. Changing assignment trackers does not mutate the library creative, its revision, or its approval; any tracker policy review applies to the assignment.
+
+Buyers MUST NOT send `trackers` unless [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) declares `creative.supports_assignment_trackers: true`. This capability defaults to false and requires `has_creative_library: true`; an unsupported agent MUST reject the field with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). It is independent of `creative.supports_assignment_landing_page`.
+
+Each entry contains `event` and `url`, with `custom_event_name` required and nonempty only when `event` is `custom`. Events use the shared [`pixel_tracker` vocabulary](https://adcontextprotocol.org/schemas/v3/enums/pixel-tracking-event.json) and timing. Each URL is invoked as an HTTP GET measurement pixel, without JavaScript execution. Assignment trackers do not carry `asset_type`, `method`, or `macro_declarations`. They are renderer-fired measurement, not advertiser-site conversion tracking; use event sources for the latter.
+
+The seller MUST fire every accepted assignment tracker at its declared event or reject the assignment through existing assignment errors. This includes unknown custom events and events that cannot fire on the assigned format; silent no-op behavior is not permitted. Where a `tracker_execution_contract` applies, match assignment entries as `pixel_tracker` with `method: "img"` and the entry's event/custom name, respecting its execution actor and firing paths. An unlisted selector in a complete contract rejects the assignment; an undeclared selector does not waive the fire-or-reject requirement. The capability alone does not promise that every format accepts every event.
+
+Assignment trackers and the creative's own trackers count together against the effective format's tracker-slot limits, including canonical `params.slots[].max` and legacy repeatable-group `max_count`. Each assignment tracker consumes one occurrence in one compatible declared tracker slot; existing creative assets retain their slot occupancy. Sellers MAY choose any allocation that satisfies every slot's asset type, event role, and count constraints, but MUST NOT pool capacity from incompatible slots or move creative assets to make room. If no valid allocation exists, the seller MUST reject the assignment rather than dropping trackers or modifying the creative. Each supplied occurrence fires once per logical event; identical URLs are not deduplicated, including when the same URL also appears in a creative asset.
+
+Tracker URLs use the existing [macro-bearing URL rules](/docs/creative/universal-macros#template-syntax) without declarations, including 3.x compatibility behavior. Declarations on creative assets do not transfer to these URLs. Neither URL syntax nor assignment tracker support guarantees resolution of any particular macro; check the seller's macro resolution capabilities. Buyers can put their own known buy/package values directly in the URL, avoiding a dependency on seller ID substitution. Readback preserves the accepted templates.
+
+Supplying `trackers` replaces that assignment's previous tracker list; it does not append on each upsert or retry. Omission on additive `assignments[]` upserts or `assign` operations preserves the list. To clear it, use the atomic `unassign`/`assign` [reset recipe](#assignment-landing-pages), omitting `trackers` from the new assignment and resupplying other authored settings, including any landing-page override. For rotation/group/structured placement controls, use a complete `update_media_buy` package `creative_assignments` replacement, retaining every other assignment and setting, and omitting only the target's `trackers`. Omission from a supplied replacement row clears its assignment trackers; omitting the entire replacement array leaves assignments unchanged. Empty arrays and `null` are not accepted on writes.
+
+Supporting sellers MUST return `trackers` in [`list_creatives`](/docs/creative/task-reference/list_creatives) `assignments.assigned_packages[]` and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) `packages[].creative_approvals[]`. Return the complete assignment-scoped list, preserving events, URL templates, order, and duplicate occurrences, or `[]` when there are no assignment trackers. This list excludes the creative's own trackers, which remain in its `assets` and also fire. Buyers can copy a nonempty list back as authored assignment state without duplicating the creative's trackers; use the reset recipe for an empty readback list. After an assignment `merge`, the buyer creative's package assignment trackers apply alongside that creative's trackers; the seller MUST validate the resulting combination or reject the atomic merge.
+
+This request assigns one existing creative to two packages with different measurement values. It requires the unreleased 3.3 assignment fields; each tracker follows the [assignment tracker schema](https://adcontextprotocol.org/schemas/latest/core/assignment-tracker.json). The request is validated against the source schema by the assignment-tracker tests.
+
+```json
+{
+  "account": { "account_id": "acct_acme" },
+  "idempotency_key": "assignment-trackers-example-0001",
+  "assignment_operations": [
+    {
+      "operation": "assign",
+      "creative_id": "hero",
+      "package_id": "pkg_display_a",
+      "trackers": [
+        { "event": "impression", "url": "https://measurement.example/imp?mb=mb_a&pkg=pkg_display_a&cb={CACHEBUSTER}" },
+        { "event": "custom", "custom_event_name": "engagement_3s", "url": "https://measurement.example/engagement?mb=mb_a" }
+      ]
+    },
+    {
+      "operation": "assign",
+      "creative_id": "hero",
+      "package_id": "pkg_display_b",
+      "trackers": [
+        { "event": "impression", "url": "https://measurement.example/imp?mb=mb_b&pkg=pkg_display_b&cb={CACHEBUSTER}" }
+      ]
+    }
+  ]
+}
+```
 
 ### Creative object
 
@@ -169,7 +244,7 @@ seller rejects the request rather than applying last-write-wins behavior.
 
 New 3.2 integrations use `format_kind` with `format_option_ref` when routing depends on a product's declared option. A compatibility implementation may accept the legacy branch from an older peer, but never mixes both shapes.
 
-Before uploading, buyers MUST verify each creative manifest against the target product's canonical `format_options[]`. The manifest MUST include every asset slot that the selected format option declares as required, keyed by that slot's `asset_group_id`.
+When uploading for a known target product, buyers MUST verify each creative manifest against that product's canonical `format_options[]`. The manifest MUST include every asset slot that the selected format option declares as required, keyed by that slot's `asset_group_id`. A library creative may be stored before selecting inventory; product-specific validation applies when the target becomes known, before assignment. Library storage alone does not establish product acceptance.
 
 ### Creative revisions
 
@@ -489,6 +564,8 @@ For published-post reference products, the asset role is usually `published_post
 
 Assignments are at the request level, mapping creative IDs to package IDs. Standalone creative agents that do not manage media buys ignore this field.
 
+**Revisions.** Each applied assignment change (`assignments` and `assign`, `unassign` or `replace` in `assignment_operations`) advances the `revision` of every media buy whose package assignments it changed, once per buy per committed request, in the same atomic write as that buy's assignment change, and appends a `history` entry to that buy. This is new in 3.3; 3.2 sellers did not advance it. `sync_creatives` accepts no media-buy `revision` precondition, so a buyer that holds a media-buy `revision` read before the sync and then sends `update_media_buy` or [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) receives [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) and re-reads. A dry run, a rejected assignment, a no-op assignment and an exact idempotency replay advance nothing. Each created or changed creative also advances its own [`seller_revision`](/docs/creative/task-reference/list_creatives#seller-revision) when the seller maintains one.
+
 ```json test=false
 {
   "assignments": [
@@ -525,7 +602,7 @@ The final per-creative `creatives` array lands on the task completion artifact, 
 **Each creative in the success response includes:**
 
 - All request fields
-- `platform_id` - Platform's internal ID (when `action` is not `failed`)
+- `platform_id` - The seller's identifier for the creative in its source of truth (when `action` is not `failed`). [`list_creatives`](/docs/creative/task-reference/list_creatives) returns the same value.
 - `revision_id` - Exact request revision on accepted `created`, `updated`, or `unchanged` items when supplied. Omitted on `failed` and `deleted`.
 - `action` - Lifecycle operation performed by this sync: `created`, `updated`, `unchanged`, `failed`, `deleted`
 - `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `suspended`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`) or `suspended` when a recoverable dependency/authorization gate prevents serving. **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via [`list_creatives`](/docs/creative/task-reference/list_creatives) or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
@@ -1032,9 +1109,75 @@ Invoke [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get
 
 - Creates new creatives or updates existing by `creative_id`
 - `assignments[]` remains the deprecated additive assignment shorthand
-- `assignment_operations[]` can traffic existing IDs without resending creative bodies: `assign` upserts weight/placement scope, `unassign` removes one assignment, and `replace` atomically swaps an existing creative for a replacement
+- `assignment_operations[]` can traffic existing IDs without resending creative bodies: `assign` upserts weight/placement scope, `unassign` removes one assignment, `replace` atomically swaps an existing creative for a replacement that the seller traffics as a new serving object, and `merge` declares that a seller-assigned creative already on the package is the buyer's creative, so the seller keeps the existing serving object, approval, and delivery continuity and reports it under the buyer's `creative_id` (see [Merging a seller-created copy](#merging-a-seller-created-copy))
 - Updates provided fields, leaves others unchanged
 - Use `creative_ids` filter to limit scope to specific creatives
+
+### Seller-assigned creative IDs
+
+[`list_creatives`](/docs/creative/task-reference/list_creatives#creatives-created-outside-adcp) also returns creatives that entered the seller's library outside `sync_creatives`, under a `creative_id` the seller assigned.
+
+- **Managing one.** A buyer updates such a creative by syncing it under its `creative_id` as-is. That is the normal upsert, subject to the same [active-delivery protection](#best-practices) as any update. Ownership of the account, not the surface that created the creative, decides what the buyer can manage, as for media buys ([account ownership, not creation surface](/docs/media-buy/specification#account-ownership-vs-creation-surface)).
+- **Collisions.** If a buyer syncs a creative it means as new and its `creative_id` equals an existing one, the sync updates the existing creative. The buyer detects this from `action: "updated"` or `"unchanged"` where it expected `"created"`. Buyers SHOULD use UUIDs or a stable prefix for their IDs.
+- **`delete_missing`.** A seller that declares [`creative.stable_creative_ids`](/docs/protocol/get_adcp_capabilities#creative) MUST NOT archive a seller-created creative under `delete_missing: true`, including one a buyer has since updated, because a full sync replaces the buyer's own set. A seller that does not declare it may archive them, as in 3.2, so buyers SHOULD NOT use `delete_missing` with such a seller when seller-created creatives matter.
+
+### Merging a seller-created copy
+
+A seller's operator or system can create its own copy of a creative the buyer already synced and attach it to a package. `list_creatives` then shows two rows for one creative: the buyer's `acme_video_001` and, on `pkg_premium_video`, seller-assigned `slr_88412`. A `replace` operation would swap them, but the seller traffics the replacement as a new serving object, so it is reviewed again and delivery restarts. A `merge` operation says "`slr_88412` on this package is my `acme_video_001`": the seller keeps the existing serving object, approval, and delivery, and reports them under the buyer's `creative_id`.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "account": { "account_id": "acct_acme_2026" },
+  "idempotency_key": "7d4f2a90-3c1e-4b8a-9f62-0e5d8c1b7a34",
+  "assignment_operations": [{
+    "operation": "merge",
+    "creative_id": "acme_video_001",
+    "package_id": "pkg_premium_video",
+    "merged_creative_id": "slr_88412"
+  }]
+}
+```
+
+Buyers MUST NOT send `merge` unless the seller declares [`creative.supports_assignment_merge`](/docs/protocol/get_adcp_capabilities#creative); a seller that does not declare it rejects `merge` with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). `creative_id` need not already be assigned to the package. If it is, the seller retires that assignment's own per-package object. The merged assignment keeps the weight and placement routing of `merged_creative_id`'s assignment; a later `assign` operation in the same request can change them, because operations apply in order.
+
+**Verification.** The seller verifies every `merge` in the request. Assignment operations are atomic, so if any merge fails, the seller applies no operation and returns one [`CREATIVE_MERGE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-merge-rejected) error. `error.field` points at the first rejected operation, and `error.details` SHOULD conform to [`error-details/creative-merge-rejected.json`](https://adcontextprotocol.org/schemas/latest/error-details/creative-merge-rejected.json), listing every rejected merge with its `operation_index` and a `reason`:
+
+| `reason` | Meaning | Who acts |
+|---|---|---|
+| `content_mismatch` | The seller judges that `merged_creative_id` is a different creative. | Nobody: the seller's copy is not this creative. To run `creative_id` on the package, use `replace`. |
+| `format_mismatch` | `creative_id` can't take over the copy's serving object because its format differs. | The buyer: sync a matching format of the creative and retry. |
+| `not_on_package` | `merged_creative_id` is not a seller-assigned creative currently assigned to `package_id` in this account. Reported the same way for unknown IDs, so the response doesn't reveal whether an ID exists elsewhere. | The buyer: reread [`list_creatives`](/docs/creative/task-reference/list_creatives) or [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) and correct the pairing. |
+| `not_supported` | The seller supports `merge` but can't merge this pairing on this package. | The buyer: use `replace`. |
+
+The buyer can drop or fix the rejected merges and resubmit the rest in one request.
+
+If the seller needs a person to confirm a match, it returns the [`submitted` envelope](#async-approval-workflow), and the task's completion artifact carries either the success response with `merges[]` or `CREATIVE_MERGE_REJECTED`. Because the operations in a request are atomic, the rest of the batch waits on that confirmation, so buyers SHOULD send a `merge` that may need confirmation in its own request. With `dry_run: true`, the seller runs the same verification, applies nothing, and reports the merges it would apply.
+
+**Response.** A successful response carries `merges[]`, one entry per applied merge in request order: `creative_id`, `package_id`, `merged_creative_id`, and the inherited `approval_status`. The buyer learns each merge's outcome from the response itself, without a follow-up read. A merge-only request returns an empty `creatives` array.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-response.json",
+  "status": "completed",
+  "creatives": [],
+  "merges": [{
+    "creative_id": "acme_video_001",
+    "package_id": "pkg_premium_video",
+    "merged_creative_id": "slr_88412",
+    "approval_status": "approved"
+  }]
+}
+```
+
+**On success:**
+
+- The buyer's assignment inherits `merged_creative_id`'s approval on the package. Sellers MUST NOT review it again unless `creative_id`'s content differs from `merged_creative_id`'s.
+- `merged_creative_id` no longer has an assignment on the package. It is not purged. It stays in `list_creatives` while it still exists in the seller's source of truth, and otherwise moves to `archived` like any creative the seller's source of truth no longer holds.
+- Delivery for that object is reported under `creative_id` from the time of the merge. Delivery before the merge stays under `merged_creative_id`; sellers MUST NOT restate it.
+- A seller that emits `creative.assignment_changed` sends `unassigned` for `merged_creative_id` and `assigned` for `creative_id` (or `approval_changed` if it was already assigned), with the same `observed_at`. A seller with the experimental [account change feed](/docs/accounts/tasks/list_account_changes) records two `creative_assignment` changes sharing one `batch_id`, `unlinked` and `linked`, with `origin.kind: "adcp"`.
+
+`merged_creative_id` MUST be a creative that entered the library outside `sync_creatives`. Merging a duplicate that a buyer synced is out of scope, because one principal must not take over another principal's creatives.
 
 ### Dry run
 
@@ -1053,6 +1196,7 @@ Invoke [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get
 | [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected)       | Creative failed content-policy, brand-safety, or accessibility review | Revise according to the applicable policy or validated accessibility criteria |
 | [`CREATIVE_LOCALE_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-creative-locale-not-accepted) | Assigned creative has no materialized variant accepted by the package's effective format `locale_policy`, lacks locale topology, or uses an ineligible `serve_default` | Supply a matching source/target variant, choose a compatible format option, or change the default policy |
 | [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state)           | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
+| [`CREATIVE_MERGE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-merge-rejected) | One or more `merge` assignment operations failed verification; `error.details.rejections[]` gives each one's `reason` (`content_mismatch`, `format_mismatch`, `not_on_package`, `not_supported`) | Act on each reason (see [Merging a seller-created copy](#merging-a-seller-created-copy)), then resubmit the remaining merges |
 
 Sellers that declare `creative_specs.vast_validation` of `document` or `wrapper` additionally validate `vast` assets at sync time (including `dry_run`) and can return [`VAST_PARSE_FAILED`](/docs/building/verification/compliance-catalog#error-code-vast-parse-failed), [`VAST_VERSION_MISMATCH`](/docs/building/verification/compliance-catalog#error-code-vast-version-mismatch), or [`VAST_WRAPPER_DEPTH_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-vast-wrapper-depth-exceeded). See [VAST Validation](/docs/creative/channels/video#vast-validation).
 

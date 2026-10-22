@@ -27,7 +27,7 @@
     "placements": { "type": "array", "items": { "$ref": "/schemas/core/canonical-placement.json" } },
     "collections": {
       "type": "array",
-      "description": "Collections available in this product, each referencing collections declared in an adagents.json by domain and explicit collection_ids. The domain-only bulk-grant selector form is for authorization scoping, not product composition. A selected-mode collection_selection names collections from this set.",
+      "description": "Collections available in this product, each referencing collections declared in an adagents.json by domain and explicit collection_ids. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. The domain-only bulk-grant selector form is for authorization scoping, not product composition. A selected-mode collection_selection names collections from this set.",
       "items": {
         "allOf": [
           { "$ref": "/schemas/core/collection-selector.json" },
@@ -39,14 +39,14 @@
     "collection_targeting_allowed": {
       "type": "boolean",
       "default": false,
-      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list or targeting_overlay.collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match)."
+      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list, collection_lists, or collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match)."
     },
     "delivery_type": { "$ref": "/schemas/enums/delivery-type.json" },
     "exclusivity": { "$ref": "/schemas/enums/exclusivity.json" },
     "pricing_options": { "type": "array", "items": { "$ref": "/schemas/core/canonical-pricing-option.json" }, "minItems": 1 },
     "forecast": { "$ref": "/schemas/core/canonical-delivery-forecast.json" },
     "reporting_capabilities": { "$ref": "/schemas/core/canonical-reporting-capabilities.json" },
-    "dooh_inventory_summary": { "$ref": "/schemas/core/dooh-inventory-summary.json" },
+    "dooh_inventory_summary": { "$ref": "/schemas/core/dooh-inventory-summary.json", "x-added-in": "3.3.0" },
     "measurement_terms": {
       "$ref": "/schemas/core/canonical-measurement-terms.json",
       "description": "Default billing measurement and makegood terms inherited by a direct purchase unless a negotiated proposal replaces them."
@@ -127,6 +127,12 @@
       "items": { "$ref": "/schemas/core/canonical-product-action.json" },
       "uniqueItems": true
     },
+    "hold_policy": {
+      "$ref": "/schemas/core/hold-policy.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.hold_policy). Planning hint: the inventory-hold policy the seller generally offers when finalizing a proposal that allocates this product, so buyers can plan before requesting one. It binds nothing; only a draft proposal's hold_policy binds, and the seller derives that from the allocated products when it creates the draft (a draft allocating a product whose effective policy is non-holdable declares available false). Not a reservation and no guarantee of availability. When absent, get_adcp_capabilities media_buy.proposal_refinement.hold_semantics applies (inventory_hold when that is also absent). Omitted for callers below 3.3."
+    },
     "acceptance_policy_profile_ids": {
       "$ref": "/schemas/core/acceptance-policy-profile-ids.json"
     },
@@ -141,7 +147,12 @@
       "description": "Collection inclusion support requires selectable product collections.",
       "if": {
         "properties": {
-          "overlay_support": { "required": ["collection_list"] }
+          "overlay_support": {
+            "anyOf": [
+              { "required": ["collection_list"] },
+              { "required": ["collection_lists"] }
+            ]
+          }
         },
         "required": ["overlay_support"]
       },

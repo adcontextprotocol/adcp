@@ -429,6 +429,7 @@ describe('training account change feed', () => {
       resource: { type: 'creative', account_id: accountId, resource_id: 'cr_private_a' },
       action: 'created',
       origin: { kind: 'adcp' },
+      changed_paths: [''],
       repair: { task: 'list_creatives' },
     });
 
@@ -612,5 +613,94 @@ describe('training account change feed', () => {
     await handleSyncCreatives({ account, creatives: [creative] }, context);
     const replayDrain = call({ account, cursor: firstDrain.cursor });
     expect(replayDrain.changes.filter((change: any) => change.resource.resource_id === creative.creative_id)).toHaveLength(0);
+  });
+
+  it('echoes idempotency_key on adcp records to the originating principal only', async () => {
+    const other: TrainingContext = { mode: 'open', principal: 'test:account-change-other-reader' };
+    const idempotencyKey = '4f6c8a1e-2b7d-4e93-a5c0-d81f3e9b7a24';
+    const creative = {
+      creative_id: 'cr_adcp_key_echo',
+      name: 'Echo creative',
+      format_kind: 'image',
+      assets: {
+        image: {
+          asset_type: 'image',
+          url: 'https://test-assets.adcontextprotocol.org/shared/echo.png',
+          width: 300,
+          height: 250,
+        },
+      },
+    };
+    const ownBootstrap = call({ account, starting_position: 'latest' });
+    const otherBootstrap = call({ account, starting_position: 'latest' }, other);
+
+    await handleSyncCreatives({ account, idempotency_key: idempotencyKey, creatives: [creative] }, context);
+    recordAccountChange(other.principal, {
+      resource: { type: 'creative', account_id: account.account_id, resource_id: 'cr_external_key_echo' },
+      action: 'updated',
+      origin: { kind: 'connected_platform' },
+      repair: { task: 'list_creatives' },
+    });
+
+    const own = call({ account, cursor: ownBootstrap.cursor });
+    const seenByOther = call({ account, cursor: otherBootstrap.cursor }, other);
+    const find = (page: Record<string, any>) => page.changes.find(
+      (change: any) => change.resource.resource_id === creative.creative_id,
+    );
+    expect(find(own).origin.kind).toBe('adcp');
+    expect(find(own).idempotency_key).toBe(idempotencyKey);
+    expect(find(own).changed_paths).toEqual(['']);
+    expect(find(seenByOther)).toBeDefined();
+    expect(find(seenByOther)).not.toHaveProperty('idempotency_key');
+
+    // Otherwise identical across readers.
+    const { idempotency_key: _echo, ...ownWithoutKey } = find(own);
+    expect(find(seenByOther)).toEqual(ownWithoutKey);
+
+    // Non-adcp origins never carry it.
+    const external = own.changes.find((change: any) => change.resource.resource_id === 'cr_external_key_echo');
+    expect(external).not.toHaveProperty('idempotency_key');
+  });
+
+  it('never echoes idempotency_key to anonymous readers, whose requests cannot be told apart', () => {
+    const anonymous: TrainingContext = { mode: 'open' };
+    const bootstrap = call({ account, starting_position: 'latest' }, anonymous);
+    recordAccountChange(undefined, {
+      resource: { type: 'creative', account_id: account.account_id, resource_id: 'cr_anonymous_echo' },
+      action: 'created',
+      origin: { kind: 'adcp' },
+      idempotency_key: '7a1b9c3d-5e2f-4a68-b0c4-d93e6f8a1b25',
+      changed_paths: [''],
+      repair: { task: 'list_creatives' },
+    });
+    const drained = call({ account, cursor: bootstrap.cursor }, anonymous);
+    expect(drained.changes.length).toBeGreaterThan(0);
+    for (const change of drained.changes) expect(change).not.toHaveProperty('idempotency_key');
+  });
+
+  it('records changed_paths on sync_accounts adcp records and echoes the key to the sender', async () => {
+    const idempotencyKey = 'b3d5f7a9-1c2e-4d68-9a0b-e4f6a8c0d2e1';
+    const sender: TrainingContext = { mode: 'open', principal: 'test:account-change-sync-sender' };
+    const bootstrap = call({ account, starting_position: 'latest' }, sender);
+    const response = await handleSyncAccounts({
+      idempotency_key: idempotencyKey,
+      accounts: [{
+        account,
+        notification_configs: [{
+          subscriber_id: 'echo-sync-subscriber',
+          url: 'https://buyer.example.com/webhooks/account-changes',
+          event_types: ['account.change_recorded'],
+          active: true,
+        }],
+      }],
+    }, sender) as Record<string, any>;
+    expect(response.errors).toBeUndefined();
+    const drained = call({ account, cursor: bootstrap.cursor }, sender);
+    const adcpChanges = drained.changes.filter((change: any) => change.origin.kind === 'adcp');
+    expect(adcpChanges.length).toBeGreaterThan(0);
+    for (const change of adcpChanges) {
+      expect(change.changed_paths.length).toBeGreaterThan(0);
+      expect(change.idempotency_key).toBe(idempotencyKey);
+    }
   });
 });

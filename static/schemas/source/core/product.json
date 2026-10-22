@@ -40,6 +40,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format compatibility path. Products MUST carry `format_ids`, `format_options`, or both during the 3.x migration window. New products MUST author canonical `format_options[]`; sellers MAY additionally project those declarations to `format_ids` for legacy buyers. When both fields are present they MUST describe the same underlying formats, and buyers MUST prefer `format_options`. Do not author a new product from `format_ids` alone.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
@@ -170,6 +171,12 @@
       "$ref": "/schemas/core/cancellation-policy.json",
       "description": "Cancellation terms for this product. Declares the minimum notice period required before cancellation takes effect and any penalties for insufficient notice. Relevant for guaranteed delivery products. Buyers accept these terms by creating a media buy against the product."
     },
+    "hold_policy": {
+      "$ref": "/schemas/core/hold-policy.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.hold_policy). Planning hint: the inventory-hold policy the seller generally offers when finalizing a proposal that allocates this product, so buyers can plan before requesting one. It binds nothing. Proposal-level hold policy exists only in the compact lifecycle (request_proposals and refine_proposals), where the seller derives the binding draft policy from the allocated products; legacy get_products proposals carry none. Not a reservation and no guarantee of availability. When absent, get_adcp_capabilities media_buy.proposal_refinement.hold_semantics applies (inventory_hold when that is also absent). Omitted for callers below 3.3."
+    },
     "allowed_actions": {
       "type": "array",
       "description": "Actions buyers may perform on buys created against this product, scoped to statuses and modes. Advisory template — the authoritative per-buy capability is `available_actions[]` on the buy response, which resolves modes against current buy state, account tier, and negotiated terms. Buyers SHOULD use this for pre-flight product selection (\"which products let me self-serve cancel within 72hr?\") and read `available_actions[]` for runtime decisions. The array is uniquely keyed by `action` — sellers MUST NOT emit two entries with the same `action` value. Absence means the seller has not declared a structured action surface for this product — buyers fall back to `valid_actions[]` on buy responses for the flat string vocabulary.",
@@ -183,6 +190,7 @@
       "$ref": "/schemas/core/reporting-capabilities.json"
     },
     "dooh_inventory_summary": {
+      "x-added-in": "3.3.0",
       "$ref": "/schemas/core/dooh-inventory-summary.json",
       "description": "Aggregate DOOH/OOH geographic footprint for network/regional products where per-placement dooh_placement_attributes.location is not practical. See dooh-inventory-summary.json for the full description."
     },
@@ -517,7 +525,7 @@
     },
     "collections": {
       "type": "array",
-      "description": "Collections available in this product. Each entry references collections declared in an adagents.json by domain and collection ID. Buyers resolve full collection objects from the referenced adagents.json. Product selectors must name explicit collection_ids — the domain-only bulk-grant selector form is for authorization scoping, not product composition.",
+      "description": "Collections available in this product. Each entry references collections declared in an adagents.json by domain and collection ID. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. Product selectors must name explicit collection_ids — the domain-only bulk-grant selector form is for authorization scoping, not product composition.",
       "items": {
         "allOf": [
           { "$ref": "/schemas/core/collection-selector.json" },
@@ -529,7 +537,7 @@
     "collection_targeting_allowed": {
       "type": "boolean",
       "default": false,
-      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list or targeting_overlay.collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match); when true, collection selection is a product-scoped overlay capability."
+      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list, collection_lists, or collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match); when true, collection selection is a product-scoped overlay capability."
     },
     "list_applications": {
       "type": "array",
@@ -851,10 +859,15 @@
       }
     },
     {
-      "description": "Collection inclusion support requires selectable product collections.",
+      "description": "Collection inclusion support (singular or plural) requires selectable product collections.",
       "if": {
         "properties": {
-          "overlay_support": { "required": ["collection_list"] }
+          "overlay_support": {
+            "anyOf": [
+              { "required": ["collection_list"] },
+              { "required": ["collection_lists"] }
+            ]
+          }
         },
         "required": ["overlay_support"]
       },

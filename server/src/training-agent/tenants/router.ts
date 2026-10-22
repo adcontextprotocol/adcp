@@ -12,8 +12,10 @@
 import { createHash } from 'node:crypto';
 import { Router, type Request, type Response, type RequestHandler } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+import type { AdcpCredential } from '@adcp/sdk/server';
 import { createLogger } from '../../logger.js';
-import { runWithSessionContext, flushDirtySessions } from '../state.js';
+import { runWithAccountIdAliasScope, runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, resolveTenantHost, type RegistryHolder } from './registry.js';
 import { getTrainingGovernanceIssuer } from '../canonical-base.js';
 import {
@@ -47,8 +49,9 @@ import {
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
 import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } from '../seller-optimized-budget.js';
-import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
+import { complianceScenariosForServedVersion } from '../compliance-scenarios.js';
 import { runWithReleaseLineEcho } from './release-line-echo.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -180,6 +183,7 @@ const SALES_THREE_ZERO_COMPLY_SCENARIOS = [
 const SALES_CURRENT_SCENARIOS = [
   ...SALES_LEGACY_CAPABILITY_SCENARIOS,
   'force_create_media_buy_arm',
+  'force_media_buy_confirmation',
   'force_get_products_arm',
   'force_task_completion',
   'force_creative_purge',
@@ -245,7 +249,7 @@ function salesComplyScenarios(
   servedVersion?: string,
 ): string[] {
   if (storyboardCompat?.version === '3.0') return [...SALES_THREE_ZERO_COMPLY_SCENARIOS];
-  const current = supportsReliableReporting(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+  const withReporting = supportsReliableReporting(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...SALES_CURRENT_SCENARIOS]
     : SALES_CURRENT_SCENARIOS.filter(scenario => (
       scenario !== 'reporting_core_lifecycle_probe'
@@ -253,6 +257,11 @@ function salesComplyScenarios(
       && scenario !== 'reliable_reporting_managed_delivery_probe'
       && scenario !== 'reliable_reporting_reconciled_billing_probe'
     ));
+  // The hold scenario ships with `sales-fixed-rate`; older pins neither see
+  // the specialism nor the scenario that grades it.
+  const current = supportsSalesFixedRate(servedVersion)
+    ? withReporting
+    : withReporting.filter(scenario => scenario !== 'force_media_buy_confirmation');
   return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...current, 'expire_account_change_cursor']
     : current;
@@ -262,8 +271,13 @@ function salesCapabilityScenarios(
   storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
   servedVersion?: string,
 ): string[] {
-  if (storyboardCompat?.version === '3.0') return [...SALES_LEGACY_CAPABILITY_SCENARIOS];
-  return salesComplyScenarios(storyboardCompat, servedVersion);
+  // Capability discovery advertises only the scenarios the served release's
+  // schema allows. comply_test_controller list_scenarios is not limited by
+  // that enum, so the frozen 3.0 facade still lists its seed scenarios there.
+  return complianceScenariosForServedVersion(
+    salesComplyScenarios(storyboardCompat, servedVersion),
+    storyboardCompat?.version === '3.0' ? '3.0' : servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
 }
 
 /**
@@ -536,13 +550,17 @@ function tenantMcpHandler(
         // Scrub any caller value even when no buyer agent resolves.
         delete req.body.params.arguments.__training_task_owner_scope;
         req.body.params.arguments.__training_principal = principal;
-        const credential = apiKeyCredential(req, principal);
+        const auth = (req as Request & { auth?: AuthInfo }).auth;
+        // Use the same upstream-authenticated credential and actor metadata
+        // as ordinary SDK tasks, including OAuth's organization/client scope.
+        const credential = (auth?.extra?.credential as AdcpCredential | undefined)
+          ?? apiKeyCredential(req, principal);
         const demoToken = principal.startsWith('static:demo:')
           ? principal.slice('static:demo:'.length)
           : undefined;
         const buyerAgent = await trainingBuyerAgentRegistry.resolve({
           credential,
-          ...(demoToken && { extra: { demo_token: demoToken } }),
+          extra: { ...(demoToken && { demo_token: demoToken }), ...auth?.extra },
           input: req.body.params.arguments,
         });
         // taskOwnerScopeFor() prioritizes the resolved buyer-agent identity.
@@ -602,10 +620,10 @@ function tenantMcpHandler(
         installConflictEnvelopeRedaction(res);
         await runWithReleaseLineEcho(req.body, () => runWithTrainingTaskScope(
           trainingTaskScope(resolved.tenantId, principal ?? 'anonymous'),
-          () => runWithSessionContext(async () => {
+          () => withStableAccountIdScope(principal, storyboardCompat, () => runWithSessionContext(async () => {
             await transport.handleRequest(req, res, req.body);
             await flushDirtySessions();
-          }),
+          })),
         ));
       } catch (err) {
         logger.error({ err, tenantId: resolved.tenantId }, 'tenant MCP error');
@@ -623,6 +641,22 @@ function tenantMcpHandler(
       }
     });
   };
+}
+
+/**
+ * Current tenant routes declare account.stable_account_id, so they key a
+ * principal's `{ account_id }` to the same session state as its natural key.
+ * The frozen 3.0 surface does not declare the capability and keeps the opaque
+ * `a:<account_id>` partition.
+ */
+function withStableAccountIdScope<T>(
+  principal: string | undefined,
+  storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return storyboardCompat?.version === '3.0' || !principal
+    ? fn()
+    : runWithAccountIdAliasScope(principal, fn);
 }
 
 async function tryHandleLocalComplyScenario(
@@ -660,6 +694,7 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'reliable_reporting_managed_delivery_probe'
     && rawArgs.scenario !== 'reliable_reporting_reconciled_billing_probe'
     && rawArgs.scenario !== 'query_account_governance_binding'
+    && rawArgs.scenario !== 'force_media_buy_confirmation'
     && rawArgs.scenario !== 'list_scenarios'
     && !isCompactLifecycleProbe
     && !isRejectedGetProductsDirective
@@ -679,6 +714,7 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'reliable_reporting_managed_delivery_probe'
       || rawArgs.scenario === 'reliable_reporting_reconciled_billing_probe'
       || rawArgs.scenario === 'query_account_governance_binding'
+      || rawArgs.scenario === 'force_media_buy_confirmation'
       || isRejectedGetProductsDirective
     )
   ) return false;
@@ -719,7 +755,7 @@ async function tryHandleLocalComplyScenario(
     return false;
   }
 
-  const result = await runWithSessionContext(async () => {
+  const result = await withStableAccountIdScope(principal, storyboardCompat, () => runWithSessionContext(async () => {
     const isCompactLifecycleScenario = rawArgs.scenario === 'compact_product_lifecycle_probe'
       || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe';
     const auth = (req as unknown as {
@@ -743,7 +779,7 @@ async function tryHandleLocalComplyScenario(
         });
     await flushDirtySessions();
     return body as Record<string, unknown>;
-  });
+  }));
   const structuredContent = {
     status: 'completed',
     adcp_version: versionResolution.servedVersion,
@@ -978,6 +1014,12 @@ function projectTenantCapabilities(
         ? structured.adcp_version
         : TRAINING_AGENT_DEFAULT_ADCP_VERSION);
     structured.adcp_version = servedVersion;
+    // `sales-fixed-rate` is a 3.2+ enum value. Pinned 3.0 and 3.1 consumers
+    // validate `specialisms` against a closed enum that predates it, so the
+    // id is withdrawn from their capability response.
+    if (Array.isArray(structured.specialisms) && !supportsSalesFixedRate(servedVersion)) {
+      structured.specialisms = structured.specialisms.filter(id => id !== 'sales-fixed-rate');
+    }
     const adcp = structured.adcp && typeof structured.adcp === 'object'
       ? structured.adcp
       : {};
@@ -1029,6 +1071,12 @@ function projectTenantCapabilities(
       structured.account = {
         ...account,
         supported_account_currency_modes: ['fixed', 'per_media_buy'],
+        // Accounts are shared across tenants (v6-account-helpers.ts). These
+        // routes key { account_id } to the account's natural partition
+        // (withStableAccountIdScope) and rehydrate the account from its durable
+        // binding on any machine, so the id is one durable AccountRef. The v5
+        // /mcp and /mcp-strict* routes do not declare the capability.
+        stable_account_id: true,
       };
       const governanceTasks: Record<string, Array<{
         task: string;
@@ -1265,6 +1313,25 @@ function projectTenantCapabilities(
         scenarios: [...scenarios],
       };
     }
+    // Every tenant: a release whose capabilities schema closes the scenario
+    // enum (3.0) never sees scenarios added after it, whichever projection
+    // above or SDK derivation contributed them.
+    if (structured.compliance_testing && typeof structured.compliance_testing === 'object') {
+      const listed = (structured.compliance_testing as { scenarios?: unknown }).scenarios;
+      if (Array.isArray(listed)) {
+        const scenarios = complianceScenariosForServedVersion(
+          listed.filter((s): s is string => typeof s === 'string'),
+          storyboardCompat?.version === '3.0' ? '3.0' : servedVersion,
+        );
+        // The schema requires a non-empty list; with nothing left to claim,
+        // drop the block rather than advertise an invalid one.
+        if (scenarios.length > 0) {
+          structured.compliance_testing = { ...structured.compliance_testing, scenarios };
+        } else {
+          delete structured.compliance_testing;
+        }
+      }
+    }
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
     const firstText = parsed.result?.content?.[0];
     if (firstText?.type === 'text') {
@@ -1369,6 +1436,8 @@ export interface TenantRouteMiddleware {
   rateLimit?: RequestHandler;
   /** Bearer-auth middleware applied to every tenant POST (sets `res.locals.trainingPrincipal`). */
   requireAuth?: RequestHandler;
+  /** Resource-bound user OAuth only on the canonical sales endpoint. */
+  requireSalesAuth?: RequestHandler;
   /**
    * Bearer-auth middleware for the governance tenant's routes. Accepts the
    * shared credentials plus minted sandbox governance-agent credentials
@@ -1449,6 +1518,10 @@ export function mountTenantRoutes(
   const mw: RequestHandler[] = [];
   if (middleware.rateLimit) mw.push(middleware.rateLimit);
   if (middleware.requireAuth) mw.push(middleware.requireAuth);
+  const salesMw: RequestHandler[] = [];
+  if (middleware.rateLimit) salesMw.push(middleware.rateLimit);
+  const salesAuth = middleware.requireSalesAuth ?? middleware.requireAuth;
+  if (salesAuth) salesMw.push(salesAuth);
   const governanceMw: RequestHandler[] = [];
   if (middleware.rateLimit) governanceMw.push(middleware.rateLimit);
   const governanceAuth = middleware.requireGovernanceAuth ?? middleware.requireAuth;
@@ -1460,7 +1533,7 @@ export function mountTenantRoutes(
     });
     parent.post(
       `/${tenantId}/mcp`,
-      ...(tenantId === 'governance' ? governanceMw : mw),
+      ...(tenantId === 'governance' ? governanceMw : tenantId === 'sales' ? salesMw : mw),
       tenantMcpHandler(holder, tenantId, middleware.storyboardCompat),
     );
     parent.get(`/${tenantId}/mcp`, (_req, res) => {

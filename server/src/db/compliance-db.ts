@@ -1,6 +1,9 @@
 import type { ComplianceRunProvenance } from '../compliance/run-provenance.js';
+import type { V4ReadinessReport } from '../compliance/v4-readiness.js';
 import { isAuthoritativeComplianceRun, type RunCompleteness } from '../compliance/run-publication.js';
 import { query, getClient, getClientWithDeadline, withDatabaseDeadline } from './client.js';
+import { agentIdentityContainment } from './agent-identity-match.js';
+import { registryAgentUrlKeySpellings } from './registry-agent-url-key.js';
 import { decrypt as decryptToken } from './encryption.js';
 import { logger as baseLogger } from '../logger.js';
 import { CatalogEventsDatabase } from './catalog-events-db.js';
@@ -35,8 +38,8 @@ export type ResolvedOwnerAuth =
   | { type: 'basic'; username: string; password: string }
   | {
       type: 'oauth';
-      tokens: { access_token: string; refresh_token: string; expires_at?: string };
-      client?: { client_id: string; client_secret?: string };
+      tokens: { access_token: string; refresh_token: string; expires_at?: string; issuer?: string };
+      client?: { client_id: string; client_secret?: string; issuer?: string };
     }
   | {
       /**
@@ -140,6 +143,8 @@ export interface ComplianceRun {
   storyboard_statuses_json: StoryboardStatusEntry[] | null;
   provenance_json: ComplianceRunProvenance | null;
   notices_json: NoticeEntry[] | null;
+  /** Advisory AdCP 4.0 readiness report; NULL for runs ingested before adcp#8332. */
+  v4_readiness_json: V4ReadinessReport | null;
 }
 
 export interface TrackSummaryEntry {
@@ -360,6 +365,11 @@ export interface RecordComplianceRunInput {
    */
   notices_json?: NoticeEntry[] | null;
   /**
+   * Advisory AdCP 4.0 readiness report derived from this run
+   * (universal/v4-compatibility.yaml). Never affects 3.x grading.
+   */
+  v4_readiness_json?: V4ReadinessReport | null;
+  /**
    * Exact role/version grading evidence precomputed from this same full run.
    * Persisted in the run transaction so a selection can never reference a
    * comparison whose source run did not commit.
@@ -484,12 +494,16 @@ export class ComplianceDatabase {
 
       let isCurrentlyPublic = false;
       if (emitPublicEvent && revoked.length > 0) {
+        // Any spelling of this agent's registry identity counts, the same
+        // way the notifier's `isAgentPublic` folds (#8321/#8322): the gate
+        // asks "did an owner list THIS agent publicly", and an owner who
+        // published it as `/mcp/` published the agent the folded key names.
         const visibilityResult = await client.query(
           `SELECT 1 FROM member_profiles mp
            CROSS JOIN LATERAL jsonb_array_elements(mp.agents) agent
-           WHERE agent->>'url' = $1 AND agent->>'visibility' = 'public'
+           WHERE agent->>'url' = ANY($1::text[]) AND agent->>'visibility' = 'public'
            LIMIT 1`,
-          [agentUrl],
+          [registryAgentUrlKeySpellings(agentUrl)],
         );
         isCurrentlyPublic = visibilityResult.rowCount === 1;
       }
@@ -625,14 +639,23 @@ export class ComplianceDatabase {
    * by the owning organization.
    */
   async hasOwnerAuth(agentUrl: string): Promise<boolean> {
+    // Both halves resolve the agent by its registry identity (#8322). The
+    // callers are fed agent URLs straight out of `member_profiles.agents`
+    // (see `getAgentsDueForCheck`), which may hold either spelling, so
+    // binding one spelling to `ac.agent_url` would miss the owner's saved
+    // credential for exactly the rows this change exists to reach. Every
+    // spelling asked for folds to the same agent, and the join still pins
+    // the credential and the profile to one organization.
+    const spellings = registryAgentUrlKeySpellings(agentUrl);
+    const ownerAgents = agentIdentityContainment('mp.agents', agentUrl, 2);
     const result = await query(
       `SELECT 1 FROM agent_contexts ac
        JOIN member_profiles mp ON mp.workos_organization_id = ac.organization_id
-       WHERE ac.agent_url = $1
-         AND mp.agents @> $2::jsonb
+       WHERE ac.agent_url = ANY($1::text[])
+         AND ${ownerAgents.sql}
          AND ac.auth_token_encrypted IS NOT NULL
        LIMIT 1`,
-      [agentUrl, JSON.stringify([{ url: agentUrl }])],
+      [spellings, ...ownerAgents.params],
     );
     return result.rows.length > 0;
   }
@@ -725,8 +748,8 @@ export class ComplianceDatabase {
           observations_json, triggered_by, triggered_org_id, dry_run,
           notices_json, refresh_operation_id, agent_quality_evaluation_id,
           completeness, is_authoritative, storyboard_statuses_json, provenance_json,
-          runner_capability_version
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+          runner_capability_version, v4_readiness_json
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
         ON CONFLICT DO NOTHING
         RETURNING *`,
         [
@@ -755,6 +778,7 @@ export class ComplianceDatabase {
           JSON.stringify(input.storyboard_statuses ?? []),
           input.provenance_json ? JSON.stringify(input.provenance_json) : null,
           input.runner_capability_version ?? null,
+          input.v4_readiness_json ? JSON.stringify(input.v4_readiness_json) : null,
         ],
       );
       let run = runResult.rows[0] as ComplianceRun | undefined;
@@ -959,15 +983,21 @@ export class ComplianceDatabase {
         tracksSummary[t.track] = t.status;
       }
 
-      // 4. Upsert the materialized status and capture transition
+      // 4. Upsert the materialized status and capture transition.
+      // Owner-initiated runs publish the verdict but leave the independent
+      // heartbeat schedule and pending requeues untouched (#7680).
       const statusResult = await client.query(
         `WITH schedule_next AS (
           INSERT INTO agent_registry_metadata (agent_url, next_compliance_check_at)
-          VALUES ($1, NOW() + INTERVAL '12 hours')
+          VALUES ($1, CASE WHEN $7 = 'owner_test' THEN NULL ELSE NOW() + INTERVAL '12 hours' END)
           ON CONFLICT (agent_url) DO UPDATE SET
             next_compliance_check_at = NOW() + make_interval(hours => agent_registry_metadata.check_interval_hours),
             compliance_inconclusive_streak = 0,
             requeued_at = NULL
+          -- TriggeredBy constrains $7 at compile time. Adding a trigger opts it
+          -- into cadence advancement unless this predicate and the INSERT
+          -- CASE above are updated together.
+          WHERE $7 != 'owner_test'
         )
         INSERT INTO agent_compliance_status (
           agent_url, status, last_checked_at,
@@ -1024,6 +1054,7 @@ export class ComplianceDatabase {
           input.headline ?? null,
           input.requested_compliance_target ?? null,
           input.adcp_version ?? null,
+          input.triggered_by ?? 'heartbeat',
         ],
       );
 
@@ -1344,6 +1375,50 @@ export class ComplianceDatabase {
     return result.rows[0] ?? null;
   }
 
+  /**
+   * Newest scheduled heartbeat attempts, newest first (adcp#8268).
+   *
+   * `orgId` widens rather than narrows compared with `getLatestComplianceAttempt`:
+   * a heartbeat is platform-triggered and only carries a `triggered_org_id`
+   * when the agent happens to have saved owner credentials, so an equality
+   * filter would hide exactly the credential-free agents whose timed-out
+   * heartbeats are most invisible. Unattributed runs are therefore visible to
+   * any owner of the URL, while a run charged to another organization's saved
+   * credentials stays with that organization — its coverage and duration would
+   * otherwise tell a co-claiming org that someone else holds working
+   * credentials. Pass `null` for operator/worker reads that need the whole
+   * stream.
+   *
+   * `observations_json` comes back only on the newest row. It is the only row
+   * whose storyboard coverage is projected, and failure rows store an uncapped
+   * agent error message, so fetching the rest would move unbounded text over
+   * the wire for nothing.
+   */
+  async getRecentHeartbeatAttempts(
+    agentUrl: string,
+    orgId: string | null,
+    limit = 10,
+  ): Promise<Array<Pick<ComplianceRun,
+    'id' | 'tested_at' | 'completeness' | 'headline' | 'total_duration_ms' | 'provenance_json' | 'observations_json'>>> {
+    const boundedLimit = Number.isInteger(limit) ? Math.max(1, Math.min(limit, 50)) : 10;
+    const result = await query(
+      `SELECT id, tested_at, completeness, headline, total_duration_ms, provenance_json,
+              CASE WHEN tested_at = MAX(tested_at) OVER () THEN observations_json END AS observations_json
+         FROM (
+           SELECT id, tested_at, completeness, LEFT(headline, 200) AS headline,
+                  total_duration_ms, provenance_json, observations_json
+             FROM agent_compliance_runs
+            WHERE agent_url = $1 AND triggered_by = 'heartbeat' AND dry_run = FALSE
+              AND ($3::text IS NULL OR triggered_org_id IS NULL OR triggered_org_id = $3)
+            ORDER BY tested_at DESC
+            LIMIT $2
+         ) recent
+        ORDER BY tested_at DESC`,
+      [agentUrl, boundedLimit, orgId],
+    );
+    return result.rows;
+  }
+
   /** Bounded operator snapshot, including audit-only heartbeat evidence. */
   async getRecentOperationalRuns(limit: number = 25): Promise<Array<{
     id: string;
@@ -1556,6 +1631,27 @@ export class ComplianceDatabase {
   }
 
   /**
+   * Return the advisory AdCP 4.0 readiness report stored on the same run
+   * getLatestNotices reads. Null when no run exists or the run predates the
+   * report (adcp#8332) — callers must not fabricate one.
+   */
+  async getLatestV4Readiness(agentUrl: string, runId?: string | null): Promise<V4ReadinessReport | null> {
+    if (runId === null) return null;
+    const result = await query(
+      `SELECT v4_readiness_json
+       FROM agent_compliance_runs
+       WHERE agent_url = $1 AND dry_run = FALSE AND is_authoritative = TRUE
+         AND ($2::uuid IS NULL OR id = $2::uuid)
+       ORDER BY tested_at DESC
+       LIMIT 1`,
+      [agentUrl, runId ?? null],
+    );
+    const raw = result.rows[0]?.v4_readiness_json;
+    if (!raw || typeof raw !== 'object' || !Array.isArray((raw as V4ReadinessReport).checks)) return null;
+    return raw as V4ReadinessReport;
+  }
+
+  /**
    * Return advisory observations from the most recent non-dry-run compliance
    * run. These are fresh per-run observations from the runner (for example
    * best-practice advisories); consumers must not merge them with older runs.
@@ -1587,6 +1683,8 @@ export class ComplianceDatabase {
     agent_url: string;
     lifecycle_stage: LifecycleStage;
     last_checked_at: Date | null;
+    /** Times a worker process died while this agent's suite was running; 0 when healthy. */
+    heartbeat_orphan_streak: number;
     /** Total due before LIMIT; repeated on each selected row for one-query telemetry. */
     eligible_backlog: number;
   }>> {
@@ -1639,7 +1737,8 @@ export class ComplianceDatabase {
           ka.has_active_badge,
           COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
           s.last_checked_at,
-          m.requeued_at
+          m.requeued_at,
+          COALESCE(m.heartbeat_orphan_streak, 0) AS heartbeat_orphan_streak
         FROM known_agents ka
         LEFT JOIN agent_registry_metadata m ON m.agent_url = ka.agent_url
         LEFT JOIN agent_compliance_status s ON s.agent_url = ka.agent_url
@@ -1655,6 +1754,7 @@ export class ComplianceDatabase {
         agent_url,
         lifecycle_stage,
         last_checked_at,
+        heartbeat_orphan_streak,
         COUNT(*) OVER()::int AS eligible_backlog
       FROM due_agents
       ORDER BY requeued_at ASC NULLS LAST, is_member_registered DESC, has_active_badge DESC,
@@ -1960,22 +2060,29 @@ export class ComplianceDatabase {
   ): Promise<ResolvedOwnerAuth | undefined> {
     try {
       await checkpoint?.();
+      // Same as `hasOwnerAuth`: both halves resolve the agent by its
+      // registry identity (#8322), and the join keeps the credential inside
+      // the organization that saved it. `ORDER BY ac.updated_at` below
+      // already decided between co-claiming orgs; the fold only enlarges the
+      // candidate set to the other spelling of the same agent.
+      const spellings = registryAgentUrlKeySpellings(agentUrl);
+      const ownerAgents = agentIdentityContainment('mp.agents', agentUrl, 2);
       const result = await query(
         `SELECT ac.organization_id,
                 ac.auth_token_encrypted, ac.auth_token_iv, ac.auth_type,
                 ac.oauth_access_token_encrypted, ac.oauth_access_token_iv,
                 ac.oauth_refresh_token_encrypted, ac.oauth_refresh_token_iv,
-                ac.oauth_token_expires_at,
+                ac.oauth_token_expires_at, ac.oauth_token_issuer,
                 ac.oauth_client_id,
-                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv,
+                ac.oauth_client_secret_encrypted, ac.oauth_client_secret_iv, ac.oauth_client_issuer,
                 ac.oauth_cc_token_endpoint, ac.oauth_cc_client_id,
                 ac.oauth_cc_client_secret_encrypted, ac.oauth_cc_client_secret_iv,
                 ac.oauth_cc_scope, ac.oauth_cc_resource, ac.oauth_cc_audience, ac.oauth_cc_auth_method
          FROM agent_contexts ac
          JOIN member_profiles mp
            ON mp.workos_organization_id = ac.organization_id
-         WHERE ac.agent_url = $1
-           AND mp.agents @> $2::jsonb
+         WHERE ac.agent_url = ANY($1::text[])
+           AND ${ownerAgents.sql}
            AND (
              ac.auth_token_encrypted IS NOT NULL
              OR ac.oauth_access_token_encrypted IS NOT NULL
@@ -1987,7 +2094,7 @@ export class ComplianceDatabase {
            )
          ORDER BY ac.updated_at DESC NULLS LAST
          LIMIT 1`,
-        [agentUrl, JSON.stringify([{ url: agentUrl }])],
+        [spellings, ...ownerAgents.params],
       );
 
       await checkpoint?.();
@@ -2029,9 +2136,10 @@ export class ComplianceDatabase {
           return resolved({ type: 'bearer', token: accessToken });
         }
 
-        const tokens: { access_token: string; refresh_token: string; expires_at?: string } = {
+        const tokens: Extract<ResolvedOwnerAuth, { type: 'oauth' }>['tokens'] = {
           access_token: accessToken,
           refresh_token: refreshToken,
+          ...(row.oauth_token_issuer != null && { issuer: row.oauth_token_issuer }),
         };
         if (row.oauth_token_expires_at) {
           tokens.expires_at = new Date(row.oauth_token_expires_at).toISOString();
@@ -2039,7 +2147,10 @@ export class ComplianceDatabase {
 
         const oauth: Extract<ResolvedOwnerAuth, { type: 'oauth' }> = { type: 'oauth', tokens };
         if (row.oauth_client_id) {
-          const client: { client_id: string; client_secret?: string } = { client_id: row.oauth_client_id };
+          const client: NonNullable<Extract<ResolvedOwnerAuth, { type: 'oauth' }>['client']> = {
+            client_id: row.oauth_client_id,
+            ...(row.oauth_client_issuer != null && { issuer: row.oauth_client_issuer }),
+          };
           if (row.oauth_client_secret_encrypted && row.oauth_client_secret_iv) {
             client.client_secret = decryptToken(
               row.oauth_client_secret_encrypted,
@@ -2511,13 +2622,15 @@ export class ComplianceDatabase {
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`verification-badge:${agentUrl}`],
       );
+      // Folds spellings of the agent's registry identity, like the opt-out
+      // gate above and the notifier's `isAgentPublic` (#8321/#8322).
       const visibilityResult = await client.query(
         `SELECT 1
          FROM member_profiles mp
          CROSS JOIN LATERAL jsonb_array_elements(mp.agents) agent
-         WHERE agent->>'url' = $1 AND agent->>'visibility' = 'public'
+         WHERE agent->>'url' = ANY($1::text[]) AND agent->>'visibility' = 'public'
          LIMIT 1`,
-        [agentUrl],
+        [registryAgentUrlKeySpellings(agentUrl)],
       );
       if (visibilityResult.rowCount !== 1) {
         await client.query('COMMIT');

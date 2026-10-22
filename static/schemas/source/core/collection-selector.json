@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/collection-selector.json",
   "title": "Collection Selector",
-  "description": "References collections declared in an adagents.json. Buyers resolve full collection objects by fetching the adagents.json at the given domain and matching collection_ids against its collections array. When collection_ids is omitted, the selector references every collection declared in that adagents.json — the bulk-grant form for authorization scoping (e.g., a host authorizing a channel owner's sales agent for all of the owner's collections without tracking owner-assigned IDs).",
+  "description": "References collections declared in an adagents.json, keyed by (publisher_domain, collection_id). The publisher's adagents.json at the given domain is the authoritative declaration and the root of authorization. Buyers can also get a selling agent's copy of each referenced collection: in the top-level collections array of a product or proposal response requested with include_collections, or from list_collections (both experimental). Those copies follow core/response-collection.json: they win only on a closed list of display fields and are never authorization evidence, and any collection a seller omits resolves from adagents.json. When collection_ids is omitted, the selector references every collection declared in that adagents.json — the bulk-grant form for authorization scoping (e.g., a host authorizing a channel owner's sales agent for all of the owner's collections without tracking owner-assigned IDs).",
   "type": "object",
   "properties": {
     "publisher_domain": {

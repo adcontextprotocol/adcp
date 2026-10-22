@@ -64,12 +64,18 @@
         "properties": {
           "creative_id": {
             "type": "string",
-            "description": "Unique identifier for the creative",
+            "description": "Unique identifier for the creative. For a creative that entered the library outside sync_creatives, the seller assigns it. Sellers SHOULD keep it stable for the creative's lifetime and unique within the account, and MUST when they declare creative.stable_creative_ids.",
             "x-entity": "creative"
+          },
+          "platform_id": {
+            "type": "string",
+            "description": "The seller's identifier for this creative in its source of truth. Same meaning as platform_id in the sync_creatives response, readable after that response is gone. May equal creative_id for seller-assigned creatives.",
+            "$comment": "x-entity deliberately omitted: seller-opaque identifier in the seller's own namespace; buyers echo creative_id, never platform_id, on AdCP requests.",
+            "x-added-in": "3.3.0"
           },
           "revision_id": {
             "$ref": "/schemas/core/creative-revision-id.json",
-            "description": "Current buyer-authored input revision for this creative. Present when the current effective content has revision identity and the seller advertises creative.supports_revisions; omitted after an accepted content-bearing legacy update without revision_id.",
+            "description": "Current buyer-authored input revision for this creative. Present when the current effective content has revision identity and the seller advertises creative.supports_revisions; omitted after an accepted content-bearing legacy update without revision_id. Sellers MUST NOT mint one for a creative that entered the library outside sync_creatives; it appears only after a buyer supplies one through sync_creatives.",
             "x-adcp-validation": {
               "verifier_constraints": {
                 "revision_readback": {
@@ -81,6 +87,12 @@
               },
               "spec": "docs/creative/task-reference/list_creatives.mdx#per-creative-fields"
             }
+          },
+          "seller_revision": {
+            "type": ["integer", "string"],
+            "description": "Seller-maintained change token for this creative, distinct from the buyer-assigned revision_id. Sellers MUST use a positive integer or a string of 1 to 255 characters; the schema does not encode these bounds because JSON Schema bounds on an integer-or-string type break SDK code generation. The seller advances it on every committed change to state this read reports, whatever its origin: an AdCP task, a seller operator, seller automation, another authorized principal, or a connected platform. An externally observed change advances it when the seller ingests it. Reads, validation-only calls, and exact idempotency replays do not advance it. Sellers MUST NOT reuse a value for a different state of the same creative or move it backward. Buyers MUST treat the value as opaque: equal values mean the same state as the seller has observed and a different value means the state changed. Integer values also order numerically. A change record's resource_revision is the value immediately after that change, in the same JSON type; a read that returns a different value reflects later changes. Sellers MUST NOT use it as the buyer revision_id, and a buyer revision_id never substitutes for it. Optional; a seller that does not maintain it omits it.",
+            "x-entity": "creative_seller_revision",
+            "x-added-in": "3.3.0"
           },
           "representation_selection": {
             "$ref": "/schemas/core/representation-selection.json",
@@ -121,6 +133,12 @@
             "$ref": "/schemas/enums/creative-status.json",
             "description": "Current approval status of the creative"
           },
+          "status_as_of": {
+            "type": "string",
+            "format": "date-time",
+            "x-added-in": "3.3.0",
+            "description": "When the seller last refreshed status from its source of truth. Travels with status and is not separately selectable in fields. MUST NOT be later than the oldest upstream observation that could affect status. Accepting an AdCP write MUST NOT by itself advance this value; it advances only when the seller observes the resulting status in its source of truth (at commit time when the seller's AdCP store is that source). A value earlier than the buyer's last accepted write for this creative means the seller has not yet confirmed that write. Sellers SHOULD include it when status is served from a cache or from a source that confirms asynchronously. Omit to make no freshness assertion; buyers MUST NOT infer that status is live. A change that only advances this value MUST NOT fire creative.status_changed and MUST NOT write an account change record."
+          },
           "created_date": {
             "type": "string",
             "format": "date-time",
@@ -135,7 +153,7 @@
             "type": "object",
             "description": "Assets for this creative, keyed by asset_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema.",
             "patternProperties": {
-              "^[a-z0-9_]+$": {
+              "^": {
                 "oneOf": [
                   {
                     "$ref": "/schemas/core/assets/asset-union.json"
@@ -198,6 +216,11 @@
             },
             "required": ["errors", "retryable"],
             "additionalProperties": true
+          },
+          "provenance": {
+            "$ref": "/schemas/core/provenance.json",
+            "description": "Read-only echo of the creative-level provenance accepted on sync_creatives for the returned revision. Default for assets in this creative; an asset's own provenance replaces it entirely. Omitted when none was declared.",
+            "x-added-in": "3.3.0"
           },
           "tags": {
             "type": "array",
@@ -278,6 +301,17 @@
                       "format": "date-time",
                       "description": "When this assignment was created"
                     },
+                    "trackers": {
+                      "type": "array",
+                      "items": { "$ref": "/schemas/core/assignment-tracker.json" },
+                      "description": "The complete assignment-scoped tracker list for this creative on this package, retaining the accepted URL templates, events, multiplicity, and order. Sellers supporting creative.supports_assignment_trackers MUST return this array, using [] when no assignment trackers exist. Excludes the creative's own trackers, which remain in its assets and also fire for this placement; this is not a combined effective tracker list.",
+                      "x-added-in": "3.3.0"
+                    },
+                    "landing_page_url": {
+                      "$ref": "/schemas/core/macro-bearing-url.json",
+                      "description": "The landing page actually served for this creative on this package: the assignment override when present, otherwise the creative's own click-through destination when unique. Sellers supporting creative.supports_assignment_landing_page MUST return that effective destination when it is unique. Omit when no destination exists or an unoverridden creative has multiple destinations; those remain available in the creative's assets. MUST NOT select one destination arbitrarily. Macro-bearing readback retains the effective URL template under the same rules as the creative's own click-through.",
+                      "x-added-in": "3.3.0"
+                    },
                     "approval_status": {
                       "$ref": "/schemas/enums/creative-approval-status.json",
                       "description": "Aggregate approval state for this creative in this package assignment. This mirrors the same relationship in get_media_buys. Sellers advertising list_creatives as an indicator projection task MUST include it; partially_approved requires approval_scopes."
@@ -301,6 +335,12 @@
                         },
                         "spec": "specs/relationship-scoped-indicators.md#placement-and-reverse-projection"
                       }
+                    },
+                    "approval_status_as_of": {
+                      "type": "string",
+                      "format": "date-time",
+                      "x-added-in": "3.3.0",
+                      "description": "When the seller last refreshed approval_status, rejection_reason, and approval_scopes for this assignment from its source of truth. Same rules as get_media_buys creative_approvals[].approval_status_as_of: never later than the oldest upstream observation that could affect them; not advanced by accepting an AdCP write alone; earlier than the buyer's last accepted write for this relationship means that write is not yet confirmed; omitted means no freshness assertion and buyers MUST NOT infer that the state is live. When both reads carry it for the same relationship, the values MUST agree, like the approval fields they describe. A change that only advances this value MUST NOT fire creative.assignment_changed and MUST NOT write an account change record."
                     },
                     "indicators": {
                       "type": "array",
@@ -698,6 +738,7 @@
             "name": "Holiday Sale - Medium Rectangle",
             "format_kind": "image",
             "status": "approved",
+            "status_as_of": "2026-03-01T06:00:00Z",
             "created_date": "2026-01-10T14:00:00Z",
             "updated_date": "2026-02-20T09:30:00Z",
             "assets": {

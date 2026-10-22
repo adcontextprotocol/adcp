@@ -271,14 +271,15 @@ On fixed-mode success, `affected_packages` MUST contain the full post-update sta
 
 `revision` is the expected current media-buy revision. Some implementations call this value `expected_revision` internally; on the AdCP wire the field is `revision`. The field is optional for backward compatibility. When it is present, sellers MUST check it atomically with the write that applies a mutating update; reading the current value in application code, comparing it, then writing later can race another writer and lose an update. If the stored revision differs from the request's `revision`, the seller rejects with `CONFLICT` and applies no changes.
 
-Every mutating update increments `revision` and returns the new value in the success response. Validation-only requests, reads, and exact idempotency replays do not increment it; exact replays return the prior revision. Clients SHOULD pass the latest observed revision on every update intended to change state, then reload with `get_media_buys` and retry with a fresh `idempotency_key` when they receive `CONFLICT`.
+Every mutating update increments `revision` and returns the new value in the success response. So does every other committed change to state `get_media_buys` reports, whatever its origin: a seller operator, seller automation, another authorized principal, or a connected platform (see [Revision and confirmation semantics](/docs/media-buy/specification#revision-and-confirmation-semantics)). A buyer that sends a stale `revision` after such a change receives `CONFLICT`. Validation-only requests, reads, and exact idempotency replays do not increment it; exact replays return the prior revision. Clients SHOULD pass the latest observed revision on every update intended to change state, then reload with `get_media_buys` and retry with a fresh `idempotency_key` when they receive `CONFLICT`.
 
 Creative and assignment mutations made through this facade are part of the
-MediaBuy transaction and increment `revision`. The standalone
-[`sync_creatives`](/docs/creative/task-reference/sync_creatives) task does not increment MediaBuy revision and does not share
-this optimistic-concurrency fence. An unchanged revision therefore cannot prove
-that assignment state is unchanged. A client that mixes the two surfaces must
-re-read current assignments before sending a complete replacement.
+MediaBuy transaction and increment `revision`. So do assignment changes made
+through the standalone [`sync_creatives`](/docs/creative/task-reference/sync_creatives) task, which has its own
+idempotency and atomicity boundary and accepts no media-buy `revision`
+precondition. A client that sent `sync_creatives` between its last read and this
+update therefore receives `CONFLICT` and re-reads before sending a complete
+replacement.
 
 ### Accepted-proposal coherence
 
@@ -320,10 +321,10 @@ Configure automated delivery reporting for this media buy:
 |-----------|------|----------|-------------|
 | `url` | string | Yes | Webhook endpoint URL |
 | `operation_id` | string | No | Buyer-supplied correlation ID for the reporting stream (1–255 chars, `[A-Za-z0-9_.:-]`). Sellers echo it verbatim as `operation_id` on every `media_buy_delivery` webhook and MUST NOT send reports to a registration that omits it. See [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks). |
-| `authentication` | object | Yes | Auth config with `schemes` and `credentials` |
+| `authentication` | object | No | Legacy Bearer or HMAC-SHA256 credentials. Required on a request served below 3.3. When absent, deliveries are signed as for `push_notification_config`; see [Webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks). |
 | `reporting_frequency` | string | Yes | `hourly`, `daily`, `weekly`, `monthly`, `quarterly`, or `post_campaign` |
 | `requested_metrics` | string[] | No | Specific metrics to include (defaults to all) |
-| `token` | string | No | Client token for validation (min 16 chars) |
+| `token` | string | No | Client token the seller echoes in every delivery, for correlation (min 16 chars) |
 
 **Note**: `reporting_webhook` configures ongoing campaign reporting. `push_notification_config` is for async operation notifications (e.g., "notify me when this update completes").
 
@@ -351,7 +352,7 @@ Configure automated delivery reporting for this media buy:
 | `keyword_targets_remove` | KeywordTarget[] | Keyword targets to remove by (keyword, match_type) identity. |
 | `negative_keywords_add` | NegativeKeyword[] | Negative keywords to append to this package. On create, these are set as `negative_keywords` inside `targeting_overlay`. |
 | `negative_keywords_remove` | NegativeKeyword[] | Negative keywords to remove from this package. |
-| `creative_assignments` | CreativeAssignment[] | Replace assigned library creatives with optional weights and placement routing. When placement selection narrows in the same update, remove or reroute every reference that would be orphaned. |
+| `creative_assignments` | CreativeAssignment[] | Replace assigned library creatives with optional weights and placement routing. In 3.3, optional `landing_page_url` overrides one creative's destination on this package when `creative.supports_assignment_landing_page: true`; omission from a supplied replacement row restores the creative's destination. See [assignment landing pages](/docs/creative/task-reference/sync_creatives#assignment-landing-pages). Optional `trackers` replaces assignment-specific measurement when `creative.supports_assignment_trackers: true`; omission from a supplied replacement row clears those trackers. They fire alongside the creative's trackers and share format slot limits. See [assignment trackers](/docs/creative/task-reference/sync_creatives#assignment-trackers). When placement selection narrows in the same update, remove or reroute every reference that would be orphaned. |
 | `creatives` | CreativeAsset[] | Replace assigned inline creative bodies for this package. Requires `media_buy.features.inline_creative_management: true`; when the seller also advertises `creative.has_creative_library: true`, new `creative_id` values must not already exist in the library. |
 
 `package_id` is required to identify the package to update.

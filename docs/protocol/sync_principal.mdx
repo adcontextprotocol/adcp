@@ -16,6 +16,12 @@ A **principal** is the durable party behind an authenticated caller — a buyer 
 
 The task does not register a buyer agent and does not accept a buyer-agent URL or identity in its body. Who the principal is comes only from authenticated transport.
 
+Three consequences that are easy to get wrong:
+
+- **It is optional.** The principal exists as soon as a stable credential authenticates. A buyer that never calls `sync_principal` can still use `sync_accounts`, [`list_accounts`](/docs/accounts/tasks/list_accounts), and every domain task; it only forgoes principal-wide webhooks, reusable reporting destinations, and declared async versions.
+- **There is one principal per credential, not one per operator.** An agent that authenticates as itself is one `buyer_agent` principal however many operators it acts for; those operators are fields on its accounts. Operators are principals only when they authenticate themselves, which is the `require_operator_auth: true` model.
+- **It grants no account authority.** Accounts are authorized through [`sync_accounts`](/docs/accounts/tasks/sync_accounts), `list_accounts`, and the seller's own access controls, never by principal configuration.
+
 For an end-to-end buyer-side example, see [Set up your buyer agent with a seller](/docs/accounts/principal-registration-walkthrough).
 
 {/* Using latest because this experimental schema is not yet released. Update after release. */}
@@ -41,6 +47,8 @@ Request-body fields, a raw signing key ID, an API-key fingerprint, an access tok
 
 For an RFC 9421 signed caller, the stable Agent subject is the canonical URL of the exactly matched operator `brand.json` `agents[]` entry—but only after the seller verifies the publication chain and confirms that entry authorizes the request-signing key. The URL is therefore a verified identity input, not a body assertion. The operator domain, raw URL spelling, `brand_json_url`, `jwks_uri`, `kid`, key thumbprint, and key generation remain trust or credential-binding facts beneath that identity. Two canonical Agent URLs are two principals even when they share a domain, operator, type, or JWKS endpoint; key rotation under one canonical Agent URL preserves that principal. If the verified chain cannot select exactly one canonical Agent URL, the seller fails closed without reading or creating principal state.
 
+For a Web Bot Auth signed caller (experimental), the stable Agent subject is the signer's [canonical origin](/docs/reference/url-canonicalization#canonical-origin), verified as [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) describes. One agent occupies one origin, so key rotation within the origin's directory preserves the principal. Whether a verified origin has a principal, and how it gets one, is [first contact and binding](/docs/building/by-layer/L2/accounts-and-agents#first-contact-and-binding).
+
 Every applied, current, or recognized readback carries the seller-resolved `principal_kind` — `buyer_agent` or `operator` — resolved solely from the authorization system, never from request content, so per-party policy such as billing gates can rely on it before configuration begins. A request may carry `expected_principal_kind` as an assertion fence ("I believe I am authenticating as the agent"); on mismatch with the resolved kind the seller rejects with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) before mutation. The assertion never influences resolution.
 
 The response's `principal_id` is a seller-issued audit and routing handle for the principal record. It is not a credential and does not authorize any advertiser account.
@@ -51,7 +59,7 @@ The principal layer begins **after authentication**. AdCP defines no credential-
 
 1. **Authenticate.** Autonomous software presents its workload identity; a person presents their delegated user identity. No `register_buyer_agent` step exists or is needed.
 2. **Read [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).** Discover `adcp.principal`, its supported sections, event and delivery offerings, and limits.
-3. **Verify the resolved identity.** Call [`get_principal`](/docs/protocol/get_principal). A `recognized` result returns the existing durable `principal_id` and seller-resolved `principal_kind` without standing configuration. `unconfigured` means stable authentication succeeded but no durable record exists. The read creates neither records nor identifiers.
+3. **Verify the resolved identity.** Call [`get_principal`](/docs/protocol/get_principal). A `recognized` result returns the existing durable `principal_id` and seller-resolved `principal_kind` without standing configuration. `unconfigured` means stable authentication succeeded but no durable record exists. The read creates neither records nor identifiers. When the result carries `principal_kind` (`current` or `recognized`), buyers MAY use it as a preflight before account calls: `buyer_agent` matches `account.require_operator_auth: false`, and `operator` matches `true`. A mismatch means the buyer presented the wrong credential for this seller's account model.
 4. **Call `sync_principal`.** Declare consumption facts (`declarations`), register webhook subscribers (including `principal.changed` and, with explicit scope, account-anchored events), and register reusable reporting destinations.
 5. **Authorize advertiser accounts separately** through [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and account-level tasks. Nothing in steps 1–4 grants account authority.
 6. **Bind each account's feeds** to the reusable `destination_ref`s.
@@ -133,7 +141,7 @@ When `expected_configuration_version` is present, the seller applies a new opera
 
 One subscriber registered here can carry every webhook the relationship needs — the "sign me up for everything, once" surface:
 
-- **Caller-anchored events** (`capabilities.changed`, `principal.changed`) fire principal-wide. `principal.changed` is the invalidation doorbell for seller-driven state transitions — a destination reaching `ready`, a setup action expiring, the accepted declarations intersection changing — and receivers repair by re-reading [`get_principal`](/docs/protocol/get_principal).
+- **Caller-anchored events** (`capabilities.changed`, `principal.changed`) fire principal-wide. `principal.changed` is the invalidation doorbell for seller-driven state transitions — a destination reaching `ready`, a setup action expiring, the accepted declarations intersection changing, a relationship status change or approaching expiry — and receivers repair by re-reading [`get_principal`](/docs/protocol/get_principal).
 - **Account-anchored events** (`creative.status_changed`, `account.change_recorded`, `product.*`, …) may be listed on caller-level subscribers, and require the explicit `all_authorized_accounts: true` acknowledgment — subscribing an endpoint to every account is never implicit. Authorization is evaluated **at each delivery attempt, including retries**: losing authority for an account both stops new fires and suppresses queued retries carrying that account's data, without touching the subscription. Registration itself requires no account authority and grants none.
 - **Media-buy-anchored cadence reports** (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`) stay on each buy's `reporting_webhook` — they carry per-buy cadence choices this layer deliberately does not own. `impairment` is also media-buy-anchored but fires against `push_notification_config` — it is a dependency-state change on the buy, not a cadence report.
 

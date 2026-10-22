@@ -119,15 +119,59 @@ When running expert agents against documentation changes, test both:
 Conceptual reviews miss workflow gaps. Workflow reviews miss framing errors. Run both.
 
 ### Discriminated Union Error Handling
-Always check for errors before accessing success fields:
+Dispatch on the presence of the success payload, not on `errors`. Some
+success branches (for example `build_creative`) carry non-terminal advisory
+`errors[]` beside the payload, so `if (result.errors)` misreads them as failure:
 ```javascript
 const result = await agent.syncCreatives({...});
-if (result.errors) {
-  console.error('Failed:', result.errors);
-} else {
+if (result.creatives) {
   console.log(`Success: ${result.creatives.length} items`);
+  if (result.errors) console.warn('Advisories:', result.errors);
+} else {
+  console.error('Failed:', result.errors);
 }
 ```
+
+### Slack and notification text: fixed templates, sanitized fields
+
+Slack renders a DM's `text` and every `mrkdwn` block as markup, so
+`<!channel>`, `<@U…>` and `<url|label>` in interpolated text ping or
+phish the reader, and a newline forges a line that reads as ours.
+Recipients treat these surfaces — an owner's DM, a moderator channel —
+as platform-authored, which is exactly what makes a planted string
+effective.
+
+The rule (#8320, #4754, #2726):
+
+- **Titles are fixed templates plus short sanitized identifiers.** Never
+  interpolate free text an agent, member, or model produced into a
+  notification title or a channel message's `text` fallback.
+- **Free text we did not author goes in the body**, flattened to one
+  line, capped, and escaped.
+- **A link target is not text.** `<url|label>` can't be escaped — a `>`
+  closes the link and a `|` adds a field — so check the target and drop
+  the link when it fails, rather than rendering a broken one.
+- Use the shared helpers in `server/src/utils/slack-escape.ts`. Don't
+  write another local escaper:
+  - `flattenToSingleLine(raw, max)` — collapse control characters and
+    whitespace runs, then truncate. For values a later stage escapes for
+    its own surface (a stored notification `title`/`body`, a stored
+    compliance `headline`).
+  - `sanitizeSlackLine(raw, max)` — flatten, escape, and zero-width-space
+    the `!channel` / `!here` / `!everyone` tokens. For text you are
+    writing straight into a Slack message.
+  - `sanitizeSlackLinkLabel(raw, max)` — also drops `|`, which otherwise
+    restructures a `<url|label>` link even after escaping.
+  - `isSafeSlackLinkTarget(url)` — for the target half of a link.
+  - `isSafeNotificationPath(url)` (`server/src/db/notification-db.ts`) —
+    for a stored notification link, which is rendered both as an HTML
+    `href` and as a Slack link target.
+- `notifyUser` (`server/src/notifications/notification-service.ts`) takes
+  `title` and `body` and escapes both on the Slack hop;
+  `NotificationDatabase.createNotification` flattens, caps, and drops
+  non-site-relative links at the write seam, so direct callers get the
+  same bound. Pass plain text — escaping at the call site double-encodes
+  the stored row, which the web list then renders literally.
 
 ### Design System
 All HTML files in `server/public/` MUST use CSS variables from `/server/public/design-system.css`:
@@ -604,14 +648,26 @@ This creates a new Addie config version, allowing performance comparison before/
 ## Deployment
 
 Production deploys to **Fly.io** (not Vercel). Migrations run automatically on startup.
+Before the first deployment to a fresh database, or staging/disaster recovery,
+complete the [database bootstrap prerequisite](../docs/runbooks/training-agent-gcs-reporting.md#database-bootstrap-prerequisite).
+Migration 620 requires its namespace even with GCS reporting disabled. Verify
+an existing namespace's owner and installation authority; preserve its state.
 - Deploy logs: `fly logs -a <app-name>`
 - SSH access: `fly ssh console -a <app-name>`
 
 ## Local Development
 
 **Always use Docker for local testing:**
+
+Start PostgreSQL and complete the required
+[local bootstrap](../docs/runbooks/training-agent-gcs-reporting.md#local-bootstrap)
+before starting the app's auto-migrations. Do this for a new volume and after
+every reset; the reporting feature flag does not skip migration 620.
+
 ```bash
-docker compose up --build  # Start postgres + app with auto-migrations
+docker compose up -d --wait postgres
+# Complete the linked local bootstrap before the next command.
+docker compose up --build  # Start app with auto-migrations after bootstrap
 docker compose down -v     # Reset database
 ```
 
@@ -658,6 +714,8 @@ JSON examples with `$schema` field are validated against schemas in CI.
 ## Format Conventions
 
 ### Field Naming
+- `platform_id` = An object's ID assigned by the seller's ad platform (creative, catalog, event source, or audience).
+- `seller_id` = The seller's identity (for example, IAB sellers.json or publisher identifiers). The deprecated `seller_id` aliases on `sync_event_sources` and `sync_audiences` results retain their object-platform-ID semantics throughout 3.x; do not repurpose them. When reporting a platform ID in 3.3 and later 3.x responses, emit both names with identical values; buyers prefer `platform_id` and fall back to `seller_id` only when absent.
 - `formats` = Array of full format objects
 - `format_ids` = Array of format ID references
 
@@ -685,7 +743,7 @@ Visual formats use `renders` array with structured dimensions:
 
 ### Useful Commands
 ```bash
-docker compose up --build  # Local dev server (preferred)
+docker compose up --build  # Local dev server, after required database bootstrap
 npm run build              # Build TypeScript
 npm test                   # Run tests
 npm run lint               # Lint
@@ -877,15 +935,23 @@ Before creating or updating a PR, always:
 
 ## Triage Routine — Manual Nudge
 
-The `Claude Issue Triage` routine fires automatically when an issue
+The GitHub triage launchers were manually disabled on 2026-10-09. See
+`.agents/routines/README.md` for the pause scope and re-enable conditions.
+When enabled, the `Claude Issue Triage` routine fires when an issue
 opens or reopens, when a member comments `/triage` (slash-command), or
 when a non-bot, non-self, non-`/triage`, non-PR-conversation comment
-lands on an open issue. To poke the routine yourself:
+lands on an open issue. Triage is routing-only: it classifies, asks
+clarifying questions, detects duplicates and existing owners, flags human
+decisions, and writes implementation briefs. It never creates branches,
+edits implementation code, opens or updates PRs, or pushes commits.
+`/triage execute` is kept for backward compatibility and yields a
+Ready-to-implement brief (or the relevant defer/flag outcome); it does not
+authorize code or PR work. To poke the routine yourself:
 
 | What you want | How |
 |---|---|
 | Re-trigger triage on a missed issue | Comment `/triage` |
-| Authorize first draft PR when safe | Comment `/triage execute` |
+| Get a ready-to-implement brief (compatibility alias; grants no code or PR execution) | Comment `/triage execute` |
 | Force a clarifying-question comment | Comment `/triage clarify` |
 | Force defer | Comment `/triage defer` |
 | Add new info / refine a stuck Clarify | Plain comment with the new info — fires the routine in `comment.created` mode |
@@ -898,9 +964,10 @@ lands on an open issue. To poke the routine yourself:
   the routine via the `issue_comment.created` path, but only if the
   comment is substantive (the routine itself filters "+1", emoji,
   "thanks!", and bare pings as non-substantive).
-- Comments on **PR conversations** (review threads or general PR
-  comments) — those route to the **auto-fix** feature, not triage.
-  PR feedback handling is a different role.
+- Fix pushes on **PR conversations**. PR comments may reach the routine in
+  read/respond `MODE: PR-feedback`, where it answers questions or links a
+  scoped handoff brief to the existing PR; it never pushes commits to it.
+  Fixes are made by the PR author or another accountable implementer.
 - Comments by bots, the routine itself (anything containing the
   `Triaged by Claude Code` footer), or anyone with `[bot]` suffix —
   filtered at the workflow level to prevent loops.
@@ -908,9 +975,10 @@ lands on an open issue. To poke the routine yourself:
 **How to know if triage is on it:**
 
 - Label `claude-triaging` on the issue → routine is actively working
-  on it right now (1–3 minutes typical). Do not start a parallel PR.
+  on it right now (1–3 minutes typical). It is routing the issue, not
+  implementing it.
 - Label `claude-triaged` (without `claude-triaging`) → routine has
-  finished. The triage comment, implementation brief, draft PR link,
+  finished. The triage comment, implementation brief, existing-PR link,
   or silent-defer state is the outcome.
 - Neither label, no `## Triage` comment, **and** the issue is more
   than a few minutes old → triage didn't fire. Webhook miss is the

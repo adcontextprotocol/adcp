@@ -179,7 +179,7 @@
             "always_excluded",
             "always_included"
           ],
-          "description": "selectable supports either include_unknown value; always_excluded supports only false; always_included supports only true. Sellers MUST reject incompatible requests.",
+          "description": "Unstated/unknown gender: selectable allows either include_unknown value; always_excluded only false; always_included only true. MUST reject incompatible requests.",
           "x-status": "experimental",
           "x-added-in": "3.3.0"
         }

@@ -4,6 +4,11 @@ title: "Revenue-share pricing and settlement"
 category: media_buy_seller
 summary: "Verifies contingent revenue-share discovery, commitment without a bid, commissionable-value delivery, and formula-checked usage reconciliation."
 track: media_buy
+# Registering the settlement event source requires conversion tracking. A
+# missing optional producer must not cascade into failed settlement coverage.
+requires_capability:
+  path: media_buy.conversion_tracking
+  present: true
 requires:
   - controller
 

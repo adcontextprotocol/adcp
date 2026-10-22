@@ -600,6 +600,11 @@ phases:
             description: "Replay preserves the original hold expiry"
 
   - id: accept_committed
+    # Negotiation can be supported without compact acceptance. The accepted
+    # descendants depend on this phase; finalize-only probes remain applicable.
+    requires_capability:
+      path: media_buy.lifecycle_tools
+      contains: accept_proposal
     title: "Accept committed proposal to create MediaBuy"
     depends_on: [finalize_proposal]
     narrative: |

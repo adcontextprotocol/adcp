@@ -41,6 +41,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Filter by legacy named-format references. Use `format_kinds` or `format_option_refs`.",
       "items": {
         "$ref": "/schemas/core/format-id.json"

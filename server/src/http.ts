@@ -54,7 +54,7 @@ import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
 import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
-import { BrandDatabase, HostedBrandConflictError, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
+import { BrandDatabase, HostedBrandConflictError, canSurfaceBrandForMember, resolveBrandFromJson, sanitizeBrandSnapshot } from "./db/brand-db.js";
 import { isDomainControlVerified, publicBrandJsonManifest } from "./services/brand-trust-fields.js";
 import { getStandaloneSite, resolveStandaloneRequest, type StandaloneSite } from "./standalone-sites.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
@@ -81,6 +81,7 @@ import { hasActiveSlackLink } from "./utils/slack-linkage.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
+import { isRegistryDomain } from "./services/registry-domain.js";
 import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
 import { decodeHtmlEntities } from "./utils/html-entities.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, resolvePageSession, type PageSession, type PageSessionUser, switchSessionOrganization, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
@@ -121,6 +122,8 @@ import { invalidateMembershipCache, findClaimableProspectOrgForDomain } from "./
 import * as relationshipDb from "./db/relationship-db.js";
 import * as personEvents from "./db/person-events-db.js";
 import { isAuthenticatedUserAAOAdmin } from "./addie/admin-status-lookup.js";
+import { resolveRegistryRevisionAccess, toPublicRegistryRevision } from "./routes/registry-revision-access.js";
+import { sanitizePropertySnapshot } from "./db/registry-revision-snapshot.js";
 import { resolveWebUserAAOAdminAccess } from "./addie/admin-status-lookup.js";
 import { isBreakGlassAdminEmail } from "./auth/admin-access.js";
 import { createSlackRouter } from "./routes/slack.js";
@@ -179,6 +182,7 @@ import { createJsonValidationRouter } from "./routes/json-validation.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
+import { initializeTrainingGcsReporting, getTrainingGcsReporting, drainTrainingGcsReporting, stopTrainingGcsReporting } from './training-agent/gcs-reporting.js';
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
 import { createHostedGraderHostRouter, HOSTED_GRADER_HOSTNAME } from "./training-agent/hosted-grader.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
@@ -196,7 +200,8 @@ import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notif
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
 import { AgentContextDatabase } from "./db/agent-context-db.js";
 import { getWebMemberContext } from "./addie/member-context.js";
-import { buildAgentOAuthAuthorizeUrl } from "./routes/helpers/agent-oauth-prompt.js";
+import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from "./routes/helpers/agent-oauth-prompt.js";
+import { isOAuthOwnerReauthorizationError } from "./routes/helpers/oauth-error-detection.js";
 import {
   buildNativeErrorRedirect,
   consumeNativePendingAuth,
@@ -3191,13 +3196,20 @@ export class HTTPServer {
       checks.addie = isAddieBoltReady();
       checks.mcp = isMCPServerReady();
       checks.chat = isWebChatReady();
+      if (req.path === '/ready') {
+        try {
+          const reporting = getTrainingGcsReporting();
+          if (reporting) checks.reporting = await reporting.probe();
+        } catch { checks.reporting = false; }
+      }
 
       // A listening socket and a reachable database do not mean a new web
       // instance can answer chat. Hold deployment traffic until deferred
       // indexing and tool registration finish. /health remains a DB/liveness
       // probe for workers and operational diagnostics.
       const chatRequired = !!(process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY);
-      const ready = checks.database && (req.path !== '/ready' || !chatRequired || checks.chat);
+      const ready = checks.database && (req.path !== '/ready'
+        || (checks.reporting !== false && (!chatRequired || checks.chat)));
       const status = ready ? "ok" : "unavailable";
       const body: Record<string, unknown> = {
         status,
@@ -3762,7 +3774,10 @@ export class HTTPServer {
           }).catch((err) => logger.error({ err }, 'New brand review failed'));
         }).catch((err) => logger.error({ err }, 'New brand notification failed'));
 
-        return res.json({ brand, review_status: 'pending' });
+        // Same bound as a revision snapshot: an editor may read back what
+        // they wrote, not the row's ownership, contact or verification
+        // columns. The edit gate is AAO membership, not record ownership.
+        return res.json({ brand: sanitizeBrandSnapshot(brand as unknown as Record<string, unknown>), review_status: 'pending' });
       } catch (error: any) {
         if (error?.constraint) {
           return res.status(409).json({ error: 'Brand already exists for this domain' });
@@ -3974,7 +3989,7 @@ export class HTTPServer {
           }).catch((err) => logger.error({ err }, 'Registry review failed'));
         }).catch((err) => logger.error({ err }, 'Registry edit notification failed'));
 
-        return res.json({ brand, revision_number });
+        return res.json({ brand: sanitizeBrandSnapshot(brand as unknown as Record<string, unknown>), revision_number });
       } catch (error: any) {
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Brand not found during edit');
@@ -3989,7 +4004,9 @@ export class HTTPServer {
       }
     });
 
-    // GET /api/brands/discovered/:domain/revisions - Brand revision history
+    // GET /api/brands/discovered/:domain/revisions - Brand revision changelog.
+    // Public, and limited to the changelog projection the public brand viewer
+    // renders — see routes/registry-revision-access.ts.
     this.app.get('/api/brands/discovered/:domain/revisions', async (req, res) => {
       try {
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
@@ -3997,27 +4014,44 @@ export class HTTPServer {
         const offset = parseInt(req.query.offset as string) || 0;
         const revisions = await this.brandDb.getBrandRevisions(domain, { limit, offset });
         const total = await this.brandDb.getBrandRevisionCount(domain);
-        return res.json({ revisions, total });
+        return res.json({ revisions: revisions.map(toPublicRegistryRevision), total });
       } catch (error) {
         logger.error({ error }, 'Failed to get brand revisions');
         return res.status(500).json({ error: 'Failed to get revisions' });
       }
     });
 
-    // GET /api/brands/discovered/:domain/revisions/:num - Single revision
-    this.app.get('/api/brands/discovered/:domain/revisions/:num', async (req, res) => {
+    // GET /api/brands/discovered/:domain/revisions/:num - Single revision,
+    // including its stored snapshot. Owner org or admin only.
+    this.app.get('/api/brands/discovered/:domain/revisions/:num', requireAuth, async (req, res) => {
       try {
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
         const num = parseInt(req.params.num);
         if (isNaN(num)) {
           return res.status(400).json({ error: 'Invalid revision number' });
         }
+
+        // Revisions are keyed by domain, and a legacy domain can still
+        // resolve to more than one brand row; the resolver picks the same
+        // one every read, so authorization and history stay consistent.
+        const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
+        if (!await isAuthenticatedUserAAOAdmin(req.user!)) {
+          const access = await resolveRegistryRevisionAccess(req.user, brand);
+          if (access === 'unavailable') {
+            return res.status(503).json({ error: 'Authorization temporarily unavailable' });
+          }
+          if (access !== 'authorized') {
+            return res.status(403).json({ error: 'Not authorized to view this revision' });
+          }
+        }
+
         const revision = await this.brandDb.getBrandRevision(domain, num);
         if (!revision) {
           return res.status(404).json({ error: 'Revision not found' });
         }
         return res.json(revision);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to get brand revision');
         return res.status(500).json({ error: 'Failed to get revision' });
       }
@@ -4079,7 +4113,7 @@ export class HTTPServer {
           revision_number,
         }).catch((err) => logger.error({ err }, 'Registry rollback notification failed'));
 
-        return res.json({ brand, revision_number });
+        return res.json({ brand: sanitizeBrandSnapshot(brand as unknown as Record<string, unknown>), revision_number });
       } catch (error: any) {
         if (respondToAdminAuthorizationError(error, res)) return;
         if (error.message?.includes('not found')) {
@@ -4290,9 +4324,12 @@ export class HTTPServer {
         if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
+        if (typeof publisher_domain !== 'string' || !isRegistryDomain(publisher_domain)) {
+          return res.status(400).json({ error: 'Invalid publisher_domain: expected a lowercase hostname; reserved test domains are not allowed' });
+        }
 
         const property = await this.propertyDb.createHostedProperty({
-          publisher_domain: publisher_domain.toLowerCase(),
+          publisher_domain,
           adagents_json: adagentsJsonForStorage,
           source_type: source_type || 'community',
           created_by_user_id: req.user?.id,
@@ -4323,6 +4360,9 @@ export class HTTPServer {
         if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
+        if (typeof publisher_domain !== 'string' || !isRegistryDomain(publisher_domain)) {
+          return res.status(400).json({ error: 'Invalid publisher_domain: expected a lowercase hostname; reserved test domains are not allowed' });
+        }
 
         // Check ban
         const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_property', req.user!.id, publisher_domain.toLowerCase());
@@ -4331,7 +4371,7 @@ export class HTTPServer {
         }
 
         const property = await this.propertyDb.createCommunityProperty({
-          publisher_domain: publisher_domain.toLowerCase(),
+          publisher_domain,
           adagents_json: adagentsJsonForStorage,
           source_type: 'community',
           created_by_user_id: req.user!.id,
@@ -4358,7 +4398,9 @@ export class HTTPServer {
           }).catch((err) => logger.error({ err }, 'New property review failed'));
         }).catch((err) => logger.error({ err }, 'New property notification failed'));
 
-        return res.json({ property, review_status: 'pending' });
+        // See the brand create route: an editor reads back their own edit,
+        // not the row's ownership, contact or verification columns.
+        return res.json({ property: sanitizePropertySnapshot(property as unknown as Record<string, unknown>), review_status: 'pending' });
       } catch (error: any) {
         if (error?.constraint) {
           return res.status(409).json({ error: 'Property already exists for this domain' });
@@ -4413,7 +4455,10 @@ export class HTTPServer {
           return res.status(403).json({ error: 'Membership required to edit properties' });
         }
 
-        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const domain = decodeURIComponent(req.params.domain);
+        if (!isRegistryDomain(domain)) {
+          return res.status(400).json({ error: 'Invalid publisher_domain: expected a lowercase hostname; reserved test domains are not allowed' });
+        }
 
         const { edit_summary } = req.body;
         if (!edit_summary || typeof edit_summary !== 'string') {
@@ -4458,7 +4503,7 @@ export class HTTPServer {
           }).catch((err) => logger.error({ err }, 'Registry review failed'));
         }).catch((err) => logger.error({ err }, 'Registry edit notification failed'));
 
-        return res.json({ property, revision_number });
+        return res.json({ property: sanitizePropertySnapshot(property as unknown as Record<string, unknown>), revision_number });
       } catch (error: any) {
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Property not found during edit');
@@ -4473,7 +4518,9 @@ export class HTTPServer {
       }
     });
 
-    // GET /api/properties/hosted/:domain/revisions - Property revision history
+    // GET /api/properties/hosted/:domain/revisions - Property revision
+    // changelog. Public, and limited to the changelog projection the public
+    // property viewer renders — see routes/registry-revision-access.ts.
     this.app.get('/api/properties/hosted/:domain/revisions', async (req, res) => {
       try {
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
@@ -4481,27 +4528,44 @@ export class HTTPServer {
         const offset = parseInt(req.query.offset as string) || 0;
         const revisions = await this.propertyDb.getPropertyRevisions(domain, { limit, offset });
         const total = await this.propertyDb.getPropertyRevisionCount(domain);
-        return res.json({ revisions, total });
+        return res.json({ revisions: revisions.map(toPublicRegistryRevision), total });
       } catch (error) {
         logger.error({ error }, 'Failed to get property revisions');
         return res.status(500).json({ error: 'Failed to get revisions' });
       }
     });
 
-    // GET /api/properties/hosted/:domain/revisions/:num - Single revision
-    this.app.get('/api/properties/hosted/:domain/revisions/:num', async (req, res) => {
+    // GET /api/properties/hosted/:domain/revisions/:num - Single revision,
+    // including its stored snapshot. Owner org or admin only.
+    this.app.get('/api/properties/hosted/:domain/revisions/:num', requireAuth, async (req, res) => {
       try {
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
         const num = parseInt(req.params.num);
         if (isNaN(num)) {
           return res.status(400).json({ error: 'Invalid revision number' });
         }
+
+        // A record that no longer exists has no owner, so only an admin can
+        // read what its history kept. Fail closed rather than fall back to
+        // the revision row's own editor fields.
+        const property = await this.propertyDb.getHostedPropertyByDomain(domain);
+        if (!await isAuthenticatedUserAAOAdmin(req.user!)) {
+          const access = await resolveRegistryRevisionAccess(req.user, property);
+          if (access === 'unavailable') {
+            return res.status(503).json({ error: 'Authorization temporarily unavailable' });
+          }
+          if (access !== 'authorized') {
+            return res.status(403).json({ error: 'Not authorized to view this revision' });
+          }
+        }
+
         const revision = await this.propertyDb.getPropertyRevision(domain, num);
         if (!revision) {
           return res.status(404).json({ error: 'Revision not found' });
         }
         return res.json(revision);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to get property revision');
         return res.status(500).json({ error: 'Failed to get revision' });
       }
@@ -4535,12 +4599,19 @@ export class HTTPServer {
           revision_number,
         }).catch((err) => logger.error({ err }, 'Registry rollback notification failed'));
 
-        return res.json({ property, revision_number });
+        return res.json({ property: sanitizePropertySnapshot(property as unknown as Record<string, unknown>), revision_number });
       } catch (error: any) {
         if (respondToAdminAuthorizationError(error, res)) return;
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Property not found during rollback');
           return res.status(404).json({ error: 'Resource not found' });
+        }
+        // `rollbackProperty` refuses authoritative and pending records,
+        // as the brand route checks for up front. Report the refusal
+        // rather than a server error.
+        if (error.message?.includes('Cannot roll back')) {
+          logger.warn({ err: error, path: req.path }, 'Access denied rolling back property');
+          return res.status(403).json({ error: 'Access denied' });
         }
         logger.error({ error }, 'Failed to rollback property');
         return res.status(500).json({ error: 'Failed to rollback property' });
@@ -10008,11 +10079,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       } catch (error) {
         // Auth-required is an expected agent state, not a system error. Log
         // at warn so it doesn't page #aao-errors via the pino → posthog hook.
-        if (error instanceof AuthenticationRequiredError) {
-          logger.warn({ url, hasOAuth: error.hasOAuth }, 'Agent requires authentication');
+        if (isOAuthRequiredError(error)) {
+          const hasOAuth = isOAuthOwnerReauthorizationError(error) || (error instanceof AuthenticationRequiredError && error.hasOAuth);
+          logger.warn({ url, hasOAuth: hasOAuth }, 'Agent requires authentication');
 
           let oauth_authorize_url: string | undefined;
-          if (error.hasOAuth) {
+          if (hasOAuth) {
             const userId = req.user?.id;
             if (userId) {
               try {
@@ -10023,7 +10095,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                     url,
                     orgId,
                     new AgentContextDatabase(),
-                    { returnTo: '/profile/edit' },
+                    { returnTo: '/profile/edit', authorizationError: error },
                   );
                   if (authorizeUrl) oauth_authorize_url = authorizeUrl;
                 }
@@ -10035,10 +10107,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
           return res.status(401).json({
             error: 'authentication_required',
-            message: error.hasOAuth
+            message: hasOAuth
               ? 'This agent requires OAuth authorization.'
               : 'This agent requires authentication. Save an auth token to continue.',
-            needs_oauth: error.hasOAuth,
+            needs_oauth: hasOAuth,
             ...(oauth_authorize_url && { oauth_authorize_url }),
           });
         }
@@ -10195,6 +10267,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
     }
     initializeDatabase(dbConfig);
+    await initializeTrainingGcsReporting();
 
     // Escalate pool-level errors to Slack
     onPoolError(() => {
@@ -10211,22 +10284,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // rather than silently passing every mutating call to a broken backend.
     // No-ops when the store falls back to memoryBackend.
     //
-    // Bounded with a 10s deadline because the pg pool has connectionTimeoutMillis=5000
-    // but no statement_timeout — without this race, a hung query (e.g., DB starting
-    // up, replica failover) would stall boot indefinitely and starve Fly's TCP healthcheck.
-    const { getIdempotencyStore } = await import("./training-agent/idempotency.js");
-    const probe = getIdempotencyStore().probe?.();
-    if (probe) {
-      await Promise.race([
-        probe,
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Idempotency backend probe timed out after 10s — check DATABASE_URL and pool reachability")),
-            10_000,
-          ),
-        ),
-      ]);
-    }
+    // Allow the configured connection timeout plus 5s query headroom (at least
+    // 10s overall). The pool has no statement_timeout, so a hung query must
+    // still fail boot rather than starve Fly's TCP healthcheck indefinitely.
+    const { getIdempotencyStore, probeIdempotencyStore } = await import("./training-agent/idempotency.js");
+    await probeIdempotencyStore(getIdempotencyStore(), dbConfig.connectionTimeoutMillis);
 
     // Sync Stripe customer IDs and seed dev data. Organizations are created
     // lazily via ensureOrganizationExists at first login and via the
@@ -10263,6 +10325,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.refreshOnlyBackground = this.options.backgroundServices === 'refresh-only';
     this.isWorker = this.refreshOnlyBackground || processRole !== 'web';
     const isWorker = this.isWorker;
+    if (isWorker && !this.refreshOnlyBackground) getTrainingGcsReporting()?.start();
     logger.info({ isWorker }, 'Process role resolved');
 
     if (this.refreshOnlyBackground) {
@@ -10360,6 +10423,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
    */
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
+    // Stop accepting new connections before draining reporting's coordinated scheduler.
+    const httpDrain = this.server ? new Promise<void>((resolve, reject) => {
+      this.server!.close(error => error ? reject(error) : resolve());
+    }) : Promise.resolve();
+    const drains = Promise.all([httpDrain, drainTrainingGcsReporting()]);
+    // Attach a rejection handler immediately while unrelated services drain.
+    void drains.catch(() => {});
 
     // Only stop background services that were started on this machine
     if (this.isWorker) {
@@ -10400,19 +10470,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     }
 
     // Close HTTP server
-    if (this.server) {
-      await new Promise<void>((resolve, reject) => {
-        this.server!.close((err) => {
-          if (err) {
-            logger.error({ err }, "Error closing HTTP server");
-            reject(err);
-          } else {
-            logger.info("HTTP server closed");
-            resolve();
-          }
-        });
-      });
-    }
+    await drains;
+    await stopTrainingGcsReporting();
 
     // Shutdown PostHog client (flush pending events)
     const { shutdownPostHog } = await import('./utils/posthog.js');

@@ -366,6 +366,51 @@ describe('portable demographic targeting', () => {
     assert.equal(validateListing({ ...listing, restricted_attributes: ['age'] }), true);
   });
 
+  it('lets age signals declare their determination basis only alongside an age predicate', () => {
+    const predicate = { age: { min: 25, max: 34, include_unknown: false } };
+    const listing = {
+      signal_ref: { scope: 'product', signal_id: 'verified_adults_25_34' },
+      name: 'Verified adults 25–34',
+      value_type: 'binary',
+      restricted_attributes: ['age'],
+      demographic_predicate: predicate,
+      age_determination_bases: ['verified', 'inferred'],
+    };
+    assert.equal(validateListing(listing), true, JSON.stringify(validateListing.errors));
+    assert.equal(validateListing({ ...listing, age_determination_bases: [] }), false, 'minItems 1');
+    assert.equal(validateListing({ ...listing, age_determination_bases: ['verified', 'verified'] }), false, 'uniqueItems');
+    assert.equal(validateListing({ ...listing, age_determination_bases: ['population_estimate'] }), false, 'population estimates are not a user-level basis');
+
+    const { demographic_predicate: _omitted, ...withoutPredicate } = listing;
+    assert.equal(validateListing(withoutPredicate), false, 'bases without demographic_predicate');
+    assert.equal(validateListing({ ...withoutPredicate, demographic_predicate: {} }), false, 'bases without demographic_predicate.age');
+    const { age_determination_bases: _bases, ...withoutBases } = listing;
+    assert.equal(validateListing(withoutBases), true, 'absent means no basis claim');
+
+    const definition = { id: 'verified_adults_25_34', name: listing.name, value_type: 'binary', restricted_attributes: ['age'], demographic_predicate: predicate, age_determination_bases: ['declared'] };
+    assert.equal(validateDefinition(definition), true, JSON.stringify(validateDefinition.errors));
+    const { demographic_predicate: _p, restricted_attributes: _r, ...definitionWithoutPredicate } = definition;
+    assert.equal(validateDefinition(definitionWithoutPredicate), false, 'bases without demographic_predicate');
+  });
+
+  it('keeps signal definition enrichment at parity for age determination bases', () => {
+    const enrichment = {
+      restricted_attributes: ['age'],
+      demographic_predicate: { age: { min: 18, max: 34, include_unknown: false } },
+      age_determination_bases: ['verified', 'declared'],
+    };
+    assert.equal(validateEnrichment(enrichment), true, JSON.stringify(validateEnrichment.errors));
+    assert.equal(validateEnrichment({ ...enrichment, age_determination_bases: [] }), false, 'minItems 1');
+    assert.equal(validateEnrichment({ ...enrichment, age_determination_bases: ['verified', 'verified'] }), false, 'uniqueItems');
+    assert.equal(validateEnrichment({ ...enrichment, age_determination_bases: ['modeled'] }), false, 'enum');
+    assert.equal(validateEnrichment({ restricted_attributes: ['age'], age_determination_bases: ['verified'] }), false, 'bases without demographic_predicate.age');
+    const { age_determination_bases: _b, ...enrichmentWithoutBases } = enrichment;
+    assert.equal(validateEnrichment(enrichmentWithoutBases), true);
+
+    const request = readSchema('/schemas/signals/get-signals-request.json');
+    assert.ok(request.properties.fields.items.enum.includes('age_determination_bases'), 'fields can project the basis');
+  });
+
   it('validates lossless exact readback for every execution mode', () => {
     const requested = { age: { min: 21, max: 35, include_unknown: false } };
     const base = { requested, applied: requested, equivalent: true };

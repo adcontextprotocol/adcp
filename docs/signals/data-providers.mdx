@@ -126,6 +126,7 @@ The signal definition is not itself a `signal_ref`. In `adagents.json`, the host
 | `allowed_values` | array | For categorical signals: valid values |
 | `range` | object | For numeric signals: `{ min, max, unit }` |
 | `demographic_predicate` | object | Authoritative demographic meaning: 3.2 age bounds and 3.3 gender value sets, with independent explicit unknown membership. Names and taxonomy labels are insufficient. Age predicates require `restricted_attributes` containing `age`, gender requires `sex_gender`, and joint predicates require both. |
+| `age_determination_bases` | array | Optional. User-level bases (`verified`, `declared`, `inferred`) by which members' ages were established. Valid only with `demographic_predicate.age`; absent means no basis claim. Listings that project it for another provider's signal MUST match this definition. See [Age determination basis](/docs/media-buy/advanced-topics/targeting#age-determination-basis-on-included-signals). |
 | `restricted_attributes` | array | Restricted attribute categories this signal touches (e.g., `["health_data"]`). Enables structural governance matching. |
 | `policy_categories` | array | Policy categories this signal is sensitive for (e.g., `["children_directed"]`). Enables structural governance matching. |
 | `taxonomy` | object | External taxonomy metadata for discovery, review, and translation. Does not change `value_type` or package targeting grammar. |

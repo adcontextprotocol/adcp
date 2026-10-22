@@ -8,7 +8,8 @@
       "row_currency_consistency": "When media_buy_deliveries[].currency is present, every present by_package[].currency and windows[].by_package[].currency MUST equal it",
       "legacy_currency_consistency": "When deprecated response-wide currency is present, every present media-buy and package currency MUST equal it",
       "package_currency_presence": "When a package has spend or another currency-denominated monetary value and both the media-buy row currency and deprecated response-wide currency are absent, that package MUST include currency",
-      "mixed_currency_row": "When packages in a legacy or externally created media buy use different currencies, the row currency and all monetary or money-derived values at row or window-total grain MUST be omitted; daily_breakdown MUST also be omitted"
+      "mixed_currency_row": "When packages in a legacy or externally created media buy use different currencies, the row currency and all monetary or money-derived values at row or window-total grain MUST be omitted; daily_breakdown MUST also be omitted",
+      "multi_qualifier_totals": "When the buy's packages report a metric_id under more than one qualifier set (in by_package[].metric_values or a package's flat carrier), that metric's flat carrier (the whole nested object) MUST be omitted from per-buy totals and from totals in every window slice of that buy; the identity key is (scope, metric_id, qualifier)"
     }
   },
   "type": "object",
@@ -125,6 +126,7 @@
       "type": "string",
       "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Optional legacy response-wide ISO 4217 currency code. It may be used only when every monetary value in the response has that denomination. A delivery response can contain media buys with different currencies, so buyers MUST NOT interpret this field as an aggregation currency or evidence of currency conversion. Prefer media_buy_deliveries[].currency when present and package-level currency otherwise.",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "pattern": "^[A-Z]{3}$"
     },
     "attribution_window": {
@@ -135,6 +137,7 @@
       "type": "object",
       "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Legacy combined metrics across all returned media buys. When this field is present, the deprecated response-wide currency is required and denominates its spend. Cross-buy totals are unsafe when currencies, metric qualifiers, measurement windows, finality, or deduplication semantics differ. Sellers SHOULD omit this field; buyers SHOULD aggregate media_buy_deliveries[] only when the relevant row semantics are compatible.",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "allOf": [
         {
           "if": {
@@ -252,7 +255,7 @@
         },
         "metric_aggregates": {
           "type": "array",
-          "description": "Cross-buy delivery aggregates partitioned by qualifier. Row-symmetric with `package.committed_metrics` and `by_package[].missing_metrics` — same atomic unit `(scope, metric_id, qualifier)` — so reconciliation collapses to a row-level join on the tuple. Granularity rule: one row per `(metric_id, full-qualifier-set)`, reported at the finest available granularity; buyers re-aggregate up if they want a coarser view. Used only for metrics with non-empty qualifier sets — unqualified metrics (`impressions`, `spend`, `media_buy_count`, etc.) remain at the top of `aggregated_totals`. **Mutual exclusion MUST**: for any `metric_id` appearing in `metric_aggregates`, the corresponding top-level scalar in `aggregated_totals` MUST be omitted (not zeroed) — avoids duplicate sources of truth. The qualifier vocabulary on this delivery surface is closed today (`additionalProperties: false`, same content as `committed_metrics.qualifier`) but is expected to **diverge from contract qualifier in future minors** as transparency disclosures buyers don't commit to ship delivery-only (e.g., `tracker_firing` pending #3832 resolution). Each row carries a `value` plus inlined per-metric component fields (e.g., `measurable_impressions` and `viewable_impressions` for `viewable_rate`; `spend` and `conversions` for `cost_per_acquisition`). Per-buy `totals` keeps its flat shape — each buy is single-qualifier by definition; only the aggregate spans qualifiers. **Qualifier-set drift across reports**: when a campaign gains a new qualifier mid-flight (e.g., adds `tracker_firing` partitioning in week 2), prior periods' rows remain valid at their original granularity; buyers SHOULD NOT retroactively repartition.",
+          "description": "Cross-buy delivery aggregates partitioned by qualifier. Row-symmetric with `package.committed_metrics` and `by_package[].missing_metrics` — same atomic unit `(scope, metric_id, qualifier)` — so reconciliation collapses to a row-level join on the tuple. Granularity rule: one row per `(metric_id, full-qualifier-set)`, reported at the finest available granularity; buyers re-aggregate up if they want a coarser view. Used only for metrics with non-empty qualifier sets — unqualified metrics (`impressions`, `spend`, `media_buy_count`, etc.) remain at the top of `aggregated_totals`. **Mutual exclusion MUST**: for any `metric_id` appearing in `metric_aggregates`, the corresponding top-level scalar in `aggregated_totals` MUST be omitted (not zeroed) — avoids duplicate sources of truth. The qualifier vocabulary on this delivery surface is closed today (`additionalProperties: false`, same content as `committed_metrics.qualifier`) but is expected to **diverge from contract qualifier in future minors** as transparency disclosures buyers don't commit to ship delivery-only (e.g., `tracker_firing` pending #3832 resolution). Each row carries a `value` plus inlined per-metric component fields (e.g., `measurable_impressions` and `viewable_impressions` for `viewable_rate`; `spend` and `conversions` for `cost_per_acquisition`). Per-buy `totals` keeps its flat shape and omits the flat carrier of any metric the buy's packages report under more than one qualifier set; only the aggregate spans qualifiers. **Qualifier-set drift across reports**: when a campaign gains a new qualifier mid-flight (e.g., adds `tracker_firing` partitioning in week 2), prior periods' rows remain valid at their original granularity; buyers SHOULD NOT retroactively repartition.",
           "items": {
             "$ref": "/schemas/core/delivery-metric-aggregate.json"
           },
@@ -365,7 +368,7 @@
               },
               {
                 "type": "object",
-                "description": "Aggregate metrics for this media buy across all packages",
+                "description": "Aggregate metrics for this media buy across all packages. When the buy's packages report a metric_id under more than one qualifier set (whether in by_package[].metric_values or in a package's flat carrier), sellers MUST omit that metric's flat carrier (the whole nested object, e.g. viewability, brand_lift) from these totals rather than combine rows; buyers read the package rows. One row is one (scope, metric_id, qualifier) key.",
                 "properties": {
                   "effective_rate": {
                     "type": "number",
@@ -397,6 +400,12 @@
                       "type": "number",
                       "description": "Package delivery pace relative to its package-level pacing plan (1.0 = on track, <1.0 = behind, >1.0 = ahead). In seller-optimized mode this is a subordinate diagnostic and may be absent when no package pacing preference exists.",
                       "minimum": 0
+                    },
+                    "projection": {
+                      "$ref": "/schemas/core/delivery-projection.json",
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0",
+                      "description": "Optional seller projection of where this package's delivery will end up at flight end. Forward-looking counterpart to the backward-looking `pacing_index`, and the numeric counterpart to the categorical `pacing_risk` indicator on `get_media_buys`. Experimental: sellers that emit it MUST list `media_buy.delivery_projection` in `experimental_features`. An advisory forecast, not a delivery record: it carries no contractual meaning on its own, and any commercial use is governed by the parties' terms. Defined on top-level `by_package[]` rows of GET responses; it is not part of the `windows[].by_package` or exact `reporting_revision_id` contracts, and this field does not define webhook use. Sellers that do not project omit it; absence carries no meaning."
                     },
                     "pricing_model": {
                       "$ref": "/schemas/enums/pricing-model.json",
@@ -528,7 +537,6 @@
                             },
                             "required": [
                               "format_kind",
-                              "impressions",
                               "spend"
                             ]
                           }
@@ -615,7 +623,6 @@
                             },
                             "required": [
                               "device_type",
-                              "impressions",
                               "spend"
                             ]
                           }
@@ -656,7 +663,6 @@
                             },
                             "required": [
                               "device_platform",
-                              "impressions",
                               "spend"
                             ]
                           }
@@ -707,7 +713,6 @@
                             "required": [
                               "audience_id",
                               "audience_source",
-                              "impressions",
                               "spend"
                             ]
                           }
@@ -759,7 +764,6 @@
                             "required": [
                               "demographic",
                               "demographic_system",
-                              "impressions",
                               "spend"
                             ]
                           }
@@ -845,7 +849,7 @@
                     },
                     "by_installment": {
                       "type": "array",
-                      "description": "Delivery by canonically identified installment within this package.",
+                      "description": "Delivery by canonically identified installment within this package. Experimental in AdCP 3.3: rows may carry installment_status and publication (proof of publication). Rows without installment_status are delivery rows, as in AdCP 3.2. Sellers MUST NOT send scheduled, tentative, postponed, or cancelled rows to callers pinned below AdCP 3.3, and a caller with no declared pin counts as below 3.3. A seller that declares cancelled in available_installment_statuses MUST report a sold installment that will not run as cancelled rather than drop the row.",
                       "items": { "$ref": "/schemas/core/installment-delivery-metrics.json" }
                     },
                     "by_installment_truncated": {
@@ -947,6 +951,7 @@
                                 "x-entity": "creative"
                               },
                               "spot_status": {
+                                "x-added-in": "3.3.0",
                                 "$ref": "/schemas/enums/spot-status.json",
                                 "x-status": "experimental",
                                 "description": "Lifecycle status of this row. Absent means aired, which preserves AdCP 3.2 behavior. A scheduled row later becomes aired (same spot_id) or preempted. A makegood row is a separate airing, with its own spot_id, that carries replaces_spot_id; a planned replacement is a scheduled row that already carries it. Sellers declare the statuses they report in supports_spot_breakdown.available_statuses; a status not declared there is not reported, which is different from no spot having that status."
@@ -957,12 +962,14 @@
                                 "description": "RFC 3339 timestamp when the spot actually aired. Its presence proves an airing; it is not inferred from impressions. Required when spot_status is aired or makegood, or when spot_status is absent. MUST be absent when spot_status is scheduled or preempted."
                               },
                               "scheduled_at": {
+                                "x-added-in": "3.3.0",
                                 "type": "string",
                                 "format": "date-time",
                                 "x-status": "experimental",
                                 "description": "RFC 3339 timestamp of the planned airing slot. Required when spot_status is scheduled or preempted (for a preempted row, the last slot that was scheduled). The seller may move a scheduled spot until it airs, so the value can change between reports while spot_id does not; a buyer that needs the original slot compares reports. Optional on aired and makegood rows, where it records the last slot scheduled before airing."
                               },
                               "replaces_spot_id": {
+                                "x-added-in": "3.3.0",
                                 "type": "string",
                                 "minLength": 1,
                                 "x-status": "experimental",
@@ -970,6 +977,7 @@
                                 "x-entity": "spot_airing"
                               },
                               "break_position": {
+                                "x-added-in": "3.3.0",
                                 "type": "object",
                                 "x-status": "experimental",
                                 "description": "Where the spot ran inside its commercial break. Sellers declare support in supports_spot_breakdown.supports_break_position; omission means the position is not reported. On a scheduled row the value is the planned position and may change before airing.",
@@ -1073,7 +1081,7 @@
                     },
                     "daily_breakdown": {
                       "type": "array",
-                      "description": "Day-by-day delivery for this package. Only present when include_package_daily_breakdown is true in the request. Enables per-package pacing analysis and line-item monitoring.",
+                      "description": "Day-by-day delivery for this package. Only present when include_package_daily_breakdown is true in the request. Enables per-package pacing analysis and line-item monitoring. A row may omit impressions from AdCP 3.3 (see core/delivery-metrics.json impressions): absence means not measured, not zero.",
                       "items": {
                         "type": "object",
                         "properties": {
@@ -1121,7 +1129,6 @@
                         },
                         "required": [
                           "date",
-                          "impressions",
                           "spend"
                         ],
                         "additionalProperties": true
@@ -1161,7 +1168,7 @@
                       "$ref": "/schemas/core/delivery-metrics.json"
                     }
                   ],
-                  "description": "Aggregate metrics for this window slice across all packages. Shape-aligned with reporting_webhook fire payloads at the same granularity."
+                  "description": "Aggregate metrics for this window slice across all packages. Shape-aligned with reporting_webhook fire payloads at the same granularity. When the buy's packages report a metric_id under more than one qualifier set (whether in by_package[].metric_values or in a package's flat carrier), sellers MUST omit that metric's flat carrier (the whole nested object, e.g. viewability, brand_lift) from totals in every window slice of that buy rather than combine rows; buyers read the package rows. One row is one (scope, metric_id, qualifier) key."
                 },
                 "by_package": {
                   "type": "array",
@@ -1211,7 +1218,7 @@
           },
           "daily_breakdown": {
             "type": "array",
-            "description": "Day-by-day delivery for a media-buy row with one currency. Sellers MUST omit this aggregate breakdown for a legacy or externally created mixed-currency buy because these rows have no package currency field. Sellers MUST also omit this aggregate breakdown when the media buy's packages span more than one reporting timezone; package-level daily_breakdown remains, each in its own product's reporting timezone.",
+            "description": "Day-by-day delivery for a media-buy row with one currency. Sellers MUST omit this aggregate breakdown for a legacy or externally created mixed-currency buy because these rows have no package currency field. Sellers MUST also omit this aggregate breakdown when the media buy's packages span more than one reporting timezone; package-level daily_breakdown remains, each in its own product's reporting timezone. A row may omit impressions from AdCP 3.3 (see core/delivery-metrics.json impressions): absence means not measured, not zero.",
             "items": {
               "type": "object",
               "properties": {
@@ -1259,7 +1266,6 @@
               },
               "required": [
                 "date",
-                "impressions",
                 "spend"
               ],
               "additionalProperties": true
