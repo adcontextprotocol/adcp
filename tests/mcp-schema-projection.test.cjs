@@ -18,6 +18,8 @@ const {
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 const {
   MCP_ROLE_PROFILE_TOOLS,
+  mcpRoleProfileTools,
+  mcpRoleProfileCompatibilityScope,
   MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES,
   buildTaskResultResolution,
   validateManifestToolRelationships,
@@ -112,8 +114,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // 2b9df1bae, past the 452 KiB bound. Media-buy lineage (#8038) adds 763 bytes
 // on top of that (462,963 -> 463,726 bytes / 452.9 KiB measured against main),
 // bounded at 454 KiB to leave about 1 KiB for the x-added-in sweep (#8077).
+// At 3.3.0-beta.0 the package enters the 3.3 line and `list_proposals` (#8103)
+// joins the media-buy catalog (466,530 bytes / 455.6 KiB measured with the
+// version bumped), bounded at 462 KiB for the beta.1 window.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 454,
+  'media-buy': 462,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -1798,7 +1803,8 @@ test('representative capability-selected media-buy runtime exposes only selected
 test('generated role profiles are host-compatible discovery catalogs with bounded model-context views', () => {
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
 
-  for (const [profileName, expectedTools] of Object.entries(MCP_ROLE_PROFILE_TOOLS)) {
+  for (const profileName of Object.keys(MCP_ROLE_PROFILE_TOOLS)) {
+    const expectedTools = mcpRoleProfileTools(profileName, ACTIVE_SURFACE_VERSION);
     const profileDir = path.join(PROJECTION_DIR, 'profiles', profileName);
     const modelContextDir = path.join(profileDir, 'model-context');
     const profile = readJson(path.join(profileDir, 'manifest.json'));
@@ -1807,7 +1813,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
     assert.equal(profile.profile, profileName);
     assert.equal(profile.profile_kind, 'active-role-catalog');
     assert.equal(profile.surface_version, ACTIVE_SURFACE_VERSION);
-    assert.equal(profile.compatibility_scope, 'active-3.2-only');
+    assert.equal(profile.compatibility_scope, mcpRoleProfileCompatibilityScope(ACTIVE_SURFACE_VERSION));
     assert.equal(profile.annotation_mode, 'structural');
     assert.deepEqual(profile.schema_fields, ['inputSchema', 'outputSchema']);
     assert.deepEqual(profile.filters, {
@@ -1880,7 +1886,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
     );
   }
 
-  const mediaBuyTools = new Set(MCP_ROLE_PROFILE_TOOLS['media-buy']);
+  const mediaBuyTools = new Set(mcpRoleProfileTools('media-buy', ACTIVE_SURFACE_VERSION));
   const activeMediaBuyTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'media-buy')
     // Tools added for the next minor join the role catalog when the package

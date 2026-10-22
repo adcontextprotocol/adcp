@@ -19,7 +19,11 @@ import {
   forwardIntroducedSpecialisms,
   isForwardIntroducedSpecialism,
 } from '../../src/compliance/forward-introduced-specialisms.js';
-import { hostedComplianceTarget } from '../../src/services/hosted-compliance-version.js';
+import {
+  bundledComplianceVersions,
+  compareComplianceVersions,
+  hostedComplianceTarget,
+} from '../../src/services/hosted-compliance-version.js';
 
 const target30 = hostedComplianceTarget('3.0');
 const target32 = hostedComplianceTarget('3.2');
@@ -65,9 +69,27 @@ describe('forwardIntroducedSpecialisms', () => {
     expect([...forwardIntroducedSpecialisms('not-a-version')]).toEqual([]);
   });
 
-  it('has nothing to tolerate on the newest graded line', async () => {
-    expect([...forwardIntroducedSpecialisms(target32.version)]).toEqual([]);
-    await expect(complianceDirToleratingForwardIntroducedSpecialisms(target32)).resolves.toBeUndefined();
+  it('has nothing to tolerate on the newest bundled release', () => {
+    const newest = bundledComplianceVersions()
+      .filter(version => /^[1-9][0-9]*\.[0-9]+\.[0-9]+(?:-(?:beta|rc)\.[0-9]+)?$/.test(version))
+      .sort(compareComplianceVersions)
+      .at(-1)!;
+    expect([...forwardIntroducedSpecialisms(newest)]).toEqual([]);
+  });
+
+  it('tolerates on the newest graded line only what its own bundle lacks', async () => {
+    // A newer prerelease bundle (3.3 betas) may introduce specialisms the 3.2
+    // graded line predates; none of them may be one 3.2 already defines.
+    const target32Ids = new Set(
+      (JSON.parse(readFileSync(join(target32.complianceDir, 'index.json'), 'utf8')) as {
+        specialisms?: Array<{ id: string }>;
+      }).specialisms?.map(specialism => specialism.id),
+    );
+    const tolerated = [...forwardIntroducedSpecialisms(target32.version)];
+    for (const id of tolerated) expect(target32Ids.has(id)).toBe(false);
+    if (tolerated.length === 0) {
+      await expect(complianceDirToleratingForwardIntroducedSpecialisms(target32)).resolves.toBeUndefined();
+    }
   });
 
   it('reports declared specialisms the graded release predates, deduplicated', () => {
