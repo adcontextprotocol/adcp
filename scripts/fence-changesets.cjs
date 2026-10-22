@@ -299,9 +299,7 @@ function awaitPushedPR(expected) {
       pr.head.sha === state.prior;
     if (!lagging || attempt >= PR_CONVERGENCE_ATTEMPTS)
       return verifyPR(expected, pr);
-    console.log(
-      `Changesets fence: ${JSON.stringify({ event: "pr-head-lag", attempt, observed: pr.head.sha })}`,
-    );
+    save({ event: "pr-head-lag", attempt });
     Atomics.wait(
       new Int32Array(new SharedArrayBuffer(4)),
       0,

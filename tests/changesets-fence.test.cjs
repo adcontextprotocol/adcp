@@ -124,7 +124,11 @@ function gitStub() {
       "\t",
     )[0];
     const prs = JSON.parse(fs.readFileSync("prs.json", "utf8"));
-    const lag = { "pr-head-lag": 3, "pr-head-lag-forever": 1000 }[env.FAULT];
+    const lag = {
+      "pr-head-lag": 3,
+      "pr-head-lag-forever": 1000,
+      "pr-head-lag-ready": 1000,
+    }[env.FAULT];
     if (!rollback && lag && value)
       fs.writeFileSync("pr-lag.json", JSON.stringify({ sha: value, reads: lag }));
     else {
@@ -180,6 +184,11 @@ function ghStub() {
   if (fs.existsSync("pr-lag.json") && !args.includes("graphql")) {
     // The pulls API serves the pre-push head for a few reads after a push.
     const lag = JSON.parse(fs.readFileSync("pr-lag.json", "utf8"));
+    if (env.FAULT === "pr-head-lag-ready") {
+      // Someone marks the PR Ready while the API still lags the push.
+      for (const pr of prs) pr.draft = false;
+      fs.writeFileSync("prs.json", JSON.stringify(prs));
+    }
     if (--lag.reads > 0) fs.writeFileSync("pr-lag.json", JSON.stringify(lag));
     else {
       fs.rmSync("pr-lag.json");
@@ -434,6 +443,18 @@ test("a pulls API lag that outlasts the bound still quarantines and restores the
   assert.equal(f.state().status, "quarantined");
   assert.equal(f.observed(), f.prior);
   assert.equal(f.prs()[0].draft, true);
+});
+test("a Ready transition during the pulls API lag quarantines without waiting out the bound", (t) => {
+  const f = fixture(t);
+  ok(f.install());
+  stopped(f.push({ FAULT: "pr-head-lag-ready" }));
+  assert.equal(f.state().status, "quarantined");
+  assert.equal(f.observed(), f.prior);
+  assert.equal(f.prs()[0].draft, true);
+  assert.equal(
+    f.state().events.filter((event) => event.event === "pr-head-lag").length,
+    0,
+  );
 });
 test("no PR/ref creates with an empty lease; action-created PR must be Draft", (t) => {
   const f = fixture(t, false);
