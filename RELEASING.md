@@ -371,6 +371,9 @@ rewrites. The HOLD comment's identity, issue, and body are read back before any
 push. API/read commands have a 60-second bound; pushes have a 10-minute bound,
 with process-group termination and read-back reconciliation on timeout. Freshness is
 checked before and after that push, and again after the action's PR API calls.
+After an acknowledged push, the PR read tolerates only the pulls API briefly
+reporting the prior head (same PR, still Draft): it polls up to 10 times, one
+second apart, and any other mismatch or a longer lag quarantines as before.
 
 Drift, push errors (including lost acknowledgements), or an incomplete action
 trigger restoration of the captured ref with a second lease expecting only the
