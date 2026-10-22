@@ -16,6 +16,6 @@ substitution in step order over every `sample_request` and fails when a
 `$context.<key>` has nothing to resolve it — the defect class that shipped in
 every 3.0 bundle up to 3.0.26 (#7797, fixed for 3.0.27 by #7801) and in the
 3.2 bundles through 3.2.5. It also rejects a `context_outputs` capture of
-`governance_agent_url` or the `*_agent_url` keys hosted grading seeds from
-server config, which would let the agent under test redirect the governance
-agent it is told to trust.
+`governance_agent_url` (which hosted grading pins) or the governed-agent
+`*_agent_url` keys the multi-agent runner seeds from config, which would let
+the agent under test redirect the agent it is told to trust.

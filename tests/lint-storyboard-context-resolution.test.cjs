@@ -13,8 +13,9 @@
  *      carries exactly the defects frozen into its immutable artifact, and
  *      nothing else.
  *   4. The #7797 regression itself: 3.0.26's governance storyboards leave
- *      `$context.governance_agent_url` in the `sync_governance` request and
- *      3.0.27+ (the #7801 backport) resolve it.
+ *      `$context.governance_agent_url` in the `sync_governance` request.
+ *      (3.2.x backport: the fixed 3.0.27+ bundles are registered on main, not
+ *      on this line, so only the broken side is pinned here.)
  *   5. Rule semantics — the lint fires when the root `context:` block is
  *      dropped, when the capture lands after the read, when a convention key
  *      is read before its producing task, when a pinned agent URL is captured
@@ -46,11 +47,6 @@ const {
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const COMPLIANCE_DIST = path.join(REPO_ROOT, 'dist', 'compliance');
-const PUBLISHED_MANIFEST = path.join(REPO_ROOT, 'static', 'compliance', 'published-versions.json');
-
-// First 3.0 bundle carrying the #7801 backport that seeds
-// `governance_agent_url` in the governance scenarios.
-const GOVERNANCE_CONTEXT_FIX_VERSION = '3.0.27';
 
 /**
  * Released bundles that carry an unresolved placeholder. `dist/**` release
@@ -70,7 +66,7 @@ const FROZEN_BUNDLE_DEFECTS = [
     // #7797: the governance scenarios read `$context.governance_agent_url`
     // without declaring it, so `sync_governance` — and the governance flow
     // behind it — can only ever skip with `prerequisite_failed`. #7801 shipped
-    // the fix as 3.0.27; the hosted 3.0 alias floor is held by
+    // the fix as 3.0.27; the hosted 3.0 alias floor is held on main by
     // server/tests/unit/hosted-compliance-3-0-27.test.ts.
     defect: 'context_placeholder_unresolved/sync_governance:governance_agent_url',
     versions: [
@@ -223,30 +219,30 @@ test('every waived (task, key) pair is still written by that task\'s SDK extract
   }
 });
 
-test('the pinned-key set is exactly what hosted grading seeds from server config', () => {
-  const routing = fs.readFileSync(
-    path.join(REPO_ROOT, 'server', 'src', 'compliance', 'hosted-multi-agent-routing.ts'),
+test('the pinned-key set is exactly what the runner seeds from config', () => {
+  // 3.2.x backport: hosted grading of governance-aware sellers (#7808, and its
+  // server/src/compliance/hosted-multi-agent-routing.ts) is 3.3-only, so this
+  // line has no server-side governance_agent_url seed to parse. The governed
+  // `*_agent_url` keys are seeded here by the multi-agent runner options;
+  // governance_agent_url stays root-`context:`-only because the hosted grader
+  // on main pins it for every 3.2 bundle it grades.
+  const runnerOptions = fs.readFileSync(
+    path.join(REPO_ROOT, 'server', 'src', 'compliance', 'storyboard-runner-options.ts'),
     'utf8',
   );
-  const governedBlock = routing.match(
-    /export const HOSTED_GOVERNED_AGENT_CONTEXT_KEYS = \[([^\]]*)\]/,
+  const governedBlock = runnerOptions.match(
+    /export const GOVERNED_AGENT_CONTEXT_KEYS = \[([^\]]*)\]/,
   );
-  assert.ok(governedBlock, 'could not find HOSTED_GOVERNED_AGENT_CONTEXT_KEYS in hosted-multi-agent-routing.ts');
+  assert.ok(governedBlock, 'could not find GOVERNED_AGENT_CONTEXT_KEYS in storyboard-runner-options.ts');
   const governedKeys = [...governedBlock[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-  assert.ok(governedKeys.length > 0, 'HOSTED_GOVERNED_AGENT_CONTEXT_KEYS parsed as empty');
-
-  assert.match(
-    routing,
-    /context\.governance_agent_url = pinnedGovernanceUrl/,
-    'hosted grading no longer seeds governance_agent_url; revisit RUNNER_PINNED_CONTEXT_KEYS',
-  );
+  assert.ok(governedKeys.length > 0, 'GOVERNED_AGENT_CONTEXT_KEYS parsed as empty');
 
   // Set equality in both directions: a new governed-agent key must join the
   // rule, and a key that stops being seeded must leave it.
   assert.deepEqual(
     [...RUNNER_PINNED_CONTEXT_KEYS].sort(),
     [...new Set([...governedKeys, 'governance_agent_url'])].sort(),
-    'RUNNER_PINNED_CONTEXT_KEYS has drifted from the keys hosted grading seeds',
+    'RUNNER_PINNED_CONTEXT_KEYS has drifted from the keys the runner seeds',
   );
 });
 
@@ -288,47 +284,11 @@ test('bundled compliance releases carry exactly the frozen defects and nothing e
   );
 });
 
-test('every published 3.0 bundle hosted grading can select from 3.0.27 on is clean', () => {
-  const manifest = JSON.parse(fs.readFileSync(PUBLISHED_MANIFEST, 'utf8'));
-  const patchOf = (version) => Number(version.split('.')[2]);
-  const fixedPatch = patchOf(GOVERNANCE_CONTEXT_FIX_VERSION);
-  const bundled = new Set(bundledComplianceVersions());
-
-  const publishedThreeZero = manifest.published_versions
-    .filter((version) => /^3\.0\.\d+$/.test(version))
-    .sort((a, b) => patchOf(a) - patchOf(b));
-  assert.ok(publishedThreeZero.length > 0, 'no 3.0 bundle is registered for hosted grading');
-
-  const selectable = publishedThreeZero.filter((version) => patchOf(version) >= fixedPatch);
-  assert.ok(
-    selectable.includes(GOVERNANCE_CONTEXT_FIX_VERSION),
-    `${GOVERNANCE_CONTEXT_FIX_VERSION} (the #7801 backport) must stay registered for hosted grading`,
-  );
-
-  for (const version of selectable) {
-    assert.ok(bundled.has(version), `published 3.0 bundle ${version} is missing from dist/compliance`);
-    const { violations } = lintBundle(version);
-    assert.deepEqual(
-      violations,
-      [],
-      `published 3.0 bundle ${version} has unresolved $context placeholders:\n` +
-        violations.map(formatViolation).join('\n'),
-    );
-  }
-
-  // The alias the hosted 3.0 line resolves to is the newest published bundle.
-  const alias = publishedThreeZero[publishedThreeZero.length - 1];
-  assert.ok(
-    patchOf(alias) >= fixedPatch,
-    `the hosted 3.0 alias resolves to ${alias}, which predates the #7801 governance-context fix`,
-  );
-});
-
 // ---------------------------------------------------------------------------
-// 4. The #7797 regression, pinned to the bundles that bracket the fix
+// 4. The #7797 regression, pinned to the last broken bundle on this line
 // ---------------------------------------------------------------------------
 
-test('3.0.26 leaves $context.governance_agent_url in sync_governance and 3.0.27 resolves it', () => {
+test('3.0.26 leaves $context.governance_agent_url in sync_governance', () => {
   const before = lintBundle('3.0.26').violations.filter((v) => v.task === 'sync_governance');
   assert.ok(
     before.length > 0,
@@ -351,11 +311,8 @@ test('3.0.26 leaves $context.governance_agent_url in sync_governance and 3.0.27 
     assert.ok(storyboards.has(id), `3.0.26 should reproduce #7797 for ${id}`);
   }
 
-  assert.deepEqual(
-    lintBundle(GOVERNANCE_CONTEXT_FIX_VERSION).violations,
-    [],
-    `${GOVERNANCE_CONTEXT_FIX_VERSION} must resolve every governance context placeholder`,
-  );
+  // 3.2.x backport: the fixed 3.0.27 bundle is not on this line (main pins
+  // that side); the seeded-key fixture below covers the resolving direction.
 });
 
 // ---------------------------------------------------------------------------
