@@ -252,7 +252,10 @@ test('report and polling responses separate stored snapshots from task errors', 
     rejects(validate, { outcome, issue, errors: [{ code: 'INVALID_REQUEST', message: 'Invalid' }] });
     rejects(validate, { outcome: 'failed', errors: [] });
     rejects(validate, { outcome, issue, acknowledged_at: '2027-01-11T20:10:00Z' });
-    if (name.startsWith('report')) accepts(validate, { outcome, issue, replayed: true });
+    accepts(validate, { outcome, issue, replayed: true });
+    accepts(validate, { outcome, issue, replayed: false });
+    accepts(validate, { outcome: 'failed', errors: [{ code: 'INVALID_REQUEST', message: 'Invalid' }], replayed: true });
+    rejects(validate, { outcome, issue, replayed: 'true' });
   }
 });
 

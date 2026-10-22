@@ -23,9 +23,7 @@
           "$ref": "/schemas/core/ext.json"
         },
         "replayed": {
-          "type": "boolean",
-          "const": true,
-          "description": "MCP mirror of protocol-envelope metadata injected at replay time. Never part of the stored issue or canonical cached payload; the original receipt remains unchanged."
+          "$ref": "/schemas/core/protocol-envelope.json#/properties/replayed"
         }
       },
       "required": [
@@ -53,6 +51,9 @@
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
+        },
+        "replayed": {
+          "$ref": "/schemas/core/protocol-envelope.json#/properties/replayed"
         }
       },
       "required": [
