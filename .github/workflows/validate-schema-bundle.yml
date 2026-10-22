@@ -233,11 +233,10 @@ jobs:
                   "sdk/pyproject.toml": [
                       (f'"_schemas/{old_key}/**/*.json"', f'"_schemas/{new_key}/**/*.json"'),
                   ],
+                  # The sdist packages tracked caches; build_py mirrors them
+                  # into _schemas for wheels. Generated source copies are
+                  # deliberately pruned from MANIFEST.in.
                   "sdk/MANIFEST.in": [
-                      (
-                          f"recursive-include src/adcp/_schemas/{old_key} *.json",
-                          f"recursive-include src/adcp/_schemas/{new_key} *.json",
-                      ),
                       (
                           f"recursive-include schemas/cache/{old_key} *.json",
                           f"recursive-include schemas/cache/{new_key} *.json",

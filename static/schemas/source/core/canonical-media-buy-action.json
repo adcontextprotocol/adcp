@@ -17,7 +17,7 @@
       "required": ["task"],
       "properties": {
         "task": { "type": "string", "const": "report_media_buy_issue" },
-        "action": { "type": "string", "const": "report_media_buy_issue" },
+        "action": { "type": "string", "enum": ["report_media_buy_issue"] },
         "mode": { "type": "string", "const": "seller_managed" },
         "sla": { "$ref": "/schemas/core/escalation-sla.json" }
       }

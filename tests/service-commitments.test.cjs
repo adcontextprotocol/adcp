@@ -151,7 +151,8 @@ test('report actions resolve through product and buy projections with elapsed cr
 test('report requests require replay identity, authorized resource context, severity, category, and description', async () => {
   const validate = await compile('media-buy/report-media-buy-issue-request.json');
   accepts(validate, report);
-  accepts(validate, { ...report, adcp_version: '3.3', context_id: 'compatibility-only', governance_context: 'signed-delegation' });
+  accepts(validate, { ...report, adcp_version: '3.3', governance_context: 'signed-delegation' });
+  rejects(validate, { ...report, context_id: 'not-request-authority' });
   rejects(validate, { ...report, adcp_version: '3.3.0' });
   accepts(validate, { ...report, severity: 'warning', package_id: 'package_video', creative_id: 'creative_123' });
   for (const field of ['idempotency_key', 'account', 'media_buy_id', 'severity', 'category', 'description']) {
@@ -191,6 +192,7 @@ test('polling a report requires account, media buy, and issue identities', async
   const validate = await compile('media-buy/get-media-buy-issue-request.json');
   const value = { account: report.account, media_buy_id: issue.media_buy_id, issue_id: issue.issue_id };
   accepts(validate, value);
+  rejects(validate, { ...value, context_id: 'not-request-authority' });
   for (const field of Object.keys(value)) {
     const missing = { ...value };
     delete missing[field];

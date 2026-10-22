@@ -36,11 +36,6 @@
       "minLength": 1,
       "x-entity": "media_buy_issue"
     },
-    "context_id": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Compatibility-only field, ignored by servers. It does not select identity, account, authorization, session state, or idempotency scope."
-    },
     "governance_context": {
       "type": "string",
       "minLength": 1,
