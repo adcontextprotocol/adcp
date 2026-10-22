@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "banner": {
-    "content": "AdCP 3.2 is generally available: platform power, Reliable Reporting, clean rooms, a compact lifecycle, and trust you can check — [see what's new →](/3.2)",
+    "content": "AdCP 3.3 beta is open: scheduled, human-gated, and offline media in the same buy as programmatic — [see what's new →](/3.3)",
     "dismissible": true
   },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms. Current stable documentation index: https://docs.adcontextprotocol.org/llms-current.md.",
@@ -806,10 +806,12 @@
                     "pages": [
                       "dist/docs/3.3.0-beta.0/reference/whats-new-in-3-3",
                       "dist/docs/3.3.0-beta.0/reference/3-3-beta",
-                      "dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3"
+                      "dist/docs/3.3.0-beta.0/reference/migration/3-2-to-3-3",
+                      "dist/docs/3.3.0-beta.0/reference/migration/agent-identity-3-3"
                     ]
                   },
                   "dist/docs/3.3.0-beta.0/reference/migration/v3-readiness",
+                  "dist/docs/3.3.0-beta.0/reference/migration/v4-compatibility",
                   "dist/docs/3.3.0-beta.0/reference/migration/index",
                   "dist/docs/3.3.0-beta.0/reference/migration/3-0-to-3-1",
                   "dist/docs/3.3.0-beta.0/reference/migration/3-1-to-3-2",
@@ -898,7 +900,10 @@
                       "dist/docs/3.3.0-beta.0/building/by-layer/L1/index",
                       "dist/docs/3.3.0-beta.0/building/by-layer/L1/security",
                       "dist/docs/3.3.0-beta.0/building/by-layer/L1/request-signing",
-                      "dist/docs/3.3.0-beta.0/building/by-layer/L1/webhook-verifier-tuning"
+                      "dist/docs/3.3.0-beta.0/building/by-layer/L1/wba-profile",
+                      "dist/docs/3.3.0-beta.0/reference/trust-json",
+                      "dist/docs/3.3.0-beta.0/building/by-layer/L1/webhook-verifier-tuning",
+                      "dist/docs/3.3.0-beta.0/building/by-layer/L1/production-security-profile"
                     ]
                   },
                   {
@@ -965,6 +970,7 @@
                   "dist/docs/3.3.0-beta.0/accounts/overview",
                   "dist/docs/3.3.0-beta.0/accounts/principal-registration-walkthrough",
                   "dist/docs/3.3.0-beta.0/accounts/provisioning-walkthrough",
+                  "dist/docs/3.3.0-beta.0/accounts/buyer-agent-self-onboarding",
                   "dist/docs/3.3.0-beta.0/accounts/tasks/sync_accounts",
                   "dist/docs/3.3.0-beta.0/accounts/tasks/list_accounts",
                   "dist/docs/3.3.0-beta.0/accounts/tasks/report_usage",
@@ -994,6 +1000,7 @@
                       "dist/docs/3.3.0-beta.0/media-buy/product-discovery/media-products",
                       "dist/docs/3.3.0-beta.0/media-buy/product-discovery/collections-and-installments",
                       "dist/docs/3.3.0-beta.0/media-buy/product-discovery/proposal-negotiation",
+                      "dist/docs/3.3.0-beta.0/media-buy/product-discovery/delegated-composition",
                       "dist/docs/3.3.0-beta.0/media-buy/media-buys/index",
                       "dist/docs/3.3.0-beta.0/media-buy/media-buys/lifecycle",
                       "dist/docs/3.3.0-beta.0/media-buy/media-buys/indicators",
@@ -1032,7 +1039,9 @@
                       "dist/docs/3.3.0-beta.0/media-buy/specification",
                       "dist/docs/3.3.0-beta.0/media-buy/task-reference/index",
                       "dist/docs/3.3.0-beta.0/media-buy/task-reference/list_products",
+                      "dist/docs/3.3.0-beta.0/media-buy/task-reference/list_collections",
                       "dist/docs/3.3.0-beta.0/media-buy/task-reference/request_proposals",
+                      "dist/docs/3.3.0-beta.0/media-buy/task-reference/list_proposals",
                       "dist/docs/3.3.0-beta.0/media-buy/task-reference/refine_proposals",
                       "dist/docs/3.3.0-beta.0/media-buy/task-reference/decline_proposals",
                       "dist/docs/3.3.0-beta.0/media-buy/task-reference/buy_products",
