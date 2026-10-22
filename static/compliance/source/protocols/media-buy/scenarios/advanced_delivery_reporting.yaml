@@ -46,7 +46,9 @@ prerequisites:
   description: The controller establishes one isolated sandbox account before fully paginated catalog
     discovery. Each scope binds its own native reporting product and fixed CPM option; no product or
     price is seeded. The controller only injects impression/click totals after buy creation.
-    Minimum-spend and standalone binding qualification remain explicit draft merge holds.
+    Callers prepare this exact graph once and derive catalog_reporting_budget from the selected
+    price snapshot (at least the buyer test budget of 1000 and any declared minimum). The repository
+    catalog reporting runner performs that preparation for full and individual-step runs.
   test_kit: test-kits/acme-outdoor.yaml
   controller_seeding: true
 fixtures:
@@ -86,12 +88,13 @@ phases:
             operator_unit:
               id: compliance-media_buy_seller_advanced_delivery_r-a37f01cb
             sandbox: true
+          currency: $context.__adcp_fixture_reporting_currency
           start_time: asap
           end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: catalog_format_reporting
               pricing_option_id: catalog_fixed_cpm
-              budget: 1000
+              budget: $context.catalog_reporting_budget
           idempotency_key: $generate:uuid_v4#advanced_delivery_reporting_create_buy
         context_outputs:
           - name: advanced_media_buy_id
@@ -237,7 +240,14 @@ fixture_resolution:
       strategies:
         - discover
       match: *a1
+      context_outputs:
+        - key: __adcp_fixture_reporting_price
+          snapshot: selected_entity
+        - key: __adcp_fixture_reporting_currency
+          path: currency
 context:
+  # Buyer baseline; repository callers raise this from the SAME selected price snapshot.
+  catalog_reporting_budget: 1000
   brand: *a2
   account:
     brand: *a2

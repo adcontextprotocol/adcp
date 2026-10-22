@@ -14,7 +14,7 @@
  */
 
 import { AgentClient } from '@adcp/sdk';
-import { runStoryboard } from '@adcp/sdk/testing';
+import { runCatalogReportingStoryboard as runStoryboard } from '../compliance/catalog-reporting-runner.js';
 import type { StoryboardResult, StoryboardRunOptions } from '@adcp/sdk/testing';
 import { conformanceSessions } from './session-store.js';
 import { getStoryboard, getTestKitForStoryboard } from '../services/storyboards.js';

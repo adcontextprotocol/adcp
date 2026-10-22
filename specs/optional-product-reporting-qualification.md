@@ -1,123 +1,123 @@
 # Catalog delivery reporting qualification for #8254
 
-Status: **held implementation draft**, not a completed fix. The source patch and
-its patch changeset must not merge while the qualification failures below remain.
-[#8254](https://github.com/adcontextprotocol/adcp/issues/8254) stays open. Brian's
-2026-10-19 chat approved the catalog direction and separately authorized the
-future-minor declarations track; it did not supply eligible GitHub approval,
-WG ratification, a path-gate exception, or release authorization.
+This patch separates format breakdown (`advanced_delivery_reporting`) and
+`time_based_views` (`time_based_delivery_reporting`) into independent catalog
+scopes. It is a partial correction for [#8254](https://github.com/adcontextprotocol/adcp/issues/8254),
+which remains open for collection paths. No declaration fields or controller
+refusal semantics are introduced.
 
-## Concrete partial implementation
+## Applicability and commercial identity
 
-- `media_buy_seller/advanced_delivery_reporting` now covers format breakdown.
-- `media_buy_seller/time_based_delivery_reporting` independently covers the
-  `time_based_views` metric. Absence of either companion cannot suppress the other.
-- Both prepare one sandbox account, fully paginate validated wholesale discovery,
-  and use discover-only product and scoped fixed-CPM pricing resolution. Parent
-  eligibility includes usable pricing, so an earlier auction-only product cannot
-  conceal a later usable product. No product or pricing fixture is seeded.
-- A completed scan without a qualifying product is a `fixture_unsatisfied` coverage
-  gap projected `not_applicable`, never a pass or proof of nonsupport. Seeded-only,
-  brief-only, non-CPM, auction-only and non-guaranteed-incompatible catalog paths
-  remain coverage limitations. Controller/wholesale/tool gates do not prove an
-  optional reporting feature.
-- Create/report calls retain a sandbox account snapshot independent of mutable
-  controller response extraction. The public caller must configure the matching
-  existing `options.brand`; absent configuration is a preserved qualification
-  failure, not evidence against the seller.
-- Format assertions retain schema, requested buy/package identities, exact
-  cardinalities, metric narrowing, a possibly empty format array, required
-  truncation and applied-sort metadata, and the requested limit. No particular
-  format kind, nonempty observations, true truncation, time threshold or basis is
-  manufactured. The bounded one-row request checks applied sort metadata; it does
-  not establish multi-row sorting or correct selection from an unobserved larger
-  population. Broader sort coverage must preserve the actual protocol semantics.
-- Baseline narrowing remains independently graded by
-  `metric_container_subsumption`; that source and its accounting/floors are unchanged.
+Both scopes fully paginate schema-valid wholesale discovery and resolve a
+seller-owned sandbox product with a scoped fixed-CPM price. An earlier unusable
+product cannot hide a qualifying later product. A completed no-match is an
+explicit `fixture_unsatisfied` coverage gap projected `not_applicable`; discovery,
+schema, protocol and pagination errors retain failed evidence. Neither seeding
+nor the wholesale/controller/tool gates establish native optional support.
 
-## Merge-blocking qualification evidence
+Repository full and standalone callers use `prepareStoryboardFixtures` once,
+capture the SAME selected price with `snapshot: selected_entity`, and reuse its
+protected bindings through `withPreparedFixtures`. The caller derives its buyer
+budget as `max(1000, declared minimum when present)`, and takes currency from the
+same selected price. The immutable snapshot preserves absent, explicit zero and
+5000 minima distinctly. No fixed price is misrepresented as an auction bid.
+The adapter excludes the unrelated legacy first-product cache from these two
+scopes to prevent the SDK's generic auction-bid heuristic from using another
+product. Root `catalog_reporting_budget: 1000` is explicit buyer intent, not a
+seller minimum; external callers must perform the same preparation/derivation.
 
-| Hold | Executable observation / required resolution |
+The adapter scopes preparation to one seller and one authenticated invocation,
+uses trusted authored sandbox identity, and rejects caller attempts to disable
+sandbox scope or substitute supplied prepared state. Reserved caller maps are
+rejected by the SDK before capability discovery. Every consumer lookup still
+uses the SDK authorizer, with an optional host hook remaining authoritative.
+Request-local state is never serialized or reused across unrelated callers.
+Typed authorization denials remain denials, never seller conformance failures;
+when configured, only the caller's private audit sink receives linked producer
+fixture records alongside the unchanged consumer result/evidence/accounting.
+
+## Resolution of the former holds
+
+| Former hold | Current disposition |
 | --- | --- |
-| Selected commercial context | A native fixed-CPM product declares `min_spend_per_package: 5000`; the authored budget 1000 is correctly rejected. Current identity bindings expose no selected commercial snapshot. Derive a valid budget from that same selected pricing option; do not skip the failure or choose arbitrary illustrative amounts. |
-| Conditional time accountability | A package explicitly commits `time_based_views`, the commitment predates the report period end, and its declared final measurement window is mature. Dropping both the values and `missing_metrics` currently passes the draft. Reconcile the actual product window, create commitment and report condition; unavailable/unmatured/uncommitted metrics must retain their legal omission behavior. |
-| Public caller brand | SDK 15.9.5's request enrichment substitutes `test.example` unless public `options.brand` or `brand_manifest` is set. A seller may correctly reject this mismatch with the qualified sandbox account. Configured public tests pass; unconfigured callers preserve raw failure. Targeted hosted full/standalone callers can use existing `options.brand`. Public `comply()` has one run-level brand, and `routeStoryboard` cannot set per-storyboard brand options: heterogeneous authored identities need separate orchestration/qualification. A declared test kit alone is not `options.brand`; seller responses and untrusted caller context must not choose the sandbox identity. |
-| Standalone bindings | Public `runStoryboardStep` does not prepare the fixture graph or restore its binding state. Hosted registry/Addie steps pass ordinary context; passing a product ID alone is not selected metadata/provenance. Full-run success does not qualify standalone. |
-| Discovery disposition | Transport/protocol/schema/pagination failure stays a raw failed SDK step and never becomes `fixture_unsatisfied`; SDK 15.9.5 labels the synthetic step `comply_test_controller`, so existing hosted policy projects `setup_gap`. Preserve both pieces of evidence and resolve any required accounting correction through its owner; this patch does not silently change disposition. |
+| Minimum 5000 rejected by budget 1000 | Full and standalone caller adapter derives a valid budget from the exact selected price snapshot. Absent/0/5000 and real currency covered publicly. |
+| Standalone has no fixture bindings | Both actual hosted standalone callers and training/full callers use explicit public preparation and authorized state reuse. Cross-invocation continuation remains a separate host requirement. |
+| Brand overwritten with `test.example` | Repository adapter supplies trusted authored brand; bare-SDK behavior is reproduced and tracked in [SDK #3381](https://github.com/adcontextprotocol/adcp-client/issues/3381). |
+| Discovery error projected `setup_gap` | Merged SDK emits discovery's actual task; unchanged hosted classifier now projects `failed`. Raw failures are retained. |
+| Mature committed metric and disclosure both disappear | General eligibility cannot be faithfully derived by existing closed assertions/controller guarantees. Concrete protocol follow-up [#8412](https://github.com/adcontextprotocol/adcp/issues/8412); disclosed coverage gap, not claimed qualification. |
+| One-row format sort | Checks applied sort metadata and limits; does not establish hidden population or multi-row ordering. Disclosed scope. |
 
-The collection prerequisite proposal in #8259 separately specifies a bounded
-matcher, same-selection snapshots/witnesses, namespace-aware set equality and
-full/standalone state parity. None of those APIs is implemented here. New
-seller-wide declarations remain isolated future-minor work in
-[#8333](https://github.com/adcontextprotocol/adcp/pull/8333).
+The bounded reporting assertions retain required arrays/metadata, exact buy and
+package identity, requested-metric narrowing, accepted injected totals and legal
+seller-defined thresholds/bases. They do not demand a first threshold of 2,
+`play_time`, `video_hosted`, true truncation or nonempty unguaranteed observations.
+Missing companion fixtures do not suppress a supported scope. Baseline metric
+narrowing remains independently graded; no required-phase or step floor changes.
 
-## Reproduction and baseline delta
+## Integration limits
 
-```bash
-node --test --test-timeout=30000 tests/optional-product-reporting.test.cjs tests/optional-product-reporting-public.test.cjs
-```
+- Native discovery only: seeded-only/brief-only/auction-only offers and incompatible
+  delivery/pricing combinations remain explicit coverage gaps, never nonsupport.
+- `comply()` rejects prepared state and lacks per-storyboard prepared commercial
+  options ([SDK #3382](https://github.com/adcontextprotocol/adcp-client/issues/3382)).
+  The repository adapter does not establish heterogeneous bundle parity.
+- An Addie `context_ref` is ordinary encrypted JSON, not SDK preparation authority.
+  Each standalone invocation prepares afresh; a pinned multi-click graph needs a
+  host-owned live grant/state store. The adapter does not add such a service.
+- Socket Mode connected-client reuse with an explicit protocol version falls back
+  to its synthetic URL instead of the connected client
+  ([SDK #3383](https://github.com/adcontextprotocol/adcp-client/issues/3383));
+  HTTP caller qualification does not qualify that path.
+- Hosted history retains the raw SDK pass boolean and has no separate incomplete
+  fixture-coverage status ([#8416](https://github.com/adcontextprotocol/adcp/issues/8416)).
+  Addie displays incomplete/not-applicable gaps explicitly without changing stored
+  booleans, grading or floors.
+- Direct SDK users need matching `options.brand` and a derived budget. The YAML
+  alone cannot express arithmetic or nested snapshot request substitution.
+- Public probes use controlled synthetic seller credentials and local intercepted
+  MCP transport. They are not production writes or a seller-wide support claim.
 
-**48 tests pass** on the unchanged SDK 15.9.5 dependency. They execute the actual
-revised source and the actual hosted `classifyComplianceStep`, covering no-match,
-independent later-page support, advertised-but-broken paths, discovery/pagination
-failure, legal reporting variations, mandatory fields and metric narrowing.
-Four additional regressions preserve injected cumulative totals even when native
-`available_metrics` omits impressions, and fail discarded accepted injection.
-The controller already requires subsequent reads to reflect injected data; this
-does not establish native measurement support or grain observations.
-The public test file uses the real MCP transport through public
-`transport.trustedFetchFn`, including sandbox isolation and adversarial controller
-responses. Counterexample tests intentionally reproduce the held behavior:
-their success proves reproducibility, not merge readiness.
+## Evidence and release boundary
 
-A controlled comparison loaded the actual original storyboard at main
-`c2f01a50f2133b016fc73ca74019c4c021f2256e` and the revised source through public
-`loadStoryboardFile` and `runStoryboard`, using the same native catalog and
-hosted classifier. Historical product/pricing seeds were accepted without
-inventing native support; new sandbox/no-bid test oracles were not retroactively
-applied to old source. Counts below are raw passed/failed/skipped SDK steps;
-synthetic preparation passes are not seller conformance passes.
+Development uses an isolated pack of merged SDK foundation commit
+`37d308768b01b99f4650800d5af7cfc051b40e9e`. Its source package version 16.2.0
+must not be confused with npm 16.2.0 at pre-foundation `7d2822f0`. Final dependency
+qualification awaits the actual published foundation version; local results do
+not establish that npm release identity.
 
-| Native catalog | Original combined scope | Draft format | Draft time |
-| --- | --- | --- | --- |
-| Neither feature | 3 / 1 / 3 | 1 / 0 / 1, coverage gap | 1 / 0 / 1, coverage gap |
-| Format only | 3 / 1 / 3 | 6 / 0 / 0 | 1 / 0 / 1, coverage gap |
-| Time only | 3 / 1 / 3 | 1 / 0 / 1, coverage gap | 6 / 0 / 0 |
-| Both; legal three-second in-view, image rows, no truncation | 6 / 1 / 0 | 6 / 0 / 0 | 6 / 0 / 0 |
+Executable regressions run the ACTUAL revised YAMLs, production caller adapter,
+public SDK MCP transport and hosted classifier. They cover no support,
+independently supported paths, later catalog pages, advertised-but-broken fields,
+metric narrowing, legal reporting variations, minimum absent/0/5000, sandbox
+identity, refusal before seller contact and wholesale/controller gates. Raw
+counterexamples for the disclosed maturity and bare-SDK branding gaps remain
+explicit observations, not repaired-behavior passes.
 
-For each successfully exercised draft scope, hosted disposition is five passed
-steps and one not-applicable preparation step. Each no-match scope yields one
-not-applicable row and an explicit coverage gap. The original combined discovery
-failure projects one failed and three dependency-failed rows (plus one passed
-and two preparation not-applicable); with both features its old hardcoded
-threshold/basis/truncation/format-kind assertions reject otherwise legal data.
-These controlled deltas do not claim a green training-agent matrix, qualification
-for every commercial offer, or 3.2.x compatibility. No required-phase, step or
-clean-storyboard floors have changed.
+Current merged-foundation public catalog comparison (actual source and adapter):
 
-Independent protocol/product/code/security reviews support this draft for human
-review only; agent notes do not satisfy eligible GitHub or path approvals.
-Authoritative exact-head CI and all qualification holds must be satisfied before
-ordinary merge. Draft CI may skip the authoritative storyboard matrix; a skipped
-matrix must never be described as green execution.
+| Native catalog | Format scope passed/failed/skipped | Time scope passed/failed/skipped |
+| --- | --- | --- |
+| Neither feature | 0/0/0 + explicit coverage gap | 0/0/0 + explicit coverage gap |
+| Format only | 3/0/0 | 0/0/0 + explicit coverage gap |
+| Time only | 0/0/0 + explicit coverage gap | 3/0/0 |
+| Both | 3/0/0 | 3/0/0 |
 
-## Release and maintenance boundary
+The real training per-ID entry runs likewise find no qualifying native fixture,
+print each `fixture_unsatisfied` detail and execute zero reporting rows. The CLI's
+existing clean count means no failed rows, not support qualification. Preparation
+runs separately and contributes no synthetic seller pass here. Addie reports
+these gaps as incomplete/not applicable. No floor or raw-result accounting changed.
 
-Main first; only after a qualified main merge prepare a separate reviewed 3.2.x
-backport against its actual pinned SDK and schemas. At the audited maintenance
-head the dependency is **14.0.0-rc.53**, distinct from main's 15.9.5. The 48/19
-main-pin probes are not maintenance qualification and no pin may be upgraded
-to make a backport pass. No SDK/dependency/lockfile
-upgrade, declaration field, controller refusal contract, production write,
-publication or immutable artifact modification is part of this draft.
+Historical SDK15.9.5 and candidate4f3a098 evidence remains separately preserved.
+Its counts do not qualify the merged foundation. Historical original-vs-split
+comparison at `c2f01a50` observed raw passed/failed/skipped counts of 3/1/3 for
+nonsupporting original combined scope versus 1/0/1 per new coverage-gap scope;
+legal both-feature data gave original 6/1/0 versus split 6/0/0 each. These are
+bounded historical comparisons, not new exact-head CI or synthetic seller passes.
 
-Read-only audit on 2026-10-19: 3.2.x was
-`71d877e69cf112128053cb38441e4a46f2f0fa40`; open draft Version Packages
-[#8274](https://github.com/adcontextprotocol/adcp/pull/8274) targeted 3.2.x at
-`e4c6b30c4f6ed16589efc61d29becbe825a5c1fb`, preparing 3.2.6. A source/patch-changeset
-merge is release-relevant under `.github/workflows/release.yml`; its Changesets
-step runs `npm run version` and refreshes `changeset-release/3.2.x` as a draft,
-including generated candidate compliance/schema/protocol artifacts. That concrete
-side effect needs the user's separate maintenance merge disposition. The earlier
-#8302-only draft-refresh authorization does not extend to #8254. No maintenance
-merge or Version Packages mutation has been performed.
+Main first. A separately reviewed 3.2.x backport requires faithful qualification
+against its actual pinned SDK and schema; main evidence is not transferable.
+A maintenance source merge may refresh draft Version Packages #8274 through
+Changesets. That effect remains separately held; #8302-only permission does not
+extend here. No release, publication, Version Packages mutation, immutable
+artifact change or maintenance merge is part of this PR.

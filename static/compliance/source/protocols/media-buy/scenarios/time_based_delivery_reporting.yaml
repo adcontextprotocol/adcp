@@ -27,7 +27,9 @@ narrative: >-
   Time-based views may use any seller-defined threshold and either permitted basis. Simulating
   impressions and clicks does not establish observed time views; an unavailable metric may be
   omitted with the applicable reporting-contract disclosures. The response schema grades entries
-  that are returned.
+  that are returned. General committed-metric maturity and measurability reconciliation is
+  outside this scope until the verifiable measurement contract tracked in AdCP issue 8412 exists;
+  absence of both values and disclosure is not thereby established as conformant.
 
 
   Baseline requested-metric narrowing remains independently graded by metric_container_subsumption.
@@ -46,7 +48,9 @@ prerequisites:
   description: The controller establishes one isolated sandbox account before fully paginated catalog
     discovery. Each scope binds its own native reporting product and fixed CPM option; no product or
     price is seeded. The controller only injects impression/click totals after buy creation.
-    Minimum-spend and standalone binding qualification remain explicit draft merge holds.
+    Callers prepare this exact graph once and derive catalog_reporting_budget from the selected
+    price snapshot (at least the buyer test budget of 1000 and any declared minimum). The repository
+    catalog reporting runner performs that preparation for full and individual-step runs.
   test_kit: test-kits/acme-outdoor.yaml
   controller_seeding: true
 fixtures:
@@ -86,12 +90,13 @@ phases:
             operator_unit:
               id: compliance-media_buy_seller_time_based_delivery-df8300c2
             sandbox: true
+          currency: $context.__adcp_fixture_reporting_currency
           start_time: asap
           end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: catalog_time_reporting
               pricing_option_id: catalog_fixed_cpm
-              budget: 1000
+              budget: $context.catalog_reporting_budget
           idempotency_key: $generate:uuid_v4#time_based_delivery_reporting_create_buy
         context_outputs:
           - name: advanced_media_buy_id
@@ -208,7 +213,14 @@ fixture_resolution:
       strategies:
         - discover
       match: *a1
+      context_outputs:
+        - key: __adcp_fixture_reporting_price
+          snapshot: selected_entity
+        - key: __adcp_fixture_reporting_currency
+          path: currency
 context:
+  # Buyer baseline; repository callers raise this from the SAME selected price snapshot.
+  catalog_reporting_budget: 1000
   brand: *a2
   account:
     brand: *a2

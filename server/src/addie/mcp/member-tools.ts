@@ -14,6 +14,7 @@ import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../admin-st
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
+import { runCatalogReportingStoryboard as runStoryboard, runCatalogReportingStoryboardStep as runStoryboardStep } from '../../compliance/catalog-reporting-runner.js';
 import { createLogger } from '../../logger.js';
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
@@ -75,8 +76,6 @@ import {
   listAllComplianceStoryboards,
   getComplianceStoryboardById,
   resolveStoryboardsForCapabilities,
-  runStoryboard,
-  runStoryboardStep,
   createTestClient,
   testCapabilityDiscovery,
   type AgentProfile,
@@ -5891,8 +5890,19 @@ export function createMemberToolHandlers(
       output += `## ${result.storyboard_title}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
       output += `**Compliance target:** ${formatComplianceTarget(runTarget)}\n`;
-      output += `**Result:** ${result.overall_passed ? 'PASSED' : 'FAILED'} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped, ${result.validations_advisory_failed ?? 0} advisory validation(s) failed\n`;
+      const coverageGaps = result.coverage_gaps ?? [];
+      const resultLabel = !result.overall_passed || result.failed_count > 0 ? 'FAILED'
+        : coverageGaps.length > 0 ? 'INCOMPLETE — coverage gap' : 'PASSED';
+      output += `**Result:** ${resultLabel} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped, ${result.validations_advisory_failed ?? 0} advisory validation(s) failed\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
+      for (const gap of coverageGaps) {
+        const label = gap.reason === 'fixture_unsatisfied' ? 'Not applicable for this run' : 'Coverage gap';
+        output += `**${label}:** ${renderStoryboardDiagnostic(gap.reason, 160)} — ${renderStoryboardDiagnostic(gap.detail, RUNNER_ERROR_MAX_LEN)}\n`;
+        if (gap.reason === 'fixture_unsatisfied') {
+          output += 'No qualifying sandbox fixture was found; this feature support was not tested.\n';
+        }
+      }
+      if (coverageGaps.length > 0) output += '\n';
 
       let anyFixPlans = false;
       for (const phase of result.phases) {

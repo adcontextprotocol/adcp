@@ -24,11 +24,11 @@ import {
   listAllComplianceStoryboards,
   loadComplianceIndex,
   resolveStoryboardsForCapabilities,
-  runStoryboard,
   testCapabilityDiscovery,
   getComplianceCacheDir,
   withExternalSchemaRoot,
 } from '@adcp/sdk/testing';
+import { runCatalogReportingStoryboard as runStoryboard } from '../../src/compliance/catalog-reporting-runner.js';
 import type { AgentProfile, StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/sdk/testing';
 import {
   StaticJwksResolver,
@@ -1104,6 +1104,10 @@ async function main() {
             ...(brand && { brand }),
             ...(testKit && { test_kit: testKit }),
           }));
+          for (const gap of result.coverage_gaps ?? []) {
+            // Keep unexercised native support visible without changing floor counts.
+            console.log(`    [coverage gap] ${storyboard.id}: ${gap.reason}: ${gap.detail}`);
+          }
           applyStepSkipList(storyboard.id, result);
           const summary = { ...summarize(storyboard, result), id: variantLabel };
           results.push(summary);
@@ -1159,6 +1163,11 @@ async function main() {
             context: routing.context,
           }),
         }));
+        for (const gap of result.coverage_gaps ?? []) {
+          // Keep unexercised native support visible even when prepared-state
+          // reuse produces no authored step rows. Do not change floor counts.
+          console.log(`    [coverage gap] ${storyboard.id}: ${gap.reason}: ${gap.detail}`);
+        }
         applyStepSkipList(storyboard.id, result);
         const summary = summarize(storyboard, result);
         results.push(summary);
