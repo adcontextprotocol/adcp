@@ -96,6 +96,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_measurement_terms_a-8dd74fb2"
+            sandbox: true
         context_outputs:
           - path: "products[0].product_id"
             key: "product_id"
@@ -144,6 +145,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-media_buy_seller_measurement_terms_a-8dd74fb2"
+            sandbox: true
           idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_accepted_accept_terms_create_media_buy_supported_terms"
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"

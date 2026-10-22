@@ -151,6 +151,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_canonical_supported_formats-5b23e65e"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           quality: "draft"
@@ -209,6 +210,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-creative_canonical_supported_formats-5b23e65e"
+            sandbox: true
           brand:
             domain: "acmeoutdoor.example"
           quality: "draft"
