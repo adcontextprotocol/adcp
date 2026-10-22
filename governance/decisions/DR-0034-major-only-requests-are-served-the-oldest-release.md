@@ -23,7 +23,9 @@ Every 3.1+ SDK sends `adcp_version`, so in practice a major-only request comes f
 
 - **Changes a default.** Today's text (`specs/version-negotiation.md` §4, `docs/reference/versioning.mdx` "Omitted" and the major-only example) says a major-only request is served the highest supported release. This record classes the change as Breaking, so it needs WG or Board ratification.
 - **Open concern.** The versioning docs explicitly allow in-house clients to stay on `adcp_major_version` through all of 3.x. Such a client written against 3.2 would now be served 3.0 and lose newer fields until it sends `adcp_version`. Ratification should decide whether that cost is acceptable. Possible mitigations: deprecation guidance, a grader warning, or keeping "highest" only for sellers that do not translate.
+- **3.x only.** `adcp_major_version` is deprecated and removed in 4.0 ([DR-0035]), so this rule ends with the 3.x line. In 4.x a request without `adcp_version` is served the server's default release.
 - The TypeScript server framework already serves the oldest release for major-only requests (`@adcp/sdk` `selectServedAdcpRelease`), so it is off-spec until this record or a contrary one is ratified.
 
 [DR-0024]: ./DR-0024-responses-conform-to-served-release.md
 [DR-0032]: ./DR-0032-sdks-translate-between-releases.md
+[DR-0035]: ./DR-0035-adcp-major-version-removed-in-4-0.md

@@ -1,6 +1,6 @@
 ---
 id: DR-0032
-title: SDKs translate between 3.x releases; mutations refuse lossy conversion; reduced account keys stay one-to-one
+title: SDKs translate between minor releases of a major; mutations refuse lossy conversion; reduced account keys stay one-to-one
 class: normative
 status: proposed
 date: 2026-10-22
@@ -10,7 +10,7 @@ dissent: none recorded
 
 ## Decision
 
-**Application code speaks one release.** An AdCP SDK lets an application build requests and read responses in the newest release the SDK supports. The SDK negotiates the highest release both sides support, per counterpart and per call, and converts between that release and the application's, one consecutive minor at a time (3.2 ↔ 3.1 ↔ 3.0, chained). This holds for client SDKs (convert requests down, responses up) and server frameworks (convert requests up, responses down, as [DR-0024] requires of responses).
+**Application code speaks one release.** An AdCP SDK lets an application build requests and read responses in the newest release the SDK supports. The SDK negotiates the highest release both sides support, per counterpart and per call, and converts between that release and the application's, one consecutive minor at a time within the major (3.2 ↔ 3.1 ↔ 3.0, chained; likewise 4.1 ↔ 4.0). This holds for client SDKs (convert requests down, responses up) and server frameworks (convert requests up, responses down, as [DR-0024] requires of responses).
 
 **Every loss is reported.** A conversion that removes or rewrites a field reports it where the application can see it, with the field's JSON path and the two releases.
 

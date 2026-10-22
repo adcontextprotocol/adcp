@@ -78,8 +78,10 @@ Every desk enforces these regardless of surface:
   policy-wide decision, never a per-variant edit ([DR-0009]).
 - Graded conformance assertions require a normative basis — a spec MUST or a
   schema `required[]` field, never scenario prose ([DR-0001]).
-- Every 3.x change states its pathway to the previous minor release: droppable,
-  moves, refused, or identity-bearing ([DR-0033]). SDKs translate between
+- Minor releases are non-breaking and backward compatible: every change
+  targeting a minor states its pathway to the previous minor of the same major
+  (droppable, moves, refused, or identity-bearing), on 3.x now and on 4.x from
+  4.1 ([DR-0033]). SDKs translate between
   releases and refuse lossy mutations rather than sending a different meaning
   ([DR-0032]).
 - When the schema-literal reading and shipping SDK behavior diverge on wire
