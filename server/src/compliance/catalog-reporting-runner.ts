@@ -126,29 +126,54 @@ async function withReportingPreparation<T>(
   // The low-level discovery helper does not establish the schemaRoot scope
   // that full/standalone runners establish themselves. Preserve the caller's
   // exact candidate schema artifact for this additional preflight as well.
-  const profile =
-    options.profile ??
-    (
-      await (options.schemaRoot && options.adcpVersion
+  const discovery = options.profile
+    ? undefined
+    : await (options.schemaRoot && options.adcpVersion
         ? withExternalSchemaRoot(
             options.adcpVersion,
             options.schemaRoot,
             discover,
           )
-        : discover())
-    ).profile;
-  if (!profile)
+        : discover());
+  const profile = options.profile ?? discovery?.profile;
+  // Discovery returns partial profiles even on failure. Never reuse one to
+  // turn an outage/rejection into an optionality gate. Preserve the ORIGINAL
+  // public probe as the cause, without inventing a graded SDK result or
+  // retrying the failed operation until it appears applicable.
+  const failedDiscovery =
+    discovery?.steps.filter(
+      (step, index) =>
+        !step.passed && (index === 0 || step.task === "get_adcp_capabilities"),
+    ) ?? [];
+  if (
+    !profile ||
+    failedDiscovery.length > 0 ||
+    profile.capabilities_probe_error ||
+    (profile.capabilities_schema_issues?.length ?? 0) > 0
+  ) {
     throw new Error(
-      "Capability discovery failed before catalog reporting preparation",
+      "Catalog reporting capability discovery failed before preparation",
+      { cause: discovery ?? { profile } },
     );
+  }
   options = { ...options, profile };
   const capabilities = profile.raw_capabilities as
     Record<string, unknown> | undefined;
   const mediaBuy = capabilities?.media_buy as
-    { buying_modes?: string[] } | undefined;
+    { buying_modes?: unknown } | undefined;
+  if (
+    mediaBuy?.buying_modes !== undefined &&
+    !Array.isArray(mediaBuy.buying_modes)
+  ) {
+    throw new Error(
+      "Catalog reporting capability discovery failed: buying_modes must be an array",
+      { cause: discovery ?? { profile } },
+    );
+  }
   const tools = new Set(profile.tools);
   if (
-    !mediaBuy?.buying_modes?.includes("wholesale") ||
+    !Array.isArray(mediaBuy?.buying_modes) ||
+    !mediaBuy.buying_modes.includes("wholesale") ||
     !tools.has("comply_test_controller") ||
     !storyboard.required_tools?.some((tool) => tools.has(tool))
   ) {

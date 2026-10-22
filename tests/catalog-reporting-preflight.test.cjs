@@ -34,6 +34,7 @@ function io({
   modes = ["brief", "wholesale"],
   controller = true,
   withProfile = true,
+  fault,
 } = {}) {
   const tools = controller
     ? ALL_TOOLS
@@ -84,6 +85,8 @@ function io({
       };
     else if (msg.method.startsWith("notifications/"))
       return new Response(null, { status: 202 });
+    else if (msg.method === "tools/list" && fault === "tools-transport")
+      return new Response("Deliberate tools transport outage", { status: 503 });
     else if (msg.method === "tools/list")
       result = {
         tools: tools.map((name) => ({
@@ -96,8 +99,43 @@ function io({
       const { name, arguments: request } = msg.params;
       calls.push({ name, request });
       let data;
-      if (name === "get_adcp_capabilities") data = caps;
-      else if (name === "comply_test_controller")
+      if (name === "get_adcp_capabilities") {
+        if (fault === "cap-transport")
+          return new Response("Deliberate capability transport outage", {
+            status: 503,
+          });
+        if (fault === "cap-protocol")
+          return new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: msg.id,
+              result: {
+                isError: true,
+                content: [
+                  {
+                    type: "text",
+                    text: "Deliberate capability protocol rejection",
+                  },
+                ],
+              },
+            }),
+            { headers: { "content-type": "application/json" } },
+          );
+        data =
+          fault === "version-unsupported"
+            ? {
+                status: "error",
+                errors: [
+                  {
+                    code: "VERSION_UNSUPPORTED",
+                    message: "Deliberate unsupported version",
+                  },
+                ],
+              }
+            : fault === "cap-schema"
+              ? { ...caps, media_buy: { buying_modes: 42 } }
+              : caps;
+      } else if (name === "comply_test_controller")
         data =
           request.scenario === "list_scenarios"
             ? { scenarios: ["seed_account", "simulate_delivery"] }
@@ -328,3 +366,94 @@ test("unbundled candidate preflight honors the caller schema root", async () => 
     fs.rmSync(schemaRoot, { recursive: true, force: true });
   }
 });
+
+for (const file of FILES)
+  for (const standalone of [false, true]) {
+    for (const fault of [
+      "tools-transport",
+      "cap-transport",
+      "cap-protocol",
+      "version-unsupported",
+      "cap-schema",
+    ]) {
+      test(`${file}: ${standalone ? "standalone" : "full"} ${fault} preflight stays an execution failure with original evidence`, async () => {
+        const probe = io({ withProfile: false, fault }),
+          doc = source(file);
+        await assert.rejects(
+          () =>
+            standalone
+              ? runAdaptedStep(ENDPOINT, doc, "create_buy", probe.options)
+              : runAdapted(ENDPOINT, doc, probe.options),
+          (error) => {
+            assert.match(
+              error.message,
+              /Catalog reporting capability discovery failed/,
+            );
+            assert.equal(
+              error.message,
+              "Catalog reporting capability discovery failed before preparation",
+            );
+            assert.equal(
+              Object.prototype.propertyIsEnumerable.call(error, "cause"),
+              false,
+            );
+            assert.equal(JSON.stringify(error).includes("Deliberate"), false);
+            assert.ok(
+              error.cause?.steps?.length,
+              "retain the ORIGINAL public probe result",
+            );
+            assert.ok(
+              error.cause.steps.some((step) => !step.passed) ||
+                error.cause.profile?.capabilities_schema_issues?.length,
+            );
+            return true;
+          },
+        );
+        noSetupOrCatalog(probe); // Never retry discovery into fixture applicability.
+      });
+    }
+    for (const metadata of [
+      "probe-error",
+      "schema-issues",
+      "malformed-modes",
+    ]) {
+      test(`${file}: ${standalone ? "standalone" : "full"} supplied ${metadata} profile cannot bypass discovery failure`, async () => {
+        const probe = io(),
+          doc = source(file);
+        const profile = probe.options.profile;
+        if (metadata === "probe-error")
+          profile.capabilities_probe_error =
+            "Deliberate prior discovery failure";
+        if (metadata === "schema-issues")
+          profile.capabilities_schema_issues = [
+            { message: "Deliberate prior schema failure" },
+          ];
+        if (metadata === "malformed-modes")
+          profile.raw_capabilities.media_buy.buying_modes = 42;
+        await assert.rejects(
+          () =>
+            standalone
+              ? runAdaptedStep(ENDPOINT, doc, "create_buy", probe.options)
+              : runAdapted(ENDPOINT, doc, probe.options),
+          (error) => {
+            assert.match(
+              error.message,
+              /Catalog reporting capability discovery failed/,
+            );
+            assert.equal(error.cause.profile, profile);
+            assert.equal(error.message.includes("Deliberate"), false);
+            assert.equal(
+              Object.prototype.propertyIsEnumerable.call(error, "cause"),
+              false,
+            );
+            return true;
+          },
+        );
+        assert.deepEqual(
+          probe.http,
+          [],
+          "failed supplied profile stops before every seller interaction",
+        );
+      });
+    }
+  }

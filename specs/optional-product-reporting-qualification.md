@@ -32,6 +32,11 @@ sandbox scope or substitute supplied prepared state. Reserved caller maps are
 rejected by the SDK before capability discovery. Every consumer lookup still
 uses the SDK authorizer, with an optional host hook remaining authoritative.
 Request-local state is never serialized or reused across unrelated callers.
+A failed initial/capability preflight aborts before setup with a stable public
+error and the ORIGINAL public SDK probe in non-enumerable `Error.cause`. It is
+not retried into applicability or converted into a manufactured seller grade.
+Existing caller error handling reports execution failure. Remote diagnostic
+text remains in the trusted private cause, not the caller/model message.
 Typed authorization denials remain denials, never seller conformance failures;
 when configured, only the caller's private audit sink receives linked producer
 fixture records alongside the unchanged consumer result/evidence/accounting.
