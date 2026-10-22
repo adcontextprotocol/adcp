@@ -3418,7 +3418,7 @@ function signingCompatibleReleaseVersions(ctx: TrainingContext): readonly string
   // required-digest legacy route) advertise 3.0/3.1 only.
   if (!signingCap.supported || requestSigningProfileVersion(ctx) === CURRENT_REQUEST_SIGNING_PROFILE_VERSION) {
     return ctx.developmentCoreGender
-      ? [...SUPPORTED_RELEASE_VERSIONS, CORE_GENDER_CANDIDATE_VERSION]
+      ? [...new Set([...SUPPORTED_RELEASE_VERSIONS, CORE_GENDER_CANDIDATE_VERSION])]
       : SUPPORTED_RELEASE_VERSIONS;
   }
   return SUPPORTED_RELEASE_VERSIONS.filter(version => {

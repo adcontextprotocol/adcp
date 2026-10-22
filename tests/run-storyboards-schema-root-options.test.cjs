@@ -83,7 +83,7 @@ test('candidate-bundle capability discovery registers the external schema root',
   );
 });
 
-test('candidate-version compatibility is explicit and resolver-scoped', () => {
+test('candidate-version negotiation is explicit and established before runtime imports', () => {
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
   assert.match(
     source,
@@ -94,10 +94,9 @@ test('candidate-version compatibility is explicit and resolver-scoped', () => {
     /candidateVersionMode[\s\S]*isCurrentSourceRun[\s\S]*releasedComplianceVersion[\s\S]*packageVersion !== releasedComplianceVersion/,
     'candidate mode must be limited to the generated current bundle matching package.json',
   );
-  assert.match(
-    source,
-    /resolveStoryboardsForCapabilities\([\s\S]*hostedStableLineAlias:\s*TRAINING_AGENT_CURRENT_ADCP_VERSION/,
-  );
+  assert.ok(source.indexOf('process.env.ADCP_TRAINING_CANDIDATE_VERSION =') < source.indexOf("await import('../../src/training-agent/types.js')"));
+  assert.doesNotMatch(source, /hostedStableLineAlias/,
+    'a candidate must negotiate its actual release instead of borrowing a stable release alias');
   assert.doesNotMatch(
     source,
     /supported_versions:\s*\[[^\]]*releasedComplianceVersion/,
@@ -116,12 +115,12 @@ test('3.0 compatibility wrapper overrides inherited candidate mode', () => {
 
 test('storyboard runs use public roots and pin the intended wire surface', () => {
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
-  assert.match(source, /import \{ TRAINING_AGENT_CURRENT_ADCP_VERSION \} from/);
+  assert.match(source, /const \{ TRAINING_AGENT_CURRENT_ADCP_VERSION \} = await import/);
   assert.match(source, /process\.env\.ADCP_COMPLIANCE_DIR[\s\S]*complianceDir:/);
   assert.match(source, /process\.env\.ADCP_SCHEMA_ROOT[\s\S]*schemaRoot:/);
   assert.doesNotMatch(source, /node_modules[\s\S]*@adcp[\s\S]*sdk/);
   assert.doesNotMatch(source, /schemas-data/);
-  assert.match(source, /const wireAdcpVersion = isThreeZeroCompatRun[\s\S]*\? '3\.0'[\s\S]*isCurrentSourceRun[\s\S]*\? TRAINING_AGENT_CURRENT_ADCP_VERSION[\s\S]*: undefined/);
+  assert.match(source, /const wireAdcpVersion = isThreeZeroCompatRun[\s\S]*\? '3\.0'[\s\S]*isCurrentSourceRun[\s\S]*\? TRAINING_AGENT_CANDIDATE_ADCP_VERSION \?\? TRAINING_AGENT_CURRENT_ADCP_VERSION[\s\S]*: undefined/);
   assert.equal(
     (source.match(/\.\.\.\(wireAdcpVersion && \{ wireAdcpVersion \}\)/g) ?? []).length,
     3,
