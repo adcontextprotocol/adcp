@@ -41,6 +41,22 @@ Typed authorization denials remain denials, never seller conformance failures;
 when configured, only the caller's private audit sink receives linked producer
 fixture records alongside the unchanged consumer result/evidence/accounting.
 
+Authorized execution results also retain missing `fixture_resolutions` from the
+SAME preparation. Failed records carry the original detail and self-contained
+producer phase under the existing optional `failure` field. Existing native
+records/failures, grades, phases, counters and consumer wire fields are preserved.
+On standalone results this is supplemental adapter metadata, not an SDK
+`StepResult` API claim. Typed denials never reach this attachment.
+
+The native failed-preparation output still has gaps ([SDK #3385](https://github.com/adcontextprotocol/adcp-client/issues/3385)):
+full execution returns a generic blank-task/empty-validation failure row; the
+producer phase misattributes discover-only failure to the controller and omits
+raw catalog response/schema records. Pagination failure also lacks request
+evidence. The adapter retains available original evidence without inventing
+missing wire or changing those native rows. This nonblocking upstream follow-up
+is not an evidence exemption. Remove the workaround once native full and
+standalone results retain equivalent truthful producer evidence.
+
 ## Resolution of the former holds
 
 | Former hold | Current disposition |
@@ -48,7 +64,7 @@ fixture records alongside the unchanged consumer result/evidence/accounting.
 | Minimum 5000 rejected by budget 1000 | Full and standalone caller adapter derives a valid budget from the exact selected price snapshot. Absent/0/5000 and real currency covered publicly. |
 | Standalone has no fixture bindings | Both actual hosted standalone callers and training/full callers use explicit public preparation and authorized state reuse. Cross-invocation continuation remains a separate host requirement. |
 | Brand overwritten with `test.example` | Repository adapter supplies trusted authored brand; bare-SDK behavior is reproduced and tracked in [SDK #3381](https://github.com/adcontextprotocol/adcp-client/issues/3381). |
-| Discovery error projected `setup_gap` | Merged SDK emits discovery's actual task; unchanged hosted classifier now projects `failed`. Raw failures are retained. |
+| Discovery error projected `setup_gap` | Prepared discovery failures now project `failed` under the unchanged classifier. The adapter links absent producer records; native attribution/raw-wire omissions remain [SDK #3385](https://github.com/adcontextprotocol/adcp-client/issues/3385). |
 | Mature committed metric and disclosure both disappear | General eligibility cannot be faithfully derived by existing closed assertions/controller guarantees. Concrete protocol follow-up [#8412](https://github.com/adcontextprotocol/adcp/issues/8412); disclosed coverage gap, not claimed qualification. |
 | One-row format sort | Checks applied sort metadata and limits; does not establish hidden population or multi-row ordering. Disclosed scope. |
 

@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { loadStoryboardFile } = require('@adcp/sdk/testing');
-const { runCatalogReportingStoryboard: runStoryboard } = require('../server/src/compliance/catalog-reporting-runner.ts');
+const { runCatalogReportingStoryboard: runStoryboard, runCatalogReportingStoryboardStep: runStoryboardStep } = require('../server/src/compliance/catalog-reporting-runner.ts');
 const { classifyComplianceStep } = require('../server/src/compliance/step-disposition.ts');
 
 const SOURCE = path.join(__dirname, '../static/compliance/source/protocols/media-buy/scenarios');
@@ -35,7 +35,7 @@ function product(id, features = [], { auction = false, minSpend } = {}) {
 async function execute(kind, {
   catalog = [product('seller-offer', [kind])], pages, broken, empty = false, missingTime = false,
   discoveryFailure, simulateFailure = false, adversarialAccount = false, matureTimeCommitment = false,
-  doc = load(kind), allowBaselineSeeds = false,
+  doc = load(kind), allowBaselineSeeds = false, standalone = false,
 } = {}) {
   const calls = [];
   let selected;
@@ -147,11 +147,14 @@ async function execute(kind, {
     } else assert.fail(`Unexpected method ${message.method}`);
     return new Response(JSON.stringify({ jsonrpc: '2.0', id: message.id, result }), { headers: { 'content-type': 'application/json' } });
   };
-  const result = await runStoryboard('https://seller.example/mcp', doc, {
+  const options = {
     adcpVersion: '3.2.5', profile: { tools: TOOLS, raw_capabilities: capabilities, supported_protocols: ['media_buy'] },
     transport: { trustedFetchFn },
-  });
-  const graded = result.phases.flatMap(phase => phase.steps.map(step => ({ ...step,
+  };
+  const result = standalone
+    ? await runStoryboardStep('https://seller.example/mcp', doc, 'create_buy', options)
+    : await runStoryboard('https://seller.example/mcp', doc, options);
+  const graded = (result.phases ?? [{ phase_id: result.phase_id, steps: [result] }]).flatMap(phase => phase.steps.map(step => ({ ...step,
     disposition: classifyComplianceStep(step, `${doc.id}/${phase.phase_id}`),
   })));
   return { result, calls, graded };
@@ -185,12 +188,57 @@ for (const kind of ['format', 'time']) {
       const { result, calls, graded } = await execute(kind, { discoveryFailure });
       assert.equal(result.overall_passed, false);
       assert.ok(result.phases.flatMap(phase => phase.steps).some(step => !step.passed && !step.skipped), JSON.stringify(result));
-      // The foundation now attributes actual catalog failures to discovery;
-      // the unchanged hosted classifier must retain them as ordinary failures.
+      // Native prepared failure rows remain generic (SDK issue linked in the
+      // qualification memo); the unchanged classifier must still grade failure.
       assert.deepEqual([...new Set(graded.filter(step => !step.passed && !step.skipped).map(step => step.disposition))], ['failed']);
       assert.equal(graded.some(step => step.skip_reason === 'fixture_unsatisfied'), false);
       assert.equal(result.coverage_gaps?.some(gap => gap.reason === 'fixture_unsatisfied') ?? false, false);
       assert.deepEqual(calls.map(call => call.task), ['comply_test_controller', 'get_products']);
+    });
+
+    test(`${kind}: ${discoveryFailure} retains SAME producer records without changing full/standalone failure accounting`, async () => {
+      for (const standalone of [false, true]) {
+        const { result, calls } = await execute(kind, { discoveryFailure, standalone });
+        assert.equal(standalone ? result.passed : result.overall_passed, false);
+        if (!standalone) {
+          assert.equal(result.failed_count, 1);
+          assert.equal(result.passed_count, 0);
+          assert.equal(result.skipped_count, 0);
+          assert.equal(result.phases.length, 1, 'producer phase is supplemental evidence, never extra graded rows');
+        }
+        assert.ok(result.fixture_resolutions.length >= 2);
+        const failed = result.fixture_resolutions.filter(record => record.status === 'failed');
+        assert.ok(failed.length > 0);
+        const productRecord = failed.find(record => record.fixture_type === 'product');
+        assert.ok(productRecord, JSON.stringify(result));
+        assert.equal(productRecord.strategy, undefined, 'failed resolution is never reported as selected');
+        const attempt = productRecord.strategies_attempted.find(attempt => attempt.strategy === 'discover');
+        assert.equal(attempt.disposition, 'failed');
+        if (discoveryFailure !== 'pagination') {
+          assert.equal(attempt.response.request.buying_mode, 'wholesale');
+          assert.deepEqual(attempt.response.request.account, calls.find(call => call.task === 'get_products').request.account);
+        }
+        assert.ok(productRecord.failure.detail.includes('fixture discovery'));
+        const producerSteps = productRecord.failure.phase.steps;
+        assert.ok(producerSteps.some(step => step.error?.includes('fixture discovery')));
+        assert.ok(producerSteps.some(step => step.step_id.startsWith('seed_account.') && step.passed));
+        assert.deepEqual(calls.map(call => call.task), ['comply_test_controller', 'get_products']);
+        // Preserve native generic failure evidence and no-exchange fields;
+        // never invent a consumer response to replace missing producer wire.
+        const consumer = standalone ? result : result.phases[0].steps[0];
+        if (standalone) {
+          assert.equal(consumer.task, 'create_media_buy');
+          assert.equal(consumer.validations.length, 1);
+          assert.equal(consumer.validations[0].check, 'fixture_capture_unbuildable');
+          assert.equal(consumer.validations[0].passed, false);
+        } else {
+          assert.equal(consumer.task, '');
+          assert.deepEqual(consumer.validations, []);
+        }
+        assert.equal(consumer.request, undefined);
+        assert.equal(consumer.response, undefined);
+        assert.ok(consumer.error.includes('fixture discovery'));
+      }
     });
   }
 

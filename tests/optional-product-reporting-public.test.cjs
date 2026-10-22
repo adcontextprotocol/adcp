@@ -41,7 +41,7 @@ function product(kind) {
   };
 }
 
-async function execute(kind, { adversarialAccount = false, broken, configureBrand = true, rawCaller = false, minSpend, standalone = false, decoy = false, hostDenied = false, suppliedState = false, callerContext, runOverrides = {}, localRejection = false } = {}) {
+async function execute(kind, { adversarialAccount = false, broken, configureBrand = true, rawCaller = false, minSpend, standalone = false, decoy = false, hostDenied = false, suppliedState = false, callerContext, runOverrides = {}, localRejection = false, discoveryFailure = false } = {}) {
   const doc = loadStoryboardFile(path.join(SOURCE, FILES[kind]));
   const expectedAccount = structuredClone(doc.context.sandbox_account);
   const offer = product(kind);
@@ -95,7 +95,7 @@ async function execute(kind, { adversarialAccount = false, broken, configureBran
       } else if (name === 'get_products') {
         assert.equal(request.buying_mode, 'wholesale');
         assert.deepEqual(request.account, expectedAccount, 'discovery uses the same sandbox account as purchase');
-        data = { status: 'completed', products: [offer], cache_scope: 'account', wholesale_feed_version: 'v1' };
+        data = { status: 'completed', products: discoveryFailure ? [{ product_id: 'malformed-private-fixture' }] : [offer], cache_scope: 'account', wholesale_feed_version: 'v1' };
       } else if (name === 'create_media_buy') {
         assert.deepEqual(request.account, expectedAccount, 'untrusted controller data cannot downgrade the purchase account');
         if (!configureBrand && request.brand?.domain !== doc.context.sandbox_brand.domain) {
@@ -238,6 +238,21 @@ for (const kind of ['format', 'time']) {
     const { error, methods } = await execute(kind, { suppliedState: true });
     assert.match(error.message, /must be owned by this invocation/);
     assert.deepEqual(methods, []);
+  });
+  test(`${kind}: failed preparation evidence stays private when host denies full and standalone reuse`, async () => {
+    for (const standalone of [false, true]) {
+      const { error, calls, audits, lookups, result } = await execute(kind, { hostDenied: true, discoveryFailure: true, standalone });
+      assert.equal(result, undefined, 'denial must not return an enriched caller result');
+      assert.equal(error.name, 'PreparedFixturesDeniedError');
+      assert.ok(lookups.length > 0);
+      assert.equal(audits.length, 1);
+      assert.ok(audits[0].fixture_resolutions.some(record => record.status === 'failed' && record.fixture_type === 'product'));
+      assert.equal(audits[0].fixture_preparation.disposition.status, 'failed');
+      assert.ok(audits[0].fixture_preparation.phase.steps.some(step => step.error?.includes('fixture discovery')));
+      assert.equal(JSON.stringify(error).includes('malformed-private-fixture'), false);
+      assert.equal(JSON.stringify(error).includes('fixture discovery'), false);
+      assert.equal(calls.some(call => ['create_media_buy', 'get_media_buy_delivery'].includes(call.task)), false);
+    }
   });
 }
 

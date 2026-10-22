@@ -14,6 +14,7 @@ import {
   runStoryboardStep as runSdkStoryboardStep,
   withPreparedFixtures,
   withExternalSchemaRoot,
+  type PreparedStoryboardFixtures,
   type Storyboard,
   type StoryboardRunOptions,
 } from "@adcp/sdk/testing";
@@ -27,6 +28,11 @@ const REPORTING_IDS = new Set([
 const BASELINE_BUDGET = 1000; // Buyer test intent, never a seller minimum.
 
 type AgentUrl = Parameters<typeof runSdkStoryboard>[0];
+// Supplemental adapter evidence on standalone results; the SDK's native
+// StepResult does not currently declare fixture_resolutions.
+type PreparationEvidence = {
+  fixture_resolutions?: PreparedStoryboardFixtures["resolutions"];
+};
 
 function isCatalogReporting(storyboard: Storyboard): boolean {
   return (
@@ -39,13 +45,13 @@ function isCatalogReporting(storyboard: Storyboard): boolean {
   );
 }
 
-async function withReportingPreparation<T>(
+async function withReportingPreparation<T extends object>(
   agentUrl: AgentUrl,
   storyboard: Storyboard,
   options: StoryboardRunOptions,
   execute: (preparedOptions: StoryboardRunOptions) => Promise<T>,
   stepId?: string,
-): Promise<T> {
+): Promise<T & PreparationEvidence> {
   if (!isCatalogReporting(storyboard)) return execute(options);
   if (
     stepId !== undefined &&
@@ -210,7 +216,7 @@ async function withReportingPreparation<T>(
   const hostAuthorizer = options.prepared_fixtures_authorizer;
   const auditSink = options.prepared_fixtures_audit_sink;
   try {
-    return await execute({
+    const result = await execute({
       ...options,
       context: {
         ...options.context,
@@ -241,6 +247,29 @@ async function withReportingPreparation<T>(
         },
       }),
     });
+    // Only an authorized consumer reaches this point: access denials throw
+    // and remain confined to the private audit sink above. Some native SDK
+    // failure results omit the producer records, so retain the SAME detached
+    // preparation evidence without changing any grade, phase or wire field.
+    // An original producer phase is self-contained; its step ids alone would
+    // dangle because it need not appear among the consumer's phases.
+    if ((result as PreparationEvidence).fixture_resolutions === undefined) {
+      return {
+        ...result,
+        fixture_resolutions: prepared.resolutions.map((record) => ({
+          ...record,
+          ...(record.status === "failed" && !("failure" in record) && {
+            failure: {
+              ...(prepared.disposition.status !== "resolved" && {
+                detail: prepared.disposition.detail,
+              }),
+              phase: prepared.phase,
+            },
+          }),
+        })),
+      };
+    }
+    return result;
   } finally {
     active = false;
   }
