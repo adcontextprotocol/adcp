@@ -2145,6 +2145,9 @@
 #     not resolve) is graded `capture_path_not_resolvable` ON THE PRIOR STEP —
 #     downstream cross-step checks on a never-populated key are not the place
 #     to surface that failure.
+#     Exception: collection_set_equals_context MUST FAIL on an absent
+#     context_key (fixture captures publish all-or-nothing; see "Collection
+#     fixture preparation").
 #
 #   Examples:
 #     # Round-trip: get_media_buys returns the id we just created.

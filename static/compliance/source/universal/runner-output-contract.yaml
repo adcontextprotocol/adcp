@@ -724,7 +724,9 @@ validation_result:
          step's response differed — that's load-bearing for diagnosing
          filtered-vs-baseline regressions. The `context_key` field on the
          storyboard validation is authoring-time metadata; it is NOT echoed
-         into validation_result.
+         into validation_result. Exception: collection_set_equals_context
+         echoes its authored context_key (see
+         collection_fixture_preparation_output).
 
       2. `context_key_absent` observation: when the storyboard sets
          `context_key` and the named entry is missing from the accumulator
@@ -735,6 +737,10 @@ validation_result:
          missing capture (prior step ran but its capture path didn't resolve)
          is NOT this case — that grades `capture_path_not_resolvable` ON THE
          PRIOR STEP per the synthesized_checks rule.
+         Exception: collection_set_equals_context MUST FAIL when its
+         context_key is absent. Fixture captures publish all-or-nothing after
+         the whole graph resolves, so an absent __adcp_fixture_ key means
+         preparation did not complete, never a skipped branch.
 
       3. Step-ordering dependency: cross-step comparison checks read from the
          accumulator built up over prior step executions. Runners that
