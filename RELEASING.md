@@ -426,9 +426,11 @@ extension-filter fix. Mutable `latest` uploads remain progressive as well.
 Live unscoped bulk backfills are disabled. `--dry-run` remains available for
 inventory; it is not release authorization. Historical CDN recovery must use
 an existing approved tag/release, a current tested branch fence, unchanged
-committed bytes, and conditional missing-object creation. The stable-only
-`recover-protocol-cdn.yml` is the single dispatch for that; it does not
-recover RC releases.
+committed bytes, and conditional missing-object creation.
+`recover-protocol-cdn.yml` is the single dispatch for that. It accepts an
+exact stable version or an exact `-beta.N` / `-rc.N` prerelease, and only a
+version whose GitHub Release is published with the complete signed tuple; an
+unpublished or superseded prerelease is refused.
 
 ### Recovering a release's CDN artifacts
 
@@ -450,7 +452,7 @@ maintainer-dispatched authority:
 
 ```
 gh workflow run recover-protocol-cdn.yml --ref main \
-  -f version=<exact stable semver> -f surfaces=all
+  -f version=<exact published semver> -f surfaces=all
 ```
 
 `surfaces` defaults to `protocol` (the four signed tuple files, the original
