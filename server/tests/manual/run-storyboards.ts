@@ -139,6 +139,23 @@ if (candidateVersionMode) {
 // runs also pin the current wire release: capability discovery must describe
 // the surface being graded instead of falling back to the agent's legacy 3.0
 // unpinned default.
+// The first prerelease of a new minor line (for example 3.3.0-beta.0 while
+// the training agent's SDK serves 3.2) has no same-line stable alias: beta.0
+// is protocol-first and no published SDK serves its schemas yet. Release
+// verification of that cut grades the candidate compliance bundle exactly as
+// the pre-bump run did, so the resolver alone also accepts the candidate's
+// exact prerelease pin. Execution keeps speaking the agent's real wire version.
+const candidateOpensNewerLine = (() => {
+  if (!candidateVersionMode || releasedComplianceVersion === undefined) return false;
+  const candidate = /^(\d+)\.(\d+)\.\d+-(?:beta|rc)\.\d+$/.exec(releasedComplianceVersion);
+  const served = /^(\d+)\.(\d+)/.exec(TRAINING_AGENT_CURRENT_ADCP_VERSION);
+  if (!candidate || !served) return false;
+  const [cMajor, cMinor, sMajor, sMinor] = [candidate[1], candidate[2], served[1], served[2]].map(Number);
+  return cMajor > sMajor || (cMajor === sMajor && cMinor > sMinor);
+})();
+const candidatePrereleasePin = candidateOpensNewerLine
+  ? releasedComplianceVersion!.replace(/^(\d+\.\d+)\.\d+-/, '$1-')
+  : undefined;
 const wireAdcpVersion = isThreeZeroCompatRun
   ? '3.0'
   : isCurrentSourceRun
@@ -680,7 +697,9 @@ async function selectStoryboardsForTenant(
     supported_protocols: profile.supported_protocols ?? [],
     specialisms: profile.specialisms ?? [],
     major_versions: profile.adcp_major_versions,
-    supported_versions: profile.adcp_supported_versions,
+    supported_versions: candidatePrereleasePin && profile.adcp_supported_versions
+      ? [...profile.adcp_supported_versions, candidatePrereleasePin]
+      : profile.adcp_supported_versions,
   }, {
     ...complianceOptions,
     // Version Packages builds the next exact schema/compliance bundle before
