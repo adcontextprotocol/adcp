@@ -56,7 +56,7 @@
     },
     {
       "if": { "properties": { "action": { "const": "report_media_buy_issue" } }, "required": ["action"] },
-      "then": { "properties": { "sla": { "$ref": "/schemas/core/escalation-sla.json" }, "mode": { "const": "seller_managed" }, "task": { "const": "report_media_buy_issue" } } }
+      "then": { "required": ["task"], "properties": { "sla": { "$ref": "/schemas/core/escalation-sla.json" }, "mode": { "const": "seller_managed" }, "task": { "const": "report_media_buy_issue" } } }
     },
     {
       "if": { "required": ["review_sla"] },

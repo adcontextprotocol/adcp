@@ -145,6 +145,9 @@ test('report actions resolve through product and buy projections with elapsed cr
     rejects(validate, { ...value, sla: business });
     rejects(validate, { ...value, task: 'control_media_buy' });
     rejects(validate, { ...value, mode: 'self_serve' });
+    const withoutTask = { ...value };
+    delete withoutTask.task;
+    rejects(validate, withoutTask);
   }
 });
 
