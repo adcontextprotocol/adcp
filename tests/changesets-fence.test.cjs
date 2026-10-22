@@ -181,20 +181,23 @@ function ghStub() {
   if (env.FAULT === "api-timeout")
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000);
   const prs = JSON.parse(fs.readFileSync("prs.json", "utf8"));
-  if (fs.existsSync("pr-lag.json") && !args.includes("graphql")) {
+  let lag = null;
+  try {
+    lag = JSON.parse(fs.readFileSync("pr-lag.json", "utf8"));
+  } catch {}
+  if (lag && !args.includes("graphql")) {
     // The pulls API serves the pre-push head for a few reads after a push.
-    const lag = JSON.parse(fs.readFileSync("pr-lag.json", "utf8"));
     if (env.FAULT === "pr-head-lag-ready") {
       // Someone marks the PR Ready while the API still lags the push.
       for (const pr of prs) pr.draft = false;
-      fs.writeFileSync("prs.json", JSON.stringify(prs));
     }
-    if (--lag.reads > 0) fs.writeFileSync("pr-lag.json", JSON.stringify(lag));
-    else {
-      fs.rmSync("pr-lag.json");
-      for (const pr of prs) pr.head.sha = lag.sha;
-      fs.writeFileSync("prs.json", JSON.stringify(prs));
-    }
+    if (--lag.reads <= 0) for (const pr of prs) pr.head.sha = lag.sha;
+    fs.writeFileSync("prs.next.json", JSON.stringify(prs), { flag: "wx" });
+    fs.renameSync("prs.next.json", "prs.json");
+    if (lag.reads > 0) {
+      fs.writeFileSync("pr-lag.next.json", JSON.stringify(lag), { flag: "wx" });
+      fs.renameSync("pr-lag.next.json", "pr-lag.json");
+    } else fs.rmSync("pr-lag.json", { force: true });
   }
   const url = args.find((arg) => arg.startsWith("/repos/"));
   let result;
