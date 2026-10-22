@@ -75,6 +75,7 @@
       "type": "string",
       "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Optional legacy report-wide ISO 4217 currency code. It may be used only when every monetary value in the report has that denomination. A report can contain media buys with different currencies, so buyers MUST NOT interpret this field as an aggregation currency or evidence of currency conversion. Prefer media_buy_deliveries[].currency when present and package-level currency otherwise.",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "pattern": "^[A-Z]{3}$"
     },
     "attribution_window": {
