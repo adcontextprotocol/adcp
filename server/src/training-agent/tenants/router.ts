@@ -49,7 +49,7 @@ import {
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
 import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } from '../seller-optimized-budget.js';
-import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { advertisesSalesFixedRateSpecialism, supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { complianceScenariosForServedVersion } from '../compliance-scenarios.js';
 import { runWithReleaseLineEcho } from './release-line-echo.js';
@@ -1014,10 +1014,10 @@ function projectTenantCapabilities(
         ? structured.adcp_version
         : TRAINING_AGENT_DEFAULT_ADCP_VERSION);
     structured.adcp_version = servedVersion;
-    // `sales-fixed-rate` is a 3.2+ enum value. Pinned 3.0 and 3.1 consumers
+    // `sales-fixed-rate` is a 3.3 enum value. Consumers served 3.2 or below
     // validate `specialisms` against a closed enum that predates it, so the
-    // id is withdrawn from their capability response.
-    if (Array.isArray(structured.specialisms) && !supportsSalesFixedRate(servedVersion)) {
+    // id is withdrawn from their capability response (DR-0024).
+    if (Array.isArray(structured.specialisms) && !advertisesSalesFixedRateSpecialism(servedVersion)) {
       structured.specialisms = structured.specialisms.filter(id => id !== 'sales-fixed-rate');
     }
     const adcp = structured.adcp && typeof structured.adcp === 'object'

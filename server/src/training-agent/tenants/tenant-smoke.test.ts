@@ -1957,7 +1957,7 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
-  it('advertises sales-fixed-rate and its hold scenario on 3.2 and withdraws both from 3.1 and 3.0 pins', async () => {
+  it('keeps the hold scenario on 3.2, withholds the 3.3 sales-fixed-rate id below 3.3, and withdraws both from 3.1 and 3.0 pins', async () => {
     const { baseUrl, close } = await bootServer();
     try {
       const url = `${baseUrl}/sales/mcp`;
@@ -1972,7 +1972,9 @@ describe('tenant routing smoke', () => {
       };
 
       const current = await capabilitiesAt(41, { adcp_version: '3.2' });
-      expect(current?.specialisms).toContain('sales-fixed-rate');
+      // `sales-fixed-rate` is a 3.3 enum value; a 3.2 response must not list it.
+      expect(current?.specialisms).not.toContain('sales-fixed-rate');
+      expect(current?.specialisms).toContain('sales-guaranteed');
       expect(current?.compliance_testing?.scenarios).toContain('force_media_buy_confirmation');
 
       for (const [id, args] of [

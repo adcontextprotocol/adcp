@@ -103,6 +103,17 @@ test('candidate-version compatibility is explicit and resolver-scoped', () => {
     /supported_versions:\s*\[[^\]]*releasedComplianceVersion/,
     'candidate mode must not rewrite the seller capability declaration',
   );
+  // The one resolver-scoped extension: a candidate that opens a newer minor
+  // line (no same-line alias exists) adds only its exact prerelease pin, and
+  // only in candidate mode.
+  assert.match(
+    source,
+    /const candidateOpensNewerLine = \(\(\) => \{\s*if \(!candidateVersionMode \|\| releasedComplianceVersion === undefined\) return false;/,
+  );
+  assert.match(
+    source,
+    /supported_versions: candidatePrereleasePin && profile\.adcp_supported_versions\s*\? \[\.\.\.profile\.adcp_supported_versions, candidatePrereleasePin\]/,
+  );
 });
 
 test('3.0 compatibility wrapper overrides inherited candidate mode', () => {
