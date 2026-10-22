@@ -206,7 +206,7 @@
   },
   "dependencies": {
     "@adcp/reporting-storage": "0.1.0",
-    "@adcp/sdk": "16.1.0",
+    "@adcp/sdk": "16.2.0",
     "@anthropic-ai/sdk": "^0.127.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.7",
@@ -329,8 +329,6 @@
     "react-dom": "^19.2.0",
     "js-yaml": "^4.3.1",
     "axios": "$axios",
-    "@modelcontextprotocol/client": "2.3.1",
-    "@modelcontextprotocol/server": "2.3.1",
     "gaxios": {
       "uuid": "11.1.1"
     }
