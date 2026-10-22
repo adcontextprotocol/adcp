@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/enums/webhook-signing-profile.json",
+  "title": "Webhook Signing Profile",
+  "description": "Webhook-signing profile, named by its RFC 9421 `tag`: the AdCP webhook profile or the Web Bot Auth profile (docs/building/by-layer/L1/wba-profile.mdx#webhooks).",
+  "type": "string",
+  "enum": [
+    "adcp/webhook-signing/v1",
+    "web-bot-auth"
+  ],
+  "x-added-in": "3.3.0"
+}
