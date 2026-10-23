@@ -15,6 +15,7 @@
 
 import { Router } from 'express';
 import { trainingGcsReportingRouter } from './gcs-reporting-routes.js';
+import { mountCreativeFeaturesVerifier } from './creative-features-verifier.js';
 import type { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { WorkOS } from '@workos-inc/node';
@@ -278,7 +279,7 @@ const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-buil
  *  `_training_agent_tenants` discovery extension. Mirrors the per-tenant
  *  config builders in `tenants/<id>.ts`. */
 const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> = {
-  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', 'sales-dooh'],
+  sales: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', 'sales-dooh', 'sales-fixed-rate'],
   signals: ['signal-marketplace', 'signal-owned'],
   governance: [
     'governance-spend-authority',
@@ -357,6 +358,12 @@ export function createTrainingAgentRouter(options: {
   });
 
   router.use('/sales/reporting', ...(!options.disableRateLimit ? [mcpRateLimiter] : []), requireReportingAuth, trainingGcsReportingRouter());
+
+  // Public conformance verifier for provenance truth-of-claim storyboards
+  // (adcp#8199). Unauthenticated by design, rate limited per IP, and serves
+  // get_creative_features only. Mounted before the tenant routes so the
+  // tenant resolver never sees it.
+  mountCreativeFeaturesVerifier(router, { rateLimit: !options.disableRateLimit });
 
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via

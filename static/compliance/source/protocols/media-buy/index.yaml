@@ -26,6 +26,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/product_signal_targeting
   - media_buy_seller/demographic_targeting
+  - media_buy_seller/gender_targeting
   - media_buy_seller/product_filter_behavior
   - media_buy_seller/read_filter_behavior
   - media_buy_seller/list_creatives_filter_behavior
@@ -182,6 +183,14 @@ phases:
             path: "context.correlation_id"
             value: "media_buy_seller--get_capabilities"
             description: "Context correlation_id returned unchanged"
+          - id: request_signing_required_in_4_0
+            check: field_value
+            path: "request_signing.supported"
+            value: true
+            description: "[4.0 compatibility] Seller verifies RFC 9421 signed requests; 4.0 requires signing on spend-committing operations"
+            severity: advisory
+            permanent_advisory:
+              reason: "AdCP 4.0 compatibility check (universal/v4-compatibility.yaml). Request signing is optional in 3.x, so this stays advisory on every 3.x bundle."
 
   - id: account_setup
     title: "Account setup"
@@ -418,6 +427,13 @@ phases:
           - check: field_present
             path: "products[0].publisher_properties"
             description: "Products include publisher_properties"
+          - id: format_ids_removed_in_4_0
+            check: all_fields_present
+            path: "products[*].format_options"
+            description: "[4.0 compatibility] Every returned product declares canonical format_options; 4.0 removes format_ids"
+            severity: advisory
+            permanent_advisory:
+              reason: "AdCP 4.0 compatibility check (universal/v4-compatibility.yaml). 3.x still accepts format_ids-only legacy products, so this stays advisory on every 3.x bundle; 4.0 schemas enforce format_options directly."
   - id: create_buy
     title: "Create the media buy"
     depends_on: [product_discovery]
@@ -725,6 +741,13 @@ phases:
           - check: field_present
             path: "products[0].publisher_properties"
             description: "Products include publisher_properties"
+          - id: format_ids_removed_in_4_0
+            check: all_fields_present
+            path: "products[*].format_options"
+            description: "[4.0 compatibility] Every returned product declares canonical format_options; 4.0 removes format_ids"
+            severity: advisory
+            permanent_advisory:
+              reason: "AdCP 4.0 compatibility check (universal/v4-compatibility.yaml). 3.x still accepts format_ids-only legacy products, so this stays advisory on every 3.x bundle; 4.0 schemas enforce format_options directly."
 
   - id: buyer_selected_create_buy
     title: "Buyer-selected timezone media buy"

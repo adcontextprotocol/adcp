@@ -780,6 +780,7 @@ export const ComplianceRunProvenanceSchema = z.object({
   timeout_ms: z.number().nullable(),
   storyboard_start_offset: z.number().nullable(),
   auth_type: z.string().nullable(),
+  tolerated_undefined_specialisms: z.array(z.string()).optional().openapi({ description: "Declared specialisms the graded compliance release does not define. Capability resolution skipped them instead of voiding the run; they were not graded. Absent on ordinary runs." }),
 }).openapi('ComplianceRunProvenance');
 
 export const AgentComplianceSchema = z
@@ -1019,9 +1020,27 @@ export const AgentComplianceDetailSchema = z
     }).nullable().optional().openapi({
       description: 'Owner/operator-only newest persisted full assessment, including audit-only timeouts. Null for other viewers. This does not change the public verdict.',
     }),
+    heartbeat_timeout: z.object({
+      run_id: z.string().uuid(),
+      timed_out_at: z.string().datetime(),
+      duration_ms: z.number().int().nullable(),
+      timeout_ms: z.number().int().nullable(),
+      storyboards_completed: z.number().int().nullable(),
+      storyboards_total: z.number().int().nullable(),
+      consecutive: z.number().int(),
+      consecutive_capped: z.boolean().openapi({
+        description: 'True when the streak filled the lookback window, so the real run of timeouts may be longer than `consecutive`.',
+      }),
+      published_at: z.string().datetime().nullable(),
+      summary: z.string().openapi({
+        description: 'Ready-to-render owner-facing sentence. Built only from platform- and runner-generated values; no agent response text.',
+      }),
+    }).nullable().optional().openapi({
+      description: 'Owner/operator-only. Present while the newest scheduled heartbeat ran out of time, so the owner can see that the published result is not being refreshed. Null for other viewers and once a later heartbeat completes. This does not change the public verdict.',
+    }),
     check_interval_hours: z.number().int().optional().openapi({ description: "How often the heartbeat re-tests this agent, in hours" }),
     declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared in get_adcp_capabilities, from the latest run" }),
-    specialism_status: z.record(z.string(), z.enum(['passing', 'failing', 'untested', 'unknown'])).optional().openapi({ description: "Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status" }),
+    specialism_status: z.record(z.string(), z.enum(['passing', 'failing', 'untested', 'unknown', 'not_applicable'])).optional().openapi({ description: "Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status. `not_applicable` means AdCP introduced the specialism after the compliance release this run graded, so it could not be tested." }),
     eligibility: ComplianceEligibilitySchema.optional().openapi({
       description: 'Public machine-readable badge eligibility by role. Contains only declared-specialism and storyboard blockers; membership tier is owner-scoped separately.',
     }),
@@ -1052,6 +1071,29 @@ export const AgentComplianceDetailSchema = z
       severity: z.string(),
       message: z.string(),
     })).optional().openapi({ description: "Public-safe advisory observations from the latest non-dry-run compliance run. Raw evidence is intentionally omitted; this array is not merged across runs, so cleared advisories disappear on the next fresh run." }),
+    v4_readiness: z.object({
+      registry_version: z.string(),
+      target_version: z.string(),
+      checks: z.array(z.object({
+        id: z.string().openapi({ description: "Stable check id from universal/v4-compatibility.yaml." }),
+        status: z.enum(["passed", "failing", "not_observable"]),
+        reason: z.enum([
+          "storyboard_not_run",
+          "step_not_run",
+          "step_skipped",
+          "not_graded",
+          "notice_absent",
+          "not_observed_by_suite",
+        ]).nullable().openapi({ description: "Why a not_observable check could not be graded. Null for passed and failing." }),
+        issue: z.number().int().nullable(),
+        change: z.string().nullable(),
+        detection: z.string(),
+        fix: z.string(),
+        guide_url: z.string().nullable().openapi({ description: "Migration guide anchor for the check." }),
+      }).openapi("V4ReadinessCheck")),
+    }).nullable().optional().openapi({
+      description: "Advisory AdCP 4.0 readiness from the latest non-dry-run compliance run, graded against universal/v4-compatibility.yaml. Does not affect 3.x verification or conformance. Null when the latest run predates the report.",
+    }),
     membership_tier: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's membership tier. Populated only when the authenticated viewer owns the agent; null otherwise. Field is always present so response shape doesn't reveal ownership." }),
     membership_tier_label: z.string().nullable().optional().openapi({ description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners." }),
     subscription_status: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners." }),

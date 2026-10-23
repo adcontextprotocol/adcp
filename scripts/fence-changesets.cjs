@@ -267,8 +267,7 @@ function prepare() {
   state.status = "prepared";
   save({ event: "prepared" });
 }
-function verifyPR(expected) {
-  const pr = openPR();
+function verifyPR(expected, pr = openPR()) {
   if (state.pr) {
     if (
       !pr ||
@@ -279,6 +278,35 @@ function verifyPR(expected) {
     )
       throw Error("Release PR changed or left Draft");
   } else if (pr) throw Error("Another PR appeared during generation");
+}
+// The pulls API can report the pre-push head for a moment after an
+// acknowledged push (seen twice on adcp#7897, read ~0.6s after the push and
+// converged within ~7s). Poll only that lag: the same PR, still Draft, still
+// at the prior head. Any other mismatch, or a lag that outlasts the bound,
+// fails exactly as a single read would.
+const PR_CONVERGENCE_ATTEMPTS = 10;
+const PR_CONVERGENCE_DELAY_MS = 1000;
+function awaitPushedPR(expected) {
+  for (let attempt = 1; ; attempt++) {
+    const pr = openPR();
+    const lagging =
+      state.pr &&
+      expected !== state.prior &&
+      pr &&
+      pr.number === state.pr.number &&
+      pr.node_id === state.pr.node_id &&
+      pr.draft &&
+      pr.head.sha === state.prior;
+    if (!lagging || attempt >= PR_CONVERGENCE_ATTEMPTS)
+      return verifyPR(expected, pr);
+    save({ event: "pr-head-lag", attempt });
+    Atomics.wait(
+      new Int32Array(new SharedArrayBuffer(4)),
+      0,
+      0,
+      PR_CONVERGENCE_DELAY_MS,
+    );
+  }
 }
 function reconcile(reason) {
   state.status = "quarantined";
@@ -418,7 +446,7 @@ function push(args) {
     if (result.status !== 0 || state.observed !== candidate)
       throw Error("Push failed or acknowledgement/ref ambiguous");
     current();
-    verifyPR(candidate);
+    awaitPushedPR(candidate);
     state.status = "pushed";
     save({ event: "pushed", candidate });
   } catch (error) {

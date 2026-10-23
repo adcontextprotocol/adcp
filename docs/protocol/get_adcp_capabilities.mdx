@@ -474,6 +474,7 @@ Account and authentication capabilities. All sellers should declare this section
 | `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
 | `change_feed` | object | Optional, experimental (`account.change_feed`). Declares the durable [`list_account_changes`](/docs/accounts/tasks/list_account_changes) feed and `account.change_recorded` wake-up. When supported, includes a retention floor of at least 90 days and the resource types covered. |
 | `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. Account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup. Buyer-declared accounts use `sandbox: true` in `sync_accounts`, or in the natural-key account reference when the seller uses unambiguous lazy provisioning — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
+| `agent_onboarding` | object | Optional, experimental (`account.agent_onboarding`). How the seller onboards buyer agents: a mode per billing party and for sandbox, requirements, and where a human starts. Seller-wide and identical for every caller. See [account.agent_onboarding](#accountagent_onboarding). |
 
 #### account.notifications
 
@@ -545,6 +546,77 @@ weakened into a self-asserted `complete: true` flag. Account-specific connected
 source status and freshness are returned by `list_account_changes`.
 
 See [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough) for the complete discovery, registration, human setup, webhook, and repair sequence.
+
+#### account.agent_onboarding
+
+<Note>
+**Experimental (`account.agent_onboarding`).** A seller that declares this block lists `account.agent_onboarding` in `experimental_features`. Design: [`specs/agent-identity-3-3.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md) R7 ([#8113](https://github.com/adcontextprotocol/adcp/issues/8113)).
+</Note>
+
+AdCP leaves contract, credit, and credential issuance to the seller's own systems. This block tells a buyer agent, before its first authenticated call, whether the seller takes unsolicited buyer agents, what it requires of them, and where a human starts. A buyer can then sort sellers into "usable now", "needs a human", and "not available" in one unauthenticated pass, instead of searching each seller's website.
+
+```json
+{
+  "experimental_features": ["account.agent_onboarding"],
+  "account": {
+    "supported_billing": ["operator", "agent"],
+    "sandbox": true,
+    "agent_onboarding": {
+      "sandbox": { "mode": "open", "url": "https://streamhaus.example/sandbox" },
+      "billing": {
+        "operator": { "mode": "open", "requirements": [{ "kind": "grant" }] },
+        "agent": {
+          "mode": "application",
+          "url": "https://streamhaus.example/partners/agent-billing",
+          "requirements": [{ "kind": "billing_entity" }, { "kind": "contract" }]
+        }
+      },
+      "url": "https://streamhaus.example/partners/buyer-agents",
+      "message": "Sandbox is open to any verified buying agent. Operator-billed accounts are open when your operator already bills with us and the advertiser has granted your operator."
+    }
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `sandbox` | Onboarding for sandbox accounts. Valid only when `account.sandbox` is `true`. |
+| `billing` | Onboarding per billing party, keyed by `operator`, `agent`, or `advertiser`. Keys MUST be a subset of `supported_billing`. |
+| `…mode` | `open`, `application`, or `invite_only`. An absent key means undeclared, never `invite_only`. |
+| `…url` | Optional page for that mode. Defaults to the top-level `url`. |
+| `…requirements` | What the buyer must satisfy for that mode. |
+| `url` | Where a human starts; it can also carry the seller's onboarding documentation. An untrusted link: surface it, never fetch or execute it. |
+| `message` | Human-readable summary. The fallback whenever a reader does not understand a requirement. |
+
+**Modes.**
+- **`application`:** the buyer completes an out-of-band step at the mode's `url` before the seller recognizes it for that mode.
+- **`invite_only`:** the seller does not accept unsolicited buyer agents for that mode.
+- **`open`:** a buyer agent that meets every requirement may proceed without prior contact, but only when the seller can establish its identity from the agent's published keys (the [Web Bot Auth](/docs/building/by-layer/L1/security#web-bot-auth-identities) profile). A seller that only maps opaque, seller-issued credentials MUST NOT declare `open`.
+
+**`open` binds identity, not spend.** Under any `open` mode:
+- an account whose brand is outside the buyer's operator domain needs a grant, evaluated as [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental) describes ([spec R6](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md); that section lands with [#8169](https://github.com/adcontextprotocol/adcp/pull/8169)). Without one, the request fails with [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) and `error.details.reason: "grant_absent"`;
+- spend-committing operations need an existing seller-side billing relationship with the billed party ([spec R7](https://github.com/adcontextprotocol/adcp/blob/main/specs/agent-identity-3-3.md));
+- sellers SHOULD count quotas and rate limits for automatic onboarding per operator domain, not per origin;
+- sellers SHOULD limit an origin whose registrable domain comes from the Public Suffix List's PRIVATE section, such as a hosting platform's tenant subdomain, to `sandbox`.
+
+So `open` delivers a verified identity, sandbox access, and joining a billing relationship that already exists. Agent-billed accounts and new commercial relationships still go through the seller's application.
+
+**Requirement kinds** (`enums/agent-onboarding-requirement-kind.json`, extensible). Each kind applies in one direction:
+
+| Kind | Direction | Meaning |
+|---|---|---|
+| `grant` | seller gating a buyer | A demand-side grant chain authorizes the buyer agent to act for the account's brand, evaluated as [Grants in trust records](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental) describes. |
+| `billing_entity` | seller gating a buyer | The buyer supplies a billing entity on `sync_accounts`. |
+| `contract` | seller gating a buyer | A signed agreement exists; details at `url`. |
+| `credit_application` | seller gating a buyer | A credit application completed at `url`, or later through `sync_accounts` `setup.url`. |
+| `aao_verified`, `storyboard`, `sandbox`, `experimental_feature` | buyer gating a seller | Used in a buyer's own posture (`core/buyer-onboarding-posture.json`), published only in the buyer's trust.json at `profiles.adcp.onboarding`, on its agent entry or as a record default, with the same three modes read from the buyer's side: a seller badge (`role`, optional `verification_modes`, `verified_specialisms`, `adcp_version`, the badge token's own claim names), a passed storyboard (`id`), `account.sandbox: true`, or a listed feature (`id`). |
+
+A kind used in the wrong direction is ignored. An unknown kind falls back to `message` and `url`.
+
+**Uniformity.**
+- The block is seller-wide and identical for every caller. It is served on the unauthenticated capability fetch and never appears in error payloads, so it cannot act as a per-agent onboarding oracle.
+- It changes no error code and no clamp in [error handling](/docs/building/by-layer/L3/error-handling).
+- Per-agent state, such as an application's progress, is returned only to the authenticated caller, through `get_principal`'s `relationship`.
 
 #### account.timezone
 
@@ -656,7 +728,7 @@ This capability is about parse and validation support, never commercial willingn
 
 #### outcome_target
 
-`media_buy.outcome_target: true` declares reverse-forecast planning: the seller parses `criteria.outcome_target` (a compact goal — a `forecastable-metric` delivery metric, an `event-type` conversion event, or a `vendor_metric` — plus a desired volume, a `cost_per` target, or both) and plans against it, answering with `total_budget_guidance` on proposals and forecasts whose points carry the goal's key in `metrics`, or its `(vendor, metric_id)` in `vendor_metric_values[]` for a vendor goal. A `cost_per` target is answered in `commercial_terms.bidding.cost_per` only within the seller's advertised `features.bidding_policy` profile; otherwise the seller rejects it with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.cost_per`. An event-goal cost target additionally requires `cost_per` in `conversion_tracking.supported_targets`, and a vendor goal requires the pair in a product's `vendor_metric_optimization.supported_metrics[]`. The flag alone cannot distinguish a seller that predates cost targets or vendor goals from one that plans them, so buyers rely on the negotiated `adcp_version` together with those declarations. See [Reverse forecasting](/docs/media-buy/task-reference/request_proposals#reverse-forecasting-with-outcome_target) and [Cost targets](/docs/media-buy/task-reference/request_proposals#cost-targets). When `false` or absent, support is unknown: buyers SHOULD express outcome goals in `brief` prose instead, and sellers reject a structured `outcome_target` on `request_proposals` and proposal refinement with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) rather than silently ignoring it. On [`list_products`](/docs/media-buy/task-reference/list_products) the field is inert for every seller.
+`media_buy.outcome_target: true` declares reverse-forecast planning: the seller parses `criteria.outcome_target` (a compact goal — a `forecastable-metric` delivery metric, an `event-type` conversion event, or a `vendor_metric` — plus a desired volume, a `cost_per` target, or both) and plans against it, answering with `total_budget_guidance` on proposals and forecasts whose points carry the goal's key in `metrics`, or its `(vendor, metric_id)` in `vendor_metric_values[]` for a vendor goal. A `cost_per` target is answered in `commercial_terms.bidding.cost_per` only within the seller's advertised `features.bidding_policy` profile; otherwise the seller rejects it with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.cost_per`. An event-goal cost target additionally requires `cost_per` in `conversion_tracking.supported_targets`, and a vendor goal requires the pair in a product's `vendor_metric_optimization.supported_metrics[]`. Buyers SHOULD check the seller-level [`vendor_metric_optimization.supported_metrics[]`](#vendor_metric_optimization) rollup before sending a vendor goal. The flag alone cannot distinguish a seller that predates cost targets or vendor goals from one that plans them, so buyers rely on the negotiated `adcp_version` together with those declarations. See [Reverse forecasting](/docs/media-buy/task-reference/request_proposals#reverse-forecasting-with-outcome_target) and [Cost targets](/docs/media-buy/task-reference/request_proposals#cost-targets). When `false` or absent, support is unknown: buyers SHOULD express outcome goals in `brief` prose instead, and sellers reject a structured `outcome_target` on `request_proposals` and proposal refinement with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) rather than silently ignoring it. On [`list_products`](/docs/media-buy/task-reference/list_products) the field is inert for every seller.
 
 #### budget_capping
 
@@ -820,6 +892,17 @@ re-bucketing. Optional `reliability_statistics[]` publish evidence-scoped
 on-time counts, publication latency, and post-official adjustment frequency,
 latency, and magnitude for exact offering IDs.
 
+#### vendor_metric_optimization
+
+Seller-level rollup of the vendor-attested metrics the seller can optimize toward. Presence declares that at least one product supports `optimization_goals` with `kind: "vendor_metric"`. Product-level `vendor_metric_optimization.supported_metrics[]` remains authoritative for a specific package.
+
+| Field               | Type     | Description |
+| ------------------- | -------- | ----------- |
+| `supported_targets` | string[] | Target kinds (`cost_per`, `threshold_rate`) at least one product supports for `vendor_metric` goals. A target-less goal needs no declaration. |
+| `supported_metrics` | object[] | `(vendor, metric_id)` pairs at least one product can optimize toward, each with the product-level entry shape: `vendor` (matched on `domain` and `brand_id`), `metric_id`, and optional per-pair `supported_targets`. |
+
+`supported_metrics` mirrors the seller-level `supported_optimization_metrics` rollup. Sellers MUST keep it in sync with their catalog: a pair is listed only if at least one product supports it. Omitting it means the seller makes no guarantee about which pairs it supports, and buyers fall back to inspecting each product's `vendor_metric_optimization.supported_metrics[]`. Buyers SHOULD check the rollup before sending a `vendor_metric` goal, including a `criteria.outcome_target` vendor goal, instead of learning an unsupported pair from an [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) rejection. The rollup is a planning hint, not a guarantee for a specific package or proposal: a listed pair still needs the product-level declaration, the `reporting_capabilities.vendor_metrics` declaration and committed reporting on the product that carries it, and the vendor catalog check. Each pair is listed once, with per-pair `supported_targets` unioned across products (the same field as on the product-level [entry](https://adcontextprotocol.org/schemas/v3/core/vendor-metric-optimization-supported-metric.json)); the object-level `supported_targets` covers the union.
+
 #### performance_feedback
 
 Presence declares that a seller accepts compact baseline/metric/provenance fields from a buyer orchestrator and returns a `feedback_id` for accepted assertions.
@@ -874,7 +957,9 @@ Lists the seller interpretations available on media-buy resource relationships.
       "audience_saturation",
       "inventory_shortfall_forecast",
       "pacing_risk",
-      "budget_constrained"
+      "budget_constrained",
+      "flight_extension_opportunity",
+      "scale_budget_opportunity"
     ],
     "relationship_notifications": {
       "supported": true,
@@ -1088,7 +1173,7 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
 | `geo_places` | object | Named-place targeting keyed by collision-safe identifier system, with exact country/type support, catalog versions, and resolver metadata |
 | `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
-| `demographics` | object | Seller-wide discovery rollup for canonical demographic targeting. `supported: true` means at least one product supports the surface; inspect each product's `demographic_targeting` declaration for exact execution. |
+| `demographics` | object | Seller-wide discovery rollup. `supported: true` means at least one product supports demographic targeting. The 3.3 optional `gender.supported` flag signals core gender support on at least one product; omission makes no gender commitment. Inspect each product's `demographic_targeting` declaration for exact dimensions, executable values, modes, and unknown handling. |
 | `language` | boolean or object | Language-preference targeting. The structured form may declare `supported` and exact selectable BCP 47 ranges in `supported_languages`; the boolean is the legacy coarse declaration. |
 | `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
 | `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
@@ -1294,6 +1379,10 @@ Seller-level conversion tracking capabilities. Declares what the seller supports
 | `supported_action_sources`     | string[] | Action sources this seller accepts events from.                                                                                                                                                                                             |
 | `attribution_windows`          | object[] | Available attribution windows. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via `attribution_window` on optimization goals.                                   |
 
+#### event_source_archive
+
+`media_buy.event_source_archive: true` declares that the seller supports the per-item `archived` field on [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources#archiving-an-event-source). A seller without it MUST reject a request that sends `archived` with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) rather than ignore it. When `false` or absent, buyers fall back to `delete_missing` or seller-side tooling.
+
 #### portfolio
 
 Inventory portfolio information. Media-buy sellers SHOULD declare both routing
@@ -1347,6 +1436,7 @@ Signals protocol capabilities. Only present if `signals` is in `supported_protoc
 | `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal definitions and to verify authorization. Counterparty-asserted and non-exhaustive, with the same bounds and the same cautions as [`media_buy.portfolio.publisher_domains`](#portfolio): ≤ 100 unique entries, each ≤ 253 chars, 8,192 bytes as served. Absence is not a denial. |
 | `data_provider_domains_complete` | boolean | Whether `data_provider_domains` is complete as served (default `true`). Set `false` when truncated |
 | `discovery_modes` | string[] | Discovery modes the agent supports on [`get_signals`](/docs/signals/tasks/get_signals). `"brief"` (semantic discovery via `signal_spec` / `signal_refs`, with deprecated `signal_ids` accepted for older clients) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_refs` / `signal_ids` and enumerate the full priced signals feed. Agents not declaring `"wholesale"` MAY return [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) for wholesale calls. Absent declaration is treated as `["brief"]`. |
+| `features.signal_lifecycle` | boolean | **Experimental** (`x-status: experimental`). `true` means the agent builds segments on demand and may emit `signal_status` (`processing` or `failed`) and `source_audience_id` on [`get_signals`](/docs/signals/tasks/get_signals#custom-segments-built-from-a-seed-audience) results. Agents declaring it MUST list `signals.signal_lifecycle` in `experimental_features`. |
 | `features.catalog_signals` | boolean | **Deprecated.** Legacy wire flag for structured `signal_ref` references to provider-published signal definitions in adagents.json `signals[]`. |
 
 <Note>
@@ -1606,7 +1696,7 @@ Compliance testing capabilities. The presence of this block declares that the ag
 
 | Field       | Type     | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ----------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scenarios` | string[] | Compliance testing scenarios this agent supports. Values SHOULD include every canonical controller scenario the agent implements, excluding `list_scenarios` because that value is a discovery operation rather than a test capability. Current canonical values include `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_create_media_buy_arm`, `force_task_completion`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_rights_grant`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`, `seed_creative_format`, `seed_measurement_catalog`, `query_upstream_traffic`, `query_provenance_audit_observations`, and `force_upstream_unavailable`. Values MAY also include implementation-specific scenarios. Runners MUST treat scenario names as open strings — new scenarios may be added in additive releases. |
+| `scenarios` | string[] | Compliance testing scenarios this agent supports. Values SHOULD include every canonical controller scenario the agent implements, excluding `list_scenarios` because that value is a discovery operation rather than a test capability. Current canonical values include `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_create_media_buy_arm`, `force_media_buy_confirmation`, `force_task_completion`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_rights_grant`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`, `seed_creative_format`, `seed_measurement_catalog`, `query_upstream_traffic`, `query_provenance_audit_observations`, `force_upstream_unavailable`, and `force_hold_unavailable`. Values MAY also include implementation-specific scenarios. Runners MUST treat scenario names as open strings — new scenarios may be added in additive releases. |
 
 Storyboard runners check for the `compliance_testing` block before running deterministic testing steps. If the agent does not include the block, controller-dependent storyboard steps cannot be validated.
 
@@ -1625,7 +1715,7 @@ Declares a seller's webhook-signing posture and maximum delivery-retry horizon. 
 | `supported`            | boolean  | **Required when the seller advertises mutating-webhook emission elsewhere in its capability surface.** `true` iff the seller signs outbound webhooks. `false` means the seller emits webhooks but does not sign them; buyers MUST fail onboarding. Sellers that emit no webhooks SHOULD omit the entire block rather than set `supported: false` — `false` is reserved for the unsafe posture of unsigned-webhook emission, not absence-of-webhooks.                                                                                                                                                   |
 | `profile`              | string   | **Required when `supported: true`.** The profile version string. Currently `"adcp/webhook-signing/v1"`. Future versions bump the string.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `algorithms`           | string[] | **Required when `supported: true`.** Subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithms this seller will sign webhooks with. Matches the webhook-signing verifier allowlist (see [Verifier checklist for webhooks](/docs/building/by-layer/L1/security#webhook-callbacks), step 4). Buyers MUST be prepared to verify any algorithm listed AND MUST reject onboarding with a user-actionable error if an advertised algorithm is outside this enumerated set — a seller advertising an out-of-set algorithm (e.g., `hs256`) is either misconfigured or signalling a non-conforming profile. |
-| `legacy_hmac_fallback` | boolean  | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`, `accounts[].notification_configs[].authentication.credentials`, `sync_principal.configuration.notification_configs[].authentication.credentials`, or `sync_agent_notification_configs.notification_configs[].authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0.                                                                                                                                                                          |
+| `legacy_hmac_fallback` | boolean  | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`, `accounts[].notification_configs[].authentication.credentials`, `sync_principal.configuration.notification_configs[].authentication.credentials`, `sync_agent_notification_configs.notification_configs[].authentication.credentials`, `reporting_webhook.authentication.credentials`, or `create_media_buy.artifact_webhook.authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0.                                                                                                                                                                          |
 | `delivery_retry_horizon_seconds` | integer | **Required when a 3.2 agent declares `supported: true`.** Maximum interval from the first attempt during which the seller may retry one delivery. Minimum `86400` (24h), maximum `604800` (7d). The seller retains the immutable delivery-key-to-payload binding for this interval and does not extend it on retry. A 3.x receiver retains its matching binding and terminal publication proof for at least the greater of 24h and this value. This delivery property is nested here because all conformant 3.2 webhook emitters declare the signing profile; a future non-9421 delivery profile will require a transport-neutral capability location. |
 
 **Example:**
@@ -1643,6 +1733,25 @@ Declares a seller's webhook-signing posture and maximum delivery-retry horizon. 
 ```
 
 The webhook-signing block is parallel to `request_signing` (inbound) and the two blocks cover the two signing directions between buyer and seller. Buyers SHOULD validate both at onboarding; a seller that signs one direction but not the other has a lopsided security posture that operators need to notice explicitly.
+
+### security_profiles
+
+Names the security profiles this endpoint commits to. Optional and **experimental** (`security.profiles`): an endpoint that advertises a profile also lists `security.profiles` in `experimental_features`. Absent or empty means no claim.
+
+| Field | Type | Description |
+|---|---|---|
+| `security_profiles` | string[] | Profile ids. Currently registered: `adcp-prod-security-3.3`. Consumers ignore ids they do not recognize and never treat one as satisfying a requirement. |
+
+```json
+{
+  "security_profiles": ["adcp-prod-security-3.3"],
+  "experimental_features": ["security.profiles"]
+}
+```
+
+The ids in `security_profiles` name security profiles. Signing-profile tags, such as `adcp/request-signing/v1` and `web-bot-auth`, live under `request_signing` and `webhook_signing` and are a different namespace.
+
+Advertising an id is a commitment to the profile's requirements on the advertiser's own endpoint. In 3.3, rejecting non-conforming counterparties is a SHOULD; in 4.0 it becomes a MUST. The claim covers the whole endpoint, every tenant, and every transport that serves its spend-committing operations. It is self-asserted until a registry verifies it. Only agents that verify inbound requests and serve this response can advertise a profile. A buyer that requires a profile and finds it absent refuses spend-committing calls instead of falling back to bearer-only. See the [production security profile](/docs/building/by-layer/L1/production-security-profile) for the admission preconditions, requirements, and downgrade rules.
 
 ### extensions_supported
 

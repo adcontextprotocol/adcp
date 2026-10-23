@@ -9,6 +9,7 @@ const {
 } = require("node:fs");
 const { join, resolve } = require("node:path");
 const semver = require("semver");
+const { docsNavigationVersions } = require("./docs-navigation.cjs");
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
@@ -30,7 +31,9 @@ function assertVersion(version, source) {
 
 function docsSnapshotVersions(repoRoot) {
   const configPath = join(repoRoot, "docs.json");
-  const versions = readJson(configPath)?.navigation?.versions;
+  // English snapshots may live at navigation.versions or under the en
+  // language entry once translations exist. zh/dist mirrors are not versions.
+  const versions = docsNavigationVersions(readJson(configPath));
   if (!Array.isArray(versions) || versions.length === 0) {
     throw new Error(`${configPath} must declare navigation.versions`);
   }

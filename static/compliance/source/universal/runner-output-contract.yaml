@@ -66,8 +66,10 @@ authored_check_kinds:
   - field_less_than
   - field_greater_than
   - field_equals_context
+  - collection_set_equals_context
   - field_in_context_array
   - all_fields_in_context_array
+  - all_fields_present
   - upstream_traffic
   - canonical_format_satisfaction
   - request_field_present
@@ -101,6 +103,163 @@ cross_response_check_kinds:
   - cross_response_field_equal
   - cross_response_count_distinct
   - replay_not_cached_rate_limit
+
+# These synthesized names are output discriminators, never authored checks.
+collection_fixture_synthesized_check_kinds:
+  - fixture_capture_unbuildable
+  - protected_context_violation
+  - prepared_fixtures_authorization
+
+collection_fixture_preparation_output:
+  scope: |
+    This supplements existing failure-detail requirements; it does not weaken
+    response-schema, cardinality, row-sort, exact request/response or security
+    requirements. It adds no seller capability or controller-refusal contract.
+    Runtime failure remains failed. Valid complete no-match remains the canonical
+    fixture_unsatisfied coverage gap; no such record proves seller nonsupport.
+  common_failure_fields: |
+    Every new failed validation MUST carry check, passed:false, description,
+    error, json_pointer, expected, actual, request, response, schema_id and
+    schema_url. schema_id and schema_url MUST explicitly be null for all four
+    check kinds covered here. Omitted/undefined fields are not explicit null.
+    An authored id MUST be echoed when supplied. collection_set_equals_context
+    MUST also echo its authored context_key when one was supplied.
+
+    request and response are exact redacted RunnerRequestRecord and
+    RunnerResponseRecord values for the operation being graded. A legacy
+    extracted response, aggregate catalog summary, reconstructed illustrative
+    request or record from another operation MUST NOT substitute. When the
+    failure is a local operation with NO exchange (authorization, hydration,
+    commit-only failure, or reuse of an already-failed preparation), both fields
+    MUST explicitly be null. This carve-out is narrow: actual seed/discovery
+    capture failure or post-response context failure MUST retain its real
+    exchange. Retain page provenance when selection spans pagination.
+
+    Response json_pointer is relative to the extracted AdCP response data
+    selected by extraction.path, while retaining the actual raw response record.
+    For input-source failures it is relative to request.payload. It MUST NOT
+    silently change basis to an accumulated/selected entity. For a
+    selected-entity path capture, retain its
+    source path and selected entity in fixture resolution evidence, and map the
+    pointer to the actual page's /products/i/... or the actual seed request's
+    matching /params/... location (fixture fields under /params/fixture/...). Derived-witness/size/depth/local-state failures
+    have json_pointer:null. Do not invent a seller response or blame a wire
+    field for a purely local failure.
+  collection_set_equals_context: |
+    Authored path/context_key use the storyboard syntax. A valid comparison
+    success reports passed:true and the response-path json_pointer. On failure:
+      missing path: pointer null;
+        expected "a response path pointing at a CollectionSelector[]"; actual null
+      missing context_key: pointer null;
+        expected "a reserved fixture capture key holding the expected selector array";
+        actual null; context_key omitted only because none was authored
+      expected own-key absent: response comparison-target pointer;
+        expected 'context["<authored key>"]'; actual null
+      diagnostic distinct_pairs supplied as expected: response target pointer;
+        expected "an array of { publisher_domain, collection_ids } selectors";
+        actual "distinct_pairs_witness"
+      other malformed expected: response target pointer; same selector-array
+        expected string; actual null
+      malformed actual: response target pointer; same selector-array expected
+        string; actual observed response value, null if absent/null
+      unequal valid sets: response target pointer; expected and actual are the
+        complete respective normalized CollectionPair[] values, ordered by
+        UTF-8 domain then collection ID, not presentation strings or context keys
+    The pointer identifies the RESPONSE comparison target even when expected
+    context is absent/malformed; error names which side failed. Comparison
+    never excuses schema-invalid concrete selections or duplicate outer entries.
+    General bulk-grant pairs have collection_id:null and remain distinct from
+    an empty enumeration; concrete selection legality is separately validated.
+    Pair-bound exhaustion fails, never truncates into equality. Human summaries
+    may be bounded; they do not replace machine-readable pair evidence.
+  fixture_capture_unbuildable: |
+    Stage 1: selected-entity path/witness/size/depth build failure on the
+    synthetic fixture-resolution producer step. expected MUST be
+    "a value at the declared selected-entity path, or a derivable witness";
+    actual MUST be null. A path failure maps to its actual source payload
+    pointer as specified above; witness/resource failures use null. Attach the
+    actual seed/discovery exchange and correct producer task. Never recast
+    this failed setup as an unavailable fixture or optional feature.
+
+    Stage 2: local publication/freeze/clone failure on synthetic
+    __fixture_capture__. expected MUST be "a capture the runner can deep-clone
+    and freeze"; actual is comma-joined refused key names; pointer/request/
+    response are explicitly null; duration_ms is zero; task attribution follows
+    the refused capture's source provenance. Count shared preparation once.
+
+    Stage 3: standalone refuses execution because an authorized prepared state
+    has a failed disposition. expected MUST be "a fixture graph that resolved
+    during preparation"; actual MUST be "preparation_failed"; pointer/request/
+    response are explicitly null; duration_ms is zero. This arm can represent
+    original discovery/schema/setup failure too: retain its original preparation
+    evidence and detail rather than implying every failure was a path capture.
+  protected_context_violation: |
+    A rejected runtime value/delete/provenance/unavailability patch grades
+    failed, not skipped. expected MUST be "no write, delete or metadata change
+    to the __adcp_fixture_ namespace"; actual is comma-joined offending key
+    names (NOT the ProtectedContextViolationCode enum); json_pointer is null.
+    Local hydration/probe-context publication has no new exchange, so request
+    and response are null. A post-response convention/explicit-output or
+    unavailable-metadata failure carries that operation's actual records and
+    actual duration. Never claim every funnel failure is pre-wire/duration zero.
+    The rejected patch changes no values, aliases, provenance or availability.
+  prepared_fixtures_authorization: |
+    A local run/pass gate refusal uses expected "an authorized prepared state
+    bound to this exact run scope". A named-step refusal uses expected "an
+    authorized prepared state bound to this exact step scope". All use
+    json_pointer:null, request:null, response:null, duration_ms:0 and no seller
+    dispatch for that refused gate. Previous authorized calls may exist.
+    actual is exactly one of authorizer_required, untrusted_state,
+    contract_version_mismatch, authorizer_denied, binding_mismatch,
+    unauthorized_metadata. Successful gates emit no passing synthetic check.
+    Missing authorizer fails before resolution for direct and reference forms.
+    Valid reference-shaped resolved/missing/untrusted/wrong-contract/mismatched
+    refusals after the configured gate collapse to authorizer_denied and the
+    same refusal sentence; do not disclose existence, host errors or binding
+    values. Direct-state mismatches may name differing field names only.
+    Initial reserved caller-map screening can emit unauthorized_metadata even
+    without supplied preparation. No SDK coherence check implements host grants.
+    These check records exist only in the retained authorized record; see
+    refusal_disclosure_and_accounting for what the refused caller receives.
+  provenance_and_binding: |
+    Capture evidence records source_step_id, source_kind:fixture_preparation,
+    source_task:get_products|comply_test_controller, fixture_handle and, for
+    scoped prices, fixture_product_handle. Reserved provenance is runner-owned;
+    caller JSON maps do not import its authority. Prepared-state accessors are
+    detached views, and nonresolved graphs expose no captures/witnesses.
+    Lookup metadata distinguishes binding/current, gate:run|pass|step, optional
+    step_id/reference, brand_scope, account_scope, effective request_account_scope,
+    step_route and step credential/kind. Fingerprints are not credentials or
+    grants. Do not promise exactly one lookup per run/step or serialize live
+    trusted-object authority across processes.
+  refusal_disclosure_and_accounting: |
+    An authorization refusal is an access-control outcome, not a grading
+    result for the caller whose access was refused. When any gate emits
+    prepared_fixtures_authorization:
+      - The runner MUST NOT return the grading result, or any partial or
+        redacted projection of it, to that caller. It MUST surface a typed
+        authorization denial outside this contract (hosted: an authenticated
+        API error; library: a typed error). The denial carries only the
+        refusal code (one of the prepared_fixtures_authorization actual values)
+        and MUST NOT carry fixture identities, seller_ids, captures, binding
+        values, request/response records or results of earlier steps.
+      - The complete result, including the synthesized refusal check,
+        fixture_resolutions with their seller_ids, and exact request and
+        response records, MUST be retained unredacted in the host's authorized
+        run/audit scope. Every existing result MUST, including
+        fixture-resolution machine-identity retention, applies to that retained
+        record. The runner MUST NOT emit a refusal-shaped result that omits
+        fixture_resolutions or required seller_ids, invents resolved records,
+        or substitutes "[redacted]" for required evidence.
+    Results previously disclosed under a valid grant are not retroactively
+    undisclosed. Reserved context/capture previews remain withheld from any
+    caller-facing diagnostic.
+    In the retained record, preserve failed counts, phase failure, stateful
+    dependency cascades and terminal preparation outcomes. Do not convert
+    authorization/setup failure to fixture_unsatisfied, successful optional
+    branches or not_applicable. A host's existing disposition classification
+    is separate policy; retain raw failures and do not silently revise scores,
+    floors or release behavior.
 
 property_list_reference_check:
   description: |
@@ -289,7 +448,9 @@ validation_result:
                               # For runner-synthesized grading (not authored in the
                               # storyboard validations array, generated by the runner
                               # after the authored checks complete):
-                              # capture_path_not_resolvable | unresolved_substitution
+                              # capture_path_not_resolvable | unresolved_substitution |
+                              # fixture_capture_unbuildable | protected_context_violation |
+                              # prepared_fixtures_authorization
                               #
                               # See storyboard-schema.yaml > "Runner grading codes"
                               # for the semantics of each synthesized code, and
@@ -325,6 +486,9 @@ validation_result:
                               # specific call's payload failed payload_must_contain;
                               # null when the failure is a count mismatch
                               # (no specific call implicated).
+    - context_key             # REQUIRED for collection_set_equals_context when authored;
+                              # echoes the comparison-source key, not its value.
+                              # Other checks retain their existing field rules.
     - expected                # machine-readable expected value:
                               #   response_schema      → schema $id that was applied
                               #   field_value          → expected value (any JSON type)
@@ -381,6 +545,9 @@ validation_result:
                               #                          by the wildcard path MUST be a
                               #                          member. Zero terminal values
                               #                          pass vacuously.
+                              #   all_fields_present   → the authored path, with its
+                              #                          single `[*]` segment (for
+                              #                          example "products[*].format_options")
                               #   capture_path_not_resolvable → the context_outputs path
                               #                          string that failed to resolve
                               #                          (e.g. "signals[0].signal_agent_segment_id")
@@ -462,6 +629,11 @@ validation_result:
                               #   all_fields_in_context_array → array of all resolved
                               #                          terminal values (empty when
                               #                          none resolve).
+                              #   all_fields_present   → array of RFC 6901 pointers to
+                              #                          the missing field on each
+                              #                          offending item
+                              #                          (e.g. ["/products/2/format_options"]);
+                              #                          json_pointer is the first of them
                               #   capture_path_not_resolvable → the value that was
                               #                          resolved at the path, or null
                               #                          when the path did not exist.
@@ -527,6 +699,17 @@ validation_result:
       of the context_outputs path that failed to resolve (e.g. "/signals/0/
       signal_agent_segment_id"). For unresolved_substitution, json_pointer MUST
       be null (the substitution is pre-wire and no response path is implicated).
+    all_fields_present_not_applicable: |
+      all_fields_present asserts that every item of one array carries a
+      field (storyboard-schema.yaml > "all_fields_present check"). When the
+      array before the `[*]` segment is absent, null, or empty, there is no
+      item to inspect, and the runner MUST NOT report a vacuous pass: it
+      emits the validation_result with `passed: true` and a `note` naming
+      the empty array, and the result contributes to the per-step
+      not_applicable counter and to `validations_not_applicable` on
+      run_summary, exactly like an unrecognized check kind. Consumers that
+      distinguish "passed" from "not observable" (for example the AdCP 4.0
+      compatibility report, universal/v4-compatibility.yaml) rely on this.
     cross_step_comparison_checks: |
       field_less_than, field_equals_context, field_in_context_array, and
       all_fields_in_context_array are
@@ -541,7 +724,9 @@ validation_result:
          step's response differed — that's load-bearing for diagnosing
          filtered-vs-baseline regressions. The `context_key` field on the
          storyboard validation is authoring-time metadata; it is NOT echoed
-         into validation_result.
+         into validation_result. Exception: collection_set_equals_context
+         echoes its authored context_key (see
+         collection_fixture_preparation_output).
 
       2. `context_key_absent` observation: when the storyboard sets
          `context_key` and the named entry is missing from the accumulator
@@ -552,6 +737,10 @@ validation_result:
          missing capture (prior step ran but its capture path didn't resolve)
          is NOT this case — that grades `capture_path_not_resolvable` ON THE
          PRIOR STEP per the synthesized_checks rule.
+         Exception: collection_set_equals_context MUST FAIL when its
+         context_key is absent. Fixture captures publish all-or-nothing after
+         the whole graph resolves, so an absent __adcp_fixture_ key means
+         preparation did not complete, never a skipped branch.
 
       3. Step-ordering dependency: cross-step comparison checks read from the
          accumulator built up over prior step executions. Runners that
@@ -1332,12 +1521,15 @@ notice:
   canonical_codes:
     description: |
       First-day published codes runners SHOULD emit when the underlying
-      condition holds. Additional codes are registered by adding entries
+      condition holds. Every code whose `effective_version` is "4.0" is
+      also an AdCP 4.0 compatibility check and MUST appear, under the same
+      id, in `universal/v4-compatibility.yaml`. Additional codes are registered by adding entries
       here in subsequent spec revisions; runners MAY emit codes outside
       this list (consumers must accept unknown codes per the forward-compat
       rule above), but SHOULD prefer canonical codes when one fits.
     signed_requests_specialism_deprecated:
       severity: deprecation
+      effective_version: "4.0"
       spec_source: universal/signed-requests.yaml
       capability_path: specialisms
       message_template: |

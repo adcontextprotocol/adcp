@@ -276,3 +276,61 @@ export function isSpecExactAgentMatch(rowAgentUrl: string, callerUrl: string): b
 export function declaredAgentUrl(agent: { url: string; declared_url?: string }): string {
   return agent.declared_url ?? agent.url;
 }
+
+/**
+ * Every spelling of `raw` a registry-keyed store may legitimately hold for
+ * the one agent `raw` identifies.
+ *
+ * Readers of a store whose key lives inside JSONB — `member_profiles.agents[]`
+ * is the only one — cannot fold the stored side in SQL: canonicalizing agent
+ * URLs in the database is banned (see the module header), and the fold is not
+ * expressible as a `jsonb` containment anyway. Such a reader can only ask for
+ * the spellings that fold to the same key, which is what this returns.
+ * `db/agent-identity-match.ts` wraps it as the `@>` containment filter the
+ * ownership and badge predicates share (#8322); call this directly only for
+ * the `= ANY(...::text[])` shape a `jsonb_array_elements` read needs.
+ *
+ * The registry's fold over AdCP canonicalization is exactly the trailing
+ * slash on the PATH, so the set is the key, the key's path carrying the slash
+ * the fold removed, and the caller's own spelling when it differs from both
+ * (the `?? raw` fallback {@link registryAgentUrlLookupKey} makes, generalized
+ * to the whole set — a row written before the key existed is still reachable
+ * by the spelling the caller already has). The slash goes back on the path,
+ * not on the end of the key, so a query-bearing URL gets
+ * `https://a.example/mcp/?t=1` rather than a slash inside its query. A root
+ * path is the mirror case: its key keeps the one slash only so the query
+ * still reads as a query, so there the sibling is the spelling WITHOUT it.
+ *
+ * Every returned spelling is verified to key back to the same identity, so a
+ * lookup built from this set can never reach a second agent. An input the key
+ * rejects yields just that input, matching `registryAgentUrlLookupKey`.
+ *
+ * NOT a complete inverse of the key, and cannot be: AdCP canonicalization
+ * also folds host case, the default port, dot segments, IDN and
+ * percent-encoding, and `legacyRegistryAgentUrlKey` additionally lowercased
+ * the path. A row holding one of those spellings is still unreachable —
+ * `scripts/migrate-registry-agent-url-keys.ts` is the tool for those, not a
+ * read-side guess.
+ *
+ * AUTHORIZATION MATCHING MUST NOT USE THIS. Like `registryAgentUrlKey` itself
+ * it folds `/mcp` and `/mcp/` together; whether an `adagents.json` entry
+ * authorizes a URL stays spec-exact (#7829) via `declaredAgentUrl`.
+ */
+export function registryAgentUrlKeySpellings(raw: string): string[] {
+  const trimmed = raw.trim();
+  const key = registryAgentUrlKey(trimmed);
+  if (key === null) return [raw];
+  // `key` was computed from `trimmed`, so the caller's spelling is already
+  // verified to be this agent.
+  const spellings = new Set<string>([key, trimmed]);
+  const queryAt = key.indexOf('?');
+  const path = queryAt < 0 ? key : key.slice(0, queryAt);
+  const queryPart = queryAt < 0 ? '' : key.slice(queryAt);
+  // A key's path ends in a slash only in the root-with-query case the fold
+  // puts back; everywhere else the fold stripped it.
+  const sibling = path.endsWith('/')
+    ? `${path.slice(0, -1)}${queryPart}`
+    : `${path}/${queryPart}`;
+  if (registryAgentUrlKey(sibling) === key) spellings.add(sibling);
+  return [...spellings];
+}

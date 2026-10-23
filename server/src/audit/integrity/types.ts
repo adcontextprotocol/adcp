@@ -32,7 +32,9 @@ export type SubjectType =
   | 'subscription'
   | 'customer'
   | 'membership'
-  | 'configuration';
+  | 'configuration'
+  /** A moderation queue, reported in aggregate rather than per item. */
+  | 'queue';
 
 export interface Violation {
   /** Identifier of the invariant that fired this violation. */

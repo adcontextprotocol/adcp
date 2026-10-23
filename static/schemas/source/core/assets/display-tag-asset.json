@@ -17,16 +17,19 @@
       "description": "Exact macro tokens present anywhere in this representation. Tokens remain byte-preserved until the resolver named by each declaration substitutes them."
     },
     "width": {
+      "x-added-in": "3.3.0",
       "type": "integer",
       "minimum": 1,
       "description": "Rendered width in logical pixels of the entry canvas, independent of target placement and embedded image density. For expandable units, this is the initial width. When set, height must also be set. Mutually exclusive with sizes."
     },
     "height": {
+      "x-added-in": "3.3.0",
       "type": "integer",
       "minimum": 1,
       "description": "Rendered height in logical pixels of the entry canvas. For expandable units, this is the initial height. When set, width must also be set. Mutually exclusive with sizes."
     },
     "sizes": {
+      "x-added-in": "3.3.0",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -65,16 +68,19 @@
         },
         "provenance": { "$ref": "/schemas/core/provenance.json" },
         "width": {
+          "x-added-in": "3.3.0",
           "type": "integer",
           "minimum": 1,
           "description": "Rendered width in logical pixels of the entry canvas, independent of target placement and embedded image density. For expandable units, this is the initial width. When set, height must also be set. Mutually exclusive with sizes."
         },
         "height": {
+          "x-added-in": "3.3.0",
           "type": "integer",
           "minimum": 1,
           "description": "Rendered height in logical pixels of the entry canvas. For expandable units, this is the initial height. When set, width must also be set. Mutually exclusive with sizes."
         },
         "sizes": {
+          "x-added-in": "3.3.0",
           "type": "array",
           "minItems": 1,
           "items": {
@@ -120,16 +126,19 @@
         },
         "provenance": { "$ref": "/schemas/core/provenance.json" },
         "width": {
+          "x-added-in": "3.3.0",
           "type": "integer",
           "minimum": 1,
           "description": "Rendered width in logical pixels of the entry canvas, independent of target placement and embedded image density. For expandable units, this is the initial width. When set, height must also be set. Mutually exclusive with sizes."
         },
         "height": {
+          "x-added-in": "3.3.0",
           "type": "integer",
           "minimum": 1,
           "description": "Rendered height in logical pixels of the entry canvas. For expandable units, this is the initial height. When set, width must also be set. Mutually exclusive with sizes."
         },
         "sizes": {
+          "x-added-in": "3.3.0",
           "type": "array",
           "minItems": 1,
           "items": {
@@ -182,16 +191,19 @@
         },
         "provenance": { "$ref": "/schemas/core/provenance.json" },
         "width": {
+          "x-added-in": "3.3.0",
           "type": "integer",
           "minimum": 1,
           "description": "Rendered width in logical pixels of the entry canvas, independent of target placement and embedded image density. For expandable units, this is the initial width. When set, height must also be set. Mutually exclusive with sizes."
         },
         "height": {
+          "x-added-in": "3.3.0",
           "type": "integer",
           "minimum": 1,
           "description": "Rendered height in logical pixels of the entry canvas. For expandable units, this is the initial height. When set, width must also be set. Mutually exclusive with sizes."
         },
         "sizes": {
+          "x-added-in": "3.3.0",
           "type": "array",
           "minItems": 1,
           "items": {
