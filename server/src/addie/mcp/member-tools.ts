@@ -5892,11 +5892,46 @@ export function createMemberToolHandlers(
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
       output += `**Compliance target:** ${formatComplianceTarget(runTarget)}\n`;
       const coverageGaps = result.coverage_gaps ?? [];
-      const catalogReportingGap = ['media_buy_seller/advanced_delivery_reporting', 'media_buy_seller/time_based_delivery_reporting'].includes(storyboardId)
-        && coverageGaps.some(gap => gap.reason === 'fixture_unsatisfied');
-      const resultLabel = !result.overall_passed || result.failed_count > 0 ? 'FAILED'
-        : catalogReportingGap ? 'NOT APPLICABLE — no qualifying product in your wholesale sandbox catalog (feature not tested)'
-        : coverageGaps.length > 0 ? 'INCOMPLETE — coverage gap' : 'PASSED';
+      const catalogReportingGap =
+        [
+          'media_buy_seller/advanced_delivery_reporting',
+          'media_buy_seller/time_based_delivery_reporting',
+          'media_buy_seller/collection_selection',
+          'media_buy_seller/collection_default_materialization',
+          'media_buy_seller/collection_selection_readback',
+          'media_buy_seller/collection_default_materialization_readback',
+          'media_buy_seller/fixed_bundle_enforcement',
+          'media_buy_seller/fixed_bundle_restatement',
+          'media_buy_seller/owner_sold_channel_carriage',
+          'media_buy_seller/owner_sold_channel_subset',
+        ].includes(storyboardId) &&
+        coverageGaps.some((gap) => gap.reason === 'fixture_unsatisfied');
+      const collectionReaderAbsent =
+        [
+          'media_buy_seller/collection_selection_readback',
+          'media_buy_seller/collection_default_materialization_readback',
+        ].includes(storyboardId) &&
+        result.passed_count === 0 &&
+        result.phases.some(
+          (phase) =>
+            phase.phase_id === 'missing_tool' &&
+            phase.steps.some(
+              (step) =>
+                step.step_id === 'missing_tool' &&
+                step.skipped &&
+                step.skip_reason === 'missing_tool',
+            ),
+        );
+      const resultLabel =
+        !result.overall_passed || result.failed_count > 0
+          ? 'FAILED'
+          : catalogReportingGap
+            ? 'NOT APPLICABLE — no qualifying product in your wholesale sandbox catalog (feature not tested)'
+            : collectionReaderAbsent
+              ? 'NOT APPLICABLE — get_media_buys is not advertised (persisted collection readback not tested)'
+              : coverageGaps.length > 0
+                ? 'INCOMPLETE — coverage gap'
+                : 'PASSED';
       output += `**Result:** ${resultLabel} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped, ${result.validations_advisory_failed ?? 0} advisory validation(s) failed\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
       for (const gap of coverageGaps) {
