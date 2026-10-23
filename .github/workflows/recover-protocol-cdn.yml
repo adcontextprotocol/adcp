@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Exact stable semver to recover (for example, 3.0.22)
+        description: Exact published semver to recover (for example, 3.0.22 or 3.3.0-beta.0)
         required: true
         type: string
       surfaces:
@@ -61,8 +61,11 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::version must be an exact stable semver (for example, 3.0.22)"
+          # Prereleases are accepted only as exact beta/rc versions; the
+          # published-release check below still refuses any version without a
+          # published GitHub Release carrying the complete signed tuple.
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$ ]]; then
+            echo "::error::version must be an exact semver, optionally -beta.N or -rc.N (for example, 3.0.22 or 3.3.0-beta.0)"
             exit 1
           fi
 

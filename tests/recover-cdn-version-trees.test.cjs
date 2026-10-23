@@ -375,12 +375,17 @@ test("only the bundle build's own timestamp pin may differ, and only in its own 
   assert.deepEqual(f.bucketKeys(), []);
 });
 
-test("recovery refuses a prerelease, a mismatched checkout, and a stale branch", (t) => {
+test("recovery refuses a malformed version, a mismatched checkout, and a stale branch", (t) => {
   const prerelease = fixture(t);
-  const rc = prerelease.run("upload", { VERSION: "3.2.0-rc.3" });
-  assert.notEqual(rc.status, 0);
-  assert.match(rc.stderr, /exact stable semver/);
+  const alpha = prerelease.run("upload", { VERSION: "3.2.0-alpha.1" });
+  assert.notEqual(alpha.status, 0);
+  assert.match(alpha.stderr, /exact semver, optionally -beta\.N or -rc\.N/);
   assert.deepEqual(prerelease.calls(), []);
+  // An exact beta/rc passes the version gate; authority then rests on the
+  // published-release fence and the checkout's package version.
+  const beta = prerelease.run("upload", { VERSION: "3.3.0-beta.0" });
+  assert.notEqual(beta.status, 0);
+  assert.doesNotMatch(beta.stderr, /exact semver/);
 
   const mismatched = fixture(t, { packageVersion: "3.0.26" });
   const wrongCheckout = mismatched.run("upload");

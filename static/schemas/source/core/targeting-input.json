@@ -117,7 +117,8 @@
       "anyOf": [
         { "$ref": "/schemas/core/targeting.json#/properties/demographics" },
         { "type": "null" }
-      ]
+      ],
+      "description": "Whole demographics dimension mutation: omit to inherit on create or preserve on update; null suppresses or clears both age and gender; a non-null object replaces the complete age-and-gender selection. To remove gender while retaining age, submit demographics containing age only. Nested age:null or gender:null are invalid. Apply atomically and omit cleared dimensions from strict readback."
     },
     "frequency_cap": {
       "anyOf": [

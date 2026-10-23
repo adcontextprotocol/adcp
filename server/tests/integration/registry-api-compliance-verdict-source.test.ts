@@ -23,6 +23,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import type { Pool } from 'pg';
 import { HTTPServer } from '../../src/http.js';
@@ -30,6 +31,12 @@ import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { ComplianceDatabase } from '../../src/db/compliance-db.js';
 import { complianceResultToDbInput, type ComplianceResult } from '../../src/addie/services/compliance-testing.js';
 import { runMigrations } from '../../src/db/migrate.js';
+
+const SDK_PACKAGE_VERSION = (
+  JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
+    dependencies: Record<string, string>;
+  }
+).dependencies['@adcp/sdk'];
 
 vi.hoisted(() => {
   process.env.WORKOS_API_KEY ||= 'sk_test_registry_debug';
@@ -904,7 +911,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         const response = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics?run_id=${run.id}`);
         expect(response.status).toBe(200);
         expect(response.body).toMatchObject({ run_id: run.id, completeness: 'timed_out', is_authoritative: false,
-          provenance: { compliance_bundle_version: '3.1.20', sdk_version: '16.2.0', agent_build_version: 'build-immutable-42', agent_library_version: 'seller-sdk-2' },
+          provenance: { compliance_bundle_version: '3.1.20', sdk_version: SDK_PACKAGE_VERSION, agent_build_version: 'build-immutable-42', agent_library_version: 'seller-sdk-2' },
           diagnostics_visibility: 'owner_or_operator' });
         expect(response.body.diagnostics[0].error_text).toBe('Expected products array');
         expect(JSON.stringify(response.body)).not.toContain('fixture-secret-value');

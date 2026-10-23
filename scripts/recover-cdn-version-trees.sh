@@ -33,7 +33,7 @@
 # Usage: recover-cdn-version-trees.sh <upload|verify>
 #
 # Environment:
-#   VERSION               exact stable semver (required)
+#   VERSION               exact semver, optionally -beta.N / -rc.N (required)
 #   FENCE_SCRIPT          path to the preserved check-release-state.cjs
 #   PARITY_SCRIPT         path to the preserved check-protocol-bundle-parity.cjs
 #   BUCKET                destination R2 bucket (upload only)
@@ -57,9 +57,10 @@ die() {
 }
 
 VERSION="${VERSION:-}"
-# Stable only: prereleases are never recovered, matching recover-protocol-cdn.yml.
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
-  die "VERSION must be an exact stable semver (for example, 3.0.27)"
+# Exact semver, optionally -beta.N or -rc.N, matching recover-protocol-cdn.yml.
+# Authority is the published-release fence: an unpublished prerelease is refused.
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$ ]] ||
+  die "VERSION must be an exact semver, optionally -beta.N or -rc.N (for example, 3.0.27)"
 version_re="${VERSION//./\\.}"
 
 FENCE_SCRIPT="${FENCE_SCRIPT:-}"

@@ -2983,6 +2983,7 @@ components:
                                   - biometric_data
                                   - age
                                   - familial_status
+                                  - sex_gender
                               minItems: 1
                             description:
                               type: string

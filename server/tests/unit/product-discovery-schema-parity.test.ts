@@ -144,7 +144,10 @@ describe('product discovery MCP schema parity', () => {
     // array properties and their requirement keys to the shared targeting
     // graph; with open opportunities on main, 163,607 bytes / 159.77 KiB
     // measured, bounded at 160 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(160 * 1024);
+    // Core gender adds its shared predicate and overlay support; merged
+    // discovery measures 165,140 bytes / 161.27 KiB, bounded at the next KiB
+    // without relaxing standalone-schema parity.
+    expect(totalBytes).toBeLessThanOrEqual(162 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

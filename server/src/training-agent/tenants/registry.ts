@@ -52,6 +52,7 @@ import { buildBrandTenantConfig } from './brand.js';
 import { buildSiTenantConfig } from './si.js';
 import { createLogger } from '../../logger.js';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../types.js';
+import { TRAINING_AGENT_CANDIDATE_ADCP_VERSION } from '../candidate-version.js';
 import { releaseLineEchoEnhancer } from './release-line-echo.js';
 import { getCanonicalBase } from '../canonical-base.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
@@ -200,7 +201,12 @@ function buildDefaultServerOptions(
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
-    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : TRAINING_AGENT_CURRENT_ADCP_VERSION,
+    adcpVersion: storyboardCompat?.version === '3.0'
+      ? '3.0'
+      : TRAINING_AGENT_CANDIDATE_ADCP_VERSION ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+    ...(TRAINING_AGENT_CANDIDATE_ADCP_VERSION && storyboardCompat?.version !== '3.0' && {
+      defaultAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION,
+    }),
     idempotency: withSellerManagedIdempotencyReplay(getSdkIdempotencyStore(), taskRegistry),
     webhooks: getWebhookSigningMaterial(),
     // Preserve terminal inline callbacks when supported by the SDK; actual

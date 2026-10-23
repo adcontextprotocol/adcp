@@ -11,6 +11,7 @@ import type {
   EventType,
   CanonicalProposal,
 } from '@adcp/sdk';
+import { TRAINING_AGENT_CANDIDATE_ADCP_VERSION } from './candidate-version.js';
 
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/sdk types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
@@ -84,6 +85,7 @@ export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS: readonly string[] = Obje
   '3.2-rc.0', TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_RELEASE,
+  ...(TRAINING_AGENT_CANDIDATE_ADCP_VERSION ? [TRAINING_AGENT_CANDIDATE_ADCP_VERSION] : []),
 ])]);
 export const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0' as const;
 
@@ -294,6 +296,8 @@ export interface TrainingContext {
   legacySessionBrandDomain?: string;
   /** Release selected by protocol negotiation for this request. */
   servedAdcpVersion?: string;
+  /** Local source-schema preview only. Never set by deployed routes or buyer input. */
+  developmentCoreGender?: boolean;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
    *  `required_for: ['create_media_buy']` in capabilities and enforces
    *  presence-gated signing at the auth layer. Default `/mcp` does not
