@@ -4,6 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 const crypto = require('crypto');
+const os = require('os');
+const vm = require('vm');
+const { spawnSync } = require('child_process');
 const YAML = require('yaml');
 
 const repoRoot = path.join(__dirname, '..');
@@ -100,6 +103,49 @@ assert(
   !typescriptCandidateStep.includes('sync-version -- --auto-update'),
   'Candidate validation must not bump the TypeScript SDK package release number.'
 );
+const candidateVersionBridge = typescriptCandidateStep.match(
+  /node <<'NODE_CANDIDATE_VERSION'\n([\s\S]*?)\nNODE_CANDIDATE_VERSION/
+)?.[1];
+assert(candidateVersionBridge, 'Candidate compatibility bridge must remain executable and isolated.');
+const compatibilityFixture = `function buildCompatibleVersions(adcpVersion: string): string[] {
+  const [, majorText, minorText, patchText, prerelease] = /^(\\d+)\\.(\\d+)\\.(\\d+)(?:-(.+))?$/.exec(adcpVersion);
+  const major = Number(majorText), minor = Number(minorText), patch = Number(patchText);
+  // 3.2 prereleases are exact.
+  if (adcpVersion === '3.2.5') return ['v3', '3.2.1', '3.2.5', '3.2'];
+  throw new Error('unsupported version');
+}`;
+function bridgeCandidateVersion(candidate, pinned = '3.2.5', original = compatibilityFixture) {
+  let generated = original;
+  vm.runInNewContext(candidateVersionBridge, {
+    process: { env: { BUNDLE_VERSION: candidate } },
+    require(name) {
+      assert.strictEqual(name, 'node:fs');
+      return {
+        readFileSync(filename) { return filename === 'sdk/ADCP_VERSION' ? pinned : original; },
+        writeFileSync(filename, source) {
+          assert.strictEqual(filename, 'sdk/scripts/sync-version.ts');
+          generated = source;
+        },
+      };
+    },
+  });
+  return generated;
+}
+for (const candidate of ['3.3.0-beta.0', '3.3.0-rc.2']) {
+  const generated = bridgeCandidateVersion(candidate).replace('(adcpVersion: string): string[]', '(adcpVersion)');
+  const context = {};
+  vm.runInNewContext(generated, context);
+  assert.deepStrictEqual(Array.from(context.buildCompatibleVersions(candidate)), [
+    'v3', '3.2.1', '3.2.5', '3.2', candidate, candidate.replace('3.3.0-', '3.3-'),
+  ], 'The bridge must retain stable peers and add only the exact preview aliases.');
+  assert.throws(() => context.buildCompatibleVersions('3.4.0-beta.0'), /unsupported version/);
+  assert.deepStrictEqual(Array.from(context.buildCompatibleVersions('3.2.5')), ['v3', '3.2.1', '3.2.5', '3.2']);
+}
+for (const candidate of ['3.2.5', '3.3.0', '3.3.0-alpha.0', '3.4.0-beta.0']) {
+  assert.strictEqual(bridgeCandidateVersion(candidate), compatibilityFixture,
+    'The bridge must leave released versions and unrecognized candidate lines untouched.');
+}
+assert.throws(() => bridgeCandidateVersion('3.3.0-beta.0', '3.2.5', 'changed generator'), /generator changed/);
 const typescriptProtocolCheckout = schemaPrWorkflowConfig.jobs['typescript-sdk'].steps.find(
   step => step.uses?.startsWith('actions/checkout@') && step.with?.path === 'protocol'
 );
@@ -144,6 +190,51 @@ assert(
     pythonCandidateStep.includes('f"recursive-include schemas/cache/{new_key} *.json"'),
   'Python candidate validation must key the wheel and both sdist schema allowlist syntaxes with the SDK bundle key.'
 );
+const pythonPackageBridge = pythonCandidateStep.match(
+  /SDK_VERSION="\$\{sdk_version\}" BUNDLE_VERSION="\$\{bundle_version\}" python - <<'PY'\n([\s\S]*?)\nPY/
+)?.[1];
+assert(pythonPackageBridge, 'Python candidate package-data bridge must remain executable.');
+const packageBridgeTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-sdk-candidate-'));
+try {
+  const sdkDir = path.join(packageBridgeTemp, 'sdk');
+  fs.mkdirSync(sdkDir);
+  const importStub = `import sys, types
+module = types.ModuleType("adcp.validation.version")
+module.resolve_bundle_key = lambda value: value if "-" in value else ".".join(value.split(".")[:2])
+sys.modules["adcp.validation.version"] = module
+`;
+  for (const manifest of [
+    'prune src/adcp/_schemas\nrecursive-include schemas/cache/3.2 *.json\n',
+    'recursive-include src/adcp/_schemas/3.2 *.json\nrecursive-include schemas/cache/3.2 *.json\n',
+  ]) {
+    fs.writeFileSync(path.join(sdkDir, 'pyproject.toml'), 'adcp = ["_schemas/3.2/**/*.json"]\n');
+    fs.writeFileSync(path.join(sdkDir, 'MANIFEST.in'), manifest);
+    const result = spawnSync('python3', ['-c', importStub + pythonPackageBridge], {
+      cwd: packageBridgeTemp,
+      env: { ...process.env, SDK_VERSION: '3.2.5', BUNDLE_VERSION: '3.3.0-beta.0' },
+      encoding: 'utf8',
+    });
+    assert.strictEqual(result.status, 0, result.stderr);
+    const updated = fs.readFileSync(path.join(sdkDir, 'MANIFEST.in'), 'utf8');
+    assert(updated.includes('recursive-include schemas/cache/3.3.0-beta.0 *.json'));
+    assert.strictEqual(updated.includes('recursive-include src/adcp/_schemas/3.3.0-beta.0 *.json'),
+      !manifest.startsWith('prune'), 'A pruned generated copy must stay excluded from sdists.');
+    assert(fs.readFileSync(path.join(sdkDir, 'pyproject.toml'), 'utf8').includes('"_schemas/3.3.0-beta.0/**/*.json"'));
+  }
+  for (const manifest of ['prune src/adcp/_schemas\n', 'recursive-include schemas/cache/3.2 *.json\n']) {
+    fs.writeFileSync(path.join(sdkDir, 'pyproject.toml'), 'adcp = ["_schemas/3.2/**/*.json"]\n');
+    fs.writeFileSync(path.join(sdkDir, 'MANIFEST.in'), manifest);
+    const result = spawnSync('python3', ['-c', importStub + pythonPackageBridge], {
+      cwd: packageBridgeTemp,
+      env: { ...process.env, SDK_VERSION: '3.2.5', BUNDLE_VERSION: '3.3.0-beta.0' },
+      encoding: 'utf8',
+    });
+    assert.notStrictEqual(result.status, 0, 'Missing package-data authority must fail closed.');
+    assert.match(result.stderr, /does not package the pinned SDK schema/);
+  }
+} finally {
+  fs.rmSync(packageBridgeTemp, { recursive: true, force: true });
+}
 
 const storyboardCandidateMode = trainingAgentWorkflowConfig.jobs.storyboards.steps.find(
   step => step.name === 'Run storyboards against /${{ matrix.tenant }}'

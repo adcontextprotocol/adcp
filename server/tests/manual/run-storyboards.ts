@@ -42,8 +42,7 @@ import {
   testKitOptionsFromKit,
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
-import { formatFailureDetailSnippet, formatStepFailureDetail } from './storyboard-report-format.js';
-import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
+import { formatFailureDetailSnippet, formatFailedValidationSummary, formatStepFailureDetail, storyboardStepStatus, type StoryboardStepForSummary } from './storyboard-report-format.js';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
@@ -57,16 +56,6 @@ if (!process.env.NODE_ENV) process.env.NODE_ENV = 'test';
 // Silence pino logger noise so the progress table stays readable. Set
 // LOG_STORYBOARDS=1 to get full log output for diagnosis.
 if (!process.env.LOG_STORYBOARDS) process.env.LOG_LEVEL = 'silent';
-
-const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
-const { stopSessionCleanup, clearSessions } = await import('../../src/training-agent/state.js');
-const { clearAccountStore } = await import('../../src/training-agent/account-handlers.js');
-const { clearSeededCreativeFormats, clearForcedTaskCompletions } = await import(
-  '../../src/training-agent/comply-test-controller.js'
-);
-const { clearCatalogEventStores } = await import('../../src/training-agent/catalog-event-handlers.js');
-const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
-const { getCanonicalBase } = await import('../../src/training-agent/canonical-base.js');
 
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose');
@@ -121,6 +110,9 @@ const isCurrentSourceRun = releasedComplianceVersion === undefined
   );
 const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.\d+$/.test(releasedComplianceVersion);
 if (candidateVersionMode) {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('ADCP_STORYBOARD_CANDIDATE_VERSION_MODE=1 requires NODE_ENV=test');
+  }
   const packageVersion = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version as unknown;
   if (!isCurrentSourceRun || releasedComplianceVersion === undefined) {
     throw new Error(
@@ -132,19 +124,33 @@ if (candidateVersionMode) {
       'ADCP_STORYBOARD_CANDIDATE_VERSION_MODE=1 requires the compliance bundle version to match package.json',
     );
   }
+  // Set the trusted, process-local wire contract before importing runtime
+  // modules. Source 3.3 cannot be graded by aliasing it to released 3.2.
+  process.env.ADCP_TRAINING_CANDIDATE_VERSION = releasedComplianceVersion.replace(
+    /^(\d+\.\d+)\.\d+((?:-(?:beta|rc)\.\d+)?)$/,
+    '$1$2',
+  );
 }
+const { TRAINING_AGENT_CURRENT_ADCP_VERSION } = await import('../../src/training-agent/types.js');
+const { TRAINING_AGENT_CANDIDATE_ADCP_VERSION } = await import('../../src/training-agent/candidate-version.js');
+const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
+const { stopSessionCleanup, clearSessions } = await import('../../src/training-agent/state.js');
+const { clearAccountStore } = await import('../../src/training-agent/account-handlers.js');
+const { clearSeededCreativeFormats, clearForcedTaskCompletions } = await import(
+  '../../src/training-agent/comply-test-controller.js'
+);
+const { clearCatalogEventStores } = await import('../../src/training-agent/catalog-event-handlers.js');
+const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
+const { getCanonicalBase } = await import('../../src/training-agent/canonical-base.js');
 // Released compliance artifacts carry a patch version, while the frozen 3.0
 // wire contract negotiates the stable `3.0` selector. Keep the exact artifact
 // version for schema selection and override only the request envelope. Source
 // runs also pin the current wire release: capability discovery must describe
 // the surface being graded instead of falling back to the agent's legacy 3.0
 // unpinned default.
-// The first prerelease of a new minor line (for example 3.3.0-beta.0 while
-// the training agent's SDK serves 3.2) has no same-line stable alias: beta.0
-// is protocol-first and no published SDK serves its schemas yet. Release
-// verification of that cut grades the candidate compliance bundle exactly as
-// the pre-bump run did, so the resolver alone also accepts the candidate's
-// exact prerelease pin. Execution keeps speaking the agent's real wire version.
+// A source candidate can serve a newer minor line while explicit requests
+// still select the training agent's stable line. Keep the published stable
+// schemas available alongside the candidate root for those requests.
 const candidateOpensNewerLine = (() => {
   if (!candidateVersionMode || releasedComplianceVersion === undefined) return false;
   const candidate = /^(\d+)\.(\d+)\.\d+-(?:beta|rc)\.\d+$/.exec(releasedComplianceVersion);
@@ -153,14 +159,9 @@ const candidateOpensNewerLine = (() => {
   const [cMajor, cMinor, sMajor, sMinor] = [candidate[1], candidate[2], served[1], served[2]].map(Number);
   return cMajor > sMajor || (cMajor === sMajor && cMinor > sMinor);
 })();
-const candidatePrereleasePin = candidateOpensNewerLine
-  ? releasedComplianceVersion!.replace(/^(\d+\.\d+)\.\d+-/, '$1-')
-  : undefined;
-// Before the bump, the candidate root's aliases covered the agent's wire line,
-// so wire responses validated as JSON Schema against the in-tree bundle. A
-// new-line candidate's root no longer covers that line, so scope the newest
-// published bundle of the served line instead: responses are still checked
-// strictly against the released schema the agent actually serves.
+// The candidate root covers the actual candidate wire contract. Register a
+// separate published stable root for explicit stable requests; this does not
+// change the candidate's advertised versions, wire version, or schema root.
 const servedLineSchemaRoot = (() => {
   if (!candidateOpensNewerLine) return undefined;
   const line = /^(\d+\.\d+)/.exec(TRAINING_AGENT_CURRENT_ADCP_VERSION)?.[1];
@@ -184,7 +185,7 @@ function inServedLineScope<T>(fn: () => Promise<T>): Promise<T> {
 const wireAdcpVersion = isThreeZeroCompatRun
   ? '3.0'
   : isCurrentSourceRun
-    ? TRAINING_AGENT_CURRENT_ADCP_VERSION
+    ? TRAINING_AGENT_CANDIDATE_ADCP_VERSION ?? TRAINING_AGENT_CURRENT_ADCP_VERSION
     : undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -722,17 +723,9 @@ async function selectStoryboardsForTenant(
     supported_protocols: profile.supported_protocols ?? [],
     specialisms: profile.specialisms ?? [],
     major_versions: profile.adcp_major_versions,
-    supported_versions: candidatePrereleasePin && profile.adcp_supported_versions
-      ? [...profile.adcp_supported_versions, candidatePrereleasePin]
-      : profile.adcp_supported_versions,
+    supported_versions: profile.adcp_supported_versions,
   }, {
     ...complianceOptions,
-    // Version Packages builds the next exact schema/compliance bundle before
-    // the training agent's published SDK can advertise it. Keep ordinary
-    // local and hosted runs strict; release-candidate validation opts in to a
-    // resolver-scoped same-line alias while execution continues to speak the
-    // training agent's real wire version.
-    ...(candidateVersionMode && { hostedStableLineAlias: TRAINING_AGENT_CURRENT_ADCP_VERSION }),
   });
   const inDeclaredScope = new Set(resolved.storyboards.map(sb => sb.id));
   const versionExcluded = new Set(resolved.not_applicable.map(entry => entry.storyboard_id));
@@ -831,26 +824,12 @@ function applyStepSkipList(storyboardId: string, result: StoryboardResult): void
   }
 }
 
-function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; skip_reason?: string; skip?: { detail?: string }; validations?: Array<{ passed: boolean }>; error?: string; response?: { accepted?: unknown; errors?: Array<{ code?: unknown }> } }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
+function stepStatus(s: StoryboardStepForSummary & { skip_reason?: string; skip?: { detail?: string } }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
   if (verbose && s.skipped) {
     // eslint-disable-next-line no-console
     console.log(`    [skip] ${(s as { id?: string }).id ?? '?'} — ${s.skip_reason ?? '(no reason)'} :: ${s.skip?.detail ?? '(no detail)'}`);
   }
-  if (s.not_applicable) return 'not_applicable';
-  if (s.skipped) return 'skipped';
-  const validations = s.validations ?? [];
-  if (
-    (s.passed === false || s.error)
-    && s.response?.accepted === 0
-    && s.response.errors?.some(error => error.code === 'BILLING_OUT_OF_BAND')
-    && validations.length > 0
-    && validations.every(v => v.passed)
-  ) {
-    return 'passed';
-  }
-  if (s.passed === false || s.error) return 'failed';
-  if (validations.some(v => !v.passed)) return 'failed';
-  return 'passed';
+  return storyboardStepStatus(s);
 }
 
 function summarize(sb: Storyboard, result: StoryboardResult | { error: string }): Summary {
@@ -861,6 +840,11 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
   }
   for (const phase of result.phases ?? []) {
     for (const step of phase.steps ?? []) {
+      const advisories = (step.validations ?? []).filter(validation => !validation.passed && validation.severity === 'advisory');
+      if (advisories.length) {
+        const stepId = step.id ?? (step as { step_id?: string }).step_id ?? '(unknown step)';
+        console.warn(`  [advisory] ${sb.id}/${stepId}: ${formatFailedValidationSummary(advisories, { includeActual: true })}`);
+      }
       const status = stepStatus(step as Parameters<typeof stepStatus>[0]);
       base[status] += 1;
       if (status === 'failed') {
@@ -1294,7 +1278,12 @@ async function main() {
   process.exit(exitCode);
 }
 
-main().catch(err => {
+// Tenant registries initialize eagerly when mounted. Keep the candidate root
+// registered for their construction as well as discovery and storyboard calls.
+const run = complianceOptions.schemaRoot && releasedComplianceVersion
+  ? () => withExternalSchemaRoot(releasedComplianceVersion, complianceOptions.schemaRoot!, main)
+  : main;
+run().catch(err => {
   // eslint-disable-next-line no-console
   console.error('Fatal:', err);
   process.exit(1);

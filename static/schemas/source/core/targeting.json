@@ -168,7 +168,7 @@
     },
     "demographics": {
       "$ref": "/schemas/core/demographic-targeting-intent.json",
-      "description": "Canonical demographic audience targeting intent with optional constraints on how age may be determined. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Fresh create/update targeting MUST compile exactly or be rejected. During get_products, a seller may offer a different configured predicate only through sparse targeting_resolution modifications on a distinguishable product_id; selecting that product accepts the alternative. Sellers never silently broaden, narrow, default, drop, or substitute the basis."
+      "description": "Canonical age and gender audience targeting, distinct from age_restriction legal eligibility. Named dimensions compose with AND and have independent explicit unknown handling. Age determination constraints remain age-specific. Fresh create/update requests MUST compile exactly or be rejected; get_products may offer a configured alternative only with sparse targeting_resolution modifications and a distinguishable product_id. A non-null request-side demographics value replaces the entire demographics dimension, including both age and gender; retain age when changing only gender. Sellers MUST NOT silently drop, broaden, narrow, or substitute a predicate."
     },
     "frequency_cap": {
       "title": "Targeting Frequency Cap",

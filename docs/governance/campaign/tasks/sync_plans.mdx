@@ -201,7 +201,7 @@ Each plan item a buyer supplies here is the preimage the governance agent hashes
 | `plans[].regions` | array | No | ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., `US-MA`). When present, restricts buys to these regions rather than the full country. |
 | `plans[].policy_categories` | array | No | Regulatory categories that apply to this campaign (e.g., `children_directed`, `fair_housing`). Determines which policy regimes the governance agent enforces. When omitted, governance agents MAY infer from the brand's industries and campaign objectives. |
 | `plans[].audience` | object | No | Audience targeting constraints. Defines who the campaign should reach (include) and must not reach (exclude). See [audience constraints](#audience-constraints). |
-| `plans[].restricted_attributes` | array | No | Personal data categories that must not be used for targeting (e.g., `health_data`, `racial_ethnic_origin`). GDPR Article 9 special categories. The governance agent flags any audience targeting referencing these attributes. |
+| `plans[].restricted_attributes` | array | No | Personal data categories that must not be used for targeting (e.g., `health_data`, `racial_ethnic_origin`, `sex_gender`). Includes GDPR Article 9 special categories and other policy-sensitive attributes. The governance agent flags any effective audience targeting referencing these attributes. `sex_gender` is available in AdCP 3.3. |
 | `plans[].restricted_attributes_custom` | array | No | Additional restricted attributes not covered by the enum. Freeform strings for jurisdiction-specific restrictions (e.g., `financial_status`). |
 | `plans[].min_audience_size` | integer | No | Minimum audience segment size for k-anonymity. Applies to the estimated intersection audience when multiple criteria are used. |
 | `plans[].policy_ids` | array | No | Registry policy IDs to enforce for this plan. Intersected with the plan's countries/regions to activate only geographically relevant policies. |
@@ -270,7 +270,9 @@ The governance agent evaluates seller targeting against these constraints during
 
 ### Restricted attributes
 
-The `restricted_attributes` field declares personal data categories that must not be used for targeting. Values are GDPR Article 9 special categories: `racial_ethnic_origin`, `political_opinions`, `religious_beliefs`, `trade_union_membership`, `health_data`, `sex_life_sexual_orientation`, `genetic_data`, `biometric_data`.
+The `restricted_attributes` field declares personal data categories that must not be used for targeting. Values include the GDPR Article 9 special categories `racial_ethnic_origin`, `political_opinions`, `religious_beliefs`, `trade_union_membership`, `health_data`, `sex_life_sexual_orientation`, `genetic_data`, and `biometric_data`, plus `age`, `familial_status`, and (in AdCP 3.3) `sex_gender`. Enum membership alone does not prohibit targeting or classify an attribute as GDPR Article 9 data.
+
+The new core gender predicate maps to `sex_gender`, including `non_binary`. The predicate alone does not imply `sex_life_sexual_orientation`; existing provider-declared signal attributes retain their meaning and MUST NOT be removed or rewritten. The governance agent MUST check effective targeting, including product defaults and preserved package constraints, against the applicable plan and resolved policies. See [structural governance matching](/docs/governance/campaign/specification#structural-governance-matching).
 
 The governance agent matches these against signal definitions that declare their own `restricted_attributes`. Signals with matching attributes are blocked from targeting. For signals without declared attributes, the governance agent falls back to semantic inference from the signal name and description.
 
