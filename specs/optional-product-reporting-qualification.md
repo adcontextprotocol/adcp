@@ -100,11 +100,14 @@ narrowing remains independently graded; no required-phase or step floor changes.
 
 ## Evidence and release boundary
 
-Development uses an isolated pack of merged SDK foundation commit
-`37d308768b01b99f4650800d5af7cfc051b40e9e`. Its source package version 16.2.0
-must not be confused with npm 16.2.0 at pre-foundation `7d2822f0`. Final dependency
-qualification awaits the actual published foundation version; local results do
-not establish that npm release identity.
+The runtime is pinned to published `@adcp/sdk@16.3.0`, npm `latest` at
+qualification, from release commit `765aa8986a93cdab00da873cee47b98f9678bd75`.
+Its verified ancestry contains the merged fixture foundation
+`37d308768b01b99f4650800d5af7cfc051b40e9e`. Installation uses the registry
+artifact and committed lock integrity through ordinary `npm ci`; there is no
+local-pack dependency, SDK source shim or custom package-resolution path.
+Earlier merged-source development-pack results remain historical evidence;
+they do not substitute for the published-package integration checks.
 
 Executable regressions run the ACTUAL revised YAMLs, production caller adapter,
 public SDK MCP transport and hosted classifier. They cover no support,

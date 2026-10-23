@@ -251,6 +251,8 @@ for (const kind of ['format', 'time']) {
       assert.ok(audits[0].fixture_preparation.phase.steps.some(step => step.error?.includes('fixture discovery')));
       assert.equal(JSON.stringify(error).includes('malformed-private-fixture'), false);
       assert.equal(JSON.stringify(error).includes('fixture discovery'), false);
+      assert.equal(String(error).includes('malformed-private-fixture'), false);
+      assert.equal(String(error).includes('fixture discovery'), false);
       assert.equal(calls.some(call => ['create_media_buy', 'get_media_buy_delivery'].includes(call.task)), false);
     }
   });
