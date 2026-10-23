@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Ajv = require('ajv');
 const { runStoryboard } = require('@adcp/sdk/testing');
-const { features, validators, collectionPairs, qualifies, evaluate } = require('./model.cjs');
+const sdkVersion = require('@adcp/sdk/package.json').version;
+const { features, validators, collectionPairs, crossPublisherPair, qualifies, evaluate } = require('./model.cjs');
 let validate;
 test.before(async () => { validate = await validators(); });
 
@@ -18,21 +19,20 @@ function product(feature, extra = {}) {
     reporting_capabilities: { available_reporting_frequencies: ['daily'], expected_delay_minutes: 0,
       timezone: 'UTC', supports_webhooks: false, available_metrics: ['impressions', 'spend'], date_range_support: 'date_range' },
   };
-  if (['collection_selection', 'collection_default_materialization', 'fixed_collection_bundles', 'owner_sold_channel_carriage'].includes(feature)) {
+  if (['collection_selection', 'collection_default_materialization', 'fixed_bundle_enforcement', 'fixed_bundle_restatement', 'cross_publisher_collection_restatement', 'cross_publisher_collection_subset'].includes(feature)) {
     value.collections = [{ publisher_domain: 'owner.example', collection_ids: ['news', 'music'] }];
-    if (feature === 'collection_selection' || feature === 'collection_default_materialization') value.collection_targeting_allowed = true;
-    if (feature === 'collection_default_materialization') value.collections[0].collection_ids = ['news'];
+    if (feature === 'collection_selection' || feature === 'collection_default_materialization' || feature === 'cross_publisher_collection_subset') value.collection_targeting_allowed = true;
+    if (['collection_default_materialization', 'fixed_bundle_restatement', 'cross_publisher_collection_restatement'].includes(feature)) value.collections[0].collection_ids = ['news'];
   }
   if (feature === 'format_breakdown') value.reporting_capabilities.supports_format_breakdown = true;
   if (feature === 'time_based_views') value.reporting_capabilities.available_metrics.push('time_based_views');
   return { ...value, ...extra };
 }
-const ownerEvidence = { product_id: 'seller-offer', kind: 'channel', owner_domain: 'owner.example', host_domain: 'host.example', collection_id: 'news' };
 const capability = (feature, value) => ({ media_buy: { features: { [`supports_${feature}`]: value } } });
 function setup(feature, options = {}) {
   const calls = [];
   return { calls, args: {
-    feature, capabilities: capability(feature, true), validate, ownerEvidence,
+    feature, capabilities: capability(feature, true), validate,
     prepare: async params => { calls.push(params); return { success: true, simulated: { ...params, product: product(feature) } }; },
     ...options,
   } };
@@ -95,7 +95,7 @@ for (const feature of features) {
   });
 }
 
-test('all 64 independent declaration combinations select only the promised empty-catalog paths', async () => {
+test('all 256 independent declaration combinations select only the promised empty-catalog paths', async () => {
   for (let mask = 0; mask < 2 ** features.length; mask++) {
     const declarations = Object.fromEntries(features.map((feature, i) => [`supports_${feature}`, Boolean(mask & (1 << i))]));
     for (let i = 0; i < features.length; i++) {
@@ -139,16 +139,16 @@ test('invalid known declarations fail; unknown future keys remain open without c
   const { args } = setup('format_breakdown', { capabilities: { media_buy: { features: { future_feature: true } } } });
   assert.equal((await evaluate(args)).state, 'coverage_gap');
 });
-test('fixed omitted/false flags qualify; owner carriage needs separate channel evidence and no selectable flag', () => {
+test('omitted/false fixed flags qualify; declared carriage is a structural same-product relation only', () => {
   for (const flag of [undefined, false]) {
-    const p = product('fixed_collection_bundles'); if (flag !== undefined) p.collection_targeting_allowed = flag;
-    assert.equal(validate.product(p), true); assert.equal(qualifies('fixed_collection_bundles', p), true);
+    const p = product('fixed_bundle_enforcement'); if (flag !== undefined) p.collection_targeting_allowed = flag;
+    assert.equal(validate.product(p), true); assert.equal(qualifies('fixed_bundle_enforcement', p), true);
     assert.equal(qualifies('collection_selection', p), false);
   }
-  const p = product('owner_sold_channel_carriage');
-  assert.equal(qualifies('owner_sold_channel_carriage', p), false);
-  assert.equal(qualifies('owner_sold_channel_carriage', p, ownerEvidence), true);
-  assert.equal(qualifies('owner_sold_channel_carriage', p, { ...ownerEvidence, kind: 'show' }), false);
+  const p = product('cross_publisher_collection_restatement');
+  assert.equal(qualifies('cross_publisher_collection_restatement', p), true);
+  assert.deepEqual(crossPublisherPair(p), ['owner.example', 'news']);
+  assert.equal(qualifies('cross_publisher_collection_subset', p), false);
 });
 test('new fields pass old open schemas; old sellers and omitted parents validate the fragment', () => {
   const fresh = Object.fromEntries(features.map(f => [`supports_${f}`, true]));
@@ -181,8 +181,8 @@ function sdkStoryboard(gated = false) {
     phases: [{ id: 'exercise', title: 'Exercise', steps: [{ id: 'selected', title: 'Selected path', task: 'create_media_buy',
       sample_request: {}, validations: [{ check: 'field_present', path: 'media_buy_id', description: 'Sentinel, not full lifecycle coverage' }] }] }] };
 }
-test('SDK 15.9.5: equals-true gating would hide undeclared catalogs, including absent parent objects', async () => {
-  assert.equal(require('@adcp/sdk/package.json').version, '15.9.5');
+test(`installed SDK ${sdkVersion}: equals-true gating would hide undeclared catalogs, including absent parent objects`, async () => {
+  assert.equal(sdkVersion, require('../../package.json').dependencies['@adcp/sdk'], 'evidence must use the repository pin');
   for (const capabilities of [{}, { media_buy: {} }, { media_buy: { features: {} } }]) {
     let calls = 0;
     const result = await runStoryboard('https://seller.example/mcp', sdkStoryboard(true), {
@@ -192,7 +192,7 @@ test('SDK 15.9.5: equals-true gating would hide undeclared catalogs, including a
     assert.equal(calls, 0); assert.ok(result.phases.flatMap(p => p.steps).some(s => s.skip_reason === 'capability_unsupported'));
   }
 });
-test('SDK 15.9.5: old catalog path remains runnable with unknown declaration keys; selected failures stay failed', async () => {
+test(`installed SDK ${sdkVersion}: catalog path remains runnable with unknown declaration keys; selected failures stay failed`, async () => {
   for (const broken of [false, true]) {
     let calls = 0;
     const result = await runStoryboard('https://seller.example/mcp', sdkStoryboard(), {
@@ -264,7 +264,7 @@ test('proposed controller params reject malformed or unknown scopes without coer
     assert.equal(validate.params(params), false);
   }
 });
-test('SDK 15.9.5: an old controller returns UNKNOWN_SCENARIO for the proposed operation without mutation', async () => {
+test(`installed SDK ${sdkVersion}: controller returns UNKNOWN_SCENARIO for the proposed operation without mutation`, async () => {
   const { handleTestControllerRequest } = require('@adcp/sdk');
   const store = {};
   const response = await handleTestControllerRequest(store, { scenario: 'prepare_product_feature', params: examples.prepare_params });
@@ -299,7 +299,7 @@ test('one-pair defaults qualify in selectable and omitted-or-false fixed modes',
     assert.equal(validate.product(single), true);
     assert.equal(qualifies('collection_default_materialization', single), true);
     assert.equal(qualifies('collection_selection', single), false);
-    assert.equal(qualifies('fixed_collection_bundles', single), false);
+    assert.equal(qualifies('fixed_bundle_enforcement', single), false);
   }
 });
 test('one evidence normalizer preserves namespaces and schema-valid redundant/empty IDs without inventing pairs', () => {
@@ -344,11 +344,11 @@ test('real product schema forbids publisher_domains on products, including along
     { publisher_domains: ['host.example'], selection_type: 'all' },
     { publisher_domain: 'host.example', publisher_domains: ['other.example'], selection_type: 'all' },
   ]) {
-    const invalid = product('owner_sold_channel_carriage', { publisher_properties: [property] });
+    const invalid = product('cross_publisher_collection_restatement', { publisher_properties: [property] });
     assert.equal(validate.product(invalid), false);
-    const catalog = setup('owner_sold_channel_carriage', { catalog: [invalid] });
+    const catalog = setup('cross_publisher_collection_restatement', { catalog: [invalid] });
     assert.equal((await evaluate(catalog.args)).reason, 'invalid_catalog');
-    const prepared = setup('owner_sold_channel_carriage', {
+    const prepared = setup('cross_publisher_collection_restatement', {
       prepare: async params => ({ success: true, simulated: { ...params, product: invalid } }),
     });
     assert.equal((await evaluate(prepared.args)).reason, 'invalid_qualified_setup');
@@ -366,4 +366,80 @@ test('domain-only product collection entries fail even when another concrete ent
     prepare: async params => ({ success: true, simulated: { ...params, product: invalid } }),
   });
   assert.equal((await evaluate(prepared.args)).reason, 'invalid_qualified_setup');
+});
+
+test('one-pair fixed restatement stays independent from two-pair fixed enforcement', async () => {
+  const single = product('fixed_bundle_restatement');
+  assert.equal(qualifies('fixed_bundle_restatement', single), true);
+  assert.equal(qualifies('fixed_bundle_enforcement', single), false);
+  const capabilities = { media_buy: { features: { supports_fixed_bundle_restatement: true, supports_fixed_bundle_enforcement: true } } };
+  const enforcement = setup('fixed_bundle_enforcement', { capabilities, catalog: [single],
+    prepare: async params => ({ success: true, simulated: { ...params, product: single } }) });
+  assert.equal((await evaluate(enforcement.args)).reason, 'invalid_qualified_setup');
+  const restatement = setup('fixed_bundle_restatement', { capabilities, catalog: [single] });
+  assert.equal((await evaluate(restatement.args)).state, 'applicable');
+});
+test('one-pair declared carriage stays independent from selectable cross-publisher subset', async () => {
+  const single = product('cross_publisher_collection_restatement');
+  const capabilities = { media_buy: { features: { supports_cross_publisher_collection_restatement: true, supports_cross_publisher_collection_subset: true } } };
+  const subset = setup('cross_publisher_collection_subset', { capabilities, catalog: [single],
+    prepare: async params => ({ success: true, simulated: { ...params, product: single } }) });
+  assert.equal((await evaluate(subset.args)).reason, 'invalid_qualified_setup');
+  const carriage = setup('cross_publisher_collection_restatement', { capabilities, catalog: [single] });
+  assert.equal((await evaluate(carriage.args)).state, 'applicable');
+});
+test('declared cross-publisher relation lies outside ALL product property domains and traverses all selectors', () => {
+  const local = product('cross_publisher_collection_restatement', { publisher_properties: [
+    { publisher_domain: 'host.example', selection_type: 'all' },
+    { publisher_domain: 'owner.example', selection_type: 'all' },
+  ] });
+  assert.equal(validate.product(local), true);
+  assert.equal(qualifies('cross_publisher_collection_restatement', local), false);
+  const cross = { ...local, collections: [...local.collections,
+    { publisher_domain: 'external.example', collection_ids: ['external'] }] };
+  assert.equal(validate.product(cross), true);
+  assert.deepEqual(crossPublisherPair(cross), ['external.example', 'external']);
+  assert.equal(qualifies('cross_publisher_collection_restatement', cross), true);
+});
+test('cross-publisher subset needs two TOTAL pairs and retains the external singleton', () => {
+  const mixed = product('cross_publisher_collection_subset', { collections: [
+    { publisher_domain: 'host.example', collection_ids: ['local'] },
+    { publisher_domain: 'external.example', collection_ids: ['external'] },
+  ] });
+  assert.equal(validate.product(mixed), true);
+  assert.equal(qualifies('cross_publisher_collection_subset', mixed), true);
+  const external = crossPublisherPair(mixed);
+  assert.deepEqual(external, ['external.example', 'external']);
+  assert.equal(collectionPairs(mixed.collections).some(pair => JSON.stringify(pair) === JSON.stringify(external)), true);
+  assert.equal(1 < collectionPairs(mixed.collections).length, true);
+  assert.equal(qualifies('cross_publisher_collection_subset', { ...mixed, collection_targeting_allowed: false }), false);
+});
+test(`installed SDK ${sdkVersion}: optional reader companion cannot suppress an independent core flow`, async () => {
+  let creates = 0; let reads = 0;
+  const core = sdkStoryboard();
+  const companion = { ...sdkStoryboard(), id: 'proposal/readback_companion', required_tools: ['get_media_buys'],
+    phases: [{ id: 'readback', title: 'Readback sentinel', steps: [{ id: 'read', title: 'Read', task: 'get_media_buys',
+      sample_request: {}, validations: [{ check: 'field_present', path: 'media_buys', description: 'Gate evidence only, not identity qualification' }] }] }] };
+  const tools = ['create_media_buy'];
+  const options = { agentTools: tools, _profile: { tools, raw_capabilities: {} },
+    _client: { resetContext() {},
+      async createMediaBuy() { creates++; return { success: true, data: { media_buy_id: 'native-buy' } }; },
+      async getMediaBuys() { reads++; throw new Error('unadvertised reader must not execute'); },
+    } };
+  const coreResult = await runStoryboard('https://seller.example/mcp', core, options);
+  const readResult = await runStoryboard('https://seller.example/mcp', companion, options);
+  assert.equal(coreResult.phases[0].steps[0].passed, true);
+  assert.equal(creates, 1); assert.equal(reads, 0);
+  assert.ok(readResult.phases.flatMap(p => p.steps).some(step => step.skip_reason === 'missing_tool'));
+});
+test(`installed SDK ${sdkVersion}: advertised broken reader retains a failure`, async () => {
+  const tools = ['get_media_buys'];
+  const companion = { ...sdkStoryboard(), required_tools: ['get_media_buys'], phases: [{ id: 'readback', title: 'Readback sentinel',
+    steps: [{ id: 'read', title: 'Read', task: 'get_media_buys', sample_request: {},
+      validations: [{ check: 'field_present', path: 'media_buys', description: 'Reader gate evidence only' }] }] }] };
+  const result = await runStoryboard('https://seller.example/mcp', companion, {
+    agentTools: tools, _profile: { tools, raw_capabilities: {} },
+    _client: { resetContext() {}, async getMediaBuys() { return { success: false, error: 'advertised reader failed' }; } },
+  });
+  assert.ok(result.failed_count > 0);
 });

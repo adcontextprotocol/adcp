@@ -3,12 +3,38 @@
   "title": "PROPOSED additions to media_buy.features; not published",
   "type": "object",
   "properties": {
-    "supports_collection_selection": { "type": "boolean", "description": "Opt-in native strict-subset selection and qualified sandbox fixture commitment with at least two distinct domain-qualified pairs; existing product default-readback obligations still bind." },
-    "supports_collection_default_materialization": { "type": "boolean", "description": "Opt-in native full-bundle default materialization and qualified sandbox fixture commitment with at least one distinct domain-qualified pair; independent of strict-subset fixtures." },
-    "supports_fixed_collection_bundles": { "type": "boolean", "description": "Opt-in native fixed-collection bundle support and qualified sandbox fixture commitment; independent of selectable products." },
-    "supports_owner_sold_channel_carriage": { "type": "boolean", "description": "Opt-in native owner-sold channel carriage support and qualified sandbox fixture commitment; no entitlement or authorization assertion." },
-    "supports_format_breakdown": { "type": "boolean", "description": "Opt-in native format-grain reporting support and qualified sandbox fixture commitment; no required observed rows." },
-    "supports_time_based_views": { "type": "boolean", "description": "Opt-in native time-threshold view reporting support and qualified sandbox fixture commitment; no prescribed thresholds or observations." }
+    "supports_collection_selection": {
+      "type": "boolean",
+      "description": "Opt-in native strict-subset selection and qualified sandbox fixture commitment with at least two distinct domain-qualified pairs; existing product default-readback obligations still bind."
+    },
+    "supports_collection_default_materialization": {
+      "type": "boolean",
+      "description": "Opt-in native full-bundle default materialization and qualified sandbox fixture commitment with at least one distinct domain-qualified pair; independent of strict-subset fixtures."
+    },
+    "supports_fixed_bundle_enforcement": {
+      "type": "boolean",
+      "description": "Opt-in fixed-bundle strict-subset enforcement and qualified sandbox fixture commitment with at least two distinct domain-qualified pairs; independent of one-pair restatement."
+    },
+    "supports_fixed_bundle_restatement": {
+      "type": "boolean",
+      "description": "Opt-in fixed full-bundle restatement and qualified sandbox fixture commitment with at least one distinct domain-qualified pair; independent of two-pair enforcement."
+    },
+    "supports_cross_publisher_collection_restatement": {
+      "type": "boolean",
+      "description": "Opt-in full-set restatement and selector-boundary behavior for cross-publisher collections, with a qualified sandbox fixture commitment with at least one pair outside every product property publisher domain; no ownership or authorization proof."
+    },
+    "supports_cross_publisher_collection_subset": {
+      "type": "boolean",
+      "description": "Opt-in selectable cross-publisher strict-subset behavior and qualified sandbox fixture commitment with two total distinct pairs, retaining an external pair; no ownership or authorization proof."
+    },
+    "supports_format_breakdown": {
+      "type": "boolean",
+      "description": "Opt-in native format-grain reporting support and qualified sandbox fixture commitment; no required observed rows."
+    },
+    "supports_time_based_views": {
+      "type": "boolean",
+      "description": "Opt-in native time-threshold view reporting support and qualified sandbox fixture commitment; no prescribed thresholds or observations."
+    }
   },
   "additionalProperties": true
 }

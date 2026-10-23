@@ -13,11 +13,12 @@ SDK 15.9.5 and lockfile:
 node --test --test-timeout=30000 specs/optional-product-feature-declarations/probes.test.cjs
 ```
 
-The isolated suite has **69 tests**, including all 64 independent feature subsets.
+The isolated suite has **89 tests**, including all 256 independent proposed field subsets.
 It compiles actual current product/selection/reporting schemas and the actual
 immutable 3.2.5 feature schema for old-reader acceptance, without editing them.
-Three tests execute the real pinned SDK: two runner probes with injected clients
-and an old controller dispatch probe. They prove
+Five tests execute the installed SDK: four small runner/gate probes with injected
+clients and a controller dispatch probe, labeled with the actual runtime version.
+The original three prove
 equals-true gates hide absent declarations, and a legacy ungated execution path
 continues to run and retain selected-path failures, and an old controller
 returns `UNKNOWN_SCENARIO` without mutation for the proposed operation. They do not implement the
@@ -137,6 +138,44 @@ three changed files also passed `git diff --check` and returned **Ready to push*
 None fetched, installed, executed or reviewed candidate SDK source. Prior review
 results retain their explicitly recorded earlier scope. These reviews qualify
 only the proposal packet, not SDK implementation safety or WG ratification.
+
+## Reconciliation with settled #8428 source consumers (2026-10-23)
+
+Read the exact qualification memo at #8428 head
+`10e88cd4c68df8a9db3bc1ba6c79ceb61e52a8bd`, base
+`3e94f5e376bae2911fe26373a8ff506908f1a765`. This workspace did not rerun its
+actual-source/public/caller suite or take over catalog merge qualification.
+#8259 is closed as superseded; #3354/#8376 are merged and the source package pin
+is SDK16.3.0. Obsolete execution-capacity and provisional API notes are removed
+from the current memo, retained above only as historical review context.
+
+The current recommendation is eight proposed commitments: six independent core
+collection scopes plus separate format/time. It separates one-pair fixed
+restatement from two-pair fixed enforcement, and any-mode one-pair cross-publisher full-set restatement from selectable
+two-total-pair cross-publisher subset. Provisional wire fields use structural
+`cross_publisher_collection_*` names, while historical source IDs remain unchanged. The prior
+unpublished fixed-bundle field is replaced; no public wire rename/alias occurs.
+Optional reader companions stay tool-gated without new declarations. These are
+recommendations to review, not requirements adopted by source scenario IDs.
+
+The model now uses only the declared cross-publisher structure outside ALL
+same-product property domains; no invented channel-kind/ownership witness.
+New probes preserve small-path coverage under missing/broken larger promises,
+local-plus-external subset eligibility and independent optional reader gates.
+All 256 field combinations execute; **89/89 pass locally on SDK15.9.5**.
+Probe labels/checks use the actual repository pin so a later merge-check run on
+SDK16.3 reports its own evidence rather than claiming the legacy runtime. No
+SDK/dependency/lock/bridge installation or change occurred here.
+
+Fresh independent protocol, product/docs and code reviewers each reran
+**89/89**, all 256 combinations, on installed SDK15.9.5, with clean diff checks.
+A naming issue was resolved by using structural cross-publisher field/scope names
+while retaining historical source-ID mappings. Final code review verified all
+eight schema/controller/model cases agree: **Ready to push**, no remaining
+findings. Eight fields are a defensible WG recommendation, not an adopted or
+uniquely minimal wire design. No earlier 69-probe review is substituted for this
+review. New exact-head CI must be observed independently. #8428 merge/source
+duties and SDK #3395/#3396/#3397 defect triage remain with existing owners.
 
 ## Still required for adoption
 

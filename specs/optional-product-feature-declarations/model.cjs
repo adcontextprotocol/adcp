@@ -52,20 +52,27 @@ function collectionPairs(selectors) {
     compareWireStrings(a[0], b[0]) || compareWireStrings(a[1], b[1]));
 }
 
-// These predicates are proposed fixture qualification, not universal new product
-// requirements. Owner channel/host evidence is separate from the product shape.
-function qualifies(feature, product, ownerEvidence) {
+// A structural declared relation, not ownership, channel-kind or authorization
+// evidence. The collection domain must be outside ALL same-product domains.
+function crossPublisherPair(product) {
+  const domains = new Set((product.publisher_properties ?? []).map(p => p.publisher_domain));
+  if (!domains.size) return undefined;
+  return collectionPairs(product.collections).find(([domain]) => !domains.has(domain));
+}
+
+// Proposed fixture qualification over a schema-valid product. No new universal
+// product requirements or public SDK matcher implementation is supplied here.
+function qualifies(feature, product) {
   const report = product.reporting_capabilities ?? {};
+  const count = collectionPairs(product.collections).length;
+  const fixed = product.collection_targeting_allowed === undefined || product.collection_targeting_allowed === false;
   switch (feature) {
-    case 'collection_selection': return collectionPairs(product.collections).length >= 2 && product.collection_targeting_allowed === true;
-    case 'collection_default_materialization': return collectionPairs(product.collections).length >= 1;
-    case 'fixed_collection_bundles': return collectionPairs(product.collections).length >= 2 && product.collection_targeting_allowed !== true;
-    case 'owner_sold_channel_carriage': return Boolean(ownerEvidence
-      && ownerEvidence.product_id === product.product_id
-      && ownerEvidence.kind === 'channel'
-      && ownerEvidence.owner_domain !== ownerEvidence.host_domain
-      && collectionPairs(product.collections).some(([domain, id]) => domain === ownerEvidence.owner_domain && id === ownerEvidence.collection_id)
-      && product.publisher_properties?.some(s => s.publisher_domain === ownerEvidence.host_domain));
+    case 'collection_selection': return count >= 2 && product.collection_targeting_allowed === true;
+    case 'collection_default_materialization': return count >= 1;
+    case 'fixed_bundle_enforcement': return count >= 2 && fixed;
+    case 'fixed_bundle_restatement': return count >= 1 && fixed;
+    case 'cross_publisher_collection_restatement': return Boolean(count >= 1 && crossPublisherPair(product));
+    case 'cross_publisher_collection_subset': return Boolean(count >= 2 && product.collection_targeting_allowed === true && crossPublisherPair(product));
     case 'format_breakdown': return report.supports_format_breakdown === true;
     case 'time_based_views': return report.available_metrics?.includes('time_based_views') === true;
     default: return false;
@@ -74,7 +81,7 @@ function qualifies(feature, product, ownerEvidence) {
 
 // Catalog may be null when no wholesale surface exists. Exceptions after an
 // attempted advertised operation are terminal; this model never falls back.
-async function evaluate({ feature, capabilities = {}, catalog = [], ownerEvidence,
+async function evaluate({ feature, capabilities = {}, catalog = [],
   harness = true, sandbox = true, operation = true, prepare, exercise = async () => true, validate }) {
   if (!features.includes(feature)) throw new Error('Unknown model feature');
   if (capabilities.media_buy !== undefined && (!capabilities.media_buy || typeof capabilities.media_buy !== 'object' || Array.isArray(capabilities.media_buy))) {
@@ -85,7 +92,7 @@ async function evaluate({ feature, capabilities = {}, catalog = [], ownerEvidenc
   if (!sandbox) return { state: 'harness_gap', reason: 'sandbox_precondition' };
   const promised = declarations[`supports_${feature}`] === true;
   if (catalog && catalog.some(p => !validate.product(p))) return { state: 'behavior_violation', reason: 'invalid_catalog' };
-  let product = catalog?.filter(p => qualifies(feature, p, ownerEvidence))
+  let product = catalog?.filter(p => qualifies(feature, p))
     .sort((a, b) => compareWireStrings(a.product_id, b.product_id))[0];
   let route = 'catalog';
   if (!product && !promised) return { state: 'coverage_gap', reason: catalog === null ? 'no_wholesale_surface' : 'fixture_unsatisfied' };
@@ -100,7 +107,7 @@ async function evaluate({ feature, capabilities = {}, catalog = [], ownerEvidenc
     if (response?.success !== true) return { state: 'commitment_violation', reason: 'setup_refused', response };
     if (!validate.simulated(response.simulated)
       || response.simulated.feature !== feature || response.simulated.fixture_id !== params.fixture_id
-      || !qualifies(feature, response.simulated.product, ownerEvidence)) {
+      || !qualifies(feature, response.simulated.product)) {
       return { state: 'commitment_violation', reason: 'invalid_qualified_setup' };
     }
     product = response.simulated.product;
@@ -115,4 +122,4 @@ async function evaluate({ feature, capabilities = {}, catalog = [], ownerEvidenc
   } catch { return { state: 'behavior_violation', reason: 'selected_protocol', route, ...(commitment && { commitment }) }; }
 }
 
-module.exports = { features, validators, collectionPairs, qualifies, evaluate };
+module.exports = { features, validators, collectionPairs, crossPublisherPair, qualifies, evaluate };

@@ -3,8 +3,10 @@
   "declarations": {
     "supports_collection_selection": true,
     "supports_collection_default_materialization": true,
-    "supports_fixed_collection_bundles": false,
-    "supports_owner_sold_channel_carriage": true,
+    "supports_fixed_bundle_enforcement": false,
+    "supports_fixed_bundle_restatement": true,
+    "supports_cross_publisher_collection_restatement": true,
+    "supports_cross_publisher_collection_subset": false,
     "supports_format_breakdown": false,
     "supports_time_based_views": true
   },
