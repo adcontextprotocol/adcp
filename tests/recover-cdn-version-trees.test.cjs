@@ -832,7 +832,9 @@ test("recovery starts on the strict fence and fences each object with publicatio
     "utf8",
   );
   const fences = [...script.matchAll(/node "\$FENCE_SCRIPT" ([a-z-]+)/g)].map((m) => m[1]);
-  assert.deepEqual(fences, ["current", "publication-current", "publication-current", "publication-current"]);
+  assert.deepEqual(fences, ["current", "publication-current", "publication-current", "publication-current", "publication-current"]);
+  // Only upload starts strict; read-only verify tolerates unrelated advances.
+  assert.match(script, /if \[\[ "\$mode" == upload \]\]; then\n  node "\$FENCE_SCRIPT" current <\/dev\/null\nelse\n  node "\$FENCE_SCRIPT" publication-current "\$VERSION"/);
   assert.match(script, /node "\$FENCE_SCRIPT" publication-current "\$VERSION"/);
   assert.match(script, /--if-none-match '\*'/);
   assert.doesNotMatch(script, /s3 rm|--delete|rb /);

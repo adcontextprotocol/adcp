@@ -108,10 +108,16 @@ trap 'exit 143' TERM
 work="$(mktemp -d "${TMPDIR:-/tmp}/adcp-cdn-recovery.XXXXXX")"
 chmod 700 "$work"
 
-# The strict initial fence proves the dispatch is still exactly current for the
-# supported release branch, so a stale re-run stops before any work. Per-object
-# fences below use publication-current, mirroring release.yml's strict start.
-node "$FENCE_SCRIPT" current </dev/null
+# Upload starts on the strict fence, so a stale re-run stops before any write.
+# Per-object fences below use publication-current, mirroring release.yml's
+# strict start. Verify is read-only and runs after this run's own upload
+# passed that strict start, so it uses publication-current too: an unrelated
+# push during the upload must not fail verification of a completed upload.
+if [[ "$mode" == upload ]]; then
+  node "$FENCE_SCRIPT" current </dev/null
+else
+  node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
+fi
 
 actual_version="$(node -p "require('./package.json').version || ''" </dev/null)"
 [[ "$actual_version" == "$VERSION" ]] ||
