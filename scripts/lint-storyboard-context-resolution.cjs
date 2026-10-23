@@ -347,6 +347,18 @@ function lintDoc(doc, filePath) {
   // only checks key presence — but running the real substitution keeps this
   // lint honest about *which* strings the runner rewrites.
   const context = Object.assign(Object.create(null), rootContext);
+  // Declared fixture outputs are committed before authored steps. Recognize
+  // only named producers, never the entire protected namespace. The fixture
+  // declaration/schema lint separately validates their path/witness/snapshot.
+  for (const kind of ['products', 'pricing_options']) {
+    for (const declaration of doc.fixture_resolution?.[kind] ?? []) {
+      for (const output of declaration.context_outputs ?? []) {
+        if (typeof output.key === 'string' && /^__adcp_fixture_[A-Za-z0-9_]+$/.test(output.key)) {
+          context[output.key] = `<fixture:${output.key}>`;
+        }
+      }
+    }
+  }
 
   doc.phases.forEach((phase, phaseIndex) => {
     if (!phase || typeof phase !== 'object') return;

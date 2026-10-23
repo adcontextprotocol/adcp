@@ -15025,11 +15025,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Not authorized
+          description: Not authorized. Prepared fixture denials disclose only machine codes.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                anyOf:
+                  - $ref: "#/components/schemas/Error"
+                  - type: object
+                    properties:
+                      code:
+                        type: string
+                        enum:
+                          - PREPARED_FIXTURES_DENIED
+                      refusal_code:
+                        type: string
+                    required:
+                      - code
+                      - refusal_code
         "404":
           description: Storyboard not found
           content:
