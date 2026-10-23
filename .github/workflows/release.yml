@@ -36,6 +36,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # verified-merge reads the merged release PR and its storyboard run.
+      actions: read
+      pull-requests: read
     outputs:
       relevant: ${{ steps.release-relevance.outputs.relevant }}
       target_commit: ${{ steps.release-target.outputs.commit }}
@@ -135,6 +138,28 @@ jobs:
             node scripts/check-release-state.cjs pending
           fi
 
+      # A Version Packages merge whose exact approved head already passed the
+      # storyboard matrix on its pull_request run need not re-run it here. This
+      # only skips duplicate verification: anything unproven falls back to the
+      # full run, and the release job still checks approval and provenance.
+      - name: Detect provenance-verified release merge
+        id: verified-merge
+        if: steps.release-relevance.outputs.relevant == 'true' && github.event_name == 'push'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          changed_files="$(git show --first-parent --format= --name-only --no-renames "$GITHUB_SHA")"
+          if ! grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "$changed_files"; then
+            echo "Not a release merge; running full storyboard verification."
+            exit 0
+          fi
+          if node scripts/check-release-state.cjs verified-merge; then
+            echo "verified=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install Dependencies
         if: steps.release-relevance.outputs.relevant == 'true'
         run: npm ci
@@ -142,7 +167,7 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
       - name: Verify current storyboard coverage
-        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.2.x' || github.ref_name == '3.1.x')
+        if: steps.release-relevance.outputs.relevant == 'true' && steps.verified-merge.outputs.verified != 'true' && (github.ref_name == 'main' || github.ref_name == '3.2.x' || github.ref_name == '3.1.x')
         run: npm run test:storyboards
         env:
           # A committed Version Packages bundle can lead the training agent's
@@ -151,7 +176,7 @@ jobs:
           ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: '1'
 
       - name: Verify 3.0 storyboard compatibility
-        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.2.x' || github.ref_name == '3.1.x' || github.ref_name == '3.0.x')
+        if: steps.release-relevance.outputs.relevant == 'true' && steps.verified-merge.outputs.verified != 'true' && (github.ref_name == 'main' || github.ref_name == '3.2.x' || github.ref_name == '3.1.x' || github.ref_name == '3.0.x')
         run: npm run test:storyboards:3.0-compat
         env:
           ADCP_RELEASE_BASE_REF: 3.0.x
@@ -425,7 +450,7 @@ jobs:
             echo "::error::Tarball not found at ${TARBALL}. Did npm run version fail upstream?"
             exit 1
           fi
-          node scripts/check-release-state.cjs current
+          node scripts/check-release-state.cjs publication-current
           remote_tag="$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}" | tail -1 | cut -f1)"
           if [ -n "$remote_tag" ] && [ "$remote_tag" != "$RELEASE_SHA" ]; then
             echo '::error::Existing release tag targets a different commit.'
@@ -454,7 +479,7 @@ jobs:
             if [[ "${VERSION}" == *-* ]]; then
               release_args+=(--prerelease)
             fi
-            node scripts/check-release-state.cjs current
+            node scripts/check-release-state.cjs publication-current
             if [ "$PUBLICATION_BRANCH" != main ]; then release_args+=(--latest=false); fi
             gh release create "${TAG}" --draft \
               --target "${RELEASE_SHA}" \
@@ -503,9 +528,9 @@ jobs:
               return 0
             fi
 
-            node scripts/check-release-state.cjs current
+            node scripts/check-release-state.cjs publication-current
             gh release upload "${TAG}" "${path}"
-            node scripts/check-release-state.cjs current
+            node scripts/check-release-state.cjs publication-current
           }
 
           upload_asset_if_missing "${TARBALL}"
@@ -520,15 +545,15 @@ jobs:
           trap 'rm -rf "$staged_tuple"' EXIT
           for suffix in "" ".sha256" ".sig" ".crt"; do
             name="${VERSION}.tgz${suffix}"
-            node scripts/check-release-state.cjs current
+            node scripts/check-release-state.cjs publication-current
             gh release download "$TAG" --pattern "$name" --dir "$staged_tuple"
             if ! cmp -s "dist/protocol/$name" "$staged_tuple/$name"; then
               echo "::error::Staged release asset $name differs; keeping the release draft."
               exit 1
             fi
-            node scripts/check-release-state.cjs current
+            node scripts/check-release-state.cjs publication-current
           done
-          node scripts/check-release-state.cjs current
+          node scripts/check-release-state.cjs publication-current
           node scripts/check-release-state.cjs committed "$VERSION"
           # Revalidate review state and current maintainer permission after
           # all four staged assets have been read back, before publication.

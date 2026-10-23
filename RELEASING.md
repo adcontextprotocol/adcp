@@ -356,7 +356,9 @@ See [GitHub's concurrency contract](https://docs.github.com/en/actions/how-tos/w
 The exact queue/cancellation combination is regression-tested; older actionlint
 parsers require only the specific unsupported `queue`-key diagnostic exception.
 Old
-runs fail their current-branch fence. A later push with a stranded committed
+runs fail their current-branch fence before Changesets; a run already
+publishing a committed release tolerates only the unrelated advances described
+under publication-scoped freshness below. A later push with a stranded committed
 version fails explicitly, including an app-only push, and must use the recovery
 procedure below before Changesets advances the package again.
 
@@ -410,6 +412,46 @@ between a check and a request. The pre-push hook narrows the Changesets race to
 its push/PR requests; it does not lock main. An in-flight request can finish
 after main moves. Such a failure requires inspection and explicit recovery;
 never treat a previous verification or a queued run as current authority.
+
+`scripts/check-release-state.cjs` has two freshness levels:
+
+- **`current` (strict).** `origin/<branch>` must equal the tested SHA exactly.
+  This guards everything that can lead to Changesets generation:
+  `verify-release`'s "Require current release branch", the release job's
+  checks before artifact detection, `pending`, `recovery`, `deploy.yml`, and
+  every check in `scripts/fence-changesets.cjs` (including its pre-push hook).
+  A regenerated Version Packages PR must be based on exact current main.
+- **`publication-current` (publication-scoped).** Used only while publishing
+  the already-committed release: inside `committed`, `published`, `approval`
+  and `provenance`; in release.yml from "Require human approval for committed
+  release artifacts" through the GitHub Release upload and the R2 publication
+  (`backfill-cdn-artifacts.sh --version`); and throughout
+  `recover-protocol-cdn.yml` / `recover-cdn-version-trees.sh`. It accepts a
+  later branch head when the tested SHA is its ancestor (after fetching that
+  head and checking that the fetched OID is the advertised one), the parsed
+  `package.json` version is unchanged, and `git diff --no-renames` from the
+  tested SHA touches none of `dist/schemas/<v>/`, `dist/compliance/<v>/`,
+  `dist/protocol/<v>.tgz*`, `.changeset/pre.json` or
+  `.changeset/release-supersession.json`. It logs the accepted advance.
+
+So unrelated pushes to the branch, such as app or test changes, no longer
+invalidate publication. The strict fence prevented a stale run from publishing
+over a newer release or over changed artifacts. Each of those changes still
+refuses: a version bump, any change to this version's artifacts, a pre-mode or
+supersession change, rewritten history, or a remote/Git failure. Approval,
+merge provenance, signature verification and the byte-for-byte immutable-object
+checks are unchanged.
+
+A Version Packages merge also skips re-running the storyboard matrix in
+`verify-release` when it is a provenance-verified release merge: `check-release-state.cjs
+verified-merge` finds exactly one merged release PR for the pushed SHA, checks
+`provenance` (exact base parent and identical tree), and finds a completed
+`pull_request` run of `training-agent-storyboards.yml` on that exact head in
+which every job succeeded, including current-surface, 3.0-compat and the
+aggregate current `/sales` jobs. A Draft run whose matrix was skipped does not
+count. If any of that can't be proven, verification runs exactly as before. The
+skip changes only duplicate verification: the release job's approval and
+provenance checks still run unchanged.
 
 GitHub assets are staged privately in a draft before release publication. Exactly
 the four signed tuple assets are required; extras and duplicates are rejected. R2
@@ -511,9 +553,12 @@ Operational notes:
   object, exactly as release publication does, so ~770 objects means ~2,300
   `git ls-remote` round trips plus the S3 calls. Budget tens of minutes, and
   expect a transient failure to abort mid-run; re-dispatch resumes safely.
-- **A branch move fails a successful run.** Anything merging to `main` during
-  the upload trips the fence in the verification step, so the job can go red
-  after publication actually succeeded. Re-dispatch to confirm.
+- **Only a release-relevant branch move fails the run.** The recovery fence is
+  `publication-current` with the recovered version, so unrelated merges to
+  `main` during the upload are accepted and logged. A push that bumps the
+  package version, touches the recovered or current version's artifacts, or
+  changes `.changeset/pre.json` or the supersession marker still stops the
+  job, possibly after some objects were published. Re-dispatch to confirm.
 - **The line alias moves as soon as the first object lands.** The worker
   resolves `v3`/`v3.0` from the R2 prefix listing, and a prefix exists after
   the first write, so mid-run those aliases already resolve to the version
@@ -535,8 +580,10 @@ release merge is an ancestor, requires the same package version and unchanged
 versioned artifacts, rechecks original final-head maintainer permission and
 merge provenance, and fences
 every publication phase. It never silently repairs from an unrelated push.
-A new main commit during the attempt requires another explicit dispatch and
-verification of the new head. If a later package version has already landed,
+An unrelated main commit during the publication phases is tolerated by
+`publication-current`. A new main commit before artifact detection, or one that
+changes the version, its artifacts or the release-authority files, requires
+another explicit dispatch and verification of the new head. If a later package version has already landed,
 stop for a separately reviewed historical recovery; this path refuses it.
 
 ### Superseding an unpublishable committed prerelease

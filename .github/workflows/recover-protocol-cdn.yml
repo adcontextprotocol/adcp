@@ -46,7 +46,7 @@ jobs:
       # the current reviewed branch, never from the artifact being recovered.
       - name: Preserve current workflow publication fence
         run: |
-          node scripts/check-release-state.cjs current
+          node scripts/check-release-state.cjs publication-current
           cp scripts/check-release-state.cjs "$RUNNER_TEMP/check-release-state.cjs"
           cp scripts/check-protocol-bundle-parity.cjs "$RUNNER_TEMP/check-protocol-bundle-parity.cjs"
           cp scripts/recover-cdn-version-trees.sh "$RUNNER_TEMP/recover-cdn-version-trees.sh"
@@ -149,11 +149,11 @@ jobs:
               exit 1
             fi
 
-            node "$RUNNER_TEMP/check-release-state.cjs" current
+            node "$RUNNER_TEMP/check-release-state.cjs" publication-current "$VERSION"
             aws s3api put-object --bucket "$BUCKET" --key "$key" --body "$source" \
               --if-none-match '*' --endpoint-url "$endpoint" --region auto --no-cli-pager \
               --cache-control 'public, max-age=31536000, immutable' --content-type "$content_type"
-            node "$RUNNER_TEMP/check-release-state.cjs" current
+            node "$RUNNER_TEMP/check-release-state.cjs" publication-current "$VERSION"
             echo "Uploaded missing immutable object ${key}"
           }
 
