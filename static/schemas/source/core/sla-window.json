@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/sla-window.json",
   "title": "SLA Window",
-  "description": "Optional service-level commitment. Absence means no commitment, not zero; duration predicates MUST also require presence. The default clock is elapsed, including weekends and non-working time, where P1D equals PT24H. A business clock counts only working time in the immutable business_calendar_id declaration from get_adcp_capabilities.business_calendars. Business durations MUST be converted to a deadline for the particular receipt time before comparison with elapsed commitments; P1D uses that calendar's business_day_minutes, not 24 hours. See the service commitments reference for clock and snapshot rules.",
+  "description": "Optional commitment; absence means none, not zero. Duration predicates MUST require presence. Elapsed time includes non-working time (P1D = PT24H). Business time uses the referenced calendar's working periods and business_day_minutes for P1D. Compare clocks using deadlines for the same receipt time.",
   "type": "object",
   "properties": {
     "clock": {
@@ -10,24 +10,24 @@
       "enum": ["elapsed", "business"],
       "default": "elapsed",
       "x-added-in": "3.3.0",
-      "description": "Elapsed time by default. Business time counts only the referenced calendar's working periods, starting at receipt or the next working period if receipt is outside working time."
+      "description": "Business time starts at seller receipt, advancing to the next working period when outside working time."
     },
     "business_calendar_id": {
       "type": "string",
       "minLength": 1,
       "x-entity": "business_calendar",
       "x-added-in": "3.3.0",
-      "description": "Immutable seller-local calendar identity. Required only with clock business and MUST resolve uniquely in get_adcp_capabilities.business_calendars. Changes require a new identity; pending requests retain their original calendar."
+      "description": "Immutable seller-local ID in get_adcp_capabilities.business_calendars; required only for business time."
     },
     "response_max": {
       "type": "string",
-      "description": "Maximum time under the selected clock until acknowledgement (synchronous response for self_serve, tolerance decision for conditional_self_serve, or queue acknowledgement for seller_managed and legacy requires_approval). Elapsed action commitments run from buyer issuance and include weekends and non-working periods. On creative review_sla this means receipt acknowledgement measured from seller receipt of the review submission. For report_media_buy_issue it means a human acknowledging the report, measured from seller receipt; an automated receipt does not satisfy it. ISO 8601 duration.",
+      "description": "ISO 8601 acknowledgement bound: synchronous response for self_serve, tolerance decision for conditional_self_serve, queue receipt for seller_managed/requires_approval. Elapsed action SLAs start at buyer issuance. Review and report SLAs start at seller receipt; reports require human acknowledgement.",
       "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
       "examples": ["PT5M", "PT4H", "P1D"]
     },
     "completion_max": {
       "type": "string",
-      "description": "Maximum time under the selected clock until completion (mutation applied, proposal finalized, or seller-managed decision resolved), measured from buyer issuance for elapsed action SLAs. On creative_policy.review_sla or its resolved buy review_sla, completion is an approved or rejected review decision, measured from seller receipt of the review submission. ISO 8601 duration.",
+      "description": "ISO 8601 completion bound: mutation applied, proposal finalized, or seller-managed decision resolved. Elapsed action SLAs start at buyer issuance. Review SLAs start at seller receipt and complete at an approved or rejected decision.",
       "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
       "examples": ["PT1H", "PT24H", "P2D"]
     }
