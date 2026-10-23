@@ -2,13 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/business-calendar.json",
   "title": "Business Calendar",
-  "description": "Immutable seller working-time calendar. A changed schedule, timezone, holiday list, or coverage horizon requires a new calendar_id. Sellers retain old declarations while requests using them are pending. Non-working dates are complete over the inclusive coverage dates and published at least 30 calendar days before taking effect. Sellers MUST NOT offer a business commitment whose deadline falls beyond this coverage.",
+  "description": "Immutable seller working-time calendar, declared before use. A changed schedule, timezone, closure list, or coverage requires a new calendar_id. Retain declarations while requests using them are pending. Non-working dates are complete over the inclusive coverage dates. Sellers MUST NOT offer a business commitment whose deadline falls beyond this coverage.",
   "x-added-in": "3.3.0",
   "type": "object",
   "properties": {
     "calendar_id": { "type": "string", "minLength": 1, "x-entity": "business_calendar" },
     "timezone": { "$ref": "/schemas/core/iana-timezone.json" },
-    "published_at": { "type": "string", "format": "date-time" },
     "valid_from": { "type": "string", "format": "date" },
     "valid_through": { "type": "string", "format": "date" },
     "business_day_minutes": {
@@ -31,11 +30,11 @@
     },
     "non_working_dates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "format": "date" }, "description": "Complete list of local non-working dates within coverage, overriding weekly periods. An empty list explicitly means no additional closures in that interval." }
   },
-  "required": ["calendar_id", "timezone", "published_at", "valid_from", "valid_through", "business_day_minutes", "working_periods", "non_working_dates"],
+  "required": ["calendar_id", "timezone", "valid_from", "valid_through", "business_day_minutes", "working_periods", "non_working_dates"],
   "additionalProperties": false,
   "x-adcp-validation": {
     "verifier_constraints": {
-      "calendar_integrity": "valid_from <= valid_through; working periods have start < end and never overlap on a shared weekday; all non_working_dates are within coverage and published at least 30 calendar days in advance; timezone resolves in IANA TZDB; calendar_id is immutable and unique within the seller."
+      "calendar_integrity": "valid_from <= valid_through; working periods have start < end and never overlap on a shared weekday; all non_working_dates are within coverage; timezone resolves in IANA TZDB; calendar_id is immutable and unique within the seller."
     }
   }
 }

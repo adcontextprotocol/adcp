@@ -30,7 +30,7 @@ function rejects(validate, value) {
   assert.equal(validate(value), false, `unexpectedly accepted ${JSON.stringify(value)}`);
 }
 const business = { clock: 'business', business_calendar_id: 'review_team_2027_q1', completion_max: 'P1D' };
-const escalation = { response_max: 'PT15M', completion_max: 'PT2H' };
+const escalation = { response_max: 'PT15M' };
 const policy = { co_branding: 'none', landing_page: 'any', templates_available: false, review_sla: business };
 const report = {
   idempotency_key: 'critical-tracker-20270111-001',
@@ -40,12 +40,11 @@ const report = {
 const issue = {
   issue_id: 'issue_123', media_buy_id: 'media_buy_789',
   severity: 'critical', category: 'tracking', description: report.description,
-  status: 'reported', revision: 1, received_at: '2027-01-11T20:00:00Z',
-  sla: escalation, response_due_at: '2027-01-11T20:15:00Z', completion_due_at: '2027-01-11T22:00:00Z',
+  status: 'reported', received_at: '2027-01-11T20:00:00Z',
 };
 const calendar = {
   calendar_id: business.business_calendar_id, timezone: 'America/New_York',
-  published_at: '2026-11-01T00:00:00Z', valid_from: '2027-01-01', valid_through: '2027-03-31',
+  valid_from: '2027-01-01', valid_through: '2027-03-31',
   business_day_minutes: 540,
   working_periods: [{ days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'], start_time: '09:00', end_time: '18:00' }],
   non_working_dates: ['2027-01-01'],
@@ -109,7 +108,7 @@ test('creative review requires a completion commitment and is available through 
 test('creative review is distinct from action ingestion and restricted to review-bearing actions', async () => {
   for (const name of ['core/product-allowed-action.json', 'core/canonical-product-action.json']) {
     const validate = await compile(name);
-    accepts(validate, { action: 'replace_creative', modes: ['seller_managed'], sla: { completion_max: 'PT5M' }, review_sla: business });
+    rejects(validate, { action: 'replace_creative', modes: ['seller_managed'], review_sla: business });
     rejects(validate, { action: 'pause', modes: ['seller_managed'], review_sla: business });
   }
   for (const name of ['core/media-buy-available-action.json', 'core/canonical-media-buy-action.json']) {
@@ -125,6 +124,7 @@ test('escalation commitments require human response timing and prohibit business
   accepts(validate, { clock: 'elapsed', response_max: 'PT15M' });
   rejects(validate, {});
   rejects(validate, { completion_max: 'PT2H' });
+  rejects(validate, { ...escalation, completion_max: 'PT2H' });
   rejects(validate, { ...escalation, clock: 'business', business_calendar_id: calendar.calendar_id });
   for (const duration of ['P1Y', 'P1M', 'PT', 'P1DT']) rejects(validate, { response_max: duration });
 });
@@ -137,6 +137,8 @@ test('report actions resolve through product and buy projections with elapsed cr
     accepts(validate, { action: value.action, modes: value.modes });
     rejects(validate, { ...value, sla: business });
     rejects(validate, { ...value, modes: ['self_serve'] });
+    rejects(validate, { ...value, constraints: { kind: 'effective_timing' } });
+    rejects(validate, { ...value, terms_ref: 'commercial_terms' });
   }
   for (const name of ['core/media-buy-available-action.json', 'core/canonical-media-buy-action.json']) {
     const validate = await compile(name);
@@ -145,6 +147,8 @@ test('report actions resolve through product and buy projections with elapsed cr
     rejects(validate, { ...value, sla: business });
     rejects(validate, { ...value, task: 'control_media_buy' });
     rejects(validate, { ...value, mode: 'self_serve' });
+    rejects(validate, { ...value, change_term_id: 'report_right' });
+    rejects(validate, { ...value, terms_ref: 'commercial_terms' });
     const withoutTask = { ...value };
     delete withoutTask.task;
     rejects(validate, withoutTask);
@@ -170,25 +174,12 @@ test('report requests require replay identity, authorized resource context, seve
   ]) rejects(validate, { ...report, ...fields });
 });
 
-test('negotiated escalation terms cannot introduce a business clock or self-serve acknowledgement', async () => {
+test('review declarations and operational reports do not add negotiated change rights', async () => {
   const validate = await compile('media-buy/change-term.json');
-  const term = { term_id: 'critical_response', action: 'report_media_buy_issue', service_mode: 'seller_managed', processing_sla: escalation };
+  const term = { term_id: 'creative_change', action: 'replace_creative', service_mode: 'seller_managed', processing_sla: business };
   accepts(validate, term);
-  rejects(validate, { ...term, processing_sla: business });
-  rejects(validate, { ...term, service_mode: 'self_serve' });
-  accepts(validate, { term_id: 'review_change', action: 'replace_creative', service_mode: 'seller_managed', processing_sla: business });
-});
-
-test('negotiated creative terms bind independent ingestion and terminal review commitments', async () => {
-  const validate = await compile('media-buy/change-term.json');
-  const processing = { completion_max: 'PT5M' };
-  const term = { term_id: 'creative_change', action: 'replace_creative', service_mode: 'seller_managed', processing_sla: processing, review_sla: business };
-  accepts(validate, term);
-  rejects(validate, { ...term, action: 'pause' });
-  rejects(validate, { ...term, action: 'report_media_buy_issue', processing_sla: escalation });
-  rejects(validate, { ...term, review_sla: { response_max: 'PT5M' } });
-  const validateAction = await compile('core/canonical-media-buy-action.json');
-  accepts(validateAction, { task: 'sync_creatives', action: term.action, mode: term.service_mode, change_term_id: term.term_id, sla: processing, review_sla: business });
+  rejects(validate, { ...term, review_sla: business });
+  rejects(validate, { ...term, action: 'report_media_buy_issue' });
 });
 
 test('polling a report requires account, media buy, and issue identities', async () => {
@@ -207,9 +198,9 @@ test('polling a report requires account, media buy, and issue identities', async
 test('reported, acknowledged, and resolved issue snapshots enforce distinct lifecycle fields', async () => {
   const validate = await compile('core/media-buy-issue.json');
   accepts(validate, issue);
-  const acknowledged = { ...issue, status: 'acknowledged', revision: 2, acknowledged_at: '2027-01-11T20:10:00Z' };
+  const acknowledged = { ...issue, status: 'acknowledged', acknowledged_at: '2027-01-11T20:10:00Z' };
   accepts(validate, acknowledged);
-  const resolved = { ...acknowledged, status: 'resolved', revision: 3, resolved_at: '2027-01-11T20:40:00Z', resolution: 'The unapproved tracker was disabled.' };
+  const resolved = { ...acknowledged, status: 'resolved', resolved_at: '2027-01-11T20:40:00Z', resolution: 'The unapproved tracker was disabled.' };
   accepts(validate, resolved);
   for (const value of [
     { ...issue, acknowledged_at: acknowledged.acknowledged_at },
@@ -223,23 +214,13 @@ test('reported, acknowledged, and resolved issue snapshots enforce distinct life
   ]) rejects(validate, value);
 });
 
-test('deadline fields and critical-only SLA snapshots cannot be detached from their commitment', async () => {
+test('issue receipts omit revision and duplicated commitment metadata', async () => {
   const validate = await compile('core/media-buy-issue.json');
-  const noSla = { ...issue };
-  delete noSla.sla;
-  delete noSla.response_due_at;
-  delete noSla.completion_due_at;
-  accepts(validate, noSla);
-  accepts(validate, { ...noSla, severity: 'warning' });
-  rejects(validate, { ...issue, severity: 'warning' });
-  rejects(validate, { ...noSla, response_due_at: issue.response_due_at });
-  rejects(validate, { ...noSla, completion_due_at: issue.completion_due_at });
-  rejects(validate, { ...issue, response_due_at: undefined });
-  rejects(validate, { ...issue, completion_due_at: undefined });
-  rejects(validate, { ...issue, sla: { response_max: 'PT15M' } });
-  const responseOnly = { ...issue, sla: { response_max: 'PT15M' } };
-  delete responseOnly.completion_due_at;
-  accepts(validate, responseOnly);
+  accepts(validate, { ...issue, severity: 'warning' });
+  for (const fields of [
+    { revision: 1 }, { sla: escalation },
+    { response_due_at: issue.received_at }, { completion_due_at: issue.received_at },
+  ]) rejects(validate, { ...issue, ...fields });
 });
 
 test('report and polling responses separate stored snapshots from task errors', async () => {

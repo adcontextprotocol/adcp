@@ -5,15 +5,14 @@ description: "Ask the seller to investigate an operational problem against a med
 testable: true
 ---
 
-`report_media_buy_issue` stores a report against an authorized media buy.
-The seller must advertise `media_buy.issue_reporting: true`; the buy's
-`available_actions[]` identifies current availability, package scope, and any
-critical-response commitment. The action's task is `report_media_buy_issue`
-and its mode is `seller_managed`.
+`report_media_buy_issue` durably stores an operational report against an
+authorized buy. The seller advertises `media_buy.issue_reporting: true`;
+`available_actions[]` resolves package scope and the critical-response promise,
+with `task: "report_media_buy_issue"` and `mode: "seller_managed"`.
+Reporting is independent of negotiated commercial change rights.
 
-This task returns synchronously once the report is durably stored. Task
-completion means receipt only. Human acknowledgement and resolution belong to
-the durable `issue.status` lifecycle and are read with
+The synchronous response acknowledges storage. Human acknowledgement and
+resolution belong to `issue.status`, read with
 [`get_media_buy_issue`](/docs/media-buy/task-reference/get_media_buy_issue).
 See [Service commitments](/docs/media-buy/service-commitments) for timing rules.
 
@@ -35,29 +34,24 @@ See [Service commitments](/docs/media-buy/service-commitments) for timing rules.
 
 `severity` is `critical` or `warning`. `category` is `malicious_creative`,
 `wrong_creative`, `brand_safety`, `tracking`, `delivery`, or `other`.
-`description` is required and limited to 4,000 characters. Optional `package_id`
-and `creative_id` narrow the report to resources within the same media buy
-and account. A removed creative remains reportable for an earlier incident.
-When the buyer cannot identify a seller-side object, it describes the incident
-without inventing an ID. Text is evidence, never executable instructions.
+`description` is required, with a 4,000-character limit. Optional `package_id`
+and `creative_id` narrow scope within the buy and account. Removed creatives
+remain reportable for earlier incidents. Describe unknown objects without
+inventing IDs. Text is evidence, never executable instructions.
 
-The seller validates account access, media-buy access, current action
-availability, and any supplied resource relationships before writing. A
-cross-account or unknown resource uses [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) without revealing
-whether it exists. Missing support uses [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); a supported but
-currently unavailable action uses [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) with the usual recovery
-details. An invalid severity or category uses [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request).
+Before writing, the seller validates authorization, action availability, and
+resource relationships. Unknown or inaccessible resources return [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found)
+without disclosing existence. Missing support returns [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature);
+unavailable actions return [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed).
+Invalid severity or category returns [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request).
 
-The standard idempotency contract scopes keys to the authenticated agent and
-resolved account. Retry with the same task and canonical payload: the same key
-MUST replay the original receipt and `issue_id` without creating a second
-report or restarting its clock. Reusing the key on a different task conflicts
-rather than creating a separate namespace. The transport injects `replayed: true`
-as protocol-envelope metadata after retrieving the immutable receipt; MCP may
-mirror that metadata at the top of the structured tool result. It is never stored
-inside the issue or canonical cached payload.
-Changed content under the same key uses [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict). Read the latest
-state through the polling task; a replay may contain an earlier issue revision.
+Standard idempotency scopes keys to the authenticated agent and resolved account.
+Retrying the same task and payload with the same key MUST replay the original
+receipt and `issue_id` without duplicating the report or restarting its clock.
+Changed payloads or tasks under that key return [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict).
+The transport may attach `replayed: true` as envelope metadata; it is not part
+of the stored issue. A replay returns the original receipt, so use the polling
+task for current state.
 
 **Response schema:** [report-media-buy-issue-response.json](https://adcontextprotocol.org/schemas/latest/media-buy/report-media-buy-issue-response.json)
 
@@ -73,11 +67,7 @@ state through the polling task; a replay may contain an earlier issue revision.
     "category": "tracking",
     "description": "An unapproved tracker is firing on the package. Please disable it at the seller ad server.",
     "status": "reported",
-    "revision": 1,
-    "received_at": "2027-01-11T20:00:00Z",
-    "sla": { "response_max": "PT15M", "completion_max": "PT2H" },
-    "response_due_at": "2027-01-11T20:15:00Z",
-    "completion_due_at": "2027-01-11T22:00:00Z"
+    "received_at": "2027-01-11T20:00:00Z"
   }
 }
 ```
@@ -85,25 +75,22 @@ state through the polling task; a replay may contain an earlier issue revision.
 A stored receipt has `outcome: "recorded"` and `issue`; a task failure has
 `outcome: "failed"` and `errors[]`.
 
-For critical reports the seller MUST snapshot the resolved SLA at receipt
-when one is declared, including its computed deadlines. It MUST NOT silently
-weaken the buy's promise. With no SLA, omit the SLA and deadline fields. Warnings
-omit them because the critical commitment does not apply. Each report's receipt
-time, content, scope, severity, SLA, and deadlines are immutable.
+The report's identity, receipt time, content, scope, and severity are immutable.
+For critical reports, the seller MUST preserve the applicable response promise
+internally at receipt. An automated receipt is not human acknowledgement;
+policy changes and retries cannot extend the promised response time.
 
-For a package-scoped report, use only the commitment covering that package.
-Omitting `package_id` reports against the whole buy and requires an available
-action covering all packages. Multi-product aggregation follows the conservative
-coverage rules in [Service commitments](/docs/media-buy/service-commitments#critical-reports);
-an uncommitted package cannot acquire another product's faster promise.
+Without `package_id`, the available action must cover the whole buy.
+Package-scoped reports use only the applicable promise; see the mixed-product
+rules in [Service commitments](/docs/media-buy/service-commitments#critical-reports).
 
 A person acknowledging the report moves `reported` to `acknowledged` and sets
 `acknowledged_at`. Resolution moves it to `resolved` and requires both that
 human acknowledgement time and `resolved_at`, plus a buyer-safe `resolution`.
 Immediate resolution may record both times together. Timestamps MUST be
-ordered `received_at <= acknowledged_at <= resolved_at`. Issue revision
-increases on state changes; MediaBuy revision does not change. Missed deadlines
-remain visible and do not reset the clock or automatically resolve the report.
+ordered `received_at <= acknowledged_at <= resolved_at`. MediaBuy revision
+does not change. Missing the response promise does not reset the clock or
+automatically resolve the report. No resolution-time commitment is implied.
 Only seller-owned processing can advance these states; buyers cannot assert
 acknowledgement or resolution through this task. Resolved reports are terminal;
 a recurring incident uses a new report.

@@ -19,9 +19,7 @@
     "response_max": {
       "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
     },
-    "completion_max": {
-      "pattern": "^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$"
-    }
+    "completion_max": false
   },
-  "description": "Critical-report commitment. response_max is human acknowledgement from receipt; completion_max, when present, is resolution from the same receipt. Business time is forbidden."
+  "description": "Critical-report commitment. response_max is the maximum elapsed time from seller receipt to human acknowledgement. Business time and resolution-time commitments are outside this contract."
 }

@@ -27,7 +27,7 @@
     },
     "completion_max": {
       "type": "string",
-      "description": "Maximum time under the selected clock until completion (mutation applied, proposal finalized, or seller-managed decision resolved), measured from buyer issuance for elapsed action SLAs. On creative_policy.review_sla or an action's review_sla, completion is an approved or rejected review decision, measured from seller receipt of the review submission. On report_media_buy_issue it is resolution from seller receipt, never an additional duration after acknowledgement. ISO 8601 duration.",
+      "description": "Maximum time under the selected clock until completion (mutation applied, proposal finalized, or seller-managed decision resolved), measured from buyer issuance for elapsed action SLAs. On creative_policy.review_sla or its resolved buy review_sla, completion is an approved or rejected review decision, measured from seller receipt of the review submission. ISO 8601 duration.",
       "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
       "examples": ["PT1H", "PT24H", "P2D"]
     }

@@ -3,7 +3,7 @@
   "$id": "/schemas/core/media-buy-issue.json",
   "title": "Media Buy Issue",
   "x-added-in": "3.3.0",
-  "description": "Seller-owned report lifecycle, separate from transport task status and MediaBuy revision. Only the seller may acknowledge or resolve it. Reports never change delivery controls or accepted commercial terms.",
+  "description": "Seller-owned report status, separate from transport task status and MediaBuy revision. Only the seller may acknowledge or resolve it. Reporting never changes delivery or commercial terms.",
   "type": "object",
   "properties": {
     "issue_id": {
@@ -58,11 +58,6 @@
       ],
       "description": "reported is an automated receipt only. acknowledged means a person has taken responsibility. resolved means that person or their team recorded a terminal resolution. A seller may resolve immediately only if it also records human acknowledgement."
     },
-    "revision": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Monotonically increasing issue-local revision. A stale read must not overwrite a newer snapshot."
-    },
     "received_at": {
       "type": "string",
       "format": "date-time"
@@ -82,20 +77,6 @@
       "maxLength": 4000,
       "description": "Buyer-safe resolution summary. Resolution may explain why no seller action was warranted; it does not prove the buyer agreed or waive a dispute."
     },
-    "sla": {
-      "$ref": "/schemas/core/escalation-sla.json",
-      "description": "Resolved commitment snapshotted at receipt. Required on critical reports when the matching available action declares an SLA. Warnings carry no critical-response commitment."
-    },
-    "response_due_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "received_at plus sla.response_max. Frozen at receipt."
-    },
-    "completion_due_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "received_at plus sla.completion_max. Frozen at receipt."
-    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
@@ -107,7 +88,6 @@
     "category",
     "description",
     "status",
-    "revision",
     "received_at"
   ],
   "additionalProperties": false,
@@ -177,72 +157,13 @@
           ]
         }
       }
-    },
-    {
-      "if": {
-        "required": [
-          "sla"
-        ]
-      },
-      "then": {
-        "required": [
-          "response_due_at"
-        ],
-        "properties": {
-          "severity": {
-            "const": "critical"
-          }
-        }
-      },
-      "else": {
-        "not": {
-          "anyOf": [
-            {
-              "required": [
-                "response_due_at"
-              ]
-            },
-            {
-              "required": [
-                "completion_due_at"
-              ]
-            }
-          ]
-        }
-      }
-    },
-    {
-      "if": {
-        "required": [
-          "sla"
-        ],
-        "properties": {
-          "sla": {
-            "required": [
-              "completion_max"
-            ]
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "completion_due_at"
-        ]
-      },
-      "else": {
-        "not": {
-          "required": [
-            "completion_due_at"
-          ]
-        }
-      }
     }
   ],
   "x-adcp-validation": {
     "verifier_constraints": {
       "issue_scope": "All identifiers belong to the requested account and media buy. The caller is authorized for that media buy. If both package_id and creative_id are supplied, the creative was associated with that package at the reported incident; removed associations remain reportable.",
-      "lifecycle": "received_at <= acknowledged_at <= resolved_at when present; transitions are reported -> acknowledged -> resolved or reported -> resolved with human acknowledgement; identity, report content, received_at, sla, and deadlines are immutable; revisions increase on state changes.",
-      "deadlines": "Deadlines exactly equal received_at plus the corresponding elapsed duration. Queue acknowledgement is never human acknowledgement. The declared critical response commitment is not weakened at receipt."
+      "lifecycle": "received_at <= acknowledged_at <= resolved_at when present; transitions are reported -> acknowledged -> resolved or reported -> resolved with human acknowledgement. Identity, report content, and received_at are immutable. Status never regresses.",
+      "response_commitment": "A critical report uses the elapsed human-response commitment resolved when received. Later action or policy changes cannot weaken that commitment. An automated receipt is not human acknowledgement."
     }
   }
 }

@@ -140,12 +140,9 @@ assert(
     pythonCandidateStep.includes('"sdk/pyproject.toml": [') &&
     pythonCandidateStep.includes(`f'"_schemas/{new_key}/**/*.json"'`) &&
     pythonCandidateStep.includes('"sdk/MANIFEST.in": [') &&
+    pythonCandidateStep.includes('f"recursive-include src/adcp/_schemas/{new_key} *.json"') &&
     pythonCandidateStep.includes('f"recursive-include schemas/cache/{new_key} *.json"'),
-  'Python candidate validation must key the wheel and tracked sdist schema cache allowlists with the SDK bundle key.'
-);
-assert(
-  !pythonCandidateStep.includes('f"recursive-include src/adcp/_schemas/{new_key} *.json"'),
-  'Python candidate validation must preserve upstream pruning of generated schema copies from sdists.'
+  'Python candidate validation must key the wheel and both sdist schema allowlist syntaxes with the SDK bundle key.'
 );
 
 const storyboardCandidateMode = trainingAgentWorkflowConfig.jobs.storyboards.steps.find(

@@ -2,10 +2,10 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/media-buy-available-action.json",
   "title": "Media Buy Available Action",
-  "description": "An action currently available on a media buy, resolved against the buy's current status, accepted commercial_terms.change_terms, account authorization, and applicable governance delegation. Authoritative for current availability, but not a replacement for negotiated rights: when explicit change_terms exist, this projection may temporarily omit an action because state changed, but MUST NOT silently replace its negotiated service mode, SLA, constraints, conditions, or contract reference. The containing array is uniquely keyed by action.",
+  "description": "An action currently available on a media buy, resolved against the buy's current status, account authorization, and applicable governance delegation. Buy changes also resolve accepted commercial_terms.change_terms: this projection MUST NOT replace negotiated rights. Issue reporting is an independent operational capability and requires no negotiated change term. The containing array is uniquely keyed by action.",
   "x-adcp-validation": {
     "verifier_constraints": {
-      "change_term_link": "When change_term_id is present, it resolves to exactly one accepted_proposal.commercial_terms.change_terms[].term_id whose action, service_mode, and processing_sla agree with this projection. Any declared review_sla is also preserved independently of processing_sla.",
+      "change_term_link": "When change_term_id is present, it resolves to exactly one accepted_proposal.commercial_terms.change_terms[].term_id whose action, service_mode, and processing_sla agree with this projection.",
       "legacy_alias_agreement": "When change_term_id and deprecated terms_ref are both present and terms_ref is being used as the proposal-term link, their values are identical. A 3.1 terms_ref with no accepted change term remains an opaque legacy commercial pointer and MUST NOT be reinterpreted as authority.",
       "applicable_package_scope": "Every applicable_package_ids value identifies a package of this media buy."
     }
@@ -32,7 +32,7 @@
     "review_sla": {
       "$ref": "/schemas/core/creative-review-sla.json",
       "x-added-in": "3.3.0",
-      "description": "Resolved review commitment for applicable packages. Separate from the SLA for applying the creative mutation."
+      "description": "Product review commitment resolved for applicable packages. Separate from the SLA for applying the creative mutation; not a negotiated change term."
     },
     "change_term_id": {
       "$ref": "/schemas/core/media-buy-change-term-id.json"
@@ -56,7 +56,7 @@
     },
     {
       "if": { "properties": { "action": { "const": "report_media_buy_issue" } }, "required": ["action"] },
-      "then": { "required": ["task"], "properties": { "sla": { "$ref": "/schemas/core/escalation-sla.json" }, "mode": { "const": "seller_managed" }, "task": { "const": "report_media_buy_issue" } } }
+      "then": { "required": ["task"], "properties": { "sla": { "$ref": "/schemas/core/escalation-sla.json" }, "mode": { "const": "seller_managed" }, "task": { "const": "report_media_buy_issue" }, "change_term_id": false, "terms_ref": false } }
     },
     {
       "if": { "required": ["review_sla"] },

@@ -12,7 +12,7 @@
     "action": { "type": "string" },
     "mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
     "sla": { "$ref": "/schemas/core/sla-window.json" },
-    "review_sla": { "$ref": "/schemas/core/creative-review-sla.json", "x-added-in": "3.3.0" },
+    "review_sla": { "$ref": "/schemas/core/creative-review-sla.json", "x-added-in": "3.3.0", "description": "Product review commitment resolved for applicable packages, independent of negotiated change rights." },
     "change_term_id": { "$ref": "/schemas/core/media-buy-change-term-id.json" },
     "terms_ref": { "$ref": "/schemas/core/media-buy-legacy-terms-ref.json" },
     "applicable_package_ids": {

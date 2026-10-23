@@ -2,4 +2,4 @@
 "adcontextprotocol": minor
 ---
 
-Add product-scoped creative review commitments, business-clock SLA windows with immutable seller calendars, and elapsed-time critical escalation commitments. Add report_media_buy_issue and get_media_buy_issue contracts for durable human acknowledgement and resolution polling, with resolved commitments carried through product and media-buy action discovery. Document calendar calculation, review scope, idempotency, authorization, and compatibility requirements.
+Add product creative-review timing, business-clock SLA windows with seller calendars, and an elapsed critical-report acknowledgement commitment. Add minimal report_media_buy_issue and get_media_buy_issue contracts for human acknowledgement and resolution status. Reporting remains independent of commercial change rights; review commitments pass from product policy to resolved buy actions.
