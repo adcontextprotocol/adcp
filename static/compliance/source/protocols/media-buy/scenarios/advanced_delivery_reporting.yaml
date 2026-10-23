@@ -32,6 +32,9 @@ narrative: >-
 
   Baseline requested-metric narrowing remains independently graded by metric_container_subsumption.
   No feature fixture is seeded and discovery or selected-path failures remain failures.
+  A controller lacking seed_account produces fixture_seed_unsupported; an absent controller
+  produces missing_test_controller. A minimum-spend rejection when an external runner uses
+  the underived baseline budget is a runner limitation, not seller nonconformance.
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -88,7 +91,6 @@ phases:
             operator_unit:
               id: compliance-media_buy_seller_advanced_delivery_r-a37f01cb
             sandbox: true
-          currency: $context.__adcp_fixture_reporting_currency
           start_time: asap
           end_time: "2099-06-30T23:59:59Z"
           packages:

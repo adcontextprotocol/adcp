@@ -222,17 +222,16 @@ for (const file of FILES)
       const actual = standalone
         ? await runAdaptedStep(ENDPOINT, doc, "create_buy", adapted.options)
         : await runAdapted(ENDPOINT, doc, adapted.options);
-      const expected = standalone
-        ? await runNativeStep(ENDPOINT, doc, "create_buy", native.options)
-        : await runNative(ENDPOINT, doc, native.options);
+      const expected = standalone ? undefined : await runNative(ENDPOINT, doc, native.options);
       noSetupOrCatalog(adapted);
       noSetupOrCatalog(native);
-      if (standalone)
-        assert.deepEqual(
-          { passed: actual.passed, skip_reason: actual.skip_reason },
-          { passed: expected.passed, skip_reason: expected.skip_reason },
-        );
-      else assert.equal(actual.overall_passed, expected.overall_passed);
+      if (standalone) {
+        // Native standalone does not gate the enclosing controller requirement;
+        // fresh preparation supplies its truthful unsupported disposition.
+        assert.equal(actual.passed, true);
+        assert.equal(actual.skipped, true);
+        assert.equal(actual.skip_reason, "missing_test_controller");
+      } else assert.equal(actual.overall_passed, expected.overall_passed);
     });
   }
 
@@ -376,40 +375,33 @@ for (const file of FILES)
       "version-unsupported",
       "cap-schema",
     ]) {
-      test(`${file}: ${standalone ? "standalone" : "full"} ${fault} preflight stays an execution failure with original evidence`, async () => {
+      test(`${file}: ${standalone ? "standalone" : "full"} ${fault} preflight delegates the unchanged native grading contract`, async () => {
         const probe = io({ withProfile: false, fault }),
           doc = source(file);
-        await assert.rejects(
-          () =>
-            standalone
-              ? runAdaptedStep(ENDPOINT, doc, "create_buy", probe.options)
-              : runAdapted(ENDPOINT, doc, probe.options),
-          (error) => {
-            assert.match(
-              error.message,
-              /Catalog reporting capability discovery failed/,
-            );
-            assert.equal(
-              error.message,
-              "Catalog reporting capability discovery failed before preparation",
-            );
-            assert.equal(
-              Object.prototype.propertyIsEnumerable.call(error, "cause"),
-              false,
-            );
-            assert.equal(JSON.stringify(error).includes("Deliberate"), false);
-            assert.ok(
-              error.cause?.steps?.length,
-              "retain the ORIGINAL public probe result",
-            );
-            assert.ok(
-              error.cause.steps.some((step) => !step.passed) ||
-                error.cause.profile?.capabilities_schema_issues?.length,
-            );
-            return true;
-          },
+        const native = io({ withProfile: false, fault });
+        const actual = standalone
+          ? await runAdaptedStep(ENDPOINT, doc, "create_buy", probe.options)
+          : await runAdapted(ENDPOINT, doc, probe.options);
+        const expected = standalone
+          ? await runNativeStep(ENDPOINT, doc, "create_buy", native.options)
+          : await runNative(ENDPOINT, doc, native.options);
+        if (standalone) {
+          assert.equal(actual.passed, expected.passed);
+          assert.equal(actual.error, expected.error);
+          assert.equal(actual.skip_reason, expected.skip_reason);
+        } else {
+          assert.equal(actual.overall_passed, expected.overall_passed);
+          assert.deepEqual(actual.phases.map(p => p.steps.map(s => ({
+            task: s.task, error: s.error, passed: s.passed, skip_reason: s.skip_reason,
+          }))), expected.phases.map(p => p.steps.map(s => ({
+            task: s.task, error: s.error, passed: s.passed, skip_reason: s.skip_reason,
+          }))));
+        }
+        assert.deepEqual(
+          probe.calls.filter(c => c.name !== 'get_adcp_capabilities').map(c => c.name),
+          native.calls.filter(c => c.name !== 'get_adcp_capabilities').map(c => c.name),
+          'native fallback is preserved; no extra adapter preparation is performed',
         );
-        noSetupOrCatalog(probe); // Never retry discovery into fixture applicability.
       });
     }
     for (const metadata of [
@@ -430,30 +422,23 @@ for (const file of FILES)
           ];
         if (metadata === "malformed-modes")
           profile.raw_capabilities.media_buy.buying_modes = 42;
-        await assert.rejects(
-          () =>
-            standalone
-              ? runAdaptedStep(ENDPOINT, doc, "create_buy", probe.options)
-              : runAdapted(ENDPOINT, doc, probe.options),
-          (error) => {
-            assert.match(
-              error.message,
-              /Catalog reporting capability discovery failed/,
-            );
-            assert.equal(error.cause.profile, profile);
-            assert.equal(error.message.includes("Deliberate"), false);
-            assert.equal(
-              Object.prototype.propertyIsEnumerable.call(error, "cause"),
-              false,
-            );
-            return true;
-          },
-        );
-        assert.deepEqual(
-          probe.http,
-          [],
-          "failed supplied profile stops before every seller interaction",
-        );
+        const actual = standalone
+          ? await runAdaptedStep(ENDPOINT, doc, "create_buy", probe.options)
+          : await runAdapted(ENDPOINT, doc, probe.options);
+        const expected = standalone
+          ? await runNativeStep(ENDPOINT, doc, "create_buy", probe.options)
+          : await runNative(ENDPOINT, doc, probe.options);
+        assert.equal(standalone ? actual.passed : actual.overall_passed,
+          standalone ? expected.passed : expected.overall_passed);
+        assert.deepEqual(actual.coverage_gaps, expected.coverage_gaps);
+        // Supplied malformed profiles are handed back unchanged, not trusted
+        // by the adapter for preparation. Native handling remains SDK-owned.
       });
     }
   }
+
+for (const file of FILES) test(`${file}: unprofiled unknown standalone step is rejected locally before HTTP`, async () => {
+  const probe = io({ withProfile: false });
+  await assert.rejects(() => runAdaptedStep(ENDPOINT, source(file), 'unknown_reporting_step', probe.options), /not found in storyboard/);
+  assert.deepEqual(probe.http, []);
+});

@@ -5,7 +5,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { loadStoryboardFile } = require('@adcp/sdk/testing');
+const { loadStoryboardFile, runStoryboard: runNative, runStoryboardStep: runNativeStep } = require('@adcp/sdk/testing');
 const {
   runCatalogReportingStoryboard,
   runCatalogReportingStoryboardStep,
@@ -17,7 +17,7 @@ const TOOLS = ['get_adcp_capabilities', 'get_products', 'create_media_buy', 'get
 
 for (const file of ['advanced_delivery_reporting.yaml', 'time_based_delivery_reporting.yaml']) {
   for (const standalone of [false, true]) {
-    test(`${file}: ${standalone ? 'standalone' : 'full'} keeps remote preflight diagnostics in private cause`, async () => {
+    test(`${file}: ${standalone ? 'standalone' : 'full'} preserves the native discovery outcome without throwing remote text`, async () => {
       const calls = [];
       const http = [];
       const trustedFetchFn = async (input, init = {}) => {
@@ -52,16 +52,17 @@ for (const file of ['advanced_delivery_reporting.yaml', 'time_based_delivery_rep
       const storyboard = loadStoryboardFile(path.join(__dirname,
         '../static/compliance/source/protocols/media-buy/scenarios', file));
       const options = { adcpVersion: '3.2.5', timeout_ms: 3000, transport: { trustedFetchFn } };
-      await assert.rejects(() => standalone
-        ? runCatalogReportingStoryboardStep(ENDPOINT, storyboard, 'create_buy', options)
-        : runCatalogReportingStoryboard(ENDPOINT, storyboard, options), error => {
-        assert.equal(error.message, 'Catalog reporting capability discovery failed before preparation');
-        assert.ok(error.cause?.steps?.length, 'the original public probe remains available to the trusted caller');
-        assert.ok(JSON.stringify(error.cause).includes(REMOTE), 'raw diagnostic evidence is preserved privately');
-        assert.equal(Object.getOwnPropertyDescriptor(error, 'cause')?.enumerable, false);
-        assert.equal(JSON.stringify(error).includes(REMOTE), false, 'ordinary error serialization must not expose the cause');
-        return true;
-      });
+      const result = standalone
+        ? await runCatalogReportingStoryboardStep(ENDPOINT, storyboard, 'create_buy', options)
+        : await runCatalogReportingStoryboard(ENDPOINT, storyboard, options);
+      const native = standalone
+        ? await runNativeStep(ENDPOINT, storyboard, 'create_buy', options)
+        : await runNative(ENDPOINT, storyboard, options);
+      assert.equal(standalone ? result.passed : result.overall_passed,
+        standalone ? native.passed : native.overall_passed);
+      assert.deepEqual(standalone ? result.skip : result.phases.map(p => p.steps.map(s => s.skip)),
+        standalone ? native.skip : native.phases.map(p => p.steps.map(s => s.skip)),
+        'the adapter delegates without converting native outcomes or throwing seller text');
       assert.ok(http.length > 0 && calls.includes('get_adcp_capabilities'), 'the real public transport observes the rejected capability read');
       assert.deepEqual(calls.filter(name => name !== 'get_adcp_capabilities'), []);
     });

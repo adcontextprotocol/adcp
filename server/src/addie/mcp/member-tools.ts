@@ -14,7 +14,7 @@ import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../admin-st
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
-import { runCatalogReportingStoryboard as runStoryboard, runCatalogReportingStoryboardStep as runStoryboardStep } from '../../compliance/catalog-reporting-runner.js';
+import { withHostedReportingBudget, runCatalogReportingStoryboard as runStoryboard, runCatalogReportingStoryboardStep as runStoryboardStep } from '../../compliance/catalog-reporting-runner.js';
 import { createLogger } from '../../logger.js';
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
@@ -5791,10 +5791,11 @@ export function createMemberToolHandlers(
       // authored against; the run-auth bearer substitution no-ops when the
       // kit already carries auth.
       const declaredTestKit = getTestKitForStoryboard(storyboardId, runOptions);
-      const storyboardRunOptions = withSdkSafeTransport(withHostedStoryboardRunOptions({
+      const storyboardRunOptions = withSdkSafeTransport(withHostedReportingBudget(sb, withHostedStoryboardRunOptions({
+        signal: AbortSignal.timeout(90_000),
         ...(declaredTestKit && { test_kit: declaredTestKit }),
         ...(authOption && { auth: authOption }),
-      }, runTarget, authProbeTask));
+      }, runTarget, authProbeTask)));
       // adcp#7758 — `requires: [multi_agent]` storyboards route governance
       // steps to the public governance agent, as the fixed hosted-grader buyer
       // agent, and everything else to the agent under test, which receives a
@@ -5891,7 +5892,10 @@ export function createMemberToolHandlers(
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
       output += `**Compliance target:** ${formatComplianceTarget(runTarget)}\n`;
       const coverageGaps = result.coverage_gaps ?? [];
+      const catalogReportingGap = ['media_buy_seller/advanced_delivery_reporting', 'media_buy_seller/time_based_delivery_reporting'].includes(storyboardId)
+        && coverageGaps.some(gap => gap.reason === 'fixture_unsatisfied');
       const resultLabel = !result.overall_passed || result.failed_count > 0 ? 'FAILED'
+        : catalogReportingGap ? 'NOT APPLICABLE — no qualifying product in your wholesale sandbox catalog (feature not tested)'
         : coverageGaps.length > 0 ? 'INCOMPLETE — coverage gap' : 'PASSED';
       output += `**Result:** ${resultLabel} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped, ${result.validations_advisory_failed ?? 0} advisory validation(s) failed\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
@@ -6060,11 +6064,12 @@ export function createMemberToolHandlers(
         resolved.resolvedUrl,
         sb,
         resolvedStepId,
-        withSdkSafeTransport(withHostedStoryboardRunOptions({
+        withSdkSafeTransport(withHostedReportingBudget(sb, withHostedStoryboardRunOptions({
+          signal: AbortSignal.timeout(90_000),
           ...(declaredStepTestKit && { test_kit: declaredStepTestKit }),
           context,
           ...(authOption && { auth: authOption }),
-        }, runTarget, authProbeTask)),
+        }, runTarget, authProbeTask))),
       );
 
       // runStoryboardStep catches its own throws and surfaces them as

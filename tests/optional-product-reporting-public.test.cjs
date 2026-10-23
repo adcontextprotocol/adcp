@@ -10,8 +10,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { loadStoryboardFile, runStoryboard: runRawStoryboard } = require('@adcp/sdk/testing');
-const { runCatalogReportingStoryboard: runStoryboard, runCatalogReportingStoryboardStep: runStoryboardStep } = require('../server/src/compliance/catalog-reporting-runner.ts');
+const { inspect } = require('node:util');
+const { loadStoryboardFile, prepareStoryboardFixtures, runStoryboard: runRawStoryboard } = require('@adcp/sdk/testing');
+const { runCatalogReportingStoryboard: runStoryboard, runCatalogReportingStoryboardStep: runStoryboardStep, withReportingInvocationGrant, withHostedReportingBudget, HOSTED_REPORTING_RESPONSE_BYTES } = require('../server/src/compliance/catalog-reporting-runner.ts');
 
 const SOURCE = path.join(__dirname, '../static/compliance/source/protocols/media-buy/scenarios');
 const FILES = { format: 'advanced_delivery_reporting.yaml', time: 'time_based_delivery_reporting.yaml' };
@@ -41,7 +42,7 @@ function product(kind) {
   };
 }
 
-async function execute(kind, { adversarialAccount = false, broken, configureBrand = true, rawCaller = false, minSpend, standalone = false, decoy = false, hostDenied = false, suppliedState = false, callerContext, runOverrides = {}, localRejection = false, discoveryFailure = false } = {}) {
+async function execute(kind, { adversarialAccount = false, broken, configureBrand = true, rawCaller = false, minSpend, standalone = false, decoy = false, hostDenied = false, suppliedState = false, callerContext, runOverrides = {}, localRejection = false, discoveryFailure = false, failPreflightOnce = false, prepareOnly = false, hostedBudget = false, responsePaddingBytes = 0 } = {}) {
   const doc = loadStoryboardFile(path.join(SOURCE, FILES[kind]));
   const expectedAccount = structuredClone(doc.context.sandbox_account);
   const offer = product(kind);
@@ -53,6 +54,7 @@ async function execute(kind, { adversarialAccount = false, broken, configureBran
   const calls = [];
   const methods = [];
   const allHttp = [];
+  let capabilityCalls = 0;
 
   const trustedFetchFn = async (input, init = {}) => {
     allHttp.push({ url: typeof input === 'string' || input instanceof URL ? String(input) : input.url, method: init.method ?? 'GET' });
@@ -74,6 +76,10 @@ async function execute(kind, { adversarialAccount = false, broken, configureBran
       calls.push({ task: name, request: structuredClone(request) });
       let data;
       if (name === 'get_adcp_capabilities') {
+        if (failPreflightOnce && ++capabilityCalls === 2) {
+          return Response.json({ jsonrpc: '2.0', id: message.id,
+            result: { isError: true, content: [{ type: 'text', text: 'Controlled preflight capability failure' }] } });
+        }
         data = CAPS;
       } else if (name === 'comply_test_controller') {
         assert.equal(request.account.sandbox, true, 'controller calls remain sandbox-scoped');
@@ -110,7 +116,7 @@ async function execute(kind, { adversarialAccount = false, broken, configureBran
         assert.equal(request.packages[0].pricing_option_id, selectedPrice.pricing_option_id);
         assert.equal(request.packages[0].budget, Math.max(1000, minSpend ?? 0));
         assert.equal(request.packages[0].bid_price, undefined);
-        assert.equal(request.currency, selectedPrice.currency);
+        assert.equal(Object.hasOwn(request, 'currency'), false, 'create_media_buy has no top-level currency');
         data = {
           status: 'completed', media_buy_id: 'seller-buy', confirmed_at: '2026-10-19T00:00:00Z', revision: 1,
           packages: [{ package_id: 'seller-package', product_id: offer.product_id, pricing_option_id: selectedPrice.pricing_option_id }],
@@ -139,10 +145,11 @@ async function execute(kind, { adversarialAccount = false, broken, configureBran
     } else {
       assert.fail(`Unexpected JSON-RPC method ${message.method}`);
     }
+    if (message.method === 'tools/call' && message.params.name === 'get_products' && responsePaddingBytes) result._meta = { budget_probe_padding: 'x'.repeat(responsePaddingBytes) };
     return new Response(JSON.stringify({ jsonrpc: '2.0', id: message.id, result }), { headers: { 'content-type': 'application/json' } });
   };
 
-  const options = {
+  let options = {
     adcpVersion: '3.2.5', timeout_ms: 3000,
     ...(configureBrand && { brand: structuredClone(doc.context.sandbox_brand) }),
     profile: { tools: TOOLS, raw_capabilities: CAPS, supported_protocols: ['media_buy'] },
@@ -154,16 +161,23 @@ async function execute(kind, { adversarialAccount = false, broken, configureBran
     ...runOverrides,
     ...(suppliedState && { prepared_fixtures: { ref: 'caller-supplied-ref', resolve: () => undefined } }),
   };
+  if (hostedBudget) options = withHostedReportingBudget(doc, options);
+  if (prepareOnly) return { prepared: await prepareStoryboardFixtures(ENDPOINT, doc, options), calls };
   let result;
   try {
     result = rawCaller ? await runRawStoryboard(ENDPOINT, doc, options) : standalone ? await runStoryboardStep(ENDPOINT, doc, 'create_buy', options) : await runStoryboard(ENDPOINT, doc, options);
   } catch (error) {
     if (!hostDenied && !suppliedState && !localRejection) throw error;
+    if (runOverrides.signal?.aborted) assert.equal(error, runOverrides.signal.reason);
+    else if (hostDenied) assert.equal(error.name, 'PreparedFixturesDeniedError');
+    else if (suppliedState) assert.match(error.message, /must be owned by this invocation/);
+    else if (error.name !== 'PreparedFixturesDeniedError') assert.match(error.message, /sandbox scope|one seller/i);
     return { error, calls, audits, lookups, methods, allHttp };
   }
   assert.ok(methods.includes('initialize') && methods.includes('tools/call'), 'the real public MCP transport executes');
   assert.equal(calls.some(call => call.task === 'sync_accounts'), false, 'seeded sandbox setup needs no mutable account-sync extraction');
-  assert.deepEqual(calls.filter(call => call.task === 'comply_test_controller' && call.request.scenario !== 'list_scenarios').map(call => call.request.scenario), (!rawCaller || configureBrand) && !standalone ? SCENARIOS : ['seed_account'], JSON.stringify(result));
+  const terminalPreparation = result.fixture_resolutions?.some(record => record.status === 'failed' || record.status === 'unsatisfied');
+  assert.deepEqual(calls.filter(call => call.task === 'comply_test_controller' && call.request.scenario !== 'list_scenarios').map(call => call.request.scenario), !terminalPreparation && (!rawCaller || configureBrand) && !standalone ? SCENARIOS : ['seed_account'], JSON.stringify(result));
   return { result, calls };
 }
 
@@ -214,7 +228,7 @@ for (const kind of ['format', 'time']) {
       const { result, calls } = await execute(kind, { minSpend: 5000, decoy: true, standalone });
       assert.equal(standalone ? result.passed : result.overall_passed, true, JSON.stringify(result));
       const buy = calls.find(call => call.task === 'create_media_buy').request;
-      assert.equal(buy.currency, 'EUR');
+      assert.equal(Object.hasOwn(buy, 'currency'), false);
       assert.equal(buy.packages[0].pricing_option_id, `native-${kind}-cpm`);
       assert.equal(buy.packages[0].budget, 5000);
       assert.equal(buy.packages[0].bid_price, undefined);
@@ -224,14 +238,15 @@ for (const kind of ['format', 'time']) {
     for (const standalone of [false, true]) {
       const { error, calls, audits, lookups } = await execute(kind, { hostDenied: true, standalone });
       assert.equal(error.name, 'PreparedFixturesDeniedError');
-      assert.ok(lookups.length > 0);
+      assert.equal(lookups.length, 0, 'SDK #3389: no truthful public precontact lookup exists; do not claim hook invocation');
       assert.equal(calls.some(call => call.task === 'create_media_buy'), false);
       assert.equal(audits.length, 1);
-      assert.ok(audits[0].fixture_resolutions.some(record => JSON.stringify(record.seller_ids).includes(`native-${kind}-offer`)));
+      assert.deepEqual(audits[0].fixture_resolutions, [], 'no preparation or seller identity exists before contact');
       const steps = standalone ? [audits[0]] : audits[0].phases.flatMap(phase => phase.steps);
       assert.ok(steps.some(step => step.validations.some(validation => validation.check === 'prepared_fixtures_authorization' && validation.passed === false)));
       // A standalone audit is a complete step record, not a run-result envelope.
       assert.equal(JSON.stringify(error).includes(`native-${kind}-offer`), false);
+      assert.equal(inspect(error).includes(`native-${kind}-offer`), false);
     }
   });
   test(`${kind}: adapter rejects supplied reuse state before any seller contact`, async () => {
@@ -244,11 +259,10 @@ for (const kind of ['format', 'time']) {
       const { error, calls, audits, lookups, result } = await execute(kind, { hostDenied: true, discoveryFailure: true, standalone });
       assert.equal(result, undefined, 'denial must not return an enriched caller result');
       assert.equal(error.name, 'PreparedFixturesDeniedError');
-      assert.ok(lookups.length > 0);
+      assert.equal(lookups.length, 0, 'SDK #3389: no truthful public precontact lookup exists; do not claim hook invocation');
       assert.equal(audits.length, 1);
-      assert.ok(audits[0].fixture_resolutions.some(record => record.status === 'failed' && record.fixture_type === 'product'));
-      assert.equal(audits[0].fixture_preparation.disposition.status, 'failed');
-      assert.ok(audits[0].fixture_preparation.phase.steps.some(step => step.error?.includes('fixture discovery')));
+      assert.deepEqual(audits[0].fixture_resolutions, [], 'precontact refusal cannot invent a failed seller preparation');
+      assert.deepEqual(calls, []);
       assert.equal(JSON.stringify(error).includes('malformed-private-fixture'), false);
       assert.equal(JSON.stringify(error).includes('fixture discovery'), false);
       assert.equal(String(error).includes('malformed-private-fixture'), false);
@@ -287,9 +301,148 @@ for (const kind of ['format', 'time']) {
     test(`independent security: ${kind} rejects scope/authority override ${JSON.stringify(runOverrides)} with ZERO ALL HTTP`,async()=>{
       for(const standalone of [false,true]) {
         const {error,allHttp}=await execute(kind,{standalone,runOverrides,localRejection:true});
-        assert.ok(error);
+        if (Object.keys(runOverrides.context ?? {}).some(key => key.startsWith('__adcp_fixture_')))
+          assert.equal(error.name, 'PreparedFixturesDeniedError');
+        else assert.match(error.message, /sandbox scope|one seller/);
         assert.deepEqual(allHttp,[],'scope rejection must precede initialize/capabilities/controller/catalog');
       }
     });
   }
 }
+
+for (const standalone of [false, true]) for (const [name, authorizer] of [
+  ['throws', () => { throw new Error('HOST_PRIVATE_8336'); }],
+  ['undefined', () => undefined],
+  ['nonliteral true', () => ({ authorized: 'true', detail: 'HOST_PRIVATE_8336' })],
+  ['literal true', () => ({ authorized: true })],
+]) test(`precontact hook API gap: ${name} ${standalone ? 'step' : 'full'} fails closed with no HTTP (not callback qualification)`, async () => {
+  let calls = 0;
+  const audits = [];
+  const { error, allHttp } = await execute('format', { standalone, localRejection: true,
+    runOverrides: { prepared_fixtures_authorizer: (...args) => { calls++; return authorizer(...args); },
+      prepared_fixtures_audit_sink: record => audits.push(record) } });
+  assert.equal(error.name, 'PreparedFixturesDeniedError');
+  assert.equal(error.refusalCode, 'authorizer_denied');
+  assert.deepEqual(allHttp, []);
+  assert.equal(calls, 0, 'unsupported hook is never called with fabricated bindings');
+  assert.equal(audits.length, 1);
+  assert.equal(inspect(error).includes('HOST_PRIVATE_8336'), false);
+  assert.equal(inspect(error).includes('seller.example'), false);
+});
+
+test('invocation grant rejects a lookup after normal completion and exception', async () => {
+  for (const throws of [false, true]) {
+    let authorize;
+    const operation = withReportingInvocationGrant(async grant => {
+      authorize = grant;
+      assert.deepEqual(await grant(), { authorized: true });
+      if (throws) throw new Error('operation failed');
+    });
+    if (throws) await assert.rejects(operation, /operation failed/); else await operation;
+    assert.equal((await authorize()).authorized, false);
+  }
+});
+
+test('two concurrent invocation grants close independently', async () => {
+  let authorizeA, authorizeB, finishA, finishB;
+  const first = withReportingInvocationGrant(async grant => { authorizeA = grant; await new Promise(resolve => { finishA = resolve; }); });
+  const second = withReportingInvocationGrant(async grant => { authorizeB = grant; await new Promise(resolve => { finishB = resolve; }); });
+  assert.equal((await authorizeA()).authorized, true);
+  assert.equal((await authorizeB()).authorized, true);
+  finishA(); await first;
+  assert.equal((await authorizeA()).authorized, false);
+  assert.equal((await authorizeB()).authorized, true);
+  finishB(); await second;
+  assert.equal((await authorizeB()).authorized, false);
+});
+
+for (const kind of ['format', 'time']) test(`${kind}: native fallback after a failed preflight retains trusted sandbox identity`, async () => {
+  const { calls } = await execute(kind, { failPreflightOnce: true,
+    runOverrides: { profile: undefined },
+    callerContext: { account: { account_id: 'foreign-account', sandbox: false },
+      sandbox_brand: { domain: 'foreign.example' }, sandbox_account: { sandbox: false } } });
+  const buy = calls.find(c => c.task === 'create_media_buy');
+  assert.ok(buy, 'the recovered native path actually executes a purchase');
+  assert.equal(buy.request.account.sandbox, true);
+  assert.equal(buy.request.account.operator, 'pinnacle-agency.example');
+});
+
+for (const value of [null, false, 0, '']) test(`malformed supplied authorizer field ${JSON.stringify(value)} fails closed before HTTP`, async () => {
+  const { error, allHttp } = await execute('format', { localRejection: true,
+    runOverrides: { prepared_fixtures_authorizer: value } });
+  assert.equal(error.name, 'PreparedFixturesDeniedError');
+  assert.equal(error.refusalCode, 'authorizer_denied');
+  assert.deepEqual(allHttp, []);
+});
+
+for (const standalone of [false, true]) test(`pre-aborted ${standalone ? 'step' : 'full'} reporting invocation has zero HTTP`, async () => {
+  const { error, allHttp } = await execute('format', { standalone, localRejection: true,
+    runOverrides: { signal: AbortSignal.abort() } });
+  assert.equal(error.name, 'AbortError');
+  assert.deepEqual(allHttp, []);
+});
+
+test('an audit-sink exception cannot undo refusal or leak into inspect(error)', async () => {
+  const { error, allHttp } = await execute('format', { localRejection: true,
+    runOverrides: { prepared_fixtures_authorizer: () => ({ authorized: true }),
+      prepared_fixtures_audit_sink: () => { throw new Error('PRIVATE_AUDIT_8336'); } } });
+  assert.equal(error.name, 'PreparedFixturesDeniedError');
+  assert.equal(inspect(error).includes('PRIVATE_AUDIT_8336'), false);
+  assert.deepEqual(allHttp, []);
+});
+
+for (const kind of ['format', 'time']) for (const minSpend of [undefined, 0, 5000])
+  test(`${kind}: public prepared price snapshot preserves minimum ${String(minSpend)} without exposing protected captures in run results`, async () => {
+    const { prepared } = await execute(kind, { minSpend, prepareOnly: true });
+    assert.equal(prepared.disposition.status, 'resolved');
+    const captured = prepared.captures.__adcp_fixture_reporting_price;
+    assert.equal(Object.hasOwn(captured, 'min_spend_per_package'), minSpend !== undefined);
+    assert.equal(captured.min_spend_per_package, minSpend);
+    assert.equal(captured.currency, 'EUR');
+    assert.equal(prepared.captures.__adcp_fixture_reporting_currency, 'EUR');
+    assert.equal(captured.pricing_option_id, `native-${kind}-cpm`);
+  });
+
+test('hosted reporting cap preserves tighter caller limits, safe transport and cancellation, and leaves other scopes unchanged', () => {
+  const doc = loadStoryboardFile(path.join(SOURCE, FILES.format));
+  const signal = new AbortController().signal;
+  const fetchFn = async () => new Response('{}');
+  const options = { signal, transport: { maxResponseBytes: 8192, fetchFn } };
+  const tightened = withHostedReportingBudget(doc, options);
+  assert.equal(tightened.transport.maxResponseBytes, 8192);
+  assert.equal(tightened.transport.fetchFn, fetchFn);
+  assert.equal(tightened.signal, signal);
+  assert.equal(withHostedReportingBudget(doc, {}).transport.maxResponseBytes, HOSTED_REPORTING_RESPONSE_BYTES);
+  for (const maxResponseBytes of [0, -1, NaN, Infinity, -Infinity])
+    assert.equal(withHostedReportingBudget(doc, { transport: { maxResponseBytes } }).transport.maxResponseBytes, HOSTED_REPORTING_RESPONSE_BYTES,
+      'SDK zero disables its cap and nonfinite/nonpositive values are not tighter');
+  assert.equal(withHostedReportingBudget({ ...doc, id: 'other/scenario' }, options), options);
+  assert.equal(withHostedReportingBudget({ ...doc, fixture_resolution: undefined }, options), options);
+});
+
+for (const standalone of [false, true]) test(`hosted ${standalone ? 'step' : 'full'} reporting enforces the real public response byte cap`, async () => {
+  const below = await execute('format', { standalone, hostedBudget: true, responsePaddingBytes: 128 * 1024 });
+  assert.equal(standalone ? below.result.passed : below.result.overall_passed, true);
+  const above = await execute('format', { standalone, hostedBudget: true, responsePaddingBytes: HOSTED_REPORTING_RESPONSE_BYTES + 1 });
+  assert.equal(standalone ? above.result.passed : above.result.overall_passed, false);
+  assert.equal(above.calls.some(c => c.task === 'create_media_buy'), false);
+  assert.ok(above.result.fixture_resolutions.some(record => record.status === 'failed'));
+  assert.match(JSON.stringify(above.result.fixture_resolutions), /byte|large|limit/i, 'retain actual response-budget failure evidence');
+  assert.equal(above.result.coverage_gaps?.some(gap => gap.reason === 'fixture_unsatisfied') ?? false, false);
+});
+
+test('concurrent actual reporting invocations retain independent accounts, selected prices and budgets', async () => {
+  const [format, time] = await Promise.all([
+    execute('format', { minSpend: 5000 }),
+    execute('time', { minSpend: 0 }),
+  ]);
+  for (const [kind, probe, budget] of [['format', format, 5000], ['time', time, 1000]]) {
+    assert.equal(probe.result.overall_passed, true);
+    const buy = probe.calls.find(call => call.task === 'create_media_buy').request;
+    assert.equal(buy.packages[0].product_id, `native-${kind}-offer`);
+    assert.equal(buy.packages[0].pricing_option_id, `native-${kind}-cpm`);
+    assert.equal(buy.packages[0].budget, budget);
+    const authored = loadStoryboardFile(path.join(SOURCE, FILES[kind]));
+    assert.deepEqual(buy.account, authored.context.sandbox_account);
+  }
+});

@@ -1,4 +1,5 @@
-import { runCatalogReportingStoryboardStep as runStoryboardStep } from '../compliance/catalog-reporting-runner.js';
+import { PreparedFixturesDeniedError } from '@adcp/sdk/testing';
+import { withHostedReportingBudget, runCatalogReportingStoryboardStep as runStoryboardStep } from '../compliance/catalog-reporting-runner.js';
 import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js';
 import { AgentService } from "../agent-service.js";
 import type { SupplyPathInput } from '../services/supply-path-contract.js';
@@ -5129,7 +5130,13 @@ registry.registerPath({
     },
     400: { description: "Invalid parameters", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    403: {
+      description: "Not authorized. Prepared fixture denials disclose only machine codes.",
+      content: { "application/json": { schema: z.union([
+        ErrorSchema,
+        z.object({ code: z.literal("PREPARED_FIXTURES_DENIED"), refusal_code: z.string() }),
+      ]) } },
+    },
     404: { description: "Storyboard not found", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -10216,11 +10223,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           agentUrl,
           storyboard,
           req.params.stepId,
-          withSdkSafeTransport(withHostedStoryboardRunOptions({
+          withSdkSafeTransport(withHostedReportingBudget(storyboard, withHostedStoryboardRunOptions({
+            signal: AbortSignal.timeout(90_000),
             ...(declaredTestKit && { test_kit: declaredTestKit }),
             ...(sdkAuth && { auth: sdkAuth }),
             ...(context && { context }),
-          }, runTarget, authProbeTask)),
+          }, runTarget, authProbeTask))),
         );
 
         if (!result.passed && isOAuthRequiredErrorMessage(result.error)) {
@@ -10241,6 +10249,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           ...result,
         });
       } catch (error) {
+        if (error instanceof PreparedFixturesDeniedError) {
+          return res.status(403).json({ code: error.code, refusal_code: error.refusalCode });
+        }
         logger.error({ err: error, path: req.path }, "Failed to run storyboard step");
         res.status(500).json({ error: "Failed to run storyboard step" });
       }

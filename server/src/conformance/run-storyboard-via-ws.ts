@@ -14,7 +14,7 @@
  */
 
 import { AgentClient } from '@adcp/sdk';
-import { runCatalogReportingStoryboard as runStoryboard } from '../compliance/catalog-reporting-runner.js';
+import { withHostedReportingBudget, runCatalogReportingStoryboard as runStoryboard } from '../compliance/catalog-reporting-runner.js';
 import type { StoryboardResult, StoryboardRunOptions } from '@adcp/sdk/testing';
 import { conformanceSessions } from './session-store.js';
 import { getStoryboard, getTestKitForStoryboard } from '../services/storyboards.js';
@@ -104,12 +104,13 @@ export async function runStoryboardViaConformanceSocket(
   // authored against (the bearer substitution in `withHostedAuthTestKit`
   // no-ops when the kit already carries auth).
   const declaredTestKit = getTestKitForStoryboard(storyboardId);
-  const runOptions = withHostedStoryboardRunOptions({
+  const runOptions = withHostedReportingBudget(storyboard, withHostedStoryboardRunOptions({
     ...(declaredTestKit && { test_kit: declaredTestKit }),
     _client: agentClient,
     test_session_id: testSessionId,
     timeout_ms: options.timeoutMs ?? 60_000,
-  } as StoryboardRunOptions & { _client: AgentClient }, complianceTarget);
+    signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
+  } as StoryboardRunOptions & { _client: AgentClient }, complianceTarget));
 
   return runStoryboard(syntheticUrl, storyboard, runOptions);
 }

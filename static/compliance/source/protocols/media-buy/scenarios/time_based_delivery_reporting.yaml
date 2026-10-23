@@ -1,7 +1,7 @@
 id: media_buy_seller/time_based_delivery_reporting
 version: 1.0.0
-introduced_in: "3.2"
-title: Seller reports legal time-based view measurements on a catalog product
+introduced_in: "3.3"
+title: Seller accepts a time-based-view request on a catalog product and narrows metrics
 category: media_buy_seller
 summary: Exercises independent time-based-view support, schema-valid seller thresholds, and
   requested-metric narrowing without inventing observations.
@@ -34,6 +34,10 @@ narrative: >-
 
   Baseline requested-metric narrowing remains independently graded by metric_container_subsumption.
   No feature fixture is seeded and discovery or selected-path failures remain failures.
+  A controller lacking seed_account produces fixture_seed_unsupported; an absent controller
+  produces missing_test_controller. A minimum-spend rejection
+  when an external runner uses the underived baseline budget is a runner limitation,
+  not seller nonconformance; repository callers derive a valid budget from the selected price.
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -90,7 +94,6 @@ phases:
             operator_unit:
               id: compliance-media_buy_seller_time_based_delivery-df8300c2
             sandbox: true
-          currency: $context.__adcp_fixture_reporting_currency
           start_time: asap
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -99,9 +102,9 @@ phases:
               budget: $context.catalog_reporting_budget
           idempotency_key: $generate:uuid_v4#time_based_delivery_reporting_create_buy
         context_outputs:
-          - name: advanced_media_buy_id
+          - name: time_media_buy_id
             path: media_buy_id
-          - name: advanced_package_id
+          - name: time_package_id
             path: packages[0].package_id
         validations:
           - check: response_schema
@@ -127,7 +130,7 @@ phases:
             sandbox: true
           scenario: simulate_delivery
           params:
-            media_buy_id: $context.advanced_media_buy_id
+            media_buy_id: $context.time_media_buy_id
             impressions: 1001
             clicks: 101
         validations:
@@ -152,7 +155,7 @@ phases:
               id: compliance-media_buy_seller_time_based_delivery-df8300c2
             sandbox: true
           media_buy_ids:
-            - $context.advanced_media_buy_id
+            - $context.time_media_buy_id
           requested_metrics:
             - time_based_views
         validations:
@@ -164,11 +167,11 @@ phases:
             description: The response reports exactly the one requested media buy
           - check: field_equals_context
             path: media_buy_deliveries[0].media_buy_id
-            context_key: advanced_media_buy_id
+            context_key: time_media_buy_id
             description: The report belongs to the buy created on the discovered product
           - check: field_equals_context
             path: media_buy_deliveries[0].by_package[0].package_id
-            context_key: advanced_package_id
+            context_key: time_package_id
             description: The report belongs to the package created on the discovered product
           - check: array_length
             path: media_buy_deliveries[0].by_package

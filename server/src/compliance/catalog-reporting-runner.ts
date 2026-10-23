@@ -7,6 +7,8 @@
  * This is request-local preparation, not a cross-request grant/state store.
  */
 import {
+  PreparedFixturesDeniedError,
+  redactOAuthUrlForOutput,
   prepareStoryboardFixtures,
   isProtectedContextKey,
   testCapabilityDiscovery,
@@ -14,9 +16,13 @@ import {
   runStoryboardStep as runSdkStoryboardStep,
   withPreparedFixtures,
   withExternalSchemaRoot,
+  withServedReleaseSchemaRoots,
   type PreparedStoryboardFixtures,
+  type PreparedFixturesAuthorizer,
   type Storyboard,
   type StoryboardRunOptions,
+  type StoryboardResult,
+  type StoryboardStepResult,
 } from "@adcp/sdk/testing";
 
 export const REPORTING_PRICE_CAPTURE = "__adcp_fixture_reporting_price";
@@ -45,6 +51,140 @@ function isCatalogReporting(storyboard: Storyboard): boolean {
   );
 }
 
+// Hosted policy only, not a protocol product-size limit or aggregate budget.
+export const HOSTED_REPORTING_RESPONSE_BYTES = 1024 * 1024;
+export function withHostedReportingBudget(
+  storyboard: Storyboard,
+  options: StoryboardRunOptions,
+): StoryboardRunOptions {
+  if (!isCatalogReporting(storyboard)) return options;
+  const requested = options.transport?.maxResponseBytes;
+  // SDK zero disables its cap; nonpositive/nonfinite values are not tighter.
+  const cap =
+    typeof requested === "number" && Number.isFinite(requested) && requested > 0
+      ? Math.min(requested, HOSTED_REPORTING_RESPONSE_BYTES)
+      : HOSTED_REPORTING_RESPONSE_BYTES;
+  return {
+    ...options,
+    transport: {
+      ...options.transport,
+      maxResponseBytes: cap,
+    },
+  };
+}
+
+/** Per-invocation grant lifetime; never shared or serialized. */
+export async function withReportingInvocationGrant<T>(
+  operation: (authorize: PreparedFixturesAuthorizer) => Promise<T>,
+): Promise<T> {
+  let active = true;
+  try {
+    return await operation(async () =>
+      active
+        ? { authorized: true }
+        : { authorized: false, detail: "Reporting invocation ended" },
+    );
+  } finally {
+    active = false;
+  }
+}
+
+/** SDK 16.3 cannot authorize fresh preparation through its public API (#3389).
+ * Refuse before contact rather than fabricate a binding or call the reuse hook
+ * with invented scope. This private record describes only the actual refusal:
+ * no preparation, seller exchange or resolved entity exists yet.
+ */
+async function refuseUncallablePreparationAuthorizer(
+  agentUrl: AgentUrl,
+  storyboard: Storyboard,
+  options: StoryboardRunOptions,
+  stepId?: string,
+): Promise<never> {
+  const phase = storyboard.phases.find((p) =>
+    p.steps.some((s) => s.id === stepId),
+  );
+  const authored = phase?.steps.find((s) => s.id === stepId);
+  const detail =
+    "Fresh reporting preparation cannot consult the supplied host authorizer before seller contact with SDK 16.3; see SDK #3389";
+  const step: StoryboardStepResult = {
+    storyboard_id: storyboard.id,
+    step_id: authored?.id ?? "prepared_fixtures_authorization",
+    phase_id: phase?.id ?? "fixture_preparation",
+    title: "Authorize catalog reporting preparation",
+    task: authored?.task ?? "",
+    passed: false,
+    skipped: false,
+    duration_ms: 0,
+    context: {},
+    extraction: { path: "none" },
+    error: detail,
+    validations: [
+      {
+        check: "prepared_fixtures_authorization",
+        passed: false,
+        description:
+          "Host authorization must precede fixture preparation seller contact",
+        error: detail,
+        expected:
+          "an authorized prepared state bound to this exact " +
+          (stepId ? "step" : "run") +
+          " scope",
+        actual: "authorizer_denied",
+        json_pointer: null,
+        schema_id: null,
+        schema_url: null,
+        request: null,
+        response: null,
+      },
+    ],
+  };
+  const record: StoryboardResult | StoryboardStepResult = stepId
+    ? ({
+        ...step,
+        fixture_resolutions: [],
+      } as StoryboardStepResult & PreparationEvidence)
+    : {
+        storyboard_id: storyboard.id,
+        storyboard_title: storyboard.title,
+        agent_url: redactOAuthUrlForOutput(
+          Array.isArray(agentUrl) ? agentUrl[0] : agentUrl,
+        ),
+        overall_passed: false,
+        phases: [
+          {
+            phase_id: step.phase_id,
+            phase_title: step.title,
+            passed: false,
+            steps: [step],
+            duration_ms: 0,
+          },
+        ],
+        context: {},
+        fixture_resolutions: [],
+        total_duration_ms: 0,
+        passed_count: 0,
+        failed_count: 1,
+        skipped_count: 0,
+        tested_at: new Date().toISOString(),
+        notices: [],
+        strict_validation_summary: {
+          observable: false,
+          checked: 0,
+          passed: 0,
+          failed: 0,
+          strict_only_failures: 0,
+          lenient_also_failed: 0,
+          lenient_unobserved: 0,
+        },
+      };
+  try {
+    await options.prepared_fixtures_audit_sink?.(record);
+  } catch {
+    /* Audit sink errors must not disclose host state or undo denial. */
+  }
+  throw new PreparedFixturesDeniedError("authorizer_denied");
+}
+
 async function withReportingPreparation<T extends object>(
   agentUrl: AgentUrl,
   storyboard: Storyboard,
@@ -53,13 +193,7 @@ async function withReportingPreparation<T extends object>(
   stepId?: string,
 ): Promise<T & PreparationEvidence> {
   if (!isCatalogReporting(storyboard)) return execute(options);
-  if (
-    stepId !== undefined &&
-    !storyboard.phases.some((phase) =>
-      phase.steps.some((step) => step.id === stepId),
-    )
-  )
-    return execute(options);
+  options.signal?.throwIfAborted();
   // Delegate invalid caller maps to the SDK's canonical denial BEFORE our
   // capability discovery. Do not sanitize them or produce a substitute grade.
   const callerMaps = [
@@ -99,6 +233,28 @@ async function withReportingPreparation<T extends object>(
   if (options.agents || (Array.isArray(agentUrl) && agentUrl.length !== 1)) {
     throw new Error("Catalog reporting targets one seller per invocation");
   }
+  if (options.prepared_fixtures_authorizer !== undefined) {
+    return refuseUncallablePreparationAuthorizer(
+      agentUrl,
+      storyboard,
+      options,
+      stepId,
+    );
+  }
+  if (
+    stepId !== undefined &&
+    !storyboard.phases.some((phase) =>
+      phase.steps.some((step) => step.id === stepId),
+    )
+  ) {
+    throw new Error(
+      `Step "${stepId}" not found in storyboard "${storyboard.id}". Available steps: ${storyboard.phases.flatMap((phase) => phase.steps.map((step) => step.id)).join(", ")}`,
+    );
+  }
+  // Ignore the legacy first-product cache ONLY in these two scopes. All
+  // identities/commercial terms come from the pinned graph. Otherwise the
+  // SDK's generic create enricher invents an auction bid from an unrelated
+  // cached CPM row, even for a selected fixed-price option.
   const callerContext = { ...options.context };
   delete callerContext.products;
   const declared = storyboard.context ?? {};
@@ -119,15 +275,16 @@ async function withReportingPreparation<T extends object>(
       sandbox: true,
     },
   };
-  // Ignore the legacy first-product cache ONLY in these two scopes. All
-  // identities/commercial terms come from the pinned graph. Otherwise the
-  // SDK's generic create enricher invents an auction bid from an unrelated
-  // cached CPM row, even for a selected fixed-price option.
+  // Preserve the trusted invocation before adding a discovery profile. Falling
+  // back must not restore caller-controlled sandbox/account/cache overrides.
+  const originalOptions = options;
   // Keep root applicability gates ahead of controller setup/preparation.
   const discover = () =>
-    testCapabilityDiscovery(
-      Array.isArray(agentUrl) ? agentUrl[0] : agentUrl,
-      options,
+    withServedReleaseSchemaRoots(options.servedReleaseSchemaRoots, () =>
+      testCapabilityDiscovery(
+        Array.isArray(agentUrl) ? agentUrl[0] : agentUrl,
+        options,
+      ),
     );
   // The low-level discovery helper does not establish the schemaRoot scope
   // that full/standalone runners establish themselves. Preserve the caller's
@@ -141,11 +298,12 @@ async function withReportingPreparation<T extends object>(
             discover,
           )
         : discover());
+  options.signal?.throwIfAborted();
   const profile = options.profile ?? discovery?.profile;
-  // Discovery returns partial profiles even on failure. Never reuse one to
-  // turn an outage/rejection into an optionality gate. Preserve the ORIGINAL
-  // public probe as the cause, without inventing a graded SDK result or
-  // retrying the failed operation until it appears applicable.
+  // Discovery returns partial profiles even on failure. Delegate the original
+  // invocation to the SDK so its native discovery_failed grade, auth diagnostic
+  // and ordinary history/OAuth handling remain available. Never use a partial
+  // preflight profile as evidence of applicability or throw remote diagnostics.
   const failedDiscovery =
     discovery?.steps.filter(
       (step, index) =>
@@ -157,10 +315,7 @@ async function withReportingPreparation<T extends object>(
     profile.capabilities_probe_error ||
     (profile.capabilities_schema_issues?.length ?? 0) > 0
   ) {
-    throw new Error(
-      "Catalog reporting capability discovery failed before preparation",
-      { cause: discovery ?? { profile } },
-    );
+    return execute(originalOptions);
   }
   options = { ...options, profile };
   const capabilities = profile.raw_capabilities as
@@ -171,16 +326,12 @@ async function withReportingPreparation<T extends object>(
     mediaBuy?.buying_modes !== undefined &&
     !Array.isArray(mediaBuy.buying_modes)
   ) {
-    throw new Error(
-      "Catalog reporting capability discovery failed: buying_modes must be an array",
-      { cause: discovery ?? { profile } },
-    );
+    return execute(originalOptions);
   }
   const tools = new Set(profile.tools);
   if (
     !Array.isArray(mediaBuy?.buying_modes) ||
     !mediaBuy.buying_modes.includes("wholesale") ||
-    !tools.has("comply_test_controller") ||
     !storyboard.required_tools?.some((tool) => tools.has(tool))
   ) {
     return execute(options); // Let the unchanged SDK produce its canonical gate.
@@ -190,6 +341,7 @@ async function withReportingPreparation<T extends object>(
     storyboard,
     options,
   );
+  options.signal?.throwIfAborted();
   let budget: number | undefined;
   if (prepared.disposition.status === "resolved") {
     const price = prepared.captures[REPORTING_PRICE_CAPTURE] as Record<
@@ -210,23 +362,17 @@ async function withReportingPreparation<T extends object>(
     budget = Math.max(BASELINE_BUDGET, minimum ?? 0);
   }
   // The trusted caller authorized this invocation. The state is never shared
-  // or serialized; close its local grant when the invocation ends. An actual
-  // host authorizer, when supplied, remains authoritative on EVERY lookup.
-  let active = true;
-  const hostAuthorizer = options.prepared_fixtures_authorizer;
+  // or serialized; close its local grant when the invocation ends. Supplied
+  // host hooks were refused before contact above until SDK #3389 is repaired.
   const auditSink = options.prepared_fixtures_audit_sink;
-  try {
+  return withReportingInvocationGrant(async (authorize) => {
     const result = await execute({
       ...options,
       context: {
         ...options.context,
         ...(budget === undefined ? {} : { [REPORTING_BUDGET_CONTEXT]: budget }),
       },
-      ...withPreparedFixtures(prepared, async (lookup) => {
-        if (!active)
-          return { authorized: false, detail: "Reporting invocation ended" };
-        return hostAuthorizer ? hostAuthorizer(lookup) : { authorized: true };
-      }),
+      ...withPreparedFixtures(prepared, authorize),
       // The producer ran before consumer authorization. Link its real records
       // into the caller's PRIVATE audit scope, without changing any grade,
       // phase, count or request/response field emitted by the consumer.
@@ -258,21 +404,20 @@ async function withReportingPreparation<T extends object>(
         ...result,
         fixture_resolutions: prepared.resolutions.map((record) => ({
           ...record,
-          ...(record.status === "failed" && !("failure" in record) && {
-            failure: {
-              ...(prepared.disposition.status !== "resolved" && {
-                detail: prepared.disposition.detail,
-              }),
-              phase: prepared.phase,
-            },
-          }),
+          ...(record.status === "failed" &&
+            !("failure" in record) && {
+              failure: {
+                ...(prepared.disposition.status !== "resolved" && {
+                  detail: prepared.disposition.detail,
+                }),
+                phase: prepared.phase,
+              },
+            }),
         })),
       };
     }
     return result;
-  } finally {
-    active = false;
-  }
+  });
 }
 
 export function runCatalogReportingStoryboard(
