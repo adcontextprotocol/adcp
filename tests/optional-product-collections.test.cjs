@@ -136,6 +136,12 @@ async function execute(
     omitCreateLifecycle = false,
     skipPriorCreate = false,
     expectLocalError = false,
+    continueFailedCreate = false,
+    priorContextTransform,
+    readProfileMode,
+    readAgentUrl = URL,
+    priorRunTransform,
+    scenarioOnly = false,
   } = {},
 ) {
   const calls = [],
@@ -161,6 +167,7 @@ async function execute(
     compliance_testing: { scenarios: ["seed_account"] },
   };
   let buyIndex = 0;
+  let failReadCapabilities = false;
   const trustedFetchFn = async (_url, init = {}) => {
     http.push({ method: init.method ?? "GET", body: init.body });
     if (!init.body)
@@ -202,8 +209,15 @@ async function execute(
     const { name: task, arguments: request } = msg.params;
     calls.push({ task, request: structuredClone(request) });
     let data;
-    if (task === "get_adcp_capabilities") data = caps;
-    else if (task === "comply_test_controller") {
+    if (task === "get_adcp_capabilities") {
+      if (failReadCapabilities) {
+        failReadCapabilities = false;
+        return new Response("Controlled first read capability failure", {
+          status: 503,
+        });
+      }
+      data = caps;
+    } else if (task === "comply_test_controller") {
       assert.equal(request.account.sandbox, true);
       assert.ok(
         ["list_scenarios", "seed_account"].includes(request.scenario),
@@ -405,6 +419,7 @@ async function execute(
     ...(context && { context }),
     ...overrides,
   };
+  if (scenarioOnly) return { options, calls, wire, http, doc, url: URL };
   if (hosted) options = withHostedReportingBudget(doc, options);
   if (prepareOnly)
     return {
@@ -418,6 +433,7 @@ async function execute(
       http,
     };
   let result;
+  let created;
   if (
     !skipPriorCreate &&
     standalone &&
@@ -425,18 +441,35 @@ async function execute(
     reader &&
     buyingModes.includes("wholesale")
   ) {
-    const created = await runStoryboardStep(
-      URL,
-      doc,
-      "create_selection",
-      options,
-    );
-    assert.equal(created.passed, true, JSON.stringify(created));
-    options = { ...options, context: created.context };
+    created = await runStoryboardStep(URL, doc, "create_selection", options);
+    if (!continueFailedCreate)
+      assert.equal(created.passed, true, JSON.stringify(created));
+    options = { ...options, context: structuredClone(created.context) };
+    if (priorContextTransform) priorContextTransform(options.context);
+    if (priorRunTransform) priorRunTransform({ doc, options });
+    if (readProfileMode === "probe_error")
+      options.profile = {
+        ...options.profile,
+        capabilities_probe_error: "Controlled prior discovery error",
+      };
+    if (readProfileMode === "schema_error")
+      options.profile = {
+        ...options.profile,
+        capabilities_schema_issues: ["Controlled schema issue"],
+      };
+    if (readProfileMode === "malformed_modes")
+      options.profile = {
+        ...options.profile,
+        raw_capabilities: { ...caps, media_buy: { buying_modes: "wholesale" } },
+      };
+    if (readProfileMode === "fail_once") {
+      delete options.profile;
+      failReadCapabilities = true;
+    }
   }
   try {
     result = standalone
-      ? await runStoryboardStep(URL, doc, stepId, options)
+      ? await runStoryboardStep(readAgentUrl, doc, stepId, options)
       : await runStoryboard(URL, doc, options);
   } catch (error) {
     if (
@@ -446,7 +479,7 @@ async function execute(
       !overrides.signal?.aborted
     )
       throw error;
-    return { error, calls, wire, http };
+    return { error, calls, wire, http, created };
   }
   const graded = (
     result.phases ?? [{ phase_id: result.phase_id, steps: [result] }]
@@ -456,7 +489,7 @@ async function execute(
       disposition: classifyComplianceStep(s, `${doc.id}/${p.phase_id}`),
     })),
   );
-  return { result, calls, wire, http, graded };
+  return { result, calls, wire, http, graded, created };
 }
 
 if (require.main === module) {

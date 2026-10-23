@@ -6040,6 +6040,13 @@ export function createMemberToolHandlers(
     if (readinessPrompt) return readinessPrompt;
     const contextRefMeta = storyboardContextRefMeta(memberContext, storyboardId, resolved.resolvedUrl);
     const context = resolveStoryboardInputContext(input.context, contextRefMeta);
+    // SDK captures may precede final validation. Preserve the last trusted
+    // continuation before the call, including when SDK code mutates its input.
+    const collectionReadback = [
+      'media_buy_seller/collection_selection_readback',
+      'media_buy_seller/collection_default_materialization_readback',
+    ].includes(storyboardId);
+    const previousContext = collectionReadback ? structuredClone(context) : context;
 
     if (!hasExplicitComplianceTarget(input)) {
       runTarget = await selectComplianceTargetForAgent(
@@ -6181,7 +6188,9 @@ export function createMemberToolHandlers(
         }
       }
 
-      if (result.next) {
+      if (collectionReadback && !result.passed && !result.skipped && result.step_id === 'create_selection') {
+        output += `\nThe create did not pass. Fix it and re-run \`create_selection\` before attempting persisted readback. The context below retains the prior successful continuation only.\n`;
+      } else if (result.next) {
         output += `\n### Next step\n`;
         output += `**${result.next.title}** (\`${result.next.step_id}\`) — \`${result.next.task}\`\n`;
         if (result.next.narrative) output += `${renderStoryboardDiagnostic(result.next.narrative, RUNNER_ERROR_MAX_LEN)}\n`;
@@ -6192,7 +6201,9 @@ export function createMemberToolHandlers(
 
       // Include an opaque encrypted reference for the next step call so
       // agent-controlled context cannot break out of this handoff surface.
-      output += `\n<context>\n${JSON.stringify(storeStoryboardContextRef(result.context, contextRefMeta), null, 2)}\n</context>`;
+      const continuationContext = collectionReadback && (!result.passed || result.skipped)
+        ? previousContext : result.context;
+      output += `\n<context>\n${JSON.stringify(storeStoryboardContextRef(continuationContext, contextRefMeta), null, 2)}\n</context>`;
 
       return output;
     } catch (error) {

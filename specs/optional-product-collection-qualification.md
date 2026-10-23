@@ -100,8 +100,20 @@ passes its protected-witness assertion in a full run. SDK16.3 publishes step
 captures before final validation, so failed-step context is not proof of a
 successful commitment and must not be reused as trusted standalone history.
 Reads compare that committed set rather than later catalog composition.
-Standalone reads require a trusted successful prior create and its buy,
-package, product and concrete committed-selector context before preparation;
+The caller issues an integrity-only HMAC commitment after the actual standalone
+create passes. Its closed claims bind the exact authored storyboard, seller,
+AdCP version, authored sandbox account, buy/package/product identities and
+normalized concrete pair set. It uses a purpose-separated key derived from the
+existing hosted context deployment-secret sources, or a process-private random
+key for local development; no public signing API or durable grant store is added.
+JSON context round-trips retain the proof, but modified identities/selectors or a
+failed create cannot acquire one. This proof grants no seller access: fresh
+preparation and all SDK authorization still run on each invocation. Hosted
+opaque-reference handoff seals the pre-call continuation on failure/skips while
+retaining the failed result's raw captures, validations and ordinary response.
+Standalone reads require that successful-create proof and its buy,
+package, product and concrete committed-selector context before preparation and
+on **every** native discovery-error/malformed-profile fallback;
 missing keys are local invocation errors, not fabricated seller failures. This
 also prevents generic branch-safe absent-comparand behavior from certifying a
 missing identity. Standalone currently requalifies the catalog; retirement of a

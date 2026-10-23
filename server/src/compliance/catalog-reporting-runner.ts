@@ -7,6 +7,12 @@
  * This is request-local preparation, not a cross-request grant/state store.
  */
 import {
+  createHmac,
+  randomBytes,
+  scryptSync,
+  timingSafeEqual,
+} from "node:crypto";
+import {
   PreparedFixturesDeniedError,
   redactOAuthUrlForOutput,
   prepareStoryboardFixtures,
@@ -49,6 +55,103 @@ const COLLECTION_IDS = new Set([
   "media_buy_seller/collection_default_materialization_readback",
 ]);
 const BASELINE_BUDGET = 1000; // Buyer test intent, never a seller minimum.
+const COLLECTION_COMMITMENT = "catalog_collection_commitment_proof";
+// Match the existing hosted envelope's deployment secret sources, with a
+// separate purpose/key. Development continuation is process-local, as before.
+const developmentCommitmentKey = randomBytes(32);
+function collectionCommitmentKey(): Buffer {
+  const configured =
+    process.env.STORYBOARD_CONTEXT_REF_SECRET ||
+    process.env.WORKOS_COOKIE_PASSWORD ||
+    process.env.CONFORMANCE_JWT_SECRET;
+  return configured
+    ? scryptSync(configured, "adcp-collection-successful-create-v1", 32)
+    : developmentCommitmentKey;
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, child: unknown) => {
+    if (!child || typeof child !== "object" || Array.isArray(child))
+      return child;
+    return Object.fromEntries(
+      Object.entries(child).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+    );
+  });
+}
+
+function collectionCommitment(
+  agentUrl: AgentUrl,
+  storyboard: Storyboard,
+  options: StoryboardRunOptions,
+  context: Record<string, unknown>,
+): string {
+  const ids = [
+    "collection_media_buy_id",
+    "collection_package_id",
+    "collection_committed_product_id",
+  ];
+  const normalized = normalizeCollectionSelectors(
+    context.collection_committed_selectors,
+  );
+  if (
+    ids.some(
+      (key) => !Object.hasOwn(context, key) || typeof context[key] !== "string",
+    ) ||
+    !Object.hasOwn(context, "collection_committed_selectors") ||
+    !normalized.ok ||
+    normalized.value.pairs.length === 0 ||
+    normalized.value.pairs.some((pair) => pair.collection_id === null)
+  ) {
+    throw new Error(
+      "Standalone collection readback requires trusted prior buy, package, product and concrete committed-selector context",
+    );
+  }
+  const pairs = normalized.value.pairs.map((pair) => [
+    pair.publisher_domain,
+    pair.collection_id,
+  ]);
+  pairs.sort((a, b) =>
+    Buffer.compare(
+      Buffer.from(JSON.stringify(a)),
+      Buffer.from(JSON.stringify(b)),
+    ),
+  );
+  // This proves that this caller actually graded the exact create successfully.
+  // It grants no access: every subsequent invocation still prepares and uses
+  // the SDK's current credentials/authorization. No signer is public/exported.
+  return createHmac("sha256", collectionCommitmentKey())
+    .update("adcp-catalog-collection-successful-create-v1\0")
+    .update(
+      canonicalJson({
+        seller: agentUrl,
+        storyboard,
+        adcpVersion: options.adcpVersion ?? null,
+        account: storyboard.context?.sandbox_account,
+        ids: ids.map((key) => context[key]),
+        pairs,
+      }),
+    )
+    .digest("hex");
+}
+
+function assertCollectionReadHistory(
+  agentUrl: AgentUrl,
+  storyboard: Storyboard,
+  options: StoryboardRunOptions,
+) {
+  const context = options.context ?? {};
+  const expected = collectionCommitment(agentUrl, storyboard, options, context);
+  const proof = context[COLLECTION_COMMITMENT];
+  if (
+    typeof proof !== "string" ||
+    !/^[a-f0-9]{64}$/.test(proof) ||
+    !timingSafeEqual(Buffer.from(proof, "hex"), Buffer.from(expected, "hex"))
+  ) {
+    throw new Error(
+      "Standalone collection readback requires verified successful-create history for this exact seller, storyboard and committed selection",
+    );
+  }
+}
 
 type AgentUrl = Parameters<typeof runSdkStoryboard>[0];
 // Supplemental adapter evidence on standalone results; the SDK's native
@@ -220,6 +323,34 @@ async function withReportingPreparation<T extends object>(
 ): Promise<T & PreparationEvidence> {
   const scope = catalogScope(storyboard);
   if (!scope) return execute(options);
+  const nativeExecute = execute;
+  // Every native fallback must obey the same precondition. Capability failures
+  // cannot turn a missing branch-safe comparison key into a successful read.
+  execute = async (executionOptions) => {
+    if (scope.collections && stepId === "read_selection") {
+      assertCollectionReadHistory(agentUrl, storyboard, executionOptions);
+    }
+    const result = await nativeExecute(executionOptions);
+    if (
+      scope.collections &&
+      storyboard.id.endsWith("_readback") &&
+      stepId === "create_selection"
+    ) {
+      const step = result as unknown as StoryboardStepResult;
+      const context = { ...step.context };
+      delete context[COLLECTION_COMMITMENT];
+      if (step.passed && !step.skipped) {
+        context[COLLECTION_COMMITMENT] = collectionCommitment(
+          agentUrl,
+          storyboard,
+          executionOptions,
+          context,
+        );
+      }
+      return { ...result, context };
+    }
+    return result;
+  };
   options.signal?.throwIfAborted();
   // Delegate invalid caller maps to the SDK's canonical denial BEFORE our
   // capability discovery. Do not sanitize them or produce a substitute grade.
@@ -239,7 +370,10 @@ async function withReportingPreparation<T extends object>(
         ),
     )
   ) {
-    return execute(options);
+    // This route is a canonical SDK pre-contact metadata refusal, never an
+    // executable read fallback. Preserve its typed denial/private audit even
+    // when no successful-create history exists.
+    return nativeExecute(options);
   }
   // These entry points own one preparation for one authenticated invocation.
   // Never silently discard a supplied reuse grant, or re-resolve it instead.
@@ -387,28 +521,7 @@ async function withReportingPreparation<T extends object>(
     // Branch-safe field_equals_context intentionally passes when a comparand is
     // absent. Standalone readback has no preceding create in this invocation,
     // so require its trusted prior identities before preparing or dispatching.
-    const prior = options.context ?? {};
-    const ids = [
-      "collection_media_buy_id",
-      "collection_package_id",
-      "collection_committed_product_id",
-    ];
-    const selectors = normalizeCollectionSelectors(
-      prior.collection_committed_selectors,
-    );
-    if (
-      ids.some(
-        (key) => !Object.hasOwn(prior, key) || typeof prior[key] !== "string",
-      ) ||
-      !Object.hasOwn(prior, "collection_committed_selectors") ||
-      !selectors.ok ||
-      selectors.value.pairs.length === 0 ||
-      selectors.value.pairs.some((pair) => pair.collection_id === null)
-    ) {
-      throw new Error(
-        "Standalone collection readback requires trusted prior buy, package, product and concrete committed-selector context",
-      );
-    }
+    assertCollectionReadHistory(agentUrl, storyboard, options);
   }
   const prepared = await prepareStoryboardFixtures(
     agentUrl,
