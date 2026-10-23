@@ -34,6 +34,8 @@ permissions:
 jobs:
   recover:
     name: Recover immutable release artifacts
+    # Recovery authority is current main only; other dispatch refs never run.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository history
@@ -46,7 +48,7 @@ jobs:
       # the current reviewed branch, never from the artifact being recovered.
       - name: Preserve current workflow publication fence
         run: |
-          node scripts/check-release-state.cjs publication-current
+          node scripts/check-release-state.cjs current
           cp scripts/check-release-state.cjs "$RUNNER_TEMP/check-release-state.cjs"
           cp scripts/check-protocol-bundle-parity.cjs "$RUNNER_TEMP/check-protocol-bundle-parity.cjs"
           cp scripts/recover-cdn-version-trees.sh "$RUNNER_TEMP/recover-cdn-version-trees.sh"

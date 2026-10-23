@@ -818,20 +818,37 @@ test("tree recovery runs the current branch's scripts, not the recovered tag's",
     );
 });
 
-test("every recovery step still fails closed on the publication fence", () => {
+test("recovery starts on the strict fence and fences each object with publication-current", () => {
   const protocolUpload = stepNamed("Upload only missing immutable R2 objects");
   assert.match(protocolUpload.run, /check-release-state\.cjs" publication-current "\$VERSION"/);
   assert.doesNotMatch(protocolUpload.run, /check-release-state\.cjs" current/);
+  // The initial gate stays strict so a stale re-run stops before any work.
   assert.match(
     stepNamed("Preserve current workflow publication fence").run,
-    /node scripts\/check-release-state\.cjs publication-current\n/,
+    /^node scripts\/check-release-state\.cjs current\n/,
   );
   const script = fs.readFileSync(
     path.join(root, "scripts/recover-cdn-version-trees.sh"),
     "utf8",
   );
+  const fences = [...script.matchAll(/node "\$FENCE_SCRIPT" ([a-z-]+)/g)].map((m) => m[1]);
+  assert.deepEqual(fences, ["current", "publication-current", "publication-current", "publication-current"]);
   assert.match(script, /node "\$FENCE_SCRIPT" publication-current "\$VERSION"/);
-  assert.doesNotMatch(script, /node "\$FENCE_SCRIPT" current/);
   assert.match(script, /--if-none-match '\*'/);
   assert.doesNotMatch(script, /s3 rm|--delete|rb /);
+});
+
+test("recovery refuses a non-main dispatch", () => {
+  assert.equal(workflow.jobs.recover.if, "github.ref == 'refs/heads/main'");
+});
+
+test("a stale re-run is refused at the strict initial gate, even after an unrelated advance", (t) => {
+  const f = fixture(t);
+  const later = advanceBranch(f, { "server/app.ts": "unrelated\n" });
+  f.write("remote", later);
+  const result = f.run("upload");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, new RegExp(`Refusing stale tested SHA ${f.head}; origin/main is ${later}\\t`));
+  assert.deepEqual(f.calls(), []);
+  assert.deepEqual(f.bucketKeys(), []);
 });

@@ -413,6 +413,52 @@ assert(
     /if node scripts\/check-release-state\.cjs verified-merge; then\n\s*echo "verified=true" >> "\$GITHUB_OUTPUT"/.test(verifiedMergeStep.run),
   'Only a Version Packages merge proven by verified-merge may set verified=true.'
 );
+assert.match(
+  verifiedMergeStep.if,
+  /github\.ref_name == 'main'/,
+  'verified-merge is main-only: maintenance PR runs use a different candidate-version mode.'
+);
+assert.strictEqual(
+  verificationJob.steps.find(step => step.name === 'Checkout Repo').with['persist-credentials'],
+  false,
+  'verify-release reads the public repository anonymously and must not persist a token.'
+);
+
+// verified-merge requires every job the storyboard matrix produces. Expand
+// the workflow's matrix (product, exclude, include) and compare.
+{
+  const { storyboardJobs } = require(path.join(repoRoot, 'scripts/check-release-state.cjs'));
+  const jobs = trainingAgentWorkflowConfig.jobs;
+  const matrix = jobs.storyboards.strategy.matrix;
+  const keys = ['surface', 'tenant'];
+  let combos = matrix.surface.flatMap(surface => matrix.tenant.map(tenant => ({ surface, tenant })));
+  combos = combos.filter(combo => !matrix.exclude.some(ex => keys.every(key => ex[key] === combo[key])));
+  for (const extra of matrix.include) {
+    if (!combos.some(combo => keys.every(key => combo[key] === extra[key])))
+      combos.push({ surface: extra.surface, tenant: extra.tenant });
+  }
+  const orchestrators = jobs.sales_storyboard_orchestrators.strategy.matrix.orchestrator;
+  const expected = [
+    ...combos.map(({ surface, tenant }) =>
+      jobs.storyboards.name.replace('${{ matrix.surface }}', surface).replace('${{ matrix.tenant }}', tenant)
+    ),
+    ...orchestrators.map(n =>
+      jobs.sales_storyboard_orchestrators.name.replace('${{ matrix.orchestrator }}', String(n))
+    ),
+    jobs.sales_storyboards.name,
+  ];
+  assert.deepStrictEqual(
+    Object.keys(jobs).sort(),
+    ['sales_storyboard_orchestrators', 'sales_storyboards', 'storyboards'],
+    'A new storyboard job must be added to check-release-state.cjs storyboardJobs.'
+  );
+  assert.deepStrictEqual(
+    [...storyboardJobs].sort(),
+    expected.sort(),
+    'check-release-state.cjs storyboardJobs must equal the full training-agent-storyboards.yml matrix.'
+  );
+}
+
 for (const name of ['Verify current storyboard coverage', 'Verify 3.0 storyboard compatibility']) {
   const gate = verificationJob.steps.find(step => step.name === name);
   assert(

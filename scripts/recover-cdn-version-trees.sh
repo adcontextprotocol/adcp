@@ -108,10 +108,10 @@ trap 'exit 143' TERM
 work="$(mktemp -d "${TMPDIR:-/tmp}/adcp-cdn-recovery.XXXXXX")"
 chmod 700 "$work"
 
-# The fence proves the dispatch is still current for the supported release
-# branch. It is the same gate release publication uses, and the only one this
-# recovery shares with it.
-node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
+# The strict initial fence proves the dispatch is still exactly current for the
+# supported release branch, so a stale re-run stops before any work. Per-object
+# fences below use publication-current, mirroring release.yml's strict start.
+node "$FENCE_SCRIPT" current </dev/null
 
 actual_version="$(node -p "require('./package.json').version || ''" </dev/null)"
 [[ "$actual_version" == "$VERSION" ]] ||

@@ -48,6 +48,9 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          # Later fetches (recovery target, refs/pull heads, 3.0.x bundle)
+          # read the public repository anonymously; keep no token on disk.
+          persist-credentials: false
 
       - name: Resolve release target
         id: release-target
@@ -144,7 +147,9 @@ jobs:
       # full run, and the release job still checks approval and provenance.
       - name: Detect provenance-verified release merge
         id: verified-merge
-        if: steps.release-relevance.outputs.relevant == 'true' && github.event_name == 'push'
+        # Main only: maintenance PR storyboard runs use candidate-version mode 0
+        # where verify-release uses 1, so skipping there would drop a check.
+        if: steps.release-relevance.outputs.relevant == 'true' && github.event_name == 'push' && github.ref_name == 'main'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}

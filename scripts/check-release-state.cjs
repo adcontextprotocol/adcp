@@ -47,12 +47,33 @@ function current() {
   return expected;
 }
 
+// Files whose change in TESTED..H invalidates publication even with an
+// unchanged version: release identity (pre mode, supersession), release
+// status (withdrawal overrides and the surfaces that serve them), and the
+// publication machinery itself, so a fence fix stops runs on the old logic.
+const publicationAuthority = [
+  ".changeset/pre.json",
+  ".changeset/release-supersession.json",
+  ".changeset/withdrawn-release.json",
+  "scripts/build-schemas.cjs",
+  "server/src/schemas-middleware.ts",
+  "workers/artifact-cdn/src/index.js",
+  ".github/workflows/release.yml",
+  ".github/workflows/recover-protocol-cdn.yml",
+  "scripts/check-release-state.cjs",
+  "scripts/backfill-cdn-artifacts.sh",
+  "scripts/recover-cdn-version-trees.sh",
+  "scripts/check-protocol-bundle-parity.cjs",
+];
+
 // Publication-scoped freshness, only for a run publishing an already-committed
 // release. The strict fence stops a stale run from publishing over a newer
 // release or over changed release artifacts. A later branch commit is neither
 // when it descends from the tested commit, keeps the package version, and
-// leaves this version's artifacts and the release-authority files untouched.
-// Anything else, including any remote or Git failure, still refuses.
+// leaves this version's artifacts and the publication-authority files
+// untouched. It compares the net TESTED..H diff, so a change that a later
+// commit fully reverts is accepted. Anything else, including any remote or Git
+// failure, still refuses.
 function publicationCurrent(extraVersions = []) {
   const { expected, branch } = publicationTarget();
   for (let attempt = 1; ; attempt++) {
@@ -105,9 +126,8 @@ function publicationCurrent(extraVersions = []) {
     if (versionAt(head) !== version)
       throw refuse("the package version changed after the tested commit");
     const versions = [version, ...extraVersions.filter(Boolean)];
-    const authority = [".changeset/pre.json", ".changeset/release-supersession.json"];
     const releasePath = (file) =>
-      authority.includes(file) ||
+      publicationAuthority.includes(file) ||
       versions.some(
         (v) =>
           [`dist/schemas/${v}`, `dist/compliance/${v}`].some(
@@ -519,12 +539,36 @@ function approval() {
   );
 }
 
-// Storyboard jobs in training-agent-storyboards.yml. The aggregate /sales
-// job and both matrix surfaces must be present; every job must succeed, so a
-// Draft run that skipped its matrix, or any cancelled/failed job, never counts.
+// Every job the main-branch training-agent-storyboards.yml matrix produces.
+// tests/release-workflow-immutability.test.cjs derives this set from the
+// workflow and fails when they drift. verified-merge also requires the release
+// head not to change the workflow relative to its base, so a run that executed
+// a narrowed matrix, skipped a Draft matrix, or had any job cancelled or
+// failed never counts.
 const storyboardWorkflow = "training-agent-storyboards.yml";
+const storyboardWorkflowPath = `.github/workflows/${storyboardWorkflow}`;
+const storyboardJobs = [
+  ...["signals", "governance", "creative", "creative-builder", "brand", "si", "typed-negotiation", "constrained-seller"]
+    .map((tenant) => `Storyboards (current /${tenant})`),
+  ...["signals", "sales", "governance", "creative", "creative-builder", "brand", "si"]
+    .map((tenant) => `Storyboards (3.0-compat /${tenant})`),
+  ...[0, 1, 2, 3, 4, 5, 6, 7].map((n) => `Sales storyboard orchestrator (${n}/8)`),
+  "Storyboards (current /sales)",
+];
+// The harness the pull_request run executed. The release head must leave these
+// unchanged relative to its base parent, so the run used main's harness.
+const storyboardInputs = [
+  storyboardWorkflowPath,
+  "scripts/run-storyboards*",
+  "scripts/build-schemas.cjs",
+  "scripts/build-compliance.cjs",
+  "scripts/patch-3-0-compat-bundle.cjs",
+  "server/tests/manual/run-storyboards.ts",
+  "server/src/training-agent",
+  "server/src/services/hosted-compliance-version.ts",
+];
 function storyboardJobsPassed(jobs) {
-  const names = jobs.map((job) => job?.name);
+  const names = new Set(jobs.map((job) => job?.name));
   return (
     jobs.length > 0 &&
     jobs.every(
@@ -533,9 +577,7 @@ function storyboardJobsPassed(jobs) {
         job.status === "completed" &&
         job.conclusion === "success",
     ) &&
-    names.some((name) => name.startsWith("Storyboards (current /")) &&
-    names.some((name) => name.startsWith("Storyboards (3.0-compat /")) &&
-    names.includes("Storyboards (current /sales)")
+    storyboardJobs.every((name) => names.has(name))
   );
 }
 
@@ -543,6 +585,8 @@ function storyboardJobsPassed(jobs) {
 // approved head whose pull_request storyboard run passed, so verify-release
 // need not re-run the matrix. Any failure falls back to full verification;
 // publication authority (approval/provenance in the release job) is separate.
+// Main only: maintenance-branch PR runs use candidate-version mode 0 where
+// verify-release uses 1, so a skip there would drop a check.
 function verifiedMerge() {
   const source = process.env.GITHUB_SHA;
   const repository = process.env.GITHUB_REPOSITORY;
@@ -550,13 +594,21 @@ function verifiedMerge() {
   if (
     !shaPattern.test(source || "") ||
     !/^[\w.-]+\/[\w.-]+$/.test(repository || "") ||
-    !supportedBranches.includes(branch)
+    branch !== "main"
   )
-    throw new Error("Verified merge requires an exact pushed SHA, repository and supported branch.");
+    throw new Error("Verified merge requires an exact pushed SHA, repository and the main branch.");
   const api = repositoryApi(repository);
   const { pr, head } = mergedReleasePr(api, source, repository, branch);
+  const headBranch = pr.head?.ref;
+  if (typeof headBranch !== "string" || !headBranch || pr.head?.repo?.full_name !== repository)
+    throw new Error("Release PR head must be a branch of this repository.");
   fetchReviewedHead(pr.number, head);
   provenance(source, head);
+  try {
+    git("diff", "--quiet", `${head}^1`, head, "--", ...storyboardInputs);
+  } catch {
+    throw new Error("Release PR head changes storyboard verification inputs relative to its base.");
+  }
   const pages = (endpoint, key) => {
     const value = JSON.parse(
       run("gh", ["api", "--paginate", "--slurp", `/repos/${repository}${endpoint}`]),
@@ -565,6 +617,8 @@ function verifiedMerge() {
       throw new Error(`Ambiguous paginated ${key} response.`);
     return value.flatMap((page) => page[key]);
   };
+  // Bind the run to this PR's head commit, head branch, repository and the
+  // workflow file itself, not to the run's mutable pull_requests[] list.
   const runs = pages(
     `/actions/workflows/${storyboardWorkflow}/runs?head_sha=${head}&event=pull_request&status=completed&per_page=100`,
     "workflow_runs",
@@ -573,6 +627,9 @@ function verifiedMerge() {
       Number.isSafeInteger(candidate?.id) &&
       candidate.id > 0 &&
       candidate.head_sha === head &&
+      candidate.head_branch === headBranch &&
+      candidate.head_repository?.full_name === repository &&
+      candidate.path === storyboardWorkflowPath &&
       candidate.event === "pull_request" &&
       candidate.status === "completed" &&
       candidate.conclusion === "success",
@@ -581,58 +638,63 @@ function verifiedMerge() {
     const jobs = pages(`/actions/runs/${candidate.id}/jobs?filter=latest&per_page=100`, "jobs");
     if (storyboardJobsPassed(jobs)) {
       console.log(
-        `Release merge ${source} is release PR #${pr.number} head ${head} with matching provenance; storyboard run ${candidate.id} passed on that exact head.`,
+        `Release merge ${source} is release PR #${pr.number} head ${head} with matching provenance; storyboard run ${candidate.id} passed all ${storyboardJobs.length} expected jobs on that exact head.`,
       );
       return;
     }
   }
   throw new Error(
-    `No completed pull_request ${storyboardWorkflow} run with every storyboard job successful exists for release PR head ${head}.`,
+    `No completed pull_request ${storyboardWorkflow} run on release PR #${pr.number}'s branch with every expected storyboard job successful exists for head ${head}.`,
   );
 }
 
-const [mode, argument] = process.argv.slice(2);
-try {
-  if (mode === "current") current();
-  else if (mode === "publication-current") publicationCurrent([argument]);
-  else if (mode === "committed") committed(argument);
-  else if (mode === "published") {
-    publicationCurrent([argument]);
-    published(argument, process.env.RELEASE_SHA);
-  } else if (mode === "pending") {
-    current();
-    const version = JSON.parse(fs.readFileSync("package.json")).version;
-    const surfaces = [
-      `dist/schemas/${version}`,
-      `dist/compliance/${version}`,
-      ...["", ".sha256", ".sig", ".crt"].map(
-        (suffix) => `dist/protocol/${version}.tgz${suffix}`,
-      ),
-    ];
-    if (
-      surfaces.some((surface) => fs.existsSync(surface)) &&
-      !reviewedSupersession(version)
-    )
-      published(version, undefined, current);
-  } else if (mode === "recovery") recovery(argument);
-  else if (mode === "approval") approval();
-  else if (mode === "provenance") {
-    publicationCurrent();
-    provenance(process.env.RELEASE_SHA, argument);
-  } else if (mode === "verified-merge") verifiedMerge();
-  else
-    throw new Error(
-      "Expected current, publication-current, committed, published, pending, recovery, approval, provenance, or verified-merge.",
-    );
-} catch (error) {
-  if (mode === "verified-merge") {
-    console.error(
-      `::notice::Release merge is not provenance-verified (${error.message}); running full storyboard verification.`,
-    );
-  } else {
-    console.error(
-      `::error::${error.message}\nPublication stopped. Recovery requires current tested main and original release authority; provenance mismatches remain quarantined pending a separately reviewed plan. See RELEASING.md. Do not rerun an obsolete workflow.`,
-    );
+module.exports = { publicationAuthority, storyboardJobs, storyboardInputs };
+if (require.main === module) main();
+
+function main() {
+  const [mode, argument] = process.argv.slice(2);
+  try {
+    if (mode === "current") current();
+    else if (mode === "publication-current") publicationCurrent([argument]);
+    else if (mode === "committed") committed(argument);
+    else if (mode === "published") {
+      publicationCurrent([argument]);
+      published(argument, process.env.RELEASE_SHA);
+    } else if (mode === "pending") {
+      current();
+      const version = JSON.parse(fs.readFileSync("package.json")).version;
+      const surfaces = [
+        `dist/schemas/${version}`,
+        `dist/compliance/${version}`,
+        ...["", ".sha256", ".sig", ".crt"].map(
+          (suffix) => `dist/protocol/${version}.tgz${suffix}`,
+        ),
+      ];
+      if (
+        surfaces.some((surface) => fs.existsSync(surface)) &&
+        !reviewedSupersession(version)
+      )
+        published(version, undefined, current);
+    } else if (mode === "recovery") recovery(argument);
+    else if (mode === "approval") approval();
+    else if (mode === "provenance") {
+      publicationCurrent();
+      provenance(process.env.RELEASE_SHA, argument);
+    } else if (mode === "verified-merge") verifiedMerge();
+    else
+      throw new Error(
+        "Expected current, publication-current, committed, published, pending, recovery, approval, provenance, or verified-merge.",
+      );
+  } catch (error) {
+    if (mode === "verified-merge") {
+      console.error(
+        `::notice::Release merge is not provenance-verified (${error.message}); running full storyboard verification.`,
+      );
+    } else {
+      console.error(
+        `::error::${error.message}\nPublication stopped. Recovery requires current tested main and original release authority; provenance mismatches remain quarantined pending a separately reviewed plan. See RELEASING.md. Do not rerun an obsolete workflow.`,
+      );
+    }
+    process.exitCode = 1;
   }
-  process.exitCode = 1;
 }

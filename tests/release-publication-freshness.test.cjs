@@ -201,7 +201,7 @@ test("publication-current keeps branch and SHA validation", (t) => {
 
 // verified-merge: a squash release merge whose tree equals the reviewed head,
 // with every gh API response stubbed from a JSON file.
-function mergeFixture(t, { tamperTree = false } = {}) {
+function mergeFixture(t, { tamperTree = false, headFiles = {} } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "verified-merge-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const git = gitIn(dir);
@@ -209,12 +209,15 @@ function mergeFixture(t, { tamperTree = false } = {}) {
   git("init", "-q", "-b", "main");
   identity(git);
   write("package.json", JSON.stringify({ version: "3.3.0-alpha.9" }));
+  write(".github/workflows/training-agent-storyboards.yml", "name: Training Agent Storyboards\n");
+  write("scripts/run-storyboards-matrix.sh", "#!/usr/bin/env bash\n");
   git("add", ".");
   git("commit", "-qm", "Prior main");
   const base = git("rev-parse", "HEAD");
   write("package.json", JSON.stringify({ version }));
   for (const suffix of ["", ".sha256", ".sig", ".crt"])
     write(`dist/protocol/${version}.tgz${suffix}`, `signed${suffix}\n`);
+  for (const [file, body] of Object.entries(headFiles)) write(file, body);
   git("add", ".");
   git("commit", "-qm", "Version Packages");
   const head = git("rev-parse", "HEAD");
@@ -230,12 +233,12 @@ function mergeFixture(t, { tamperTree = false } = {}) {
     { cwd: dir, encoding: "utf8" },
   ).trim();
   git("checkout", "-q", "--detach", source);
-  fs.mkdirSync(path.join(dir, "scripts"));
+  fs.mkdirSync(path.join(dir, "scripts"), { recursive: true });
   fs.copyFileSync(fence, path.join(dir, "scripts/check-release-state.cjs"));
   const job = (name, conclusion = "success") => ({ name, status: "completed", conclusion });
   const passingJobs = [
-    ...["signals", "governance", "creative", "creative-builder", "brand", "si"].map((tenant) =>
-      job(`Storyboards (current /${tenant})`),
+    ...["signals", "governance", "creative", "creative-builder", "brand", "si", "typed-negotiation", "constrained-seller"].map(
+      (tenant) => job(`Storyboards (current /${tenant})`),
     ),
     ...["signals", "sales", "governance", "creative", "creative-builder", "brand", "si"].map(
       (tenant) => job(`Storyboards (3.0-compat /${tenant})`),
@@ -249,12 +252,21 @@ function mergeFixture(t, { tamperTree = false } = {}) {
       number: 9,
       merged: true,
       merge_commit_sha: source,
-      head: { sha: head },
+      head: { sha: head, ref: "changeset-release/main", repo: { full_name: "adcontextprotocol/adcp" } },
       base: { ref: "main", repo: { full_name: "adcontextprotocol/adcp" } },
       user: { id: 7, login: "aao-release-bot[bot]" },
     },
     runs: [
-      { id: 41, head_sha: head, event: "pull_request", status: "completed", conclusion: "success" },
+      {
+        id: 41,
+        head_sha: head,
+        head_branch: "changeset-release/main",
+        head_repository: { full_name: "adcontextprotocol/adcp" },
+        path: ".github/workflows/training-agent-storyboards.yml",
+        event: "pull_request",
+        status: "completed",
+        conclusion: "success",
+      },
     ],
     jobs: { 41: passingJobs },
   };
@@ -426,4 +438,175 @@ test("the verified-merge step skips the API for a push that is not a release mer
   assert.equal(step.output, "");
   assert.match(step.stdout, /Not a release merge/);
   assert.deepEqual(f.ghCalls(), []);
+});
+
+// Security review follow-ups (#8424).
+const { publicationAuthority, storyboardJobs } = require(fence);
+const escape = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+
+test("publication-current refuses every release-status and publication-machinery change", (t) => {
+  for (const file of [
+    ".changeset/withdrawn-release.json",
+    "scripts/build-schemas.cjs",
+    "server/src/schemas-middleware.ts",
+    "workers/artifact-cdn/src/index.js",
+    ".github/workflows/release.yml",
+    ".github/workflows/recover-protocol-cdn.yml",
+    "scripts/check-release-state.cjs",
+    "scripts/backfill-cdn-artifacts.sh",
+    "scripts/recover-cdn-version-trees.sh",
+    "scripts/check-protocol-bundle-parity.cjs",
+  ])
+    assert.ok(publicationAuthority.includes(file), `${file} must be publication authority`);
+  for (const file of publicationAuthority) {
+    const f = freshnessFixture(t);
+    f.commit({ "server/app.ts": "export const later = 1;\n" });
+    f.push(f.commit({ [file]: "// changed mid-publication\n" }));
+    refused(f.run("publication-current"), new RegExp(`release paths: ${escape(file)}`));
+  }
+});
+
+test("publication-current refuses a withdrawal landing mid-publication", (t) => {
+  const f = freshnessFixture(t);
+  f.push(
+    f.commit({
+      ".changeset/withdrawn-release.json": JSON.stringify({ version, reason: "withdrawn" }),
+      "scripts/build-schemas.cjs": `const RELEASE_STATUS_OVERRIDES = { "${version}": "withdrawn" };\n`,
+    }),
+  );
+  refused(f.run("publication-current"), /release paths: .*withdrawn-release\.json/);
+});
+
+test("publication-current refuses a mode-only change at a protected path", (t) => {
+  const f = freshnessFixture(t);
+  f.git("update-index", "--chmod=+x", `dist/protocol/${version}.tgz.sig`);
+  f.git("commit", "-qm", "Mode only");
+  f.push(f.git("rev-parse", "HEAD"));
+  refused(f.run("publication-current"), /release paths: dist\/protocol\/3\.3\.0-beta\.0\.tgz\.sig/);
+});
+
+test("publication-current refuses a symlink typechange at a protected path", (t) => {
+  const f = freshnessFixture(t);
+  const target = path.join(f.dir, "work", `dist/schemas/${version}/index.json`);
+  fs.rmSync(target);
+  fs.symlinkSync("../../../server/app.ts", target);
+  f.git("add", "--", `dist/schemas/${version}/index.json`);
+  f.git("commit", "-qm", "Typechange to symlink");
+  f.push(f.git("rev-parse", "HEAD"));
+  refused(f.run("publication-current"), /release paths: dist\/schemas\/3\.3\.0-beta\.0\/index\.json/);
+});
+
+test("publication-current refuses a gitlink added under a protected path", (t) => {
+  const f = freshnessFixture(t);
+  f.git("update-index", "--add", "--cacheinfo", `160000,${f.tested},dist/compliance/${version}/vendored`);
+  f.git("commit", "-qm", "Gitlink");
+  f.push(f.git("rev-parse", "HEAD"));
+  refused(f.run("publication-current"), /release paths: dist\/compliance\/3\.3\.0-beta\.0\/vendored/);
+});
+
+test("publication-current compares the net diff, so a change-then-revert is accepted", (t) => {
+  const f = freshnessFixture(t);
+  f.commit({ [`dist/protocol/${version}.tgz`]: "resigned\n" });
+  const head = f.commit({ [`dist/protocol/${version}.tgz`]: "signed\n" }, "Revert tarball change");
+  f.push(head);
+  const result = f.run("publication-current");
+  accepted(result);
+  assert.ok(result.stdout.includes(`to ${head} (2 commit(s))`), result.stdout);
+});
+
+test("publication-current re-reads after a fetch race and then accepts", (t) => {
+  const f = freshnessFixture(t);
+  const pushed = f.commit({ "server/app.ts": "export const later = 1;\n" });
+  f.push(pushed);
+  // The first ls-remote advertises a head the remote no longer serves (the
+  // branch moved before fetch); later reads advertise the real head.
+  const raced = f.commit({ "server/app.ts": "export const raced = 1;\n" });
+  const bin = path.join(f.dir, "bin");
+  fs.mkdirSync(bin);
+  const counter = path.join(f.dir, "ls-remote-count");
+  fs.writeFileSync(
+    path.join(bin, "git"),
+    `#!${process.execPath}
+const fs=require('node:fs');const args=process.argv.slice(2);
+if(args[0]==='ls-remote'){
+  const n=(fs.existsSync(${JSON.stringify(counter)})?Number(fs.readFileSync(${JSON.stringify(counter)},'utf8')):0)+1;
+  fs.writeFileSync(${JSON.stringify(counter)},String(n));
+  if(n===1){console.log(process.env.RACED+'\\t'+args.at(-1));process.exit(0);}
+}
+const r=require('node:child_process').spawnSync(${JSON.stringify(realGit)},args,{stdio:'inherit'});process.exit(r.status??1);`,
+  );
+  fs.chmodSync(path.join(bin, "git"), 0o755);
+  const result = f.run("publication-current", { PATH: `${bin}:${process.env.PATH}`, RACED: raced });
+  accepted(result);
+  assert.ok(result.stdout.includes(`to ${pushed} (1 commit(s))`), result.stdout);
+  assert.equal(fs.readFileSync(counter, "utf8"), "2");
+});
+
+test("verified-merge requires the full expected storyboard matrix", (t) => {
+  assert.equal(storyboardJobs.length, 24);
+  const f = mergeFixture(t);
+  // The narrowed shape the first version accepted: one job per surface plus
+  // the aggregate /sales job.
+  f.responses.jobs[41] = [
+    f.job("Storyboards (current /signals)"),
+    f.job("Storyboards (3.0-compat /signals)"),
+    f.job("Storyboards (current /sales)"),
+  ];
+  notVerified(f.run(), /every expected storyboard job/);
+  f.responses.jobs[41] = [f.job("Storyboards (current /sales)")];
+  notVerified(f.run());
+  f.responses.jobs[41] = f.passingJobs.filter(
+    (job) => job.name !== "Storyboards (current /typed-negotiation)",
+  );
+  notVerified(f.run());
+});
+
+test("verified-merge refuses a fork run with the same head SHA", (t) => {
+  const f = mergeFixture(t);
+  f.responses.runs = [{ ...f.responses.runs[0], head_repository: { full_name: "attacker/adcp" } }];
+  notVerified(f.run(), /No completed pull_request/);
+});
+
+test("verified-merge refuses a run from another PR branch (cross-base)", (t) => {
+  const f = mergeFixture(t);
+  f.responses.runs = [{ ...f.responses.runs[0], head_branch: "changeset-release/3.2.x" }];
+  notVerified(f.run(), /No completed pull_request/);
+});
+
+test("verified-merge refuses a run of a different workflow file", (t) => {
+  const f = mergeFixture(t);
+  f.responses.runs = [{ ...f.responses.runs[0], path: ".github/workflows/other.yml" }];
+  notVerified(f.run(), /No completed pull_request/);
+});
+
+test("verified-merge refuses a release PR whose head lives in a fork", (t) => {
+  const f = mergeFixture(t);
+  f.responses.pr.head.repo = { full_name: "attacker/adcp" };
+  notVerified(f.run(), /head must be a branch of this repository/);
+});
+
+for (const [name, file] of [
+  ["the storyboard workflow", ".github/workflows/training-agent-storyboards.yml"],
+  ["a storyboard runner script", "scripts/run-storyboards-matrix.sh"],
+  ["the training agent", "server/src/training-agent/index.ts"],
+  ["the compliance bundle builder", "scripts/build-compliance.cjs"],
+])
+  test(`verified-merge refuses a release head that modifies ${name}`, (t) => {
+    const f = mergeFixture(t, { headFiles: { [file]: "# narrowed\n" } });
+    notVerified(f.run(), /changes storyboard verification inputs/);
+    assert.ok(
+      !f.ghCalls().some((url) => url.includes("/actions/")),
+      "storyboard runs are not consulted",
+    );
+  });
+
+test("verified-merge is main-only", (t) => {
+  const f = mergeFixture(t);
+  for (const branch of ["3.2.x", "3.1.x", "3.0.x"])
+    notVerified(f.run({ GITHUB_REF_NAME: branch, PUBLICATION_BRANCH: branch }), /the main branch/);
+  assert.deepEqual(f.ghCalls(), []);
+  const step = release.jobs["verify-release"].steps.find(
+    (s) => s.name === "Detect provenance-verified release merge",
+  );
+  assert.match(step.if, /github\.ref_name == 'main'/);
 });

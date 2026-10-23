@@ -425,33 +425,60 @@ never treat a previous verification or a queued run as current authority.
   the already-committed release: inside `committed`, `published`, `approval`
   and `provenance`; in release.yml from "Require human approval for committed
   release artifacts" through the GitHub Release upload and the R2 publication
-  (`backfill-cdn-artifacts.sh --version`); and throughout
-  `recover-protocol-cdn.yml` / `recover-cdn-version-trees.sh`. It accepts a
-  later branch head when the tested SHA is its ancestor (after fetching that
-  head and checking that the fetched OID is the advertised one), the parsed
-  `package.json` version is unchanged, and `git diff --no-renames` from the
-  tested SHA touches none of `dist/schemas/<v>/`, `dist/compliance/<v>/`,
-  `dist/protocol/<v>.tgz*`, `.changeset/pre.json` or
-  `.changeset/release-supersession.json`. It logs the accepted advance.
+  (`backfill-cdn-artifacts.sh --version`); and for the per-object checks in
+  `recover-protocol-cdn.yml` / `recover-cdn-version-trees.sh`, whose initial
+  gates stay strict. It accepts a later branch head when the tested SHA is its
+  ancestor (after fetching that head and checking that the fetched OID is the
+  advertised one), the parsed `package.json` version is unchanged, and
+  `git diff --no-renames` from the tested SHA touches none of:
+  - this version's `dist/schemas/<v>/`, `dist/compliance/<v>/` and
+    `dist/protocol/<v>.tgz*`, including mode, symlink and gitlink changes;
+  - release identity: `.changeset/pre.json` and
+    `.changeset/release-supersession.json`;
+  - release status: `.changeset/withdrawn-release.json`,
+    `scripts/build-schemas.cjs` (`RELEASE_STATUS_OVERRIDES`),
+    `server/src/schemas-middleware.ts` and `workers/artifact-cdn/src/index.js`,
+    so a withdrawal that lands mid-publication stops it;
+  - the publication machinery: `release.yml`, `recover-protocol-cdn.yml`,
+    `check-release-state.cjs`, `backfill-cdn-artifacts.sh`,
+    `recover-cdn-version-trees.sh` and `check-protocol-bundle-parity.cjs`,
+    so a fence fix that lands mid-run stops runs still executing the old logic.
+
+  It logs the accepted advance. It compares the **net** TESTED..H diff, so a
+  change to a protected path that a later commit fully reverts is accepted.
 
 So unrelated pushes to the branch, such as app or test changes, no longer
 invalidate publication. The strict fence prevented a stale run from publishing
 over a newer release or over changed artifacts. Each of those changes still
-refuses: a version bump, any change to this version's artifacts, a pre-mode or
-supersession change, rewritten history, or a remote/Git failure. Approval,
-merge provenance, signature verification and the byte-for-byte immutable-object
-checks are unchanged.
+refuses: a version bump, any change to this version's artifacts, a pre-mode,
+supersession or release-status change, a publication-machinery change,
+rewritten history, or a remote/Git failure. Approval, merge provenance,
+signature verification and the byte-for-byte immutable-object checks are
+unchanged.
 
-A Version Packages merge also skips re-running the storyboard matrix in
-`verify-release` when it is a provenance-verified release merge: `check-release-state.cjs
-verified-merge` finds exactly one merged release PR for the pushed SHA, checks
-`provenance` (exact base parent and identical tree), and finds a completed
-`pull_request` run of `training-agent-storyboards.yml` on that exact head in
-which every job succeeded, including current-surface, 3.0-compat and the
-aggregate current `/sales` jobs. A Draft run whose matrix was skipped does not
-count. If any of that can't be proven, verification runs exactly as before. The
-skip changes only duplicate verification: the release job's approval and
-provenance checks still run unchanged.
+On `main`, a Version Packages merge also skips re-running the storyboard
+matrix in `verify-release` when it is a provenance-verified release merge.
+`check-release-state.cjs verified-merge`:
+- finds exactly one merged release PR for the pushed SHA, with its head branch
+  in this repository;
+- checks `provenance` (exact base parent and identical tree);
+- requires the release head not to change the storyboard harness relative to
+  its base parent (`training-agent-storyboards.yml`, `scripts/run-storyboards*`,
+  the schema/compliance builders, `server/tests/manual/run-storyboards.ts`,
+  the training agent and `hosted-compliance-version.ts`);
+- finds a completed, successful `pull_request` run of that workflow file on
+  that exact head, PR branch and repository, in which every job succeeded and
+  every job of the full matrix (`storyboardJobs`, kept equal to the workflow
+  by `tests/release-workflow-immutability.test.cjs`) is present.
+
+A Draft run whose matrix was skipped, a narrowed matrix, a fork run with the
+same SHA, or a run from another branch does not count. Maintenance branches
+always run full verification, because their PR runs use a different
+candidate-version mode. If any of that can't be proven, verification runs
+exactly as before. The skip changes only duplicate verification: the release
+job's approval and provenance checks still run unchanged. On that full
+fallback, the release job's strict start still strands the release if main
+moves during the ~2h verification; recover it with an explicit dispatch.
 
 GitHub assets are staged privately in a draft before release publication. Exactly
 the four signed tuple assets are required; extras and duplicates are rejected. R2
@@ -553,12 +580,19 @@ Operational notes:
   object, exactly as release publication does, so ~770 objects means ~2,300
   `git ls-remote` round trips plus the S3 calls. Budget tens of minutes, and
   expect a transient failure to abort mid-run; re-dispatch resumes safely.
-- **Only a release-relevant branch move fails the run.** The recovery fence is
-  `publication-current` with the recovered version, so unrelated merges to
-  `main` during the upload are accepted and logged. A push that bumps the
-  package version, touches the recovered or current version's artifacts, or
-  changes `.changeset/pre.json` or the supersession marker still stops the
-  job, possibly after some objects were published. Re-dispatch to confirm.
+- **It runs from current `main` only.** The job is skipped for any other
+  dispatch ref. Its initial gates (the preflight step, and the start of
+  `recover-cdn-version-trees.sh` in both upload and verify modes) use the
+  strict fence, so a stale re-run stops before doing anything.
+- **Only a release-relevant branch move fails an object check.** The
+  per-object fences use `publication-current` with the recovered version, so
+  unrelated merges to `main` during an upload are accepted and logged. A push
+  that bumps the package version, touches the recovered or current version's
+  artifacts, or changes a release-identity, release-status or
+  publication-machinery file still stops the job, possibly after some objects
+  were published. Any `main` move before a later step's strict start (the tree
+  upload or the tree verification) also stops that step. Re-dispatch to
+  confirm.
 - **The line alias moves as soon as the first object lands.** The worker
   resolves `v3`/`v3.0` from the R2 prefix listing, and a prefix exists after
   the first write, so mid-run those aliases already resolve to the version
