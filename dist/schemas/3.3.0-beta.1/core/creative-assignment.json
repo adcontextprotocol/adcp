@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/creative-assignment.json",
+  "title": "Creative Assignment",
+  "description": "Assignment of a creative asset to a package with optional rotation and placement routing. Used in create_media_buy and update_media_buy requests. Buyers identify the stored creative with `creative_id` only. A generic `id` alias, if present due to adapter-internal payload reuse, is not an AdCP identifier and sellers MUST ignore it on input. Note: sync_creatives does not support package rotation, placement_refs, or placement_ids - use create/update_media_buy for package-level trafficking controls.",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "description": "Unique identifier for the creative",
+      "x-entity": "creative"
+    },
+    "trackers": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/assignment-tracker.json"
+      },
+      "minItems": 1,
+      "description": "Additional measurement trackers for this creative on this package only, fired alongside the creative's own trackers without changing the library creative, its revision, or its approval. Requires creative.supports_assignment_trackers: true; buyers MUST NOT send this field otherwise and unsupported agents MUST reject it with UNSUPPORTED_FEATURE. The seller MUST fire every accepted tracker at its declared event or reject the assignment through existing assignment errors; trackers MUST NOT be silently dropped. Creative and assignment trackers together count against the effective format's tracker-slot limits, including canonical params.slots[].max and legacy repeatable-group max_count. Each assignment tracker consumes one compatible slot occurrence without moving creative assets; reject if no allocation satisfies each slot's type, event role, and count constraints. Each accepted occurrence fires once per logical event; identical URLs are not deduplicated. A supplied list replaces the prior assignment tracker list. Omission from a complete package creative_assignments replacement clears the assignment trackers; omitting the entire replacement array leaves assignments unchanged. Empty arrays and null are not accepted.",
+      "x-added-in": "3.3.0"
+    },
+    "landing_page_url": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/macro-bearing-url.json",
+      "description": "Override the creative's click-through destination for this creative on this package only, without changing the library creative. The override applies to every click-through destination for this assignment, including per-state destinations; partial application MUST be rejected. AdCP macros follow the same rules as the creative's own click-through without declarations, retaining existing 3.x compatibility behavior. Declarations on the original creative assets do not transfer to this URL. Requires creative.supports_assignment_landing_page: true; buyers MUST NOT send this field otherwise and sellers without the capability MUST reject it with UNSUPPORTED_FEATURE. The seller MUST serve the override or reject the assignment through existing assignment errors, including when an embedded HTML, JavaScript, or VAST click cannot be overridden. Creative approval remains valid; destination review applies to the assignment. Omitting this field from a complete package assignment replacement restores inheritance from the creative. On readback, supporting sellers return the effective destination when it is unique; omit the scalar when no destination exists or an unoverridden creative has multiple destinations, rather than selecting one arbitrarily.",
+      "x-added-in": "3.3.0"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Relative delivery weight for this creative (0–100). Valid when the package's effective rotation_mode is weighted, including the backward-compatible default when rotation_mode is omitted. Weights determine impression distribution proportionally — a creative with weight 2 gets twice the delivery of weight 1. When omitted, the creative receives equal weight with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery).",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "rotation_mode": {
+      "type": "string",
+      "enum": [
+        "weighted",
+        "even",
+        "sequential",
+        "random"
+      ],
+      "description": "Package-scoped rotation policy repeated on assignment rows for wire compatibility. Omission means weighted, preserving existing weight behavior. Every assignment in a package MUST resolve to the same effective mode: weighted uses relative weights; even balances delivery across eligible assignments; sequential cycles through sequence_position in ascending order within each group; random makes an independent uniform selection from eligible assignments. Sellers MUST reject conflicting effective modes rather than choose one by array order."
+    },
+    "group_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Package-local creative pool identifier. The identifier has no meaning outside this package. Assignments that omit group_id belong to the package's default group; one eligible creative is selected from each applicable group per serving opportunity."
+    },
+    "sequence_position": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "One-based order within the assignment's package-local group. Required only for sequential rotation and unique within that group."
+    },
+    "placement_refs": {
+      "type": "array",
+      "description": "Optional structured product-context refs routing this creative within already-purchased package inventory. These items always use placement-ref product-context semantics, even when tolerated additional members make an item resemble placement-identity. Receivers match only against the package's committed placement set; kind and seller_agent are non-authoritative for routing and MUST NOT expand or reinterpret that set. A receiver MUST reject a ref when the enclosing product and committed set do not yield one unambiguous match. This field never narrows purchased inventory; use targeting_overlay.placement_selection for that. Every ref MUST fall within the package's committed placement selection. New senders SHOULD include publisher_domain for publisher-catalog placements. When omitted, the creative runs across the purchased placements compatible with its format. If both placement_refs and legacy placement_ids are present, placement_refs wins.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/placement-ref.json"
+      },
+      "minItems": 1
+    },
+    "placement_ids": {
+      "type": "array",
+      "deprecated": true,
+      "description": "Legacy shorthand routing IDs within already-purchased inventory. This field never narrows purchased inventory; use targeting_overlay.placement_selection. New senders SHOULD use placement_refs because IDs are publisher-scoped. If placement_refs is also present, receivers MUST ignore this field.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "creative_id"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "rotation_mode": {
+            "const": "sequential"
+          }
+        },
+        "required": [
+          "rotation_mode"
+        ]
+      },
+      "then": {
+        "required": [
+          "sequence_position"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "sequence_position"
+        ]
+      },
+      "then": {
+        "properties": {
+          "rotation_mode": {
+            "const": "sequential"
+          }
+        },
+        "required": [
+          "rotation_mode"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "rotation_mode": {
+            "enum": [
+              "even",
+              "sequential",
+              "random"
+            ]
+          }
+        },
+        "required": [
+          "rotation_mode"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "weight"
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

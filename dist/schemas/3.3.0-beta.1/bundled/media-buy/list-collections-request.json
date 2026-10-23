@@ -1,0 +1,528 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/media-buy/list-collections-request.json",
+  "title": "List Collections Request",
+  "description": "Experimental (media_buy.collection_catalog), added in AdCP 3.3. Read the selling agent's catalog of collection cards: look up specific collections by key, or browse with filters and pages. Returns the same core/response-collection.json copies, under the same authority rules, as include_collections on product and proposal reads, and never returns products. Not to be confused with list_collection_lists, which lists buyer-owned collection targeting lists on a governance agent. Side-effect free: the call never provisions an account. It is the bootstrap and repair read for collection_card.* and collection_catalog.bulk_change webhooks, which are registered only through sync_accounts notification_configs; the request takes no push_notification_config, so a call never creates a subscription. Sellers implementing it MUST list media_buy.collection_catalog and media_buy.collection_cards in experimental_features. A seller MUST NOT serve this task to a caller whose adcp_version is below 3.3; it fails the request with UNSUPPORTED_FEATURE.",
+  "x-tool-summary": "List a seller's collection cards (shows, creators, podcasts) by key or with filters, without products.",
+  "x-status": "experimental",
+  "type": "object",
+  "allOf": [
+    {
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into AdCP request schemas and shared response components so the version semantics live in one place. Strict (`additionalProperties: false`) request schemas also redeclare these two fields in their own `properties` via `$ref`, because draft-07 does not evaluate properties across `allOf`. The Trusted Match match requests are the exception: they inline both fields for their strict privacy boundary. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ]
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "x-removed-in": "4.0.0",
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      },
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "x-removed-in": "4.0.0",
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Optional replay key accepted uniformly on read calls."
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true,
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/context.json"
+    },
+    "account": {
+      "allOf": [
+        {
+          "title": "Canonical Account Reference",
+          "description": "Compact advertiser-account identity for canonical 3.2 tools. Uses either the seller/storefront account_id returned by list_accounts or the buyer-declared natural key without BrandRef inline overrides. The natural key is brand + operator + optional operator_unit.id + optional fixed currency + optional buyer-selected account timezone + sandbox. brand.countries qualifies the commercial advertiser identity without targeting delivery; operator_unit identifies the operator-owned buying context. operator_unit.name is display metadata and is excluded from identity.",
+          "type": "object",
+          "anyOf": [
+            {
+              "properties": {
+                "account_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-entity": "account"
+                }
+              },
+              "required": [
+                "account_id"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "properties": {
+                "brand": {
+                  "title": "Brand Key",
+                  "description": "Stable brand identity used to resolve the canonical brand manifest, optionally qualified by the countries of a commercial advertiser entity. The manifest URL is derived from domain; callers do not send brand assets or per-call brand overrides. Countries do not target delivery.",
+                  "type": "object",
+                  "properties": {
+                    "domain": {
+                      "type": "string",
+                      "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
+                      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                    },
+                    "brand_id": {
+                      "title": "Brand ID",
+                      "description": "Brand within a house-of-brands manifest. Omit for a single-brand domain.",
+                      "type": "string",
+                      "pattern": "^[a-z0-9_]+$",
+                      "x-entity": "advertiser_brand",
+                      "examples": [
+                        "tide",
+                        "cheerios",
+                        "air_jordan",
+                        "nike",
+                        "pampers"
+                      ],
+                      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/brand-id.json"
+                    },
+                    "countries": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Z]{2}$"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit when the identity is global or the house does not split the brand geographically. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account and proposal identity and is not delivery targeting."
+                    }
+                  },
+                  "required": [
+                    "domain"
+                  ],
+                  "additionalProperties": false,
+                  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/brand-key.json"
+                },
+                "operator": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+                  "x-entity": "operator"
+                },
+                "operator_unit": {
+                  "title": "Operator Unit",
+                  "description": "Optional operator-owned business unit, agency seat, or platform account. Only id participates in identity; name is mutable display metadata.",
+                  "x-entity": "operator_unit",
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+                      "description": "Stable identifier assigned by the operator. Numeric platform IDs and durable slugs are both valid. Scoped by the enclosing operator domain."
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200,
+                      "description": "Human-readable seat or business-unit name, such as Nova EMEA. This label may change and is not part of the natural account key."
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false,
+                  "examples": [
+                    {
+                      "id": "234284238",
+                      "name": "Nova EMEA"
+                    },
+                    {
+                      "id": "benelux-seat",
+                      "name": "Nova Benelux"
+                    }
+                  ],
+                  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/operator-unit.json"
+                },
+                "currency": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{3}$",
+                  "description": "Immutable ISO 4217 transaction currency when the advertiser object is currency-bound. When present, this is part of the natural key and all media buys on the account use it. Omit for per-media-buy currency selection."
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Immutable account timezone. Include it in the natural key only for buyer-selected account_fixed provisioning."
+                },
+                "sandbox": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "required": [
+                "brand",
+                "operator"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "examples": [
+            {
+              "account_id": "acc_nova_nl"
+            },
+            {
+              "brand": {
+                "domain": "nova-athletics.example",
+                "countries": [
+                  "NL"
+                ]
+              },
+              "operator": "nova-athletics.example",
+              "operator_unit": {
+                "id": "234284238",
+                "name": "Nova EMEA"
+              },
+              "currency": "EUR",
+              "timezone": "Europe/Amsterdam"
+            }
+          ],
+          "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/canonical-account-ref.json"
+        }
+      ],
+      "description": "Optional account scope. Only the set of collections visible to the caller may vary by account; the content of a copy for a given (publisher_domain, collection_id) never does. Without account the response is cache_scope public."
+    },
+    "collections": {
+      "type": "array",
+      "description": "Optional selectors, the same shape as a product's collections, so a buyer can pass a product's selectors through unchanged. A selector with collection_ids is a key lookup; a selector with only publisher_domain means every collection of that publisher that this seller represents. At most 100 collection_ids in total across all selectors; sellers reject more with VALIDATION_ERROR. A key that is unknown or not visible to the caller is omitted from the response without a per-key error. Omit to browse the whole catalog.",
+      "items": {
+        "title": "Collection Selector",
+        "description": "References collections declared in an adagents.json, keyed by (publisher_domain, collection_id). The publisher's adagents.json at the given domain is the authoritative declaration and the root of authorization. Buyers can also get a selling agent's copy of each referenced collection: in the top-level collections array of a product or proposal response requested with include_collections, or from list_collections (both experimental). Those copies follow core/response-collection.json: they win only on a closed list of display fields and are never authorization evidence, and any collection a seller omits resolves from adagents.json. When collection_ids is omitted, the selector references every collection declared in that adagents.json — the bulk-grant form for authorization scoping (e.g., a host authorizing a channel owner's sales agent for all of the owner's collections without tracking owner-assigned IDs).",
+        "type": "object",
+        "properties": {
+          "publisher_domain": {
+            "type": "string",
+            "description": "Domain where the adagents.json declaring these collections is hosted (e.g., 'mrbeast.com'). The collections array in that file contains the authoritative collection definitions.",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "collection_ids": {
+            "type": "array",
+            "description": "Collection IDs from the adagents.json collections array. Each ID must match a collection_id declared in that file. Omit to reference all collections declared in that file.",
+            "items": {
+              "type": "string",
+              "x-entity": "collection"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "publisher_domain"
+        ],
+        "additionalProperties": true,
+        "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/collection-selector.json"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "filters": {
+      "type": "object",
+      "description": "Optional filters, applied with the selectors before pagination. Values within one filter are alternatives (OR); different filters combine with AND. Filters run on the seller's copy, so a match on genre, status, talent or kind is a discovery hint: buyers confirm those fields against the publisher's adagents.json before relying on them for suitability. A seller that cannot apply a filter it receives fails the request with VALIDATION_ERROR and never returns a broader result.",
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "description": "Include only collections of these kinds. Same semantics as kinds in collection/collection-list-filters.json.",
+          "items": {
+            "title": "Collection Kind",
+            "description": "What kind of content program a collection represents. Determines how installments should be interpreted by buyer agents.",
+            "type": "string",
+            "enum": [
+              "series",
+              "publication",
+              "event_series",
+              "rotation",
+              "channel"
+            ],
+            "enumDescriptions": {
+              "series": "TV or podcast program; installments are episodes",
+              "publication": "Print or newsletter title; installments are issues",
+              "event_series": "Live event program; installments are individual event airings",
+              "rotation": "DOOH scheduling container; installments are scheduling periods",
+              "channel": "Continuously programmed audio or video stream, regardless of carriage or monetization model; installments are scheduled airings or programming blocks"
+            },
+            "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/collection-kind.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "genres_include": {
+          "type": "array",
+          "description": "Include only collections with any of these genres; collections without genre metadata are excluded. Values are interpreted against genre_taxonomy when present. Same semantics as in collection/collection-list-filters.json.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "genres_exclude": {
+          "type": "array",
+          "description": "Exclude collections tagged with any of these genres, applied after genres_include. Values are interpreted against genre_taxonomy when present.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "genre_taxonomy": {
+          "title": "Genre Taxonomy",
+          "description": "Taxonomy for genre filter values. When present, genres_include and genres_exclude values are taxonomy IDs.",
+          "type": "string",
+          "enum": [
+            "iab_content_3.0",
+            "iab_content_2.2",
+            "gracenote",
+            "eidr",
+            "apple_genres",
+            "google_genres",
+            "roku",
+            "amazon_genres",
+            "custom"
+          ],
+          "enumDescriptions": {
+            "iab_content_3.0": "IAB Tech Lab Content Taxonomy 3.0 — industry standard for digital content classification. Maps to OpenRTB/AdCOM cattax=7.",
+            "iab_content_2.2": "IAB Tech Lab Content Taxonomy 2.2 — previous version, still widely used. Maps to OpenRTB/AdCOM cattax=6.",
+            "gracenote": "Gracenote genre classification — entertainment metadata standard for TV, film, and music. Supports multi-level genre hierarchies; hierarchy-aware matching is the seller's responsibility.",
+            "eidr": "EIDR genre classification — ISO 10528 for audiovisual content identification",
+            "apple_genres": "Apple App Store / Apple TV genre taxonomy",
+            "google_genres": "Google Play / Google TV genre taxonomy",
+            "roku": "Roku Channel Store / Roku TV genre taxonomy",
+            "amazon_genres": "Amazon Fire TV / Freevee genre taxonomy",
+            "custom": "Publisher-defined genre taxonomy with free-form values. Buyer and seller must negotiate the vocabulary out of band."
+          },
+          "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/genre-taxonomy.json"
+        },
+        "statuses": {
+          "type": "array",
+          "description": "Include only collections with any of these statuses.",
+          "items": {
+            "title": "Collection Status",
+            "description": "Lifecycle status of a collection",
+            "type": "string",
+            "enum": [
+              "active",
+              "hiatus",
+              "ended",
+              "upcoming"
+            ],
+            "enumDescriptions": {
+              "active": "Currently producing and releasing installments",
+              "hiatus": "Temporarily paused, expected to resume",
+              "ended": "No longer producing new installments",
+              "upcoming": "Announced but not yet released"
+            },
+            "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/collection-status.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "languages": {
+          "type": "array",
+          "description": "Include only collections whose language matches any of these BCP 47 language ranges under RFC 4647 basic filtering, compared case-insensitively: 'en' matches 'en' and 'en-US', but 'en-US' does not match 'en'.",
+          "items": {
+            "title": "Language Tag",
+            "description": "A well-formed BCP 47 language tag used by AdCP only as language identity. Script and region may refine that identity; other valid BCP 47 subtags remain part of tag matching but do not make this a general locale-settings object. It does not determine currency, time zone, number/date formatting, market, or legal jurisdiction. The AdCP canonical wire profile requires lower-case language and variants, title-case script, and upper-case region (for example `en-US`, `zh-Hant-TW`, or `x-private`). RFC 5646 comparisons are case-insensitive and its case regularization is optional; AdCP intentionally requires this stricter single wire spelling and receivers MUST reject differently cased tags rather than silently normalizing them. The schema pattern enforces the AdCP casing profile and extension structure for commonly used tags; conforming receivers additionally validate the complete RFC 5646 grammar and registry rules. Every new AdCP field carrying BCP 47 language identity or a concrete language range MUST reference this schema instead of declaring independent string constraints.",
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "well_formed": "rfc5646",
+                "semantic_scope": "language_identity_only",
+                "canonical_wire_profile": "adcp_bcp47_casing",
+                "rfc5646_comparison": "case_insensitive",
+                "non_profile": "reject"
+              },
+              "spec": "docs/protocol/language-and-localization.mdx#one-language-tag-primitive"
+            },
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 63,
+            "pattern": "^(?:[a-z]{2,8}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*(?:-[0-9a-wy-z](?:-[a-z0-9]{2,8})+)*(?:-x(?:-[a-z0-9]{1,8})+)?|x(?:-[a-z0-9]{1,8})+)$",
+            "examples": [
+              "en-US",
+              "es-ES",
+              "zh-Hant-TW",
+              "x-private"
+            ],
+            "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/locale-tag.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "talent": {
+          "type": "array",
+          "description": "Include only collections with a talent entry whose brand_ref matches any of these brands. Only domain and brand_id are compared, as on talent; brand_id omitted matches any brand_ref at that domain.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "domain": {
+                "type": "string",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "brand_id": {
+                "title": "Brand ID",
+                "description": "Identifier for a brand within a house portfolio. Must be lowercase alphanumeric with underscores only. The house chooses this identifier.",
+                "type": "string",
+                "pattern": "^[a-z0-9_]+$",
+                "x-entity": "advertiser_brand",
+                "examples": [
+                  "tide",
+                  "cheerios",
+                  "air_jordan",
+                  "nike",
+                  "pampers"
+                ]
+              }
+            },
+            "required": [
+              "domain"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "platforms": {
+          "type": "array",
+          "description": "Include only collections with a distribution entry whose publisher_domain is any of these domains.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "name_contains": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Include only collections whose name contains this string, compared case-insensitively."
+        }
+      },
+      "additionalProperties": false
+    },
+    "pagination": {
+      "title": "Pagination Request",
+      "description": "Cursor pagination (default 50, maximum 100 per page). The cursor is outside the collections_version scope. Order is seller-defined and stable within one collections_version; if a later page returns a different collections_version, restart from the first page.",
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of items to return per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor from a previous response to fetch the next page"
+        }
+      },
+      "additionalProperties": false,
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/pagination-request.json"
+    },
+    "if_collections_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Opaque collections_version from a prior list_collections response for the same scope: the canonicalized collections selectors and filters (arrays compared as sets, pagination.cursor excluded), plus account identity when that response's cache_scope was account. When it matches, the seller returns outcome unchanged without collections. A token from a different scope is a mismatch and gets a full listed response. Unrelated to feed_version and wholesale_feed_version. A webhook-fed mirror repairing after a gap sends its last applied version, never a newer webhook version."
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for optional parameters under an owner-controlled namespace (e.g., ext.gam, ext.roku). The reserved ext.adcp namespace is maintained by the AdCP Working Group and is limited to its documented bindings. Used for custom capabilities, partner-specific configuration, and features being proposed for standardization. Namespace support does not imply support for undocumented future bindings.",
+      "type": "object",
+      "additionalProperties": true,
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/ext.json"
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Key lookup to refresh two cards, passing product selectors through unchanged",
+      "data": {
+        "adcp_version": "3.3",
+        "collections": [
+          {
+            "publisher_domain": "novacreators.example",
+            "collection_ids": [
+              "kitchen_lab"
+            ]
+          },
+          {
+            "publisher_domain": "pinnaclepods.example",
+            "collection_ids": [
+              "founders_hour"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Browse active English series featuring one creator on one platform",
+      "data": {
+        "adcp_version": "3.3",
+        "account": {
+          "account_id": "acct_nova_agency"
+        },
+        "filters": {
+          "kinds": [
+            "series"
+          ],
+          "statuses": [
+            "active"
+          ],
+          "languages": [
+            "en"
+          ],
+          "talent": [
+            {
+              "domain": "jordanvega.example"
+            }
+          ],
+          "platforms": [
+            "videoplatform.example"
+          ]
+        },
+        "pagination": {
+          "max_results": 50
+        }
+      }
+    }
+  ],
+  "_bundled": {
+    "generatedAt": "2026-10-23T11:37:06.493Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

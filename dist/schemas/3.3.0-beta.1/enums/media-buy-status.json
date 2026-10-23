@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/media-buy-status.json",
+  "title": "Media Buy Status",
+  "description": "Status of a media buy. Status is the buyer-actionable readiness axis; seller commitment is the independent `confirmed_at` field. A buy with `confirmed_at: null` is never `active`.",
+  "type": "string",
+  "enum": [
+    "pending_creatives",
+    "pending_start",
+    "active",
+    "paused",
+    "completed",
+    "rejected",
+    "canceled"
+  ],
+  "enumDescriptions": {
+    "pending_creatives": "**Buyer-side action required.** The media buy exists but its creative requirement is unmet: no creatives are assigned, or the assigned creatives have not yet been approved for every package. The buyer must supply or correct creatives (for example via `sync_creatives`) before the buy can serve. This status is a buyer-actionable readiness axis, not a record of seller commitment: whether the seller has committed to the buy is the independent `confirmed_at` axis, and commitment is keyed off `confirmed_at`, never off `status`. A provisional buy (`confirmed_at: null`) reports the status it will have on confirmation: `pending_creatives` while creatives are missing or unapproved, `pending_start` once the buy is otherwise ready. Neither value says the seller has approved or accepted the buy. Naming convention: `pending_X` names the lifecycle phase that is next required (here, `creatives`), not a state of waiting on seller or operator review, consistent with `pending_start` (waiting for the flight date to begin).",
+    "pending_start": "The buy is otherwise ready (creatives are in place) and is not yet serving. It covers two cases, and buyers read `confirmed_at` to tell them apart: a committed buy (`confirmed_at` set) waiting for its flight date to begin, and a provisional buy (`confirmed_at` null) awaiting seller confirmation, which never becomes `active` until the seller commits.",
+    "active": "Media buy is currently running. Reported only for a committed buy: a buy whose `confirmed_at` is null MUST NOT be `active`.",
+    "paused": "Media buy is temporarily paused",
+    "completed": "Media buy has finished running",
+    "rejected": "Media buy was declined by the seller after creation",
+    "canceled": "Media buy was terminated before natural completion. Check cancellation.canceled_by to determine whether the buyer or seller initiated."
+  }
+}
