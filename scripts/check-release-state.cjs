@@ -64,6 +64,8 @@ const publicationAuthority = [
   "scripts/backfill-cdn-artifacts.sh",
   "scripts/recover-cdn-version-trees.sh",
   "scripts/check-protocol-bundle-parity.cjs",
+  "scripts/check-release-supersession.cjs",
+  "scripts/fence-changesets.cjs",
 ];
 
 // Publication-scoped freshness, only for a run publishing an already-committed
