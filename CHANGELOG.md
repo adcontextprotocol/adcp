@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.3.0-beta.1
+
+### Minor Changes
+
+- 277e0a5: Compliance: define the collection fixture preparation contract for storyboards that must buy a real collection-bearing product. Adds the closed `collection_selection_satisfies` fixture-resolution operator, same-graph `context_outputs` captures (`path`, `snapshot: selected_entity`, seven named witnesses), the reserved `__adcp_fixture_` context namespace and reusable-preparation authorization rules, the authored `collection_set_equals_context` check, and the runner-synthesized `fixture_capture_unbuildable`, `protected_context_violation` and `prepared_fixtures_authorization` outputs. An authorization refusal is an access-control outcome: the refused caller receives a typed denial, not a grading result, and the complete result is retained unredacted in the host's authorized audit scope under every existing output MUST (#8254).
+- 5e52313: Add experimental core gender audience targeting for AdCP 3.3 (`media_buy.gender_targeting`): female, male, and non_binary value sets; explicit independent unknown handling; product-scoped native/signals capabilities; exact gender-only and mixed age/gender targeting readback; sex_gender governance classification; and a conformance storyboard. Implementing sellers MUST declare the feature id in experimental_features. Preserve stable age targeting and whole-demographics mutation semantics.
+  
+  Gender's `include_unknown` controls one unstated/unknown group covering both unavailable gender information and an explicit choice not to state gender (for example, "prefer not to say"). The wire field and named gender values are unchanged.
+  
+  AdCP 3.2 core remains age-only. Buyers MUST NOT send core gender fields on a 3.2 contract; the bilateral 3.2 extension bridge is docs-only guidance and is not included in 3.3 source schemas.
+  
+  AdCP 3.3 limitation: demographic-reporting-capability.json and canonical by_demographic delivery rows remain age-only. A gender-targeted package has exact targeting readback, but no canonical gendered delivery readback.
+
+### Patch Changes
+
+- 3e94f5e: `advanced_delivery_reporting` no longer seeds a video product. It grades
+  format-breakdown reporting only when your wholesale sandbox catalog contains a
+  non-guaranteed, fixed-price CPM product with
+  `reporting_capabilities.supports_format_breakdown: true`. When completed valid
+  catalog discovery finds no qualifying product, it reports `not_applicable`
+  (`fixture_unsatisfied`). Time-based-view checks move to a new
+  `time_based_delivery_reporting` storyboard, selected independently from native
+  wholesale sandbox products listing `time_based_views`, with the same
+  non-guaranteed, fixed-price CPM restriction. Neither requires a specific threshold, basis, format
+  kind or non-empty rows. Partially addresses #8254; collection storyboards are
+  unchanged.
+- e2f2d3a: Schema: `display_tag` declares `macro_declarations`, `provenance`, `width`, `height`, and `sizes` once on the base object. Each `delivery_type` branch now only narrows `macro_declarations[].location.field` to its own fields, the same way `vast` and `daast` already do. The set of valid assets is unchanged. When every `$ref` is written out in full, the asset drops from ~280 KB to ~74 KB (#8374).
+
 ## 3.3.0-beta.0
 
 ### Minor Changes

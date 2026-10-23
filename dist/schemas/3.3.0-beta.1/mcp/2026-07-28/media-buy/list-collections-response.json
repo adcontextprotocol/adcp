@@ -1,0 +1,1687 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json",
+  "title": "List Collections Response",
+  "description": "Experimental (media_buy.collection_catalog), added in AdCP 3.3. One page of the selling agent's collection cards, or confirmation that the selected catalog has not changed. Entries are core/response-collection.json copies under the authority rules defined there and for include_collections: adagents.json stays the root of authorization and the source for definition pins, a copy wins only on images, sample_content, url, description, season, cadence and distribution[].followers, and a copy of an undeclared collection or from an agent adagents.json does not authorize is unverified display data that never feeds carriage verification. For the same key, account and moment, the copy MUST equal the one a product or proposal read with include_collections returns. The response carries no products, pricing, availability or account terms.",
+  "x-status": "experimental",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "outcome"
+  },
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "listed",
+        "unchanged"
+      ],
+      "description": "listed when the response carries a page of collections; unchanged when if_collections_version matched the current version of the selected catalog."
+    },
+    "collections": {
+      "type": "array",
+      "description": "Collections matching the selectors and filters on this page, possibly empty. At most one entry per (publisher_domain, collection_id); if a key appears more than once, that collection is unresolvable from this response and buyers fall back to the publisher's adagents.json. Selector keys that are unknown or not visible to the caller are omitted without a per-key error, so not existing and not being visible look the same; buyers detect omissions by comparing their selectors with the returned entries.",
+      "items": {
+        "$ref": "#/$defs/external:core~1response-collection.json"
+      }
+    },
+    "pagination": {
+      "$ref": "#/$defs/external:core~1pagination-response.json"
+    },
+    "collections_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Opaque version of the selected catalog, scoped to the canonicalized collections selectors and filters (arrays compared as sets, pagination.cursor excluded), plus account identity when cache_scope is account. It changes whenever any copy the selection would return, or the set of collections it selects, changes. A follower refresh that leaves a count's bounds and precision unchanged is not a change. Independent of feed_version and wholesale_feed_version: a change to one says nothing about the others. The unfiltered read (no collections selectors, no filters) carries the same version token as collection_card.* and collection_catalog.bulk_change webhooks for that cache_scope."
+    },
+    "cache_scope": {
+      "type": "string",
+      "enum": [
+        "public",
+        "account"
+      ],
+      "description": "public when the visible set does not depend on the account, and always when the request carried no account; account when it does. A seller MAY return public to a conditional request whose earlier response was account, meaning the account no longer has a distinct visible set; the buyer drops its account-scoped copy and uses the public one."
+    },
+    "replayed": {
+      "type": "boolean",
+      "const": true
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "listed"
+        }
+      },
+      "required": [
+        "outcome",
+        "collections",
+        "collections_version",
+        "cache_scope"
+      ]
+    },
+    {
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "unchanged"
+        }
+      },
+      "required": [
+        "outcome",
+        "collections_version",
+        "cache_scope"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "collections"
+            ]
+          },
+          {
+            "required": [
+              "pagination"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "A listed page with one creator card",
+      "data": {
+        "outcome": "listed",
+        "collections": [
+          {
+            "publisher_domain": "novacreators.example",
+            "collection_id": "kitchen_lab",
+            "name": "Kitchen Lab with Jordan Vega",
+            "kind": "series",
+            "status": "active",
+            "language": "en",
+            "cadence": "weekly",
+            "description": "Weekly food science experiments for home cooks",
+            "url": "https://novacreators.example/creators/kitchen-lab",
+            "talent": [
+              {
+                "role": "host",
+                "name": "Jordan Vega",
+                "brand_ref": {
+                  "domain": "jordanvega.example"
+                }
+              }
+            ],
+            "distribution": [
+              {
+                "publisher_domain": "videoplatform.example",
+                "identifiers": [
+                  {
+                    "type": "youtube_channel_id",
+                    "value": "UCexample123456"
+                  }
+                ],
+                "followers": {
+                  "lower_bound": 1230000,
+                  "upper_bound": 1239999,
+                  "precision": "approximate",
+                  "as_of": "2026-10-15T00:00:00Z"
+                }
+              }
+            ]
+          }
+        ],
+        "pagination": {
+          "has_more": true,
+          "cursor": "eyJvIjo1MH0="
+        },
+        "collections_version": "cc_2026_10_16_r88",
+        "cache_scope": "account"
+      }
+    },
+    {
+      "description": "A conditional read that matched",
+      "data": {
+        "outcome": "unchanged",
+        "collections_version": "cc_2026_10_16_r88",
+        "cache_scope": "account"
+      }
+    }
+  ],
+  "$defs": {
+    "external:core/response-collection.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/response-collection.json",
+      "title": "Response Collection",
+      "description": "Experimental (media_buy.collection_cards). Full collection object returned in a product or proposal response for a collection that a returned product's collections selector references, by list_collections, or in a collection_card.updated webhook (experimental, media_buy.collection_catalog). For the same key, account and moment, a seller returns the same copy on every one of those surfaces. publisher_domain is required because collection_id is unique only within its publisher. Keyed by (publisher_domain, collection_id). This is a convenience copy from the selling agent: the publisher's adagents.json remains the root of authorization and the source for definition pins, and a response copy is never authorization evidence. The response copy wins over adagents.json only on images, sample_content, url, description, season, cadence and distribution[].followers; every other field, including status, talent, content_rating, genre, kind, special and the rest of distribution, stays anchored to adagents.json, as does which agent may sell the collection. An entry whose (publisher_domain, collection_id) is not declared in that publisher's adagents.json, or that comes from a selling agent adagents.json does not authorize for the collection, is unverified display data: it does not establish that the collection exists or is sellable, buyers MUST NOT present it as the publisher's declaration, and its distribution MUST NOT feed carriage verification.",
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1collection.json"
+        },
+        {
+          "required": [
+            "publisher_domain"
+          ]
+        }
+      ],
+      "x-status": "experimental",
+      "x-added-in": "3.3.0"
+    },
+    "external:core/collection.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/collection.json",
+      "title": "Collection",
+      "description": "A recurring inventory container — a named program, publication, event series, rotation, or programmed channel that produces bookable installments on a defined cadence. The kind field indicates how to interpret this collection: 'series' for TV/podcast programs, 'publication' for print/newsletter titles, 'event_series' for live events, 'rotation' for DOOH scheduling, and 'channel' for continuously programmed audio or video streams regardless of carriage or monetization model. Declared in the publisher's adagents.json and referenced by products via collection selectors. Selling agents may also return copies in product and proposal responses (core/response-collection.json); adagents.json remains the authorization source.",
+      "type": "object",
+      "properties": {
+        "publisher_domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "description": "Publisher namespace that owns this collection. Required for supply-path verification when the declaration is read from a cross-origin authoritative document; it must match the publisher whose origin delegated retrieval. A pointer alone cannot claim another publisher's collection. May be omitted for a publisher-origin document, where that origin supplies the namespace."
+        },
+        "collection_id": {
+          "type": "string",
+          "description": "Publisher-assigned identifier for this collection. Declared in the publisher's adagents.json collections array. Products reference collections via collection selectors with publisher_domain and collection_ids. Use distribution identifiers for cross-seller matching across publishers.",
+          "x-entity": "collection"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable collection name"
+        },
+        "kind": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1collection-kind.json",
+          "description": "What kind of content program this is. Helps agents interpret installments correctly. A channel collection represents the persistent programmed stream; its installments, when present, are scheduled airings or programming blocks. Defaults to 'series' when absent."
+        },
+        "description": {
+          "type": "string",
+          "description": "What the collection is about"
+        },
+        "genre": {
+          "type": "array",
+          "description": "Genre tags. When genre_taxonomy is present, values are taxonomy IDs (e.g., IAB Content Taxonomy 3.0 codes). Otherwise free-form.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "genre_taxonomy": {
+          "type": "string",
+          "description": "Taxonomy system for genre values (e.g., 'iab_content_3.0'). When present, genre values should be valid taxonomy IDs. Recommended for machine-readable brand safety evaluation."
+        },
+        "language": {
+          "type": "string",
+          "description": "Primary language (BCP 47 tag, e.g., 'en', 'es-MX')"
+        },
+        "content_rating": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1content-rating.json",
+          "description": "Baseline content rating for the collection. Individual installments may override this."
+        },
+        "cadence": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1collection-cadence.json",
+          "description": "How frequently the collection releases new installments"
+        },
+        "season": {
+          "type": "string",
+          "description": "Current or most recent season identifier (e.g., '3', '2026', 'spring_2026'). A lightweight label — not a full season object."
+        },
+        "status": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1collection-status.json",
+          "description": "Lifecycle status of the collection"
+        },
+        "production_quality": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1production-quality.json",
+          "description": "Production quality tier. Seller-declared. Maps to OpenRTB content.prodq (professional=1, prosumer=2, ugc=3)."
+        },
+        "talent": {
+          "type": "array",
+          "description": "Hosts, recurring cast, creators associated with the collection. Each talent entry may link to the person's brand.json identity through brand_ref (typed) or brand_url.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1talent.json"
+          }
+        },
+        "images": {
+          "type": "array",
+          "description": "Experimental (media_buy.collection_cards). Pictures for a collection card (cover art, show poster, creator avatar). The first entry is the primary thumbnail. Display only, and excluded from publisher_collection definition pins.",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1assets~1image-asset.json"
+          },
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "sample_content": {
+          "type": "array",
+          "description": "Experimental (media_buy.collection_cards). Representative past installments or a sizzle reel, as published-post references. The platform URL implies the kind. Display only: not a creative, and not authorization to reuse the content; reference_authorization and identity_ref are not authorization here. Consumers skip entries without post_url. Excluded from publisher_collection definition pins.",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1assets~1published-post-asset.json"
+          },
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Experimental (media_buy.collection_cards). Canonical HTTPS page about this collection, operated by the publisher or selling agent, for example a creator profile with full analytics. Buyers link out to it for depth beyond the card, and MAY suppress the link-out when its host is neither the publisher's nor the selling agent's domain. Display only: not authorization evidence, and excluded from publisher_collection definition pins.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "special": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1special.json",
+          "description": "When present, this collection is a special — content anchored to a real-world event or occasion. Individual installments may override with their own event context."
+        },
+        "limited_series": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1limited-series.json",
+          "description": "When present, this collection is a limited series — a bounded run with a defined arc, installment count, and end date."
+        },
+        "distribution": {
+          "type": "array",
+          "description": "Where this collection is distributed. Each entry maps the collection to a publisher platform using host property IDs, identifiers, or both. For channel collections this is the carriage map. It is a publisher assertion for discovery, not sales authorization; buyers validate owner-sold carriage against the host publisher's collection-scoped authorized_agents declaration. Collections SHOULD include at least one platform-independent identifier (imdb_id, gracenote_id, eidr_id) when available.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1collection-distribution.json"
+          }
+        },
+        "deadline_policy": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1deadline-policy.json",
+          "description": "Default deadline rules for installments of this collection. Agents compute absolute deadlines from each installment's scheduled_at and these lead times. Installments with explicit deadlines override this policy. Only meaningful when installments carry scheduled_at; a continuously programmed channel collection without enumerated installments has no deadlines to derive."
+        },
+        "related_collections": {
+          "type": "array",
+          "description": "Relationships to other collections (spin-offs, companion collections, etc.). Each entry references another collection by collection_id within the same publisher's adagents.json.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "collection_id": {
+                "type": "string",
+                "description": "The related collection's collection_id within this seller's response",
+                "x-entity": "collection"
+              },
+              "relationship": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1collection-relationship.json",
+                "description": "How the collections are related"
+              }
+            },
+            "required": [
+              "collection_id",
+              "relationship"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "collection_id",
+        "name"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/collection-kind.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/collection-kind.json",
+      "title": "Collection Kind",
+      "description": "What kind of content program a collection represents. Determines how installments should be interpreted by buyer agents.",
+      "type": "string",
+      "enum": [
+        "series",
+        "publication",
+        "event_series",
+        "rotation",
+        "channel"
+      ],
+      "enumDescriptions": {
+        "series": "TV or podcast program; installments are episodes",
+        "publication": "Print or newsletter title; installments are issues",
+        "event_series": "Live event program; installments are individual event airings",
+        "rotation": "DOOH scheduling container; installments are scheduling periods",
+        "channel": "Continuously programmed audio or video stream, regardless of carriage or monetization model; installments are scheduled airings or programming blocks"
+      }
+    },
+    "external:core/content-rating.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/content-rating.json",
+      "title": "Content Rating",
+      "description": "Content advisory rating using a specified rating system",
+      "type": "object",
+      "properties": {
+        "system": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1content-rating-system.json",
+          "description": "Rating system used"
+        },
+        "rating": {
+          "type": "string",
+          "description": "Rating value within the system (e.g., 'TV-PG', 'R', 'explicit')"
+        }
+      },
+      "required": [
+        "system",
+        "rating"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/content-rating-system.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/content-rating-system.json",
+      "title": "Content Rating System",
+      "description": "Rating systems for content advisory classifications",
+      "type": "string",
+      "enum": [
+        "tv_parental",
+        "mpaa",
+        "podcast",
+        "esrb",
+        "bbfc",
+        "fsk",
+        "acb",
+        "chvrs",
+        "csa",
+        "pegi",
+        "custom"
+      ],
+      "enumDescriptions": {
+        "tv_parental": "US TV Parental Guidelines (TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA)",
+        "mpaa": "Motion Picture Association film ratings (G, PG, PG-13, R, NC-17)",
+        "podcast": "Podcast content advisories (clean, explicit)",
+        "esrb": "Entertainment Software Rating Board (E, E10+, T, M, AO) — US/Canada",
+        "bbfc": "British Board of Film Classification (U, PG, 12A, 12, 15, 18, R18)",
+        "fsk": "Freiwillige Selbstkontrolle der Filmwirtschaft (0, 6, 12, 16, 18) — Germany",
+        "acb": "Australian Classification Board (G, PG, M, MA15+, R18+)",
+        "chvrs": "Canadian Home Video Rating System (G, PG, 14A, 18A, R, A)",
+        "csa": "Conseil superieur de l'audiovisuel / Arcom (-10, -12, -16, -18) — France",
+        "pegi": "Pan European Game Information (3, 7, 12, 16, 18) — pan-European gaming",
+        "custom": "Publisher-defined rating system with free-form values"
+      }
+    },
+    "external:enums/collection-cadence.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/collection-cadence.json",
+      "title": "Collection Cadence",
+      "description": "How frequently a collection releases new installments",
+      "type": "string",
+      "enum": [
+        "daily",
+        "weekly",
+        "monthly",
+        "seasonal",
+        "event",
+        "irregular"
+      ],
+      "enumDescriptions": {
+        "daily": "New installments every day or weekday",
+        "weekly": "New installments weekly",
+        "monthly": "New installments monthly (magazines, newsletters)",
+        "seasonal": "Installments released in defined seasons with breaks between",
+        "event": "One-time or occasional special events",
+        "irregular": "No predictable schedule"
+      }
+    },
+    "external:enums/collection-status.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/collection-status.json",
+      "title": "Collection Status",
+      "description": "Lifecycle status of a collection",
+      "type": "string",
+      "enum": [
+        "active",
+        "hiatus",
+        "ended",
+        "upcoming"
+      ],
+      "enumDescriptions": {
+        "active": "Currently producing and releasing installments",
+        "hiatus": "Temporarily paused, expected to resume",
+        "ended": "No longer producing new installments",
+        "upcoming": "Announced but not yet released"
+      }
+    },
+    "external:enums/production-quality.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/production-quality.json",
+      "title": "Production Quality",
+      "description": "Production quality tier for collection content. Maps to OpenRTB content.prodq: professional=1, prosumer=2, ugc=3. Seller-declared — no external validation.",
+      "type": "string",
+      "enum": [
+        "professional",
+        "prosumer",
+        "ugc"
+      ],
+      "enumDescriptions": {
+        "professional": "Studio-produced content with professional crew and equipment",
+        "prosumer": "Semi-professional production (high-quality independent creators)",
+        "ugc": "User-generated content"
+      }
+    },
+    "external:core/talent.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/talent.json",
+      "title": "Talent",
+      "description": "A person associated with a collection or installment, with an optional link to their brand.json identity",
+      "type": "object",
+      "properties": {
+        "role": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1talent-role.json",
+          "description": "Role of this person on the collection or installment"
+        },
+        "name": {
+          "type": "string",
+          "description": "Person's name as credited on the collection"
+        },
+        "brand_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1brand-ref.json",
+          "description": "Experimental (media_buy.collection_cards). Typed link to this person's brand in brand.json, for example a rights-holder brand with right_type talent. When brand_ref and brand_url are both present they MUST identify the same brand (brand_url's host equals brand_ref.domain), and brand_ref wins. Only domain and brand_id are read here; other brand_ref fields are ignored. The link is one-sided: buyers SHOULD treat it as confirmed only when that brand's get_brand_identity collections lists the same {publisher_domain, collection_id} back.",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "brand_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to this person's brand.json entry. Enables buyer agents to evaluate the talent's brand identity and associations."
+        }
+      },
+      "required": [
+        "role",
+        "name"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/talent-role.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/talent-role.json",
+      "title": "Talent Role",
+      "description": "Role of a person associated with a collection or installment",
+      "type": "string",
+      "enum": [
+        "host",
+        "guest",
+        "creator",
+        "cast",
+        "narrator",
+        "producer",
+        "correspondent",
+        "commentator",
+        "analyst"
+      ],
+      "enumDescriptions": {
+        "host": "Primary host or anchor of the collection",
+        "guest": "Guest appearing on a specific installment",
+        "creator": "Collection creator or showrunner",
+        "cast": "Regular or recurring cast member",
+        "narrator": "Narrator or voiceover",
+        "producer": "Executive or lead producer with on-screen presence",
+        "correspondent": "Reporter or field correspondent",
+        "commentator": "Play-by-play or event commentator",
+        "analyst": "Color commentator or subject matter analyst"
+      }
+    },
+    "external:core/brand-ref.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/brand-ref.json",
+      "title": "Brand Reference",
+      "description": "Reference to a brand by domain and optional brand_id. The domain hosts /.well-known/brand.json or is registered in the brand registry. For single-brand domains, brand_id can be omitted. For house-of-brands domains, brand_id identifies the specific brand. For creative production, brand.json is the canonical source of master brand identity (logo, palette, fonts, voice, and visual guidelines), subject only to the supported per-call fields in brand_kit_override. Catalogs supply product or item payload; catalog item asset groups, including property- or franchise-level logos, are item identity and do not override these master brand fields.",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1brand-id.json",
+          "description": "Brand identifier within the house portfolio. Optional for single-brand domains."
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit for a global/default identity. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account identity and is not delivery targeting."
+        },
+        "industries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json."
+        },
+        "data_subject_contestation": {
+          "type": "object",
+          "description": "Inline override for the brand's contestation contact point. Useful when the operator does not control brand.json but needs to discharge Art 22(3) for this plan. brand.json is canonical; when omitted, governance agents resolve brand → house → missing.",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "email"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        },
+        "brand_kit_override": {
+          "type": "object",
+          "description": "Inline override for brand-kit fields normally resolved from `/.well-known/brand.json` on `domain` (logo, colors, voice, tagline). Use when brand.json is missing, stale, or inappropriate for this specific call — e.g., a campaign-scoped tagline, a co-branded creative, a freshly-rebranded color palette the brand.json hasn't shipped yet. Same inline-override pattern as `industries` and `data_subject_contestation` above: brand.json is canonical, the override is per-call. Adopters needing to override fields outside this subset MUST publish a different brand.json and reference it via a different `domain` — the inline override is intentionally narrow to a small high-traffic subset. The brand-wide `prohibited_terms` list is one such field: it lives on brand.json and has no per-call override.\n\n**Merge semantics (normative).** The merge is **field-level**, not whole-object replacement. Each field within `brand_kit_override` (`logo`, `colors`, `voice`, `tagline`) is evaluated independently — when a field is present on the override the override value applies; when a field is absent the brand.json value applies (or is absent if brand.json doesn't carry one either). For composite fields (`colors.primary`, `colors.secondary`, `colors.accent`), the merge is one level deeper: each color slot is evaluated independently — a producer can override `colors.primary` while still inheriting `colors.secondary` from brand.json. SDKs MUST NOT treat a present `brand_kit_override.colors` as wiping the brand.json `colors` block entirely; only the per-slot fields present in the override take precedence. Without this rule, a partial-override semantics would diverge across SDKs and produce inconsistent rendering for the same payload.",
+          "properties": {
+            "logo": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1assets~1image-asset.json",
+              "description": "Override logo asset."
+            },
+            "colors": {
+              "type": "object",
+              "description": "Override brand colors (hex strings).",
+              "properties": {
+                "primary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "secondary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "accent": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              },
+              "additionalProperties": true
+            },
+            "voice": {
+              "type": "string",
+              "description": "Override brand-voice description for surface-composed text/audio output."
+            },
+            "tagline": {
+              "type": "string",
+              "description": "Override tagline."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "domain": "nova-brands.com",
+          "brand_id": "spark"
+        },
+        {
+          "domain": "nova-brands.com",
+          "brand_id": "glow"
+        },
+        {
+          "domain": "acme-corp.com"
+        },
+        {
+          "domain": "nova-athletics.example",
+          "countries": [
+            "NL"
+          ]
+        }
+      ]
+    },
+    "external:core/brand-id.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/brand-id.json",
+      "title": "Brand ID",
+      "description": "Identifier for a brand within a house portfolio. Must be lowercase alphanumeric with underscores only. The house chooses this identifier.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand",
+      "examples": [
+        "tide",
+        "cheerios",
+        "air_jordan",
+        "nike",
+        "pampers"
+      ]
+    },
+    "external:core/assets/image-asset.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/assets/image-asset.json",
+      "title": "Image Asset",
+      "description": "Image asset with URL and dimensions",
+      "type": "object",
+      "properties": {
+        "asset_type": {
+          "type": "string",
+          "const": "image",
+          "description": "Discriminator identifying this as an image asset. See /schemas/creative/asset-types for the registry."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the image asset"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Width in pixels"
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Height in pixels"
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Image file size in bytes. Required by agents that advertise a max_file_size_kb constraint."
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Intrinsic pixels per logical render pixel (for example `2` for a 600×500 image intended to render at 300×250). Optional because a validator can infer the ratio when the target format declares logical dimensions. When supplied, it MUST agree with both `width / logical_width` and `height / logical_height`; it is never a substitute for the intrinsic `width` and `height` fields."
+        },
+        "state_id": {
+          "type": "string",
+          "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one declared `states[].state_id` (semantic validators resolve it). Omit for ordinary image slots."
+        },
+        "breakpoint_id": {
+          "type": "string",
+          "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one breakpoint declared on the selected state (semantic validators resolve it). Omit for ordinary image slots."
+        },
+        "focal_point": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Normalized `[x, y]` coordinates (0–1 from top-left) of the image's visual anchor. Seller-side renderers crop toward the focal point when deriving renditions across breakpoints and aspect ratios; absent, cropping falls back to center-weighted defaults."
+        },
+        "format": {
+          "type": "string",
+          "description": "Image file format (jpg, png, gif, webp, etc.)"
+        },
+        "alt_text": {
+          "type": "string",
+          "description": "Alternative text for accessibility",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1provenance.json",
+          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+        }
+      },
+      "required": [
+        "asset_type",
+        "url",
+        "width",
+        "height"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/provenance.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/provenance.json",
+      "title": "Provenance",
+      "description": "Declares how content was produced, whether AI was involved, and what disclosure obligations apply. Attaches to creative manifests, individual assets, or content-standards artifacts. When present at multiple levels, the most specific provenance object replaces the inherited one entirely (no field-level merging). Provenance is a claim by the declaring party — receiving parties should verify claims independently via their own detection tools.",
+      "type": "object",
+      "properties": {
+        "digital_source_type": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1digital-source-type.json",
+          "description": "IPTC-aligned classification of AI involvement in producing this content"
+        },
+        "synthetic_depiction": {
+          "type": "boolean",
+          "description": "Assessed declaration of whether the content synthetically depicts a real or fictional person performing or appearing in a way that was generated or materially manipulated rather than captured as depicted. `true` covers both a fully synthetic performer and material manipulation of a real performer; `false` is an assessed declaration that the content does not contain such a depiction. Absence means the content has not been assessed for synthetic depiction. This field does not claim consent, legality, or independent verification, and receivers MUST NOT derive it solely from `digital_source_type`."
+        },
+        "ai_tool": {
+          "type": "object",
+          "description": "AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI metadata fields and C2PA claim_generator.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name of the AI tool or model (e.g., 'DALL-E 3', 'Stable Diffusion XL', 'Gemini')"
+            },
+            "version": {
+              "type": "string",
+              "description": "Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For generative models, use the model version rather than the API version."
+            },
+            "provider": {
+              "type": "string",
+              "description": "Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google')"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "human_oversight": {
+          "type": "string",
+          "description": "Level of human involvement in the AI-assisted creation process. Independent of `disclosure.required` — the protocol does not derive disclosure obligations from oversight level. Some regulations include carve-outs for human-edited or human-directed AI output, but those carve-outs have factual prerequisites the schema cannot evaluate. Asserting `edited` or `directed` does not by itself justify `disclosure.required: false`.",
+          "enum": [
+            "none",
+            "prompt_only",
+            "selected",
+            "edited",
+            "directed"
+          ],
+          "enumDescriptions": {
+            "none": "Fully automated with no human involvement in generation",
+            "prompt_only": "Human provided the prompt or instructions but did not review outputs",
+            "selected": "Human selected from multiple AI-generated candidates",
+            "edited": "Human edited or refined AI-generated output",
+            "directed": "Human directed the creative process with AI as an assistive tool"
+          }
+        },
+        "declared_by": {
+          "type": "object",
+          "description": "Party declaring this provenance. Identifies who attached the provenance claim, enabling receiving parties to assess trust.",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL of the agent or service that declared this provenance"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "creator",
+                "advertiser",
+                "agency",
+                "platform",
+                "tool"
+              ],
+              "description": "Role of the declaring party in the supply chain",
+              "enumDescriptions": {
+                "creator": "The party that created or generated the content",
+                "advertiser": "The brand or advertiser that owns the content",
+                "agency": "Agency acting on behalf of the advertiser",
+                "platform": "Ad platform or publisher that processed the content",
+                "tool": "Automated tool or service that attached provenance metadata"
+              }
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "declared_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this provenance claim was made (ISO 8601). Distinct from created_time, which records when the content itself was produced. A provenance claim may be attached well after content creation, for example when retroactively declaring AI involvement for regulatory compliance."
+        },
+        "created_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this content was created or generated (ISO 8601)"
+        },
+        "c2pa": {
+          "type": "object",
+          "description": "C2PA sidecar manifest reference. Links to a detached cryptographic provenance manifest for this content. Note: file-level C2PA bindings break when ad servers transcode, resize, or re-encode assets. For pipelines with intermediaries, consider embedded_provenance as the primary provenance mechanism.",
+          "properties": {
+            "manifest_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL to the C2PA manifest store for this content"
+            }
+          },
+          "required": [
+            "manifest_url"
+          ]
+        },
+        "embedded_provenance": {
+          "type": "array",
+          "description": "Provenance metadata embedded within the content stream. Each entry declares one embedding layer: structured provenance data carried inside the content itself, as distinct from sidecar references (c2pa.manifest_url). Embedded provenance survives operations that break sidecar and file-level bindings: ad-server transcoding, CMS ingestion, copy-paste, reformatting, and CDN re-encoding. For ad-tech pipelines where content passes through multiple intermediaries, embedded provenance is the reliable path for provenance that persists from declaration through delivery. This is a declaration by the embedding party. The receiving party (the seller) is the verifier-of-record: it confirms the claim by calling a governance agent it trusts (typically one published in `creative_policy.accepted_verifiers`).",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1embedded-provenance-method.json",
+                "description": "How provenance data is carried within the content"
+              },
+              "standard": {
+                "type": "string",
+                "description": "Standard the embedding conforms to, if any (e.g., 'c2pa' for C2PA Section A.7 text manifest embedding)"
+              },
+              "provider": {
+                "type": "string",
+                "description": "Organization that performed the embedding (e.g., 'Encypher', 'Digimarc'). Display label and audit context — not a wire identifier."
+              },
+              "verify_agent": {
+                "type": "object",
+                "description": "Buyer's representation that this embedding can be verified by a governance agent on the seller's `creative_policy.accepted_verifiers` list. The `agent_url` MUST match (canonicalized) one of the seller's published `accepted_verifiers[].agent_url` entries; sellers reject `sync_creatives` submissions whose `verify_agent.agent_url` is off-list with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. This is buyer-supplied evidence, not buyer-driven routing — the seller is the verifier-of-record and the seller controls which agent it actually calls (the seller MAY use a different on-list agent if it determines this is more appropriate; the seller does not call buyer-asserted endpoints outside its allowlist). MAY be omitted for self-verifiable embeddings (e.g., a C2PA text manifest with a public key the seller already trusts).",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "URL of the governance agent the buyer represents was used to embed/verify this layer. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
+                  },
+                  "feature_id": {
+                    "type": "string",
+                    "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `encypher.markers_present_v2`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the provenance data was embedded (ISO 8601)"
+              }
+            },
+            "required": [
+              "method",
+              "provider"
+            ]
+          }
+        },
+        "watermarks": {
+          "type": "array",
+          "description": "Content watermarks applied to this asset. Each entry declares one watermarking layer: a content modification that encodes an identifier or fingerprint within the asset. Watermarks differ from embedded provenance: a watermark encodes an identifier (who generated it, who owns it), while embedded provenance carries or references a structured provenance record (the full chain of custody). A single asset may carry both. Aligns with C2PA action taxonomy: c2pa.watermarked.bound (watermark linked to a C2PA manifest) and c2pa.watermarked.unbound (watermark independent of any manifest). This is a declaration by the watermarking party. The receiving party (the seller) is the verifier-of-record: it confirms the claim by calling a governance agent it trusts (typically one published in `creative_policy.accepted_verifiers`).",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1watermark-media-type.json",
+                "description": "Media category of the watermarked content"
+              },
+              "provider": {
+                "type": "string",
+                "description": "Organization that applied the watermark (e.g., 'Imatag', 'Steg.AI', 'Encypher'). Display label and audit context — not a wire identifier."
+              },
+              "verify_agent": {
+                "type": "object",
+                "description": "Buyer's representation that this watermark can be detected by a governance agent on the seller's `creative_policy.accepted_verifiers` list. The `agent_url` MUST match (canonicalized) one of the seller's published `accepted_verifiers[].agent_url` entries; sellers reject `sync_creatives` submissions whose `verify_agent.agent_url` is off-list with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. This is buyer-supplied evidence, not buyer-driven routing — the seller is the verifier-of-record and the seller controls which agent it actually calls (the seller MAY use a different on-list agent if it determines this is more appropriate; the seller does not call buyer-asserted endpoints outside its allowlist).",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "URL of the governance agent the buyer represents was used to apply/detect this watermark. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
+                  },
+                  "feature_id": {
+                    "type": "string",
+                    "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `imatag.watermark_detected`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "c2pa_action": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1c2pa-watermark-action.json",
+                "description": "C2PA action classification for this watermark"
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the watermark was applied (ISO 8601)"
+              }
+            },
+            "required": [
+              "media_type",
+              "provider"
+            ]
+          }
+        },
+        "disclosure": {
+          "type": "object",
+          "description": "Regulatory disclosure requirements for this content. Indicates whether AI disclosure is required and under which jurisdictions.",
+          "properties": {
+            "required": {
+              "type": "boolean",
+              "description": "The declaring party's claim that AI disclosure is required for this content under applicable regulations. This is a declared signal carried through the supply chain — useful as a routing and audit input — not a regulatory determination made by the protocol. Receiving parties remain responsible for their own jurisdictional analysis and should not treat `required: false` as compliance cover."
+            },
+            "jurisdictions": {
+              "type": "array",
+              "description": "Jurisdictions where disclosure obligations apply",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string",
+                    "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')"
+                  },
+                  "region": {
+                    "type": "string",
+                    "description": "Sub-national region code (e.g., 'CA' for California, 'BY' for Bavaria)"
+                  },
+                  "regulation": {
+                    "type": "string",
+                    "description": "Regulation identifier (e.g., 'eu_ai_act_article_50', 'ca_sb_942', 'cn_deep_synthesis')"
+                  },
+                  "label_text": {
+                    "type": "string",
+                    "description": "Required disclosure label text for this jurisdiction, in the local language"
+                  },
+                  "render_guidance": {
+                    "type": "object",
+                    "description": "How the disclosure should be rendered for this jurisdiction. Expresses the declaring party's intent for persistence and position based on regulatory requirements. Publishers control actual rendering but governance agents can audit whether guidance was followed.",
+                    "minProperties": 1,
+                    "properties": {
+                      "persistence": {
+                        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1disclosure-persistence.json",
+                        "description": "How long the disclosure must persist during content playback or display"
+                      },
+                      "min_duration_ms": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Minimum display duration in milliseconds for initial persistence. Recommended when persistence is initial — without it, the duration is at the publisher's discretion. At serve time the publisher reads this from provenance since the brief is not available."
+                      },
+                      "positions": {
+                        "type": "array",
+                        "description": "Preferred disclosure positions in priority order. The first position a format supports should be used.",
+                        "items": {
+                          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1disclosure-position.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "ext": {
+                        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1ext.json"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "country",
+                  "regulation"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "required"
+          ]
+        },
+        "verification": {
+          "type": "array",
+          "description": "Third-party verification or detection results for this content. Multiple services may independently evaluate the same content. Provenance is a claim — verification results attached by the declaring party are supplementary. The enforcing party (e.g., seller/publisher) should run its own verification via get_creative_features or calibrate_content.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "verified_by": {
+                "type": "string",
+                "description": "Name of the verification service (e.g., 'DoubleVerify', 'Hive Moderation', 'Reality Defender')"
+              },
+              "verified_time": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the verification was performed (ISO 8601)"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "authentic",
+                  "ai_generated",
+                  "ai_modified",
+                  "inconclusive"
+                ],
+                "description": "Verification outcome"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Confidence score of the verification result (0.0 to 1.0)"
+              },
+              "details_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to the full verification report"
+              }
+            },
+            "required": [
+              "verified_by",
+              "result"
+            ]
+          }
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1ext.json"
+        }
+      }
+    },
+    "external:enums/digital-source-type.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/digital-source-type.json",
+      "title": "Digital Source Type",
+      "description": "Classification of AI involvement in content creation, aligned with IPTC digitalsourcetype vocabulary. Used in provenance metadata to declare how a creative asset, artifact, or individual asset was produced.",
+      "type": "string",
+      "enum": [
+        "digital_capture",
+        "digital_creation",
+        "trained_algorithmic_media",
+        "composite_with_trained_algorithmic_media",
+        "algorithmic_media",
+        "composite_capture",
+        "composite_synthetic",
+        "human_edits",
+        "data_driven_media"
+      ],
+      "enumDescriptions": {
+        "digital_capture": "Captured by a digital device (camera, scanner, screen recording) with no AI involvement",
+        "digital_creation": "Created by a human using digital tools (Photoshop, Illustrator, After Effects) without AI generation",
+        "trained_algorithmic_media": "Generated entirely by a trained AI model (DALL-E, Midjourney, Stable Diffusion, Sora)",
+        "composite_with_trained_algorithmic_media": "Human-created content combined with AI-generated elements (e.g., photo with AI background)",
+        "algorithmic_media": "Produced by deterministic algorithms without machine learning (procedural generation, rule-based systems)",
+        "composite_capture": "Multiple digital captures composited together without AI",
+        "composite_synthetic": "Composite of multiple elements where at least one is AI-generated (e.g., stock photo composited with AI-generated background)",
+        "human_edits": "Content augmented, corrected, or enhanced by humans using non-generative tools",
+        "data_driven_media": "Assembled from structured data feeds (DCO templates, product catalogs, weather-triggered variants)"
+      }
+    },
+    "external:enums/embedded-provenance-method.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/embedded-provenance-method.json",
+      "title": "Embedded Provenance Method",
+      "description": "How provenance data is carried within the content stream. Distinguishes between format-level manifest embedding (where the manifest travels inside the file container) and provenance markers (where invisible markers in the content itself encode or reference a provenance record). Both survive operations that strip sidecar metadata, but provenance markers additionally survive content-level transformations such as copy-paste, reformatting, and CMS re-encoding.",
+      "type": "string",
+      "enum": [
+        "manifest_wrapper",
+        "provenance_markers"
+      ],
+      "enumDescriptions": {
+        "manifest_wrapper": "A provenance manifest embedded in the file container per format-specific rules (e.g., JUMBF box in JPEG, C2PATextManifestWrapper in plaintext per C2PA Section A.7). The manifest travels with the file but is tied to the file's byte structure.",
+        "provenance_markers": "Invisible markers embedded within the content stream that encode or reference a provenance record. Designed to survive reformatting, copy-paste, CMS ingestion, and ad-server transcoding that breaks file-level bindings."
+      }
+    },
+    "external:enums/watermark-media-type.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/watermark-media-type.json",
+      "title": "Watermark Media Type",
+      "description": "Media category of a content watermark. Identifies what kind of content the watermark is applied to, which determines the detection and verification methods required.",
+      "type": "string",
+      "enum": [
+        "audio",
+        "image",
+        "video",
+        "text"
+      ],
+      "enumDescriptions": {
+        "audio": "Watermark applied to audio content (e.g., spread-spectrum, echo hiding)",
+        "image": "Watermark applied to image content (e.g., spatial domain, frequency domain)",
+        "video": "Watermark applied to video content (e.g., per-frame image watermarking, temporal watermarking)",
+        "text": "Watermark applied to text content (e.g., synonym substitution, structural modification)"
+      }
+    },
+    "external:enums/c2pa-watermark-action.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/c2pa-watermark-action.json",
+      "title": "C2PA Watermark Action",
+      "description": "C2PA action classification for a content watermark. Distinguishes watermarks that are cryptographically linked to a C2PA manifest (bound) from watermarks that exist independently (unbound). Aligns with the c2pa.watermarked.* action family in the C2PA action taxonomy.",
+      "type": "string",
+      "enum": [
+        "c2pa.watermarked.bound",
+        "c2pa.watermarked.unbound"
+      ],
+      "enumDescriptions": {
+        "c2pa.watermarked.bound": "Watermark linked to a C2PA manifest for this asset. The watermark and manifest are mutually reinforcing: the manifest references the watermark, and the watermark can be used to locate the manifest.",
+        "c2pa.watermarked.unbound": "Watermark independent of any C2PA manifest. Applied before any provenance signing event (e.g., by the AI generator at creation time) or in pipelines where no manifest is present."
+      }
+    },
+    "external:enums/disclosure-persistence.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/disclosure-persistence.json",
+      "title": "Disclosure Persistence",
+      "description": "How long a disclosure must persist during content playback or display. Different jurisdictions and regulations require different persistence behaviors for AI-generated content labels. When multiple sources specify persistence for the same jurisdiction (e.g., brief and provenance), the most restrictive mode applies: continuous > initial > flexible.",
+      "type": "string",
+      "enum": [
+        "continuous",
+        "initial",
+        "flexible"
+      ],
+      "enumDescriptions": {
+        "continuous": "Disclosure must remain visible or audible throughout the entire content display duration. For video and audio, this means the full playback duration. For static formats (display, DOOH), this means the full display slot. For DOOH specifically, 'content duration' means the ad's display slot within the rotation, not the screen's full rotation cycle.",
+        "initial": "Disclosure must appear at the start of content for a minimum duration before it may be removed. Pair with min_duration_ms in render_guidance or creative brief to specify the required duration.",
+        "flexible": "Disclosure presence is sufficient; placement timing and duration are at the publisher's discretion"
+      }
+    },
+    "external:enums/disclosure-position.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/disclosure-position.json",
+      "title": "Disclosure Position",
+      "description": "Where a required disclosure should appear within a creative. Used by creative briefs to specify disclosure placement and by formats to declare which positions they can render.",
+      "type": "string",
+      "enum": [
+        "prominent",
+        "footer",
+        "audio",
+        "subtitle",
+        "overlay",
+        "end_card",
+        "pre_roll",
+        "companion"
+      ]
+    },
+    "external:core/ext.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/ext.json",
+      "title": "Extension Object",
+      "description": "Extension object for optional parameters under an owner-controlled namespace (e.g., ext.gam, ext.roku). The reserved ext.adcp namespace is maintained by the AdCP Working Group and is limited to its documented bindings. Used for custom capabilities, partner-specific configuration, and features being proposed for standardization. Namespace support does not imply support for undocumented future bindings.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/assets/published-post-asset.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/assets/published-post-asset.json",
+      "title": "Published Post Asset",
+      "description": "Reference to an already-published post on a publisher, creator, or social platform. The buyer supplies a reference to the existing post; the seller resolves, authorizes, reviews, and serves the referenced post according to the target product's format declaration. This asset is for post references, not uploaded bytes and not catalog rows.",
+      "type": "object",
+      "properties": {
+        "asset_type": {
+          "type": "string",
+          "const": "published_post",
+          "description": "Discriminator identifying this as a published-post reference asset. See /schemas/creative/asset-types for the registry."
+        },
+        "post_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Canonical URL for the published post. Preferred when the platform exposes a stable public or authenticated URL."
+        },
+        "platform": {
+          "type": "string",
+          "description": "Optional platform or publisher namespace for the referenced post. Informational unless the seller's product declaration or platform extension narrows the accepted values."
+        },
+        "platform_post_id": {
+          "type": "string",
+          "description": "Optional platform-native post identifier when a URL alone is not stable or not available. Buyers SHOULD include `platform` when using `platform_post_id` without `post_url`, unless the product or format declaration already narrows the platform. Platform-specific identifier semantics belong in platform_extensions; this field is only an opaque reference."
+        },
+        "identity_ref": {
+          "type": "object",
+          "description": "Optional identity hint for the authoring handle/page/channel that owns the post. Sellers MUST verify authorization from platform state; buyers MUST NOT use this object as proof of authorization.",
+          "properties": {
+            "handle": {
+              "type": "string",
+              "description": "Human-readable handle or username when available."
+            },
+            "profile_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL for the authoring profile, page, or channel."
+            },
+            "platform_identity_id": {
+              "type": "string",
+              "description": "Opaque platform-native identity identifier."
+            }
+          },
+          "additionalProperties": true
+        },
+        "published_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the referenced post was originally published, if known."
+        },
+        "reference_authorization": {
+          "type": "object",
+          "readOnly": true,
+          "description": "Server-emitted, seller-observed authorization state for the referenced post or identity. Sellers MAY return this object on read surfaces. On write requests, sellers MUST ignore buyer-supplied `reference_authorization.status` and other authorization-state claims unless a platform extension explicitly defines a signed proof shape and the seller verifies that proof.",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "authorized",
+                "pending",
+                "expired",
+                "revoked",
+                "not_required",
+                "unknown"
+              ],
+              "description": "Current seller-observed authorization state. `authorized`: seller can serve the referenced post. `pending`: additional creator/account action is required. `expired` or `revoked`: authorization previously existed but no longer permits serving. `not_required`: the seller can legally and technically serve without a separate identity authorization. `unknown`: seller has not checked or cannot disclose the state."
+            },
+            "checked_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the seller last checked the authorization state."
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the authorization expires, if the platform exposes an expiry."
+            },
+            "authorization_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Optional URL the buyer or creator can use to complete authorization."
+            },
+            "authorization_instructions": {
+              "type": "string",
+              "description": "Human-readable instructions for completing or restoring authorization."
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": true
+        },
+        "provenance": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1provenance.json",
+          "description": "Provenance metadata for this reference asset, overrides manifest-level provenance."
+        }
+      },
+      "required": [
+        "asset_type"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "post_url"
+          ]
+        },
+        {
+          "required": [
+            "platform_post_id"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "external:core/special.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/special.json",
+      "title": "Special",
+      "description": "Event-anchored content tied to a real-world event or occasion. When present on a collection, indicates the collection is a special. When present on an installment, indicates that specific installment is event-anchored (overrides or supplements the collection-level special).",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the event (e.g., 'Olympics 2028', 'Super Bowl LXI')"
+        },
+        "category": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1special-category.json",
+          "description": "Category of the event"
+        },
+        "starts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the event starts (ISO 8601)"
+        },
+        "ends": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the event ends (ISO 8601). Omit for single-day events."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/special-category.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/special-category.json",
+      "title": "Special Category",
+      "description": "Category of special or event-anchored content",
+      "type": "string",
+      "enum": [
+        "awards",
+        "championship",
+        "concert",
+        "conference",
+        "election",
+        "festival",
+        "gala",
+        "holiday",
+        "premiere",
+        "product_launch",
+        "reunion",
+        "tribute"
+      ],
+      "enumDescriptions": {
+        "awards": "Awards ceremony (Grammys, Emmys, Oscars)",
+        "championship": "Championship or tournament event (Super Bowl, World Cup, Olympics)",
+        "concert": "Live concert or music event",
+        "conference": "Industry conference or summit",
+        "election": "Election coverage or political event",
+        "festival": "Festival event (film, music, cultural)",
+        "gala": "Gala, fundraiser, or formal event",
+        "holiday": "Holiday special or seasonal event",
+        "premiere": "Premiere or launch event",
+        "product_launch": "Product reveal or launch event",
+        "reunion": "Reunion or anniversary special",
+        "tribute": "Tribute or memorial special"
+      }
+    },
+    "external:core/limited-series.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/limited-series.json",
+      "title": "Limited Series",
+      "description": "A bounded content run with a defined arc. Indicates the collection has a planned beginning, end, and installment count — distinguishing it from ongoing series.",
+      "type": "object",
+      "properties": {
+        "total_installments": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Planned number of installments in the series"
+        },
+        "starts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the series begins (ISO 8601)"
+        },
+        "ends": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the series ends (ISO 8601)"
+        }
+      },
+      "required": [
+        "total_installments"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/collection-distribution.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/collection-distribution.json",
+      "title": "Collection Distribution",
+      "description": "A collection's presence on a specific publisher platform. For a channel collection, this is a carriage assertion: property_ids identify the host surfaces carrying the channel, while identifiers identify the channel in the host's catalog or an independent metadata system. This publisher-authored assertion supports discovery and cross-seller matching but does not authorize a sale; authorization remains rooted in the host publisher's collection-scoped authorized_agents entry.",
+      "type": "object",
+      "properties": {
+        "publisher_domain": {
+          "type": "string",
+          "description": "Domain of the publisher platform where the collection is distributed (e.g., 'youtube.com', 'spotify.com'). Property IDs and publisher-scoped identifiers in this object resolve in this publisher's namespace."
+        },
+        "property_ids": {
+          "type": "array",
+          "description": "Publisher-scoped property IDs from publisher_domain's adagents.json that carry this collection. For owner-sold channel inventory, these identify the host apps without requiring the host to publish channel-owner placement definitions.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1property-id.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "identifiers": {
+          "type": "array",
+          "description": "Identifiers for the collection on this publisher, including publisher-scoped channel/EPG identifiers and platform-independent metadata identifiers",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1distribution-identifier-type.json",
+                "description": "Type of distribution identifier"
+              },
+              "value": {
+                "type": "string",
+                "description": "The identifier value"
+              }
+            },
+            "required": [
+              "type",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "followers": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:core~1audience-size.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental in AdCP 3.3. Platform-reported number of follower or subscriber accounts for this collection on publisher_domain (the audience-size wording about people does not apply). Counts accounts, not de-duplicated people, so buyers MUST NOT sum it across distribution entries or read it as reach. Use precision 'approximate' when the platform rounds publicly (for example, public subscriber counts); as_of is when the count last changed, not when it was last read: a refresh that leaves lower_bound, upper_bound and precision unchanged is not a change: it keeps the earlier as_of, moves no version token, and fires no webhook. Display and comparison only: this is not a targeting predicate and does not size a buyable audience. A seller serving or relaying it MUST list media_buy.collection_cards in experimental_features on get_adcp_capabilities."
+        }
+      },
+      "required": [
+        "publisher_domain"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "property_ids"
+          ]
+        },
+        {
+          "required": [
+            "identifiers"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "external:core/property-id.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/property-id.json",
+      "title": "Property ID",
+      "description": "Identifier for a publisher property. Must be lowercase alphanumeric with underscores only.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "property",
+      "examples": [
+        "cnn_ctv_app",
+        "homepage",
+        "mobile_ios",
+        "instagram"
+      ]
+    },
+    "external:enums/distribution-identifier-type.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/distribution-identifier-type.json",
+      "title": "Distribution Identifier Type",
+      "description": "Platform-specific identifier types for collection distribution. Maps a collection to its presence on specific platforms, enabling cross-seller matching.",
+      "type": "string",
+      "enum": [
+        "apple_podcast_id",
+        "spotify_collection_id",
+        "rss_url",
+        "podcast_guid",
+        "amazon_music_id",
+        "iheart_id",
+        "podcast_index_id",
+        "youtube_channel_id",
+        "youtube_channel_handle",
+        "youtube_channel_url",
+        "youtube_playlist_id",
+        "amazon_title_id",
+        "platform_channel_id",
+        "roku_channel_id",
+        "pluto_channel_id",
+        "tubi_id",
+        "peacock_id",
+        "tiktok_id",
+        "twitch_channel",
+        "imdb_id",
+        "gracenote_id",
+        "eidr_id",
+        "domain",
+        "substack_id"
+      ],
+      "enumDescriptions": {
+        "apple_podcast_id": "Apple Podcasts collection ID",
+        "spotify_collection_id": "Spotify collection URI",
+        "rss_url": "Canonical RSS feed URL",
+        "podcast_guid": "Podcasting 2.0 GUID",
+        "amazon_music_id": "Amazon Music / Audible ID",
+        "iheart_id": "iHeartRadio collection ID",
+        "podcast_index_id": "PodcastIndex.org ID",
+        "youtube_channel_id": "YouTube channel ID. Preferred canonical identifier for YouTube channels; handles and URLs are discovery aliases that should resolve to this when possible.",
+        "youtube_channel_handle": "YouTube channel handle such as @example. Useful as a discovery alias; channel ID is preferred for canonical matching.",
+        "youtube_channel_url": "YouTube channel URL such as https://www.youtube.com/@example or https://www.youtube.com/channel/UC.... Useful as a discovery alias; channel ID is preferred for canonical matching.",
+        "youtube_playlist_id": "YouTube playlist ID (for series within a channel)",
+        "amazon_title_id": "Amazon Prime Video title ID",
+        "platform_channel_id": "Stable channel identifier assigned by the platform named in the enclosing distribution's publisher_domain. Use as the portable fallback when no platform-specific identifier type exists; identity is the tuple (publisher_domain, value), so this type is only meaningful inside a distribution entry and MUST NOT appear in bare {type, value} contexts (distribution_ids sources, exclude filters). Use the platform's stable catalog identifier, not an EPG position number — hosts renumber lineups.",
+        "roku_channel_id": "Roku Channel ID",
+        "pluto_channel_id": "Pluto TV channel ID",
+        "tubi_id": "Tubi content ID",
+        "peacock_id": "Peacock content ID",
+        "tiktok_id": "TikTok account ID",
+        "twitch_channel": "Twitch channel name",
+        "imdb_id": "IMDb title ID — platform-independent cross-reference",
+        "gracenote_id": "Gracenote TMS ID — industry standard for TV metadata",
+        "eidr_id": "EIDR (Entertainment Identifier Registry) — ISO 10528 for audiovisual content",
+        "domain": "Show's own website domain",
+        "substack_id": "Substack publication identifier"
+      }
+    },
+    "external:core/audience-size.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/audience-size.json",
+      "title": "Audience Size",
+      "description": "A count of people reported as a range with a stated precision, so a seller never has to invent a point value for a size its platform only reports as an interval, an approximation, or a bucket. lower_bound MUST be less than or equal to upper_bound, and MUST equal upper_bound when precision is 'exact' (JSON Schema cannot express this cross-field rule; it is enforced by conformance, not validation). A seller MUST NOT use this object to disclose a size below its minimum audience size; follow the audience's too_small status and minimum_size instead. Defined once so every surface that reports an audience size uses the same shape.",
+      "x-added-in": "3.3.0",
+      "type": "object",
+      "properties": {
+        "lower_bound": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Lowest number of people the size can be. Equals upper_bound when precision is 'exact'."
+        },
+        "upper_bound": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Highest number of people the size can be. MUST be greater than or equal to lower_bound."
+        },
+        "precision": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/mcp/2026-07-28/media-buy/list-collections-response.json#/$defs/external:enums~1audience-size-precision.json",
+          "description": "How precisely lower_bound and upper_bound are reported."
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of when the seller or its platform computed this size. Omitted when the seller does not know. Sizes drift as membership and matching change, so buyers comparing two reads should compare as_of first."
+        }
+      },
+      "required": [
+        "lower_bound",
+        "upper_bound",
+        "precision"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/audience-size-precision.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/audience-size-precision.json",
+      "title": "Audience Size Precision",
+      "description": "How precisely a seller reports an audience size range. Describes the lower_bound and upper_bound of an audience-size object, not the quality of the underlying match.",
+      "x-added-in": "3.3.0",
+      "type": "string",
+      "enum": [
+        "exact",
+        "approximate",
+        "bucketed"
+      ],
+      "enumDescriptions": {
+        "exact": "The seller reports a single exact value. lower_bound MUST equal upper_bound.",
+        "approximate": "The seller reports an approximation, or an interval it computed or was given for privacy or freshness reasons. The true size is expected to fall within lower_bound and upper_bound, but the seller does not commit to exact values.",
+        "bucketed": "The seller reports a coarse size bucket. lower_bound and upper_bound are the bucket edges and carry no information beyond the bucket the audience falls in."
+      }
+    },
+    "external:core/deadline-policy.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/deadline-policy.json",
+      "title": "Deadline Policy",
+      "description": "Default deadline rules for installments that do not declare their own deadlines. Agents compute absolute deadlines from the installment's scheduled_at and these lead times. Installments with explicit deadlines override this policy. booking_lead_days SHOULD be >= cancellation_lead_days (bookings close before cancellation window closes).",
+      "type": "object",
+      "properties": {
+        "booking_lead_days": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Days before scheduled_at by which the placement must be booked"
+        },
+        "cancellation_lead_days": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Days before scheduled_at by which cancellation is penalty-free"
+        },
+        "material_stages": {
+          "type": "array",
+          "description": "Default material submission stages. Items MUST be in chronological order (earliest due first). Agents compute due_at as: installment.scheduled_at minus lead_days.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "stage": {
+                "type": "string",
+                "description": "Stage identifier. Standard values: 'draft' (needs seller processing), 'final' (production-ready).",
+                "examples": [
+                  "draft",
+                  "final"
+                ]
+              },
+              "lead_days": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Days before scheduled_at this stage is due"
+              },
+              "label": {
+                "type": "string",
+                "description": "What the seller needs at this stage"
+              }
+            },
+            "required": [
+              "stage",
+              "lead_days"
+            ],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "business_days_only": {
+          "type": "boolean",
+          "description": "When true, lead_days counts business days (Mon-Fri) rather than calendar days. Defaults to false.",
+          "default": false
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": true
+    },
+    "external:enums/collection-relationship.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/enums/collection-relationship.json",
+      "title": "Collection Relationship",
+      "description": "How two collections are related. References are scoped to the same get_products response. Symmetric types (companion, crossover) do not require both collections to declare the relationship.",
+      "type": "string",
+      "enum": [
+        "spinoff",
+        "companion",
+        "sequel",
+        "prequel",
+        "crossover"
+      ],
+      "enumDescriptions": {
+        "spinoff": "A collection derived from the referenced collection (e.g., an after-collection or character spinoff)",
+        "companion": "A companion collection (behind-the-scenes, reaction, or supplementary content)",
+        "sequel": "A continuation of the referenced collection",
+        "prequel": "A predecessor to the referenced collection",
+        "crossover": "Shows that share installments, guests, or story arcs"
+      }
+    },
+    "external:core/pagination-response.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/pagination-response.json",
+      "title": "Pagination Response",
+      "description": "Standard cursor-based pagination metadata for list responses",
+      "type": "object",
+      "properties": {
+        "has_more": {
+          "type": "boolean",
+          "description": "Whether more results are available beyond this page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor to pass in the next request to fetch the next page. Only present when has_more is true."
+        },
+        "total_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of items matching the query across all pages. Optional because not all backends can efficiently compute this."
+        }
+      },
+      "required": [
+        "has_more"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/context.json": {
+      "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/context.json",
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}
