@@ -1,0 +1,60 @@
+{
+  "$comment": "Owner of every file under static/schemas/source, read by scripts/lint-schema-ownership.cjs. Domains follow supported_protocols plus account, trusted_match, compliance, and well_known. An exact file entry under files overrides its directory. Files under aggregations (the schema index and unions of every task response) may reference any domain. may_depend_on lists the other domains a domain may $ref; the declared graph must stay acyclic.",
+  "shared": [
+    "core/",
+    "enums/",
+    "protocol/",
+    "error-details/",
+    "extensions/",
+    "registries/",
+    "index.json",
+    "manifest.schema.json"
+  ],
+  "aggregations": [
+    "index.json",
+    "core/async-response-data.json"
+  ],
+  "domains": {
+    "media_buy": {
+      "paths": ["media-buy/", "pricing-options/"],
+      "may_depend_on": ["creative"]
+    },
+    "creative": {
+      "paths": ["creative/", "formats/"],
+      "may_depend_on": []
+    },
+    "signals": {
+      "paths": ["signals/"],
+      "may_depend_on": []
+    },
+    "governance": {
+      "paths": ["governance/", "content-standards/", "property/", "collection/"],
+      "may_depend_on": []
+    },
+    "brand": {
+      "paths": ["brand/", "brand.json"],
+      "may_depend_on": []
+    },
+    "sponsored_intelligence": {
+      "paths": ["sponsored-intelligence/", "a2ui/"],
+      "may_depend_on": []
+    },
+    "account": {
+      "paths": ["account/"],
+      "may_depend_on": []
+    },
+    "trusted_match": {
+      "paths": ["trusted-match/"],
+      "may_depend_on": ["governance"]
+    },
+    "compliance": {
+      "paths": ["compliance/"],
+      "may_depend_on": ["media_buy", "creative", "signals"]
+    },
+    "well_known": {
+      "paths": ["adagents.json", "trust/", "aao/"],
+      "may_depend_on": []
+    }
+  },
+  "files": {}
+}
