@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/execution-readiness-status.json",
+  "title": "Execution Readiness Status",
+  "description": "Experimental (`media_buy.execution_readiness`). Whether the account can satisfy one execution requirement of a product, and the product rollup. `unknown` means the seller could not check: never evidence the account lacks the resource, never a reason to treat the product as not runnable.",
+  "type": "string",
+  "enum": [
+    "ready",
+    "setup_required",
+    "selection_required",
+    "input_required",
+    "unknown"
+  ],
+  "enumDescriptions": {
+    "ready": "One suitable resource (for a connection, it is connected). Does not waive binding: for `event_source` and `catalog` the buyer still binds `resolved.resource_id`.",
+    "setup_required": "No suitable resource, or the connection is `missing`, `pending`, `expired`, or `revoked`. The buyer can fix it (`sync_event_sources`, `sync_catalogs`, `authorization_url`).",
+    "selection_required": "Several suitable resources; the buyer chooses one from `candidates[]` and binds it.",
+    "input_required": "The seller cannot discover a suitable resource; the buyer supplies one on the request, such as an inline catalog.",
+    "unknown": "The seller could not read the account's resources. Distinct from `setup_required`; the product may be runnable. `unknown_reason` says what to do."
+  },
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}
