@@ -66,6 +66,148 @@ Product-scoped entries may declare an action. When omitted, the seller treats th
 }
 ```
 
+### Check an exact package before booking
+
+In AdCP 3.3, a product entry with `action: "include"` (or no action) may
+carry an optional `package`. This asks whether the exact proposed package
+fits, using the same field types and validation rules as a package on
+`create_media_buy`. The enclosing entry supplies `product_id`; omit it inside
+`package`. `pricing_option_id` and numeric `budget` are required.
+
+{/* Uses latest because structured package refinement is new in AdCP 3.3. */}
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/get-products-request.json",
+  "adcp_version": "3.3",
+  "adcp_major_version": 3,
+  "buying_mode": "refine",
+  "refine": [
+    {
+      "scope": "product",
+      "product_id": "prod_homepage_takeover",
+      "action": "include",
+      "package": {
+        "pricing_option_id": "cpm_guaranteed",
+        "budget": 25000,
+        "start_time": "2026-11-01T00:00:00Z",
+        "end_time": "2026-11-30T23:59:59Z",
+        "targeting_overlay": {}
+      }
+    }
+  ]
+}
+```
+
+**Resolve the inputs as on create.** The budget is in the selected pricing
+option's currency. An explicit `impressions` goal has the same meaning as on
+create; otherwise the seller derives the goal from the budget and selected
+pricing terms when possible. For example, a budget of $25,000 at a fixed $10
+CPM implies 2,500,000 impressions. A budget alone need not imply a delivery
+goal for flat-rate or auction pricing. If the goal cannot be determined
+unambiguously, the seller reports `unable` rather than inventing a goal.
+
+Explicit package `start_time` and `end_time` take precedence. Each omitted
+boundary defaults to the corresponding `filters.start_date` or `end_date`,
+using the seller's availability-check date and timezone semantics. If those
+inputs cannot resolve an exact flight, the seller reports `unable`; buyers
+can supply explicit timestamps to remove ambiguity. An `applied` outcome MUST
+echo both exact boundaries as `resolved_start_time` and `resolved_end_time`,
+including boundaries supplied explicitly. The end MUST be after the start.
+Resolve the product's
+bound discovery targeting and any replacement top-level `targeting_overlay`
+first, then apply `package.targeting_overlay` per dimension as on create:
+omission inherits, non-null values replace, and `null` clears a configurable
+default. An empty object inherits targeting; it does not request untargeted
+inventory. Inherent product scope and offer filters remain binding. Free-text
+`ask` cannot override structured package inputs; contradictory requirements
+are rejected with `INVALID_REQUEST`.
+
+**Return an exact result or explain why it cannot be computed.** A seller
+handling a request containing any `package` MUST return the full,
+position-matched `refinement_applied` array. For each such entry:
+
+- `applied` means the returned product carries a `forecast` computed for
+  exactly the resolved package goal, flight, targeting, and other supplied
+  controls. The outcome MUST include `result_product_id`, identifying exactly
+  one returned Product, and both resolved flight timestamps. The outcome's
+  `product_id` still echoes the request. Sellers MUST return this forecast even
+  when `fields` omitted it.
+  It uses `forecast_range_unit: "availability"`; points omit `budget`, report
+  total available units in the goal metric in `metrics`, and carry
+  `availability_status`. Zero availability still reports the goal metric as
+  zero so the buyer can calculate the shortfall.
+- `unable` with non-empty `notes` explains unsupported controls, an
+  unresolvable goal or flight, or an unavailable forecasting service. The
+  corresponding product MUST NOT carry a forecast computed for different
+  inputs. Sellers MUST NOT silently drop a control, substitute dates or
+  targeting, or label a package forecast `partial`.
+
+Insufficient inventory is a successfully computed (`applied`) forecast with
+`availability_status: "unavailable"`, rather than a failure to forecast. With
+2,000,000 available impressions in the CPM example, the shortfall is 500,000.
+Do not cap available units at the goal: the metrics report total availability.
+Forecast method describes the calculation, so a read-only check normally uses
+`estimate` or `modeled`; it does not establish reserved, guaranteed delivery.
+
+**Carry the exact configuration into purchase.** Changed request-bound
+targeting or forecast assumptions require a distinguishable configured
+`product_id`, as in ordinary refinement. Use `result_product_id` to find that
+product; product-array order is not a correlation mechanism. The returned
+product MUST retain the requested `pricing_option_id` and identical pricing
+terms. If the seller needs to substitute or reprice the option, it reports
+`unable` rather than computing a different budget-to-goal relationship.
+
+The seller binds effective discovery/top-level targeting to the returned ID
+and evaluates the package overlay with create's inheritance rules. It MUST
+NOT turn package replacements or clears into additional inherent product
+scope, or report them as deviations from top-level discovery targeting in
+Product `targeting_resolution`. At `create_media_buy`, the buyer uses the
+mapped ID and unchanged package controls, including the same targeting
+overlay, budget, and pricing option, and materializes both resolved timestamps
+on the package. The media-buy flight must encompass those timestamps. Changing
+any forecast input requires a fresh check.
+
+For example, an entry for `prod_homepage_takeover` with omitted package times
+and date filters may produce this outcome after resolving the seller's local
+date boundaries:
+
+```json
+{
+  "scope": "product",
+  "product_id": "prod_homepage_takeover",
+  "result_product_id": "prod_homepage_takeover_configured",
+  "resolved_start_time": "2026-11-01T00:00:00-05:00",
+  "resolved_end_time": "2026-11-30T23:59:59-05:00",
+  "status": "applied"
+}
+```
+
+The buyer sets the create package's `product_id` to
+`prod_homepage_takeover_configured`, and `start_time`/`end_time` to those exact
+timestamps. If its forecast package carried `geo_countries: null`, it repeats
+that clear in `targeting_overlay`; it does not restore the old product's
+country default.
+
+**Each entry is an independent read.** Sellers MUST forecast each package
+against current inventory without subtracting the other proposed packages in
+the call. Products sharing inventory can therefore each report that inventory;
+buyers MUST NOT sum their forecasts as a jointly bookable plan. The existing
+one-entry-per-product rule still applies; compare two configurations of the
+same product in separate calls. The check MUST NOT create a media buy, book,
+hold, or reserve inventory, or upload or assign creatives carried in the
+package. Finalizing a proposal remains the inventory-hold operation. A later
+purchase still checks availability and can fail with `PRODUCT_UNAVAILABLE`.
+
+There is no separate structured-package capability flag. Buyers MUST
+negotiate AdCP 3.3 or later before treating an `applied` outcome as exact-package
+confirmation; a legacy seller may ignore an unfamiliar input. Check the served
+`adcp_version` echo: a downshift or missing echo does not confirm 3.3 support. An `applied`
+outcome is evidence for this entry only. Missing `refinement_applied`, a missing
+matching outcome, or a legacy seller rejecting the new field is no evidence
+that the exact package was forecast; buyers MUST NOT treat an ordinary product
+forecast as confirmation. Entries without `package` retain their existing
+behavior, including optional per-entry outcomes.
+
 ### Request-level direction
 
 Use `scope: "request"` to describe what you want from the selection as a whole:
@@ -133,9 +275,11 @@ When a buyer sends a `refine` array, the seller responds with `refinement_applie
 |-------|------|----------|-------------|
 | `scope` | string | Yes | Echoes the scope (`"request"` / `"product"` / `"proposal"`) from the corresponding `refine` entry. |
 | `product_id` | string | Yes when `scope` is `"product"` | Echoes `product_id` from the corresponding refine entry. |
+| `result_product_id` | string | For an applied package forecast | Identifies exactly one returned Product carrying the exact forecast; may differ from the echoed request ID. |
+| `resolved_start_time`, `resolved_end_time` | date-time | With `result_product_id` | Exact forecast flight boundaries, copied to the package at create. |
 | `proposal_id` | string | Yes when `scope` is `"proposal"` | Echoes `proposal_id` from the corresponding refine entry. |
 | `status` | string | Yes | `"applied"`: ask fulfilled. `"partial"`: partially fulfilled. `"unable"`: could not fulfill. |
-| `notes` | string | No | Seller explanation. Recommended when status is `"partial"` or `"unable"`. |
+| `notes` | string | Conditional | Seller explanation. Recommended when status is `"partial"` or `"unable"`; required and non-empty for a structured package entry with status `"unable"`. |
 
 ```json
 {
@@ -152,7 +296,7 @@ When a buyer sends a `refine` array, the seller responds with `refinement_applie
 }
 ```
 
-The `refinement_applied` array MUST contain the same number of entries in the same order as the `refine` array. Each entry MUST echo `scope` and the matching id (`product_id` on product scope, `proposal_id` on proposal scope) so orchestrators can cross-validate alignment. The entire field is optional — sellers that don't track per-ask outcomes can omit it — but sellers that return it MUST return valid, position-matched entries.
+The `refinement_applied` array MUST contain the same number of entries in the same order as the `refine` array. Each entry MUST echo `scope` and the matching id (`product_id` on product scope, `proposal_id` on proposal scope) so orchestrators can cross-validate alignment. The field is optional unless any entry carries `package`, in which case the seller MUST return it for the entire request. Sellers that return it MUST return valid, position-matched entries.
 
 Orchestrators SHOULD cross-check entries by the echoed id rather than trusting positional order alone — a seller bug that reorders entries would otherwise silently mis-attribute each outcome.
 
@@ -179,7 +323,7 @@ Buyers discover this legacy refinement mode when `get_adcp_capabilities.media_bu
 
 When the seller returns `refinement_applied`, read the matching entry's `status` (`applied`, `partial`, or `unable`) and optional `notes` to learn how it handled this specific request. These fields acknowledge handling; they are not the executable commercial terms. Inspect the returned proposal's pricing and allocations before finalizing or buying.
 
-Because the entire `refinement_applied` field is optional, omission communicates no per-ask outcome: do not infer `applied`, `partial`, or `unable`. A seller may omit it even when the response applies the requested change. Treat the returned proposal and any reported outcome as runtime evidence for this request, not as a general promise that the seller can negotiate price.
+For requests without structured `package` entries, the entire `refinement_applied` field is optional; omission communicates no per-ask outcome: do not infer `applied`, `partial`, or `unable`. A seller may omit it even when the response applies the requested change. Treat the returned proposal and any reported outcome as runtime evidence for this request, not as a general promise that the seller can negotiate price.
 
 ### Find similar products
 
@@ -358,6 +502,7 @@ The [Media Buy Specification](/docs/media-buy/specification#get_products) define
 - MUST provide `scope` and `product_id` for each product entry, and `scope` and `proposal_id` for each proposal entry
 - MAY omit `action` on product and proposal entries — sellers treat missing `action` as `"include"`
 - MUST NOT include multiple entries for the same product ID or proposal ID in a single `refine` array
+- MUST use `include` (or omit `action`) when supplying a structured `package`; `package` is invalid on other scopes or product actions
 
 **Sales agents:**
 - MUST omit products with `action: "omit"` from the response
@@ -368,6 +513,7 @@ The [Media Buy Specification](/docs/media-buy/specification#get_products) define
 - SHOULD consider request-level asks when composing the response — this MAY result in additional products beyond those explicitly referenced. Per-product actions take precedence over request-level direction.
 - SHOULD fulfill the `ask` on proposal entries with `action: "include"`
 - SHOULD include `refinement_applied` in the response when the buyer provides `refine`, with one entry per change request matched by position
+- MUST follow the [exact-package forecast contract](#check-an-exact-package-before-booking) when a product entry carries `package`, including mandatory outcomes, exact inputs, independent availability forecasts, and no booking or inventory hold
 - MAY return proposals even when the buyer did not include proposal entries
 
 ## See also

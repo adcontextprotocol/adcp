@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/package-forecast-input.json",
+  "title": "Package Forecast Input",
+  "description": "Proposed package for a read-only availability forecast in get_products refine mode (AdCP 3.3). Field shapes and package validation rules are shared with Package Request. The enclosing refine entry supplies product_id; it MUST NOT be repeated here. pricing_option_id and budget are required. The budget uses the selected pricing option's currency, and impressions, when supplied, has its create_media_buy goal semantics. Omitted flight boundaries inherit filters.start_date/end_date; if an exact flight or goal cannot be resolved, the seller reports unable with notes rather than guessing. Targeting inherits the effective discovery configuration and applies package-level per-dimension replacement or clearing exactly as on create. All supplied fields are forecast inputs only: no booking, hold, reservation, creative upload, or assignment is performed.",
+  "type": "object",
+  "x-added-in": "3.3.0",
+  "allOf": [
+    {
+      "$ref": "/schemas/media-buy/package-request.json#/allOf/0"
+    },
+    {
+      "$ref": "/schemas/media-buy/package-request.json#/allOf/1"
+    },
+    {
+      "$ref": "/schemas/media-buy/package-request.json#/allOf/2"
+    },
+    {
+      "not": {
+        "required": [
+          "product_id"
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "format_ids": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/format_ids",
+      "deprecated": true,
+      "x-removed-in": "4.0.0",
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format selector with the same receiver rules as Package Request."
+    },
+    "format_option_refs": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/format_option_refs"
+    },
+    "format_kind": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/format_kind"
+    },
+    "params": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/params"
+    },
+    "budget": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/budget"
+    },
+    "min_spend_target": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/min_spend_target"
+    },
+    "pacing": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/pacing"
+    },
+    "pricing_option_id": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/pricing_option_id"
+    },
+    "bid_price": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/bid_price",
+      "deprecated": true
+    },
+    "bidding": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/bidding"
+    },
+    "impressions": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/impressions"
+    },
+    "daily_budget_cap": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/daily_budget_cap"
+    },
+    "start_time": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/start_time"
+    },
+    "end_time": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/end_time"
+    },
+    "paused": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/paused"
+    },
+    "catalogs": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/catalogs"
+    },
+    "optimization_goals": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/optimization_goals"
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/targeting_overlay"
+    },
+    "audience_evidence_requirements": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/audience_evidence_requirements"
+    },
+    "audience_evidence_pins": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/audience_evidence_pins"
+    },
+    "measurement_terms": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/measurement_terms"
+    },
+    "performance_standards": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/performance_standards"
+    },
+    "committed_metrics": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/committed_metrics"
+    },
+    "creative_assignments": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/creative_assignments"
+    },
+    "creatives": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/creatives"
+    },
+    "agency_estimate_number": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/agency_estimate_number"
+    },
+    "context": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/context"
+    },
+    "ext": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/ext"
+    }
+  },
+  "required": [
+    "pricing_option_id",
+    "budget"
+  ],
+  "dependencies": {
+    "params": [
+      "format_kind"
+    ]
+  },
+  "not": {
+    "$ref": "/schemas/media-buy/package-request.json#/not"
+  },
+  "additionalProperties": true
+}
