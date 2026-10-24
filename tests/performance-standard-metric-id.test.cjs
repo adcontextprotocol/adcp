@@ -1,7 +1,8 @@
 /**
  * performance_standard.metric_id names which of the standard's vendor's
  * metrics is judged against threshold. It is optional, mirrored on every
- * performance-standard shape, and not allowed on viewability standards.
+ * performance-standard shape, and allowed only on ivt, brand_safety, and
+ * attention_score standards.
  */
 const fs = require("fs");
 const path = require("path");
@@ -36,9 +37,9 @@ const SHAPES = {
 
 describe("performance standard metric_id", () => {
   for (const [name, load] of Object.entries(SHAPES)) {
-    it(`${name}: accepts metric_id outside viewability`, async () => {
+    it(`${name}: accepts metric_id on vendor-only metrics`, async () => {
       const validate = await load();
-      for (const metric of ["ivt", "brand_safety", "attention_score", "completion_rate"]) {
+      for (const metric of ["ivt", "brand_safety", "attention_score"]) {
         const standard = { metric, threshold: 0.03, vendor: VENDOR, metric_id: "givt_rate" };
         assert.equal(validate(standard), true, `${metric}: ${JSON.stringify(validate.errors)}`);
       }
@@ -54,10 +55,12 @@ describe("performance standard metric_id", () => {
       );
     });
 
-    it(`${name}: rejects metric_id on viewability`, async () => {
+    it(`${name}: rejects metric_id on viewability and completion_rate`, async () => {
       const validate = await load();
-      const standard = { metric: "viewability", threshold: 0.7, standard: "mrc", vendor: VENDOR, metric_id: "viewable_rate" };
-      assert.equal(validate(standard), false);
+      const viewability = { metric: "viewability", threshold: 0.7, standard: "mrc", vendor: VENDOR, metric_id: "viewable_rate" };
+      assert.equal(validate(viewability), false);
+      const completion = { metric: "completion_rate", threshold: 0.7, vendor: VENDOR, metric_id: "completion_rate" };
+      assert.equal(validate(completion), false);
     });
 
     it(`${name}: metric_id uses the vendor-metric-id pattern`, async () => {

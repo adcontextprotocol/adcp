@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/performance-standard.json",
   "title": "Performance Standard",
-  "description": "A rate threshold for a performance metric, measured by a specified vendor and, outside viewability, optionally bound to one of that vendor's metrics by metric_id. The threshold is a floor or ceiling depending on the metric: viewability, completion_rate, brand_safety, and attention_score are floors (must exceed); ivt is a ceiling (must not exceed).",
+  "description": "A rate threshold for a performance metric, measured by a specified vendor and, for ivt, brand_safety, or attention_score, optionally bound to one of that vendor's metrics by metric_id. The threshold is a floor or ceiling depending on the metric: viewability, completion_rate, brand_safety, and attention_score are floors (must exceed); ivt is a ceiling (must not exceed).",
   "type": "object",
   "properties": {
     "metric": {
@@ -26,13 +26,13 @@
     "metric_id": {
       "$ref": "/schemas/core/vendor-metric-id.json",
       "x-added-in": "3.3.0",
-      "description": "The metric, in the vendor's vocabulary, whose reported value is judged against threshold: only vendor_metric_values[] entries with this vendor and metric_id are evidence. The value is a 0-1 rate like threshold; a value outside 0-1 is not evidence and MUST NOT be converted. Not allowed for viewability. When absent for ivt, brand_safety, or attention_score, parties MUST NOT infer which vendor metric carries the standard, and treat it as not judged from vendor_metric_values. A package standard carrying metric_id SHOULD have a matching vendor-scope committed_metrics entry."
+      "description": "The metric, in the vendor's vocabulary, whose reported value is judged against threshold: only vendor_metric_values[] entries with this vendor and metric_id are evidence. The value is a 0-1 rate like threshold; a value outside 0-1 is not evidence and MUST NOT be converted. Allowed only for ivt, brand_safety, and attention_score; viewability and completion_rate are judged against their delivery scalars. When absent for ivt, brand_safety, or attention_score, parties MUST NOT infer which vendor metric carries the standard, and treat it as not judged from vendor_metric_values. A package standard carrying metric_id SHOULD have a matching vendor-scope committed_metrics entry."
     }
   },
   "required": ["metric", "threshold", "vendor"],
   "allOf": [
     {
-      "if": { "properties": { "metric": { "const": "viewability" } }, "required": ["metric"] },
+      "if": { "properties": { "metric": { "enum": ["viewability", "completion_rate"] } }, "required": ["metric"] },
       "then": { "not": { "required": ["metric_id"] } }
     }
   ],

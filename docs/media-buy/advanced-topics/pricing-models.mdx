@@ -107,7 +107,7 @@ Each entry in the `performance_standards` array specifies:
 - **`threshold`** — Rate as a decimal (0-1). Whether this is a floor or ceiling depends on the metric: viewability, completion_rate, brand_safety, attention_score are floors (must exceed); ivt is a ceiling (must not exceed).
 - **`standard`** — Required for viewability (`"mrc"` or `"groupm"`). Omit for other metrics.
 - **`vendor`** — Who measures it, identified by domain. When agreed on a confirmed package, creatives MUST include tracker assets from specified vendors.
-- **`metric_id`** — Optional. Which of the vendor's metrics carries the value judged against `threshold`, in the vendor's own vocabulary (the `metric_id` in its `measurement.metrics[]` catalog and in delivery's `vendor_metric_values[]`). Not allowed for `viewability`, which is judged against the delivery `viewability` block under `standard`.
+- **`metric_id`** — Optional. Which of the vendor's metrics carries the value judged against `threshold`, in the vendor's own vocabulary (the `metric_id` in its `measurement.metrics[]` catalog and in delivery's `vendor_metric_values[]`). Allowed only for `ivt`, `brand_safety`, and `attention_score`. `viewability` and `completion_rate` are judged against their delivery scalars (`viewability` under `standard`; a vendor-attested completion rate carries `completion_source: vendor_attested`).
 
 Verification vendors usually report several metrics per category: general, sophisticated, and combined invalid traffic rates, or several brand-safety rates. `metric_id` says which one the standard means:
 
