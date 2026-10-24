@@ -100,6 +100,21 @@ Four rules connect the layers and prevent orphaned goals:
 
 4. **Priority is ordinal, lowest-value-first.** When `optimization_goals[]` carry explicit `priority` values, the seller treats the goal with the **lowest** priority value as primary — even when no goal is `priority: 1` (priorities of `2` and `3` mean `2` is primary). When all priorities are omitted, the first array entry is primary. Duplicate priority values are undefined.
 
+### Telling a seller what success looks like
+
+A seller wants to know whether it is making the buyer happy, and that means knowing which goals are real, how hard the buyer holds it to them, and whose count decides. AdCP has no separate "commitment wanted" field. Each part of that statement already has a home, so state each one where it lives:
+
+| The buyer wants | Say it with |
+|---|---|
+| The seller to stand behind the outcome | An outcome pricing model, so the seller is paid only for results: [CPC](/docs/media-buy/advanced-topics/pricing-models#cpc-cost-per-click), [CPCV](/docs/media-buy/advanced-topics/pricing-models#cpcv-cost-per-completed-view), or [CPA](/docs/media-buy/advanced-topics/pricing-models#cpa-cost-per-acquisition). Add `performance_standards[]` for a floor or ceiling the seller owes, with makegoods on breach, and `delivery_type: "guaranteed"` for volume. |
+| The seller to optimize toward it | `optimization_goals[]` with a `target`; `priority` says which goal is primary. `bidding.cost_per` with `strength` `cap` or `target` says how tightly to hold the cost. |
+| The metric reported, not optimized | `committed_metrics[]` with no matching optimization goal. |
+| A specific count to decide | The goal's or standard's `vendor`, a `vendor_metric` goal, or an `event` goal fed by the buyer's own event sources. |
+| To plan an outcome before buying | `criteria.outcome_target` on [`request_proposals`](/docs/media-buy/task-reference/request_proposals). Proposals answer with pricing and `commercial_terms.bidding` the buyer can compare. To see both guaranteed and optimized offers, leave `criteria.offer_filters.delivery_type` and `pricing_structures` unset and compare pricing models across proposals. |
+| To tell the seller how it is doing by the buyer's own measure | [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback): a `performance_index` against a named `baseline` for one metric. Use it when the buyer's view differs from the seller's count, for example when the buyer's measurement discounts invalid clicks. |
+
+Avoid stating goals the buyer will not judge on. Every extra goal dilutes the seller's objective; a metric the buyer only wants to see belongs in `committed_metrics[]`.
+
 ### Worked example: Adelaide attention end-to-end
 
 A buyer wants to optimize against Adelaide's `attention_score` with a threshold of 70. Here's how the four surfaces line up:
