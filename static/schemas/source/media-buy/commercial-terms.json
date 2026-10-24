@@ -118,9 +118,13 @@
       "type": "array",
       "items": { "$ref": "/schemas/media-buy/change-term.json" },
       "minItems": 1,
-      "description": "Binding buyer change rights included in the commercial envelope and therefore covered by terms_digest. Entries are uniquely keyed by action. When this field is present, an omitted action is not a negotiated change right. Omission of the entire field means legacy-unspecified rights, not a prohibition.",
+      "description": "Binding change rights included in the commercial envelope and therefore covered by terms_digest. Buyer-held by default; entries are keyed by holder, purchase_index (when present) and action, and term_id is unique. With holder seller (experimental, media_buy.seller_adjustment_allowances) the seller states the term and the buyer binds it through accept_proposal; with none, the seller has no unilateral leeway. When this field is present, an omitted buyer action is not a negotiated change right. Omission of the entire field means legacy-unspecified buyer rights, not a prohibition. Sellers MUST NOT emit a seller-held term below AdCP 3.3.",
       "x-adcp-validation": {
-        "unique_by": "action"
+        "unique_by": ["holder", "purchase_index", "action"],
+        "verifier_constraints": {
+          "change_term_ids": "term_id_unique_across_holders",
+          "absent_key_parts": "absent_holder_is_buyer_and_absent_purchase_index_is_whole_media_buy"
+        }
       }
     },
     "definition_pins": {

@@ -44,7 +44,9 @@
           "reporting.delivery_ready",
           "reporting.status_changed",
           "reporting.ledger_changed",
-          "proposal.created"
+          "proposal.created",
+          "proposal.offered",
+          "media_buy.allowance_applied"
         ]
       },
       "minItems": 1,

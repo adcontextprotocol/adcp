@@ -323,7 +323,7 @@ test('proposal change terms expose seller-managed elapsed-time commitments', asy
 
   const commercialTerms = readSchema('/schemas/media-buy/commercial-terms.json');
   assert.equal(commercialTerms.properties.change_terms.items.$ref, '/schemas/media-buy/change-term.json');
-  assert.equal(commercialTerms.properties.change_terms['x-adcp-validation'].unique_by, 'action');
+  assert.deepEqual(commercialTerms.properties.change_terms['x-adcp-validation'].unique_by, ['holder', 'purchase_index', 'action']);
 });
 
 test('3.2 action projections use change_term_id while retaining the 3.1 terms_ref alias', async () => {

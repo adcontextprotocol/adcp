@@ -1,0 +1,152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/applied-seller-adjustment.json",
+  "title": "Applied Seller Adjustment",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Record of one change the seller applied to a live media buy under a seller-held change term (change_terms[] with holder seller). It is the readback in get_media_buys applied_adjustments[] and its adjustment_id is the notification_id of media_buy.allowance_applied. Each application advances the buy's revision and mints an accepted successor proposal, named by accepted_proposal_id, that carries the terms forward. The revision history entry records the origin in actor (seller_system for automation, seller_operator when a person applied it), plus term_id and reason, and the account change feed record carries the same origin.kind, term_id and reason. Experimental in AdCP 3.3 (media_buy.seller_adjustment_allowances).",
+  "type": "object",
+  "properties": {
+    "adjustment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "applied_seller_adjustment",
+      "description": "Seller-assigned identifier, unique within the seller's account namespace (it is the notification_id) and stable across re-emissions."
+    },
+    "term_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "x-entity": "media_buy_change_term",
+      "description": "The seller-held change_terms[] entry in the accepted commercial_terms that authorized this change."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The media buy revision this application created."
+    },
+    "accepted_proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal",
+      "description": "The accepted successor proposal minted by this application (offer_reason term_applied). Its parent_proposal_id is the proposal that was accepted before, and its base_media_buy_revision is revision minus one. It becomes the buy's accepted_proposal_id."
+    },
+    "applied_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 100,
+      "pattern": "^[a-z][a-z0-9_.-]{0,99}$",
+      "description": "Short machine-readable reason code, such as forecast_shortfall; the same shape as the reason on an account change record. Human-readable text goes in the history entry's summary."
+    },
+    "purchase_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Echoes the term's purchase_index."
+    },
+    "action": {
+      "$ref": "/schemas/enums/canonical-media-buy-action.json",
+      "description": "The term's action: decrease_budget, update_impression_goal, update_flight_dates or update_targeting."
+    },
+    "package_id": {
+      "type": "string",
+      "x-entity": "package",
+      "description": "The package the changed purchase maps to, when the seller assigned one."
+    },
+    "previous_value": {
+      "type": [
+        "number",
+        "string",
+        "boolean",
+        "object",
+        "array",
+        "null"
+      ],
+      "description": "The affected field's value before this change: the purchase budget or impressions (a number), an object with start_time and end_time (update_flight_dates), or the purchase targeting_overlay (update_targeting)."
+    },
+    "value": {
+      "type": [
+        "number",
+        "string",
+        "boolean",
+        "object",
+        "array",
+        "null"
+      ],
+      "description": "The affected field's value after this change, in the same shape as previous_value."
+    },
+    "alternate_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Position in the term's constraints.alternates[] that was used, when the change selected an alternate."
+    },
+    "skipped_alternates": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Earlier alternates that were not used, each with why it was unavailable, so the first-available rule is auditable.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "alternate_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          }
+        },
+        "required": [
+          "alternate_index",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "adjustment_id",
+    "term_id",
+    "revision",
+    "accepted_proposal_id",
+    "applied_at",
+    "reason",
+    "purchase_index",
+    "action",
+    "previous_value",
+    "value"
+  ],
+  "dependencies": {
+    "skipped_alternates": [
+      "alternate_index"
+    ]
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "A budget release applied within a seller-held decrease_budget term with a 4,000 USD floor",
+      "data": {
+        "adjustment_id": "adj_mb_a_0003",
+        "term_id": "release_budget_1",
+        "revision": 6,
+        "accepted_proposal_id": "prop_accepted_mb_a_0006",
+        "applied_at": "2026-11-12T09:30:00Z",
+        "reason": "forecast_shortfall",
+        "purchase_index": 0,
+        "action": "decrease_budget",
+        "previous_value": 5000,
+        "value": 4600
+      }
+    }
+  ]
+}
