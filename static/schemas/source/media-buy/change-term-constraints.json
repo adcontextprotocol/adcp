@@ -172,7 +172,7 @@
           "description": "Minimum elapsed notice before the start of the affected period."
         }
       },
-      "required": ["kind", "alternates"],
+      "required": ["kind"],
       "anyOf": [
         { "required": ["alternates"] }
       ],
