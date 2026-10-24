@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/control-media-buy-request.json",
   "title": "Control Media Buy Request",
-  "description": "Apply revision-checked delivery controls or non-commercial metadata changes authorized by the MediaBuy's current available_actions[]. For a proposal-bound buy, the accepted envelope includes any applicable commercial_terms.change_terms[]: a self-serve control inside that term's typed constraints is already authorized. A control with no negotiated right returns ACTION_NOT_ALLOWED; a control that exercises an existing right outside its typed bounds returns REQUOTE_REQUIRED, after which the buyer can fork the accepted proposal through refine_proposals. Provide at least one control field. cancellation_reason requires canceled: true; cancellation is mutually exclusive with every other control. Creative mutation, new products/packages, flight changes, pricing changes, and billing-term changes are not accepted here.",
+  "description": "Apply revision-checked delivery controls or non-commercial metadata changes authorized by the MediaBuy's current available_actions[]. For a proposal-bound buy, the accepted envelope includes any applicable commercial_terms.change_terms[]: a self-serve control inside that term's typed constraints is already authorized. A control with no negotiated right returns ACTION_NOT_ALLOWED; a control that exercises an existing right outside its typed bounds returns REQUOTE_REQUIRED, after which the buyer can fork the accepted proposal through refine_proposals. Provide at least one control field. cancellation_reason requires canceled: true; cancellation is mutually exclusive with every other control, as is the experimental reaffirm_signer (see its description). Creative mutation, new products/packages, flight changes, pricing changes, and billing-term changes are not accepted here.",
   "x-tool-summary": "Rename, pause, resume, cancel, or adjust delivery controls within accepted proposal change rights.",
   "type": "object",
   "x-mutates-state": true,
@@ -60,6 +60,13 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 500
+    },
+    "reaffirm_signer": {
+      "type": "boolean",
+      "const": true,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (feature id media_buy.signer_key_revoked). Reaffirm that this buy is the buyer's: the buyer has reviewed it, and it was intended although an earlier request that created or changed it came from a suspect signer (the media buy carries the signer_key_revoked indicator). Accepted only from a request verified under a non-revoked key, and only while reaffirm_signer is in the buy's available_actions[]; otherwise the seller returns ACTION_NOT_ALLOWED. Changes nothing else on the buy, clears the signer_key_revoked indicator, and is mutually exclusive with every other control. Buys the buyer did not intend use the existing pause and cancel controls."
     },
     "total_budget": {
       "type": "object",
@@ -135,6 +142,7 @@
     { "required": ["name"] },
     { "required": ["paused"] },
     { "required": ["canceled"] },
+    { "required": ["reaffirm_signer"] },
     { "required": ["total_budget"] },
     { "required": ["daily_budget_cap"] },
     { "required": ["frequency_cap"] },
@@ -158,6 +166,28 @@
           "anyOf": [
             { "required": ["name"] },
             { "required": ["paused"] },
+            { "required": ["reaffirm_signer"] },
+            { "required": ["total_budget"] },
+            { "required": ["daily_budget_cap"] },
+            { "required": ["frequency_cap"] },
+            { "required": ["budget_cap_timezone"] },
+            { "required": ["budget_allocation"] },
+            { "required": ["pacing"] },
+            { "required": ["bidding"] },
+            { "required": ["packages"] },
+            { "required": ["reporting_webhook"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "required": ["reaffirm_signer"] },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["name"] },
+            { "required": ["paused"] },
+            { "required": ["canceled"] },
             { "required": ["total_budget"] },
             { "required": ["daily_budget_cap"] },
             { "required": ["frequency_cap"] },

@@ -54,6 +54,7 @@ Do not put assignment-specific fatigue or approval on the creative root. One cre
 | `budget_constrained` | Media buy or package | Budget or a spend cap materially limits otherwise eligible delivery |
 | `flight_extension_opportunity` | Media buy or package | The buy or package is outperforming its objective or plan such that extending the flight would likely capture further value |
 | `scale_budget_opportunity` | Media buy or package | The buy or package is outperforming its objective or plan and additional budget would likely compound that performance |
+| `signer_key_revoked` (experimental, added in 3.3) | Media buy | The buy's creation, or an accepted change to it, came from a request signed under a key later revoked for compromise |
 
 `flight_extension_opportunity` and `scale_budget_opportunity` (added in 3.3; both are valid on a media buy or a package) are affirmative advisories. They stay distinct from neighboring types: "Outperforming" means performance against objective or plan, not delivery volume alone: projected over- or under-delivery is `pacing_risk`. `scale_budget_opportunity` is distinct from `budget_constrained` (a budget or spend cap limits otherwise eligible delivery), but the two are not mutually exclusive: a cap-limited, outperforming buy MAY carry both. A buy MAY likewise carry `flight_extension_opportunity` and `scale_budget_opportunity` together. Rationale and any suggested end date or budget change belong in `ext`; there is no typed action payload. Example indicator item: An opportunity indicator never pre-authorizes anything: the buyer applies it, if at all, through `update_media_buy` and the normal governance path. A seller MUST NOT emit either type unless it advertises it in `supported_indicator_types`.
 
@@ -64,6 +65,22 @@ Do not put assignment-specific fatigue or approval on the creative root. One cre
   "ext": { "seller_example": { "rationale": "Pacing 22% above plan; extending captures momentum." } }
 }
 ```
+
+### Buys accepted under a compromised key (experimental)
+
+<Note>
+**Experimental in 3.3** (feature id `media_buy.signer_key_revoked`, see [experimental status](/docs/reference/experimental-status), [#8158](https://github.com/adcontextprotocol/adcp/issues/8158)). A seller that sets this indicator declares the feature id in `experimental_features` and lists `signer_key_revoked` in `media_buy.supported_indicator_types`.
+</Note>
+
+`signer_key_revoked` is the standard signal for the exposure the [security guide](/docs/building/by-layer/L1/security#transport-revocation) calls **suspect requests**: a request verified under a key revoked with `reason: keyCompromise` that the seller received at or after the key's `invalidity_date`, or at any time when the revocation publishes no date. Revocation never unwinds committed work, so the buy keeps running. The indicator tells the buyer which buys to review.
+
+- **Placement.** Media buy only. A seller advertising the type sets it on every buy whose creation, or any accepted change, came from a suspect request.
+- **Retroactive.** The window of exposure ends when the revocation reaches the seller, so the seller sets the indicator after the fact, when its view of the revocation list first includes the key. It sets it again if a later list moves `invalidity_date` earlier and so makes more already-accepted requests suspect. `detected_at` is when the seller flagged the buy.
+- **Record kept.** To do this, a seller SHOULD retain the `verified_signer` it records for each verified request (`keyid`, agent, and `verified_at`, the receipt time) beside each buy that request created or changed.
+- **Finding the buys.** Poll `get_media_buys` with `indicator_types: ["signer_key_revoked"]`, or subscribe to `indicators.changed`. The usual rules apply: send the filter only when the seller advertises the type, and reread without the filter to reconcile.
+- **Resolving a buy.** The indicator clears only when the seller accepts [`control_media_buy` with `reaffirm_signer: true`](/docs/media-buy/task-reference/control_media_buy#reaffirming-a-buy-after-a-key-compromise-experimental) under a non-revoked key. Pausing or cancelling does not clear it, and neither does a later accepted change: the indicator describes how the buy was accepted, not its status. A buy the buyer did not intend uses the existing `paused` and `canceled` controls. Disputes go through the commercial relationship.
+
+Bulk resolution, such as one call that reaffirms every buy flagged for a key except a list of IDs, is not part of 3.3. It is a 3.4 follow-up: the revocation list cannot carry it, because entries are never withdrawn, and `sync_accounts` and `sync_principal` cannot carry it, because they are desired-state calls that a later call omitting the reaffirmation would undo.
 
 `pacing_risk` is the categorical forward-looking judgment on `get_media_buys`; its numeric counterpart is the optional, [experimental](/docs/reference/experimental-status) `projection` on `get_media_buy_delivery` `by_package[]` rows, and `pacing_index` is the backward-looking measure. See [Delivery projection](/docs/media-buy/task-reference/get_media_buy_delivery#delivery-projection).
 

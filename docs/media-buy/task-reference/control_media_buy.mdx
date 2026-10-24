@@ -13,10 +13,35 @@ Supported controls include:
 - total, aggregate-daily, and package budget controls;
 - budget allocation, pacing, bidding, and shared frequency capping;
 - package targeting, catalog references, keyword, impression, and optimization controls;
-- MediaBuy display-name metadata; and
+- MediaBuy display-name metadata;
+- reaffirming a buy flagged `signer_key_revoked` (experimental); and
 - reporting-webhook configuration (include a buyer-supplied `operation_id`; see [Reporting webhooks](/docs/building/by-layer/L3/webhooks#reporting-webhooks)).
 
 It does not accept creatives, creative assignments, new products/packages, flight-date changes, pricing changes, or billing-term changes. Those concerns use their dedicated lifecycle or a proposal refinement.
+
+## Reaffirming a buy after a key compromise (experimental)
+
+<Note>
+**Experimental in 3.3** (feature id `media_buy.signer_key_revoked`, see [experimental status](/docs/reference/experimental-status), [#8158](https://github.com/adcontextprotocol/adcp/issues/8158)). The field carries `x-status: experimental` and `x-added-in: "3.3.0"`.
+</Note>
+
+When a seller has accepted a buy under a suspect request, the buy carries the [`signer_key_revoked` indicator](/docs/media-buy/media-buys/indicators#buys-accepted-under-a-compromised-key-experimental) and its `available_actions[]` lists `reaffirm_signer` (`task: "control_media_buy"`, `mode: "self_serve"`) while the indicator is present. After reviewing the buy, the buyer sends:
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441013",
+  "account": { "account_id": "account_123" },
+  "media_buy_id": "media_buy_789",
+  "revision": 6,
+  "reaffirm_signer": true
+}
+```
+
+- **Only from a trustworthy signature.** The seller accepts it only when the request was verified under a request-signing profile with a key that is not revoked. A revoked key never verifies, so a holder of the compromised key cannot reaffirm.
+- **Changes nothing else.** It alters no field of the buy, its packages, or its accepted commercial terms, and it is mutually exclusive with every other control in the same request. The seller clears `signer_key_revoked`, and the next [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) read omits it or reports it absent in a newer evaluation. It is not a negotiated change right, so no `change_term_id` applies.
+- **Not a lasting exemption.** It clears the suspect requests the seller had flagged. If the seller later flags more accepted requests, for example because a revocation list moves `invalidity_date` earlier, it sets the indicator again.
+- **Errors.** When `reaffirm_signer` is not in the buy's `available_actions[]`, the seller returns [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) with `reason: "not_supported_on_buy"`. A request not verified under a non-revoked signing key returns [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied).
+- **Unintended buys.** A buy the buyer did not make is paused or canceled with the existing controls, signed with a current key. Reaffirming one buy at a time is the 3.3 scope. Bulk resolution is a 3.4 follow-up.
 
 ## Transaction boundary
 

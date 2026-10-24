@@ -110,6 +110,10 @@
     {
       "if": { "properties": { "indicators": { "contains": { "properties": { "type": { "const": "scale_budget_opportunity" } }, "required": ["type"] } } }, "required": ["indicators"] },
       "then": { "properties": { "indicator_types_evaluated": { "contains": { "const": "scale_budget_opportunity" } } } }
+    },
+    {
+      "if": { "properties": { "indicators": { "contains": { "properties": { "type": { "const": "signer_key_revoked" } }, "required": ["type"] } } }, "required": ["indicators"] },
+      "then": { "properties": { "indicator_types_evaluated": { "contains": { "const": "signer_key_revoked" } } } }
     }
   ],
   "x-adcp-validation": {

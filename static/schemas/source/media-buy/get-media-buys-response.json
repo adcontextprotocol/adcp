@@ -889,7 +889,8 @@
                   "enum": [
                     "budget_constrained",
                     "flight_extension_opportunity",
-                    "scale_budget_opportunity"
+                    "scale_budget_opportunity",
+                    "signer_key_revoked"
                   ]
                 }
               },
@@ -900,7 +901,8 @@
                       "enum": [
                         "budget_constrained",
                         "flight_extension_opportunity",
-                        "scale_budget_opportunity"
+                        "scale_budget_opportunity",
+                        "signer_key_revoked"
                       ]
                     }
                   }
