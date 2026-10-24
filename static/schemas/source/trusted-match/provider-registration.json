@@ -43,6 +43,19 @@
       },
       "minItems": 1
     },
+    "match_keys": {
+      "type": "array",
+      "x-added-in": "3.3.0",
+      "description": "The same keys as uid_types in the match-key shape, adding the scopes and vendor each resolves at. Uses the shape of Product.identity.match_keys so the serve-time declaration and the buy-time declaration are compared with one rule. Every uid_type here MUST appear in uid_types, which remains the routing and filtering input. uses is always [\"identity_match\"].",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/match-key.json" },
+          { "properties": { "uses": { "items": { "const": "identity_match" } } } },
+          { "not": { "required": ["property_types"] } }
+        ]
+      },
+      "minItems": 1
+    },
     "properties": {
       "type": "array",
       "description": "Property RIDs (UUID v7) this provider serves. When present, the router only sends requests from these properties to this provider. When absent, the provider serves all properties.",
