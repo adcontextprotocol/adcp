@@ -530,7 +530,15 @@ These are not pinned: property lists and collection lists (buyer-managed and
 designed to change during a flight, with `list_applications` receipts as the
 evaluation record), product-local format options, seller-inline placements,
 product-scoped and signal-source signals (a seller would only be hashing and
-checking its own data), and default-mode selections (`mode: default`). A pin
+checking its own data), default-mode selections (`mode: default`), and the
+installment references in `purchases[].installments` (experimental,
+`media_buy.installment_selection`) — an installment is the seller's own
+published data, so a pin would again have it hashing and checking itself, and
+its schedule is expected to move, which is what `valid_until` and the
+reschedule flows exist for. The consequence is stated under
+[known limitations](/docs/reference/known-limitations#compact-product-lifecycle):
+`terms_digest` binds which slot identifiers were bought, not what is later
+published under them. A pin
 covers the entry as published, not the entries it names by ID: a placement pin
 does not pin the catalog format options that placement lists, which are pinned
 only when a purchase references them itself.

@@ -237,10 +237,6 @@ phases:
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             operation_id: "op_create_media_buy_async_submitted"
-            authentication:
-              schemes:
-                - "HMAC-SHA256"
-              credentials: "media-buy-seller-webhook-secret-token"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_create_media_buy_async_submitted_arm_response_create_media_buy_submitted"
           context:
             correlation_id: "create_media_buy_async--create_media_buy_submitted"

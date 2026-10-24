@@ -193,12 +193,33 @@ describe('request-only targeting null-clear semantics', () => {
     );
   });
 
+  // Deliberate asymmetries between the accepted snapshot and the buy_products
+  // request shape. Each entry is a scope decision, not drift: adding a
+  // property to one side without listing it here still fails loudly.
+  const PROPOSAL_ONLY_PURCHASE_FIELDS = new Set([
+    // Installment selection (#8230) is a negotiation surface. Direct purchase
+    // would need its own acceptance-time reservation contract for a slot sold
+    // between discovery and buy, which 3.3 does not define.
+    'installments',
+  ]);
+
   test('codegen-safe product purchase input copies remain in strict-schema parity', () => {
     const strict = readSchema('/schemas/media-buy/product-purchase.json');
     const input = readSchema('/schemas/media-buy/product-purchase-input.json');
-    assert.deepEqual(Object.keys(input.properties).sort(), Object.keys(strict.properties).sort());
+    assert.deepEqual(
+      Object.keys(input.properties).sort(),
+      Object.keys(strict.properties).filter(name => !PROPOSAL_ONLY_PURCHASE_FIELDS.has(name)).sort()
+    );
     for (const property of Object.keys(strict.properties)) {
       if (property === 'targeting_overlay') continue;
+      if (PROPOSAL_ONLY_PURCHASE_FIELDS.has(property)) {
+        assert.equal(
+          input.properties[property],
+          undefined,
+          `${property} is proposal-only and must not appear on buy_products input`
+        );
+        continue;
+      }
       const strictPropertyRef = `/schemas/media-buy/product-purchase.json#/properties/${property}`;
       if (input.properties[property].$ref === strictPropertyRef) continue;
       assert.deepEqual(
