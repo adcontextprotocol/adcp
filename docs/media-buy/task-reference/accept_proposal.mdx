@@ -35,6 +35,10 @@ If the proposal belongs to an `opportunity`, acceptance closes that planning cyc
 
 Success returns the resulting MediaBuy identity, the proposal with `proposal_status: "accepted"`, and `purchase_bindings[]` mapping proposal purchase positions to package IDs for later creative assignment. Acceptance is idempotent. The seller atomically verifies `proposal_id`, `proposal_terms_digest`, expiry, and any `base_media_buy_revision`; stale or mismatched acceptance never applies different terms.
 
+For scheduled media, that digest check binds which slots were bought. A purchase's `installments` (experimental, `media_buy.installment_selection`) lives inside `commercial_terms`, so dropping or swapping an installment during [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals#change-installments-experimental) changes `terms_digest`: a buyer that accepts with the digest it last read cannot be given a different *set of slot identifiers* than the one it agreed to. A purchase that carries no `installments` is buying the product as offered, which is run-of-collection when the product names no installments.
+
+What the digest does **not** bind is what the seller later publishes under those identifiers. `scheduled_at`, `deadlines`, `status` and the rest of the installment live on the Product, not in `commercial_terms`, and installment references are not [definition-pinned](/docs/media-buy/specification#definition-pins). A seller that moves `slot_2` from December to January still verifies against the same `terms_digest`, and no pin drifts. Buyers that need to detect a reschedule re-read the product before and after acceptance, bounded by each installment's `valid_until`; see [known limitations](/docs/reference/known-limitations#compact-product-lifecycle).
+
 The optional `name` is buyer-authored MediaBuy display metadata, not a
 commercial proposal term. A supplied request value wins over `proposal.name`,
 is persisted unchanged, and is echoed outside `accepted_proposal`; it is not

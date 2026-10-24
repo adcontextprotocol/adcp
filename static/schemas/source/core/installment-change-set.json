@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/installment-change-set.json",
+  "title": "Installment Change Set",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Installment-level membership actions for one proposal refinement, each naming the purchase it applies to by product_id and the installment by its closed canonical (collection_ref, installment_id) reference. A tuple cannot be an object key, so this is a list rather than a map. Unlike core/product-change-map.json, whose object keys make a contradiction structurally unrepresentable, uniqueness here is a requirement rather than a guarantee: entries MUST be unique by (product_id, installment_ref), and a seller receiving a repeated or contradictory pair rejects the request at task level with INVALID_REQUEST rather than applying the entries in an arbitrary order. Buyers SHOULD order entries by the JCS bytes of (product_id, installment_ref) so a rebuilt retry hashes to the same idempotency payload, and sellers MUST NOT make the result depend on order.",
+  "type": "array",
+  "items": {
+    "title": "Installment Change",
+    "type": "object",
+    "properties": {
+      "product_id": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "product",
+        "description": "Product whose purchase in commercial_terms.purchases carries the installment."
+      },
+      "installment_ref": {
+        "$ref": "/schemas/core/canonical-installment-ref.json",
+        "description": "Installment the action applies to. It MUST be one the named product's installments declare. The seller validates that product_id is purchased by the source proposal BEFORE resolving this reference, so an unauthorized caller never causes reference resolution; an unresolvable reference is then rejected at task level with REFERENCE_NOT_FOUND rather than returned as an unsatisfied change."
+      },
+      "action": {
+        "type": "string",
+        "enum": ["include", "omit"],
+        "description": "Required, because a drop that silently defaulted to include is the expensive failure. include requires the installment to be present in that purchase's installments in every returned draft; omit requires its absence. Swapping a slot is one omit plus one include in the same refinement."
+      }
+    },
+    "required": ["product_id", "installment_ref", "action"],
+    "additionalProperties": false
+  },
+  "minItems": 1,
+  "maxItems": 500,
+  "uniqueItems": true,
+  "x-adcp-validation": {
+    "unique_by": ["product_id", "installment_ref"],
+    "ordered_by": "jcs_bytes_of_entry",
+    "verifier_constraints": {
+      "duplicate_entries": "reject_at_task_level_with_invalid_request"
+    }
+  }
+}

@@ -50,15 +50,20 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // daypart requirement in the targeting-bearing tools. Experimental
   // list_collections (#8183) adds one tool and the collection selector,
   // collection kind, and genre taxonomy definitions it alone reaches, plus the
-  // shared locale tag its languages filter references.
+  // shared locale tag its languages filter references. Compact installment
+  // selection (#8230) adds the installment change set reached from
+  // refine_proposals plus the closed CanonicalInstallmentRef, which also
+  // reaches buy_products through product-purchase-input.json's $refs into the
+  // product-purchase document. Merged on top of main's 710/191/136 this
+  // measures 713 instances, 193 unique and 137 repeated definitions.
   // Media-buy lineage adds the shared lineage reason enum, reached from
   // create_media_buy and buy_products.
   // opportunity.later_proposals adds a Duration reference to the shared
   // opportunity context reached from the proposal and purchase tools (+2).
   // Core gender adds one shared predicate reached by five inputs.
-  assert.equal(report.definition_instances, 710);
-  assert.equal(report.unique_definitions, 191);
-  assert.equal(report.repeated_definitions, 136);
+  assert.equal(report.definition_instances, 713);
+  assert.equal(report.unique_definitions, 193);
+  assert.equal(report.repeated_definitions, 137);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -182,7 +187,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 191);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 193);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

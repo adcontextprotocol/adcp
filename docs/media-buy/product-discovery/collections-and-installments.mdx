@@ -741,6 +741,120 @@ For premium or guaranteed buys, the seller scopes to specific installments:
 }
 ```
 
+## Installments in the compact lifecycle
+
+The examples above are the additive `get_products` Product. The compact lifecycle — [`list_products`](/docs/media-buy/task-reference/list_products), [`request_proposals`](/docs/media-buy/task-reference/request_proposals), [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) — uses the closed canonical Product, which carries installments from AdCP 3.3 onward.
+
+One shape difference matters. A canonical installment's identity is the `(collection_ref, installment_id)` tuple and nothing else: `collection_ref` is **required**, and the deprecated publisher-domain-free `collection_id` shorthand that `core/installment.json` still accepts is absent. Legacy `get_products` keeps its existing form.
+
+{/* Using latest because canonical-installment.json is not yet released in any version.
+     Update to correct version alias after the next release. */}
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/canonical-installment.json",
+  "installment_id": "juniper_vale_slot_2",
+  "collection_ref": {
+    "publisher_domain": "creatorloop.example",
+    "collection_id": "creatorloop_channel_juniper_vale"
+  },
+  "name": "Juniper Vale Cooks: Meal prep Sunday (sponsored integration)",
+  "status": "scheduled",
+  "scheduled_at": "2026-12-29T17:00:00Z",
+  "duration_seconds": 720,
+  "valid_until": "2026-11-17T17:00:00Z",
+  "deadlines": {
+    "booking_deadline": "2026-11-17T17:00:00Z",
+    "cancellation_deadline": "2026-11-24T17:00:00Z",
+    "material_deadlines": [
+      { "stage": "talking_points", "due_at": "2026-12-01T17:00:00Z", "label": "Talking points and brand guidelines" },
+      { "stage": "script", "due_at": "2026-12-15T17:00:00Z", "label": "Creator script for brand approval" },
+      { "stage": "draft", "due_at": "2026-12-22T17:00:00Z", "label": "Draft cut for final review" }
+    ]
+  }
+}
+```
+
+### Absence is run-of-collection, not "unknown"
+
+A canonical product that declares `collections` and omits `installments` is run-of-collection: inventory across those collections, whatever publishes during the flight. This is the same rule as the legacy Product, and it is the reason `installments` cannot be used to say "no installments are available" — a seller with nothing bookable omits the product.
+
+The converse is a schema rule, not a convention: `installments` requires `collections`, because a canonical installment names the collection that scopes its ID. A projection that asks for `installments` therefore gets `collections` back too.
+
+Two qualifications matter in practice.
+
+**Absence only means run-of-collection inside a projection that asked for the field.** `list_products` returns what `fields` requested, so a product with no `installments` in a projection that never requested them says nothing at all. A buyer choosing between specific slots and run-of-collection requests `installments` explicitly.
+
+**The collection scope is a buyer check, not just a seller rule.** Every top-level `collection_ref` MUST be one the product's `collections` selectors already name, and `publisher_domain` is the authorization root — it names the `adagents.json` that declares the collection. JSON Schema cannot express the set relationship, so buyers MUST reject a product whose installment names a collection its own selectors do not, rather than treating the installment as authorized inventory. (A `derivative_of.installment_ref` is deliberately exempt: a clip may name a source in another collection, and it is a provenance pointer rather than something being sold.)
+
+### Buying exact installments (experimental)
+
+Naming the specific slots a purchase buys is experimental under the feature id `media_buy.installment_selection`. A proposal's `commercial_terms.purchases[].installments` holds canonical references into the allocated product's `installments`:
+
+```json
+{
+  "product_id": "creatorloop_creator_juniper_vale",
+  "pricing_option_id": "flat_usd",
+  "installments": [
+    {
+      "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+      "installment_id": "juniper_vale_slot_1"
+    },
+    {
+      "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+      "installment_id": "juniper_vale_slot_2"
+    }
+  ]
+}
+```
+
+Present, the array is the complete bought set for that purchase, ordered by the JCS bytes of each reference so equal bought sets always serialize to equal digests. Absent, the purchase buys the product as offered — run-of-collection when the product names no installments, and the product's complete installment set when it does. Absence never means "no installments", which is why a buyer that does not implement the feature MUST reject a proposal carrying `installments` rather than ignore the field: ignoring it reads a two-slot buy as an eight-slot one.
+
+Because `installments` lives inside `commercial_terms`, it is covered by `terms_digest`. Dropping or swapping a slot produces a different digest, so the `proposal_terms_digest` that [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) verifies binds the exact slots bought, not just the product and the price.
+
+### Dropping and swapping a slot
+
+`refine_proposals` carries `installment_changes`, the installment-level analogue of `product_changes`. A tuple cannot be an object key, so it is a list rather than a map, and each entry names the purchase by `product_id`:
+
+```json
+{
+  "proposal_id": "prop_creatorloop_7781",
+  "action": "revise",
+  "installment_changes": [
+    {
+      "product_id": "creatorloop_creator_juniper_vale",
+      "installment_ref": {
+        "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+        "installment_id": "juniper_vale_slot_2"
+      },
+      "action": "omit"
+    },
+    {
+      "product_id": "creatorloop_creator_juniper_vale",
+      "installment_ref": {
+        "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+        "installment_id": "juniper_vale_slot_3"
+      },
+      "action": "include"
+    }
+  ]
+}
+```
+
+A swap is one `omit` plus one `include` in the same refinement, and it is not atomic — the seller may satisfy the `omit`, fail the `include`, and return `partial`. Entries MUST be unique by `(product_id, installment_ref)`. Unlike `product_changes`, whose object keys make a contradiction structurally impossible, that is a requirement the list shape cannot enforce, so a seller receiving a repeated or contradictory pair rejects the request with `INVALID_REQUEST` rather than applying entries in an arbitrary order. Changes the seller understood but could not satisfy come back as `constraint_unsatisfiable` with the failing entries echoed in `unsatisfied_installment_changes`. For the full check order and error codes, see [Change installments](/docs/media-buy/task-reference/refine_proposals#change-installments-experimental).
+
+Three seller postures are visible from capabilities, and buyers should expect all three:
+
+| Seller declares | What a buyer can do |
+|---|---|
+| Product `installments`, no feature id | See the slot set; take the product or leave it |
+| `media_buy.installment_selection` in `experimental_features` | Also read the exact slots a proposal bought, bound by `terms_digest` |
+| …plus `installment_changes` in `supported_dimensions` | Also drop or swap a slot through `refine_proposals` |
+
+A committed proposal can separately read back which installments its hold covers, in `holds[]` (experimental, `media_buy.installment_holds`); see [Installment holds](/docs/media-buy/task-reference/refine_proposals#installment-holds-experimental). Keep the two arrays distinct: `purchases[].installments` is contract and is covered by `terms_digest`; `holds[]` is readback about the hold finalize placed and is not. The terms already fix what is reserved: a purchase that names `installments` is one the seller reserves exactly, whenever its effective hold policy holds at all. The readback is the looser side — every `holds[]` entry names a product the proposal purchases and an installment that product includes, but no rule says the array enumerates every reserved slot, and its "one that product includes" wording does not yet say whether the bought subset or the product's full slate bounds it. So whether a seller may list a slot you dropped through `installment_changes` is unsettled for now, as is whether revising away from a held slot releases that hold. Because `extend_hold` changes no terms, `installment_changes` is forbidden on it.
+
+Sellers declare support by listing `installment_changes` in `media_buy.proposal_refinement.supported_dimensions`, which requires `media_buy.installment_selection` in `experimental_features`. Buyers MUST NOT send the field otherwise.
+
 ## get_products response structure
 
 Products reference collections via `collections` selectors — the same pattern as `publisher_properties`. Each selector has a `publisher_domain` and `collection_ids` array pointing to collections declared in that publisher's `adagents.json`. When the request sets `include_collections: true`, the response can also carry the full collection objects, described [below](#collections-in-responses).
@@ -1423,3 +1537,5 @@ The collection/installment model works identically for print publications and au
 - [Print ads](/docs/creative/channels/print) — print-specific creative formats, physical dimensions, bleed, and DPI
 - [brand.json](/docs/brand-protocol/brand-json) — talent identity and brand safety evaluation
 - [Product discovery](/docs/media-buy/product-discovery) — how buyers discover inventory via `get_products`
+- [`list_products`](/docs/media-buy/task-reference/list_products) — requesting `installments` on the canonical product
+- [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals#change-installments-experimental) — dropping and swapping a bought slot
