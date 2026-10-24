@@ -3,6 +3,7 @@
   "$id": "/schemas/enums/pending-action-party.json",
   "title": "Pending Action Party",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "Whose turn it is on a pending account request or account (experimental, account.requests).",
   "type": "string",
   "enum": ["seller", "buyer"],

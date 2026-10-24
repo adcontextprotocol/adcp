@@ -3,6 +3,7 @@
   "$id": "/schemas/enums/account-request-resolution.json",
   "title": "Account Request Resolution",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "How a resolved account request produced its account (experimental, account.requests).",
   "type": "string",
   "enum": ["matched", "created"],

@@ -3,6 +3,7 @@
   "$id": "/schemas/account/get-account-requests-response.json",
   "title": "Get Account Requests Response",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "The authenticated caller's account requests (experimental, account.requests), newest updated_at first.",
   "type": "object",
   "allOf": [
