@@ -2,14 +2,21 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/canonical-performance-standard.json",
   "title": "Canonical Performance Standard",
-  "description": "Compact committed metric threshold with resolvable vendor identity and no creative or brand-asset graph.",
+  "description": "Compact committed metric threshold with resolvable vendor identity and no creative or brand-asset graph. metric_id has the semantics of performance-standard.json metric_id.",
   "type": "object",
   "properties": {
     "metric": { "$ref": "/schemas/enums/performance-standard-metric.json" },
     "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
     "standard": { "$ref": "/schemas/enums/viewability-standard.json" },
-    "vendor": { "$ref": "/schemas/core/brand-key.json" }
+    "vendor": { "$ref": "/schemas/core/brand-key.json" },
+    "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json", "x-added-in": "3.3.0" }
   },
   "required": ["metric", "threshold", "vendor"],
+  "allOf": [
+    {
+      "if": { "properties": { "metric": { "const": "viewability" } }, "required": ["metric"] },
+      "then": { "not": { "required": ["metric_id"] } }
+    }
+  ],
   "additionalProperties": false
 }
