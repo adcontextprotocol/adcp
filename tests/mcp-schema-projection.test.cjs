@@ -121,8 +121,12 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // measure 468,555 bytes / 457.57 KiB, within the existing 462 KiB ceiling.
 // Product service commitments (#8408) add report/poll request shapes. The
 // media-buy context measures 473,582 bytes / 462.48 KiB; bound it at 463 KiB.
+// The experimental price_adjustments table (#7659: fee and discount rows, three
+// selector variants, validity windows) adds its row schema once to the
+// canonical pricing option embedded in media-buy tool inputs (475,567 bytes /
+// 464.4 KiB measured); bound it at 465 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 463,
+  'media-buy': 465,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
