@@ -57,6 +57,7 @@ import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, b
 import { BrandDatabase, HostedBrandConflictError, canSurfaceBrandForMember, resolveBrandFromJson, sanitizeBrandSnapshot } from "./db/brand-db.js";
 import { isDomainControlVerified, publicBrandJsonManifest } from "./services/brand-trust-fields.js";
 import { getStandaloneSite, resolveStandaloneRequest, type StandaloneSite } from "./standalone-sites.js";
+import { createTrustLookupRouter } from './routes/trust-lookup.js';
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -1932,6 +1933,7 @@ export class HTTPServer {
     });
     this.complianceRefreshQueue = complianceRefreshQueue;
     this.app.use('/api', registryApiRouter);
+    this.app.use('/api/trust', createTrustLookupRouter({ brandManager: this.brandManager }));
     // adcp#4924: spec defines the AAO directory inverse-lookup path as
     // /v1/agents/{url}/publishers (docs/aao/directory-api.mdx). Mount the
     // v1AgentsRouter at /v1 so spec-conformant clients work without the /api
