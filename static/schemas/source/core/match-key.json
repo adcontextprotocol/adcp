@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/match-key.json",
+  "title": "Match Key",
+  "description": "One identifier a party can resolve, the entity scopes it resolves at, and the uses it supports. Capability only: MUST NOT carry match rates, audience sizes, coverage, or per-user or per-graph data. Two keys are compatible at scope S when they share uid_type, both list S in scopes, and their vendor domains are equal when both declare vendor. Sellers using this shape list media_buy.match_keys in experimental_features.",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "uid_type": {
+      "$ref": "/schemas/enums/uid-type.json",
+      "description": "Identifier type. Match keys draw from uid-type only; supported_identifier_types is not a match-key source."
+    },
+    "vendor": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Graph or resolution vendor that produces this key at the declared scopes. Required when uid_type is other; otherwise declare it when the scope depends on a graph, for example maid resolved to households."
+    },
+    "scopes": {
+      "type": "array",
+      "description": "Entity granularities this key resolves at; list each when there are several. custom is not comparable across parties and is excluded.",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/enums/reach-unit.json" },
+          { "not": { "const": "custom" } }
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "uses": {
+      "type": "array",
+      "description": "Purposes this key supports at the declared scopes.",
+      "items": {
+        "$ref": "/schemas/enums/match-key-use.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "property_types": {
+      "type": "array",
+      "description": "Seller-wide declarations only: property types on which this key resolves. Omit to mean every property type the seller sells. Product-level keys inherit the product's property types.",
+      "items": {
+        "$ref": "/schemas/enums/property-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["uid_type", "scopes", "uses"],
+  "allOf": [
+    {
+      "description": "A key outside the uid-type enum is identified by its vendor.",
+      "if": {
+        "properties": { "uid_type": { "const": "other" } },
+        "required": ["uid_type"]
+      },
+      "then": { "required": ["vendor"] }
+    },
+    {
+      "description": "PAIR is publisher-scoped and rotates every 30 days, and unsalted hashed_email in TMP widens the identity-leak surface, so neither is forwarded to buyer-side Identity Match.",
+      "if": {
+        "properties": { "uid_type": { "enum": ["pairid", "hashed_email"] } },
+        "required": ["uid_type"]
+      },
+      "then": {
+        "properties": {
+          "uses": { "not": { "contains": { "const": "identity_match" } } }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

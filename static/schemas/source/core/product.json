@@ -812,6 +812,34 @@
       }
     },
     {
+      "description": "A match key forwarded to buyer-side Identity Match requires a product that supports Identity Match.",
+      "if": {
+        "properties": {
+          "identity": {
+            "properties": {
+              "match_keys": {
+                "contains": {
+                  "properties": { "uses": { "contains": { "const": "identity_match" } } },
+                  "required": ["uses"]
+                }
+              }
+            },
+            "required": ["match_keys"]
+          }
+        },
+        "required": ["identity"]
+      },
+      "then": {
+        "properties": {
+          "trusted_match": {
+            "properties": { "identity_match": { "const": true } },
+            "required": ["identity_match"]
+          }
+        },
+        "required": ["trusted_match"]
+      }
+    },
+    {
       "description": "A configured product with request-specific targeting resolution is time-bound so the seller cannot apply stale targeting, price, or forecast assumptions indefinitely.",
       "if": {
         "required": ["targeting_resolution"]

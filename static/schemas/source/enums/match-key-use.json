@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/match-key-use.json",
+  "title": "Match Key Use",
+  "description": "Purpose for which a declared match key resolves. Values name the existing protocol surfaces that consume the key. Retargeting is audience_include with a crm audience; it has no separate value.",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "type": "string",
+  "enum": [
+    "audience_include",
+    "audience_exclude",
+    "frequency_cap",
+    "identity_match",
+    "conversion_attribution"
+  ],
+  "enumDescriptions": {
+    "audience_include": "The seller matches this key against audiences synced through sync_audiences and referenced from targeting_overlay.audience_include, including crm audiences used for retargeting.",
+    "audience_exclude": "The seller matches this key against audiences referenced from targeting_overlay.audience_exclude, including suppression audiences.",
+    "frequency_cap": "The seller counts impressions against this key when it enforces a seller-side cap: a package frequency_cap, a MediaBuy frequency_cap, or a later seller-side grouping of buys. Seller-side caps never span sellers.",
+    "identity_match": "For this product, the seller's TMP router forwards this key to buyer-side Identity Match, so the buyer's impression tracker can count the product's impressions against caps that span sellers. On a TMP provider declaration, the provider resolves this key in Identity Match.",
+    "conversion_attribution": "The seller matches this key against conversion events sent through log_event for attribution."
+  }
+}

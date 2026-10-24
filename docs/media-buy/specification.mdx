@@ -412,6 +412,110 @@ every contributing package selected a product with
 product-specific identity claim. Sellers use package or product-bound
 breakdowns to report and verify reach or frequency for mixed buys.
 
+### Match keys and cross-publisher frequency capping (experimental)
+
+A match key declares one identifier a party can resolve, the entity scopes it
+resolves at, and what it is used for
+([`core/match-key.json`](https://adcontextprotocol.org/schemas/latest/core/match-key.json)).
+Buyers read match keys before committing addressable spend, to learn whether a
+seller can apply their suppression, retargeting, attribution, and frequency
+caps on a given product. Sellers using match keys list `media_buy.match_keys`
+in `experimental_features`.
+
+| Field | Meaning |
+|---|---|
+| `uid_type` | Identifier type from `enums/uid-type.json`. Match keys draw from this enum only. `supported_identifier_types` (`hashed_email`, `hashed_phone`) remains the list of PII-derived identifiers that `sync_audiences` accepts, and is not a source of match keys. |
+| `vendor` | BrandRef domain of the graph or resolution vendor that produces the key at the declared scopes. Required when `uid_type` is `other`. Declare it for other types when the scope depends on a graph, for example `maid` resolved to `households`. |
+| `scopes` | One or more values from `enums/reach-unit.json`, excluding `custom`. A key that resolves at more than one scope lists each. |
+| `uses` | `audience_include`, `audience_exclude`, `frequency_cap`, `identity_match`, `conversion_attribution`. Retargeting is `audience_include` with a `crm` audience. |
+| `property_types` | Seller-wide entries only. The property types (`website`, `mobile_app`, `ctv_app`, …) on which the key resolves. Omitted means every property type the seller sells. |
+
+Match keys appear in three places:
+
+- **Seller-wide:** `get_adcp_capabilities` → `media_buy.supported_match_keys[]`.
+- **Per product:** `Product.identity.match_keys[]`. When present, it is
+  authoritative for that product. Every entry MUST be covered by a seller-wide
+  entry with the same `uid_type` and `vendor` whose `scopes` and `uses` include
+  it. Product-level keys inherit the product's `channels` and the property
+  types of the properties it sells. A seller whose resolution of a key
+  differs across those property types MUST split the product or omit the key.
+  `Product.identity` requires `persistent_identifier`, so a seller declaring
+  product-level keys also declares that. Sellers declaring
+  `Product.identity` also list `media_buy.product_identity`.
+- **TMP provider registration:** `match_keys[]` in the same shape, with
+  `uses: ["identity_match"]`. These entries add scope and vendor to
+  `uid_types`. Every `uid_type` they list MUST appear in `uid_types`, which
+  stays the router's routing and filtering input.
+
+Existing lists stay as the fallback for buyers that predate match keys. A
+`uid_type` declared for `audience_include` or `audience_exclude` MUST also
+appear in `audience_targeting.supported_uid_types`, and one declared for
+`conversion_attribution` MUST appear in `conversion_tracking.supported_uid_types`,
+when those lists are present. For a key with `frequency_cap`, every scope MUST
+appear in `frequency_capping.supported_per_units` when that list is present.
+
+#### Who enforces a cap
+
+| Layer | Who counts | Spans | Match-key use |
+|---|---|---|---|
+| Package `frequency_cap` | Seller | One package | `frequency_cap` |
+| MediaBuy `frequency_cap` | Seller | Every package in one buy | `frequency_cap` |
+| Cross-MediaBuy grouping (planned, #7490) | Seller | Several buys with one seller | `frequency_cap` |
+| TMP Identity Match | Buyer: the impression tracker writes cap state keyed by identity, seller agent, and package | Every seller whose products forward a compatible key | `identity_match` |
+
+Seller-enforced caps apply within one seller. The only place an impression can
+be counted across sellers is buyer-side, through
+[Identity Match frequency capping](/docs/trusted-match/identity-match-implementation).
+Both can apply to the same package with AND semantics: an impression serves
+only when every applicable cap allows it.
+
+`frequency_cap` means the seller counts impressions against the key when it
+enforces its own caps. `identity_match` means that, for this product, the
+seller's TMP router forwards the key to buyer-side Identity Match, so the
+buyer's tracker can count the product's impressions against caps that span
+sellers. A product-level key with `identity_match` requires
+`trusted_match.identity_match: true` on the product, and its `uid_type` SHOULD
+appear in `uid_types` of an Identity Match provider the product lists. When
+`persistent_identifier` is `false`, the product MUST NOT declare a key with
+`frequency_cap` or `identity_match`.
+
+`pairid` and `hashed_email` keys MUST NOT list `identity_match`. PAIR is
+publisher-scoped and rotates every 30 days. Unsalted hashed email in TMP widens
+the identity-leak surface; this restriction stays until that TMP follow-up is
+resolved. Both remain valid for audience and attribution uses.
+
+#### Compatibility across sellers
+
+Two match keys are compatible at scope `S` when:
+
+1. they have the same `uid_type`,
+2. both list `S` in `scopes`, and
+3. when both declare `vendor`, the vendor domains are equal. Because `vendor`
+   is required for `other`, two `other` keys are compatible only under the
+   same vendor.
+
+A buyer planning a cap per `households` across sellers counts it only on
+products whose `identity_match` keys are compatible at `households` with a
+key the buyer's Identity Match provider declares. The cap is only as wide as
+that set of products. Products without a compatible key are still capped by
+any seller-enforced cap, but their impressions don't count toward the buyer's
+cross-seller cap.
+
+#### Freshness and privacy
+
+Match keys describe what a party can resolve now. Resolution can change without
+a spec change, for example when a browser or OS release blocks a resolution
+vendor's domains. A change to `supported_match_keys` is a material capability
+change: the seller advances `adcp.capability_changes.capabilities_version` and
+`last_modified` and, for subscribers, fires `capabilities.changed` with
+`/media_buy/supported_match_keys` in `changed_paths`. Buyers SHOULD NOT rely
+on a cached declaration past `cache_ttl_seconds`. A product-level change is a
+product change and follows the catalog's revision rules.
+
+A match key describes capability only. It MUST NOT carry match rates, audience
+sizes, coverage, or any per-user or per-graph data, and it does not promise the
+identifier is present on every impression.
+
 - **`media_buy_id`**: Unique identifier for a media buy. Sales agents MUST return this on successful creation. Orchestrators MUST use this for all subsequent operations on the media buy. A `media_buy_id` is a stable handle to any order in the seller's ad server that the authenticated account owns — not only orders originally booked via AdCP.
 
 - **`package_id`**: Unique identifier for a package within a media buy. Sales agents MUST return this for each package created.

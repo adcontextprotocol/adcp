@@ -800,6 +800,44 @@ narrow it. Root caps are max-impression-only in 3.2; package caps may also use
 suppression. Scope is determined by field location, not by a `FrequencyCap`
 discriminator.
 
+#### supported_match_keys (experimental)
+
+`media_buy.supported_match_keys` lists the identifiers the seller resolves,
+the entity scopes each resolves at, and the uses each supports. Sellers using
+it list `media_buy.match_keys` in `experimental_features`. A product's
+`identity.match_keys` overrides it for that product. See
+[Match keys and cross-publisher frequency capping](/docs/media-buy/specification#match-keys-and-cross-publisher-frequency-capping-experimental)
+for the full rules, including how a buyer decides whether two sellers' keys
+can count toward the same cross-seller cap.
+
+```json
+{
+  "media_buy": {
+    "supported_match_keys": [
+      {
+        "uid_type": "maid",
+        "vendor": { "domain": "example-graph.com" },
+        "scopes": ["devices", "households"],
+        "uses": ["audience_exclude", "frequency_cap", "identity_match"],
+        "property_types": ["mobile_app", "ctv_app"]
+      },
+      {
+        "uid_type": "publisher_first_party",
+        "scopes": ["cookies"],
+        "uses": ["audience_include", "audience_exclude", "frequency_cap"],
+        "property_types": ["website"]
+      }
+    ]
+  }
+}
+```
+
+A change to this list, for example after a browser release blocks a
+resolution vendor, is a material capability change. It advances
+`adcp.capability_changes.capabilities_version` and fires
+`capabilities.changed` with `/media_buy/supported_match_keys` in
+`changed_paths`.
+
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:
 

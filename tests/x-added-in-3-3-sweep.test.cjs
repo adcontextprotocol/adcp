@@ -29,6 +29,8 @@ const WHOLE_FILE_3_3 = [
   'core/identity-relying-party.json',
   'enums/webhook-signing-profile.json',
   'extensions/adcp.json',
+  'core/match-key.json',
+  'enums/match-key-use.json',
 ];
 
 const PROPERTIES_3_3 = [
@@ -91,6 +93,9 @@ const PROPERTIES_3_3 = [
   ['core/targeting-overlay-requirements.json', ['properties', 'collection_lists_exclude']],
   ['core/targeting-overlay-support.json', ['properties', 'collection_lists']],
   ['core/targeting-overlay-support.json', ['properties', 'collection_lists_exclude']],
+  ['core/product-identity.json', ['properties', 'match_keys']],
+  ['trusted-match/provider-registration.json', ['properties', 'match_keys']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'supported_match_keys']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the

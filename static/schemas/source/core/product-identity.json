@@ -25,8 +25,40 @@
       "type": "string",
       "minLength": 1,
       "description": "Human-readable methodology for this product's custom reach unit. Required when the product reports reach or frequency with reach_unit custom, including frequency-only reporting."
+    },
+    "match_keys": {
+      "type": "array",
+      "x-added-in": "3.3.0",
+      "description": "Identifiers this product resolves, with scopes and uses. When present, authoritative for this product over media_buy.supported_match_keys, and each entry MUST be covered by a seller-wide entry with the same uid_type and vendor. Keys inherit the product's channels and property types; a seller whose resolution differs across them MUST split the product or omit the key. Requires media_buy.match_keys in experimental_features. When persistent_identifier is false, no entry may list frequency_cap or identity_match; an identity_match entry requires trusted_match.identity_match: true.",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/match-key.json" },
+          { "not": { "required": ["property_types"] } }
+        ]
+      },
+      "minItems": 1
     }
   },
   "required": ["persistent_identifier"],
+  "allOf": [
+    {
+      "description": "A product without a persistent identifier cannot count impressions per key, on either side.",
+      "if": {
+        "properties": { "persistent_identifier": { "const": false } },
+        "required": ["persistent_identifier"]
+      },
+      "then": {
+        "properties": {
+          "match_keys": {
+            "items": {
+              "properties": {
+                "uses": { "not": { "contains": { "enum": ["frequency_cap", "identity_match"] } } }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "additionalProperties": false
 }

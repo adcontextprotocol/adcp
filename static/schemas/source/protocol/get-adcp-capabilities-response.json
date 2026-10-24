@@ -379,6 +379,22 @@
     },
     {
       "if": {
+        "properties": {
+          "media_buy": { "required": ["supported_match_keys"] }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.match_keys" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "allOf": [
           {
             "properties": {
@@ -2302,6 +2318,16 @@
             }
           },
           "additionalProperties": true
+        },
+        "supported_match_keys": {
+          "type": "array",
+          "x-added-in": "3.3.0",
+          "x-status": "experimental",
+          "description": "Seller-wide identifiers the seller resolves, with the scopes and uses each supports. Product.identity.match_keys overrides this for its product and MUST be covered here. A uid_type listed for audience_include or audience_exclude also appears in audience_targeting.supported_uid_types, one listed for conversion_attribution in conversion_tracking.supported_uid_types, and every scope of a frequency_cap key in frequency_capping.supported_per_units, when those lists are present. A change is a material capability change: it advances adcp.capability_changes.capabilities_version and fires capabilities.changed with /media_buy/supported_match_keys in changed_paths. Requires media_buy.match_keys in experimental_features.",
+          "items": {
+            "$ref": "/schemas/core/match-key.json"
+          },
+          "minItems": 1
         },
         "event_source_archive": {
           "type": "boolean",

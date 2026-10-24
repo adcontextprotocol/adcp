@@ -1039,6 +1039,10 @@
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Reference to a brand via house domain + brand_id (like publisher + property_id)"
         },
+        "match-key": {
+          "$ref": "/schemas/core/match-key.json",
+          "description": "Identifier a party resolves, with the scopes and uses it supports (experimental)"
+        },
         "brand-key": {
           "$ref": "/schemas/core/brand-key.json",
           "description": "Identity-only brand key for resolving a canonical brand manifest"
@@ -1506,6 +1510,10 @@
         "reach-unit": {
           "$ref": "/schemas/enums/reach-unit.json",
           "description": "Unit of measurement for reach metrics (individuals, households, devices, accounts, cookies, custom)"
+        },
+        "match-key-use": {
+          "$ref": "/schemas/enums/match-key-use.json",
+          "description": "Purpose a match key supports (audience_include, audience_exclude, frequency_cap, identity_match, conversion_attribution)"
         },
         "creative-agent-capability": {
           "$ref": "/schemas/enums/creative-agent-capability.json",

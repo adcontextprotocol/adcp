@@ -173,7 +173,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // capabilities. After shortening repeated SLA prose, the controller measures
 // 1_313_240 bytes; bound compilation at 1_315_000. Every fixture still compiles;
 // the independent 4 MiB schema and 22 MiB projection budgets are unchanged.
-const PARITY_COMPILE_LIMIT = 1_315_000;
+// Experimental match keys (#8375) reach the seeded Product through
+// Product.identity.match_keys: 1_312_728 → 1_320_141 bytes. Bound at 1_322_000.
+const PARITY_COMPILE_LIMIT = 1_322_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
