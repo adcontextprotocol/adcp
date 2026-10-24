@@ -20,6 +20,14 @@
  * reference every domain by design; files listed under `aggregations` are
  * exempt from the outgoing-ref check.
  *
+ * A `$ref` that points into the AdCP schema tree but resolves to no file is
+ * an error, including version-pinned refs (`/schemas/3.2.1/...`,
+ * `/schemas/v3/...`), which resolve against the source tree because a pinned
+ * ref is still a dependency.
+ *
+ * `--suggest` prints advisory owner suggestions for shared files with exactly
+ * one consuming domain; it never fails.
+ *
  * Crossings that existed when the lint landed are recorded in
  * scripts/lint-schema-ownership-baseline.json. The lint fails on any crossing
  * not in the baseline and on baseline entries that no longer occur, so the
@@ -69,21 +77,27 @@ function walkJsonFiles(directory) {
   return files.sort();
 }
 
+const ADCP_HOSTS = new Set(['adcontextprotocol.org', 'www.adcontextprotocol.org']);
+const SCHEMA_VERSION_SEGMENT = /^\/schemas\/(?:latest|v?\d+(?:\.\d+)*(?:-[\w.]+)?)\//;
+
+/**
+ * Maps a ref base or `$id` to a schema-relative path. Returns null for refs
+ * outside the AdCP schema tree (other hosts). Version-pinned and `latest`
+ * paths map to the same source file.
+ */
 function normalizeSchemaPath(value) {
   let normalized = value;
-  if (/^https?:\/\//.test(normalized)) {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(normalized)) {
     let parsed;
     try {
       parsed = new URL(normalized);
     } catch {
       return null;
     }
-    if (parsed.origin !== 'https://adcontextprotocol.org') return null;
+    if (!/^https?:$/.test(parsed.protocol) || !ADCP_HOSTS.has(parsed.hostname)) return null;
     normalized = parsed.pathname;
   }
-  // Version-pinned refs point at released artifacts, not the source tree.
-  if (/^\/schemas\/v[^/]+\//.test(normalized)) return null;
-  normalized = normalized.replace(/^\/schemas\/latest\//, '/schemas/');
+  normalized = normalized.replace(SCHEMA_VERSION_SEGMENT, '/schemas/');
   normalized = normalized.replace(/^\/schemas\//, '');
   return normalized.replace(/^\.\//, '');
 }
@@ -92,6 +106,7 @@ function loadSchemaRegistry(schemasDir = DEFAULT_SCHEMAS_DIR) {
   const documents = [];
   const byKey = new Map();
   const parseErrors = [];
+  const idErrors = [];
   for (const file of walkJsonFiles(schemasDir)) {
     const relativePath = toPosix(path.relative(schemasDir, file));
     let schema;
@@ -104,12 +119,11 @@ function loadSchemaRegistry(schemasDir = DEFAULT_SCHEMAS_DIR) {
     const document = { relativePath, schema };
     documents.push(document);
     byKey.set(relativePath, document);
-    if (schema && typeof schema.$id === 'string') {
-      const key = normalizeSchemaPath(schema.$id);
-      if (key) byKey.set(key, document);
+    if (schema && typeof schema.$id === 'string' && normalizeSchemaPath(schema.$id) !== relativePath) {
+      idErrors.push(`${relativePath}: $id ${schema.$id} does not match the file path`);
     }
   }
-  return { documents, byKey, parseErrors };
+  return { documents, byKey, parseErrors, idErrors };
 }
 
 function collectRefs(node, parentKey = null, refs = []) {
@@ -125,20 +139,31 @@ function collectRefs(node, parentKey = null, refs = []) {
       continue;
     }
     if (!inPropertyMap && DATA_KEYS.has(key)) continue;
-    collectRefs(value, key, refs);
+    // Children of a property map are schemas again, whatever they're named.
+    collectRefs(value, inPropertyMap ? null : key, refs);
   }
   return refs;
 }
 
+/**
+ * Resolves a ref to a schema file. Returns null for same-document refs and
+ * refs outside the AdCP schema tree, `{ target }` when it resolves, and
+ * `{ unresolved: true }` when it points into the tree but no file matches.
+ */
 function resolveRefTarget(ref, fromPath, registry) {
   const base = ref.split('#')[0];
-  if (!base) return null; // same-document ref
+  if (!base) return null;
   const key = base.startsWith('.')
     ? toPosix(path.posix.normalize(path.posix.join(path.posix.dirname(fromPath), base)))
     : normalizeSchemaPath(base);
   if (!key) return null;
   const document = registry.byKey.get(key);
-  return document ? document.relativePath : null;
+  return document ? { target: document.relativePath } : { unresolved: true };
+}
+
+function byString(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
 }
 
 /**
@@ -256,6 +281,7 @@ function classifyEdge(fromOwner, toOwner, domains) {
 function collectCrossings(registry, ownership) {
   const crossings = new Map();
   const unowned = [];
+  const unresolved = [];
   let crossFileRefs = 0;
   for (const document of registry.documents) {
     const fromOwner = ownership.ownerOf(document.relativePath);
@@ -263,10 +289,16 @@ function collectCrossings(registry, ownership) {
       unowned.push(document.relativePath);
       continue;
     }
-    if (ownership.aggregations.has(document.relativePath)) continue;
+    const isAggregation = ownership.aggregations.has(document.relativePath);
     for (const ref of collectRefs(document.schema)) {
-      const target = resolveRefTarget(ref, document.relativePath, registry);
-      if (!target || target === document.relativePath) continue;
+      const resolved = resolveRefTarget(ref, document.relativePath, registry);
+      if (!resolved) continue;
+      if (resolved.unresolved) {
+        unresolved.push(`${document.relativePath} → ${ref}`);
+        continue;
+      }
+      const { target } = resolved;
+      if (isAggregation || target === document.relativePath) continue;
       const toOwner = ownership.ownerOf(target);
       if (!toOwner) continue; // reported once, as the target's own unowned entry
       crossFileRefs += 1;
@@ -286,8 +318,9 @@ function collectCrossings(registry, ownership) {
     }
   }
   return {
-    crossings: [...crossings.values()].sort((a, b) => a.key.localeCompare(b.key)),
+    crossings: [...crossings.values()].sort((a, b) => byString(a.key, b.key)),
     unowned,
+    unresolved: [...new Set(unresolved)].sort(byString),
     crossFileRefs,
   };
 }
@@ -332,6 +365,7 @@ function lintSchemaOwnership({
   const errors = [];
   const registry = loadSchemaRegistry(schemasDir);
   errors.push(...registry.parseErrors.map((error) => `schema parse error: ${error}`));
+  errors.push(...registry.idErrors);
 
   let config = ownershipValue;
   if (config === undefined) {
@@ -353,14 +387,18 @@ function lintSchemaOwnership({
   const baseline = validateBaseline(baselineRaw);
   errors.push(...baseline.errors);
 
+  const filePaths = new Set(registry.documents.map((document) => document.relativePath));
   for (const file of Object.keys(ownership.files)) {
-    if (!registry.byKey.has(file)) errors.push(`files.${file}: no such schema file`);
+    if (!filePaths.has(file)) errors.push(`files.${file}: no such schema file`);
   }
   for (const file of ownership.aggregations) {
-    if (!registry.byKey.has(file)) errors.push(`aggregations: no such schema file ${file}`);
+    if (!filePaths.has(file)) errors.push(`aggregations: no such schema file ${file}`);
   }
 
-  const { crossings, unowned, crossFileRefs } = collectCrossings(registry, ownership);
+  const { crossings, unowned, unresolved, crossFileRefs } = collectCrossings(registry, ownership);
+  for (const entry of unresolved) {
+    errors.push(`unresolved $ref: ${entry} points into the AdCP schema tree but matches no file`);
+  }
   for (const file of unowned) {
     errors.push(`unowned schema file: ${file} — add its directory to scripts/schema-ownership.json`);
   }
@@ -407,7 +445,8 @@ function suggestOwners(registry, ownership) {
     const fromOwner = ownership.ownerOf(document.relativePath);
     if (!fromOwner || fromOwner === SHARED) continue;
     for (const ref of collectRefs(document.schema)) {
-      const target = resolveRefTarget(ref, document.relativePath, registry);
+      const resolved = resolveRefTarget(ref, document.relativePath, registry);
+      const target = resolved && resolved.target;
       if (!target || ownership.ownerOf(target) !== SHARED) continue;
       if (!consumers.has(target)) consumers.set(target, new Set());
       consumers.get(target).add(fromOwner);
@@ -416,7 +455,7 @@ function suggestOwners(registry, ownership) {
   return [...consumers.entries()]
     .filter(([, owners]) => owners.size === 1)
     .map(([file, owners]) => ({ file, owner: [...owners][0] }))
-    .sort((a, b) => a.owner.localeCompare(b.owner) || a.file.localeCompare(b.file));
+    .sort((a, b) => byString(a.owner, b.owner) || byString(a.file, b.file));
 }
 
 function buildBaseline(crossings) {

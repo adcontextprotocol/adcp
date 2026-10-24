@@ -12,6 +12,8 @@ const {
   collectRefs,
   findCycle,
   lintSchemaOwnership,
+  loadSchemaRegistry,
+  resolveRefTarget,
 } = require('../scripts/lint-schema-ownership.cjs');
 
 const OWNERSHIP = {
@@ -33,14 +35,19 @@ function ref(target) {
   return { $ref: `/schemas/${target}` };
 }
 
-function withFixture(files, options, callback) {
+function writeFixture(files) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-ownership-'));
+  for (const [relativePath, body] of Object.entries(files)) {
+    const file = path.join(tmp, relativePath);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(schema(relativePath, body)));
+  }
+  return tmp;
+}
+
+function withFixture(files, options, callback) {
+  const tmp = writeFixture(files);
   try {
-    for (const [relativePath, body] of Object.entries(files)) {
-      const file = path.join(tmp, relativePath);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(schema(relativePath, body)));
-    }
     callback(lintSchemaOwnership({
       schemasDir: tmp,
       ownershipValue: options.ownership || OWNERSHIP,
@@ -199,4 +206,69 @@ test('findCycle returns null for a DAG', () => {
     ['c', new Set()],
   ]);
   assert.equal(findCycle(graph), null);
+});
+
+test('collectRefs reads a $ref on a property whose name is a schema keyword', () => {
+  const refs = collectRefs({
+    properties: {
+      properties: { $ref: '/schemas/creative/format.json' },
+      definitions: { type: 'object', examples: [{ $ref: '/schemas/not/a/ref.json' }] },
+    },
+  });
+  assert.deepEqual(refs, ['/schemas/creative/format.json']);
+});
+
+test('resolveRefTarget normalizes every ref form the tree uses', () => {
+  const tmp = writeFixture({ 'core/id.json': {}, 'media-buy/product.json': {} });
+  try {
+    const registry = loadSchemaRegistry(tmp);
+    const from = 'media-buy/product.json';
+    const cases = [
+      ['/schemas/core/id.json', { target: 'core/id.json' }],
+      ['/schemas/latest/core/id.json', { target: 'core/id.json' }],
+      ['/schemas/v3/core/id.json', { target: 'core/id.json' }],
+      ['/schemas/3.2.1/core/id.json#/definitions/x', { target: 'core/id.json' }],
+      ['/schemas/3.3.0-beta.1/core/id.json', { target: 'core/id.json' }],
+      ['https://adcontextprotocol.org/schemas/core/id.json', { target: 'core/id.json' }],
+      ['http://www.adcontextprotocol.org/schemas/v3/core/id.json', { target: 'core/id.json' }],
+      ['../core/id.json', { target: 'core/id.json' }],
+      ['./product.json', { target: 'media-buy/product.json' }],
+      ['#/definitions/local', null],
+      ['https://json-schema.org/draft-07/schema', null],
+      ['/schemas/core/missing.json', { unresolved: true }],
+      ['https://adcontextprotocol.org/schemas/3.2.1/core/typo.json', { unresolved: true }],
+    ];
+    for (const [ref, expected] of cases) {
+      assert.deepEqual(resolveRefTarget(ref, from, registry), expected, ref);
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('reports refs into the schema tree that match no file', () => {
+  withFixture({
+    ...BASE_FILES,
+    'media-buy/product.json': { properties: { x: ref('core/typo.json') } },
+  }, {}, (result) => {
+    assert.match(result.errors.join('\n'), /unresolved \$ref: media-buy\/product\.json → \/schemas\/core\/typo\.json/);
+  });
+});
+
+test('reports a $id that does not match its file path', () => {
+  const tmp = writeFixture(BASE_FILES);
+  try {
+    fs.writeFileSync(
+      path.join(tmp, 'signals/signal.json'),
+      JSON.stringify({ $id: '/schemas/creative/format.json', type: 'object' }),
+    );
+    const result = lintSchemaOwnership({
+      schemasDir: tmp,
+      ownershipValue: OWNERSHIP,
+      baselineValue: { entries: [] },
+    });
+    assert.match(result.errors.join('\n'), /signals\/signal\.json: \$id \/schemas\/creative\/format\.json does not match/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
