@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/account-identity-change-preview.json",
   "title": "Account Identity Change Preview",
-  "description": "Non-persisted dry-run result for a requested operator-identity change. Canonical account fields and revision remain unchanged.",
+  "description": "Non-persisted dry-run result for a requested identity change (operator identity, and from 3.3 the brand's countries). Canonical account fields and revision remain unchanged.",
   "definitions": {
     "impact": {
       "type": "object",
@@ -97,6 +97,12 @@
         "requested_operator_identity": {
           "$ref": "/schemas/core/operator-identity.json"
         },
+        "requested_brand_identity": {
+          "$ref": "/schemas/core/brand-key.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (account.updates). Desired BrandKey when the brand's countries change."
+        },
         "impacts": {
           "$ref": "#/definitions/nonblocking_impacts"
         }
@@ -119,6 +125,12 @@
         "requested_operator_identity": {
           "$ref": "/schemas/core/operator-identity.json"
         },
+        "requested_brand_identity": {
+          "$ref": "/schemas/core/brand-key.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (account.updates). Desired BrandKey when the brand's countries change."
+        },
         "impacts": {
           "$ref": "#/definitions/nonblocking_impacts"
         }
@@ -140,6 +152,12 @@
         },
         "requested_operator_identity": {
           "$ref": "/schemas/core/operator-identity.json"
+        },
+        "requested_brand_identity": {
+          "$ref": "/schemas/core/brand-key.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (account.updates). Desired BrandKey when the brand's countries change."
         },
         "impacts": {
           "$ref": "#/definitions/blocked_impacts"

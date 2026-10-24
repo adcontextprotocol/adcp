@@ -33,11 +33,17 @@
           "revision": {
             "type": "integer",
             "minimum": 1,
-            "description": "Expected current account revision for optimistic concurrency in settings-update mode. Required whenever operator_identity is present; optional for existing non-identity settings updates. The seller MUST compare it atomically with the write, reject a mismatch with CONFLICT, and leave the account unchanged. Obtain it from list_accounts or the most recent sync_accounts result. Reads, dry runs, validation failures, and exact idempotency replays do not increment revision; every persisted settings or identity-change state transition does. MUST be absent in provisioning mode."
+            "description": "Expected current account revision for optimistic concurrency in settings-update mode. Required whenever operator_identity or brand_identity is present; optional for existing non-identity settings updates. The seller MUST compare it atomically with the write, reject a mismatch with CONFLICT, and leave the account unchanged. Obtain it from list_accounts or the most recent sync_accounts result. Reads, dry runs, validation failures, and exact idempotency replays do not increment revision; every persisted settings or identity-change state transition does. MUST be absent in provisioning mode."
           },
           "operator_identity": {
             "$ref": "/schemas/core/operator-identity.json",
             "description": "Complete desired operator identity for settings-update mode. Omit this field to leave operator identity unchanged. When present, omission of operator_unit within the object removes the existing unit. Changing only operator_unit.name updates display metadata; changing operator_unit.id or adding/removing a unit rekeys the same account within the current operator. Changing operator requests an inter-entity handoff and MUST enter pending_approval until the seller verifies the current account authority, verified brand authorization, destination-operator acceptance, and any operator-scoped billing and grant transition. The seller MUST preserve account_id and account-scoped historical resources, MUST reject collisions without merging, and MUST apply no identity change if continuity cannot be preserved. MUST be accompanied by revision and MUST be absent in provisioning mode."
+          },
+          "brand_identity": {
+            "$ref": "/schemas/core/brand-key.json",
+            "x-status": "experimental",
+            "x-added-in": "3.3.0",
+            "description": "Experimental (account.updates). Complete desired BrandKey in settings-update mode; only countries may differ. Requires revision and identity_updates brand_countries. Same continuity, collision, approval, and ACCOUNT_MOVED rules as operator_identity. MUST be absent in provisioning mode."
           },
           "destination_billing_entity": {
             "$ref": "/schemas/core/business-entity.json",
@@ -166,6 +172,13 @@
                     "destination_billing_entity"
                   ]
                 }
+              },
+              {
+                "not": {
+                  "required": [
+                    "brand_identity"
+                  ]
+                }
               }
             ]
           },
@@ -223,6 +236,9 @@
         ],
         "dependencies": {
           "operator_identity": [
+            "revision"
+          ],
+          "brand_identity": [
             "revision"
           ],
           "destination_billing_entity": [

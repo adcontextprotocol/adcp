@@ -1,0 +1,151 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/update-account-response.json",
+  "title": "Update Account Response",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Result of update_account (experimental, account.updates). A completed response carries the account after the call and an outcome. failed carries errors, including CONFLICT for a stale revision and ACCOUNT_IDENTITY_CONFLICT for an identity collision; the account is unchanged.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "discriminator": {
+    "propertyName": "status"
+  },
+  "oneOf": [
+    {
+      "description": "The update was processed.",
+      "required": [
+        "status",
+        "outcome",
+        "account"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed"
+        }
+      },
+      "not": {
+        "required": [
+          "adcp_error"
+        ]
+      }
+    },
+    {
+      "description": "The update was rejected. Both envelope and payload error layers are present.",
+      "required": [
+        "status",
+        "adcp_error",
+        "errors"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "failed"
+        },
+        "errors": {
+          "minItems": 1
+        }
+      }
+    }
+  ],
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "applied",
+        "pending_approval",
+        "unchanged",
+        "previewed"
+      ],
+      "description": "applied: every requested change persisted and revision advanced. pending_approval: non-identity changes persisted, and the identity change is recorded in account.identity_change awaiting the seller; revision advanced. unchanged: nothing differed from the current state; revision did not advance. previewed: dry_run; nothing persisted."
+    },
+    "account": {
+      "$ref": "/schemas/core/account.json",
+      "description": "The account after the call, including revision and any pending or rejected identity_change. For previewed, the current account, unchanged."
+    },
+    "identity_change_preview": {
+      "$ref": "/schemas/core/account-identity-change-preview.json",
+      "description": "Present on previewed outcomes that request an identity change."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Countries change held for seller approval",
+      "data": {
+        "status": "completed",
+        "outcome": "pending_approval",
+        "account": {
+          "account_id": "acc_renault_wpp",
+          "name": "Renault France via WPP Media",
+          "status": "active",
+          "revision": 8,
+          "brand": {
+            "domain": "renault.fr",
+            "countries": [
+              "FR"
+            ]
+          },
+          "operator": "wppmedia.fr",
+          "identity_change": {
+            "status": "pending_approval",
+            "requested_operator_identity": {
+              "operator": "wppmedia.fr"
+            },
+            "requested_brand_identity": {
+              "domain": "renault.fr",
+              "countries": [
+                "BE",
+                "FR"
+              ]
+            },
+            "requested_at": "2026-10-24T18:00:00Z",
+            "pending_action": {
+              "waiting_on": "seller",
+              "kind": "review",
+              "message": "Checking whether Belgium belongs on this account or needs its own."
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "Billing entity replaced",
+      "data": {
+        "status": "completed",
+        "outcome": "applied",
+        "account": {
+          "account_id": "acc_renault_wpp",
+          "name": "Renault France via WPP Media",
+          "status": "active",
+          "revision": 9
+        }
+      }
+    }
+  ]
+}

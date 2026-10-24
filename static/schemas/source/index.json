@@ -1898,6 +1898,16 @@
             "description": "Experimental: the recorded account request and its current state"
           }
         },
+        "update-account": {
+          "request": {
+            "$ref": "/schemas/account/update-account-request.json",
+            "description": "Experimental: request parameters for changing settings or identity on one existing account"
+          },
+          "response": {
+            "$ref": "/schemas/account/update-account-response.json",
+            "description": "Experimental: the account after the update and the outcome"
+          }
+        },
         "sync-accounts": {
           "request": {
             "$ref": "/schemas/account/sync-accounts-request.json",

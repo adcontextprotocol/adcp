@@ -107,6 +107,7 @@ export const MUTATING_TOOLS: ReadonlySet<string> = new Set([
   'si_initiate_session',
   'si_send_message',
   'sync_accounts',
+  'update_account',
   'sync_principal',
   'sync_agent_notification_configs',
   'sync_audiences',
