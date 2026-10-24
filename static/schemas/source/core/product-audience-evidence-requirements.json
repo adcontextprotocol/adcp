@@ -110,6 +110,16 @@
       "minItems": 1,
       "uniqueItems": true
     },
+    "target_audiences": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "items": { "$ref": "/schemas/core/audience-evidence-target.json" },
+      "minItems": 1,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "description": "Experimental (media_buy.audience_evidence_targets). Same semantics as target_audiences on core/audience-evidence-requirements.json."
+    },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["requirement_mode", "evidence_presence"],

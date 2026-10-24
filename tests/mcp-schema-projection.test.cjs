@@ -121,8 +121,12 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // measure 468,555 bytes / 457.57 KiB, within the existing 462 KiB ceiling.
 // Product service commitments (#8408) add report/poll request shapes. The
 // media-buy context measures 473,582 bytes / 462.48 KiB; bound it at 463 KiB.
+// Experimental audience evidence targets (#8125) make the audience
+// characteristic, the target item, and the relationship enum reachable from the
+// discovery filters and the purchase guard (481,230 bytes / 469.95 KiB measured
+// on top of main with installment selection (#8230)); bound it at 470 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 463,
+  'media-buy': 470,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
