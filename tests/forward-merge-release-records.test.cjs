@@ -67,6 +67,29 @@ test('promotes a package-only version the maintenance line registered', () => {
   assert.deepEqual(merged.package_only_versions, []);
 });
 
+test('carries over package-only versions the maintenance line added', () => {
+  const merged = mergePublishedVersions(
+    manifest(['3.2.5'], ['3.0.24']),
+    manifest(['3.2.5'], ['3.2.0', '3.2.7']),
+    () => true,
+  );
+  assert.deepEqual(merged.published_versions, ['3.2.5']);
+  assert.deepEqual(merged.package_only_versions, ['3.0.24', '3.2.0', '3.2.7']);
+});
+
+test('a version main already publishes stays published even if the maintenance line lists it as package-only', () => {
+  const merged = mergePublishedVersions(manifest(['3.2.6']), manifest(['3.2.5'], ['3.2.6']), () => true);
+  assert.deepEqual(merged.package_only_versions, []);
+  assert.ok(merged.published_versions.includes('3.2.6'));
+});
+
+test('refuses a package-only version whose compliance bundle is missing', () => {
+  assert.throws(
+    () => mergePublishedVersions(manifest(['3.2.5']), manifest(['3.2.5'], ['3.2.7']), () => false),
+    /dist\/compliance\/3\.2\.7\/index\.json/,
+  );
+});
+
 test('refuses to register a version whose compliance bundle is missing', () => {
   assert.throws(
     () => mergePublishedVersions(manifest(['3.2.5']), manifest(['3.2.6']), () => false),
