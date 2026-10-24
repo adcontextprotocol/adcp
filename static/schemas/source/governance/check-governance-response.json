@@ -130,6 +130,7 @@
       "x-entity": "governance_plan"
     },
     "budget_period_id": {
+      "x-added-in": "3.3.0",
       "type": "string",
       "minLength": 1,
       "maxLength": 64,

@@ -9,8 +9,10 @@ import { AgentContextDatabase } from '../../src/db/agent-context-db.js';
 
 const queryMock = vi.mocked(query);
 const ORG = 'org_loopme';
+// Scheme and host case, surrounding whitespace and trailing slashes are
+// insignificant for registry identity; path CASE is not (#7830).
 const VARIANT = ' HTTPS://PLATFORM.LOOPME.AI/MCP/SELLER/// ';
-const CANONICAL = 'https://platform.loopme.ai/mcp/seller';
+const CANONICAL = 'https://platform.loopme.ai/MCP/SELLER';
 
 describe('AgentContextDatabase URL canonicalization', () => {
   const db = new AgentContextDatabase();
@@ -31,9 +33,14 @@ describe('AgentContextDatabase URL canonicalization', () => {
     for (const call of queryMock.mock.calls.slice(0, 4)) {
       expect(call[1]).toEqual([ORG, CANONICAL]);
     }
+    // The owner-credential read keys `agent_contexts` exactly and folds the
+    // member-profile side across every spelling of the same agent identity
+    // (#8322), so a profile holding the trailing-slash spelling still
+    // authorizes its own saved credential.
     expect(queryMock.mock.calls[4][1]).toEqual([
       CANONICAL,
       JSON.stringify([{ url: CANONICAL }]),
+      JSON.stringify([{ url: `${CANONICAL}/` }]),
     ]);
   });
 
@@ -71,5 +78,18 @@ describe('AgentContextDatabase URL canonicalization', () => {
   it('rejects an invalid URL key instead of writing an unmatchable context', async () => {
     await expect(db.create({ organization_id: ORG, agent_url: '   ' })).rejects.toThrow('Invalid agent URL');
     expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('keys agents that differ only in path case as different agents', async () => {
+    await db.getByOrgAndUrl(ORG, 'https://platform.loopme.ai/MCP');
+    await db.getByOrgAndUrl(ORG, 'https://platform.loopme.ai/mcp');
+    expect(queryMock.mock.calls[0][1]).toEqual([ORG, 'https://platform.loopme.ai/MCP']);
+    expect(queryMock.mock.calls[1][1]).toEqual([ORG, 'https://platform.loopme.ai/mcp']);
+  });
+
+  it('keys agents that differ only in a trailing slash as one agent', async () => {
+    await db.getByOrgAndUrl(ORG, 'https://platform.loopme.ai/mcp/');
+    await db.getByOrgAndUrl(ORG, 'https://platform.loopme.ai/mcp');
+    expect(queryMock.mock.calls[0][1]).toEqual(queryMock.mock.calls[1][1]);
   });
 });

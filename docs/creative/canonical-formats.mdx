@@ -32,7 +32,7 @@ For hands-on authoring practice, use the [S2 creative specialist module](/docs/l
 | **`ProductFormatDeclaration`** | Inline format declaration: required `format_kind` + required `params` + optional `format_option_id` (REQUIRED when entries share `format_kind`; SHOULD be set on every entry per 3.1 so V2 buyers can author against the product via `PackageRequest.format_option_refs[]`) + optional `publisher_domain` for publisher-catalog-backed options + optional human-facing `sample_render_url` + optional `applies_to_channels` + optional `locale_policy` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). Even when catalog-backed, the product still carries the full declaration. |
 | **`v1_format_ref`** | Array of `{agent_url, id}` references linking a v2 declaration to one or more v1 named formats. Always array; single-ref is `[{...}]`. Multi-size declarations carry one ref per size (see "Multi-size fan-out" below). |
 | **`canonical:` annotation** | The v1 catalog entry's projection annotation. Always object form — `{ kind: "image" }` minimum, `{ kind, asset_source, slots_override }` rich form for entries whose v1 shape doesn't follow the canonical's defaults (generative, brief-driven). Never bare-string. |
-| **Sibling refinement principle** | Before reaching for a new canonical, check whether `asset_source` + `slots_override` + `applies_to_channels` + event_log surface covers the case. Applied to generative (`image` + `asset_source: agent_synthesized`), published-post references (`video_hosted` / `image` / `native_in_feed` + `asset_source: publisher_owned_reference` + a `published_post` slot), broadcast TV (`video_hosted` + `applies_to_channels: ["linear_tv"]`), and DOOH (`image` + `applies_to_channels: ["dooh"]`). In-feed native has its own `native_in_feed` canonical because its assembled slot shape is distinct. |
+| **Sibling refinement principle** | Before reaching for a new canonical, check whether `asset_source` + `params.slots` + `applies_to_channels` + event_log surface covers the case. Applied to generative (`image` + `asset_source: agent_synthesized`), published-post references (`video_hosted` / `image` / `native_in_feed` + `asset_source: publisher_owned_reference` + a `published_post` slot), broadcast TV (`video_hosted` + `applies_to_channels: ["linear_tv"]`), and DOOH (`image` + `applies_to_channels: ["dooh"]`). In-feed native has its own `native_in_feed` canonical because its assembled slot shape is distinct. |
 | **`format_option_id`** | Stable identifier for a format declaration within its namespace. REQUIRED when `format_options` carries multiple declarations sharing the same `format_kind` (to disambiguate) and SHOULD be set on every entry. Publisher-catalog-backed declarations carry `publisher_domain`; product-local declarations omit it. When a product has one declaration for a given `format_kind`, buyers can route by kind without an option ID. New 3.2 workflows never fall back to a named format merely because an optional ID is absent. |
 | **`FormatOptionRef`** | Discriminated buyer-facing selector for a product format option, used in requests such as `PackageRequest.format_option_refs[]` and manifests. Use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options; use `{scope: "product", format_option_id}` for product-local options. Product-scoped refs resolve only inside the target product/package, not a seller-wide, cross-product, or cross-publisher namespace. This is the request-side reference shape; it is not the product declaration shape. |
 | **`applies_to_channels`** | Subset of the product's declared channels this format declaration applies to. Lets multi-channel products carry per-channel format options. |
@@ -81,11 +81,11 @@ Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model
 |---|---|---|
 | `image` | Static image, file or hosted URL redirect | Impression pixel + click URL via `universal_macros` |
 | `html5` | Interactive HTML5 banner (zip asset) | MRAID + OM-SDK + click-tag macro + backup image |
-| `display_tag` | Third-party JS/iframe tag URL | Opaque to seller |
+| `display_tag` | Third-party tag: ad-request URL, inline markup, or paired redirect | Opaque to seller |
 | `image_carousel` | Multi-card swipe (polymorphic image/video items) | Per-card pixels + carousel engagement |
-| `video_hosted` | Direct video file, orientation parameter | OM-SDK + external impression/click/quartile trackers |
+| `video_hosted` | Direct video file, orientation parameter | OM-SDK + external impression/click trackers + playback `pixel_tracker` events (`start`, `first_quartile`, `midpoint`, `third_quartile`, `complete`; 3.3) |
 | `video_vast` | VAST tag (URL or inline XML), VAST 2-4.x | Inherent VAST events |
-| `audio_hosted` | Direct audio file (or host-read produced via build_creative) | Standard audio impression/completion |
+| `audio_hosted` | Direct audio file (or host-read produced via build_creative) | Impression, playback (`start`, quartiles, `complete`; 3.3) and companion-click pixels |
 | `audio_vast` | VAST audio tag (URL or inline XML); 4.1+ recommended, older versions only when seller-declared | Inherent VAST audio events |
 | `audio_daast` | DAAST tag | Inherent DAAST events |
 | `sponsored_placement` | Retail-media catalog-driven (Amazon SP, Criteo SP, CitrusAd SP) — REQUIRES `source_catalog` slot. Not for IAB in-feed native, content-recommendation, or PMax-style algorithmic surfaces. | Per-item catalog-keyed events |
@@ -342,26 +342,64 @@ When `asset_source` is `buyer_uploaded`, the buyer ships rendered assets and any
 |---|---|---|
 | `format_kind: "broadcast_video"` | `format_kind: "video_hosted"` + `applies_to_channels: ["tv"]` | The video asset is the same shape. Broadcast vs streaming is a delivery / measurement difference, not a creative-shape difference. |
 | `format_kind: "dooh_image"` | `format_kind: "image"` + `applies_to_channels: ["dooh"]` | The image asset is the same shape. DOOH's location-keyed measurement and no-click model live on `sync_event_sources` / `event_log`, not on the format. |
-| `format_kind: "image_generative"` | `format_kind: "image"` + `asset_source: "agent_synthesized"` + `slots_override: [{ generation_prompt: text }]` | Same canonical TYPE; different production SOURCE. The two-axis model already separates them. |
-| `format_kind: "published_post_video"` | `format_kind: "video_hosted"` + `asset_source: "publisher_owned_reference"` + `slots_override: [{ published_post: published_post }]` | Same canonical TYPE; the buyer ships a reference to an existing post instead of uploaded bytes. Authorization/review state lives on the creative lifecycle, not in a new format family. |
+| `format_kind: "image_generative"` | `format_kind: "image"` + `params.asset_source: "agent_synthesized"` + a `generation_prompt` text slot in `params.slots` | Same canonical TYPE; different production SOURCE. The two-axis model already separates them. |
+| `format_kind: "published_post_video"` | `format_kind: "video_hosted"` + `params.asset_source: "publisher_owned_reference"` + a `published_post` slot in `params.slots` | Same canonical TYPE; the buyer ships a reference to an existing post instead of uploaded bytes. Authorization/review state lives on the creative lifecycle, not in a new format family. |
 
 **Rule of thumb.** Before reaching for a new `format_kind`, check whether the difference is:
 1. **Creative contract** (image vs video vs html5 vs a bounded multi-component coordination graph) → `format_kind`.
 2. **Production model** (who renders, when) → `asset_source` on the format declaration.
-3. **Slot shape** (what assets the buyer ships) → `slots_override` on the projection ref (catalog side) or on the v2 product's `format_options[]` declaration.
+3. **Slot shape** (what assets the buyer ships) → `params.slots` on the product's `format_options[]` declaration. Only a legacy catalog's `canonical:` projection ref uses `slots_override`; projection translates it to `params.slots`.
 4. **Delivery medium / channel** (TV vs streaming vs DOOH vs social) → `applies_to_channels` on the v2 product.
 5. **Measurement / tracking / event model.** Splits two ways:
    - **Renderer-fired trackers** (the renderer hits a URL when serving / viewing / clicking) → `pixel_tracker` asset (or `vast_tracker` / `daast_tracker` on those formats). Lives on the creative manifest as a typed slot. Buyer's measurement vendor URLs the seller's renderer fires at serve time. See `docs/creative/asset-types.mdx#pixel-tracker-asset`.
    - **Conversion pixels** (fire on the advertiser's site post-click — Meta Pixel, GA4 server-side, custom postbacks) → `sync_event_sources` / `event_log`. Campaign-scoped, NOT creative-asset-scoped. The same pixel fires for every ad in the campaign.
 6. **Targeting context** (audience vs geo vs daypart) → media-buy targeting overlay, not the format.
 
-Add a new `format_kind` only when the buyer-facing asset contract or bounded renderer assembly is structurally different. Broadcast TV, DOOH, and generative production stay on existing canonicals because channel and production source do not change that contract. `native_in_feed`, `seller_rendered_stateful_display`, and `coordinated_placements` clear the higher bar: each requires distinct assembly and validation logic that cannot be expressed as sibling refinement through `applies_to_channels`, `asset_source`, or `slots_override`. This is not precedent for every channel to request its own canonical.
+Add a new `format_kind` only when the buyer-facing asset contract or bounded renderer assembly is structurally different. Broadcast TV, DOOH, and generative production stay on existing canonicals because channel and production source do not change that contract. `native_in_feed`, `seller_rendered_stateful_display`, and `coordinated_placements` clear the higher bar: each requires distinct assembly and validation logic that cannot be expressed as sibling refinement through `applies_to_channels`, `asset_source`, or `params.slots`. This is not precedent for every channel to request its own canonical.
 
-## When to use `slots_override` (and when to leave it off)
+## Declaring a different slot contract with `params.slots`
 
-`slots_override` (on the catalog's `canonical:` projection ref OR on a v2 product's `format_options[]` declaration) replaces the canonical's default slot set with a custom list. Use it sparingly — most formats inherit defaults cleanly.
+Canonical product declarations publish their complete asset-slot contract in `format_options[].params.slots`. Each entry declares an `asset_group_id`, an `asset_type`, and any requiredness, count, or technical constraints. A supplied list replaces the default slot set rather than adding to it; include every slot the buyer must or may supply. `slots_override` belongs only to a legacy catalog's `canonical:` projection annotation and is translated to `params.slots` when projecting that catalog. It is not a product-authoring field.
 
-**Decision rule.** Would a buyer composing a creative manifest list **different assets** in this case vs the canonical's default? If yes, `slots_override`. If no, leave it off.
+**Decision rule.** Would a buyer composing a creative manifest list **different assets** in this case vs the canonical's default? If yes, declare that different contract in `params.slots`. If no, use the canonical slots and narrow their applicable parameters. A slot type must be materializable as an asset of that type: use `card` for carousel cards and `video_brief` for a structured video brief, rather than an untyped `object`.
+
+A video-from-brief declaration replaces the uploaded-video slot with a typed production input starting in AdCP 3.3:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
+  "format_option_id": "video_from_brief",
+  "format_kind": "video_hosted",
+  "params": {
+    "asset_source": "agent_synthesized",
+    "slots": [
+      {
+        "asset_group_id": "video_brief",
+        "asset_type": "video_brief",
+        "required": true,
+        "consumed_for_production": true
+      }
+    ]
+  }
+}
+```
+
+The matching manifest supplies the declared asset type. Its brief is consumed to produce video; it does not pretend to contain a finished video asset:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json",
+  "format_kind": "video_hosted",
+  "assets": {
+    "video_brief": {
+      "asset_type": "video_brief",
+      "segments": [
+        { "order": 1, "duration_ms": 6000, "prompt": "Show Acme's trail boot crossing a mountain stream." }
+      ]
+    }
+  }
+}
+```
 
 | Case | Default vs Override |
 |---|---|
@@ -373,7 +411,7 @@ Add a new `format_kind` only when the buyer-facing asset contract or bounded ren
 | Podcast host-read (script text instead of audio) | **Override.** Replaces `audio_main: audio, required` with `script: text, required` + `asset_source: publisher_host_recorded`. |
 | Published post reference (existing social/publisher post instead of uploaded video) | **Override.** Replaces `video_main: video, required` with `published_post: published_post, required` + `asset_source: publisher_owned_reference`. |
 
-The rule applies symmetrically: if you're tempted to add `slots_override` only to declare measurement pixels, delivery-medium flags, or targeting context, you're using it wrong — those don't belong in slots at all (see "What `format_kind` is NOT for" above).
+Delivery-medium flags, targeting context, and advertiser-site conversion pixels do not belong in `params.slots`. Renderer-fired measurement trackers do belong there as explicit `pixel_tracker`, `vast_tracker`, or `daast_tracker` assets; their execution requires the separate tracker commitment described above.
 
 ## Custom formats — shapes the 15 canonicals don't cover
 
@@ -413,7 +451,7 @@ Three required pieces when `format_kind: "custom"`:
 
 ### `format_schema` fetch contract (normative)
 
-`format_schema` gates validation — without the schema, a buyer cannot reason about the custom shape. The **transport** rules below apply identically to BOTH `format_schema` and `platform_extensions` (any SDK fetching a `platform-extension-ref.json` URI applies the same rules — a shared fetch path that drops to the weakest bar undermines `format_schema`'s hardening). The **consumption** distinction (`format_schema` is load-bearing, `platform_extensions` is informational) is about *what the body means*, not about how it's fetched.
+`format_schema` gates validation — without the schema, a buyer cannot reason about the custom shape. Referenced `platform_extensions` likewise carry acceptance constraints and MUST NOT be discarded as informational metadata. The **transport** rules below apply identically to BOTH `format_schema` and `platform_extensions` (any SDK fetching a `platform-extension-ref.json` URI applies the same rules — a shared fetch path that drops to the weakest bar undermines `format_schema`'s hardening).
 
 - **Transport**: `https://` only. `http://`, `file://`, `data:`, and other schemes MUST be rejected.
 - **SSRF protection**: resolved hostname MUST NOT land on RFC 1918 (10/8, 172.16/12, 192.168/16), loopback (127/8, ::1), link-local (169.254/16, fe80::/10), CGNAT (100.64/10), or RFC 6761 special-use names (`.local`, `.localhost`, `.internal`, `.test`, `.example`, `.invalid`). Cloud metadata endpoints (`169.254.169.254`, `metadata.google.internal`, `kubernetes.default.svc`) are explicitly forbidden — these are credential-leak primitives. Connection MUST be pinned to the resolved IP (or re-resolved and re-validated per request) to defeat DNS rebinding.
@@ -474,7 +512,7 @@ Format `slots` reference canonical `asset_group_id` values from the [vocabulary 
 | `audio` / `audio_main` | audio | audio_file, hero_audio, audio_asset |
 | `companion_image` / `companion_banner` | image | — |
 | `brand_name` / `body_text` | text | — |
-| `cards` | object | carousel_cards, slides, carousel_items, carousel_slides |
+| `cards` | card | carousel_cards, slides, carousel_items, carousel_slides |
 | `cta` | text | cta_text, call_to_action, action_text, button_text |
 | `price` / `phone_number` / `promo_code` / `disclaimer` | text | (various) |
 | `subtitle_file` | url | caption_file, captions, subtitles |
@@ -484,7 +522,7 @@ Format `slots` reference canonical `asset_group_id` values from the [vocabulary 
 | `hero_asset` | image | hero_banner, collection_hero |
 | `script` | text | script_text, host_script, voiceover_script |
 | `creative_brief` | brief | brief, creative_direction, talking_points |
-| `video_brief` | object | scenes, storyboard, shot_brief |
+| `video_brief` | video_brief | scenes, storyboard, shot_brief |
 | `voice_id` / `offering_ref` | text | — |
 | `style_reference` | image | reference_image, style_image, inspiration_image |
 | `starter_assets` | object | — |
@@ -548,6 +586,16 @@ Technical constraints are explicit; canonical prose, examples, common practice, 
 Completeness is not general creative approval. Policy, legal, security, malware, transport/fetch failure, corrupt bytes, or a material mismatch between declared metadata and inspected content can still cause rejection. For custom formats and platform extensions, a completeness assertion includes the technical constraints in the referenced schema artifacts.
 
 Creative file-size units are decimal and exact throughout AdCP: a field ending in `_kb` uses **1 KB = 1,000 bytes**, a field ending in `_mb` uses **1 MB = 1,000,000 bytes**, and a field ending in `_bytes` is an exact byte count. Implementations MUST NOT substitute binary KiB/MiB units for these fields.
+
+### Responsive bounds and effective acceptance
+
+Responsive size bounds are inclusive and may be one-sided. Within each declaration, a declared `min_width` MUST be less than or equal to a declared `max_width`, and a declared `min_height` MUST be less than or equal to a declared `max_height`. Equality is valid. A reversed pair makes the declaration invalid; validators MUST NOT swap its endpoints, ignore one bound, or silently replace it with an unconstrained range. JSON Schema validates the individual positive integers and size-mode exclusivity; semantic validators perform this cross-field ordering check.
+
+Resolve size constraints by intersecting every applicable product, publisher, and placement layer, including any referenced narrowing artifacts. Fixed and discrete sizes remain complete width/height pairs: a width from one pair and a height from another cannot be combined. Responsive lower bounds combine by taking the greatest lower bound, and upper bounds by taking the least upper bound. Filter fixed or discrete candidate pairs against every layer's bounds and pairs. An empty intersection means that option cannot serve on that placement, even when each layer is individually valid. Neither declaration order nor a broader seller option overrides a narrower publisher or placement constraint.
+
+Omitted bounds or a missing size mode mean no additional constraint only at a layer asserting `technical_requirements_complete: true`. Otherwise the acceptance envelope remains undeclared. An intersection of published constraints can rule a creative out, but cannot establish full technical acceptance while an applicable layer or required artifact remains unresolved. Buyers can use another independently resolved option or obtain authoritative seller validation of the full effective contract; they MUST NOT manufacture compatibility by discarding the unresolved layer.
+
+The [display acceptance reference vectors](https://github.com/adcontextprotocol/adcp/blob/main/static/test-vectors/canonical-display-acceptance.json) cover bound ordering, layer intersection, technical completeness, executable size selection, required backup coverage, and legacy projection ambiguity. They exercise semantic decisions separately from structural schema validation.
 
 Classification follows the buyer deliverable and who renders it, not the behavioral richness of the placement. For example, a buyer-uploaded MP4 in a docking player is `video_hosted`; an opaque third-party tag that produces the same experience is `display_tag`. Maintainers and catalog encoders can verify these boundaries against the [AdCP 3.2 classification vectors](https://github.com/adcontextprotocol/adcp/blob/main/static/test-vectors/canonical-format-classification.json).
 
@@ -880,10 +928,12 @@ This separation — canonical params + canonical slots + extensions only for net
 A real IAB display placement isn't a single 300×250 image slot — it's a flexible slot that accepts multiple **creative types** (image, HTML5, third-party tag, sometimes native or video-in-banner) at multiple **sizes** (300×250 MREC, 728×90 leaderboard, 970×250 billboard, responsive). The canonical-formats vocabulary models this with two orthogonal mechanisms:
 
 - **`format_kind`** is the creative TYPE — one of `image`, `html5`, `display_tag`, `native_in_feed`, `video_hosted` — and never carries dimensional identity.
-- **Size lives in `params`** as one of three modes (mutually exclusive):
+- **Size lives in `params`** as one of three explicit modes (mutually exclusive):
   - **Fixed**: `width` + `height` integers — single accepted size (e.g., a 300×250-only legacy slot).
   - **Multi-size**: `sizes: [{width, height}, ...]` — list of accepted sizes for a flexible slot. Mirrors OpenRTB `banner.format[]`.
-  - **Responsive**: `min_width`/`max_width` + `min_height`/`max_height` — accepted dimensional ranges for slots that adapt to viewport.
+  - **Responsive**: any of `min_width`/`max_width`/`min_height`/`max_height` — inclusive accepted dimensional bounds for slots that adapt to viewport. One-sided bounds are valid; omitted bounds follow the declaration's technical completeness assertion.
+
+Declaring no size mode is also structurally valid. It accepts any size only at a layer asserting `technical_requirements_complete: true`; otherwise the size envelope is undeclared.
 
 A flexible publisher slot becomes **one product with N format_options** — one per creative type — each carrying the appropriate size declaration. Buyers pick the creative type they ship; the size matches one of the listed pairs (or falls within the responsive range).
 
@@ -951,7 +1001,7 @@ The example below is the NYTimes Homepage above-the-fold slot: accepts image, HT
 
 **What's happening:** one product, three `format_options` entries (one per creative type), each with `sizes[]` carrying the three accepted IAB sizes. Buyer agents read this as "the slot accepts `image` OR `html5` OR `display_tag` at any of `300×250` / `728×90` / `970×250`." The buyer ships ONE creative — they pick which type and which size — and validation checks the manifest's slot `width`/`height` against the appropriate `sizes[]` list for the chosen format_kind.
 
-**Responsive variant.** A responsive slot replaces `sizes[]` with min/max ranges — `min_width: 300, max_width: 970, min_height: 50, max_height: 250` — and accepts any dimensions within the box. Same multi-format pattern; different size declaration. Exactly one size mode (fixed `width`+`height` / multi-size `sizes[]` / responsive ranges) per format_options entry, enforced at the schema layer.
+**Responsive variant.** A responsive slot replaces `sizes[]` with min/max ranges — `min_width: 300, max_width: 970, min_height: 50, max_height: 250` — and its published size bounds accept dimensions within the box. Same multi-format pattern; different size declaration. Fixed `width`+`height`, multi-size `sizes[]`, and responsive bounds are mutually exclusive per format_options entry, enforced at the schema layer; a declaration may also leave its size mode undeclared. The [effective acceptance rules](#responsive-bounds-and-effective-acceptance) govern ordering, omitted bounds, and intersection with other layers.
 
 **Seller preference.** When a multi-format product has several `format_options` at the same price, sellers MAY set `seller_preference: "preferred" | "accepted" | "discouraged"` on each entry to hint which the seller would prefer the buyer ship (often because of viewability / measurement / render-quality differences). Soft routing signal — buyer agents respect it when their own constraints don't override.
 
@@ -1556,7 +1606,7 @@ For the case where brand.json is missing or stale, the BrandRef itself carries a
 }
 ```
 
-Override fields take precedence over `brand.json` for the call carrying this BrandRef. The pattern matches BrandRef's existing inline overrides (`industries`, `data_subject_contestation`) — brand.json is canonical; inline overrides are per-call. Adopters needing to override brand-kit fields outside this subset (`voice_attributes`, `prohibited_terms`) MUST publish a different brand.json and reference it via a different `domain`.
+Override fields take precedence over `brand.json` for the call carrying this BrandRef. The pattern matches BrandRef's existing inline overrides (`industries`, `data_subject_contestation`) — brand.json is canonical; inline overrides are per-call. Adopters needing to override brand-kit fields outside this subset (for example the brand-wide `prohibited_terms` list) MUST publish a different brand.json and reference it via a different `domain`.
 
 ## Platform extensions — distribution
 
@@ -1572,11 +1622,11 @@ Each extension's response carries the schema, the canonical pattern or slot it e
 
 **Hosting paths — two separate flows.** v2 supports two hosting models, depending on whether the canonical URI's owner participates in the open AdCP ecosystem or operates as a closed platform that AAO translates on its behalf.
 
-*Open-ecosystem path (publisher-hosted)*. Used when the publisher owning the URI subdomain participates directly in AdCP — independent publishers, SSPs, retail-media networks running their own canonical extensions. The publisher hosts the artifact at the canonical URI on their subdomain. Because URIs are digest-pinned (`uri@sha256:…`), responses are immutable per digest — publishers SHOULD serve them with `Cache-Control: public, max-age=31536000, immutable` and target ≥99.9% / 30-day availability. SDKs cache aggressively by `uri@digest`; a hit is always correct. On 404 or resolution failure, buyers MUST degrade gracefully (treat as unavailable, skip platform-specific narrowing, don't fail the buy).
+*Open-ecosystem path (publisher-hosted)*. Used when the publisher owning the URI subdomain participates directly in AdCP — independent publishers, SSPs, retail-media networks running their own canonical extensions. The publisher hosts the artifact at the canonical URI on their subdomain. Because URIs are digest-pinned (`uri@sha256:…`), responses are immutable per digest — publishers SHOULD serve them with `Cache-Control: public, max-age=31536000, immutable` and target ≥99.9% / 30-day availability. SDKs cache aggressively by `uri@digest`. On 404, digest mismatch, or resolution failure without a verified cached or bundled body, buyers MUST preserve the referenced narrowing and treat the affected declaration as unresolved. They MUST NOT validate against a weakened contract with the extension removed. Surface the failure, skip that declaration, and continue with other independently resolvable options; the whole `get_products` response need not fail. A buyer may instead obtain authoritative seller validation of the complete effective contract, including the unresolved extension, before relying on compatibility.
 
 *Closed-platform path (AAO-translated)*. Used for walled gardens (Meta, Google, Amazon, TikTok, Snap, Pinterest). These platforms are unlikely to host AdCP-shaped extension artifacts on their own subdomains (they have native SDKs and APIs that protect their revenue model; serving an immutable extension CDN gives them no benefit). Instead, AAO runs a translator that maps closed-platform format documentation into AdCP extension artifacts and hosts them under an AAO mirror namespace (e.g., `https://creative.adcontextprotocol.org/translated/<platform>/<artifact>@<digest>`). Worked-example fixtures in this repo that reference `https://creative.adcontextprotocol.org/translated/meta/extensions/...` are illustrative — production usage of those extensions should resolve through the AAO mirror until/unless Meta participates directly. AAO commits to the same digest-pinning + immutability contract; refresh cadence and translation methodology are documented at `https://adcontextprotocol.org/registry/translated-extensions`. Buyers cache and resolve identically across both paths — `uri@digest` is the cache key, regardless of who hosts.
 
-The two paths share the digest-pinned cache and graceful-degradation semantics. They differ only in the resolution authority. The mirror is normative for closed-platform extensions (not "best effort") because there is no other path; for open-ecosystem extensions, the mirror is opt-in fallback.
+The two paths share the digest-pinned cache and unresolved-declaration handling. They differ only in the resolution authority. A mirror or alternate fetch location is usable only when its bytes verify against the declared digest; availability does not waive narrowing. The mirror is normative for closed-platform extensions (not "best effort") because there is no other path; for open-ecosystem extensions, the mirror is opt-in fallback.
 
 **Distribution path: bundled in `get_products`.** The sales agent's response includes definitions for every extension referenced by any product in the response, keyed by `uri@digest`:
 
@@ -1702,6 +1752,23 @@ When the seller asserts fewer refs than sizes (`v1_format_ref[].length < sizes[]
 
 **Inter-SDK convergence rule.** Two SDKs processing the same input MAY produce different `format_ids[]` (one fans out, one doesn't), but both MUST emit `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE` with consistent `declared_sizes` / `covered_sizes` / `dropped_sizes`. Buyer agents reading the response stream can reconcile divergent `format_ids[]` against the advisory.
 
+#### HTML-markup legacy formats (normative)
+
+The reference catalog's HTML-markup formats (`display_html` and every `display_<width>x<height>_html`) require one `html_creative` asset of type `html`. The seller renders that markup verbatim. These formats project to `display_tag` with inline-markup delivery, not to `html5`:
+
+```json
+"canonical": {
+  "kind": "display_tag",
+  "asset_source": "buyer_uploaded",
+  "slots_override": [{ "asset_group_id": "html_creative", "asset_type": "display_tag", "required": true }],
+  "supported_delivery_types": ["inline_markup"]
+}
+```
+
+The projected declaration carries the format's fixed `width`/`height` (none for `display_html`), `supported_delivery_types: ["inline_markup"]`, and the `html_creative` slot. `html5` remains reserved for seller-hosted zip bundles. A buyer-supplied HTML5 zip can reach these sellers only as buyer-served markup.
+
+The slot keeps the legacy `asset_id` as its `asset_group_id`, so the round trip is lossless. When projecting a `display_tag` creative to a legacy ref, select the exact `display_<width>x<height>_html` whose size equals the `html_creative` asset's `width`/`height`. Emit the markup byte-for-byte as the legacy `html` asset's `content` under `html_creative`. `delivery_type` and `markup_type` have no legacy field and are dropped. When reading a legacy `html_creative` asset back into a canonical manifest, use `markup_type: "standard"` unless the sender supplied a markup type. An unsized creative cannot prove a fixed size and matches only `display_html`. `html5` zip creatives and `tag_url` or `paired_redirect` display tags do not match these formats. The [HTML-markup legacy projection vectors](https://github.com/adcontextprotocol/adcp/blob/main/static/test-vectors/html-markup-legacy-projection.json) cover these cases. `display_js` keeps its bare `display_tag` annotation and the default `tag_url` slot contract.
+
 #### Pixel-density projection (normative)
 
 **Unversioned legacy reference-catalog bridge.** For each of the seven fixed image sizes (300x250, 728x90, 320x50, 160x600, 336x280, 300x600, and 970x250), the reference catalog publishes three distinct legacy contracts: the existing `display_<width>x<height>_image` requires a 1x asset only; `display_<width>x<height>_image_2x` requires a 2x asset only; and `display_<width>x<height>_image_1x_2x` requires both 1x and 2x assets. All keep the logical size in `renders[].dimensions`, while ordinary v1 asset requirements carry the exact intrinsic dimensions. Sellers select the contract their delivery system actually needs; GAM-style device-density selection uses `_image_1x_2x`, while a renderer that accepts Retina alone may use `_image_2x`. The live legacy catalog is identified by `(agent_url, id)` and `list_creative_formats` exposes no catalog version or digest, so these additive IDs become discoverable across 3.x when the reference agent deploys; they do not require a 3.0.x or 3.1.x protocol backport. This remains legacy-format support only: canonical pixel-density and rendition-set semantics begin in AdCP 3.2, and permissive JSON acceptance does not give unknown properties protocol meaning. Density and coverage values under `canonical_parameters` are opaque forward-projection metadata that 3.2-aware SDKs may use when projecting the legacy ID into the 3.2 canonical model.
@@ -1758,11 +1825,11 @@ By design, v2 doesn't introduce new vocabulary for things AdCP already handles o
 
 ### Channels covered by sibling refinement (no new canonical)
 
-The 15 canonicals cover display, seller-rendered stateful display, coordinated placements, video, audio, native in-feed, retail-media, AI-surface, and responsive-creative archetypes. Several channels look like they want their own canonical but don't — they're covered by **sibling refinement**: the same canonical's `asset_source`, `slots_override`, or `applies_to_channels` axis handles the difference.
+The 15 canonicals cover display, seller-rendered stateful display, coordinated placements, video, audio, native in-feed, retail-media, AI-surface, and responsive-creative archetypes. Several channels look like they want their own canonical but don't — they're covered by **sibling refinement**: the same canonical's `asset_source`, `params.slots`, or `applies_to_channels` axis handles the difference.
 
 - **Linear / addressable TV** — `video_hosted` + `applies_to_channels: ["linear_tv"]`. Asset is still a video file with size/codec/duration constraints. The GRP/spot transaction model and addressable household targeting are media-buy + measurement concerns, not creative-format concerns.
 - **OOH / DOOH** — `image` (or `video_hosted`) + `applies_to_channels: ["dooh"]`. Asset is still a still image (or short video) with size constraints. Location-keyed measurement (Geopath, COMMB) belongs on `sync_event_sources` / `event_log`, not on the format.
-- **Generative-from-prompt** — same `format_kind` as the buyer-uploaded equivalent (image, video_hosted, audio_hosted) + `asset_source: agent_synthesized` + `slots_override` declaring the input shape (`generation_prompt: text`, `creative_brief: brief`, `video_brief: object`). v2-aware buyers see "this format wants a text prompt or structured brief, not image bytes."
+- **Generative-from-prompt** — same `format_kind` as the buyer-uploaded equivalent (image, video_hosted, audio_hosted) + `params.asset_source: agent_synthesized` + `params.slots` declaring the input shape (`generation_prompt: text`, `creative_brief: brief`, `video_brief: video_brief`). Buyers see "this format wants a text prompt or structured brief, not image bytes."
 - **In-feed video** — `video_hosted`, narrowed to the product's actual channel such as `social` when applicable. The asset is still a hosted video file; placement metadata captures its in-feed position. For title + image + body assembled by the renderer, use the dedicated `native_in_feed` canonical.
 
 Channels that DO need their own canonical (genuinely different shape, deferred):

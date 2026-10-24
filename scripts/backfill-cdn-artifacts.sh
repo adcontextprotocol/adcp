@@ -17,14 +17,23 @@ Options:
                       when present.
   --dry-run           Print the planned AWS sync/cp operations.
   --aws-dry-run       Execute AWS with --dryrun. Very verbose: AWS prints
-                      every object it would upload.
+                      every object it would upload. Also computes and prints
+                      the root discovery pointers from the live bucket without
+                      uploading them.
   --build-latest      Rebuild dist/*/latest and dist/protocol/latest.tgz first.
-  --latest-only       Upload only mutable development artifacts (routine deploy).
+  --latest-only       Upload only mutable artifacts: dist/*/latest plus the
+                      root discovery pointers, rebuilt from the versions the
+                      bucket already serves (routine deploy).
+  --pointer-output-dir DIR
+                      Keep the published schemas/index.json and
+                      schemas/latest.json in DIR so a post-publication check
+                      can verify the exact uploaded bytes.
   --version VERSION   Publish only this already-approved, tagged GitHub release.
                       Existing objects must match; missing objects are created
                       conditionally. Requires --skip-latest.
   --skip-latest       Upload only versioned artifacts; do not update mutable
-                      schemas/latest, compliance/latest, or protocol/latest.
+                      schemas/latest, compliance/latest, protocol/latest, or
+                      the root discovery pointers.
   --apply-cors        Apply public read CORS config to the bucket via Wrangler.
   --quiet             Pass --only-show-errors to aws s3 operations.
   -h, --help          Show this help.
@@ -51,6 +60,7 @@ build_latest=0
 skip_latest=0
 latest_only=0
 release_version=""
+pointer_output_dir=""
 apply_cors=0
 quiet=0
 
@@ -99,6 +109,10 @@ while [[ $# -gt 0 ]]; do
       latest_only=1
       shift
       ;;
+    --pointer-output-dir)
+      pointer_output_dir="$(require_option_value "$1" "${2:-}")"
+      shift 2
+      ;;
     --version)
       release_version="$(require_option_value "$1" "${2:-}")"
       shift 2
@@ -134,6 +148,10 @@ done
 # Live bulk backfills could publish unapproved versions. Select one authority.
 if [[ "$latest_only" -eq 1 && ( "$skip_latest" -eq 1 || -n "$release_version" ) ]]; then
   echo "--latest-only cannot be combined with versioned publication." >&2
+  exit 2
+fi
+if [[ -n "$pointer_output_dir" && "$latest_only" -ne 1 ]]; then
+  echo "--pointer-output-dir only applies to --latest-only publication." >&2
   exit 2
 fi
 if [[ -n "$release_version" && ( ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ || "$skip_latest" -ne 1 || "$build_latest" -eq 1 || "$apply_cors" -eq 1 ) ]]; then
@@ -214,9 +232,16 @@ Run with --build-latest if this checkout has not already run the artifact build.
 WARN
 fi
 
-fence_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-release-state.cjs"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fence_script="$script_dir/check-release-state.cjs"
+# --version publishes one already-committed release, so an unrelated later
+# branch commit does not invalidate it. Mutable latest publication (deploy)
+# keeps the strict exact-head fence.
+fence_mode=current
+if [[ -n "$release_version" ]]; then fence_mode=publication-current; fi
+pointer_builder="$script_dir/build-schema-discovery-pointers.cjs"
 if [[ "$dry_run" -eq 0 ]]; then
-  node "$fence_script" current
+  node "$fence_script" "$fence_mode"
   if [[ -n "$release_version" ]]; then
     node "$fence_script" committed "$release_version"
     node "$fence_script" approval
@@ -256,7 +281,7 @@ apply_bucket_cors() {
   ]
 }
 JSON
-  node "$fence_script" current
+  node "$fence_script" "$fence_mode"
   wrangler r2 bucket cors set "$bucket" --file "$cors_file" --force
   rm -f "$cors_file"
 }
@@ -268,9 +293,9 @@ run_cmd() {
   if [[ "$dry_run" -eq 1 && "$aws_dry_run" -eq 0 ]]; then
     return 0
   fi
-  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" current; fi
+  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" "$fence_mode"; fi
   "$@"
-  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" current; fi
+  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" "$fence_mode"; fi
 }
 
 # R2 writes are atomic per object, not per bundle. Compare every existing
@@ -307,7 +332,7 @@ put_immutable() {
   source="$immutable_tmpdir/body"
   body_digest="$(sha256sum "$source" | cut -d ' ' -f1)"
   verify_immutable_body "$source" "$body_digest"
-  node "$fence_script" current
+  node "$fence_script" "$fence_mode"
   if aws s3api head-object --bucket "$bucket" --key "$key" \
       --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" --no-cli-pager >/dev/null 2>"$head_error"; then
     aws s3 cp "s3://${bucket}/${key}" "$existing" "${common_aws_args[@]}"
@@ -323,7 +348,7 @@ put_immutable() {
       rm -f "$existing" "$head_error"
       exit 1
     fi
-    node "$fence_script" current
+    node "$fence_script" "$fence_mode"
     verify_immutable_body "$source" "$body_digest"
     aws s3api put-object --bucket "$bucket" --key "$key" --body "$source" \
       --if-none-match '*' --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
@@ -331,7 +356,7 @@ put_immutable() {
   fi
   cleanup_immutable_body
   immutable_tmpdir=""
-  node "$fence_script" current
+  node "$fence_script" "$fence_mode"
 }
 
 publish_filtered() {
@@ -483,6 +508,108 @@ cp_compliance_tree() {
   cp_filtered_recursive "$root" "$dest_prefix" "$cache_control" "text/plain; charset=utf-8" "*.txt"
 }
 
+# Root discovery pointers (schemas/index.json, schemas/latest.json).
+#
+# These name versions, so routine deployment may only advertise versions that
+# release authority already published. The builder enforces that: `versions[]`
+# comes from the bucket's `schemas/` prefixes, but an alias may only resolve to
+# a release whose `schemas/<version>/index.json` object is confirmed below. A
+# prefix appears as soon as release publication writes its first object, so
+# prefix existence alone would let a half-uploaded release win an alias.
+#
+# See RELEASING.md "Publication authority and ordering" and #8318.
+pointer_scratch=""
+cleanup_pointer_scratch() {
+  if [[ -n "$pointer_scratch" ]]; then rm -rf -- "$pointer_scratch"; fi
+  cleanup_immutable_publication
+}
+pointer_head_object() {
+  # 0 = present, 1 = confirmed absent. Any other outcome aborts: "cannot tell"
+  # must never read as "absent".
+  local key="$1" error="$2"
+  if aws s3api head-object --bucket "$bucket" --key "$key" \
+      --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" --no-cli-pager >/dev/null 2>"$error"; then
+    return 0
+  fi
+  if grep -Eq 'An error occurred \(404\)|\(NoSuchKey\)' "$error"; then
+    return 1
+  fi
+  cat "$error" >&2
+  echo "Could not determine whether s3://${bucket}/${key} exists; refusing to republish pointers." >&2
+  exit 1
+}
+publish_root_pointers() {
+  if [[ ! -f dist/schemas/index.json ]]; then
+    echo "Missing dist/schemas/index.json; run with --build-latest." >&2
+    exit 1
+  fi
+  local staging listing existing head_error confirmed candidates minor version claimed
+
+  # Scratch inputs stay out of --pointer-output-dir, whose contract is the two
+  # published documents and nothing else.
+  pointer_scratch="$(mktemp -d "${TMPDIR:-/tmp}/adcp-schema-pointers.XXXXXX")"
+  trap cleanup_pointer_scratch EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  staging="${pointer_output_dir:-$pointer_scratch}"
+  mkdir -p "$staging"
+  listing="$pointer_scratch/listing.json"
+  existing="$pointer_scratch/published-index.json"
+  head_error="$pointer_scratch/head-error"
+  confirmed="$pointer_scratch/confirmed"
+  candidates="$pointer_scratch/candidates"
+
+  # Plain --dry-run stays offline. --aws-dry-run runs the whole read-only
+  # computation against the real bucket and prints the documents it would
+  # publish, which is how to preview the pointer state before a deploy.
+  if [[ "$dry_run" -eq 1 && "$aws_dry_run" -eq 0 ]]; then
+    echo "Would rebuild and upload schemas/index.json and schemas/latest.json from the published version set"
+    return 0
+  fi
+  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" "$fence_mode"; fi
+  # One delimited listing names every published schemas/<version>/ prefix.
+  aws s3api list-objects-v2 --bucket "$bucket" --prefix 'schemas/' --delimiter '/' \
+    --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" --no-cli-pager --output json > "$listing"
+
+  # Walk each line newest-first and take the first release whose manifest
+  # object actually exists. Typically one HEAD per release line.
+  node "$pointer_builder" candidates --source dist/schemas/index.json --listing "$listing" > "$candidates"
+  : > "$confirmed"
+  claimed=""
+  while read -r minor version; do
+    [[ -n "$minor" && -n "$version" ]] || continue
+    case " $claimed " in *" $minor "*) continue ;; esac
+    if pointer_head_object "schemas/${version}/index.json" "$head_error"; then
+      claimed="$claimed $minor"
+      printf '%s\n' "$version" >> "$confirmed"
+    fi
+  done < "$candidates"
+
+  rm -f "$existing"
+  if pointer_head_object schemas/index.json "$head_error"; then
+    aws s3 cp "s3://${bucket}/schemas/index.json" "$existing" \
+      --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
+      --no-cli-pager --no-progress --only-show-errors
+  fi
+
+  node "$pointer_builder" build \
+    --source dist/schemas/index.json \
+    --listing "$listing" \
+    --confirmed "$confirmed" \
+    --published-index "$existing" \
+    --out-index "$staging/index.json" \
+    --out-latest "$staging/latest.json"
+
+  if [[ "$dry_run" -eq 1 ]]; then
+    echo "Would upload schemas/index.json and schemas/latest.json:"
+    cat "$staging/index.json" "$staging/latest.json"
+    return 0
+  fi
+
+  cp_file "$staging/index.json" schemas/index.json "$revalidate_cache" "application/json; charset=utf-8"
+  cp_file "$staging/latest.json" schemas/latest.json "$revalidate_cache" "application/json; charset=utf-8"
+}
+
 if [[ "$apply_cors" -eq 1 ]]; then
   if [[ "$dry_run" -eq 1 ]]; then
     echo "Would apply public GET/HEAD CORS config to R2 bucket $bucket"
@@ -512,12 +639,9 @@ done
 fi
 fi
 if [[ "$skip_latest" -eq 0 ]]; then
-  if [[ "$latest_only" -eq 0 && -f dist/schemas/index.json ]]; then
-    cp_file dist/schemas/index.json schemas/index.json "$revalidate_cache" "application/json; charset=utf-8"
-  fi
-  if [[ "$latest_only" -eq 0 && -f dist/schemas/latest.json ]]; then
-    cp_file dist/schemas/latest.json schemas/latest.json "$revalidate_cache" "application/json; charset=utf-8"
-  fi
+  # Never upload dist/schemas/index.json directly: the published pointers must
+  # always go through the authority filter in publish_root_pointers.
+  publish_root_pointers
   if [[ -d dist/schemas/latest ]]; then
     cp_schema_tree dist/schemas/latest schemas/latest "$revalidate_cache"
   fi

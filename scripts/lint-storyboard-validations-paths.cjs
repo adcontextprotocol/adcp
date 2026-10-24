@@ -20,6 +20,7 @@
  *   - field_pattern
  *   - field_contains
  *   - array_length
+ *   - all_fields_present
  *   - envelope_field_present
  *   - envelope_field_absent
  *   - envelope_field_pattern
@@ -54,6 +55,7 @@ const PATH_BEARING_CHECKS = new Set([
   'array_length',
   'field_greater_than',
   'all_fields_in_context_array',
+  'all_fields_present',
   'envelope_field_present',
   'envelope_field_absent',
   'envelope_field_pattern',
@@ -467,10 +469,26 @@ function lintDoc(doc, filePath, allowlist = []) {
     for (const { v, index: i } of pathValidations) {
       const rawPath = v.path;
       const segments = parsePath(rawPath);
+      if (v.check === 'all_fields_present') {
+        const star = segments.indexOf('*');
+        if (star <= 0 || star !== segments.lastIndexOf('*') || star === segments.length - 1) {
+          violations.push({
+            rule: 'all_fields_present_path_shape',
+            filePath,
+            stepId: step.stepId,
+            responseRef: step.responseRef,
+            validationPath: rawPath,
+            check: v.check,
+            index: i,
+          });
+          continue;
+        }
+      }
       if (
         segments.includes('*') &&
         v.check !== 'field_contains' &&
-        v.check !== 'all_fields_in_context_array'
+        v.check !== 'all_fields_in_context_array' &&
+        v.check !== 'all_fields_present'
       ) {
         violations.push({
           rule: 'wildcard_unsupported_check',
@@ -564,9 +582,12 @@ const RULE_MESSAGES = {
     `expected_arm \`${expectedArm}\` does not match any oneOf/anyOf branch in \`${responseRef}\`. ` +
     'Match rule: a branch must declare some property with `const: "<expected_arm>"`. ' +
     'Verify the discriminator value against the response schema.',
+  all_fields_present_path_shape: ({ validationPath }) =>
+    `validations[].path \`${validationPath}\` (check: \`all_fields_present\`) must contain exactly one [*] ` +
+    'segment with an array path before it and a field path after it, e.g. `products[*].format_options`.',
   wildcard_unsupported_check: ({ validationPath, check }) =>
     `validations[].path \`${validationPath}\` uses [*] but check \`${check}\` does not support wildcard ` +
-    'runtime semantics. Use `field_contains` or `all_fields_in_context_array` for wildcard membership checks, or use a concrete index.',
+    'runtime semantics. Use `field_contains` or `all_fields_in_context_array` for wildcard membership checks, `all_fields_present` for per-item presence, or use a concrete index.',
 };
 
 function formatMessage(violation) {

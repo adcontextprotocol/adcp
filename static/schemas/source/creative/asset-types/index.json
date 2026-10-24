@@ -91,6 +91,11 @@
       "schema": "/schemas/core/assets/brief-asset.json",
       "typical_use": "Campaign briefs with objective, messaging, compliance requirements"
     },
+    "video_brief": {
+      "description": "Structured timed generation brief carried as a typed manifest asset",
+      "schema": "/schemas/core/assets/video-brief-asset.json",
+      "typical_use": "Per-segment prompts, voiceover, and captions for video generation; output video assets remain separate."
+    },
     "catalog": {
       "description": "Typed data feed (products, stores, jobs, etc.)",
       "schema": "/schemas/core/assets/catalog-asset.json",

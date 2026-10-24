@@ -1,3 +1,5 @@
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
   listStoryboards,
@@ -32,6 +34,7 @@ import {
   withHostedTestOptions,
 } from '../../src/services/hosted-compliance-version.js';
 import {
+  getComplianceStoryboardById,
   isComplianceVersionSupported,
   loadComplianceIndex,
   resolveStoryboardsForCapabilities,
@@ -46,6 +49,42 @@ import {
  * (which storyboards exist, their tasks, phases, etc.) is owned upstream by
  * @adcp/sdk's compliance cache; upstream has its own catalog tests.
  */
+
+const REGISTERED_COMPLIANCE_VERSIONS: readonly string[] = (
+  JSON.parse(
+    readFileSync(resolve(process.cwd(), 'static', 'compliance', 'published-versions.json'), 'utf8'),
+  ) as { published_versions: string[] }
+).published_versions;
+
+function releaseVersionKey(version: string): number[] {
+  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-(beta|rc)\.(\d+))?$/);
+  if (!match) throw new Error(`Unexpected compliance version ${version}`);
+  const stage = match[4] === 'beta' ? 0 : match[4] === 'rc' ? 1 : 2;
+  return [Number(match[1]), Number(match[2]), Number(match[3]), stage, Number(match[5] ?? 0)];
+}
+
+function compareReleaseVersions(a: string, b: string): number {
+  const aKey = releaseVersionKey(a);
+  const bKey = releaseVersionKey(b);
+  for (let i = 0; i < aKey.length; i++) {
+    if (aKey[i] !== bKey[i]) return aKey[i] - bKey[i];
+  }
+  return 0;
+}
+
+function highestRegisteredComplianceVersion(channel: RegExp): string {
+  const registered = REGISTERED_COMPLIANCE_VERSIONS.filter(version => channel.test(version)).sort(compareReleaseVersions);
+  const highest = registered.at(-1);
+  if (!highest) throw new Error(`No registered compliance version matches ${channel}`);
+  return highest;
+}
+
+function checkedInComplianceBundles(): string[] {
+  const complianceRoot = resolve(process.cwd(), 'dist', 'compliance');
+  return readdirSync(complianceRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && existsSync(join(complianceRoot, entry.name, 'index.json')))
+    .map(entry => entry.name);
+}
 
 describe('listStoryboards', () => {
   it('returns a non-empty list from the compliance cache', () => {
@@ -193,7 +232,7 @@ describe('wrapper contract', () => {
     const target = hostedComplianceTarget();
     const index = loadComplianceIndex(hostedComplianceOptions(target));
     expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
-    expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.27');
+    expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.28');
     expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
     expect(HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).toBe(600_000);
     expect(HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS).toBe(1_800_000);
@@ -206,7 +245,7 @@ describe('wrapper contract', () => {
   it('resolves compliance target aliases against checked-in caches', () => {
     const stable = hostedComplianceTarget('3.0');
     expect(stable.requested).toBe('3.0');
-    expect(stable.version).toBe('3.0.27');
+    expect(stable.version).toBe('3.0.28');
     expect(stable.version).toMatch(/^3\.0\.\d+$/);
 
     const beta = hostedComplianceTarget('3.1-beta');
@@ -259,10 +298,11 @@ describe('wrapper contract', () => {
     // 3.2 GA: stable 3.2 wins over 3.1, and a 3.2 prerelease pin stays on
     // that prerelease instead of being upgraded to the GA bundle.
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).requested).toBe('3.2');
-    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe('3.2.4');
+    const latestRegistered32 = highestRegisteredComplianceVersion(/^3\.2\.\d+$/);
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2']).version).toBe(latestRegistered32);
     expect(selectHostedComplianceTargetForSupportedVersions(['3.2-rc.7']).version).toBe('3.2.0-rc.7');
-    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe('3.2.4');
-    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe('3.1.24');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe(latestRegistered32);
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe('3.1.29');
 
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.7']).requested).toBe('3.1-beta');
@@ -284,28 +324,85 @@ describe('wrapper contract', () => {
   });
 
   it('caps hosted aliases at explicitly registered released compliance bundles', () => {
-    expect(hostedComplianceTarget('3.0').version).toBe('3.0.27');
-    expect(hostedComplianceTarget('3.1').version).toBe('3.1.24');
-    expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
-    expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
-    expect(hostedComplianceTarget('3.2').version).toBe('3.2.4');
+    // The release `version` script registers each new patch in
+    // static/compliance/published-versions.json, and a forward merge carries a
+    // maintenance line's registration onto main, so the alias legitimately
+    // moves. Expect the highest registered version per channel rather than a
+    // literal, and pin a floor so the manifest cannot silently lose a hosted
+    // release.
+    const aliases: Array<{ alias: string; channel: RegExp; floor: string }> = [
+      { alias: '3.0', channel: /^3\.0\.\d+$/, floor: '3.0.28' },
+      { alias: '3.1', channel: /^3\.1\.\d+$/, floor: '3.1.29' },
+      { alias: '3.2', channel: /^3\.2\.\d+$/, floor: '3.2.5' },
+      { alias: '3.1-beta', channel: /^3\.1\.0-beta\.\d+$/, floor: '3.1.0-beta.7' },
+      { alias: '3.1-rc', channel: /^3\.1\.0-rc\.\d+$/, floor: '3.1.0-rc.14' },
+      { alias: '3.2-rc', channel: /^3\.2\.0-rc\.\d+$/, floor: '3.2.0-rc.7' },
+    ];
+    const checkedIn = checkedInComplianceBundles();
+    const cappedAliases: string[] = [];
+    for (const { alias, channel, floor } of aliases) {
+      const ceiling = highestRegisteredComplianceVersion(channel);
+      expect(compareReleaseVersions(ceiling, floor), alias).toBeGreaterThanOrEqual(0);
+      expect(hostedComplianceTarget(alias).version, alias).toBe(ceiling);
+      if (checkedIn.some(version => channel.test(version) && compareReleaseVersions(version, ceiling) > 0)) {
+        cappedAliases.push(alias);
+      }
+    }
+    // A newer checked-in bundle that is not registered (3.1.0-rc.15 when this
+    // was written) proves the cap is exercised: an alias that resolved to the
+    // newest bundle on disk would fail above.
+    expect(cappedAliases.length).toBeGreaterThan(0);
     expect(hostedComplianceTarget('3.2.2').version).toBe('3.2.2');
     expect(hostedComplianceTarget('3.2.3').version).toBe('3.2.3');
-    expect(hostedComplianceTarget('3.2-rc').version).toBe('3.2.0-rc.7');
+    expect(hostedComplianceTarget('3.2.4').version).toBe('3.2.4');
+    expect(hostedComplianceTarget('3.1.27').version).toBe('3.1.27');
     expect(() => hostedComplianceTarget('3.2.0')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1.12')).toThrow(/not available from a published/);
+    // 3.1.28's records are on main, but the hosted 3.1 alias moved straight
+    // from 3.1.27 to 3.1.29, so 3.1.28 is not a hosted grading target.
+    expect(() => hostedComplianceTarget('3.1.28')).toThrow(/not available from a published/);
     expect(() => hostedComplianceTarget('3.1-rc.15')).toThrow(/not available from a published/);
   });
 
-  it('loads the released 3.1.24 bundle with the pinned hosted SDK', () => {
+  it('loads the released 3.0.28 bundle with the pinned hosted SDK', () => {
+    const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0']);
+    const options = hostedComplianceOptions(target);
+
+    expect(target.requested).toBe('3.0');
+    expect(target.version).toBe('3.0.28');
+    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.0\.28$/);
+    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.0\.28$/);
+    expect(loadComplianceIndex(options).adcp_version).toBe('3.0.28');
+  });
+
+  // #7908 backported `depends_on: []` onto the three deterministic_testing
+  // phases that establish their own state. Without it the 3.0.x runner falls
+  // back to "depend on all prior phases", so a seller with no Sponsored
+  // Intelligence loses deterministic_delivery and deterministic_budget to a
+  // prerequisite_failed cascade behind deterministic_session's missing
+  // si_initiate_session (#7824). The backport exists only from 3.0.28, so this
+  // asserts the hosted 3.0 alias resolves to a bundle that carries it — the
+  // runner behaviour itself is graded by the 3.0-compat storyboard matrix.
+  it('grades hosted 3.0 on a bundle whose deterministic_testing phases are independent', () => {
+    const options = hostedComplianceOptions(hostedComplianceTarget('3.0'));
+    const storyboard = getComplianceStoryboardById('deterministic_testing', options);
+
+    for (const phaseId of ['deterministic_session', 'deterministic_delivery', 'deterministic_budget']) {
+      const phase = storyboard.phases.find(item => item.id === phaseId);
+      expect(phase, `${phaseId} is missing from the hosted 3.0 deterministic_testing storyboard`).toBeDefined();
+      expect(phase?.depends_on, `${phaseId} must declare no prior-phase dependency`).toEqual([]);
+    }
+  });
+
+  it('loads the released 3.1.29 bundle with the pinned hosted SDK', () => {
     const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1']);
     const options = hostedComplianceOptions(target);
 
     expect(target.requested).toBe('3.1');
-    expect(target.version).toBe('3.1.24');
-    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.24$/);
-    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.24$/);
-    expect(loadComplianceIndex(options).adcp_version).toBe('3.1.24');
+    expect(target.version).toBe('3.1.29');
+    expect(options.complianceDir).toMatch(/\/dist\/compliance\/3\.1\.29$/);
+    expect(options.schemaRoot).toMatch(/\/dist\/schemas\/3\.1\.29$/);
+    expect(loadComplianceIndex(options).adcp_version).toBe('3.1.29');
   });
 
   it.each([
@@ -313,6 +410,7 @@ describe('wrapper contract', () => {
     ['3.2.2', /\/dist\/compliance\/3\.2\.2$/, /\/dist\/schemas\/3\.2\.2$/],
     ['3.2.3', /\/dist\/compliance\/3\.2\.3$/, /\/dist\/schemas\/3\.2\.3$/],
     ['3.2.4', /\/dist\/compliance\/3\.2\.4$/, /\/dist\/schemas\/3\.2\.4$/],
+    ['3.2.5', /\/dist\/compliance\/3\.2\.5$/, /\/dist\/schemas\/3\.2\.5$/],
   ] as const)('loads the explicitly pinned %s bundle with the hosted SDK', (version, complianceDir, schemaRoot) => {
     const target = hostedComplianceTarget(version);
     const options = hostedComplianceOptions(target);

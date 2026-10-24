@@ -3716,7 +3716,18 @@
       }
     ],
     "canonical": {
-      "kind": "html5"
+      "kind": "display_tag",
+      "asset_source": "buyer_uploaded",
+      "slots_override": [
+        {
+          "asset_group_id": "html_creative",
+          "asset_type": "display_tag",
+          "required": true
+        }
+      ],
+      "supported_delivery_types": [
+        "inline_markup"
+      ]
     }
   },
   {
@@ -3815,7 +3826,18 @@
       }
     ],
     "canonical": {
-      "kind": "html5"
+      "kind": "display_tag",
+      "asset_source": "buyer_uploaded",
+      "slots_override": [
+        {
+          "asset_group_id": "html_creative",
+          "asset_type": "display_tag",
+          "required": true
+        }
+      ],
+      "supported_delivery_types": [
+        "inline_markup"
+      ]
     }
   },
   {
@@ -3912,7 +3934,18 @@
       }
     ],
     "canonical": {
-      "kind": "html5"
+      "kind": "display_tag",
+      "asset_source": "buyer_uploaded",
+      "slots_override": [
+        {
+          "asset_group_id": "html_creative",
+          "asset_type": "display_tag",
+          "required": true
+        }
+      ],
+      "supported_delivery_types": [
+        "inline_markup"
+      ]
     }
   },
   {
@@ -4009,7 +4042,18 @@
       }
     ],
     "canonical": {
-      "kind": "html5"
+      "kind": "display_tag",
+      "asset_source": "buyer_uploaded",
+      "slots_override": [
+        {
+          "asset_group_id": "html_creative",
+          "asset_type": "display_tag",
+          "required": true
+        }
+      ],
+      "supported_delivery_types": [
+        "inline_markup"
+      ]
     }
   },
   {
@@ -4106,7 +4150,18 @@
       }
     ],
     "canonical": {
-      "kind": "html5"
+      "kind": "display_tag",
+      "asset_source": "buyer_uploaded",
+      "slots_override": [
+        {
+          "asset_group_id": "html_creative",
+          "asset_type": "display_tag",
+          "required": true
+        }
+      ],
+      "supported_delivery_types": [
+        "inline_markup"
+      ]
     }
   },
   {
@@ -4203,7 +4258,18 @@
       }
     ],
     "canonical": {
-      "kind": "html5"
+      "kind": "display_tag",
+      "asset_source": "buyer_uploaded",
+      "slots_override": [
+        {
+          "asset_group_id": "html_creative",
+          "asset_type": "display_tag",
+          "required": true
+        }
+      ],
+      "supported_delivery_types": [
+        "inline_markup"
+      ]
     }
   },
   {
@@ -4300,7 +4366,18 @@
       }
     ],
     "canonical": {
-      "kind": "html5"
+      "kind": "display_tag",
+      "asset_source": "buyer_uploaded",
+      "slots_override": [
+        {
+          "asset_group_id": "html_creative",
+          "asset_type": "display_tag",
+          "required": true
+        }
+      ],
+      "supported_delivery_types": [
+        "inline_markup"
+      ]
     }
   },
   {
@@ -5725,7 +5802,18 @@
       }
     ],
     "canonical": {
-      "kind": "html5"
+      "kind": "display_tag",
+      "asset_source": "buyer_uploaded",
+      "slots_override": [
+        {
+          "asset_group_id": "html_creative",
+          "asset_type": "display_tag",
+          "required": true
+        }
+      ],
+      "supported_delivery_types": [
+        "inline_markup"
+      ]
     }
   },
   {
@@ -5824,7 +5912,18 @@
       }
     ],
     "canonical": {
-      "kind": "html5"
+      "kind": "display_tag",
+      "asset_source": "buyer_uploaded",
+      "slots_override": [
+        {
+          "asset_group_id": "html_creative",
+          "asset_type": "display_tag",
+          "required": true
+        }
+      ],
+      "supported_delivery_types": [
+        "inline_markup"
+      ]
     }
   },
   {

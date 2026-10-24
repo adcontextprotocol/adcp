@@ -135,13 +135,24 @@ describe('product discovery MCP schema parity', () => {
     // its ResponseCollection item to the four tools (+2,802 bytes; 155.67 KiB
     // measured), bounded at 156 KiB. The experimental extend_hold refinement
     // action adds one enum value and one revise-field-forbidding arm to
-    // refine_proposals (+836 bytes; 156.78 KiB measured), bounded at 157 KiB.
+    // refine_proposals (+836 bytes; 156.78 KiB measured). Experimental
+    // opportunity.later_proposals consent on the shared opportunity context
+    // reaches request_proposals and decline_proposals, and decline_proposals
+    // gains the empty-declines-with-opportunity rule (+1,302 bytes on the
+    // pre-merge budget; 161,843 bytes / 158.05 KiB measured), bounded at 159 KiB.
+    // Experimental collection_lists / collection_lists_exclude add two short
+    // array properties and their requirement keys to the shared targeting
+    // graph; with open opportunities on main, 163,607 bytes / 159.77 KiB
+    // measured, bounded at 160 KiB.
+    // Core gender adds its shared predicate and overlay support; merged
+    // discovery measures 165,140 bytes / 161.27 KiB, bounded at the next KiB
+    // without relaxing standalone-schema parity.
     // Experimental audience evidence targets (#8125) make the audience
     // characteristic shape reachable from the discovery filters, so its
     // bundled closure plus the target item and relationship enum land in each
-    // tool that carries filters (+6.6 KiB; 163.39 KiB measured), bounded at
-    // 164 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(164 * 1024);
+    // tool that carries filters (+6,795 bytes measured against main:
+    // 165,140 -> 171,935 bytes / 167.9 KiB), bounded at 168 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(168 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

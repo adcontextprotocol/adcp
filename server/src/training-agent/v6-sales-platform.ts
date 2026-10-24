@@ -66,7 +66,7 @@ import {
 } from './v6-account-helpers.js';
 import { registerSharedPublicBrandPartitionForAccountId, rehydrateAccountById } from './account-handlers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
-import { PUBLISHERS } from './publishers.js';
+import { PUBLISHERS, buildVendorMetricOptimizationCapability } from './publishers.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
 import { buildCatalog } from './product-factory.js';
@@ -427,6 +427,9 @@ export function restoreRawPackageSelectors(
 // AdCPSpecialism union can include it. Keep the cast at this single boundary;
 // the wire value remains the literal `sales-dooh` and is schema-tested here.
 const SALES_DOOH_SPECIALISM = 'sales-dooh' as never;
+// Same boundary for `sales-fixed-rate`: the in-repo schema carries it before the
+// published SDK's generated AdCPSpecialism union does.
+const SALES_FIXED_RATE_SPECIALISM = 'sales-fixed-rate' as never;
 
 const TRAINING_SALES_CHANNELS = [
   'display',
@@ -448,7 +451,7 @@ const TRAINING_SALES_CHANNELS = [
 ] as const;
 
 export const TRAINING_SALES_CAPABILITIES = {
-  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', SALES_DOOH_SPECIALISM] as const,
+  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', 'sales-broadcast-tv', SALES_DOOH_SPECIALISM, SALES_FIXED_RATE_SPECIALISM] as const,
   creative_agents: [],
   channels: TRAINING_SALES_CHANNELS,
   overrides: {
@@ -528,9 +531,10 @@ export const TRAINING_SALES_CAPABILITIES = {
   // training platform resolves products dynamically, so it declares the
   // honest union explicitly and the tenant router preserves that declaration.
   supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
-  vendor_metric_optimization: {
-    supported_targets: ['threshold_rate' as const],
-  },
+  // Derived from the catalog's product-level declarations (supported_targets
+  // and the supported_metrics[] rollup), so neither can drift from what
+  // products actually support.
+  vendor_metric_optimization: buildVendorMetricOptimizationCapability()!,
   performance_feedback: {
     reports_application_status: true,
   },
@@ -549,9 +553,7 @@ export function salesCapabilityProjection() {
       inline_creative_management: true,
     },
     supported_optimization_metrics: [...TRAINING_SALES_CAPABILITIES.supported_optimization_metrics],
-    vendor_metric_optimization: {
-      supported_targets: [...TRAINING_SALES_CAPABILITIES.vendor_metric_optimization.supported_targets],
-    },
+    vendor_metric_optimization: structuredClone(TRAINING_SALES_CAPABILITIES.vendor_metric_optimization),
     performance_feedback: {
       ...TRAINING_SALES_CAPABILITIES.performance_feedback,
     },
@@ -797,6 +799,14 @@ function translateV5Result<T extends object>(result: unknown, options: { allowAd
     });
   }
   return result as T;
+}
+
+/** Both delivery surfaces must durably publish the ordinary source read. */
+async function readDeliveryWithSourcePublication(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+  const result = await handleGetMediaBuyDelivery(args, ctx);
+  const { publishTrainingGcsSourceDelivery } = await import('./gcs-reporting-tools.js');
+  await publishTrainingGcsSourceDelivery(args as Record<string, unknown>, result, ctx.principal);
+  return result;
 }
 
 /**
@@ -1722,9 +1732,7 @@ export class TrainingSalesPlatform
           this.storyboardCompat,
         )
         : withCurrentAccountScope(currentArgs as Record<string, unknown>, ctx.account);
-      const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
-      const { publishTrainingGcsSourceDelivery } = await import('./gcs-reporting-tools.js');
-      await publishTrainingGcsSourceDelivery(args as Record<string, unknown>, result, ctx.authInfo?.clientId);
+      const result = await readDeliveryWithSourcePublication(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
     // Optional read-side methods.
@@ -1959,7 +1967,7 @@ export class TrainingSalesPlatform
     },
 
     getMediaBuyDelivery: async (req, ctx) => translateV5Result(
-      await handleGetMediaBuyDelivery(
+      await readDeliveryWithSourcePublication(
         withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input),
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
       ),

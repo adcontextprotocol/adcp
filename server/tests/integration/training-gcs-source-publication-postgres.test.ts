@@ -21,6 +21,33 @@ const config = { delivery_config_id: 'daily-source', delivery_config_version: 1,
     destination: { mode: 'provision', provider: offering.method.provider, access_mode: offering.method.access_mode, recipient: { identity: 'source-reader' } } } };
 const input = { principal, accountId, sourceConfigId: config.delivery_config_id, sourceConfigVersion: 1, mediaBuyIds, period, impressions: 123 };
 
+async function savedLedger() {
+  return (await shared.pool!.query('SELECT ledger FROM training_reporting_ledgers')).rows[0].ledger;
+}
+
+async function legacySource(change: (revision: Record<string, unknown>) => void = () => {}) {
+  await reporting.commitTrainingDailySourcePeriod(input);
+  const ledger = await savedLedger();
+  for (const [, revision] of ledger.published_revisions) {
+    delete revision.finality_basis; delete revision.finality_policy_id; delete revision.finalized_at;
+    change(revision);
+  }
+  for (const [, content] of ledger.revision_contents) {
+    delete content.revision.finality_basis; delete content.revision.finality_policy_id; delete content.revision.finalized_at;
+    change(content.revision);
+  }
+  await shared.pool!.query('UPDATE training_reporting_ledgers SET ledger=$1', [ledger]);
+  reporting.clearReportingReliabilityStore();
+  return ledger;
+}
+
+async function sourceStatus(revisionId?: string) {
+  return await reporting.withDurableReportingLedger(principal, accountId, true, () => reporting.getReportingStatusForAccount(
+    revisionId ? { view: 'revision', reporting_revision_id: revisionId } : { view: 'periods', delivery_config_ids: [config.delivery_config_id], period },
+    principal, accountId,
+  ));
+}
+
 describe.skipIf(!testUrl)('ordinary closed-day source publication on PostgreSQL', () => {
   beforeAll(async () => {
     if (new URL(testUrl!).pathname !== '/training_gcs_source_tests') throw new Error('Requires dedicated disposable source database.');
@@ -56,6 +83,46 @@ describe.skipIf(!testUrl)('ordinary closed-day source publication on PostgreSQL'
     reporting.clearReportingReliabilityStore();
     expect(await Promise.all([reporting.commitTrainingDailySourcePeriod({ ...input, impressions: 456 }), reporting.commitTrainingDailySourcePeriod(input)])).toEqual([true, true]);
     expect((await shared.pool!.query('SELECT ledger FROM training_reporting_ledgers')).rows[0].ledger.revision_contents).toEqual(before);
+  });
+  it('commits official finality evidence that passes the real reporting-status response schema', async () => {
+    await reporting.commitTrainingDailySourcePeriod(input);
+    const revision = (await savedLedger()).revision_contents[0][1].revision;
+    expect(revision).toMatchObject({ finality: 'official', finality_basis: 'contractual_cutoff', finality_policy_id: 'training_snapshot', finalized_at: revision.created_at });
+    expect(Date.parse(revision.finalized_at)).toBeGreaterThanOrEqual(Date.parse(period.end));
+    const status = await sourceStatus();
+    expect(() => reporting.validateReliableReportingResponse(status)).not.toThrow();
+  });
+  it('serves identical legacy finality evidence on status and exact reads without rewriting committed snapshots', async () => {
+    const original = await legacySource();
+    const revision = original.revision_contents[0][1].revision;
+    const status = await sourceStatus();
+    const exactStatus = await sourceStatus(revision.reporting_revision_id);
+    const exact = await reporting.getCoreRevisionContentPageForAccountDurably(principal, accountId, revision.reporting_revision_id, undefined);
+    const expected = { ...revision, finality_basis: 'contractual_cutoff', finality_policy_id: 'training_snapshot', finalized_at: revision.created_at };
+    expect(status.revisions).toEqual([expected]);
+    expect(exactStatus.revision).toEqual(expected);
+    expect(exact?.revision).toEqual(expected);
+    expect(exact?.bindingSha256).toBe(revision.revision_content_sha256);
+    expect(() => reporting.validateReliableReportingResponse(status)).not.toThrow();
+    expect(() => reporting.validateReliableReportingResponse(exactStatus)).not.toThrow();
+    reporting.clearReportingReliabilityStore();
+    await reporting.commitTrainingDailySourcePeriod({ ...input, impressions: 456 });
+    const after = await savedLedger();
+    expect(after.published_revisions).toEqual(original.published_revisions);
+    expect(after.revision_contents).toEqual(original.revision_contents);
+  });
+  it.each([
+    ['another definition pin', (revision: Record<string, unknown>) => { revision.report_definition_sha256 = '0'.repeat(64); }],
+    ['another policy identity', (revision: Record<string, unknown>) => { revision.finality_policy_id = 'another-policy'; }],
+    ['a different existing basis', (revision: Record<string, unknown>) => { revision.finality_basis = 'source_final'; }],
+    ['publication before the cutoff', (revision: Record<string, unknown>) => { revision.created_at = period.start; }],
+  ])('does not infer finality for %s', async (_name, change) => {
+    const original = await legacySource(change);
+    const revision = original.revision_contents[0][1].revision;
+    const exact = await reporting.getCoreRevisionContentForAccountDurably(principal, accountId, revision.reporting_revision_id);
+    expect(exact?.revision).toEqual(revision);
+    const status = await sourceStatus();
+    expect(() => reporting.validateReliableReportingResponse(status)).toThrow('Invalid Reliable Reporting response');
   });
   it('refuses conformance clock fixtures as live source evidence', async () => {
     await reporting.withDurableReportingLedger(principal, accountId, true, () => {

@@ -1,0 +1,57 @@
+# Hosted Grader Buyer Brand — Governance Test Kit
+#
+# Buyer brand for the multi-agent governance storyboards (adcp#7758):
+# media_buy_seller/governance_{approved,conditions,denied,denied_recovery} and
+# the brand-rights, signal-marketplace, and creative-transformers
+# governance_approved storyboards.
+#
+# Unlike the fictional `.example` kits, this brand's domain is real and
+# controlled by AgenticAdvertising.org. https://hosted-grader.adcontextprotocol.org/.well-known/brand.json
+# lists the sandbox governance agent (https://test-agent.adcontextprotocol.org)
+# with a governance-only `jwks_uri`, so a seller can complete the signed
+# governance context checks that need the buyer's brand.json: issuer
+# cross-check (security.mdx checklist step 13) and key discovery.
+#
+# Buyer identity. Hosted grading calls the seller with the credential the
+# seller registered for grading, and authenticates to the sandbox governance
+# agent as the fixed hosted-grader buyer agent
+# https://hosted-grader.adcontextprotocol.org/buyer. That URL is the `caller`
+# the governance agent binds into every intent token. A seller grading
+# governance enforcement maps the credential it gives hosted grading to that
+# buyer agent and to this brand domain (security.mdx "Buyer identity
+# resolution", pre-provisioned buyer identity). It never derives either from
+# the request.
+#
+# Sandbox only. The sandbox governance agent's signing key is public test
+# material: anyone can mint a token that passes the issuer cross-check and key
+# checks for this brand. Trust it only for the sandbox account(s) a seller
+# provisions for hosted grading.
+
+id: hosted_grader
+name: "Hosted grader test brand"
+description: "AgenticAdvertising.org-controlled buyer brand for hosted governance grading"
+sandbox: true
+
+# Brand-kit partition marker. The governance storyboards use run-level auth;
+# no step reads this key.
+auth:
+  api_key: "demo-hosted-grader-v1"
+  probe_task: list_creatives
+
+brand:
+  house:
+    domain: "hosted-grader.adcontextprotocol.org"
+    name: "Hosted grader test brand"
+  brand_id: "hosted_grader"
+  names:
+    - en: "Hosted grader test brand"
+  description: "Buyer brand used by AgenticAdvertising.org hosted grading of governance-aware sellers."
+  industry: "advertising"
+  keller_type: "master"
+
+# The account these storyboards address and create inline through
+# sync_accounts. A seller that serves pre-provisioned accounts instead holds
+# this brand with this operator.
+account:
+  operator: pinnacle-agency.example
+  sandbox: [true, false]

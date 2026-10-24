@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": patch
+---
+
+Make the `provenance_truth_of_claim` and `provenance_audit_observation` storyboards passable by a seller that runs independent AI detection. The seeded `accepted_verifiers` entry now names a real public conformance verifier, `https://test-agent.adcontextprotocol.org/governance/creative-features/mcp`, which serves only `get_creative_features` with no bearer and returns deterministic fixture-keyed results. The fixture images now exist at the served path `https://adcontextprotocol.org/test-assets/acme-outdoor/ai-generated-true.jpg` and `ai-generated-false.jpg`, replacing the unresolvable `test-assets.adcontextprotocol.org` host. The "sentinel" wording is removed, and the prerequisite now states that sellers allowlist this verifier once in sandbox configuration and MUST NOT call a verifier URL that is not on their own allowlist. `accept_consistent_claim` now declares `depends_on: [discover_verifier]`, so a failed contradicted step no longer skips the consistent-claim step. Closes #8199.

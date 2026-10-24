@@ -11,6 +11,7 @@ import type {
   EventType,
   CanonicalProposal,
 } from '@adcp/sdk';
+import { TRAINING_AGENT_CANDIDATE_ADCP_VERSION } from './candidate-version.js';
 
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/sdk types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
@@ -84,6 +85,7 @@ export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS: readonly string[] = Obje
   '3.2-rc.0', TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_RELEASE,
+  ...(TRAINING_AGENT_CANDIDATE_ADCP_VERSION ? [TRAINING_AGENT_CANDIDATE_ADCP_VERSION] : []),
 ])]);
 export const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0' as const;
 
@@ -128,6 +130,57 @@ export function supportsGetProductsRejected(servedVersion: string | undefined): 
 
 export function supportsSellerGovernanceDiscovery(servedVersion: string | undefined): boolean {
   return atLeastAdcpVersion(servedVersion, SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION);
+}
+
+/**
+ * First wire line (major.minor, prerelease qualifiers ignored) that may carry
+ * `sales-fixed-rate` in `specialisms` and `force_media_buy_confirmation` in the
+ * controller vocabulary. Bundles for 3.0 and 3.1.x have a closed specialism
+ * enum, so a strict consumer pinned to them would reject the new id.
+ *
+ * This gate now covers only the `force_media_buy_confirmation` hold scenario,
+ * which stays exercisable on the 3.2 wire. The `sales-fixed-rate` specialism
+ * id itself is a 3.3 enum value and is gated separately by
+ * `advertisesSalesFixedRateSpecialism` (3.3.0-beta.0 release verification
+ * validates 3.2 responses against the published 3.2 schema).
+ */
+export const SALES_FIXED_RATE_ADCP_LINE = '3.2' as const;
+
+/** Whether the served wire version may advertise `sales-fixed-rate` and its
+ * `force_media_buy_confirmation` controller scenario. The 3.0 storyboard
+ * compatibility surface is handled separately by its own `storyboardCompat`
+ * checks; this gates explicit and defaulted version pins. */
+export function supportsSalesFixedRate(servedVersion: string | undefined): boolean {
+  const match = (servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION).match(/^(\d+)\.(\d+)/);
+  const gate = SALES_FIXED_RATE_ADCP_LINE.match(/^(\d+)\.(\d+)/)!;
+  if (!match) return false;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2], 10);
+  const gateMajor = Number.parseInt(gate[1], 10);
+  const gateMinor = Number.parseInt(gate[2], 10);
+  return major > gateMajor || (major === gateMajor && minor >= gateMinor);
+}
+
+/**
+ * First wire line whose `specialisms` enum carries `sales-fixed-rate`. The id
+ * is a 3.3 enum value (#7963), so a response served at 3.2 or below must not
+ * list it (DR-0024). The hold controller scenario stays on the
+ * `supportsSalesFixedRate` gate: `compliance_testing.scenarios` is not a
+ * closed enum, and the scenario remains exercisable on the 3.2 wire.
+ */
+export const SALES_FIXED_RATE_SPECIALISM_ADCP_LINE = '3.3' as const;
+
+/** Whether a capability response served at this wire version may list the
+ * `sales-fixed-rate` specialism id. */
+export function advertisesSalesFixedRateSpecialism(servedVersion: string | undefined): boolean {
+  const match = (servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION).match(/^(\d+)\.(\d+)/);
+  const gate = SALES_FIXED_RATE_SPECIALISM_ADCP_LINE.match(/^(\d+)\.(\d+)/)!;
+  if (!match) return false;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2], 10);
+  const gateMajor = Number.parseInt(gate[1], 10);
+  const gateMinor = Number.parseInt(gate[2], 10);
+  return major > gateMajor || (major === gateMajor && minor >= gateMinor);
 }
 
 /** First served checkpoint whose media-buy features carry the structured
@@ -243,6 +296,8 @@ export interface TrainingContext {
   legacySessionBrandDomain?: string;
   /** Release selected by protocol negotiation for this request. */
   servedAdcpVersion?: string;
+  /** Local source-schema preview only. Never set by deployed routes or buyer input. */
+  developmentCoreGender?: boolean;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
    *  `required_for: ['create_media_buy']` in capabilities and enforces
    *  presence-gated signing at the auth layer. Default `/mcp` does not
@@ -629,6 +684,11 @@ export interface ComplyExtensions {
     taskId: string;
     message?: string;
   };
+  /** Single-shot directive registered via comply_test_controller.force_media_buy_confirmation
+   * `hold`. Consumed by the next create_media_buy from this sandbox account that creates a
+   * media buy, which then returns synchronous success with `confirmed_at: null` (a
+   * provisional buy held for seller review). A second `hold` before consumption is a no-op. */
+  forcedMediaBuyHold?: boolean;
   /** Single-shot submitted response for the next brief-mode get_signals call. */
   forcedGetSignalsArm?: {
     arm: 'submitted';
@@ -871,7 +931,9 @@ export interface MediaBuyState {
   startTime: string;
   endTime: string;
   revision: number;
-  confirmedAt: string;
+  /** Seller commitment timestamp; `null` while the buy is a provisional buy
+   * held for seller review (set once by force_media_buy_confirmation confirm). */
+  confirmedAt: string | null;
   canceledAt?: string;
   canceledBy?: string;
   cancellationReason?: string;

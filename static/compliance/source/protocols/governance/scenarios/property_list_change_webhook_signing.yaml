@@ -84,6 +84,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-governance_property_list_change_webh-10a451ce"
+            sandbox: true
           name: "Acme Outdoor webhook properties"
           base_properties:
             - selection_type: "identifiers"
@@ -116,6 +117,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-governance_property_list_change_webh-10a451ce"
+            sandbox: true
           webhook_url: "{{runner.webhook_url:update_property_list_for_webhook}}"
           base_properties:
             - selection_type: "identifiers"

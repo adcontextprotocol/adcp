@@ -24,6 +24,9 @@ const {
   entryKey,
   isNegativeStep,
   normalizeSubstitutions,
+  normalizeStoryboardSampleRequests,
+  loadSchema,
+  validateStep,
   STORYBOARD_DIR,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 
@@ -376,3 +379,197 @@ test('normalizeSubstitutions synthesizes shape-valid placeholders at object-type
   assert.ok('data_provider_domain' in oneOfSynth);
   assert.ok('id' in oneOfSynth);
 });
+
+function cancellationCreativeAuthoringFixture() {
+  const storyboard = yaml.load(fs.readFileSync(path.join(STORYBOARD_DIR,
+    'protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml'), 'utf8'));
+  const testKit = yaml.load(fs.readFileSync(path.join(STORYBOARD_DIR,
+    storyboard.prerequisites.test_kit), 'utf8'));
+  return { storyboard, testKit, steps: storyboard.phases.flatMap(phase => phase.steps || [])
+    .filter(step => step.task === 'sync_creatives') };
+}
+
+test('static authoring excludes only valid runtime asset directives while wire requests remain strict', async () => {
+  const { storyboard, steps } = cancellationCreativeAuthoringFixture();
+  assert.equal(steps.length, 2);
+  for (const step of steps) {
+    const original = structuredClone(step.sample_request);
+    const schema = loadSchema(step.schema_ref);
+    assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: original })).ok, false,
+      'a literal execution directive must never be accepted as a wire asset');
+    for (const payload of normalizeStoryboardSampleRequests(storyboard, step, schema)) {
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload })).ok, true);
+      assert.deepEqual(payload.creatives[0].assets, {});
+      assert.equal(payload.assignments.length, 1, 'static preparation preserves assignment validation');
+    }
+    assert.deepEqual(step.sample_request, original, 'static preparation does not rewrite the authored fixture');
+
+    for (const malformed of [42, null, '$context.', 'format_params']) {
+      const broken = structuredClone(step);
+      broken.sample_request.creatives[0].assets.$build_assets_from_format = malformed;
+      for (const payload of normalizeStoryboardSampleRequests(storyboard, broken, schema)) {
+        assert.equal((await validateStep({ schemaRef: broken.schema_ref, payload })).ok, false,
+          `malformed directive ${JSON.stringify(malformed)} must not be excluded`);
+      }
+    }
+    const badSibling = structuredClone(step);
+    badSibling.sample_request.creatives[0].assets.broken_asset = 'not an asset';
+    for (const payload of normalizeStoryboardSampleRequests(storyboard, badSibling, schema)) {
+      assert.equal((await validateStep({ schemaRef: badSibling.schema_ref, payload })).ok, false,
+        'ordinary sibling slots must still be validated');
+    }
+    const badAssignment = structuredClone(step);
+    badAssignment.sample_request.assignments[0].creative_id = 42;
+    for (const payload of normalizeStoryboardSampleRequests(storyboard, badAssignment, schema)) {
+      assert.equal((await validateStep({ schemaRef: badAssignment.schema_ref, payload })).ok, false,
+        'execution syntax must not skip validation of the rest of the request');
+    }
+  }
+});
+
+test('cancellation directives materialize real test-kit assets before strict request validation', async () => {
+  const { expandCreativeAssetDirectives, findUnresolvedCreativeAssetDirectives, injectContext } = require('@adcp/sdk/testing');
+  const { testKit, steps } = cancellationCreativeAuthoringFixture();
+  for (const width of [300, 728]) {
+    const height = width === 300 ? 250 : 90;
+    const context = {
+      format_kind: 'image', format_option_id: `image_${width}x${height}`,
+      package_id: 'package_initial', second_package_id: 'package_reuse',
+      format_params: { width, height, slots: [
+        { asset_group_id: 'image_main', asset_type: 'image', required: true },
+        { asset_group_id: 'landing_page_url', asset_type: 'url', required: true },
+        { asset_group_id: 'headline', asset_type: 'text', required: true },
+      ] },
+    };
+    for (const step of steps) {
+      const injected = injectContext(step.sample_request, context);
+      const materialized = expandCreativeAssetDirectives(injected, context, testKit);
+      assert.deepEqual(findUnresolvedCreativeAssetDirectives(materialized), []);
+      const assets = materialized.creatives[0].assets;
+      assert.equal(assets.image_main.asset_type, 'image');
+      assert.equal(assets.image_main.width, width);
+      assert.equal(assets.image_main.height, height);
+      assert.ok(testKit.assets.images.some(image => image.url === assets.image_main.url));
+      assert.equal(assets.landing_page_url.url, testKit.assets.click_url);
+      assert.equal(assets.headline.asset_type, 'text');
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: materialized })).ok, true);
+
+      const corrupt = structuredClone(materialized);
+      delete corrupt.creatives[0].assets.image_main.width;
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: corrupt })).ok, false,
+        'materialized images still require their wire dimensions');
+
+      const unsupported = structuredClone(context);
+      unsupported.format_params.slots = [{ asset_group_id: 'legal', asset_type: 'text', required: true }];
+      const unavailable = expandCreativeAssetDirectives(
+        injectContext(step.sample_request, unsupported), unsupported, testKit);
+      assert.notDeepEqual(findUnresolvedCreativeAssetDirectives(unavailable), [],
+        'missing fixture semantics are not repaired with arbitrary assets');
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: unavailable })).ok, false,
+        'an unexpanded fixture-coverage failure cannot become a valid wire request');
+    }
+  }
+});
+
+function evaluatorBuildAuthoringFixture() {
+  const storyboard = yaml.load(fs.readFileSync(path.join(STORYBOARD_DIR,
+    'protocols/creative/scenarios/evaluator_auth.yaml'), 'utf8'));
+  return { storyboard, steps: storyboard.phases.flatMap(phase => phase.steps || [])
+    .filter(step => step.task === 'build_creative') };
+}
+
+test('all authored evaluator builds materialize valid generation, source, library, transformer and legacy requests', async () => {
+  const { storyboard, steps } = evaluatorBuildAuthoringFixture();
+  assert.equal(steps.length, 5);
+  for (const step of steps) {
+    const original = structuredClone(step.sample_request);
+    const schema = loadSchema(step.schema_ref);
+    const fixtures = normalizeStoryboardSampleRequests(storyboard, step, schema);
+    assert.equal(fixtures.length, 5);
+    for (const [index, payload] of fixtures.entries()) {
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload })).ok, true,
+        `${step.id} mode ${index} must pass canonical call validation`);
+      assert.deepEqual(payload.evaluator, normalizeSubstitutions(original.evaluator, schema.properties.evaluator));
+      assert.equal(Object.hasOwn(payload, 'target_capability_id'), index !== 4);
+      assert.equal(Object.hasOwn(payload, 'target_format_id'), index === 4);
+      assert.equal(Object.hasOwn(payload, 'message'), index === 0);
+      assert.equal(Object.hasOwn(payload, 'creative_manifest'), index === 0 || index === 1);
+      assert.equal(Object.hasOwn(payload, 'creative_id'), index === 2 || index === 4);
+      assert.equal(Object.hasOwn(payload, 'transformer_id'), index === 3);
+      assert.equal(Object.hasOwn(payload, 'config'), index === 3);
+    }
+    assert.deepEqual(step.sample_request, original, 'static preparation must not rewrite authored samples');
+  }
+});
+
+test('build authoring validation rejects missing selector bindings and retains malformed evaluator negatives', async () => {
+  const { storyboard, steps } = evaluatorBuildAuthoringFixture();
+  for (const original of steps.slice(0, 2)) {
+    const step = structuredClone(original);
+    const schema = loadSchema(step.schema_ref);
+    assert.equal((await validateStep({ schemaRef: step.schema_ref, payload: step.sample_request })).ok, false,
+      'the incomplete pre-injection request must remain invalid');
+    step.context_inputs = step.context_inputs.filter(input => !['target_capability_id', 'target_format_id'].includes(input.inject_at));
+    for (const payload of normalizeStoryboardSampleRequests(storyboard, step, schema)) {
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload })).ok, false,
+        'the materializer must honor missing authored bindings rather than repair them');
+    }
+    step.context_inputs = original.context_inputs;
+    const evaluator = step.sample_request.evaluator;
+    (evaluator.feature_agent || evaluator).agent_url = 42;
+    for (const payload of normalizeStoryboardSampleRequests(storyboard, step, schema)) {
+      assert.equal((await validateStep({ schemaRef: step.schema_ref, payload })).ok, false,
+        'preparation must not repair malformed direct or nested evaluator fields');
+    }
+  }
+});
+
+test('static build preparation requires the authored opt-in contract and rejects invalid injection paths', () => {
+  const { storyboard, steps: [step] } = evaluatorBuildAuthoringFixture();
+  const schema = loadSchema(step.schema_ref);
+  const withoutContract = { ...step, requires_contract: undefined };
+  assert.deepEqual(normalizeStoryboardSampleRequests(storyboard, withoutContract, schema),
+    [normalizeSubstitutions(step.sample_request, schema)]);
+  const malformed = structuredClone(step);
+  malformed.context_inputs.find(input => input.key === 'build_capability_id').inject_at = '__proto__.polluted';
+  assert.throws(() => normalizeStoryboardSampleRequests(storyboard, malformed, schema),
+    /Invalid creative build authoring fixture path/);
+});
+
+test("whole collection witness substitutions satisfy minItems and composed required fields without excusing malformed literals", async () => {
+  const storyboard = yaml.load(
+    fs.readFileSync(
+      path.join(
+        STORYBOARD_DIR,
+        "protocols/media-buy/scenarios/collection_selection.yaml",
+      ),
+      "utf8",
+    ),
+  );
+  const step = storyboard.phases[0].steps[0];
+  assert.equal(
+    (
+      await validateStep({
+        schemaRef: step.schema_ref,
+        payload: step.sample_request,
+      })
+    ).ok,
+    true,
+  );
+  for (const collections of [[], [{ publisher_domain: "publisher.example" }]]) {
+    const malformed = structuredClone(step.sample_request);
+    malformed.packages[0].targeting_overlay.collection_selection.collections =
+      collections;
+    assert.equal(
+      (await validateStep({ schemaRef: step.schema_ref, payload: malformed }))
+        .ok,
+      false,
+    );
+  }
+});
+
+// Object-typed substitution synthesis — the lint change landed in this PR.
+// A substitution that lands at an object location (plain or inside a
+// discriminated oneOf) must produce a shape-valid placeholder or ajv will
+// reject every branch. Regression guard against refactors of `placeholderFor`
+// / `synthesizeObject` / `firstObjectBranch`.

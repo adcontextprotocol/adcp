@@ -34,7 +34,7 @@
       "items": {
         "type": "string"
       },
-      "description": "List of prohibited words or phrases"
+      "description": "List of prohibited words or phrases for this slot. Combined by union with the brand-wide `prohibited_terms` in brand.json; neither list weakens the other."
     },
     "allowed_values": {
       "type": "array",
