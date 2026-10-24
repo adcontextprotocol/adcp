@@ -70,7 +70,6 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'control_media_buy',
     'decline_proposals',
     'get_account_financials',
-    'get_account_requests',
     'get_adcp_capabilities',
     'get_media_buy_delivery',
     'get_media_buys',
@@ -86,7 +85,6 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'provide_performance_feedback',
     'refine_proposals',
     'report_usage',
-    'request_account',
     'request_proposals',
     'sync_accounts',
     'sync_principal',
@@ -124,7 +122,7 @@ const MCP_ROLE_PROFILE_TOOLS = {
 // version bump never needs a hand edit to the base lists above.
 const MCP_ROLE_PROFILE_LINE_TOOLS = {
   'media-buy': {
-    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue'],
+    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue', 'request_account', 'get_account_requests'],
   },
   creative: {},
 };

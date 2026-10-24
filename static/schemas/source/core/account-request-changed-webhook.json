@@ -2,6 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/account-request-changed-webhook.json",
   "title": "Account Request Changed Webhook",
+  "x-added-in": "3.3.0",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
   "description": "Caller-anchored webhook payload fired when one of the caller's account requests changes state or pending action (experimental, account.requests). Not fired for the response to the caller's own request_account call, which already reports the result. Registered through the caller-scoped notification_configs (sync_principal or sync_agent_notification_configs) with event_types containing account_request.changed. The payload is an invalidation signal, not request state: receivers repair by calling get_account_requests with the request_id. Sellers MUST make the new state observable on that read before firing.",

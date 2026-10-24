@@ -2,6 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/pending-action.json",
   "title": "Pending Action",
+  "x-added-in": "3.3.0",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
   "description": "What has to happen next, and on whose side, before a pending account request can move on (experimental, account.requests). waiting_on: seller means the buyer only waits. waiting_on: buyer means a human on the buyer side must act, normally at url. The URL is shown only to the authenticated caller that owns the request and MUST NOT carry credentials or bearer tokens. Possession of the URL, or of the request_id it may contain, MUST NOT by itself be enough to complete the action: the human authenticates with the seller first.",

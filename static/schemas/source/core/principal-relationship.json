@@ -44,7 +44,7 @@
           "$ref": "/schemas/enums/pending-action-kind.json",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Experimental (account.requests). What is needed. Same meaning as pending-action.json."
+          "description": "What is needed. Same meaning as pending-action.json."
         }
       },
       "required": ["message"],
