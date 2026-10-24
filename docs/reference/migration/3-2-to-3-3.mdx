@@ -244,6 +244,16 @@ the 1 MiB publisher-origin cap rather than a bare `fetch` — the domain pattern
 admits dotless labels like `localhost`. See
 [Authorization validation workflow](/docs/governance/property/authorized-properties#authorization-validation-workflow).
 
+### Signing-key discovery fetches a scoped capabilities document
+
+`get_adcp_capabilities` gains an optional request field, `scope`, with values `full` (the default) and `signing_discovery`. The signing-key discovery fetch used to read the whole capabilities document under `MAX_CAPABILITIES_BYTES` (64 KiB), so a creative agent whose `creative.supported_formats` catalog pushed the document past that budget made its own signing keys unresolvable ([#8198](https://github.com/adcontextprotocol/adcp/issues/8198)). The fetch reads only `identity`, `request_signing`, and `webhook_signing`. The request field makes the responder send only those.
+
+- **Verifiers.** Send `scope: "signing_discovery"` on the discovery fetch. Keep the 64 KiB budget on whatever body arrives, and do not retry unscoped. Do not cache the scoped response as the agent's capabilities.
+- **Agents that declare a signing posture.** Honor the scope: return `adcp` (`major_versions`, `idempotency`), `supported_protocols`, `identity`, `request_signing`, and `webhook_signing`, and omit every other block. The response is still schema-valid.
+- **Nothing breaks.** The field is additive, and the request schema already admits unknown fields. A 3.2 agent ignores it and returns the full document, so the 64 KiB budget still binds that agent. A 3.2 verifier sends no scope, so a 3.3 agent returns its full document to it. The decoupling takes effect only between two 3.3 peers; until then, keep the full document under 64 KiB, or move to the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile), which fetches no capabilities.
+
+See [Scoped capabilities for key discovery](/docs/building/by-layer/L1/security#scoped-capabilities-for-key-discovery).
+
 ### Seller revisions advance on every committed change
 
 3.2 text said the media-buy `revision` "MUST increment on every mutating state change or update" but listed only `update_media_buy`, and exempted assignment changes made through `sync_creatives` and seller-optimized allocation. 3.3 states the rule once: for every resource that carries a seller-maintained revision, the seller MUST advance it on every committed change to state that resource's authoritative read reports, whatever the origin: an AdCP task, a seller operator, seller automation, another authorized principal, or a connected platform. An externally observed change advances it when the seller ingests it, within the source's declared freshness bound. Reads, validation-only calls and exact idempotency replays do not advance it.

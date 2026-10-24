@@ -26,6 +26,16 @@
       },
       "minItems": 1
     },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "full",
+        "signing_discovery"
+      ],
+      "default": "full",
+      "x-added-in": "3.3.0",
+      "description": "Selects how much of the capabilities document the responder returns. `full` (the default, and the behavior when omitted) returns the whole document. `signing_discovery` is the scope a verifier MUST request on the signing-key discovery path (see security.mdx, 'Discovering an agent's signing keys via brand_json_url'): the responder returns only `adcp` (`major_versions` and `idempotency`), `supported_protocols`, `identity`, `request_signing`, and `webhook_signing`, and omits every other block, so a large `creative.supported_formats` catalog or any other declaration cannot push the document past the verifier's `MAX_CAPABILITIES_BYTES` fetch budget. A responder that declares any signing posture MUST honor `signing_discovery`. A responder that predates 3.3 ignores the field and returns the full document, which stays subject to `MAX_CAPABILITIES_BYTES`. A `signing_discovery` response is not a complete capabilities document: a caller MUST NOT cache it as one or use its absent blocks to infer that the agent lacks a capability. Combining `scope: \"signing_discovery\"` with `protocols[]` is permitted and `protocols[]` is ignored."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
