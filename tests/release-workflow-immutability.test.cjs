@@ -355,9 +355,117 @@ assert.strictEqual(
 
 assert.deepStrictEqual(
   verificationJob.permissions,
-  { contents: 'read' },
-  'The verification job must not receive release mutation or signing permissions.'
+  { contents: 'read', actions: 'read', 'pull-requests': 'read' },
+  'The verification job must not receive release mutation or signing permissions; it reads only the release PR and its storyboard run.'
 );
+
+// Strict exact-head freshness guards every step that can lead to Changesets
+// generation. Only steps publishing the already-committed release relax it.
+const fenceModes = (source) =>
+  [...source.matchAll(/check-release-state\.cjs"? ([a-z-]+)/g)].map(match => match[1]);
+const stepRun = (job, name) => {
+  const found = workflowConfig.jobs[job].steps.find(step => step.name === name);
+  assert(found, `Missing ${job} step: ${name}`);
+  return found.run;
+};
+assert.deepStrictEqual(fenceModes(stepRun('verify-release', 'Require current release branch')), ['current']);
+assert.deepStrictEqual(fenceModes(stepRun('release', 'Require current release branch')), ['current']);
+assert.deepStrictEqual(
+  fenceModes(stepRun('release', 'Recheck current release branch after installation')),
+  ['current']
+);
+assert.deepStrictEqual(
+  fenceModes(artifactDetection),
+  ['recovery', 'current'],
+  'Release artifact detection precedes the Changesets path and must keep the strict fence.'
+);
+assert(
+  workflow.includes(`printf '#!/bin/sh\\nnode "$RUNNER_TEMP/release-hooks/check.cjs" current\\n'`),
+  'The Changesets pre-push hook must keep the strict exact-head fence.'
+);
+assert(
+  fenceModes(uploadStep).length > 0 &&
+    fenceModes(uploadStep).every(mode => ['publication-current', 'published', 'committed', 'approval'].includes(mode)) &&
+    !fenceModes(uploadStep).includes('current'),
+  'GitHub Release staging publishes the committed release and must use publication-scoped freshness.'
+);
+assert.match(
+  stepRun('verify-release', 'Detect stranded committed release'),
+  /check-release-state\.cjs pending/,
+  'Stranded-release detection keeps the strict pending fence.'
+);
+
+const verifiedMergeStep = verificationJob.steps.find(
+  step => step.name === 'Detect provenance-verified release merge'
+);
+assert(verifiedMergeStep, 'verify-release must try to prove a verified release merge.');
+assert.strictEqual(verifiedMergeStep.id, 'verified-merge');
+assert.strictEqual(verifiedMergeStep['continue-on-error'], true, 'Failure to prove verification must not fail the job.');
+assert.match(verifiedMergeStep.if, /github\.event_name == 'push'/);
+assert(
+  verificationJob.steps.indexOf(verifiedMergeStep) <
+    verificationJob.steps.findIndex(step => step.name === 'Install Dependencies'),
+  'Release merge verification must be decided before installing dependencies.'
+);
+assert(
+  verifiedMergeStep.run.includes('grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "$changed_files"') &&
+    verifiedMergeStep.run.includes('git show --first-parent --format= --name-only --no-renames "$GITHUB_SHA"') &&
+    /if node scripts\/check-release-state\.cjs verified-merge; then\n\s*echo "verified=true" >> "\$GITHUB_OUTPUT"/.test(verifiedMergeStep.run),
+  'Only a Version Packages merge proven by verified-merge may set verified=true.'
+);
+assert.match(
+  verifiedMergeStep.if,
+  /github\.ref_name == 'main'/,
+  'verified-merge is main-only: maintenance PR runs use a different candidate-version mode.'
+);
+assert.strictEqual(
+  verificationJob.steps.find(step => step.name === 'Checkout Repo').with['persist-credentials'],
+  false,
+  'verify-release reads the public repository anonymously and must not persist a token.'
+);
+
+// verified-merge requires every job the storyboard matrix produces. Expand
+// the workflow's matrix (product, exclude, include) and compare.
+{
+  const { storyboardJobs } = require(path.join(repoRoot, 'scripts/check-release-state.cjs'));
+  const jobs = trainingAgentWorkflowConfig.jobs;
+  const matrix = jobs.storyboards.strategy.matrix;
+  const keys = ['surface', 'tenant'];
+  let combos = matrix.surface.flatMap(surface => matrix.tenant.map(tenant => ({ surface, tenant })));
+  combos = combos.filter(combo => !matrix.exclude.some(ex => keys.every(key => ex[key] === combo[key])));
+  for (const extra of matrix.include) {
+    if (!combos.some(combo => keys.every(key => combo[key] === extra[key])))
+      combos.push({ surface: extra.surface, tenant: extra.tenant });
+  }
+  const orchestrators = jobs.sales_storyboard_orchestrators.strategy.matrix.orchestrator;
+  const expected = [
+    ...combos.map(({ surface, tenant }) =>
+      jobs.storyboards.name.replace('${{ matrix.surface }}', surface).replace('${{ matrix.tenant }}', tenant)
+    ),
+    ...orchestrators.map(n =>
+      jobs.sales_storyboard_orchestrators.name.replace('${{ matrix.orchestrator }}', String(n))
+    ),
+    jobs.sales_storyboards.name,
+  ];
+  assert.deepStrictEqual(
+    Object.keys(jobs).sort(),
+    ['sales_storyboard_orchestrators', 'sales_storyboards', 'storyboards'],
+    'A new storyboard job must be added to check-release-state.cjs storyboardJobs.'
+  );
+  assert.deepStrictEqual(
+    [...storyboardJobs].sort(),
+    expected.sort(),
+    'check-release-state.cjs storyboardJobs must equal the full training-agent-storyboards.yml matrix.'
+  );
+}
+
+for (const name of ['Verify current storyboard coverage', 'Verify 3.0 storyboard compatibility']) {
+  const gate = verificationJob.steps.find(step => step.name === name);
+  assert(
+    gate.if.includes("steps.release-relevance.outputs.relevant == 'true' && steps.verified-merge.outputs.verified != 'true'"),
+    `${name} must run unless the exact approved head is provenance-verified.`
+  );
+}
 
 assert.strictEqual(
   releaseJob.permissions['id-token'],

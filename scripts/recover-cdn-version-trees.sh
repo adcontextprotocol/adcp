@@ -108,10 +108,16 @@ trap 'exit 143' TERM
 work="$(mktemp -d "${TMPDIR:-/tmp}/adcp-cdn-recovery.XXXXXX")"
 chmod 700 "$work"
 
-# The fence proves the dispatch is still current for the supported release
-# branch. It is the same gate release publication uses, and the only one this
-# recovery shares with it.
-node "$FENCE_SCRIPT" current </dev/null
+# Upload starts on the strict fence, so a stale re-run stops before any write.
+# Per-object fences below use publication-current, mirroring release.yml's
+# strict start. Verify is read-only and runs after this run's own upload
+# passed that strict start, so it uses publication-current too: an unrelated
+# push during the upload must not fail verification of a completed upload.
+if [[ "$mode" == upload ]]; then
+  node "$FENCE_SCRIPT" current </dev/null
+else
+  node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
+fi
 
 actual_version="$(node -p "require('./package.json').version || ''" </dev/null)"
 [[ "$actual_version" == "$VERSION" ]] ||
@@ -263,7 +269,7 @@ if [[ "$mode" == upload ]]; then
     [[ "$(sha256_of "$body_path")" == "$digest" ]] ||
       die "publication body for ${key} changed after the signature proof"
 
-    node "$FENCE_SCRIPT" current </dev/null
+    node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
     rm -f "$existing_body" "$existing_type" "$head_error"
     if aws s3api head-object --bucket "$BUCKET" --key "$key" \
         --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
@@ -287,7 +293,7 @@ if [[ "$mode" == upload ]]; then
         cat "$head_error" >&2
         die "Could not safely determine whether R2 object ${key} exists"
       fi
-      node "$FENCE_SCRIPT" current </dev/null
+      node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
       [[ "$(sha256_of "$body_path")" == "$digest" ]] ||
         die "publication body for ${key} changed before its write"
       aws s3api put-object --bucket "$BUCKET" --key "$key" --body "$body_path" \
@@ -297,7 +303,7 @@ if [[ "$mode" == upload ]]; then
         "${aws_timeouts[@]}" </dev/null >/dev/null
       created=$((created + 1))
     fi
-    node "$FENCE_SCRIPT" current </dev/null
+    node "$FENCE_SCRIPT" publication-current "$VERSION" </dev/null
   done 3< "$digest_list"
 
   rm -f "$existing_body" "$existing_type" "$head_error"
