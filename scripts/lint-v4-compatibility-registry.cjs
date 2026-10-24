@@ -188,8 +188,8 @@ function checkSchemaSites(registry, schemaDir, errors) {
     const where = `schema_removals_not_checked[${i}]`;
     if (!group || !nonEmptyString(group.change)) errors.push(`registry_shape: ${where}: change is required`);
     if (!group || !nonEmptyString(group.reason)) errors.push(`registry_shape: ${where}: reason is required`);
-    if (group && group.issue !== undefined && (!Number.isInteger(group.issue) || group.issue <= 0)) {
-      errors.push(`registry_shape: ${where}: issue must be a positive issue number when present`);
+    if (!group || !Number.isInteger(group.issue) || group.issue <= 0) {
+      errors.push(`registry_shape: ${where}: issue must be the removal's 4.0 tracking issue number`);
     }
     if (!group || !Array.isArray(group.sites) || group.sites.length === 0 || !group.sites.every(nonEmptyString)) {
       errors.push(`registry_shape: ${where}: sites must be a non-empty list`);

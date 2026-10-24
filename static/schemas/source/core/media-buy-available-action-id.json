@@ -4,6 +4,7 @@
   "title": "Media Buy Available Action ID",
   "description": "An action identifier for the structured available_actions surface. It contains every legacy valid_actions value plus structured-only actions introduced after that deprecated flat surface.",
   "anyOf": [
+    { "type": "string", "const": "report_media_buy_issue", "x-added-in": "3.3.0" },
     { "$ref": "/schemas/enums/media-buy-valid-action.json" },
     {
       "type": "string",

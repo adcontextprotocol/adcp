@@ -18,6 +18,8 @@ const {
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 const {
   MCP_ROLE_PROFILE_TOOLS,
+  mcpRoleProfileTools,
+  mcpRoleProfileCompatibilityScope,
   MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES,
   buildTaskResultResolution,
   validateManifestToolRelationships,
@@ -102,9 +104,25 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // media-buy role profile (3,159 bytes of model-context input), and the
 // collection card event types widen the notification enums on sync_accounts
 // and sync_principal (458,185 → 461,599 bytes / 450.8 KiB measured against
-// main), bounded at 451 KiB.
+// main), bounded at 451 KiB. Experimental collection_lists /
+// collection_lists_exclude targeting (#7834) adds ~0.5 KiB to the targeting
+// input reached by create/update_media_buy (461,599 → 462,288 bytes measured
+// on top of main), bounded at 452 KiB.
+// The 3.3.0-beta.0 merge window then landed several small additions to the same
+// create/update/get inputs (multi-qualifier totals wording, rights channel
+// restrictions, hold and lineage fields): main measured 462,963 bytes at
+// 2b9df1bae, past the 452 KiB bound. Media-buy lineage (#8038) adds 763 bytes
+// on top of that (462,963 -> 463,726 bytes / 452.9 KiB measured against main),
+// bounded at 454 KiB to leave about 1 KiB for the x-added-in sweep (#8077).
+// At 3.3.0-beta.0 the package enters the 3.3 line and `list_proposals` (#8103)
+// joins the media-buy catalog (466,530 bytes / 455.6 KiB measured with the
+// version bumped), bounded at 462 KiB for the beta.1 window.
+// Core gender adds its shared predicate and support rules; the merged inputs
+// measure 468,555 bytes / 457.57 KiB, within the existing 462 KiB ceiling.
+// Product service commitments (#8408) add report/poll request shapes. The
+// media-buy context measures 473,582 bytes / 462.48 KiB; bound it at 463 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 451,
+  'media-buy': 463,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -146,9 +164,16 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // and capability closures, and would otherwise conflict on this one line.
 // Bounded at 1_300_000 for the 3.3.0-beta.0 merge window (measured in-flight
 // peaks 1_280_490 to 1_283_645). Resume measured per-PR bounding after the cut.
-// This is the parity-test compiler allowance; the independent 4 MiB schema,
-// 22 MiB projection, and role model-context budgets are unchanged.
-const PARITY_COMPILE_LIMIT = 1_300_000;
+// collection_lists / collection_lists_exclude (#7834) measured +1,756 bytes
+// (1_280_033 → 1_281_789 against its base); fits the merge-window bound.
+// Core gender's predicate, capability, and complete readback closure reaches
+// the seeded Product. The merged controller input measures 1_309_147 bytes;
+// bound it at 1_310_000 so every storyboard fixture still compiles.
+// Product service commitments (#8408) reach the seeded Product and seller
+// capabilities. After shortening repeated SLA prose, the controller measures
+// 1_313_240 bytes; bound compilation at 1_315_000. Every fixture still compiles;
+// the independent 4 MiB schema and 22 MiB projection budgets are unchanged.
+const PARITY_COMPILE_LIMIT = 1_315_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1787,7 +1812,8 @@ test('representative capability-selected media-buy runtime exposes only selected
 test('generated role profiles are host-compatible discovery catalogs with bounded model-context views', () => {
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
 
-  for (const [profileName, expectedTools] of Object.entries(MCP_ROLE_PROFILE_TOOLS)) {
+  for (const profileName of Object.keys(MCP_ROLE_PROFILE_TOOLS)) {
+    const expectedTools = mcpRoleProfileTools(profileName, ACTIVE_SURFACE_VERSION);
     const profileDir = path.join(PROJECTION_DIR, 'profiles', profileName);
     const modelContextDir = path.join(profileDir, 'model-context');
     const profile = readJson(path.join(profileDir, 'manifest.json'));
@@ -1796,7 +1822,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
     assert.equal(profile.profile, profileName);
     assert.equal(profile.profile_kind, 'active-role-catalog');
     assert.equal(profile.surface_version, ACTIVE_SURFACE_VERSION);
-    assert.equal(profile.compatibility_scope, 'active-3.2-only');
+    assert.equal(profile.compatibility_scope, mcpRoleProfileCompatibilityScope(ACTIVE_SURFACE_VERSION));
     assert.equal(profile.annotation_mode, 'structural');
     assert.deepEqual(profile.schema_fields, ['inputSchema', 'outputSchema']);
     assert.deepEqual(profile.filters, {
@@ -1869,7 +1895,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
     );
   }
 
-  const mediaBuyTools = new Set(MCP_ROLE_PROFILE_TOOLS['media-buy']);
+  const mediaBuyTools = new Set(mcpRoleProfileTools('media-buy', ACTIVE_SURFACE_VERSION));
   const activeMediaBuyTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'media-buy')
     // Tools added for the next minor join the role catalog when the package

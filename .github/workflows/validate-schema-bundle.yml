@@ -144,6 +144,30 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/protocol-host/protocol"
           cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
           cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"
+          # The stable SDK pin predates 3.3 preview negotiation. Extend only
+          # this disposable checkout with the exact candidate, preserving its
+          # existing stable compatibility and excluding moving preview aliases.
+          BUNDLE_VERSION="${bundle_version}" node <<'NODE_CANDIDATE_VERSION'
+          const fs = require('node:fs');
+          const candidate = process.env.BUNDLE_VERSION;
+          const pinned = fs.readFileSync('sdk/ADCP_VERSION', 'utf8').trim();
+          if (/^3\.3\.0-(beta|rc)\.\d+$/.test(candidate) && /^3\.2\.[1-9]\d*$/.test(pinned)) {
+            const filename = 'sdk/scripts/sync-version.ts';
+            const source = fs.readFileSync(filename, 'utf8');
+            const anchor = '  // 3.2 prereleases are exact.';
+            if (source.split(anchor).length !== 2 || !source.includes('function buildCompatibleVersions(adcpVersion: string): string[] {')) {
+              throw new Error('SDK compatibility generator changed; review candidate version isolation');
+            }
+            const branch = [
+              '  // Unpublished PR candidate: preserve stable peers and exact preview aliases only.',
+              "  if (major === 3 && minor === 3 && patch === 0 && /^(beta|rc)\\.\\d+$/.test(prerelease ?? '')) {",
+              `    return [...buildCompatibleVersions(${JSON.stringify(pinned)}), adcpVersion, \`3.3-\${prerelease}\`];`,
+              '  }',
+              '',
+            ].join('\n');
+            fs.writeFileSync(filename, source.replace(anchor, branch + anchor));
+          }
+          NODE_CANDIDATE_VERSION
           printf '%s\n' "${bundle_version}" > sdk/ADCP_VERSION
           # This is a disposable candidate checkout: align the SDK's AdCP
           # metadata without bumping its own package release number.
@@ -252,6 +276,14 @@ jobs:
                           continue
                       index = next((i for i, line in enumerate(lines) if old in line), None)
                       if index is None:
+                          # Current SDK sdists package the tracked cache and
+                          # deliberately prune generated package copies.
+                          if (
+                              filename == "sdk/MANIFEST.in"
+                              and old.startswith("recursive-include src/adcp/_schemas/")
+                              and any(line.strip() == "prune src/adcp/_schemas" for line in lines)
+                          ):
+                              continue
                           raise SystemExit(f"{filename} does not package the pinned SDK schema {old}")
                       lines.insert(index + 1, lines[index].replace(old, new))
                   path.write_text("".join(lines))

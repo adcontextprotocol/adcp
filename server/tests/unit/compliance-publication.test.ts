@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { complianceResultToDbInput, type ComplianceResult } from '../../src/addie/services/compliance-testing.js';
 import { classifyComplianceStep } from '../../src/compliance/step-disposition.js';
+
+const SDK_PACKAGE_VERSION = (
+  JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
+    dependencies: Record<string, string>;
+  }
+).dependencies['@adcp/sdk'];
 
 const agentUrl = 'https://agent.example.test/mcp';
 function result(steps: unknown[], completeness: 'complete' | 'timed_out' = 'complete'): ComplianceResult {
@@ -181,7 +188,7 @@ describe('hosted compliance publication policy', () => {
   it('records exact runner and agent provenance, leaving absent agent builds null', () => {
     const run = result([{ passed: true }]);
     expect(complianceResultToDbInput(run, agentUrl, 'production').provenance_json).toMatchObject({
-      compliance_bundle_version: '3.1.20', sdk_version: '16.1.0',
+      compliance_bundle_version: '3.1.20', sdk_version: SDK_PACKAGE_VERSION,
       agent_build_version: 'test-build', agent_library_version: 'seller-sdk-1',
     });
     delete run.agent_profile.adcp_build_version;

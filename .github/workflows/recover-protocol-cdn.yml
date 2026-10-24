@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Exact stable semver to recover (for example, 3.0.22)
+        description: Exact published semver to recover (for example, 3.0.22 or 3.3.0-beta.0)
         required: true
         type: string
       surfaces:
@@ -34,6 +34,8 @@ permissions:
 jobs:
   recover:
     name: Recover immutable release artifacts
+    # Recovery authority is current main only; other dispatch refs never run.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository history
@@ -61,8 +63,11 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::version must be an exact stable semver (for example, 3.0.22)"
+          # Prereleases are accepted only as exact beta/rc versions; the
+          # published-release check below still refuses any version without a
+          # published GitHub Release carrying the complete signed tuple.
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$ ]]; then
+            echo "::error::version must be an exact semver, optionally -beta.N or -rc.N (for example, 3.0.22 or 3.3.0-beta.0)"
             exit 1
           fi
 
@@ -146,11 +151,11 @@ jobs:
               exit 1
             fi
 
-            node "$RUNNER_TEMP/check-release-state.cjs" current
+            node "$RUNNER_TEMP/check-release-state.cjs" publication-current "$VERSION"
             aws s3api put-object --bucket "$BUCKET" --key "$key" --body "$source" \
               --if-none-match '*' --endpoint-url "$endpoint" --region auto --no-cli-pager \
               --cache-control 'public, max-age=31536000, immutable' --content-type "$content_type"
-            node "$RUNNER_TEMP/check-release-state.cjs" current
+            node "$RUNNER_TEMP/check-release-state.cjs" publication-current "$VERSION"
             echo "Uploaded missing immutable object ${key}"
           }
 

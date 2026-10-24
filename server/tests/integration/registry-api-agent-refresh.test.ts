@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
@@ -28,6 +29,12 @@ import { complianceRunProvenance } from '../../src/compliance/run-provenance.js'
 import type { ComplianceResult, ComplyOptions } from '@adcp/sdk/testing';
 import { bumpAuthorizationEpochs } from '../../src/db/authorization-epoch-db.js';
 import { isRefreshAdmin } from '../../src/services/compliance-refresh-authorization.js';
+
+const SDK_PACKAGE_VERSION = (
+  JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
+    dependencies: Record<string, string>;
+  }
+).dependencies['@adcp/sdk'];
 
 vi.hoisted(() => {
   process.env.WORKOS_API_KEY ??= 'sk_test_registry_refresh';
@@ -451,7 +458,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ completeness, is_authoritative: false, badge_eligible: false,
       badge_eligible_adcp_versions: [], diagnostics: [],
-      provenance: { sdk_version: '16.1.0', test_session_id: expect.any(String), agent_build_version: null },
+      provenance: { sdk_version: SDK_PACKAGE_VERSION, test_session_id: expect.any(String), agent_build_version: null },
     });
     expect(complyMock.mock.calls[0][1].test_session_id).toBe(res.body.provenance.test_session_id);
     const db = new ComplianceDatabase();
@@ -1242,7 +1249,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
         currentUserId = STATIC_ADMIN_USER_ID;
         const diagnostics = await request(app).get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance/diagnostics`);
         expect(diagnostics.body).toMatchObject({ completeness: 'timed_out', is_authoritative: false,
-          diagnostics_visibility: 'owner_or_operator', provenance: { sdk_version: '16.1.0', agent_build_version: null } });
+          diagnostics_visibility: 'owner_or_operator', provenance: { sdk_version: SDK_PACKAGE_VERSION, agent_build_version: null } });
       }
     } finally {
       revokeBadges.mockRestore();

@@ -117,6 +117,29 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'validate_input',
   ],
 };
+// Role-profile tools introduced by a later minor. Each joins its role catalog
+// once the package enters that line (the build rejects inactive tools), so a
+// version bump never needs a hand edit to the base lists above.
+const MCP_ROLE_PROFILE_LINE_TOOLS = {
+  'media-buy': {
+    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue'],
+  },
+  creative: {},
+};
+
+/** The role profile's tools for an active surface version, in catalog order. */
+function mcpRoleProfileTools(profileName, surfaceVersion) {
+  const lineTools = Object.entries(MCP_ROLE_PROFILE_LINE_TOOLS[profileName] || {})
+    .filter(([addedIn]) => semver.lte(addedIn, surfaceVersion))
+    .flatMap(([, toolNames]) => toolNames);
+  return [...MCP_ROLE_PROFILE_TOOLS[profileName], ...lineTools];
+}
+
+/** Compatibility scope label for a role profile, e.g. `active-3.3-only`. */
+function mcpRoleProfileCompatibilityScope(surfaceVersion) {
+  return `active-${semver.major(surfaceVersion)}.${semver.minor(surfaceVersion)}-only`;
+}
+
 const MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES = {
   'media-buy': ['media_buy_delivery'],
   creative: [],
@@ -2484,7 +2507,8 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
       + `${(productionStats.totalBytes / (1024 * 1024)).toFixed(2)} MiB structural projection`
   );
 
-  for (const [profileName, toolNames] of Object.entries(MCP_ROLE_PROFILE_TOOLS)) {
+  for (const profileName of Object.keys(MCP_ROLE_PROFILE_TOOLS)) {
+    const toolNames = mcpRoleProfileTools(profileName, surfaceVersion);
     const missingTools = toolNames.filter(toolName => !canonicalManifest.tools?.[toolName]);
     if (missingTools.length > 0) {
       throw new Error(`${profileName} MCP profile names unknown tools: ${missingTools.join(', ')}`);
@@ -2514,12 +2538,12 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
         profile: profileName,
         profile_kind: 'active-role-catalog',
         surface_version: surfaceVersion,
-        compatibility_scope: 'active-3.2-only',
+        compatibility_scope: mcpRoleProfileCompatibilityScope(surfaceVersion),
         filters: {
           include_tools: toolNames,
           exclude_deprecated: true,
         },
-        delivery: 'active 3.2 role-filtered discovery inputs and response schemas; canonical wire schemas remain the call-validation authority',
+        delivery: `active ${semver.major(surfaceVersion)}.${semver.minor(surfaceVersion)} role-filtered discovery inputs and response schemas; canonical wire schemas remain the call-validation authority`,
         complete_discovery_projection: '../../manifest.json',
         canonical_wire_manifest: '../../../../manifest.json',
       },
@@ -2545,7 +2569,7 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
         profile_kind: 'active-role-catalog',
         view: 'client-prompt-inputs',
         surface_version: surfaceVersion,
-        compatibility_scope: 'active-3.2-only',
+        compatibility_scope: mcpRoleProfileCompatibilityScope(surfaceVersion),
         filters: {
           include_tools: toolNames,
           exclude_deprecated: true,
@@ -2851,6 +2875,8 @@ async function main() {
 
 module.exports = {
   MCP_ROLE_PROFILE_TOOLS,
+  mcpRoleProfileTools,
+  mcpRoleProfileCompatibilityScope,
   MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES,
   canonicalPublishedSchemaUri,
   canonicalizePublishedSchemaUris,

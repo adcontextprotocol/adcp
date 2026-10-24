@@ -728,6 +728,61 @@ test("main advancing during GitHub staging leaves a draft and publishes no R2 ob
   );
   assert.ok(!f.calls().includes("github publish"));
 });
+// A later main commit; the publication checkout stays at the tested commit.
+function laterCommit(f, files) {
+  f.git("checkout", "-q", "-b", "later");
+  for (const [file, body] of Object.entries(files)) f.write(file, body);
+  f.git("add", "--", ...Object.keys(files));
+  f.git("commit", "-qm", "Later main commit");
+  const later = f.git("rev-parse", "HEAD");
+  f.git("checkout", "-q", "--detach", f.head);
+  return later;
+}
+test("an unrelated main advance does not invalidate committed release publication", (t) => {
+  const f = fixture(t);
+  f.write("tag", "");
+  fs.unlinkSync(path.join(f.dir, "release.json"));
+  const later = laterCommit(f, { "server/app.ts": "export {};\n" });
+  const r = f.run(
+    "bash",
+    [
+      "-c",
+      "set -e\n" +
+        step("Require human approval for committed release artifacts").run.replaceAll("${{ steps.release-artifacts.outputs.version }}", version) +
+        "\n" +
+        step("Upload protocol tarball to GitHub Release").run.replaceAll(
+          "${{ steps.release-artifacts.outputs.version }}",
+          version,
+        ),
+    ],
+    { REVIEWS: approval(f.source), ADVANCE_GITHUB: "1", ADVANCE_TO: later },
+  );
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Publication fence accepted origin\/main advance/);
+  assert.ok(f.calls().includes("github publish"));
+  const upload = f.upload(immutable, { ADVANCE_AWS: "1", ADVANCE_TO: later });
+  assert.equal(upload.status, 0, upload.stderr);
+  assert.equal(
+    f.calls().trim().split("\n").filter((c) => c.startsWith("r2 put ")).length,
+    6,
+  );
+  // Generation-time checks and mutable latest publication stay strict.
+  assert.notEqual(f.script("current").status, 0);
+  assert.notEqual(f.script("pending").status, 0);
+  const latest = f.upload(["--latest-only"]);
+  assert.notEqual(latest.status, 0);
+  assert.match(latest.stderr, /Refusing stale tested SHA/);
+});
+test("a main advance that changes the release artifacts still stops R2 publication", (t) => {
+  const f = fixture(t);
+  const later = laterCommit(f, {
+    [`dist/compliance/${version}/index.json`]: '{"changed":true}',
+  });
+  const upload = f.upload(immutable, { ADVANCE_AWS: "1", ADVANCE_TO: later });
+  assert.notEqual(upload.status, 0);
+  assert.match(upload.stderr, /later commits change release paths/);
+  assert.equal(f.calls().trim().split("\n").filter(Boolean).length, 1);
+});
 test("workflow wiring binds tested SHA, approval, exact recovery, and publication order", () => {
   const ds = deploy.jobs.deploy.steps;
   assert.equal(ds.find((s) => s.name === "Checkout").with["fetch-depth"], 0);
@@ -797,6 +852,29 @@ test("workflow wiring binds tested SHA, approval, exact recovery, and publicatio
     step("Detect committed release artifacts").run,
     /check-release-state.cjs recovery/,
   );
+  // Publishing the committed release uses publication-scoped freshness; the
+  // checks before the Changesets path keep the strict exact-head fence.
+  const uploadRun = step("Upload protocol tarball to GitHub Release").run;
+  assert.match(uploadRun, /check-release-state\.cjs publication-current/);
+  assert.doesNotMatch(uploadRun, /check-release-state\.cjs current/);
+  for (const name of [
+    "Require current release branch",
+    "Recheck current release branch after installation",
+  ])
+    assert.equal(step(name).run, "node scripts/check-release-state.cjs current");
+  assert.match(
+    step("Detect committed release artifacts").run,
+    /node scripts\/check-release-state\.cjs current\n/,
+  );
+  const backfill = fs.readFileSync(
+    path.join(root, "scripts/backfill-cdn-artifacts.sh"),
+    "utf8",
+  );
+  assert.match(
+    backfill,
+    /fence_mode=current\nif \[\[ -n "\$release_version" \]\]; then fence_mode=publication-current; fi/,
+  );
+  assert.doesNotMatch(backfill, /node "\$fence_script" current/);
 });
 
 test("#7508: stale sole-parent release omits a later changeset and rewrites rc.3", (t) => {

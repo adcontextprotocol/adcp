@@ -14,6 +14,7 @@ import { isAuthenticatedUserAAOAdmin, type AAOAdminPrincipal } from '../admin-st
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
+import { withHostedReportingBudget, runCatalogReportingStoryboard as runStoryboard, runCatalogReportingStoryboardStep as runStoryboardStep } from '../../compliance/catalog-reporting-runner.js';
 import { createLogger } from '../../logger.js';
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
@@ -75,8 +76,6 @@ import {
   listAllComplianceStoryboards,
   getComplianceStoryboardById,
   resolveStoryboardsForCapabilities,
-  runStoryboard,
-  runStoryboardStep,
   createTestClient,
   testCapabilityDiscovery,
   type AgentProfile,
@@ -5792,10 +5791,11 @@ export function createMemberToolHandlers(
       // authored against; the run-auth bearer substitution no-ops when the
       // kit already carries auth.
       const declaredTestKit = getTestKitForStoryboard(storyboardId, runOptions);
-      const storyboardRunOptions = withSdkSafeTransport(withHostedStoryboardRunOptions({
+      const storyboardRunOptions = withSdkSafeTransport(withHostedReportingBudget(sb, withHostedStoryboardRunOptions({
+        signal: AbortSignal.timeout(90_000),
         ...(declaredTestKit && { test_kit: declaredTestKit }),
         ...(authOption && { auth: authOption }),
-      }, runTarget, authProbeTask));
+      }, runTarget, authProbeTask)));
       // adcp#7758 — `requires: [multi_agent]` storyboards route governance
       // steps to the public governance agent, as the fixed hosted-grader buyer
       // agent, and everything else to the agent under test, which receives a
@@ -5891,8 +5891,57 @@ export function createMemberToolHandlers(
       output += `## ${result.storyboard_title}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
       output += `**Compliance target:** ${formatComplianceTarget(runTarget)}\n`;
-      output += `**Result:** ${result.overall_passed ? 'PASSED' : 'FAILED'} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped, ${result.validations_advisory_failed ?? 0} advisory validation(s) failed\n`;
+      const coverageGaps = result.coverage_gaps ?? [];
+      const catalogReportingGap =
+        [
+          'media_buy_seller/advanced_delivery_reporting',
+          'media_buy_seller/time_based_delivery_reporting',
+          'media_buy_seller/collection_selection',
+          'media_buy_seller/collection_default_materialization',
+          'media_buy_seller/collection_selection_readback',
+          'media_buy_seller/collection_default_materialization_readback',
+          'media_buy_seller/fixed_bundle_enforcement',
+          'media_buy_seller/fixed_bundle_restatement',
+          'media_buy_seller/owner_sold_channel_carriage',
+          'media_buy_seller/owner_sold_channel_subset',
+        ].includes(storyboardId) &&
+        coverageGaps.some((gap) => gap.reason === 'fixture_unsatisfied');
+      const collectionReaderAbsent =
+        [
+          'media_buy_seller/collection_selection_readback',
+          'media_buy_seller/collection_default_materialization_readback',
+        ].includes(storyboardId) &&
+        result.passed_count === 0 &&
+        result.phases.some(
+          (phase) =>
+            phase.phase_id === 'missing_tool' &&
+            phase.steps.some(
+              (step) =>
+                step.step_id === 'missing_tool' &&
+                step.skipped &&
+                step.skip_reason === 'missing_tool',
+            ),
+        );
+      const resultLabel =
+        !result.overall_passed || result.failed_count > 0
+          ? 'FAILED'
+          : catalogReportingGap
+            ? 'NOT APPLICABLE — no qualifying product in your wholesale sandbox catalog (feature not tested)'
+            : collectionReaderAbsent
+              ? 'NOT APPLICABLE — get_media_buys is not advertised (persisted collection readback not tested)'
+              : coverageGaps.length > 0
+                ? 'INCOMPLETE — coverage gap'
+                : 'PASSED';
+      output += `**Result:** ${resultLabel} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped, ${result.validations_advisory_failed ?? 0} advisory validation(s) failed\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
+      for (const gap of coverageGaps) {
+        const label = gap.reason === 'fixture_unsatisfied' ? 'Not applicable for this run' : 'Coverage gap';
+        output += `**${label}:** ${renderStoryboardDiagnostic(gap.reason, 160)} — ${renderStoryboardDiagnostic(gap.detail, RUNNER_ERROR_MAX_LEN)}\n`;
+        if (gap.reason === 'fixture_unsatisfied') {
+          output += 'No qualifying sandbox fixture was found; this feature support was not tested.\n';
+        }
+      }
+      if (coverageGaps.length > 0) output += '\n';
 
       let anyFixPlans = false;
       for (const phase of result.phases) {
@@ -5991,6 +6040,13 @@ export function createMemberToolHandlers(
     if (readinessPrompt) return readinessPrompt;
     const contextRefMeta = storyboardContextRefMeta(memberContext, storyboardId, resolved.resolvedUrl);
     const context = resolveStoryboardInputContext(input.context, contextRefMeta);
+    // SDK captures may precede final validation. Preserve the last trusted
+    // continuation before the call, including when SDK code mutates its input.
+    const collectionReadback = [
+      'media_buy_seller/collection_selection_readback',
+      'media_buy_seller/collection_default_materialization_readback',
+    ].includes(storyboardId);
+    const previousContext = collectionReadback ? structuredClone(context) : context;
 
     if (!hasExplicitComplianceTarget(input)) {
       runTarget = await selectComplianceTargetForAgent(
@@ -6050,11 +6106,12 @@ export function createMemberToolHandlers(
         resolved.resolvedUrl,
         sb,
         resolvedStepId,
-        withSdkSafeTransport(withHostedStoryboardRunOptions({
+        withSdkSafeTransport(withHostedReportingBudget(sb, withHostedStoryboardRunOptions({
+          signal: AbortSignal.timeout(90_000),
           ...(declaredStepTestKit && { test_kit: declaredStepTestKit }),
           context,
           ...(authOption && { auth: authOption }),
-        }, runTarget, authProbeTask)),
+        }, runTarget, authProbeTask))),
       );
 
       // runStoryboardStep catches its own throws and surfaces them as
@@ -6131,7 +6188,9 @@ export function createMemberToolHandlers(
         }
       }
 
-      if (result.next) {
+      if (collectionReadback && !result.passed && !result.skipped && result.step_id === 'create_selection') {
+        output += `\nThe create did not pass. Fix it and re-run \`create_selection\` before attempting persisted readback. The context below retains the prior successful continuation only.\n`;
+      } else if (result.next) {
         output += `\n### Next step\n`;
         output += `**${result.next.title}** (\`${result.next.step_id}\`) — \`${result.next.task}\`\n`;
         if (result.next.narrative) output += `${renderStoryboardDiagnostic(result.next.narrative, RUNNER_ERROR_MAX_LEN)}\n`;
@@ -6142,7 +6201,9 @@ export function createMemberToolHandlers(
 
       // Include an opaque encrypted reference for the next step call so
       // agent-controlled context cannot break out of this handoff surface.
-      output += `\n<context>\n${JSON.stringify(storeStoryboardContextRef(result.context, contextRefMeta), null, 2)}\n</context>`;
+      const continuationContext = collectionReadback && (!result.passed || result.skipped)
+        ? previousContext : result.context;
+      output += `\n<context>\n${JSON.stringify(storeStoryboardContextRef(continuationContext, contextRefMeta), null, 2)}\n</context>`;
 
       return output;
     } catch (error) {

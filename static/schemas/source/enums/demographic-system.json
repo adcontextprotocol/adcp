@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/demographic-system.json",
   "title": "Demographic System",
-  "description": "Audience measurement systems for demographic notation in GRP forecasts and pricing, across video and audio channels. Specifies how demographics are written, not whose panel produced the numbers — provider identity is measurement_source.",
+  "description": "Audience measurement systems for demographic notation in GRP forecasts and pricing, across video and audio channels. Specifies how demographics are written, not whose panel produced the numbers — provider identity is measurement_source. The `nmo` and `videoamp` values were added in AdCP 3.3.",
   "type": "string",
   "enum": [
     "nielsen",

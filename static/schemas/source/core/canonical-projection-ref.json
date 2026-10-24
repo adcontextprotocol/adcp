@@ -31,7 +31,8 @@
         "type": "string",
         "enum": ["tag_url", "inline_markup", "paired_redirect"]
       },
-      "description": "Delivery types the projected `display_tag` declaration accepts. Copied to the projected declaration's `params.supported_delivery_types` (rule 6). Only valid with `kind: \"display_tag\"`; uses the same closed set as the `display_tag` canonical parameter. Lets a catalog entry state that its legacy format takes byte-preserved inline markup (`inline_markup`) rather than the default single ad-request URL."
+      "description": "Delivery types the projected `display_tag` declaration accepts. Copied to the projected declaration's `params.supported_delivery_types` (rule 6). Only valid with `kind: \"display_tag\"`; uses the same closed set as the `display_tag` canonical parameter. Lets a catalog entry state that its legacy format takes byte-preserved inline markup (`inline_markup`) rather than the default single ad-request URL.",
+      "x-added-in": "3.3.0"
     }
   },
   "if": {
