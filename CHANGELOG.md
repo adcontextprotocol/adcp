@@ -486,6 +486,31 @@
   
   Directory scenarios in `scenarios.json` can carry `requests`, which a harness signs with a named key and verifies against that directory. D03 and D11 use them: a request signed with a key that has no valid directory signature gets `403`. D15 adds malformed extra Ed25519 keys, one with no `x` and one with a 31-byte `x`, which a verifier ignores.
 
+## 3.2.7
+
+### Patch Changes
+
+- 12bc375: Make both off-list evaluator rejection phases mandatory for agents that advertise evaluator support. Preserve unsupported-feature applicability, prevent later discovery from skipping the security boundary, and check all outbound methods and paths on the off-list evaluator origin.
+  
+  Bind each required rejection probe to an advertised build operation and a valid
+  source input. Handle non-build-first and legacy catalogs without relying on
+  catalog ordering or ranking features. Add an owned, integrity-checked temporary
+  SDK bridge for shared full/standalone runner preparation; unavailable fixtures
+  remain explicit coverage gaps with no passing security credit.
+  
+  Forward authored probe recipes through the manual runner, including recipe-only
+  kits. Malformed understood catalog declarations retain their catalog cause as
+  prerequisite failures (actionable dependency failures in hosted classification),
+  instead of being mislabeled controller setup failures.
+  
+  Resolve capability catalogs against the validated served release while preserving
+  the pinned build request and source-input contract, including provisioned legacy
+  formats when the catalog uses newer canonical vocabulary.
+  
+  Backport the merged main fix with a separately qualified, all-target guarded
+  SDK14.0.0-rc.53 adapter and the existing upstream served-catalog authority
+  prerequisite. Preserve this branch's exact dependency and lockfile.
+
 ## 3.2.6
 
 ### Patch Changes
