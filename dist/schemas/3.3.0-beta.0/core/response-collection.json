@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/response-collection.json",
+  "title": "Response Collection",
+  "description": "Experimental (media_buy.collection_cards). Full collection object returned in a product or proposal response for a collection that a returned product's collections selector references, by list_collections, or in a collection_card.updated webhook (experimental, media_buy.collection_catalog). For the same key, account and moment, a seller returns the same copy on every one of those surfaces. publisher_domain is required because collection_id is unique only within its publisher. Keyed by (publisher_domain, collection_id). This is a convenience copy from the selling agent: the publisher's adagents.json remains the root of authorization and the source for definition pins, and a response copy is never authorization evidence. The response copy wins over adagents.json only on images, sample_content, url, description, season, cadence and distribution[].followers; every other field, including status, talent, content_rating, genre, kind, special and the rest of distribution, stays anchored to adagents.json, as does which agent may sell the collection. An entry whose (publisher_domain, collection_id) is not declared in that publisher's adagents.json, or that comes from a selling agent adagents.json does not authorize for the collection, is unverified display data: it does not establish that the collection exists or is sellable, buyers MUST NOT present it as the publisher's declaration, and its distribution MUST NOT feed carriage verification.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.0/core/collection.json"
+    },
+    {
+      "required": [
+        "publisher_domain"
+      ]
+    }
+  ],
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}

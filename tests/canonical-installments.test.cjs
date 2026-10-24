@@ -554,7 +554,7 @@ test('the documentation records the closed gap, the live boundaries, and the reg
   assert.match(readDoc('media-buy/specification.mdx'), /installment references in \`purchases\[\]\.installments\`/);
   assert.match(limitations, /binds which slots were bought, not what is published under them/);
 
-  assert.match(readDoc('reference/whats-new-in-3-3.mdx'), /### Installments on the compact product lifecycle/);
+  assert.match(readDoc('reference/whats-new-in-3-3.mdx'), /#{2,3} Installments on the compact product lifecycle/);
   assert.match(readDoc('media-buy/task-reference/list_products.mdx'), /only meaningful inside a projection that asked for the field/);
 
   const migration = readDoc('reference/migration/3-2-to-3-3.mdx');

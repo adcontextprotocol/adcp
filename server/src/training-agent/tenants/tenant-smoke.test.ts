@@ -1957,6 +1957,40 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
+  it('keeps the hold scenario on 3.2, withholds the 3.3 sales-fixed-rate id below 3.3, and withdraws both from 3.1 and 3.0 pins', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      type Capabilities = { result?: { structuredContent?: {
+        specialisms?: string[];
+        compliance_testing?: { scenarios?: string[] };
+      } } };
+      const capabilitiesAt = async (id: number, args: Record<string, unknown>) => {
+        const response = await callTenantTool(url, id, 'get_adcp_capabilities', args) as Capabilities;
+        return response.result?.structuredContent;
+      };
+
+      const current = await capabilitiesAt(41, { adcp_version: '3.2' });
+      // `sales-fixed-rate` is a 3.3 enum value; a 3.2 response must not list it.
+      expect(current?.specialisms).not.toContain('sales-fixed-rate');
+      expect(current?.specialisms).toContain('sales-guaranteed');
+      expect(current?.compliance_testing?.scenarios).toContain('force_media_buy_confirmation');
+
+      for (const [id, args] of [
+        [42, { adcp_version: '3.1' }],
+        [43, { adcp_version: '3.0' }],
+      ] as const) {
+        const older = await capabilitiesAt(id, { ...args });
+        expect(older?.specialisms, JSON.stringify(args)).not.toContain('sales-fixed-rate');
+        expect(older?.specialisms, JSON.stringify(args)).toContain('sales-guaranteed');
+        expect(older?.compliance_testing?.scenarios, JSON.stringify(args)).not.toContain('force_media_buy_confirmation');
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('rejects a governed rights acquisition without persisting a grant', async () => {
     const { baseUrl, close } = await bootServer();
     try {
@@ -2186,7 +2220,7 @@ describe('tenant routing smoke', () => {
             media_buy?: {
               features?: { inline_creative_management?: boolean };
               supported_optimization_metrics?: string[];
-              vendor_metric_optimization?: { supported_targets?: string[] };
+              vendor_metric_optimization?: { supported_targets?: string[]; supported_metrics?: Array<{ vendor: { domain: string }; metric_id: string }> };
               conversion_tracking?: { supported_targets?: string[] };
             };
             creative?: {
@@ -2209,6 +2243,9 @@ describe('tenant routing smoke', () => {
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
+      expect(mediaBuy?.vendor_metric_optimization?.supported_metrics).toContainEqual(
+        expect.objectContaining({ vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_score' }),
+      );
       expect(mediaBuy?.conversion_tracking?.supported_targets).toEqual(['cost_per']);
       expect(previewCapabilityIds.length).toBeGreaterThan(0);
       expect(previewRouteIds).toEqual(previewCapabilityIds);
@@ -3908,6 +3945,8 @@ describe('tenant routing smoke', () => {
       expect(scenarios).not.toContain('seed_product');
       expect(scenarios).not.toContain('seed_measurement_catalog');
       expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-dooh');
+      expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-fixed-rate');
+      expect(scenarios).not.toContain('force_media_buy_confirmation');
       expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-broadcast-tv');
       expect(scenarios).not.toContain('query_provenance_audit_observations');
 

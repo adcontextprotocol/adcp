@@ -1,16 +1,13 @@
-FROM node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 AS builder
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS builder
 
 # Set working directory
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-COPY scripts/install-sdk-creative-build-probe.cjs ./scripts/install-sdk-creative-build-probe.cjs
-COPY patches/sdk-creative-build-probe ./patches/sdk-creative-build-probe
 
 # Install ALL dependencies (including dev dependencies for TypeScript build)
-RUN npm ci --ignore-scripts \
- && node scripts/install-sdk-creative-build-probe.cjs
+RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY . .
@@ -159,7 +156,7 @@ RUN if [ "$SKIP_PRECLONE_REPOS" = "true" ]; then \
     fi
 
 # Production stage
-FROM node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
 
 WORKDIR /app
 
@@ -171,13 +168,10 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-COPY scripts/install-sdk-creative-build-probe.cjs ./scripts/install-sdk-creative-build-probe.cjs
-COPY patches/sdk-creative-build-probe ./patches/sdk-creative-build-probe
 
 # --ignore-scripts blocks arbitrary postinstall lifecycle scripts from the full
 # dep tree; native deps are rebuilt explicitly per-package.
 RUN npm ci --omit=dev --ignore-scripts \
- && node scripts/install-sdk-creative-build-probe.cjs \
  && npm rebuild sharp \
  && npm cache clean --force
 

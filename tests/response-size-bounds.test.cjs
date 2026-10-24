@@ -178,6 +178,32 @@ describe('client response-size bound (security.mdx)', () => {
   });
 });
 
+describe('Inbound body bounds', () => {
+  const body = section(read(SECURITY), '### Inbound body bounds');
+
+  it('bounds the body before RFC 9421 or WBA verification', () => {
+    assert.match(body, /pre-rejects on `Content-Length`/);
+    assert.match(body, /\*\*before\*\* RFC 9421 or WBA verification/);
+    assert.match(body, /maximum JSON nesting depth of 64/);
+    assert.match(body, /100,000 aggregate object members/);
+  });
+
+  it('rejects with 413, never truncates, and defaults to 4 MiB', () => {
+    assert.match(body, /HTTP `413 Content Too Large`/);
+    assert.match(body, /does not truncate/);
+    assert.match(body, /no more than 4 MiB \(4,194,304 bytes\)/);
+  });
+
+  it('lets a tighter per-feature cap govern', () => {
+    assert.match(body, /that cap governs that feature's deliveries/);
+  });
+
+  it('is pointed at from the webhook verifier checklist and the buyer checklist', () => {
+    assert.match(section(read(SECURITY), '#### Webhook callbacks'), /\(#inbound-body-bounds\)/);
+    assert.match(section(read(SECURITY), '### For Buyer Agents (AdCP Clients)'), /\(#inbound-body-bounds\)/);
+  });
+});
+
 describe('transport profiles restate the bound', () => {
   for (const [name, relative] of [['MCP', MCP_EXTRACTION], ['A2A', A2A_EXTRACTION]]) {
     describe(name, () => {

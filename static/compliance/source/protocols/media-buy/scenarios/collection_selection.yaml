@@ -1,474 +1,285 @@
 id: media_buy_seller/collection_selection
-version: "1.0.0"
+version: 1.0.1
 introduced_in: "3.2"
-title: "Buyer commits collection selection and the seller echoes it as concrete selectors on readback"
+title: Seller accepts a catalog collection subset and preserves its exact selectors
 category: media_buy_seller
-summary: "Verifies mode: selected accepts an explicit domain-qualified subset, mode: default materializes the product's full bundle on readback, package readback always echoes committed collection_selection as concrete selectors, and a fixed (non-selectable) bundle rejects partial selection while accepting an exact restatement."
+summary: Independently grades selectable collection support with at least 2 distinct domain-qualified pairs.
 track: media_buy
 requires:
   - controller
-
 required_tools:
-  - get_products
   - create_media_buy
-  - get_media_buys
-  - comply_test_controller
+requires_capability:
+  path: media_buy.buying_modes
+  contains: wholesale
+narrative: >-
+  Applicability comes only from fully paginated, schema-valid wholesale sandbox discovery. Select
+  one seller-owned non-guaranteed product and a fixed-price CPM option from that SAME product. No
+  collection product or price is seeded. A completed valid no-match is fixture_unsatisfied: feature
+  not tested, not a pass or proof of nonsupport. Discovery, pagination, schema, capture and
+  selected-path failures remain failures.
 
-narrative: |
-  Products with multiple collections default to bundles; sellers can set
-  collection_targeting_allowed: true to let buyers target a subset, the same
-  pattern as property_targeting_allowed for properties
-  (collections-and-installments.mdx, "Collection targeting"). Selection
-  travels in targeting_overlay.collection_selection, mirroring
-  placement_selection: mode: "selected" names the complete required set as
-  domain-qualified selectors with explicit collection_ids, and mode:
-  "default" accepts the product's full bundle.
 
-  On package readback, collection_selection is the audit surface: sellers
-  MUST echo the committed collection selection there as concrete selectors —
-  including the materialized result of any collection_list composition — so
-  a buyer can verify what content programming a package runs against without
-  re-resolving mutable lists or re-fetching the product catalog
-  (collections-and-installments.mdx, "Collection targeting"; core/package.json
-  targeting_overlay). Because the schema's mode: "default" branch carries no
-  collections field, a default-mode purchase's readback necessarily
-  materializes as concrete "selected"-shaped selectors naming the product's
-  full bundle.
+  This scope resolves independently of the other collection scopes. One-pair default and
+  fixed-restatement coverage do not require a two-pair subset fixture. Fixed targeting accepts
+  either literal false or omission of collection_targeting_allowed. Pair identity includes both
+  publisher_domain and collection_id; grouping, order and legal catalog redundancy do not change the
+  set.
 
+
+  This core scope grades create and rejection assertions independently of get_media_buys. Separate
+  readback companions cover persisted subset/default selection under their own advertised reader
+  gate. Required arrays, exact buy/package identities and concrete echoes remain graded.
+  Seeded-only, brief-only, guaranteed and auction-priced collection support is outside this catalog
+  slice. A controller without seed_account yields fixture_seed_unsupported; an absent controller
+  yields missing_test_controller.
 agent:
   interaction_model: media_buy_seller
   capabilities:
     - sells_media
   examples:
-    - "A CTV seller offering a multi-channel programmed-audio/video bundle"
-
+    - A seller offering native collection-bearing sandbox products
 caller:
   role: buyer_agent
-  example: "Pinnacle Agency (buyer)"
-
+  example: Pinnacle Agency (buyer)
 prerequisites:
-  description: |
-    The caller needs a brand identity for product discovery and buy creation.
-    The controller seeds a selectable two-collection channel bundle
-    (collection_targeting_allowed: true) and a companion fixed bundle of the
-    same two collections (collection_targeting_allowed: false, the default)
-    to exercise both the selectable and fixed-bundle behaviors.
-  test_kit: "test-kits/acme-outdoor.yaml"
+  description:
+    Establish one isolated sandbox account, then discover the native product and its scoped
+    price. The repository catalog fixture caller prepares this graph once for full or standalone
+    execution, derives a valid budget from its whole selected price snapshot, and projects canonical
+    full selectors from the protected declaration. Null caller-derived context defaults are
+    unprepared sentinels, never fabricated selectors. Direct SDK callers must perform the same
+    preparation and projection before consuming this storyboard.
+  test_kit: test-kits/acme-outdoor.yaml
   controller_seeding: true
-
 fixtures:
   accounts:
-    - account_id: "acct_acmeoutdoor_example_sandbox_8852d176d548"
+    - account_id: sandbox_collection_selection
       fixture:
         brand:
-          domain: "acmeoutdoor.example"
-        operator: "pinnacle-agency.example"
+          domain: acmeoutdoor.example
+        operator: pinnacle-agency.example
         operator_unit:
-          id: "compliance-media_buy_seller_collection_selectio-7e6aac4c"
-        billing: "operator"
-        status: "active"
+          id: compliance-media_buy_seller_collection_selectio-7e6aac4c
         sandbox: true
+        billing: operator
+        status: active
   products:
-    - product_id: "retro_bundle_ctv"
-      delivery_type: "non_guaranteed"
-      channels: ["ctv"]
-      format_options:
-        - format_option_id: "video_30s"
-          format_kind: "video_hosted"
-          params:
-            duration_ms_exact: 30000
-      publisher_properties:
-        - publisher_domain: "hoststream.example"
-          selection_type: "by_id"
-          property_ids: ["hoststream_ctv"]
-      collections:
-        - publisher_domain: "channel-owner.example"
-          collection_ids: ["retro_news", "vintage_static"]
-      collection_targeting_allowed: true
-      placements:
-        - kind: "seller_inline"
-          seller_agent:
-            agent_url: "https://sales.channel-owner.example"
-          publisher_domain: "channel-owner.example"
-          placement_id: "owner_avails"
-          name: "Channel-owner avails"
-          mode: "included"
-    - product_id: "retro_bundle_ctv_fixed"
-      delivery_type: "non_guaranteed"
-      channels: ["ctv"]
-      format_options:
-        - format_option_id: "video_30s"
-          format_kind: "video_hosted"
-          params:
-            duration_ms_exact: 30000
-      publisher_properties:
-        - publisher_domain: "hoststream.example"
-          selection_type: "by_id"
-          property_ids: ["hoststream_ctv"]
-      collections:
-        - publisher_domain: "channel-owner.example"
-          collection_ids: ["retro_news", "vintage_static"]
-      placements:
-        - kind: "seller_inline"
-          seller_agent:
-            agent_url: "https://sales.channel-owner.example"
-          publisher_domain: "channel-owner.example"
-          placement_id: "owner_avails"
-          name: "Channel-owner avails"
-          mode: "included"
+    - product_id: catalog_collection_product
   pricing_options:
-    - product_id: "retro_bundle_ctv"
-      pricing_option_id: "retro_bundle_cpm"
-      pricing_model: "cpm"
-      currency: "USD"
-      floor_price: 22.0
-    - product_id: "retro_bundle_ctv_fixed"
-      pricing_option_id: "retro_bundle_fixed_cpm"
-      pricing_model: "cpm"
-      currency: "USD"
-      floor_price: 22.0
-
+    - product_id: catalog_collection_product
+      pricing_option_id: catalog_collection_fixed_cpm
+fixture_resolution:
+  products:
+    - handle: catalog_collection_product
+      strategies:
+        - discover
+      match:
+        - path: ""
+          operator: collection_selection_satisfies
+          value:
+            collection_targeting: selectable
+            minimum_pairs: 2
+        - path: /delivery_type
+          operator: equals
+          value: non_guaranteed
+        - path: /pricing_options
+          operator: any_match
+          where:
+            - path: /pricing_model
+              operator: equals
+              value: cpm
+            - path: /fixed_price
+              operator: present
+      context_outputs:
+        - key: __adcp_fixture_collection_declared
+          witness: declared_selectors
+        - key: __adcp_fixture_collection_product_id
+          path: product_id
+        - key: __adcp_fixture_collection_subset
+          witness: strict_subset
+        - key: __adcp_fixture_collection_unknown_id
+          witness: undeclared_collection_id_selectors
+        - key: __adcp_fixture_collection_unknown_domain
+          witness: undeclared_publisher_domain_selectors
+  pricing_options:
+    - handle: catalog_collection_fixed_cpm
+      product_handle: catalog_collection_product
+      strategies:
+        - discover
+      match:
+        - path: /pricing_model
+          operator: equals
+          value: cpm
+        - path: /fixed_price
+          operator: present
+      context_outputs:
+        - key: __adcp_fixture_collection_price
+          snapshot: selected_entity
+context:
+  catalog_collection_budget: 1000
+  catalog_collection_full_selectors: null
+  brand:
+    domain: acmeoutdoor.example
+  account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: pinnacle-agency.example
+    operator_unit:
+      id: compliance-media_buy_seller_collection_selectio-7e6aac4c
+    sandbox: true
+  sandbox_account:
+    brand:
+      domain: acmeoutdoor.example
+    operator: pinnacle-agency.example
+    operator_unit:
+      id: compliance-media_buy_seller_collection_selectio-7e6aac4c
+    sandbox: true
+  sandbox_brand:
+    domain: acmeoutdoor.example
 phases:
-  - id: selected_subset_lifecycle
-    title: "Purchase and read back an explicit collection subset"
+  - id: commit_selection
+    title: Grade the independently selected collection product
     steps:
-      - id: get_products_retro_bundle
-        title: "Discover the selectable channel bundle"
-        task: get_products
-        schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
-        doc_ref: "/media-buy/product-discovery/collections-and-installments"
+      - id: create_selection
+        title: Purchase the catalog-qualified concrete collection set
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
         sample_request:
-          buying_mode: "brief"
-          brief: "Pre-roll across the HostStream channel bundle: Acme Retro News and Vintage Static"
+          brand: $context.sandbox_brand
           account:
             brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
             operator_unit:
-              id: "compliance-media_buy_seller_collection_selectio-7e6aac4c"
+              id: compliance-media_buy_seller_collection_selectio-7e6aac4c
             sandbox: true
-          filters:
-            channels: ["ctv"]
-          context:
-            correlation_id: "collection_selection--discovery"
-        expected: |
-          Return the selectable two-collection bundle product, declaring
-          collection_targeting_allowed: true.
-        context_outputs:
-          - key: "bundle_product_id"
-            path: "products[0].product_id"
-          - key: "bundle_pricing_option_id"
-            path: "products[0].pricing_options[0].pricing_option_id"
+          idempotency_key: $generate:uuid_v4#collection_selection_create_selection
+          start_time: asap
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: catalog_collection_product
+              pricing_option_id: catalog_collection_fixed_cpm
+              budget: $context.catalog_collection_budget
+              targeting_overlay:
+                collection_selection:
+                  mode: selected
+                  collections: $context.__adcp_fixture_collection_subset
+        expected:
+          Accept the selection on the discovered product. Echo exactly the committed concrete
+          domain-qualified set in selected mode; default materializes the complete catalog
+          composition.
         validations:
           - check: response_schema
-            description: "Response matches get-products-response.json"
-          - check: field_value
-            path: "products[0].collection_targeting_allowed"
-            value: true
-            description: "Product declares collection_targeting_allowed, the gate for targeting_overlay.collection_selection (core/product.json collection_targeting_allowed)"
+            description: The response matches the canonical create-media-buy schema
+          - check: field_present
+            path: media_buy_id
+            description: The seller assigns the committed buy identity
+          - check: field_equals_context
+            path: packages[0].product_id
+            context_key: __adcp_fixture_collection_product_id
+            description: The response echoes the explicit SAME selected product identity
           - check: array_length
-            path: "products[0].collections[0].collection_ids"
-            value: 2
-            description: "Product's full bundle has two collections, so a selected subset is a real narrowing"
-
-      - id: create_media_buy_selected_subset
-        title: "Buy an explicit domain-qualified subset of the bundle"
-        task: create_media_buy
-        schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
-        doc_ref: "/media-buy/task-reference/create_media_buy"
-        stateful: true
-        sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            operator_unit:
-              id: "compliance-media_buy_seller_collection_selectio-7e6aac4c"
-            sandbox: true
-          idempotency_key: "$generate:uuid_v4#collection_selection_selected_subset_create"
-          start_time: "asap"
-          end_time: "2099-09-30T23:59:59Z"
-          packages:
-            - product_id: "$context.bundle_product_id"
-              pricing_option_id: "$context.bundle_pricing_option_id"
-              bid_price: 22.0
-              budget: 5000
-              targeting_overlay:
-                collection_selection:
-                  mode: "selected"
-                  collections:
-                    - publisher_domain: "channel-owner.example"
-                      collection_ids: ["retro_news"]
-        expected: |
-          Accept the subset because collection_targeting_allowed: true
-          permits buyers to select fewer than the product's full bundle. The
-          response package echoes the committed selection as a concrete,
-          domain-qualified selector naming exactly the requested collection.
+            path: packages
+            value: 1
+            description: The one-package request produces exactly one committed package
+          - check: field_value
+            path: packages[0].targeting_overlay.collection_selection.mode
+            value: selected
+            description: Package readback materializes concrete selected-form collection selectors
+          - check: collection_set_equals_context
+            path: packages[0].targeting_overlay.collection_selection.collections
+            context_key: __adcp_fixture_collection_subset
+            description:
+              The committed set exactly matches the selected product witness, preserving publisher
+              namespaces without widening
         context_outputs:
-          - key: "selected_media_buy_id"
-            path: "media_buy_id"
-          - key: "selected_package_id"
-            path: "packages[0].package_id"
-        validations:
-          - check: response_schema
-            description: "Response matches create-media-buy-response.json"
-          - check: field_value
-            path: "packages[0].targeting_overlay.collection_selection.mode"
-            value: "selected"
-            description: "Sellers MUST echo collection selection on package readback (core/package.json targeting_overlay)"
-          - check: field_value
-            path: "packages[0].targeting_overlay.collection_selection.collections[0].publisher_domain"
-            value: "channel-owner.example"
-            description: "Echoed selector is domain-qualified (core/collection-selector.json requires publisher_domain)"
-          - check: field_value
-            path: "packages[0].targeting_overlay.collection_selection.collections[0].collection_ids[0]"
-            value: "retro_news"
-            description: "Echoed selector names the committed collection as a concrete selector (collections-and-installments.mdx, Collection targeting)"
-          - check: field_absent
-            path: "packages[0].targeting_overlay.collection_selection.collections[0].collection_ids[1]"
-            description: "Committed subset has exactly one collection_id; the seller must not silently widen it"
-          - check: field_absent
-            path: "packages[0].targeting_overlay.collection_selection.collections[1]"
-            description: "Committed subset has exactly one selector; the seller must not silently add the unselected collection"
-
-      - id: read_selected_subset
-        title: "Verify the persisted subset selection"
-        task: get_media_buys
-        schema_ref: "media-buy/get-media-buys-request.json"
-        response_schema_ref: "media-buy/get-media-buys-response.json"
-        doc_ref: "/media-buy/task-reference/get_media_buys"
-        stateful: true
-        sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            operator_unit:
-              id: "compliance-media_buy_seller_collection_selectio-7e6aac4c"
-            sandbox: true
-          media_buy_ids: ["$context.selected_media_buy_id"]
-        expected: |
-          Readback returns the same concrete, domain-qualified subset
-          selector committed at create time.
-        validations:
-          - check: response_schema
-            description: "Response matches get-media-buys-response.json"
-          - check: field_equals_context
-            path: "media_buys[0].packages[0].package_id"
-            context_key: "selected_package_id"
-            description: "Readback targets the package created earlier"
-          - check: field_value
-            path: "media_buys[0].packages[0].targeting_overlay.collection_selection.mode"
-            value: "selected"
-            description: "Package readback MUST echo the committed collection selection (collections-and-installments.mdx, Collection targeting)"
-          - check: field_value
-            path: "media_buys[0].packages[0].targeting_overlay.collection_selection.collections[0].collection_ids[0]"
-            value: "retro_news"
-            description: "Readback echoes the committed collection as a concrete selector, not a re-resolvable reference (collections-and-installments.mdx, Collection targeting)"
-          - check: field_absent
-            path: "media_buys[0].packages[0].targeting_overlay.collection_selection.collections[0].collection_ids[1]"
-            description: "Readback does not widen the committed one-collection subset"
-
-  - id: default_bundle_materialization
-    title: "mode: default materializes the full bundle as concrete selectors on readback"
-    steps:
-      - id: create_media_buy_default_bundle
-        title: "Buy the product's default (full-bundle) collection selection"
+          - name: collection_media_buy_id
+            path: media_buy_id
+          - name: collection_package_id
+            path: packages[0].package_id
+          - name: collection_committed_product_id
+            path: packages[0].product_id
+          - name: collection_committed_selectors
+            path: packages[0].targeting_overlay.collection_selection.collections
+      - id: reject_unknown_collection_id
+        title: Reject a collision-checked undeclared domain-qualified collection ID
         task: create_media_buy
-        schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
-        doc_ref: "/media-buy/task-reference/create_media_buy"
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
-        sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            operator_unit:
-              id: "compliance-media_buy_seller_collection_selectio-7e6aac4c"
-            sandbox: true
-          idempotency_key: "$generate:uuid_v4#collection_selection_default_bundle_create"
-          start_time: "asap"
-          end_time: "2099-09-30T23:59:59Z"
-          packages:
-            - product_id: "$context.bundle_product_id"
-              pricing_option_id: "$context.bundle_pricing_option_id"
-              bid_price: 22.0
-              budget: 5000
-              targeting_overlay:
-                collection_selection:
-                  mode: "default"
-        expected: |
-          Accept the product's full bundle. Because the collection-selection
-          schema's mode: "default" branch carries no collections field, the
-          seller MUST echo the committed selection as concrete "selected"-shaped
-          selectors naming both bundle collections rather than echoing
-          mode: "default" back unmaterialized (core/collection-selection.json;
-          collections-and-installments.mdx, Collection targeting).
-        context_outputs:
-          - key: "default_media_buy_id"
-            path: "media_buy_id"
-          - key: "default_package_id"
-            path: "packages[0].package_id"
-        validations:
-          - check: response_schema
-            description: "Response matches create-media-buy-response.json"
-          - check: field_value
-            path: "packages[0].targeting_overlay.collection_selection.mode"
-            value: "selected"
-            description: "Readback materializes mode: default into concrete selected-shaped selectors; the schema's default branch cannot carry a collections field (core/collection-selection.json), and sellers MUST echo the committed selection as concrete selectors (collections-and-installments.mdx, Collection targeting)"
-          - check: field_contains
-            path: "packages[0].targeting_overlay.collection_selection.collections[*].collection_ids[*]"
-            value: "retro_news"
-            description: "Materialized readback includes the full bundle's first collection"
-          - check: field_contains
-            path: "packages[0].targeting_overlay.collection_selection.collections[*].collection_ids[*]"
-            value: "vintage_static"
-            description: "Materialized readback includes the full bundle's second collection"
-
-      - id: read_default_bundle
-        title: "Verify the persisted materialized bundle selection"
-        task: get_media_buys
-        schema_ref: "media-buy/get-media-buys-request.json"
-        response_schema_ref: "media-buy/get-media-buys-response.json"
-        doc_ref: "/media-buy/task-reference/get_media_buys"
-        stateful: true
-        sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            operator_unit:
-              id: "compliance-media_buy_seller_collection_selectio-7e6aac4c"
-            sandbox: true
-          media_buy_ids: ["$context.default_media_buy_id"]
-        expected: |
-          Readback returns the same materialized full-bundle selection
-          committed at create time.
-        validations:
-          - check: response_schema
-            description: "Response matches get-media-buys-response.json"
-          - check: field_equals_context
-            path: "media_buys[0].packages[0].package_id"
-            context_key: "default_package_id"
-            description: "Readback targets the package created earlier"
-          - check: field_value
-            path: "media_buys[0].packages[0].targeting_overlay.collection_selection.mode"
-            value: "selected"
-            description: "Package readback MUST echo the committed collection selection as concrete selectors even when the buyer purchased mode: default (collections-and-installments.mdx, Collection targeting)"
-          - check: field_contains
-            path: "media_buys[0].packages[0].targeting_overlay.collection_selection.collections[*].collection_ids[*]"
-            value: "retro_news"
-            description: "Readback preserves the full bundle's first collection"
-          - check: field_contains
-            path: "media_buys[0].packages[0].targeting_overlay.collection_selection.collections[*].collection_ids[*]"
-            value: "vintage_static"
-            description: "Readback preserves the full bundle's second collection"
-
-  - id: fixed_bundle_enforcement
-    title: "A fixed (non-selectable) bundle rejects partial selection but accepts exact restatement"
-    narrative: |
-      When collection_targeting_allowed is false (the default), the product
-      is a fixed bundle: a collection_selection that exactly restates the
-      complete bundle remains an inherent match, but a narrower subset
-      requires collection_targeting_allowed: true and must be rejected
-      (core/product.json collection_targeting_allowed).
-    steps:
-      - id: reject_partial_selection_on_fixed_bundle
-        title: "Reject a subset selection on the fixed bundle"
-        task: create_media_buy
-        schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
-        doc_ref: "/media-buy/task-reference/create_media_buy"
         expect_error: true
         negative_path: payload_well_formed
-        stateful: true
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          brand: $context.sandbox_brand
           account:
             brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
             operator_unit:
-              id: "compliance-media_buy_seller_collection_selectio-7e6aac4c"
+              id: compliance-media_buy_seller_collection_selectio-7e6aac4c
             sandbox: true
-          idempotency_key: "$generate:uuid_v4#collection_selection_fixed_partial_reject"
-          start_time: "asap"
+          idempotency_key: $generate:uuid_v4#collection_selection_reject_unknown_collection_id
+          start_time: asap
           end_time: "2099-09-30T23:59:59Z"
           packages:
-            - product_id: "retro_bundle_ctv_fixed"
-              pricing_option_id: "retro_bundle_fixed_cpm"
-              bid_price: 22.0
-              budget: 5000
+            - product_id: catalog_collection_product
+              pricing_option_id: catalog_collection_fixed_cpm
+              budget: $context.catalog_collection_budget
               targeting_overlay:
                 collection_selection:
-                  mode: "selected"
-                  collections:
-                    - publisher_domain: "channel-owner.example"
-                      collection_ids: ["retro_news"]
-        expected: |
-          Reject with UNSUPPORTED_FEATURE. Partial collection selection
-          requires collection_targeting_allowed: true; the fixed product
-          cannot silently narrow to less than its complete bundle
-          (core/product.json collection_targeting_allowed).
+                  mode: selected
+                  collections: $context.__adcp_fixture_collection_unknown_id
+        expected:
+          Reject with REFERENCE_NOT_FOUND; preserve the requested selectors rather than substituting
+          a supported set.
         validations:
           - check: error_code
-            value: "UNSUPPORTED_FEATURE"
-            description: "A fixed (collection_targeting_allowed: false) product rejects a narrower collection subset (core/product.json collection_targeting_allowed)"
-
-      - id: accept_full_restatement_on_fixed_bundle
-        title: "Accept an exact restatement of the fixed bundle's complete collections"
+            allowed_values:
+              - REFERENCE_NOT_FOUND
+            description:
+              The protocol distinguishes invalid shapes, unknown references and unsupported
+              fixed-bundle narrowing
+      - id: reject_unknown_publisher_domain
+        title: Reject a collection namespace absent from the SAME complete product
         task: create_media_buy
-        schema_ref: "media-buy/create-media-buy-request.json"
-        response_schema_ref: "media-buy/create-media-buy-response.json"
-        doc_ref: "/media-buy/task-reference/create_media_buy"
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
         stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
         sample_request:
-          brand:
-            domain: "acmeoutdoor.example"
+          brand: $context.sandbox_brand
           account:
             brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
             operator_unit:
-              id: "compliance-media_buy_seller_collection_selectio-7e6aac4c"
+              id: compliance-media_buy_seller_collection_selectio-7e6aac4c
             sandbox: true
-          idempotency_key: "$generate:uuid_v4#collection_selection_fixed_full_restatement_create"
-          start_time: "asap"
+          idempotency_key: $generate:uuid_v4#collection_selection_reject_unknown_publisher_domain
+          start_time: asap
           end_time: "2099-09-30T23:59:59Z"
           packages:
-            - product_id: "retro_bundle_ctv_fixed"
-              pricing_option_id: "retro_bundle_fixed_cpm"
-              bid_price: 22.0
-              budget: 5000
+            - product_id: catalog_collection_product
+              pricing_option_id: catalog_collection_fixed_cpm
+              budget: $context.catalog_collection_budget
               targeting_overlay:
                 collection_selection:
-                  mode: "selected"
-                  collections:
-                    - publisher_domain: "channel-owner.example"
-                      collection_ids: ["retro_news", "vintage_static"]
-        expected: |
-          Accept the exact restatement of the complete fixed bundle. A
-          collection_selection that exactly restates the complete bundle
-          remains an inherent match even without collection_targeting_allowed
-          (core/product.json collection_targeting_allowed), and the response
-          echoes the complete committed set.
+                  mode: selected
+                  collections: $context.__adcp_fixture_collection_unknown_domain
+        expected:
+          Reject with REFERENCE_NOT_FOUND; preserve the requested selectors rather than substituting
+          a supported set.
         validations:
-          - check: response_schema
-            description: "Response matches create-media-buy-response.json"
-          - check: field_contains
-            path: "packages[0].targeting_overlay.collection_selection.collections[*].collection_ids[*]"
-            value: "retro_news"
-            description: "Exact restatement echoes the first bundle collection"
-          - check: field_contains
-            path: "packages[0].targeting_overlay.collection_selection.collections[*].collection_ids[*]"
-            value: "vintage_static"
-            description: "Exact restatement echoes the second bundle collection"
+          - check: error_code
+            allowed_values:
+              - REFERENCE_NOT_FOUND
+            description:
+              The protocol distinguishes invalid shapes, unknown references and unsupported
+              fixed-bundle narrowing

@@ -42,6 +42,7 @@ vi.mock('../../src/routes/admin/accounts.js', () => ({ setupAccountRoutes: vi.fn
 vi.mock('../../src/routes/admin/accounts-billing.js', () => ({ setupAccountsBillingRoutes: vi.fn() }));
 vi.mock('../../src/routes/admin/brand-enrichment.js', () => ({ setupBrandEnrichmentRoutes: vi.fn() }));
 vi.mock('../../src/routes/admin/bans.js', () => ({ setupBanRoutes: vi.fn() }));
+vi.mock('../../src/routes/admin/registry-review.js', () => ({ setupRegistryReviewRoutes: vi.fn() }));
 vi.mock('../../src/routes/admin/geo.js', () => ({ setupGeoRoutes: vi.fn() }));
 vi.mock('../../src/routes/admin/announcements.js', () => ({ setupAnnouncementsRoutes: vi.fn() }));
 vi.mock('../../src/routes/admin/relationships.js', () => ({ setupRelationshipRoutes: vi.fn() }));

@@ -71,6 +71,7 @@
             "description": "Experimental (media_buy.installment_selection). Requested installment actions not satisfied by every returned draft, each entry repeated exactly as the request carried it. This is a subset of the request installment_changes list and is valid only on partial or unable results, whose reason_code is constraint_unsatisfiable."
           },
           "drifted_pins": {
+            "x-added-in": "3.3.0",
             "type": "array",
             "description": "Pins from the source proposal's commercial_terms.definition_pins[] whose published definition no longer resolves to the pinned content_digest, in the pins' canonical order. Required on, and valid only with, reason_code definition_changed.",
             "items": {

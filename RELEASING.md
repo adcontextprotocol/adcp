@@ -278,12 +278,64 @@ requalify each dependent PR on that main, including combined tests and human rev
 historical backfill or incident recovery.
 
 Routine app deployment is authorized to rebuild and upload only
-`schemas/latest/**`, `compliance/latest/**`, and `protocol/latest.tgz*`.
-It uses `backfill-cdn-artifacts.sh --latest-only`; root version indexes and
-all semver paths are excluded. The app itself serves committed `dist`, so a
-committed package version without a published GitHub Release and its four
-assets also blocks app deployment. This can delay app-only fixes while a
-release needs recovery.
+`schemas/latest/**`, `compliance/latest/**`, `protocol/latest.tgz*`, and the
+root discovery pointers `schemas/index.json` and `schemas/latest.json`. It
+uses `backfill-cdn-artifacts.sh --latest-only`; all semver paths are excluded.
+The app itself serves committed `dist`, so a committed package version without
+a published GitHub Release and its four assets also blocks app deployment.
+This can delay app-only fixes while a release needs recovery.
+
+The root pointers name versions, so routine deployment must not be able to
+advertise one that release authority has not published.
+`scripts/build-schema-discovery-pointers.cjs` enforces that mechanically:
+
+- It starts from the regenerated `dist/schemas/index.json` and refuses a
+  source document whose aliases disagree with its own version list, whose
+  `$id`/`$schema`/`channel` are not the expected literals, or that carries a
+  malformed entry.
+- `versions[]` keeps only the releases with a `schemas/<version>/` prefix in
+  one delimited bucket listing. A truncated listing is refused.
+- An alias (`latest_stable`, `v3`, `v3.2`, …) may only resolve to a release
+  whose `schemas/<version>/index.json` object was confirmed with a HEAD. A
+  prefix appears as soon as release publication writes its first object, and
+  that publication is progressive and per-object, so prefix existence alone
+  would let a half-uploaded release win an alias under an immutable cache
+  policy. The deploy walks each line newest-first and stops at the first
+  confirmation — typically one HEAD per release line.
+- Every URL in the published document is derived from a validated version
+  string; nothing but two prose fields is copied from the source.
+- It refuses to move any pointer backwards relative to the copy currently
+  served. The one exemption is a release the source marks `withdrawn` or
+  `unpublished`, which is a deliberate editorial decision. Any other
+  regression means the CDN no longer serves a release it advertises: recover
+  that release, do not override the guard.
+
+A release whose version directory never reached the CDN therefore keeps its
+line pinned to the newest patch that is actually fetchable, and the deploy log
+carries a `Schema versions missing from the CDN` warning naming the gap.
+
+`scripts/verify-schema-discovery.mjs` then fetches the canonical public URLs
+and fails the deploy unless they serve byte-for-byte what this run uploaded —
+uploading is not serving. Note the scope: it proves the public document is
+this run's, not that the document names the newest release of every line. A
+line pinned one release back by a CDN gap passes, and the warning above is the
+signal for that.
+
+`npm run backfill:cdn-artifacts -- --bucket "$ADCP_ARTIFACT_R2_BUCKET"
+--build-latest --latest-only --aws-dry-run` computes and prints both documents
+against the live bucket without uploading anything, which is how to preview
+pointer state during an incident.
+
+Pointer currency follows the deploy, not the release: `release.yml` uploads
+`schemas/<version>/` with `--version V --skip-latest` and still never touches
+the pointers, so a new release is advertised by the next successful `main`
+deploy that sees its prefix. Releases cut on a maintenance branch wait for the
+forward merge into `main`.
+
+Before [#8318](https://github.com/adcontextprotocol/adcp/issues/8318) no
+workflow published these two objects at all: `--latest-only` excluded them and
+`--version V --skip-latest` still does, so they froze at whatever the last
+manual bulk backfill wrote while four releases shipped past them.
 
 Only the release workflow publishes a new immutable version. It verifies the
 current tested branch, the original merged release PR's final-head maintainer
@@ -304,7 +356,9 @@ See [GitHub's concurrency contract](https://docs.github.com/en/actions/how-tos/w
 The exact queue/cancellation combination is regression-tested; older actionlint
 parsers require only the specific unsupported `queue`-key diagnostic exception.
 Old
-runs fail their current-branch fence. A later push with a stranded committed
+runs fail their current-branch fence before Changesets; a run already
+publishing a committed release tolerates only the unrelated advances described
+under publication-scoped freshness below. A later push with a stranded committed
 version fails explicitly, including an app-only push, and must use the recovery
 procedure below before Changesets advances the package again.
 
@@ -319,6 +373,9 @@ rewrites. The HOLD comment's identity, issue, and body are read back before any
 push. API/read commands have a 60-second bound; pushes have a 10-minute bound,
 with process-group termination and read-back reconciliation on timeout. Freshness is
 checked before and after that push, and again after the action's PR API calls.
+After an acknowledged push, the PR read tolerates only the pulls API briefly
+reporting the prior head (same PR, still Draft): it polls up to 10 times, one
+second apart, and any other mismatch or a longer lag quarantines as before.
 
 Drift, push errors (including lost acknowledgements), or an incomplete action
 trigger restoration of the captured ref with a second lease expecting only the
@@ -356,6 +413,73 @@ its push/PR requests; it does not lock main. An in-flight request can finish
 after main moves. Such a failure requires inspection and explicit recovery;
 never treat a previous verification or a queued run as current authority.
 
+`scripts/check-release-state.cjs` has two freshness levels:
+
+- **`current` (strict).** `origin/<branch>` must equal the tested SHA exactly.
+  This guards everything that can lead to Changesets generation:
+  `verify-release`'s "Require current release branch", the release job's
+  checks before artifact detection, `pending`, `recovery`, `deploy.yml`, and
+  every check in `scripts/fence-changesets.cjs` (including its pre-push hook).
+  A regenerated Version Packages PR must be based on exact current main.
+- **`publication-current` (publication-scoped).** Used only while publishing
+  the already-committed release: inside `committed`, `published`, `approval`
+  and `provenance`; in release.yml from "Require human approval for committed
+  release artifacts" through the GitHub Release upload and the R2 publication
+  (`backfill-cdn-artifacts.sh --version`); and for the per-object checks in
+  `recover-protocol-cdn.yml` / `recover-cdn-version-trees.sh`, whose initial
+  gates stay strict. It accepts a later branch head when the tested SHA is its
+  ancestor (after fetching that head and checking that the fetched OID is the
+  advertised one), the parsed `package.json` version is unchanged, and
+  `git diff --no-renames` from the tested SHA touches none of:
+  - this version's `dist/schemas/<v>/`, `dist/compliance/<v>/` and
+    `dist/protocol/<v>.tgz*`, including mode, symlink and gitlink changes;
+  - release identity: `.changeset/pre.json` and
+    `.changeset/release-supersession.json`;
+  - release status: `.changeset/withdrawn-release.json`,
+    `scripts/build-schemas.cjs` (`RELEASE_STATUS_OVERRIDES`),
+    `server/src/schemas-middleware.ts` and `workers/artifact-cdn/src/index.js`,
+    so a withdrawal that lands mid-publication stops it;
+  - the publication machinery: `release.yml`, `recover-protocol-cdn.yml`,
+    `check-release-state.cjs`, `backfill-cdn-artifacts.sh`,
+    `recover-cdn-version-trees.sh` and `check-protocol-bundle-parity.cjs`,
+    so a fence fix that lands mid-run stops runs still executing the old logic.
+
+  It logs the accepted advance. It compares the **net** TESTED..H diff, so a
+  change to a protected path that a later commit fully reverts is accepted.
+
+So unrelated pushes to the branch, such as app or test changes, no longer
+invalidate publication. The strict fence prevented a stale run from publishing
+over a newer release or over changed artifacts. Each of those changes still
+refuses: a version bump, any change to this version's artifacts, a pre-mode,
+supersession or release-status change, a publication-machinery change,
+rewritten history, or a remote/Git failure. Approval, merge provenance,
+signature verification and the byte-for-byte immutable-object checks are
+unchanged.
+
+On `main`, a Version Packages merge also skips re-running the storyboard
+matrix in `verify-release` when it is a provenance-verified release merge.
+`check-release-state.cjs verified-merge`:
+- finds exactly one merged release PR for the pushed SHA, with its head branch
+  in this repository;
+- checks `provenance` (exact base parent and identical tree);
+- requires the release head not to change the storyboard harness relative to
+  its base parent (`training-agent-storyboards.yml`, `scripts/run-storyboards*`,
+  the schema/compliance builders, `server/tests/manual/run-storyboards.ts`,
+  the training agent and `hosted-compliance-version.ts`);
+- finds a completed, successful `pull_request` run of that workflow file on
+  that exact head, PR branch and repository, in which every job succeeded and
+  every job of the full matrix (`storyboardJobs`, kept equal to the workflow
+  by `tests/release-workflow-immutability.test.cjs`) is present.
+
+A Draft run whose matrix was skipped, a narrowed matrix, a fork run with the
+same SHA, or a run from another branch does not count. Maintenance branches
+always run full verification, because their PR runs use a different
+candidate-version mode. If any of that can't be proven, verification runs
+exactly as before. The skip changes only duplicate verification: the release
+job's approval and provenance checks still run unchanged. On that full
+fallback, the release job's strict start still strands the release if main
+moves during the ~2h verification; recover it with an explicit dispatch.
+
 GitHub assets are staged privately in a draft before release publication. Exactly
 the four signed tuple assets are required; extras and duplicates are rejected. R2
 publication is **progressive, with per-object atomicity only**: conditional
@@ -371,9 +495,113 @@ extension-filter fix. Mutable `latest` uploads remain progressive as well.
 Live unscoped bulk backfills are disabled. `--dry-run` remains available for
 inventory; it is not release authorization. Historical CDN recovery must use
 an existing approved tag/release, a current tested branch fence, unchanged
-committed bytes, and conditional missing-object creation. The stable-only
-`recover-protocol-cdn.yml` recovers four protocol files, not schemas/compliance
-and not RC releases.
+committed bytes, and conditional missing-object creation.
+`recover-protocol-cdn.yml` is the single dispatch for that. It accepts an
+exact stable version or an exact `-beta.N` / `-rc.N` prerelease, and only a
+version whose GitHub Release is published with the complete signed tuple; an
+unpublished or superseded prerelease is refused.
+
+### Recovering a release's CDN artifacts
+
+A stable release whose objects never reached R2 does not announce itself. The
+worker's pinned-semver fallback resolves `/schemas/3.0.28/...` to the newest
+published release at-or-below it on the same line, so the request returns 200
+with an *older release's* bytes. Only two signals distinguish that from a real
+hit: the response carries `cache-control: public, no-cache, must-revalidate`
+instead of the immutable policy an exact directory gets, and
+`build-schema-discovery-pointers.cjs` refuses to advertise the release, so the
+deploy log carries `::warning title=Schema versions missing from the CDN`
+naming the gap and the line's alias stays pinned one release back (#8318,
+#8324, #8347).
+
+Nothing in the routine paths can close that gap. `release.yml` publishes only
+the version in the current checkout's `package.json`; `--latest-only` excludes
+every semver path; live bulk backfill is disabled. Recovery is a separate,
+maintainer-dispatched authority:
+
+```
+gh workflow run recover-protocol-cdn.yml --ref main \
+  -f version=<exact published semver> -f surfaces=all
+```
+
+`surfaces` defaults to `protocol` (the four signed tuple files, the original
+scope of this workflow). `all` additionally recovers the immutable
+`schemas/<version>/` and `compliance/<version>/` trees through
+`scripts/recover-cdn-version-trees.sh`. The run:
+
+- checks out tag `v<version>` and requires its `package.json` to hold exactly
+  that version. The fence, the parity checker and the recovery script are
+  copied from the dispatched branch before the tag checkout overwrites them, so
+  recovery logic never comes from the artifact being recovered;
+- verifies the committed signed tuple with `cosign verify-blob` against the
+  `release.yml` identity and runs `check-release-state.cjs published`, which
+  binds the tag to its GitHub Release and to the committed tuple bytes. Both
+  happen on the protocol path, which always runs, so tree recovery inherits
+  them;
+- proves that the committed `dist/schemas/<v>` and `dist/compliance/<v>` trees
+  are byte-for-byte the `schemas/` and `compliance/` trees inside that signed
+  tarball (`scripts/check-protocol-bundle-parity.cjs`). R2 objects are
+  unsigned, so this is what makes the release signature cover them. cosign's
+  identity regexp binds the signing workflow, not the version, so the bundle's
+  `adcp-<version>/` root directory is the load-bearing version binding. The
+  only tolerated divergence is the bounded build timestamp
+  `build-protocol-tarball.cjs` re-pins in `schemas/manifest.json` and
+  `compliance/index.json` — the one field the signature does not cover, so it
+  is constrained by shape and size instead. Any other difference, extra file or
+  missing file fails the run before a single write;
+- reads every published byte with `git cat-file blob`, never the working tree
+  and never `git archive`, whose output is filtered by the tag's own
+  `.gitattributes` (`export-subst` splices commit text into the bytes). It
+  refuses any path that is not a regular blob with an unambiguous name and a
+  known published content type, and re-checks each file's digest immediately
+  before its write;
+- writes conditionally (`If-None-Match: *`) and only where the object is
+  confirmed missing. An existing object must already match byte-for-byte *and*
+  carry the right content type; an inconclusive existence check aborts rather
+  than reading as absent. Nothing is overwritten or deleted, and the root
+  discovery pointers stay with the deploy path;
+- re-checks the current-branch publication fence before and after every object,
+  so a branch move mid-run stops publication;
+- then fetches every recovered object from the public origin and requires the
+  bytes, the immutable cache policy **and** the `ETag` to match. The ETag is
+  the decisive one: R2 reports a single-part object's ETag as the body's hex
+  MD5, so it proves a bucket object with exactly those bytes answered. Bytes
+  and cache policy alone cannot, because on a miss the worker proxies to the
+  Fly origin, which serves the same committed tree and stamps the same
+  immutable policy for an exact pinned hit
+  (`server/src/schemas-middleware.ts`).
+
+The dispatch is idempotent and safe to re-run: a complete recovery reports
+every object as already verified.
+
+Operational notes:
+
+- **It is slow.** Recovery fences the current branch before and after every
+  object, exactly as release publication does, so ~770 objects means ~2,300
+  `git ls-remote` round trips plus the S3 calls. Budget tens of minutes, and
+  expect a transient failure to abort mid-run; re-dispatch resumes safely.
+- **It runs from current `main` only.** The job is skipped for any other
+  dispatch ref. Its initial gates (the preflight step, and the start of
+  `recover-cdn-version-trees.sh` in both upload and verify modes) use the
+  strict fence, so a stale re-run stops before doing anything.
+- **Only a release-relevant branch move fails an object check.** The
+  per-object fences use `publication-current` with the recovered version, so
+  unrelated merges to `main` during an upload are accepted and logged. A push
+  that bumps the package version, touches the recovered or current version's
+  artifacts, or changes a release-identity, release-status or
+  publication-machinery file still stops the job, possibly after some objects
+  were published. Any `main` move before a later step's strict start (the tree
+  upload or the tree verification) also stops that step. Re-dispatch to
+  confirm.
+- **The line alias moves as soon as the first object lands.** The worker
+  resolves `v3`/`v3.0` from the R2 prefix listing, and a prefix exists after
+  the first write, so mid-run those aliases already resolve to the version
+  being recovered while its tree is incomplete. Objects not yet uploaded miss
+  R2 and fall through to the origin. This is the same progressive-publication
+  window `release.yml` has for a new release, not a new one, but it is a window
+  — prefer running recovery when the line is quiet.
+- The discovery pointers advance on the next successful `main` deploy that sees
+  the new prefix, not as part of recovery.
 
 ### Explicit recovery of a superseded release merge
 
@@ -386,8 +614,10 @@ release merge is an ancestor, requires the same package version and unchanged
 versioned artifacts, rechecks original final-head maintainer permission and
 merge provenance, and fences
 every publication phase. It never silently repairs from an unrelated push.
-A new main commit during the attempt requires another explicit dispatch and
-verification of the new head. If a later package version has already landed,
+An unrelated main commit during the publication phases is tolerated by
+`publication-current`. A new main commit before artifact detection, or one that
+changes the version, its artifacts or the release-authority files, requires
+another explicit dispatch and verification of the new head. If a later package version has already landed,
 stop for a separately reviewed historical recovery; this path refuses it.
 
 ### Superseding an unpublishable committed prerelease
