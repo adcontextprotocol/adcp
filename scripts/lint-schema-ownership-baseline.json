@@ -133,12 +133,12 @@
     },
     {
       "from": "core/product-format-declaration.json",
-      "to": "formats/canonical/image_carousel.json",
+      "to": "formats/canonical/image.json",
       "rule": "shared-to-domain"
     },
     {
       "from": "core/product-format-declaration.json",
-      "to": "formats/canonical/image.json",
+      "to": "formats/canonical/image_carousel.json",
       "rule": "shared-to-domain"
     },
     {
