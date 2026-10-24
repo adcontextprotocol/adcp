@@ -89,6 +89,8 @@ export interface MeasurementAccreditation {
 
 export interface MeasurementMetric {
   metric_id: string;
+  /** Vendor-authored display label. Not an identifier — never key on it. */
+  name?: string;
   standard_reference?: string;
   accreditations?: MeasurementAccreditation[];
   unit?: string;
@@ -315,6 +317,7 @@ const MEASUREMENT_LIMITS = {
   MAX_METRICS: 500,
   MAX_DESCRIPTION_LEN: 2000,
   MAX_METRIC_ID_LEN: 256,
+  MAX_NAME_LEN: 100,
   MAX_URI_LEN: 2048,
   MAX_ACCREDITATIONS_PER_METRIC: 32,
   MAX_ACCREDITING_BODY_LEN: 128,
@@ -403,6 +406,18 @@ export function sanitizeMeasurementCapabilities(raw: unknown): MeasurementCapabi
     seenIds.add(metric_id);
 
     const out: MeasurementMetric = { metric_id };
+    if (metric.name !== undefined) {
+      // A display label: collapse whitespace runs (including newlines) to one
+      // space so a label renders on one line. An empty result is a schema
+      // violation (minLength 1), not an absent name.
+      const name = clampString(metric.name, MEASUREMENT_LIMITS.MAX_NAME_LEN, `metrics[${i}].name`)
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (name.length === 0) {
+        throw new Error(`measurement.metrics[${i}].name: empty`);
+      }
+      out.name = name;
+    }
     if (metric.standard_reference !== undefined) {
       out.standard_reference = validateUri(String(metric.standard_reference), `metrics[${i}].standard_reference`);
     }
