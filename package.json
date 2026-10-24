@@ -147,6 +147,7 @@
     "test:test-coverage": "node --test --test-force-exit tests/test-coverage-registration.test.cjs",
     "test:error-code-drift": "node scripts/lint-error-code-drift.cjs",
     "test:language-tag-refs": "node --test --test-force-exit --test-timeout=30000 tests/lint-language-tag-refs.test.cjs && node scripts/lint-language-tag-refs.cjs",
+    "test:applies-when": "node --test --test-force-exit --test-timeout=30000 tests/lint-applies-when.test.cjs && node scripts/lint-applies-when.cjs",
     "test:compliance-snippets": "node --test --test-force-exit --test-timeout=30000 tests/generate-compliance-snippets.node.mjs tests/link-compliance-symbols.node.mjs && npm run build:compliance -- --check",
     "test:doc-compliance-drift": "node --test --test-force-exit --test-timeout=30000 tests/lint-doc-compliance-drift.test.cjs tests/lint-conformance-doc-freshness.test.cjs && npm run test:release-instrumentation",
     "test:release-instrumentation": "node --test --test-force-exit --test-timeout=30000 tests/release-instrumentation.test.cjs",

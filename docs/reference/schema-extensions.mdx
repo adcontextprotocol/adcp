@@ -157,6 +157,60 @@ Adding `x-adcp-hoist` to a previously-inlined source schema is wire-compatible (
 
 - Introduced in [#4557](https://github.com/adcontextprotocol/adcp/issues/4557). Successor to [#3145](https://github.com/adcontextprotocol/adcp/issues/3145) phase 2.
 
+## `x-adcp-applies-when`
+
+Names the seller capability declarations that make a property relevant. The annotation is documentary and non-validating: the property's JSON Schema still controls wire validation, and validators MUST ignore the keyword.
+
+It exists so a seller can expose a narrower surface without a seller-specific schema or SDK. For example, a seller that sells only non-guaranteed inventory can drop guaranteed-only fields from its MCP tool schemas. Such a narrowed schema is a **projection**: a pure function of one canonical schema and the seller's own [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) response. Docs and storyboard coverage checks read the same annotation.
+
+```jsonc
+"cancellation_policy": {
+  "x-adcp-applies-when": { "delivery_types": ["guaranteed"] },
+  "$ref": "/schemas/core/cancellation-policy.json"
+}
+```
+
+### Keys
+
+The value is an object with one or more of these keys. Each key holds a non-empty array.
+
+| Key | Values | Matched against |
+|---|---|---|
+| `delivery_types` | [`delivery-type`](https://adcontextprotocol.org/schemas/v3/enums/delivery-type.json) values | `media_buy.supported_delivery_types` |
+| `pricing_models` | [`pricing-model`](https://adcontextprotocol.org/schemas/v3/enums/pricing-model.json) values | `media_buy.supported_pricing_models` |
+| `capabilities` | Dotted paths into the `get_adcp_capabilities` response, such as `media_buy.conversion_tracking` | Satisfied when the path is present and not `false` |
+
+There is no `channels` key yet. `portfolio.primary_channels` is a brief-routing scope, not an exhaustive declaration of the channels a seller sells.
+
+### Semantics
+
+- **Any match counts.** The property is relevant when any listed value matches the seller's declaration. A projection that can't express both conditions together, such as "guaranteed and proposals", keeps more fields than it needs, never fewer.
+- **Fail open.** When the seller hasn't declared the matched capability, for example it omits `supported_delivery_types`, the property stays relevant.
+- **Projections only remove.** A projection MAY drop optional properties whose annotation doesn't match. It MUST NOT rename, retype, or add required properties. A payload valid against a projection is valid against the canonical schema.
+- **Never on required properties.** A property that carries the annotation MUST NOT be listed in its parent's `required`.
+- **Union arms need no annotation.** Arms of a discriminated union, such as the pricing options keyed by `pricing_model`, are already selected by their discriminator.
+
+### Conformance
+
+- Validators MUST ignore `x-adcp-applies-when`. Projection is optional: a seller that exposes the full canonical surface is conformant.
+- `scripts/lint-applies-when.cjs` checks every annotation: only known keys, non-empty arrays, values valid against their enums, every capability path resolving in `get-adcp-capabilities-response.json`, and no annotated property listed as required.
+
+### Current usage
+
+| Property | Annotation |
+|---|---|
+| `product.cancellation_policy` | `delivery_types: ["guaranteed"]` |
+| `floor_price`, `price_guidance` on each pricing option that has them, and on `canonical-pricing-option` | `delivery_types: ["non_guaranteed"]` |
+| `product.conversion_tracking`, `product.measurement_readiness` | `capabilities: ["media_buy.conversion_tracking"]` |
+| `product.vendor_metric_optimization` | `capabilities: ["media_buy.vendor_metric_optimization"]` |
+| `product.trusted_match` | `capabilities: ["media_buy.execution.trusted_match"]` |
+
+`fixed_price` is deliberately not annotated: non-guaranteed broadcast scatter and PMP deals are fixed-price too.
+
+### History
+
+- Introduced in 3.3 by [#8452](https://github.com/adcontextprotocol/adcp/issues/8452), from the [#8359](https://github.com/adcontextprotocol/adcp/issues/8359) discussion.
+
 ## Future extensions
 
 New `x-adcp-*` keywords are added in minor releases. Consumers MUST tolerate unknown `x-` keywords without erroring. The convention reserves the `x-adcp-` namespace; vendor-specific or deployment-specific annotations SHOULD use a vendor-specific prefix (e.g., `x-yourorg-`) to avoid collision.
