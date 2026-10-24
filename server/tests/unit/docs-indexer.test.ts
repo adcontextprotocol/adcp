@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeAll, vi } from 'vitest';
@@ -39,6 +40,14 @@ import {
 import { DOCS_SCHEMA_RELEASES } from '../../src/addie/mcp/schema-tools.js';
 import { AddieDatabase } from '../../src/db/addie-db.js';
 
+const { docsNavigationVersions } = createRequire(import.meta.url)(
+  '../../../scripts/docs-navigation.cjs',
+) as {
+  docsNavigationVersions: (config: {
+    navigation?: { versions?: Array<{ default?: boolean }> };
+  }) => Array<{ default?: boolean }>;
+};
+
 const STABLE_SNAPSHOT = DOCS_SCHEMA_RELEASES['3.1'];
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -50,10 +59,8 @@ const line32 = () => resolveDocsVersion('3.2')!.version;
 const line32Snapshot = () => resolveDocsVersion('3.2')!.artifactVersion;
 
 function docsJsonDefaultArtifact(): string {
-  const docsConfig = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'docs.json'), 'utf8')) as {
-    navigation: { versions: Array<{ default?: boolean }> };
-  };
-  const entry = docsConfig.navigation.versions.find((version) => version.default);
+  const docsConfig = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'docs.json'), 'utf8'));
+  const entry = docsNavigationVersions(docsConfig).find((version) => version.default);
   const match = JSON.stringify(entry).match(/"dist\/docs\/([^/"]+)\//);
   if (!match) throw new Error('docs.json default version references no dist/docs snapshot');
   return match[1];

@@ -596,11 +596,45 @@ function collectNavigationPagePaths(value: unknown, artifactVersions: Set<string
   return paths;
 }
 
+/**
+ * English version picker. Translations live under `navigation.languages`
+ * and must not become protocol versions. Keep this in sync with
+ * `scripts/docs-navigation.cjs`.
+ */
+function docsNavigationVersions(config: {
+  navigation?: {
+    versions?: Array<Record<string, unknown>>;
+    languages?: Array<{
+      language?: string;
+      default?: boolean;
+      versions?: Array<Record<string, unknown>>;
+    }>;
+  };
+}): Array<Record<string, unknown>> | undefined {
+  const navigation = config.navigation;
+  if (!navigation) return undefined;
+  if (Array.isArray(navigation.versions)) return navigation.versions;
+  const languages = navigation.languages;
+  if (!Array.isArray(languages)) return undefined;
+  const english =
+    languages.find((entry) => entry?.language === 'en') ??
+    languages.find((entry) => entry?.default) ??
+    languages[0];
+  return english?.versions;
+}
+
 function loadDocsVersions(configPath: string): DocsVersion[] {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as {
-    navigation?: { versions?: Array<Record<string, unknown>> };
+    navigation?: {
+      versions?: Array<Record<string, unknown>>;
+      languages?: Array<{
+        language?: string;
+        default?: boolean;
+        versions?: Array<Record<string, unknown>>;
+      }>;
+    };
   };
-  const navigationVersions = config.navigation?.versions;
+  const navigationVersions = docsNavigationVersions(config);
   if (!Array.isArray(navigationVersions) || navigationVersions.length === 0) {
     throw new Error(`No navigation.versions found in ${configPath}`);
   }

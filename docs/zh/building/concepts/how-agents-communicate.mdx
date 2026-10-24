@@ -1,0 +1,184 @@
+---
+title: AI 代理如何跨平台传递广告规格
+sidebarTitle: 代理如何通信
+description: "AI 广告代理如何用 AdCP 的标准任务模式和 MCP 传输发现库存、交换投放数据，并跨平台执行购买。"
+"og:title": "AdCP — 代理如何跨平台传递广告规格"
+---
+
+<Info>
+译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[How AI agents communicate ad specs across platforms](/docs/building/concepts/how-agents-communicate)。没有中文译本的链接会打开英文规范页面。
+</Info>
+
+当一个 AI 代理在多个平台上管理投放时，它在每个平台上都要做同样的事：找到可用库存、提交购买、提供创意、检查投放。难点是每个平台描述这些操作的方式都不一样。
+
+AdCP 定义一组标准任务，每个任务有固定的请求模式和响应模式。代理用同一组任务，不管对面是哪个平台。
+
+## 通信问题
+
+设想一个买方代理在三个平台上管理投放：
+
+| 操作 | 平台 A | 平台 B | 平台 C |
+|---|---|---|---|
+| 找库存 | `GET /api/products` | `POST /inventory/search` | `GET /catalogue` |
+| 执行购买 | `POST /api/campaigns` | `PUT /orders/new` | `POST /media-buys` |
+| 检查投放 | `GET /api/reports` | `POST /analytics/query` | `GET /stats/{id}` |
+
+没有标准时，代理要为每个平台写专门的代码：不同的端点、不同的字段名、不同的响应格式。这限制了代理能对接多少平台。
+
+有了 AdCP，代理在各处使用同一组任务：
+
+| 操作 | AdCP 任务 |
+|---|---|
+| 找库存 | `get_products` |
+| 执行购买 | `create_media_buy` |
+| 检查投放 | `get_media_buy_delivery` |
+
+模式在各平台上相同。变的只是传输连接。
+
+## 两种传输协议
+
+AdCP 任务走两种协议，取决于集成类型。
+
+### MCP（Model Context Protocol）
+
+MCP 是 AI 助手调用外部工具的方式。AdCP 的 MCP 服务器把任务暴露成工具，Claude、Cursor 或任何兼容 MCP 的客户端都能调用。
+
+```
+AI 助手 → MCP 客户端 → AdCP MCP 服务器 → 平台
+```
+
+代理把 `get_products` 当作工具来调用。MCP 服务器把请求翻译成平台的内部 API，再返回标准化的响应。
+
+**适合：** 有人在回路里的工作流。AI 助手帮助媒体买方和平台交互。
+
+### A2A（Agent-to-Agent Protocol）
+
+A2A 是自治代理彼此通信的方式。买方代理向卖方代理发送结构化消息，卖方代理处理后返回结果，操作可能持续很久。
+
+```
+买方代理 → A2A 客户端 → 卖方代理 → 平台
+```
+
+买方代理把 `create_media_buy` 任务作为消息发出。卖方代理处理它（可能要几秒或几小时），并把状态更新流式送回。
+
+**适合：** 自动化工作流。代理独立运行，在关键检查点由人批准。
+
+### 同一组任务，不同的传输
+
+关键点：AdCP 的任务定义与传输无关。`get_products` 请求无论走 MCP 还是 A2A，字段都一样。平台把领域逻辑实现一次，再用两种传输提供。
+
+## 代理交换什么
+
+AdCP 在若干领域定义任务。一次典型投放里，代理实际来回发送的是这些。
+
+### 产品发现
+
+买方代理问「我能买什么？」，得到一份结构化的媒体产品目录。每个产品带定价、格式、定向选项和投放类型。
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442007",
+  "buying_mode": "brief",
+  "brief": "Premium video inventory on sports content for Q2"
+}
+```
+
+响应包含产品 ID、定价模型（CPM、CPC、固定价）、可用的创意格式，以及受众触达估计。因为模式到处一样，代理可以跨平台比较产品。
+
+### 创意规格
+
+提交创意之前，代理读取产品上规范的 `format_options[]`。这份声明已经完整：它带上接受的规范种类、参数和素材槽。
+
+```json
+{
+  "format_options": [
+    {
+      "format_option_id": "video_preroll_16x9",
+      "publisher_domain": "streamhaus.example",
+      "format_kind": "video_hosted",
+      "params": {
+        "width": 1920,
+        "height": 1080,
+        "slots": [{ "asset_group_id": "video_main", "asset_type": "video", "required": true }]
+      }
+    }
+  ]
+}
+```
+
+需要制作时，买方通过注册表找到兼容的创意代理，并用 `build_creative.target_capability_id` 选择该代理 `creative.supported_formats[]` 里的一项。
+
+### 受众数据
+
+代理通过 `get_signals` 交换受众信号：定向分段、上下文数据、第一方数据。买方描述需要什么，数据提供方返回匹配的分段，带上触达估计和价格。代理可以先评估，再通过 `activate_signal` 激活。
+
+### 投放执行
+
+代理用预算、排期和品牌身份创建媒体购买：
+
+```json
+{
+  "account": { "account_id": "acct-12345" },
+  "brand": { "brand_id": "nova-electronics" },
+  "proposal_id": "prop-sports-video",
+  "total_budget": { "amount": 25000, "currency": "USD" },
+  "start_time": "2026-04-01T00:00:00Z",
+  "end_time": "2026-06-30T23:59:59Z"
+}
+```
+
+平台可以立即处理，也可以异步处理。AdCP 的状态系统（`completed`、`working`、`submitted`、`input-required`）把进度传回代理。
+
+### 投放报告
+
+代理调用 `get_media_buy_delivery` 拉取表现数据：曝光、点击、花费和转化事件，格式是标准化的。因为投放模式在各平台上相同，代理可以汇总并比较表现，不必去对齐不同的指标名或计算方式。
+
+## 一个完整例子
+
+虚构的代理商 Pinnacle Media 为一个消费电子品牌在三个启用了 AdCP 的平台上跑投放。
+
+<Steps>
+
+### 发现代理
+
+买方代理检查每个媒体方域名上的 `adagents.json`，找到他们的销售代理和支持的协议。
+
+### 比较库存
+
+代理在三个平台上并行调用 `get_products`。它收到结构化的产品目录，比较价格、格式和触达，模式都一样。
+
+### 检查创意要求
+
+代理比较各产品规范的 `format_options[]` 声明，找出三个平台都能接受的共享约束包络，把创意制作收成一套共享规格。
+
+### 执行购买
+
+代理根据比较结果，在每个平台上调用 `create_media_buy` 并分配预算。有的平台立即确认，有的返回 `working`，稍后确认。
+
+### 监视投放
+
+代理每天在三个平台上轮询 `get_media_buy_delivery`，把结果汇总成一份给代理商规划团队的统一表现视图。
+
+</Steps>
+
+代理商的团队定策略、看结果。代理负责跨平台执行、格式协商和统一报告。
+
+## 开始
+
+<CardGroup cols={2}>
+  <Card title="协议对照" icon="code-compare" href="/zh/dist/docs/3.2.3/building/concepts/protocol-comparison">
+    MCP 和 A2A 作为 AdCP 传输的技术对照。
+  </Card>
+  <Card title="用 AdCP 构建" icon="rocket" href="/zh/dist/docs/3.2.3/building">
+    实现指南、SDK 和集成方式。
+  </Card>
+  <Card title="媒体购买协议" icon="robot" href="/docs/media-buy/index">
+    买方视角：代理如何跨平台自动购买媒体。此页为英文规范。
+  </Card>
+  <Card title="卖方集成" icon="store" href="/docs/building/operating/seller-integration">
+    平台如何把库存暴露给 AI 买方代理。此页为英文规范。
+  </Card>
+  <Card title="运行代理" icon="gears" href="/zh/dist/docs/3.2.3/building/operating/operating-an-agent">
+    符合协议的代理背后是什么，以及自建还是外购。
+  </Card>
+</CardGroup>
