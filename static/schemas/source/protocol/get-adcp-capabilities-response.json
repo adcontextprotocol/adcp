@@ -1555,6 +1555,16 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "supported_delivery_types": {
+          "x-added-in": "3.3.0",
+          "type": "array",
+          "description": "Delivery types this seller sells across its product portfolio: guaranteed (reserved inventory) and/or non_guaranteed. Buyers can use this for pre-flight filtering before querying individual products. Like every capability declaration, it is a commitment: the products this seller returns carry a delivery_type listed here. When absent, the seller has not declared its delivery types, and buyers treat them as unknown rather than as an empty set.",
+          "items": {
+            "$ref": "/schemas/enums/delivery-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "buying_modes": {
           "type": "array",
           "description": "Buying modes this seller supports on get_products. 'brief' (semantic discovery driven by the brief) is universally supported and implicit. 'wholesale' (raw wholesale product feed enumeration — caller omits brief and the seller returns the full priced product feed, paginated) is opt-in and SHOULD be declared explicitly so buyers can probe before issuing wholesale calls. 'refine' lets buyers iterate on prior products/proposals and is also the vehicle for finalizing draft proposals when the seller returns them. Sellers MAY declare ['brief', 'wholesale'] to signal wholesale support; absent declaration is treated as ['brief'] for wholesale-feed probing purposes and sellers MAY return INVALID_REQUEST for wholesale calls they do not support. Symmetric with signals.discovery_modes.",
