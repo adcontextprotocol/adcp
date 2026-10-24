@@ -136,6 +136,8 @@ Creatives accepted via a synchronous `sync_creatives` success response MUST be c
 
 Implementations that acknowledge a creative on the synchronous success branch but buffer the library write until a later background commit are not conformant. If the whole sync operation cannot commit before returning, use the submitted task envelope instead; the visibility requirement then applies when the task completes with accepted creatives.
 
+A product can declare a separate `creative_policy.review_sla` for time to an approved or rejected decision. The applicable creative entry in the buy's `available_actions[]` resolves `review_sla` independently of ingestion timing. See [Service commitments](/docs/media-buy/service-commitments) for product scope, business calendars, and the rule that an ingestion acknowledgement does not complete review.
+
 ## Request parameters
 
 | Parameter         | Type       | Required | Description                                                                                                                                                              |

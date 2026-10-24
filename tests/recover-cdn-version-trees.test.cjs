@@ -142,7 +142,7 @@ function fixture(t, options = {}) {
       const count=(fs.existsSync('fence-count')?Number(read('fence-count')):0)+1;
       fs.writeFileSync('fence-count',String(count));
       // Move the branch under the run, before this very fence answers.
-      if(advance&&count===advance) fs.writeFileSync('remote','f'.repeat(40));
+      if(advance&&count===advance) fs.writeFileSync('remote',process.env.ADVANCE_TO||'f'.repeat(40));
       const ref=args.find(a=>a.startsWith('refs/heads/'));
       console.log(read('remote')+'\\t'+ref); process.exit(0);
     }
@@ -410,6 +410,35 @@ test("the branch fence is rechecked between objects, so a mid-run branch move st
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Refusing stale tested SHA/);
   assert.equal(f.calls().length, 1);
+  assert.equal(f.bucketKeys().length, 1);
+});
+
+// A later main commit on a side ref; the recovery checkout stays put.
+function advanceBranch(f, files) {
+  f.git("checkout", "-q", "-b", "later");
+  for (const [file, body] of Object.entries(files)) f.write(file, body);
+  f.git("add", "--", ...Object.keys(files));
+  f.git("commit", "-qm", "Later main commit");
+  const later = f.git("rev-parse", "HEAD");
+  f.git("checkout", "-q", "--detach", f.head);
+  return later;
+}
+
+test("an unrelated branch advance mid-run does not stop recovery", (t) => {
+  const f = fixture(t);
+  const later = advanceBranch(f, { "server/app.ts": "unrelated\n" });
+  const result = f.run("upload", { ADVANCE_AFTER: "5", ADVANCE_TO: later });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout + result.stderr, /Publication fence accepted origin\/main advance/);
+  assert.deepEqual(f.bucketKeys(), expectedKeys);
+});
+
+test("a mid-run advance that changes the recovered version's tree stops recovery", (t) => {
+  const f = fixture(t);
+  const later = advanceBranch(f, { [`dist/schemas/${VERSION}/extra.json`]: "{}\n" });
+  const result = f.run("upload", { ADVANCE_AFTER: "5", ADVANCE_TO: later });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Refusing stale tested SHA .*later commits change release paths/);
   assert.equal(f.bucketKeys().length, 1);
 });
 
@@ -789,14 +818,39 @@ test("tree recovery runs the current branch's scripts, not the recovered tag's",
     );
 });
 
-test("every recovery step still fails closed on the current-branch fence", () => {
+test("recovery starts on the strict fence and fences each object with publication-current", () => {
   const protocolUpload = stepNamed("Upload only missing immutable R2 objects");
-  assert.match(protocolUpload.run, /check-release-state\.cjs" current/);
+  assert.match(protocolUpload.run, /check-release-state\.cjs" publication-current "\$VERSION"/);
+  assert.doesNotMatch(protocolUpload.run, /check-release-state\.cjs" current/);
+  // The initial gate stays strict so a stale re-run stops before any work.
+  assert.match(
+    stepNamed("Preserve current workflow publication fence").run,
+    /^node scripts\/check-release-state\.cjs current\n/,
+  );
   const script = fs.readFileSync(
     path.join(root, "scripts/recover-cdn-version-trees.sh"),
     "utf8",
   );
-  assert.match(script, /node "\$FENCE_SCRIPT" current/);
+  const fences = [...script.matchAll(/node "\$FENCE_SCRIPT" ([a-z-]+)/g)].map((m) => m[1]);
+  assert.deepEqual(fences, ["current", "publication-current", "publication-current", "publication-current", "publication-current"]);
+  // Only upload starts strict; read-only verify tolerates unrelated advances.
+  assert.match(script, /if \[\[ "\$mode" == upload \]\]; then\n  node "\$FENCE_SCRIPT" current <\/dev\/null\nelse\n  node "\$FENCE_SCRIPT" publication-current "\$VERSION"/);
+  assert.match(script, /node "\$FENCE_SCRIPT" publication-current "\$VERSION"/);
   assert.match(script, /--if-none-match '\*'/);
   assert.doesNotMatch(script, /s3 rm|--delete|rb /);
+});
+
+test("recovery refuses a non-main dispatch", () => {
+  assert.equal(workflow.jobs.recover.if, "github.ref == 'refs/heads/main'");
+});
+
+test("a stale re-run is refused at the strict initial gate, even after an unrelated advance", (t) => {
+  const f = fixture(t);
+  const later = advanceBranch(f, { "server/app.ts": "unrelated\n" });
+  f.write("remote", later);
+  const result = f.run("upload");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, new RegExp(`Refusing stale tested SHA ${f.head}; origin/main is ${later}\\t`));
+  assert.deepEqual(f.calls(), []);
+  assert.deepEqual(f.bucketKeys(), []);
 });
