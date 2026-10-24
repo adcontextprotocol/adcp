@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/account-identity-change.json",
   "title": "Account Identity Change",
-  "description": "A requested operator-identity change that has not been applied. The account's top-level operator and operator_unit remain canonical until this object disappears after approval and the canonical fields advance. Rejected changes remain visible until replaced by a later request so buyers polling list_accounts can observe the outcome.",
+  "description": "A requested identity change (operator identity, and from 3.3 the brand's countries) that has not been applied. The account's top-level operator and operator_unit remain canonical until this object disappears after approval and the canonical fields advance. Rejected changes remain visible until replaced by a later request so buyers polling list_accounts can observe the outcome.",
   "oneOf": [
     {
       "title": "AccountIdentityChangePending",
@@ -17,10 +17,22 @@
           "$ref": "/schemas/core/operator-identity.json",
           "description": "Complete desired operator identity submitted by the buyer."
         },
+        "requested_brand_identity": {
+          "$ref": "/schemas/core/brand-key.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (account.updates). Desired BrandKey when the brand's countries change."
+        },
         "requested_at": {
           "type": "string",
           "format": "date-time",
           "description": "When the seller recorded the request."
+        },
+        "pending_action": {
+          "$ref": "/schemas/core/pending-action.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (account.updates). Whose turn it is while pending."
         }
       },
       "required": [
@@ -41,6 +53,12 @@
         "requested_operator_identity": {
           "$ref": "/schemas/core/operator-identity.json",
           "description": "Complete desired operator identity submitted by the buyer."
+        },
+        "requested_brand_identity": {
+          "$ref": "/schemas/core/brand-key.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (account.updates). Desired BrandKey when the brand's countries change."
         },
         "requested_at": {
           "type": "string",

@@ -470,7 +470,8 @@ Account and authentication capabilities. All sellers should declare this section
 | `stable_account_id` | boolean | Default: `false`. When `true`, the seller-assigned `account_id` is a durable `AccountRef` for every account the caller can operate, including buyer-declared accounts: the seller MUST return it on every resolved `sync_accounts` provisioning result, MUST accept `{ "account_id": "..." }` wherever an `AccountRef` is accepted, and MUST NOT change it for the life of the account, including across identity reconciliation. A row still `pending_approval` MAY carry `request_id` instead of `account_id`; a seller that may resolve such a request to an existing account MUST NOT issue an `account_id` until it resolves. A seller that only ever creates accounts MAY keep a placeholder `account_id` while the row is pending; new implementations SHOULD use request mode. Buyer-declared sellers still accept the natural key throughout 3.x. Buyers holding an `account_id` from such a seller SHOULD send it instead of the natural key. When absent or `false`, buyers MUST NOT assume a buyer-declared seller accepts its returned `account_id`. Account-id-namespace sellers whose IDs meet these rules SHOULD declare `true`. Natural-key references after provisioning are deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare it during 3.x. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling [`get_products`](/docs/media-buy/task-reference/get_products). When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. Before an account is provisioned, the buyer omits `account` rather than sending a natural key that doesn't resolve yet; see [Account references before provisioning](/docs/accounts/overview#account-references-before-provisioning). |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
-| `identity_updates` | object | Optional capability gate for reconciling an existing account's buyer-controlled operator identity through `sync_accounts` settings-update mode. `supported_changes` declares `operator_unit_name`, `operator_unit`, and/or `operator`. |
+| `identity_updates` | object | Optional capability gate for reconciling an existing account's buyer-controlled identity through `sync_accounts` settings-update mode or [`update_account`](/docs/accounts/tasks/update_account). `supported_changes` declares `operator_unit_name`, `operator_unit`, `operator`, and/or the experimental `brand_countries`. |
+| `updates` | object | Optional, experimental (`account.updates`). Declares [`update_account`](/docs/accounts/tasks/update_account). See [account.updates](#account-updates). |
 | `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
 | `change_feed` | object | Optional, experimental (`account.change_feed`). Declares the durable [`list_account_changes`](/docs/accounts/tasks/list_account_changes) feed and `account.change_recorded` wake-up. When supported, includes a retention floor of at least 90 days and the resource types covered. |
 | `requests` | object | Optional, experimental (`account.requests`). Declares [`request_account`](/docs/accounts/tasks/request_account), [`get_account_requests`](/docs/accounts/tasks/get_account_requests), and the caller-anchored `account_request.changed` webhook. See [account.requests](#account-requests). |
@@ -664,7 +665,7 @@ Calendar-day features inherit `Account.timezone` only when their capability says
 
 #### account.identity_updates
 
-Declares whether the seller accepts a complete desired `operator_identity` on an existing account through `sync_accounts` settings-update mode.
+Declares whether the seller accepts a complete desired `operator_identity`, or from 3.3 a `brand_identity`, on an existing account through `sync_accounts` settings-update mode or [`update_account`](/docs/accounts/tasks/update_account).
 
 ```json
 {
@@ -680,7 +681,28 @@ Declares whether the seller accepts a complete desired `operator_identity` on an
 
 `operator_unit_name` covers display-name-only changes within the current operator. `operator_unit` covers adding, removing, or changing the stable unit ID within the current operator and also implies name changes. `operator` covers an inter-entity operator-domain handoff and encompasses the complete replacement identity, including any simultaneous unit addition, removal, or change; a seller does not also need to advertise `operator_unit` for that cross-operator replacement. Operator-domain handoffs always require seller-mediated approval of the current account authority, verified brand authorization, destination-operator acceptance, and operator-scoped billing and grants. Sellers declaring support MUST return account `revision` from `sync_accounts` and `list_accounts`, require and atomically enforce a submitted revision, preserve account identity and account-scoped resources during rekeying, expose any pending or rejected transition as `identity_change`, and return `identity_change_preview` for `dry_run: true`. When the capability is absent or `supported: false`, buyers MUST NOT submit `operator_identity`; sellers reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
 
-See [`sync_accounts` identity reconciliation](/docs/accounts/tasks/sync_accounts#reconciling-operator-identity) for replacement, approval, collision, and stale-key semantics.
+`brand_countries` (experimental, `account.updates`, new in 3.3) covers changing only the countries of the account's brand. A seller listing it also lists `account.updates` in `experimental_features`.
+
+See [`sync_accounts` identity reconciliation](/docs/accounts/tasks/sync_accounts#reconciling-operator-identity) and [brand countries reconciliation](/docs/accounts/tasks/sync_accounts#reconciling-brand-countries) for replacement, approval, collision, and stale-key semantics.
+
+#### account.updates
+
+Declares whether the seller supports [`update_account`](/docs/accounts/tasks/update_account): settings and identity changes on one existing account, with the semantics of a `sync_accounts` settings-update entry. Identity changes remain gated by `account.identity_updates`.
+
+Account updates are [experimental](/docs/reference/experimental-status) in 3.3 ([#8280](https://github.com/adcontextprotocol/adcp/issues/8280)). Sellers advertising `supported: true` MUST also list `account.updates` in `experimental_features`. Buyers SHOULD prefer `update_account` over `sync_accounts` settings-update mode when it is supported.
+
+```json
+{
+  "experimental_features": ["account.updates"],
+  "account": {
+    "updates": { "supported": true, "update_task": "update_account" },
+    "identity_updates": {
+      "supported": true,
+      "supported_changes": ["operator_unit", "brand_countries"]
+    }
+  }
+}
+```
 
 #### Auth models
 

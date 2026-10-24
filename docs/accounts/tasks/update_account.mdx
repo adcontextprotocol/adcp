@@ -1,0 +1,118 @@
+---
+title: update_account
+description: "update_account changes settings or identity on one existing advertiser account, with optimistic concurrency and seller approval for identity changes."
+"og:title": "AdCP — update_account"
+testable: false
+---
+
+`update_account` changes one existing account: its billing entity, payment terms, webhooks, or reporting delivery, or its identity (operator, or the brand's countries). It is the single-account counterpart to [`request_account`](/docs/accounts/tasks/request_account), which finds or creates an account.
+
+<Note>
+**Experimental.** Account updates (`update_account`, the `account.updates` capability block, `brand_identity`, the `brand_countries` identity change, and `requested_brand_identity` / `pending_action` on identity changes) are an experimental AdCP 3.3 surface ([#8280](https://github.com/adcontextprotocol/adcp/issues/8280), [#8442](https://github.com/adcontextprotocol/adcp/issues/8442)). They may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any part of it MUST declare `account.updates` in `experimental_features`. See [experimental status](/docs/reference/experimental-status).
+</Note>
+
+**Request schema:** [`account/update-account-request.json`](https://adcontextprotocol.org/schemas/v3/account/update-account-request.json)
+**Response schema:** [`account/update-account-response.json`](https://adcontextprotocol.org/schemas/v3/account/update-account-response.json)
+
+## Why a separate task
+
+[`sync_accounts`](/docs/accounts/tasks/sync_accounts) already changes existing accounts in settings-update mode, as one entry in a batch upsert. That shape fits declaring many accounts. It fits identity changes poorly: they apply to one account, need its current `revision`, may wait for the seller to approve, and can collide with another account. `update_account` carries exactly the settings-update semantics for one account, with its own result:
+
+- A seller that already supports settings-update mode routes `update_account` to the same code.
+- A seller that provisions through [`request_account`](/docs/accounts/tasks/request_account) doesn't need `sync_accounts` just so buyers can change a billing entity.
+- Once AdCP 4.0 makes `account_id` the only reference ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850)), the natural key becomes an account attribute, and this is where it changes.
+
+## When to call
+
+Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) advertises `account.updates.supported: true` and lists `account.updates` in `experimental_features`. Otherwise, use a [`sync_accounts`](/docs/accounts/tasks/sync_accounts) settings-update entry with the same fields. Identity changes are additionally gated by `account.identity_updates.supported_changes`:
+
+| Change | Field | `supported_changes` value |
+|---|---|---|
+| Operator unit display name | `operator_identity` | `operator_unit_name` |
+| Operator unit added, removed, or changed | `operator_identity` | `operator_unit` |
+| Operator-domain handoff | `operator_identity` (+ `destination_billing_entity` when operator-billed) | `operator` |
+| The brand's countries | `brand_identity` | `brand_countries` (new in 3.3) |
+
+## Request
+
+| Field | Required | Description |
+|---|---|---|
+| `idempotency_key` | Yes | Makes retries of this call safe. |
+| `account` | Yes | The account to change. Prefer `{ "account_id": "..." }`. |
+| `revision` | With an identity change | Expected current revision, compared atomically. A mismatch returns [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) and changes nothing. Optional for other changes. |
+| `operator_identity` | No | Complete desired operator identity. Same rules as [operator reconciliation](/docs/accounts/tasks/sync_accounts#reconciling-operator-identity). |
+| `destination_billing_entity` | Operator handoff on an operator-billed account | Staged billing identity for the destination operator. Write-only while pending. |
+| `brand_identity` | No | Complete desired BrandKey. Only `countries` may differ from the current brand. Same rules as [brand countries reconciliation](/docs/accounts/tasks/sync_accounts#reconciling-brand-countries). |
+| `billing_entity` | No | Replacement business entity for the current invoiced party. Bank details are write-only. |
+| `payment_terms` | No | Requested terms, accepted or rejected, never remapped. |
+| `notification_configs` | No | Complete desired account-level webhook subscribers; `[]` removes all. |
+| `dry_run` | No | Validate and preview without persisting. |
+
+Omitted fields are unchanged. At least one change field is required. Durable reporting delivery (`reporting_delivery_configs`) stays on [`sync_accounts`](/docs/accounts/tasks/sync_accounts). `currency`, `timezone`, `sandbox`, and the brand's `domain` and `brand_id` can't change; a different value is a different account, which you get through [`request_account`](/docs/accounts/tasks/request_account).
+
+Sellers enforce these rules at runtime, so the MCP input schema stays a plain object: an identity change without `revision`, `destination_billing_entity` without `operator_identity`, or no change field at all returns [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request).
+
+```json
+{
+  "adcp_version": "3.3",
+  "idempotency_key": "0b6c9f2e-4d1a-4a7e-8c3b-5f2d7e9a1c40",
+  "account": { "account_id": "acc_renault_wpp" },
+  "revision": 7,
+  "brand_identity": { "domain": "renault.fr", "countries": ["BE", "FR"] }
+}
+```
+
+## Response
+
+A completed response carries `outcome` and the `account` after the call, including its `revision`.
+
+| `outcome` | Meaning | `revision` |
+|---|---|---|
+| `applied` | Every requested change persisted. | Advanced |
+| `pending_approval` | Non-identity changes persisted; the identity change is recorded in `account.identity_change` and waits for the seller. | Advanced |
+| `unchanged` | Nothing differed from the current state. | Unchanged |
+| `previewed` | `dry_run: true`. Nothing persisted; identity changes include `identity_change_preview`. | Unchanged |
+
+```json
+{
+  "status": "completed",
+  "outcome": "pending_approval",
+  "account": {
+    "account_id": "acc_renault_wpp",
+    "name": "Renault France via WPP Media",
+    "status": "active",
+    "revision": 8,
+    "brand": { "domain": "renault.fr", "countries": ["FR"] },
+    "operator": "wppmedia.fr",
+    "identity_change": {
+      "status": "pending_approval",
+      "requested_operator_identity": { "operator": "wppmedia.fr" },
+      "requested_brand_identity": { "domain": "renault.fr", "countries": ["BE", "FR"] },
+      "requested_at": "2026-10-24T18:00:00Z",
+      "pending_action": {
+        "waiting_on": "seller",
+        "kind": "review",
+        "message": "Checking whether Belgium belongs on this account or needs its own."
+      }
+    }
+  }
+}
+```
+
+While a change is pending, the account keeps its current canonical identity. Approval applies the identity change atomically, clears `identity_change`, and advances `revision`. Rejection keeps the current identity and sets `identity_change.status: "rejected"` with a reason. Read the outcome with [`list_accounts`](/docs/accounts/tasks/list_accounts), or subscribe to `account.status_changed` / the account change feed where the seller offers them. A new identity change submitted with the current revision replaces a pending or rejected one; submitting the current identity cancels it.
+
+`requested_operator_identity` is present on every identity change, equal to the current operator identity when only the brand changes, so consumers written for 3.2 keep working. Sellers MUST NOT return a brand change to callers pinned below 3.3, because they can't have requested one.
+
+After an identity change applies, the former natural key is tombstoned and returns [`ACCOUNT_MOVED`](/docs/building/verification/compliance-catalog#error-code-account-moved) to authorized callers. The `account_id` never changes.
+
+## Errors
+
+| Code | When |
+|---|---|
+| [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | `revision` is stale. Nothing changed; re-read the account and resubmit with a new `idempotency_key`. |
+| [`ACCOUNT_IDENTITY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-account-identity-conflict) | The requested identity is already another account's natural key. Nothing changed and nothing merged. |
+| [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found) | The account doesn't resolve for this caller. |
+| [`ACCOUNT_MOVED`](/docs/building/verification/compliance-catalog#error-code-account-moved) | The request used a tombstoned former natural key; `details.current_account` names the current reference. |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | A runtime rule above, or a `brand_identity` that changes `domain` or `brand_id`. |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | The seller doesn't support `update_account`, or the identity change isn't in `supported_changes`. |
+| [`BILLING_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-billing-not-supported) | A change implies a billing arrangement the seller doesn't support. |
