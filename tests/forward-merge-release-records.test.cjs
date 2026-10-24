@@ -83,11 +83,11 @@ test('a version main already publishes stays published even if the maintenance l
   assert.ok(merged.published_versions.includes('3.2.6'));
 });
 
-test('refuses a package-only version whose compliance bundle is missing', () => {
-  assert.throws(
-    () => mergePublishedVersions(manifest(['3.2.5']), manifest(['3.2.5'], ['3.2.7']), () => false),
-    /dist\/compliance\/3\.2\.7\/index\.json/,
-  );
+test('carries a package-only version that has no hosted compliance bundle', () => {
+  // Package-only versions are SDK opt-in surfaces, not hosted bundles: main's
+  // 3.0.24, 3.2.0 and 3.1.0-beta.2 entries have no dist/compliance tree.
+  const merged = mergePublishedVersions(manifest(['3.2.5']), manifest(['3.2.5'], ['3.2.7']), () => false);
+  assert.deepEqual(merged.package_only_versions, ['3.2.7']);
 });
 
 test('refuses to register a version whose compliance bundle is missing', () => {

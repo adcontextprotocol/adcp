@@ -83,21 +83,20 @@ function mergeChangelog(oursText, theirsText) {
 /**
  * Main's manifest with every version the maintenance line registered, either
  * for hosted grading (published_versions) or as an SDK opt-in surface
- * (package_only_versions). `bundleExists(version)` must confirm the version's
- * compliance bundle is in the merged tree before it is added. A version that
- * either side publishes is published, never package-only.
+ * (package_only_versions). `bundleExists(version)` must confirm a newly
+ * published version's compliance bundle is in the merged tree. Package-only
+ * versions are not hosted and need no bundle, matching
+ * check-published-compliance-versions.cjs. A version either side publishes is
+ * published, never package-only.
  */
 function mergePublishedVersions(ours, theirs, bundleExists) {
   let merged = validateManifest(ours);
   validateManifest(theirs);
-  const requireBundle = (version) => {
+  for (const version of theirs.published_versions) {
+    if (merged.published_versions.includes(version)) continue;
     if (!bundleExists(version)) {
       throw new Error(`Refusing to register ${version}: dist/compliance/${version}/index.json is not in the merged tree`);
     }
-  };
-  for (const version of theirs.published_versions) {
-    if (merged.published_versions.includes(version)) continue;
-    requireBundle(version);
     merged = registerPublishedVersion(merged, version);
   }
   const packageOnly = merged.package_only_versions ?? [];
@@ -105,7 +104,6 @@ function mergePublishedVersions(ours, theirs, bundleExists) {
     (version) => !merged.published_versions.includes(version) && !packageOnly.includes(version),
   );
   if (added.length > 0) {
-    added.forEach(requireBundle);
     merged = validateManifest({ ...merged, package_only_versions: [...packageOnly, ...added].sort(semver.compare) });
   }
   return merged;
