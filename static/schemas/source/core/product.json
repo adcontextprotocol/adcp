@@ -359,6 +359,7 @@
       "additionalProperties": true
     },
     "vendor_metric_optimization": {
+      "x-adcp-applies-when": { "capabilities": ["media_buy.vendor_metric_optimization"] },
       "$ref": "/schemas/core/vendor-metric-optimization.json",
       "description": "Vendor-attested metric optimization capabilities for this product. Presence indicates the product supports `optimization_goals` with `kind: 'vendor_metric'` — the seller's bidding stack can steer delivery toward a specific vendor's measurement (e.g., DV/IAS/Adelaide attention, Scope3 emissions, Kantar brand lift, retail-media partner metrics). Distinct from `metric_optimization` (seller-native metrics with no vendor binding) and from `reporting_capabilities.vendor_metrics` (which declares what the product can *report* rather than what it can *optimize against*). A product may report a vendor metric without being able to optimize for it. Buyers MUST verify the goal's `(vendor, metric_id)` is in `supported_metrics` AND that the package's `committed_metrics[]` includes a matching `{ scope: 'vendor', vendor, metric_id }` entry — optimization without committed reporting is unverifiable and is rejected at the wire level."
     },
@@ -368,6 +369,7 @@
       "description": "Maximum number of optimization_goals this product accepts on a package. When absent, no limit is declared. Most social platforms accept only 1 goal — buyers sending arrays longer than this value should expect the seller to use only the highest-priority (lowest priority number) goal."
     },
     "measurement_readiness": {
+      "x-adcp-applies-when": { "capabilities": ["media_buy.conversion_tracking"] },
       "$ref": "/schemas/core/measurement-readiness.json",
       "description": "Assessment of whether the buyer's event source setup is sufficient for this product to optimize effectively. Only present when the seller can evaluate the buyer's account context. Buyers should check this before creating media buys with event-based optimization goals."
     },
@@ -565,6 +567,7 @@
       "$ref": "/schemas/core/acceptance-policy-profile-ids.json"
     },
     "trusted_match": {
+      "x-adcp-applies-when": { "capabilities": ["media_buy.execution.trusted_match"] },
       "type": "object",
       "description": "Trusted Match Protocol capabilities for this product. When present, the product supports real-time contextual and/or identity matching via TMP. Buyers use this to determine what response types the publisher can accept and whether brands can be selected dynamically at match time.",
       "properties": {

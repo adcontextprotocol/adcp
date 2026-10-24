@@ -26,11 +26,13 @@
       "minimum": 0
     },
     "floor_price": {
+      "x-adcp-applies-when": { "delivery_types": ["non_guaranteed"] },
       "type": "number",
       "description": "Minimum acceptable bid for auction pricing (mutually exclusive with fixed_price). Bids below this value will be rejected.",
       "minimum": 0
     },
     "price_guidance": {
+      "x-adcp-applies-when": { "delivery_types": ["non_guaranteed"] },
       "description": "Optional pricing guidance for auction-based bidding",
       "$ref": "/schemas/pricing-options/price-guidance.json"
     },
