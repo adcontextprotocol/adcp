@@ -30,8 +30,22 @@
             "properties": {
               "account_id": {
                 "type": "string",
-                "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations when the seller's account model uses account_id references. For buyer-declared accounts, sellers SHOULD return it on every non-failed provisioning result and MUST continue accepting the natural-key AccountRef for subsequent calls. A seller declaring account.stable_account_id: true MUST return it, MUST accept it as an AccountRef on every account-scoped task, and MUST NOT change it for the life of the account; buyers SHOULD then send it in place of the natural key. Without that capability, buyers keep sending the natural key and MUST NOT assume the seller accepts the returned account_id as an AccountRef.",
+                "description": "Seller-assigned account identifier. Use this in subsequent create_media_buy and other account-scoped operations when the seller's account model uses account_id references. For buyer-declared accounts, sellers SHOULD return it on every non-failed provisioning result and MUST continue accepting the natural-key AccountRef for subsequent calls. A seller declaring account.stable_account_id: true MUST return it once the account is resolved, MUST accept it as an AccountRef on every account-scoped task, and MUST NOT change it for the life of the account; buyers SHOULD then send it in place of the natural key. While a result is pending_approval, such a seller MAY return request_id instead, and MUST do so rather than issue an account_id when it may resolve the request to an existing account. Without that capability, buyers keep sending the natural key and MUST NOT assume the seller accepts the returned account_id as an AccountRef.",
                 "x-entity": "account"
+              },
+              "request_id": {
+                "type": "string",
+                "x-status": "experimental",
+                "x-added-in": "3.3.0",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Experimental (account.requests). Identifier of the seller's account request behind this row, present while the row is pending_approval and the seller has not issued an account_id. Read it with get_account_requests or wait for account_request.changed. It is not an account_id and is never accepted as an AccountRef."
+              },
+              "resolution": {
+                "$ref": "/schemas/enums/account-request-resolution.json",
+                "x-status": "experimental",
+                "x-added-in": "3.3.0",
+                "description": "Experimental (account.requests). On a resolved row, whether the seller matched an existing account (action: unchanged, since no seller object was created) or created one (action: created)."
               },
               "account": {
                 "$ref": "/schemas/core/account-ref.json",
@@ -130,6 +144,18 @@
                     "type": "string",
                     "format": "date-time",
                     "description": "When this setup link expires"
+                  },
+                  "waiting_on": {
+                    "$ref": "/schemas/enums/pending-action-party.json",
+                    "x-status": "experimental",
+                    "x-added-in": "3.3.0",
+                    "description": "Whose turn it is."
+                  },
+                  "kind": {
+                    "$ref": "/schemas/enums/pending-action-kind.json",
+                    "x-status": "experimental",
+                    "x-added-in": "3.3.0",
+                    "description": "What is needed."
                   }
                 },
                 "required": [
@@ -250,6 +276,20 @@
                 "else": {
                   "required": ["status"]
                 }
+              },
+              {
+                "description": "Experimental (account.requests): request_id stands in for account_id only while the row is pending_approval.",
+                "if": { "required": ["request_id"] },
+                "then": {
+                  "properties": { "status": { "const": "pending_approval" } },
+                  "required": ["status"],
+                  "not": { "required": ["account_id"] }
+                }
+              },
+              {
+                "description": "Experimental (account.requests): resolution describes a resolved account, so account_id is present.",
+                "if": { "required": ["resolution"] },
+                "then": { "required": ["account_id"] }
               }
             ],
             "additionalProperties": true

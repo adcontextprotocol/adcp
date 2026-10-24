@@ -145,7 +145,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 
 **Suggested action:** pass explicit account_id or a more specific natural key
 
-Natural key resolves to multiple accounts. Recovery: correctable (pass explicit account_id or a more specific natural key).
+Natural key resolves to multiple accounts. error.details MAY list candidates[] (account_id, name), conforming to error-details/account-ambiguous.json, limited to accounts the caller is already granted. Recovery: correctable (pass explicit account_id or a more specific natural key).
 
 </Accordion>
 <a id="error-code-account-identity-conflict"></a>

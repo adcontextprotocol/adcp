@@ -676,6 +676,62 @@
         },
         "required": ["experimental_features"]
       }
+    },
+    {
+      "description": "A seller that fires account_request.changed supports caller-scoped notification subscriptions, where buyers register for it.",
+      "if": {
+        "properties": {
+          "account": {
+            "properties": {
+              "requests": { "required": ["event_type"] }
+            },
+            "required": ["requests"]
+          }
+        },
+        "required": ["account"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "capability_changes": {
+                "properties": {
+                  "notifications": {
+                    "properties": { "supported": { "const": true } },
+                    "required": ["supported"]
+                  }
+                },
+                "required": ["notifications"]
+              }
+            },
+            "required": ["capability_changes"]
+          }
+        },
+        "required": ["adcp"]
+      }
+    },
+    {
+      "description": "A seller advertising account.requests.supported: true lists account.requests in experimental_features.",
+      "if": {
+        "properties": {
+          "account": {
+            "properties": {
+              "requests": {
+                "properties": { "supported": { "const": true } },
+                "required": ["supported"]
+              }
+            },
+            "required": ["requests"]
+          }
+        },
+        "required": ["account"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "account.requests" } }
+        },
+        "required": ["experimental_features"]
+      }
     }
   ],
   "properties": {
@@ -1278,8 +1334,54 @@
         "stable_account_id": {
           "x-added-in": "3.3.0",
           "type": "boolean",
-          "description": "Whether the seller-assigned account_id is a durable AccountRef for every account the caller can operate, including buyer-declared accounts. When true, the seller MUST return account_id on every non-failed sync_accounts provisioning result, MUST accept { account_id } wherever an AccountRef is accepted, and MUST NOT change an account's account_id for the life of the account, including across identity reconciliation. A buyer-declared seller that declares true still accepts the account's current natural key throughout 3.x. Buyers holding an account_id from a seller that declares true SHOULD send it in place of the natural key. When false or absent, buyers follow the account model declared by require_operator_auth and MUST NOT assume a buyer-declared seller accepts its returned account_id. Sellers whose accounts already use account_id references (require_operator_auth: true) SHOULD declare true when their ids meet these rules. Using the natural key as the reference after provisioning is deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare true during 3.x to give buyers a migration path.",
+          "description": "Whether the seller-assigned account_id is a durable AccountRef for every account the caller can operate, including buyer-declared accounts. When true, the seller MUST return account_id on every resolved sync_accounts provisioning result, MUST accept { account_id } wherever an AccountRef is accepted, and MUST NOT change an account's account_id for the life of the account, including across identity reconciliation. A result that is still pending_approval while the seller reviews it MAY carry request_id (experimental, account.requests) and no account_id; a seller that may resolve such a request to an existing account MUST NOT issue an account_id until it resolves, because a later match would otherwise change the ID. A seller that only ever creates accounts MAY keep a placeholder account_id while the row is pending; new implementations SHOULD use request mode. A buyer-declared seller that declares true still accepts the account's current natural key throughout 3.x. Buyers holding an account_id from a seller that declares true SHOULD send it in place of the natural key. When false or absent, buyers follow the account model declared by require_operator_auth and MUST NOT assume a buyer-declared seller accepts its returned account_id. Sellers whose accounts already use account_id references (require_operator_auth: true) SHOULD declare true when their ids meet these rules. Using the natural key as the reference after provisioning is deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare true during 3.x to give buyers a migration path.",
           "default": false
+        },
+        "requests": {
+          "type": "object",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Whether the seller supports account requests: request_account to find or create an advertiser account, possibly after human review on either side, get_account_requests to read requests back, and the caller-anchored account_request.changed webhook. Experimental in 3.3 (#8280): sellers advertising supported: true MUST list account.requests in experimental_features. Buyers SHOULD prefer request_account over sync_accounts provisioning when it is supported.",
+          "oneOf": [
+            {
+              "title": "AccountRequestsSupported",
+              "properties": {
+                "supported": { "type": "boolean", "const": true },
+                "request_task": { "type": "string", "const": "request_account" },
+                "read_task": { "type": "string", "const": "get_account_requests" },
+                "event_type": {
+                  "type": "string",
+                  "const": "account_request.changed",
+                  "description": "Present when the seller fires account_request.changed. Buyers subscribe through the caller-scoped notification_configs, so a seller declaring it also declares adcp.capability_changes.notifications.supported: true. When absent, buyers poll get_account_requests."
+                },
+                "pending_action_kinds": {
+                  "type": "array",
+                  "description": "Pending-action kinds this seller may issue, so buyers can prepare the humans who will act. Advisory: sellers MAY issue other kinds, and buyers MUST handle unknown kinds through pending_action.message and url.",
+                  "items": { "$ref": "/schemas/enums/pending-action-kind.json" },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              },
+              "required": ["supported", "request_task", "read_task"],
+              "additionalProperties": true
+            },
+            {
+              "title": "AccountRequestsUnsupported",
+              "properties": {
+                "supported": { "type": "boolean", "const": false }
+              },
+              "required": ["supported"],
+              "not": {
+                "anyOf": [
+                  { "required": ["request_task"] },
+                  { "required": ["read_task"] },
+                  { "required": ["event_type"] },
+                  { "required": ["pending_action_kinds"] }
+                ]
+              },
+              "additionalProperties": true
+            }
+          ]
         },
         "supported_billing": {
           "type": "array",
