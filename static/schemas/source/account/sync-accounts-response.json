@@ -36,6 +36,7 @@
               "request_id": {
                 "type": "string",
                 "x-status": "experimental",
+                "x-added-in": "3.3.0",
                 "minLength": 1,
                 "maxLength": 128,
                 "description": "Experimental (account.requests). Identifier of the seller's account request behind this row, present while the row is pending_approval and the seller has not issued an account_id. Read it with get_account_requests or wait for account_request.changed. It is not an account_id and is never accepted as an AccountRef."
@@ -43,6 +44,7 @@
               "resolution": {
                 "$ref": "/schemas/enums/account-request-resolution.json",
                 "x-status": "experimental",
+                "x-added-in": "3.3.0",
                 "description": "Experimental (account.requests). On a resolved row, whether the seller matched an existing account (action: unchanged, since no seller object was created) or created one (action: created)."
               },
               "account": {
@@ -146,11 +148,13 @@
                   "waiting_on": {
                     "$ref": "/schemas/enums/pending-action-party.json",
                     "x-status": "experimental",
+                    "x-added-in": "3.3.0",
                     "description": "Experimental (account.requests). Whose turn it is: seller (under review; wait) or buyer (a human must complete url). Same meaning as pending-action.json."
                   },
                   "kind": {
                     "$ref": "/schemas/enums/pending-action-kind.json",
                     "x-status": "experimental",
+                    "x-added-in": "3.3.0",
                     "description": "Experimental (account.requests). What is needed. Same meaning as pending-action.json."
                   }
                 },

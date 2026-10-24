@@ -118,11 +118,13 @@
         "waiting_on": {
           "$ref": "/schemas/enums/pending-action-party.json",
           "x-status": "experimental",
+          "x-added-in": "3.3.0",
           "description": "Experimental (account.requests). Whose turn it is: seller (under review; wait) or buyer (a human must complete url). Same meaning as pending-action.json."
         },
         "kind": {
           "$ref": "/schemas/enums/pending-action-kind.json",
           "x-status": "experimental",
+          "x-added-in": "3.3.0",
           "description": "Experimental (account.requests). What is needed. Same meaning as pending-action.json."
         }
       },

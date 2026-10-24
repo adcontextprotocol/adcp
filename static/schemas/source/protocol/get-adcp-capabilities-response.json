@@ -1340,6 +1340,7 @@
         "requests": {
           "type": "object",
           "x-status": "experimental",
+          "x-added-in": "3.3.0",
           "description": "Whether the seller supports account requests: request_account to find or create an advertiser account, possibly after human review on either side, get_account_requests to read requests back, and the caller-anchored account_request.changed webhook. Experimental in 3.3 (#8280): sellers advertising supported: true MUST list account.requests in experimental_features. Buyers SHOULD prefer request_account over sync_accounts provisioning when it is supported.",
           "oneOf": [
             {

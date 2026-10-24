@@ -121,6 +121,14 @@ seller-assigned `account_id` or by the complete buyer-declared natural key.
 
 For buyer-declared accounts, `list_accounts` MUST return the current canonical natural-key fields needed to use the account again. A stateless buyer can therefore take `brand`, `operator`, `operator_unit`, `currency`, buyer-selected `timezone`, and `sandbox` from the response and send the same shape as `account` on a later task. `operator_unit.name` may change without changing which account the key identifies. A requested identity in `identity_change` is not a usable account reference until it becomes canonical.
 
+### Mapping buyers to listed accounts
+
+When the seller owns the account namespace, the caller usually maps its own buyers onto accounts it already has, and asks for a new one only when none fits. A storefront holding credentials for its ad servers' sales agents works this way, as does a buyer on a social platform. The caller needs to know what each account is for:
+
+- Sellers SHOULD return [`account_scope`](/docs/building/by-layer/L2/accounts-and-agents#account-scope) on every account, and `brand` and/or `operator` wherever the scope names them.
+- When several accounts could serve a buyer (operator A, brand B), the caller prefers the most specific scope: `operator_brand` matching both, then `operator` matching A, then `brand` matching B, then `agent`. Two accounts at the same level are a choice for a human, not something to pick automatically. This is guidance for callers, not a seller obligation.
+- When nothing fits, ask for an account with [`request_account`](/docs/accounts/tasks/request_account) (experimental in 3.3) or `sync_accounts`.
+
 ### Single-publisher cardinality
 
 A seller serving exactly one publisher entity MAY return that entity as the sole account on `list_accounts` responses, regardless of calling principal. The *"Direct advertiser with single account"* example in [`list-accounts-response.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/account/list-accounts-response.json) is canonical for this case — a single-element `accounts[]` with no `pagination` envelope at all.

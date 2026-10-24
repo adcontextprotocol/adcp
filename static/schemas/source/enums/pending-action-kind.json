@@ -3,6 +3,7 @@
   "$id": "/schemas/enums/pending-action-kind.json",
   "title": "Pending Action Kind",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "What has to happen before a pending account request, account, or relationship can move on (experimental, account.requests). Receivers MUST accept unknown values and fall back to pending_action.message and pending_action.url.",
   "type": "string",
   "x-extensible": true,

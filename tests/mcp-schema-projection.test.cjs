@@ -121,8 +121,12 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // measure 468,555 bytes / 457.57 KiB, within the existing 462 KiB ceiling.
 // Product service commitments (#8408) add report/poll request shapes. The
 // media-buy context measures 473,582 bytes / 462.48 KiB; bound it at 463 KiB.
+// Experimental account requests (#8280) add request_account and
+// get_account_requests to the media-buy role profile and widen the
+// caller-level notification enum (473,582 → 476,029 bytes / 464.9 KiB
+// measured against main); bound it at 465 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 463,
+  'media-buy': 465,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -173,7 +177,11 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // capabilities. After shortening repeated SLA prose, the controller measures
 // 1_313_240 bytes; bound compilation at 1_315_000. Every fixture still compiles;
 // the independent 4 MiB schema and 22 MiB projection budgets are unchanged.
-const PARITY_COMPILE_LIMIT = 1_315_000;
+// Experimental account requests (#8280) reach it through the
+// account_request.changed notification type and the sync_accounts setup
+// fields (1_313_240 → 1_316_098 bytes measured against main); bound it at
+// 1_318_000.
+const PARITY_COMPILE_LIMIT = 1_318_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

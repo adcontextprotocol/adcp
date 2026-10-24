@@ -3,6 +3,7 @@
   "$id": "/schemas/core/account-candidate.json",
   "title": "Account Candidate",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "An account that matches an account request or an ambiguous account reference, offered so a human can pick one. Only accounts the caller is already granted are ever offered.",
   "type": "object",
   "properties": {

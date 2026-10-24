@@ -3,6 +3,7 @@
   "$id": "/schemas/account/request-account-response.json",
   "title": "Request Account Response",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "Result of request_account (experimental, account.requests). A completed response always carries the request, whatever its state: an in_review or rejected request is a normal outcome, not a task failure. failed is reserved for calls the seller could not process, such as a malformed request or an unsupported billing value it rejects outright.",
   "type": "object",
   "allOf": [
