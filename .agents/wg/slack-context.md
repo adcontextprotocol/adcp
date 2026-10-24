@@ -7,66 +7,59 @@ channels per `.agents/wg/constitution.md` §Information sources and the
 record: never quote or attribute this content in public output; Slack
 informs, GitHub decides.
 
-- Generated: 2026-09-07
+- Generated: 2026-10-24
 - Window: last 14 days
 - Channels: 22 public WG channels swept (4 private excluded)
 
 ---
 
-### 3.2 Release Readiness and Remaining Open Issues
-
+### Price adjustments for fixed-price pricing options (RFC)
 - **Status:** active
-- **Summary:** The 3.2 milestone is described as feature-complete apart from a few stragglers, including DOOH audio support and a last open issue in the broadcast/syndication track. Experimental tooling for buyer agents as stateful principals is being introduced as a first for the protocol, alongside merged reporting pipeline work marked experimental. A release-candidate build cycle across the spec and SDKs is underway, with cross-version/cross-language checks causing delays; once ready, the training agent and the Interchange environment will be bumped to 3.2 to enable live traffic testing.
-- **Related:** #5878
-- **Thread:** https://agenticads.slack.com/archives/C0ACHCU5210/p1788081427834219, https://agenticads.slack.com/archives/C09BK148CLU/p1788120684328569, https://agenticads.slack.com/archives/C09BK148CLU/p1788268365763459, https://agenticads.slack.com/archives/C09BK148CLU/p1788630892701959
+- **Summary:** An RFC proposes an optional `price_adjustments` table on binding fixed-price pricing options, letting a seller price buyer-selectable dimensions (fees or discounts, as a rate or an amount) without splitting products or forcing another discovery round trip. `fixed_price` remains the base rate, matching rows apply in declared order, and the accepted price is the resolved rate. It is triaged as a non-breaking minor addition for 3.3.0. At the working-group session it was the one item held back from approval, pending research to confirm the design is not too specific to one market.
+- **Related:** #7659
+- **Thread:** https://agenticads.slack.com/archives/C0ACHCU5210/p1792500357732299, https://agenticads.slack.com/archives/C09BK148CLU/p1792452467988579
 
-### DOOH Schema Support (Broadcast/Syndication and Campaign Lifecycle)
-
+### 3.3 release timeline and consent rounds
 - **Status:** active
-- **Summary:** A pull request adding DOOH-related schema changes is seeking additional review, with outreach underway to bring in more DOOH-focused participants, including contacts at a major DOOH sell-side vendor, to weigh in before the current cycle closes. Separate feedback on DOOH from a working group member has spawned follow-up PRs, one of which is still awaiting review.
-- **Related:** #5623, #7177
-- **Thread:** https://agenticads.slack.com/archives/C0ACHCU5210/p1787582147291599, https://agenticads.slack.com/archives/C0ACHCU5210/p1787687143020649, https://agenticads.slack.com/archives/C09BK148CLU/p1788398512662769
+- **Summary:** The 3.3 beta cut was planned for Oct 20 pending updates to one PR and approval of the remaining web-bot-auth PRs, with a possible early cut so SDK work can begin. Consent rounds 1 and 2 closed Oct 16, and round 3 closes Oct 23 on the #8123 deprecation, #8184 invoice lines, #8125 target audiences, #8197/#8198 key-discovery decoupling, and #8158 compromised-key indicator. The next working-group session covers network property coverage, signal pricing groups, rights in the purchase, and beta.1 scope freeze. The account change feed (#6810 via PR #8160) will echo `idempotency_key` only to the requesting principal and require `changed_paths` for `adcp` and `seller_operator` origins, graduating at 3.3 GA if the 45-day production clock has run, otherwise 3.4.
+- **Related:** #7894, #6810, #8160, #8123, #8184, #8125, #8197, #8198, #8158
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1792086048650549, https://agenticads.slack.com/archives/C09BK148CLU/p1792452557350649, https://agenticads.slack.com/archives/C09BK148CLU/p1792452467988579, https://agenticads.slack.com/archives/C09BK148CLU/p1791851974394189
 
-### Delta Sharing / RFC 6540 and Reporting Pipelines
-
+### Request signing keys, web-bot-auth, and trust.json
 - **Status:** active
-- **Summary:** A contributor followed up on the delta-sharing component of RFC 6540, asking whether it remains a 3.2 milestone item and flagging that an associated PR appears unblocked with changes aligned to their recommended solution. Related work on reliable reporting pipelines, including support for delivery via Databricks, Snowflake, and cloud buckets, has an RFC and implementation PR open. A further PR proposes moving property reporting from the 3.3 milestone into 3.2, which is considered necessary and is awaiting working-group review.
-- **Related:** #6857, #6911, #6953, #6915
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1787750898081669, https://agenticads.slack.com/archives/C09BK148CLU/p1787886708854929, https://agenticads.slack.com/archives/C09BK148CLU/p1787828881454989
+- **Summary:** A member asked whether the signing-keys functionality in adagents.json is being deprecated in favor of web-bot-auth (WBA) in 3.3. Related proposals were reworked to fit with the trust.json effort and the WBA proposal, with approval of those two as the first step at the working group. Key-discovery decoupling and a compromised-key indicator are in consent round 3.
+- **Related:** #8118, #8123, #8197, #8198, #8158
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1791899952048299, https://agenticads.slack.com/archives/C09BK148CLU/p1791713890684459
 
-### FAST Channel Modeling in adagents.json / Property Schema
-
+### Account and agent-registration vocabulary cleanup
 - **Status:** active
-- **Summary:** A detailed governance-channel proposal distinguishes "property" (the host CTV app), "collection" (the independently owned FAST channel), and "placement" (the ad position), suggesting FAST channel owners declare canonical collection identity (including Gracenote IDs and platform distributions) in their own adagents.json, while hosts attest sales rights by authorizing the owner's agent without declaring placements. A separate detailed question raises gaps in the current schema (3.1.15): there is no property_type value for channels carried inside third-party CTV apps, no way to express industry-standard channel identifiers (e.g., Gracenote/TMS IDs, platform EPG channel IDs), and no concept of carriage to represent this distribution model.
-- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1787692753462379, https://agenticads.slack.com/archives/C09NUQS93DF/p1787665044852579
+- **Summary:** A proposal would retire the account-sync task in favor of a `request_account` task and consolidate principal and agent configuration into a single `get_buyer_agent_config` task. The goal is to reduce auth confusion and make agent registration easier. The suggested timeline is introduction in 3.3 and requirement in 4.0.
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1792249562128359
 
-### Seller Policy, Change-Right Contracts, and Governance Decision Ratification
-
+### Clarification of previously undefined behavior (PR #8175)
 - **Status:** active
-- **Summary:** A governance working group PR adding seller policy and change-right contracts requires that decision memos tied to several linked issues be formally ratified and committed to the governance decisions directory per the RFC process, noting ratification is a human act on the WG memo. Whether linked issues should be marked "Closes" versus "Refs" is left to author discretion pending confirmation that the PR's scope fully resolves each issue. A related issue and implementation PR address giving full visibility into account changes across seller-managed state.
-- **Related:** #6794, #6749, #6750, #6757, #6758, #6810, #6811
-- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1787582062993769
+- **Summary:** A PR was raised to clarify behavior the spec previously left undefined, with the author unsure whether it counts as breaking and asking the group for input on classification.
+- **Related:** #8175
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1791942737754779
 
-### Contextual Embeddings in segment.ext.aa RTB Field
-
+### Supported match keys array for interoperability
 - **Status:** active
-- **Summary:** A member raised a question about which models are used or recommended when sending contextual embeddings over the `segment.ext.aa` RTB field, noting prior groundwork but asking whether any consensus or broader interest has formed as they plan to build platform support for buying partners.
-- **Thread:** https://agenticads.slack.com/archives/C09BF378H8A/p1788725186616889
+- **Summary:** A proposal would add a standardized array of supported match keys, modeled on the existing viewability array structure. It would let buyers and sellers communicate identifier compatibility for frequency capping, suppression, and retargeting across programmatic and direct transactions, in anticipation of platform identifier changes. The design aims to accommodate multiple third-party identity solutions and cross-device graphs rather than a single identifier category.
+- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1792511973191799
 
-### AdCP SDK (adcp-go) CI and Review Backlog
-
+### Promoting `sales-fixed-rate` specialism from preview to stable
 - **Status:** active
-- **Summary:** A contributor reported a failing GitHub Action affecting all adcp-go pull requests and requested help diagnosing it, along with reviews on a backlog of pending SDK PRs.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788480742718759
+- **Summary:** An implementer proposed moving the `sales-fixed-rate` specialism to stable for 3.3 GA, reporting results from the `sales_fixed_rate` storyboard run against an independent seller implementation. The core path and all three hold branches (confirm, reject, buyer cancel) passed, as did `invalid_transitions` and `delivery_reporting`. The only failure was the capability-discovery schema step, because that seller still serves 3.1, whose specialism enum lacks the id. Two required scenarios did not apply or were skipped for this seller. The evidence base is the training agent plus one independent seller.
+- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1792663576130849
 
-### llms.txt Documentation Structure Change
+### TypeScript SDK v16 GA
+- **Status:** resolved
+- **Summary:** The TypeScript SDK v16 is generally available, defaulting to AdCP 3.2.5 while continuing to support 3.0 and 3.1 sellers. Highlights include expanded reliable reporting (paged, integrity-verified reads, multiple storage backends, change feeds, with storage shipped separately and experimental), improved selection between canonical and legacy creative formats, mapping of creative asset keys to seller-declared format asset IDs, seller-issued stable account IDs, and property-list enforcement across app and CTV inventory.
+- **Related:** #3350
+- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1792493402349769
 
+### Go SDK contributions and planned PRs
 - **Status:** active
-- **Summary:** A structural change to docs.adcontextprotocol.org/llms.txt was flagged as likely to break tooling that assumes a flat, single-version index. The file is now a multi-version hub whose flat entries are archived 2.5.x docs, with current-release content behind per-version sub-indexes (3-1, 3-2-beta, 3-0) and no "latest" alias; the reliable way to find current docs is via stable paths that redirect to the active build. The message also notes the hub includes OpenAPI YAML links and cross-origin GitHub raw links that consumers should be aware of.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788451422017619
-
-### Docs Site Availability Issue
-
-- **Status:** parked
-- **Summary:** A member reported that the docs site (docs.adcontextprotocol.org) appeared to be down, redirecting to an unrelated auto-redirect landing page, though no resolution was recorded in the thread.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1788159845297419
+- **Summary:** An implementer announced plans to contribute to the Go SDK, starting with generated types for `validate_input` (request, response, result), which await maintainer CI approval. Planned follow-ups include the targeting null-clear slice of #536 (three-state targeting input on create/update, which needs an encoding decision), the 3.2 compact-lifecycle types for `list_products`, `buy_products`, and `control_media_buy`, and later seller-framework pieces such as durable task handoff and `tasks/get`, typed tenant context, an `update_media_buy` hook, and A2A support.
+- **Related:** adcp-go#555, #536, #345, #347, #144, #69, #70
+- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1791873437500869
