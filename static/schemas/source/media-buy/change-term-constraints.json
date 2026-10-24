@@ -163,7 +163,6 @@
         "alternates": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 50,
           "items": { "$ref": "#/definitions/alternate" },
           "description": "A forward-only chain after the value in force. The seller MUST use the first available entry after the one in effect and records each skipped entry."
         },
