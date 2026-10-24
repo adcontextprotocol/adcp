@@ -22,8 +22,8 @@ narrative: |
   The storyboard for this specialism is a placeholder while the underlying SI tools
   remain `x-status: experimental`. Conformance for SI agents is currently exercised by
   the `sponsored-intelligence` protocol baseline (which already covers the full session
-  lifecycle); claiming this specialism today is graded as `{ status: "preview",
-  passed: null }` per the preview-status contract in
+  lifecycle). This storyboard has no steps of its own, and a preview claim does not
+  count toward AAO Verified badges; see the preview-status contract in
   /docs/building/verification/compliance-catalog.
 
   This specialism promotes to `stable` (with required_tools and a graded storyboard)

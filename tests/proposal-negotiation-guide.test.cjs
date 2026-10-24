@@ -44,7 +44,7 @@ function termsDigest(commercialTerms) {
 
 test('proposal negotiation guide publishes only schema-backed JSON examples', () => {
   const blocks = jsonBlocks(guide);
-  assert.equal(blocks.length, 11);
+  assert.equal(blocks.length, 12);
   assert.ok(blocks.every(block => typeof block.$schema === 'string'));
   assert.ok(blocks.some(block => block.$schema.endsWith('/refine-proposals-request.json')));
   assert.ok(blocks.some(block => block.$schema.endsWith('/refine-proposals-response.json')));
