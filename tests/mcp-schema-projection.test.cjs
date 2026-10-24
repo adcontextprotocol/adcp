@@ -127,9 +127,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // Experimental account requests (#8280) add request_account and
 // get_account_requests to the media-buy role profile and widen the
 // caller-level notification enum (473,582 → 476,029 bytes / 464.9 KiB
-// measured against main); bound it at 465 KiB.
+// measured against main); bound it at 465 KiB. Rebased onto installments on
+// the canonical product (#8246), the merged inputs measure 477,312 bytes /
+// 466.1 KiB; bound it at 467 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 465,
+  'media-buy': 467,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
