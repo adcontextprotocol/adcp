@@ -144,13 +144,32 @@ test('rejects annotated properties that the parent requires', () => {
   ), (result) => assertErrorMatching(result, /"a" is required by its parent/));
 });
 
-test('treats unconditional allOf required as required, but not if/then', () => {
+test('treats allOf, oneOf, and conditional requirements as required', () => {
   const annotated = { type: 'string', 'x-adcp-applies-when': { delivery_types: ['guaranteed'] } };
   withFixture(product({ a: annotated }, { allOf: [{ required: ['a'] }] }), (result) =>
     assertErrorMatching(result, /"a" is required by its parent/));
+  withFixture(product({ a: annotated }, { oneOf: [{ required: ['a'] }, { required: ['b'] }] }), (result) =>
+    assertErrorMatching(result, /"a" is required by its parent/));
   withFixture(product({ a: annotated }, {
     allOf: [{ if: { required: ['b'] }, then: { required: ['a'] } }],
-  }), (result) => assert.equal(result.ok, true, result.errors.join('\n')));
+  }), (result) => assertErrorMatching(result, /"a" is required by its parent/));
+  withFixture(product({ a: annotated }, { if: { required: ['b'] }, else: { required: ['a'] } }), (result) =>
+    assertErrorMatching(result, /"a" is required by its parent/));
+});
+
+test('counts draft-07 dependencies as requirements', () => {
+  const annotated = { type: 'string', 'x-adcp-applies-when': { delivery_types: ['guaranteed'] } };
+  withFixture(product({ a: annotated, b: { type: 'string' } }, { dependencies: { b: ['a'] } }), (result) =>
+    assertErrorMatching(result, /"a" is required by its parent/));
+  withFixture(product({ a: annotated, b: { type: 'string' } }, { dependencies: { b: { required: ['a'] } } }), (result) =>
+    assertErrorMatching(result, /"a" is required by its parent/));
+});
+
+test('rejects annotated properties in closed objects', () => {
+  withFixture(product(
+    { a: { type: 'string', 'x-adcp-applies-when': { delivery_types: ['guaranteed'] } } },
+    { additionalProperties: false },
+  ), (result) => assertErrorMatching(result, /sits in a closed object/));
 });
 
 test('rejects the annotation outside a property declaration', () => {

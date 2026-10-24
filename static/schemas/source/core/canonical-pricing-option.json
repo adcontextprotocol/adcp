@@ -12,8 +12,8 @@
     },
     "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
     "fixed_price": { "type": "number", "minimum": 0 },
-    "floor_price": { "type": "number", "minimum": 0, "x-adcp-applies-when": { "delivery_types": ["non_guaranteed"] } },
-    "price_guidance": { "$ref": "/schemas/pricing-options/price-guidance.json", "x-adcp-applies-when": { "delivery_types": ["non_guaranteed"] } },
+    "floor_price": { "type": "number", "minimum": 0 },
+    "price_guidance": { "$ref": "/schemas/pricing-options/price-guidance.json" },
     "min_spend_per_package": { "type": "number", "minimum": 0 },
     "price_breakdown": { "$ref": "/schemas/pricing-options/price-breakdown.json" },
     "eligible_adjustments": {

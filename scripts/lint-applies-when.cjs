@@ -57,14 +57,27 @@ function loadEnum(registry, relativePath, errors) {
   return new Set(document.schema.enum);
 }
 
-/** Unconditional `required` names: the parent's own plus allOf arms without `if`. */
-function requiredNames(parent) {
-  const names = new Set(Array.isArray(parent.required) ? parent.required : []);
-  if (Array.isArray(parent.allOf)) {
-    for (const arm of parent.allOf) {
-      if (isObject(arm) && !('if' in arm) && Array.isArray(arm.required)) {
-        arm.required.forEach((name) => names.add(name));
-      }
+/**
+ * Names the parent requires anywhere: its own `required`, every
+ * allOf/anyOf/oneOf arm, if/then/else branch, and draft-07 `dependencies`.
+ * Conditional requirements count too, and so do names that appear only in an
+ * `if` condition. A projection that drops a conditionally required property leaves
+ * a schema that can't be satisfied when the condition holds, so this fails
+ * closed.
+ */
+function requiredNames(parent, names = new Set()) {
+  if (!isObject(parent)) return names;
+  if (Array.isArray(parent.required)) parent.required.forEach((name) => names.add(name));
+  for (const keyword of ['allOf', 'anyOf', 'oneOf']) {
+    if (Array.isArray(parent[keyword])) {
+      parent[keyword].forEach((arm) => requiredNames(arm, names));
+    }
+  }
+  for (const keyword of ['if', 'then', 'else']) requiredNames(parent[keyword], names);
+  if (isObject(parent.dependencies)) {
+    for (const dependency of Object.values(parent.dependencies)) {
+      if (Array.isArray(dependency)) dependency.forEach((name) => names.add(name));
+      else requiredNames(dependency, names);
     }
   }
   return names;
@@ -172,6 +185,7 @@ function collectAnnotations(registry) {
               pointer: propertyPointer,
               value: propertySchema[ANNOTATION],
               required: required.has(name),
+              closed: node.additionalProperties === false,
             });
           }
           visit(propertySchema, document, propertyPointer, true);
@@ -208,6 +222,9 @@ function lintAppliesWhen({ schemasDir = DEFAULT_SCHEMAS_DIR } = {}) {
     errors.push(...validateValue(annotation.value, location, enums, registry));
     if (annotation.required) {
       errors.push(`${location}: annotated property "${annotation.name}" is required by its parent; projections may only remove optional properties`);
+    }
+    if (annotation.closed) {
+      errors.push(`${location}: annotated property "${annotation.name}" sits in a closed object (additionalProperties: false); dropping it would forbid it`);
     }
   }
 
