@@ -5,7 +5,6 @@ const path = require('path');
 const assert = require('assert');
 const crypto = require('crypto');
 const os = require('os');
-const vm = require('vm');
 const { spawnSync } = require('child_process');
 const YAML = require('yaml');
 
@@ -103,49 +102,14 @@ assert(
   !typescriptCandidateStep.includes('sync-version -- --auto-update'),
   'Candidate validation must not bump the TypeScript SDK package release number.'
 );
-const candidateVersionBridge = typescriptCandidateStep.match(
-  /node <<'NODE_CANDIDATE_VERSION'\n([\s\S]*?)\nNODE_CANDIDATE_VERSION/
-)?.[1];
-assert(candidateVersionBridge, 'Candidate compatibility bridge must remain executable and isolated.');
-const compatibilityFixture = `function buildCompatibleVersions(adcpVersion: string): string[] {
-  const [, majorText, minorText, patchText, prerelease] = /^(\\d+)\\.(\\d+)\\.(\\d+)(?:-(.+))?$/.exec(adcpVersion);
-  const major = Number(majorText), minor = Number(minorText), patch = Number(patchText);
-  // 3.2 prereleases are exact.
-  if (adcpVersion === '3.2.5') return ['v3', '3.2.1', '3.2.5', '3.2'];
-  throw new Error('unsupported version');
-}`;
-function bridgeCandidateVersion(candidate, pinned = '3.2.5', original = compatibilityFixture) {
-  let generated = original;
-  vm.runInNewContext(candidateVersionBridge, {
-    process: { env: { BUNDLE_VERSION: candidate } },
-    require(name) {
-      assert.strictEqual(name, 'node:fs');
-      return {
-        readFileSync(filename) { return filename === 'sdk/ADCP_VERSION' ? pinned : original; },
-        writeFileSync(filename, source) {
-          assert.strictEqual(filename, 'sdk/scripts/sync-version.ts');
-          generated = source;
-        },
-      };
-    },
-  });
-  return generated;
-}
-for (const candidate of ['3.3.0-beta.0', '3.3.0-rc.2']) {
-  const generated = bridgeCandidateVersion(candidate).replace('(adcpVersion: string): string[]', '(adcpVersion)');
-  const context = {};
-  vm.runInNewContext(generated, context);
-  assert.deepStrictEqual(Array.from(context.buildCompatibleVersions(candidate)), [
-    'v3', '3.2.1', '3.2.5', '3.2', candidate, candidate.replace('3.3.0-', '3.3-'),
-  ], 'The bridge must retain stable peers and add only the exact preview aliases.');
-  assert.throws(() => context.buildCompatibleVersions('3.4.0-beta.0'), /unsupported version/);
-  assert.deepStrictEqual(Array.from(context.buildCompatibleVersions('3.2.5')), ['v3', '3.2.1', '3.2.5', '3.2']);
-}
-for (const candidate of ['3.2.5', '3.3.0', '3.3.0-alpha.0', '3.4.0-beta.0']) {
-  assert.strictEqual(bridgeCandidateVersion(candidate), compatibilityFixture,
-    'The bridge must leave released versions and unrecognized candidate lines untouched.');
-}
-assert.throws(() => bridgeCandidateVersion('3.3.0-beta.0', '3.2.5', 'changed generator'), /generator changed/);
+// The SDK's own sync-version generator owns candidate compatibility: since
+// adcp-client 56d45712c it keeps 3.2.x GA as stable peers and adds only exact
+// 3.3 preview aliases. Candidate validation must not rewrite it.
+assert(
+  !typescriptCandidateStep.includes('NODE_CANDIDATE_VERSION') &&
+    !typescriptCandidateStep.includes('sdk/scripts/sync-version.ts'),
+  'Candidate validation must use the SDK compatibility generator unmodified.'
+);
 const typescriptProtocolCheckout = schemaPrWorkflowConfig.jobs['typescript-sdk'].steps.find(
   step => step.uses?.startsWith('actions/checkout@') && step.with?.path === 'protocol'
 );
