@@ -187,3 +187,21 @@ test('new schemas are registered in the index', () => {
     assert.ok(index.includes(id), `${id} is in index.json`);
   }
 });
+
+test('task request schemas are experimental and added in 3.3.0', () => {
+  for (const file of ['account/request-account-request.json', 'account/get-account-requests-request.json']) {
+    const schema = read(file);
+    assert.equal(schema['x-status'], 'experimental', file);
+    assert.equal(schema['x-added-in'], '3.3.0', file);
+  }
+});
+
+test('request_account keys deduplication on the sync_accounts natural key, with terms outside it', () => {
+  const schema = read('account/request-account-request.json');
+  for (const field of ['brand', 'operator_unit', 'currency', 'timezone', 'sandbox']) {
+    assert.ok(schema.properties[field], field);
+  }
+  for (const term of ['billing', 'billing_entity', 'payment_terms']) {
+    assert.match(schema.properties[term].description, /not part of the dedup key/, term);
+  }
+});

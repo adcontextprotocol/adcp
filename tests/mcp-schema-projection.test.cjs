@@ -178,10 +178,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // 1_313_240 bytes; bound compilation at 1_315_000. Every fixture still compiles;
 // the independent 4 MiB schema and 22 MiB projection budgets are unchanged.
 // Experimental account requests (#8280) reach it through the
-// account_request.changed notification type and the sync_accounts setup
-// fields (1_313_240 → 1_316_098 bytes measured against main); bound it at
-// 1_318_000.
-const PARITY_COMPILE_LIMIT = 1_318_000;
+// account_request.changed notification type and the pending-action enums on
+// sync_accounts setup (1_313_240 → 1_316_098 bytes measured against main);
+// descriptions were shortened to 1_314_961 bytes, and the limit is unchanged.
+const PARITY_COMPILE_LIMIT = 1_315_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));

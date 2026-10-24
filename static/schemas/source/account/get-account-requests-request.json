@@ -2,6 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/get-account-requests-request.json",
   "title": "Get Account Requests Request",
+  "x-added-in": "3.3.0",
   "x-status": "experimental",
   "description": "Read the authenticated caller's account requests (experimental, account.requests). Side-effect free. With no filters, returns every open request (in_review or ambiguous) plus requests that changed state in the last 30 days. Sellers MUST retain resolved and rejected requests for at least 30 days after their last state change. Only the caller's own requests are ever returned.",
   "x-tool-summary": "Read the caller's account requests and their current state.",

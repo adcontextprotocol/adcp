@@ -2,6 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/request-account-request.json",
   "title": "Request Account Request",
+  "x-added-in": "3.3.0",
   "x-status": "experimental",
   "description": "Ask the seller for an advertiser account: find an existing one or create one, possibly after human review on either side. Experimental in 3.3 (#8280): sellers implementing this task MUST list account.requests in experimental_features. Requests deduplicate per authenticated caller on the account's natural key (brand.domain, brand.brand_id, canonical brand.countries, operator, operator_unit.id, currency, timezone, sandbox), or on account_id when one is named. Send either account_id, or brand and operator; sellers enforce this at runtime so the MCP input schema stays a plain root object, and reject a request carrying both, or neither, with INVALID_REQUEST.",
   "x-tool-summary": "Request an advertiser account: the seller matches an existing account or creates one, possibly after human review.",

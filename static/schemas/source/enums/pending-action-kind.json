@@ -4,7 +4,7 @@
   "title": "Pending Action Kind",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "What has to happen before a pending account request, account, or relationship can move on (experimental, account.requests). Receivers MUST accept unknown values and fall back to pending_action.message and pending_action.url.",
+  "description": "What a pending account request, account, or relationship needs next (experimental). Receivers MUST accept unknown values and fall back to message and url.",
   "type": "string",
   "x-extensible": true,
   "x-pattern": "^[a-z][a-z0-9_]*$",
@@ -18,12 +18,12 @@
     "connect_credentials"
   ],
   "enumDescriptions": {
-    "review": "The seller is reviewing: matching against existing records, credit, legal, or policy checks. Normally waiting_on: seller.",
-    "sign_up": "The advertiser or operator has no relationship with the seller yet. A human registers at pending_action.url.",
-    "accept_terms": "A human accepts the seller's terms or insertion-order terms at pending_action.url.",
-    "credit_application": "A human completes a credit application at pending_action.url.",
-    "add_payment": "A human adds or confirms a payment method at pending_action.url.",
-    "grant": "The operator or brand authorizes the calling agent to act for it: a published grant, or an access grant on the seller's platform.",
-    "connect_credentials": "A human connects or re-authorizes platform credentials, for example through OAuth at pending_action.url."
+    "review": "Seller review: matching, credit, or policy checks.",
+    "sign_up": "A human registers at url.",
+    "accept_terms": "A human accepts terms at url.",
+    "credit_application": "A human applies for credit at url.",
+    "add_payment": "A human adds payment at url.",
+    "grant": "The operator or brand authorizes the calling agent.",
+    "connect_credentials": "A human connects credentials at url."
   }
 }
