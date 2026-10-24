@@ -131,9 +131,10 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // the canonical product (#8246), the merged inputs measure 477,312 bytes /
 // 466.1 KiB; bound it at 467 KiB. Experimental update_account (#8280)
 // joins the 3.3 media-buy line (477,312 → 487,003 bytes / 475.6 KiB
-// measured); bound it at 476 KiB.
+// measured); bound it at 476 KiB. Rebased onto purchase rights (#8101), it
+// measures 487,720 bytes / 476.3 KiB; bound it at 477 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 476,
+  'media-buy': 477,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
