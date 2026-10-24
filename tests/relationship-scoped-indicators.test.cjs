@@ -1036,4 +1036,165 @@ describe('relationship-scoped indicators', () => {
     };
     assert.equal(validateListCreatives(payload), false);
   });
+
+  describe('signer_key_revoked (experimental, #8158)', () => {
+    let validateControlRequest;
+    let validateAvailableAction;
+    let validateCanonicalAction;
+
+    before(async () => {
+      [validateControlRequest, validateAvailableAction, validateCanonicalAction] = await Promise.all([
+        compile('media-buy/control-media-buy-request.json'),
+        compile('core/media-buy-available-action.json'),
+        compile('core/canonical-media-buy-action.json')
+      ]);
+    });
+
+    const readJson = (relativePath) =>
+      JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, relativePath), 'utf8'));
+
+    const buyResponse = (buyOverrides, packages = []) => ({
+      status: 'completed',
+      media_buys: [{
+        media_buy_id: 'mb_1',
+        status: 'active',
+        currency: 'USD',
+        total_budget: 1000,
+        confirmed_at: '2026-08-01T00:00:00Z',
+        revision: 1,
+        packages,
+        ...buyOverrides
+      }],
+      pagination: { has_more: false }
+    });
+
+    const flagged = {
+      indicator_types_evaluated: ['signer_key_revoked'],
+      indicators_as_of: '2026-10-20T12:00:00Z',
+      indicators: [{
+        type: 'signer_key_revoked',
+        detected_at: '2026-10-20T11:59:00Z'
+      }]
+    };
+
+    it('adds the type to the enum and keeps it experimental', () => {
+      const enumSchema = readJson('enums/indicator-type.json');
+      assert.ok(enumSchema.enum.includes('signer_key_revoked'));
+      assert.match(enumSchema.enumDescriptions.signer_key_revoked, /Experimental in 3\.3/);
+      assert.match(enumSchema.enumDescriptions.signer_key_revoked, /media_buy\.signer_key_revoked/);
+      assertValid(validateIndicator, { type: 'signer_key_revoked' });
+    });
+
+    it('is valid on a media buy only', () => {
+      assertValid(validateGetMediaBuys, buyResponse(flagged));
+      assert.equal(validateGetMediaBuys(buyResponse({}, [{
+        package_id: 'pkg_1',
+        ...flagged
+      }])), false);
+      assert.equal(validateListCreatives({
+        creatives: [{
+          creative_id: 'cr_1',
+          assignments: {
+            assignment_count: 1,
+            returned_assignment_count: 1,
+            assignments_truncated: false,
+            assigned_packages: [{
+              media_buy_id: 'mb_1',
+              package_id: 'pkg_1',
+              assigned_date: '2026-08-01T00:00:00Z',
+              approval_status: 'approved',
+              ...flagged
+            }]
+          }
+        }]
+      }), false);
+    });
+
+    it('requires the type in indicator_types_evaluated', () => {
+      assert.equal(validateIndicatorBearing({
+        indicator_types_evaluated: ['budget_constrained'],
+        indicators_as_of: '2026-10-20T12:00:00Z',
+        indicators: [{ type: 'signer_key_revoked' }]
+      }), false);
+      assertValid(validateIndicatorBearing, flagged);
+    });
+
+    it('is queryable through get_media_buys indicator_types', () => {
+      assertValid(validateGetRequest, { indicator_types: ['signer_key_revoked'] });
+    });
+
+    it('requires the experimental feature id when a seller advertises the type', () => {
+      const capabilities = (extra) => ({
+        status: 'completed',
+        supported_protocols: ['media_buy'],
+        adcp: { major_versions: [3], idempotency: { supported: false } },
+        account: {
+          supported_billing: ['operator'],
+          supported_account_currency_modes: ['fixed', 'per_media_buy']
+        },
+        media_buy: { supported_indicator_types: ['signer_key_revoked'] },
+        ...extra
+      });
+      assert.equal(validateCapabilities(capabilities({})), false);
+      assert.equal(validateCapabilities(capabilities({ experimental_features: ['media_buy.delivery_projection'] })), false);
+      assertValid(validateCapabilities, capabilities({ experimental_features: ['media_buy.signer_key_revoked'] }));
+    });
+
+    it('accepts reaffirm_signer alone and nothing else beside it', () => {
+      const base = {
+        idempotency_key: '550e8400-e29b-41d4-a716-446655441013',
+        account: { account_id: 'account_123' },
+        media_buy_id: 'mb_1',
+        revision: 6
+      };
+      const field = readJson('media-buy/control-media-buy-request.json').properties.reaffirm_signer;
+      assert.equal(field['x-status'], 'experimental');
+      assert.equal(field['x-added-in'], '3.3.0');
+      assertValid(validateControlRequest, { ...base, reaffirm_signer: true });
+      assert.equal(validateControlRequest({ ...base, reaffirm_signer: false }), false);
+      for (const other of [
+        { name: 'Renamed' },
+        { paused: true },
+        { canceled: true },
+        { total_budget: { amount: 10, currency: 'USD' } },
+        { daily_budget_cap: 100 },
+        { packages: [{ package_id: 'pkg_1', paused: true }] }
+      ]) {
+        assert.equal(
+          validateControlRequest({ ...base, reaffirm_signer: true, ...other }),
+          false,
+          JSON.stringify(other)
+        );
+      }
+    });
+
+    it('lists reaffirm_signer as a control_media_buy available action', () => {
+      assertValid(validateAvailableAction, {
+        action: 'reaffirm_signer',
+        mode: 'self_serve',
+        task: 'control_media_buy'
+      });
+      assertValid(validateCanonicalAction, {
+        task: 'control_media_buy',
+        action: 'reaffirm_signer',
+        mode: 'self_serve'
+      });
+      assert.equal(validateCanonicalAction({
+        task: 'refine_proposals',
+        action: 'reaffirm_signer',
+        mode: 'self_serve'
+      }), false);
+      const meta = readJson('core/media-buy-available-action-id.json').enumMetadata;
+      assert.deepEqual(meta.reaffirm_signer.update_fields, ['reaffirm_signer']);
+    });
+
+    it('registers the feature id and documents the 3.4 bulk follow-up', () => {
+      const docs = (relative) => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
+      const experimental = docs('docs/reference/experimental-status.mdx');
+      assert.match(experimental, /^\| `media_buy\.signer_key_revoked` \|/m);
+      assert.match(docs('docs/media-buy/media-buys/indicators.mdx'), /3\.4 follow-up/);
+      assert.match(docs('docs/media-buy/task-reference/control_media_buy.mdx'), /Bulk resolution is a 3\.4 follow-up/);
+      assert.match(docs('docs/building/by-layer/L1/security.mdx'), /Bulk resolution is a 3\.4 follow-up/);
+    });
+  });
 });

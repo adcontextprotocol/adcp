@@ -119,6 +119,23 @@
     },
     {
       "if": {
+        "properties": {
+          "media_buy": {
+            "properties": { "supported_indicator_types": { "contains": { "const": "signer_key_revoked" } } },
+            "required": ["supported_indicator_types"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "media_buy.signer_key_revoked" } }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "required": ["security_profiles"],
         "properties": { "security_profiles": { "minItems": 1 } }
       },
@@ -1737,7 +1754,7 @@
         },
         "supported_indicator_types": {
           "type": "array",
-          "description": "Indicator types this seller can expose on get_media_buys media-buy/package/creative-assignment snapshots. Each type's meaning is defined by the negotiated AdCP release; indicator types do not carry independent sub-versions. This is availability, not complete upstream coverage. Poll-only sellers may declare this field without relationship_notifications. If relationship_notifications includes indicators.changed, this field is required so receivers know which durable indicator types can be repaired.",
+          "description": "Indicator types this seller can expose on get_media_buys media-buy/package/creative-assignment snapshots. Each type's meaning is defined by the negotiated AdCP release; indicator types do not carry independent sub-versions. This is availability, not complete upstream coverage. Poll-only sellers may declare this field without relationship_notifications. Declaring signer_key_revoked (experimental, added in 3.3.0) also requires media_buy.signer_key_revoked in experimental_features; the seller then sets that indicator on suspect buys and lists reaffirm_signer in available_actions[] while it is present. If relationship_notifications includes indicators.changed, this field is required so receivers know which durable indicator types can be repaired.",
           "items": {
             "$ref": "/schemas/enums/indicator-type.json"
           },

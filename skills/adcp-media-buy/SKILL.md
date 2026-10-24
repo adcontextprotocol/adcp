@@ -361,7 +361,7 @@ Retrieve media buy state: status, valid_actions, creative approvals, pending for
 
 Before querying indicators, read `get_adcp_capabilities.media_buy.supported_indicator_types`. Indicators may appear at three levels:
 
-- buy: `get_media_buys.media_buys[]` (`budget_constrained`, `flight_extension_opportunity`, `scale_budget_opportunity`)
+- buy: `get_media_buys.media_buys[]` (`budget_constrained`, `flight_extension_opportunity`, `scale_budget_opportunity`, experimental `signer_key_revoked`: clear it with `control_media_buy` `reaffirm_signer: true`, or pause/cancel the buy)
 - package: `packages[]` (`creative_diversity_low`, `audience_saturation`, `inventory_shortfall_forecast`, `pacing_risk`, `budget_constrained`, `flight_extension_opportunity`, `scale_budget_opportunity`)
 - assignment: `creative_approvals[]` and the matching `list_creatives.assignments.assigned_packages[]` (`creative_fatigue`, `creative_quality_opportunity`)
 

@@ -980,6 +980,8 @@ Lists the seller interpretations available on media-buy resource relationships.
 }
 ```
 
+`signer_key_revoked` is experimental (added in 3.3, feature id `media_buy.signer_key_revoked`): a seller that lists it MUST also list that feature id in `experimental_features`. It signals buys accepted under a request signed with a compromised key; see [Indicators](/docs/media-buy/media-buys/indicators#buys-accepted-under-a-compromised-key-experimental).
+
 Indicator meaning follows the negotiated AdCP release rather than an independent version. This capability does not promise complete upstream coverage. Each present array names exact type coverage in `indicator_types_evaluated`.
 
 `supported_indicator_types` declares polling readback and does not require webhook infrastructure. A poll-only seller exposes those types through `get_media_buys` and omits `relationship_notifications`. When a seller does declare `relationship_notifications`, `indicators.changed` requires `supported_indicator_types`; a seller without an indicator catalog may instead declare `creative.assignment_changed` alone for assignment and approval changes, including when it is inline-only. Every notification declaration names `get_media_buys` as the complete authoritative repair read. A creative-library seller may include [`list_creatives`](/docs/creative/task-reference/list_creatives) as a bounded reverse projection; it mirrors relationship identity and scoped approval, while evaluated indicator snapshots reconcile toward the strictly newer `indicators_as_of`. Because this optional block advertises outbound invalidations, `webhook_signing` MUST include `supported: true`, `profile`, `algorithms`, `legacy_hmac_fallback`, and `delivery_retry_horizon_seconds`.

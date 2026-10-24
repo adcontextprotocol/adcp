@@ -5,6 +5,7 @@
   "description": "An action identifier for the structured available_actions surface. It contains every legacy valid_actions value plus structured-only actions introduced after that deprecated flat surface.",
   "anyOf": [
     { "type": "string", "const": "report_media_buy_issue", "x-added-in": "3.3.0" },
+    { "type": "string", "const": "reaffirm_signer", "x-status": "experimental", "x-added-in": "3.3.0" },
     { "$ref": "/schemas/enums/media-buy-valid-action.json" },
     {
       "type": "string",
@@ -12,6 +13,9 @@
     }
   ],
   "enumMetadata": {
+    "reaffirm_signer": {
+      "update_fields": ["reaffirm_signer"]
+    },
     "update_media_buy_frequency_cap": {
       "update_fields": ["frequency_cap"]
     }
