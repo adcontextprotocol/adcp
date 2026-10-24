@@ -167,7 +167,7 @@ For example, if the agreed terms include DoubleVerify for viewability, every cre
 
 ### 7. Judging a Standard Against Vendor Values
 
-Viewability is judged against the delivery `viewability` block under the standard's `standard`. Other verification metrics (`ivt`, `brand_safety`, `attention_score`) arrive as `vendor_metric_values[]`, and one vendor usually reports several values per category: general, sophisticated, and combined invalid traffic rates, for example. The standard's optional `metric_id` names the one it is judged against:
+Viewability is judged against the delivery `viewability` block under the standard's `standard`, and completion rate against the delivery `completion_rate` scalar. The other verification metrics (`ivt`, `brand_safety`, `attention_score`) arrive as `vendor_metric_values[]`, and one vendor usually reports several values per category: general, sophisticated, and combined invalid traffic rates, for example. The standard's optional `metric_id` names the one it is judged against:
 
 ```json
 {

@@ -14,7 +14,7 @@
   "required": ["metric", "threshold", "vendor"],
   "allOf": [
     {
-      "if": { "properties": { "metric": { "const": "viewability" } }, "required": ["metric"] },
+      "if": { "properties": { "metric": { "enum": ["viewability", "completion_rate"] } }, "required": ["metric"] },
       "then": { "not": { "required": ["metric_id"] } }
     }
   ],
