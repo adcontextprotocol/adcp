@@ -2895,6 +2895,7 @@ module.exports = {
   copyAsyncResponseRefsToCore,
   getReleaseMetadata,
   buildRootSchemaDiscovery,
+  writeRootSchemaDiscovery,
   isSelectableRelease,
   RELEASE_STATUS_OVERRIDES,
   supersedingStableVersion,

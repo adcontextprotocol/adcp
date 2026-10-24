@@ -509,8 +509,12 @@ Default flow when a fix is needed in both lines:
    - `package.json` / `package-lock.json` → preserve main's (main may carry structural changes and 3.2 prerelease metadata)
    - `.changeset/*.md` / `.changeset/pre.json` → preserve main's (independent pre-mode pool)
    - `static/schemas/source/index.json` / `static/schemas/source/registry/index.yaml` → preserve main's (branch-local package/version metadata must stay aligned with main)
-   - `CHANGELOG.md` → take 3.1.x's (main's next Version Packages cut prepends its own entries)
+   - `CHANGELOG.md` → main's file plus each 3.1.x release block it lacks, in semver order (taking 3.1.x's copy would delete main's own prerelease sections)
+   - `static/compliance/published-versions.json` → union of both lines' registered versions; each new one must have its compliance bundle in the merged tree
    - `dist/{schemas,compliance,protocol,docs}/*` → take 3.1.x's (immutable release artifacts; main only adds versions)
+   - `dist/schemas/index.json` / `latest.json` → regenerated from the merged release directories after every merge, clean or conflicted
+
+   `scripts/forward-merge-release-records.cjs` implements the CHANGELOG, manifest, and schema-discovery rules for the 3.0, 3.1 and 3.2 workflows.
 
    **Fails loud (everything else):** every other conflict is a real decision
    about whether the stable patch belongs on the 3.2 line. Never resolve a
