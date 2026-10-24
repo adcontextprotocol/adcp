@@ -84,6 +84,9 @@ jobs:
           ADCP_ADDITIVE_MINOR_BASELINE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: npm run test:additive-minor
 
+      - name: Schema ownership guard (no new cross-domain $refs)
+        run: npm run test:schema-ownership
+
       - name: Fetch 3.0.x for error-code drift comparison
         if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'
         run: git fetch --depth=1 origin +3.0.x:refs/remotes/origin/3.0.x
