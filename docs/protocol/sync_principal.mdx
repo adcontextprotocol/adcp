@@ -5,7 +5,7 @@ description: "sync_principal synchronizes authenticated caller-scoped webhooks a
 ---
 
 <Note>
-**Planned rename.** `sync_principal` and `get_principal` become `sync_buyer_agent_config` and `get_buyer_agent_config`, and `principal_kind` is removed, no earlier than the first minor release after December 7, 2026. AdCP 3.3 keeps the current names. See the [breaking-change notice](/docs/reference/migration/principal-to-buyer-agent-config).
+**Planned rename.** `sync_principal` and [`get_principal`](/docs/protocol/get_principal) become `sync_buyer_agent_config` and `get_buyer_agent_config`, and `principal_kind` is removed, no earlier than the first minor release after December 7, 2026. AdCP 3.3 keeps the current names. See the [breaking-change notice](/docs/reference/migration/principal-to-buyer-agent-config).
 </Note>
 
 A **principal** is the buyer agent as this seller has bound it: the durable record behind an authenticated agent. `sync_principal` replaces the principal's standing configuration with one AdCP seller agent: webhooks, reusable reporting destinations, and its position in capability negotiation. The three tiers of the hierarchy:
