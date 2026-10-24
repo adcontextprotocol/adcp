@@ -46,7 +46,8 @@
       "identity",
       "execution_requirements",
       "expires_at",
-      "allowed_actions"
+      "allowed_actions",
+      "creative_policy"
     ]
   }
 }

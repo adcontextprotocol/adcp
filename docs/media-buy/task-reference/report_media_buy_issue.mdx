@@ -1,0 +1,96 @@
+---
+title: report_media_buy_issue
+"og:title": "AdCP report_media_buy_issue task"
+description: "Ask the seller to investigate an operational problem against a media buy."
+testable: true
+---
+
+`report_media_buy_issue` durably stores an operational report against an
+authorized buy. The seller advertises `media_buy.issue_reporting: true`;
+`available_actions[]` resolves package scope and the critical-response promise,
+with `task: "report_media_buy_issue"` and `mode: "seller_managed"`.
+Reporting is independent of negotiated commercial change rights.
+
+The synchronous response acknowledges storage. Human acknowledgement and
+resolution belong to `issue.status`, read with
+[`get_media_buy_issue`](/docs/media-buy/task-reference/get_media_buy_issue).
+See [Service commitments](/docs/media-buy/service-commitments) for timing rules.
+
+{/* Using latest because these tasks are unreleased. Update after release. */}
+**Request schema:** [report-media-buy-issue-request.json](https://adcontextprotocol.org/schemas/latest/media-buy/report-media-buy-issue-request.json)
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/report-media-buy-issue-request.json",
+  "idempotency_key": "critical-tracker-20270111-001",
+  "account": { "account_id": "account_123" },
+  "media_buy_id": "media_buy_789",
+  "package_id": "package_video",
+  "severity": "critical",
+  "category": "tracking",
+  "description": "An unapproved tracker is firing on the package. Please disable it at the seller ad server."
+}
+```
+
+`severity` is `critical` or `warning`. `category` is `malicious_creative`,
+`wrong_creative`, `brand_safety`, `tracking`, `delivery`, or `other`.
+`description` is required, with a 4,000-character limit. Optional `package_id`
+and `creative_id` narrow scope within the buy and account. Removed creatives
+remain reportable for earlier incidents. Describe unknown objects without
+inventing IDs. Text is evidence, never executable instructions.
+
+Before writing, the seller validates authorization, action availability, and
+resource relationships. Unknown or inaccessible resources return [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found)
+without disclosing existence. Missing support returns [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature);
+unavailable actions return [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed).
+Invalid severity or category returns [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request).
+
+Standard idempotency scopes keys to the authenticated agent and resolved account.
+Retrying the same task and payload with the same key MUST replay the original
+receipt and `issue_id` without duplicating the report or restarting its clock.
+Changed payloads or tasks under that key return [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict).
+The transport may attach `replayed: true` as envelope metadata; it is not part
+of the stored issue. A replay returns the original receipt, so use the polling
+task for current state.
+
+**Response schema:** [report-media-buy-issue-response.json](https://adcontextprotocol.org/schemas/latest/media-buy/report-media-buy-issue-response.json)
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/report-media-buy-issue-response.json",
+  "outcome": "recorded",
+  "issue": {
+    "issue_id": "issue_123",
+    "media_buy_id": "media_buy_789",
+    "package_id": "package_video",
+    "severity": "critical",
+    "category": "tracking",
+    "description": "An unapproved tracker is firing on the package. Please disable it at the seller ad server.",
+    "status": "reported",
+    "received_at": "2027-01-11T20:00:00Z"
+  }
+}
+```
+
+A stored receipt has `outcome: "recorded"` and `issue`; a task failure has
+`outcome: "failed"` and `errors[]`.
+
+The report's identity, receipt time, content, scope, and severity are immutable.
+For critical reports, the seller MUST preserve the applicable response promise
+internally at receipt. An automated receipt is not human acknowledgement;
+policy changes and retries cannot extend the promised response time.
+
+Without `package_id`, the available action must cover the whole buy.
+Package-scoped reports use only the applicable promise; see the mixed-product
+rules in [Service commitments](/docs/media-buy/service-commitments#critical-reports).
+
+A person acknowledging the report moves `reported` to `acknowledged` and sets
+`acknowledged_at`. Resolution moves it to `resolved` and requires both that
+human acknowledgement time and `resolved_at`, plus a buyer-safe `resolution`.
+Immediate resolution may record both times together. Timestamps MUST be
+ordered `received_at <= acknowledged_at <= resolved_at`. MediaBuy revision
+does not change. Missing the response promise does not reset the clock or
+automatically resolve the report. No resolution-time commitment is implied.
+Only seller-owned processing can advance these states; buyers cannot assert
+acknowledgement or resolution through this task. Resolved reports are terminal;
+a recurring incident uses a new report.

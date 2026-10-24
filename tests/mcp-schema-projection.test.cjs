@@ -119,8 +119,10 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // version bumped), bounded at 462 KiB for the beta.1 window.
 // Core gender adds its shared predicate and support rules; the merged inputs
 // measure 468,555 bytes / 457.57 KiB, within the existing 462 KiB ceiling.
+// Product service commitments (#8408) add report/poll request shapes. The
+// media-buy context measures 473,582 bytes / 462.48 KiB; bound it at 463 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 462,
+  'media-buy': 463,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -167,9 +169,11 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // Core gender's predicate, capability, and complete readback closure reaches
 // the seeded Product. The merged controller input measures 1_309_147 bytes;
 // bound it at 1_310_000 so every storyboard fixture still compiles.
-// This is the parity-test compiler allowance; the independent 4 MiB schema,
-// 22 MiB projection, and role model-context budgets are unchanged.
-const PARITY_COMPILE_LIMIT = 1_310_000;
+// Product service commitments (#8408) reach the seeded Product and seller
+// capabilities. After shortening repeated SLA prose, the controller measures
+// 1_313_240 bytes; bound compilation at 1_315_000. Every fixture still compiles;
+// the independent 4 MiB schema and 22 MiB projection budgets are unchanged.
+const PARITY_COMPILE_LIMIT = 1_315_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
