@@ -70,11 +70,20 @@ Specific capability claims. Each specialism lives under exactly one protocol. An
 
 Specialisms carry a `status`:
 
-- **`stable`** — fully specified storyboard. Compliance runner executes every phase; `AAO Verified` means the agent demonstrably passed.
-- **`preview`** — ID and scope are reserved; the storyboard is a placeholder while the underlying protocol surface stabilizes. Agents may claim these; the runner emits a result of `{ status: "preview", passed: null, reason: "storyboard not yet defined" }` instead of a verified pass/fail. AAO badges render preview specialisms with a distinct indicator.
+- **`stable`** — fully specified storyboard. The runner grades every phase, and a passing claim counts toward the `AAO Verified` badge for its role. Removing a stable specialism is a breaking change (see [conformance-suite versioning](/docs/reference/versioning#spec-registry-conformance-and-experimental-changes)).
+- **`preview`** — the ID and scope are published but not yet committed. Most preview storyboards are fully authored and the runner grades them exactly like stable ones, reporting pass or fail; a few are placeholders with no steps of their own while the underlying protocol surface stabilizes (`sponsored-intelligence` grades through its protocol baseline). Agents may claim preview specialisms, but a preview claim does not count toward `AAO Verified` badge issuance or eligibility: an agent whose only declared specialisms are preview is reported with the `no_declared_specialisms` blocker. A preview specialism can be renamed, reshaped, reclassified, or removed in a patch release of the conformance suite.
 - **`deprecated`** — retained for backward compatibility but scheduled for removal in a future major. Runner emits `{ status: "deprecated", passed: <boolean>, reason: "..." }` — still executes the storyboard if one exists, but warns the claim should be migrated.
 
 Status is declared per-specialism in the YAML frontmatter and surfaced in `/compliance/{version}/index.json`.
+
+A preview specialism is promoted to `stable` when all of the following hold:
+
+1. **The storyboard grades the mechanics.** It is not a placeholder, and its phases assert the behavior that distinguishes the specialism, not only schema validity.
+2. **A reference implementation passes it in CI.** The training agent declares the specialism and the storyboard runs in the storyboard matrix.
+3. **An independent agent has passed it.** At least one implementation other than the training agent has run the storyboard and reported the result on the specialism's issue.
+4. **The working group has ratified it.** The decision record that introduced the specialism is accepted, including its name and any optional-phase gating.
+
+A promotion is called out in the release notes of the release that carries it. Promotion is additive for agents already claiming the specialism: their claim starts counting toward badges, and the storyboard they were graded against does not change.
 
 Specialisms are grouped below by parent protocol.
 
@@ -319,7 +328,7 @@ The storyboard runner:
 1. Runs every storyboard in `/compliance/{version}/universal/`
 2. For each protocol in `supported_protocols`, runs the baseline at `/compliance/{version}/protocols/{protocol}/` (snake_case → kebab-case)
 3. Runs each claimed specialism's storyboard at `/compliance/{version}/specialisms/{id}/`
-4. For `preview` specialisms, emits a warning instead of a pass/fail verdict — AAO Verified badges render preview specialisms with a distinct indicator
+4. Grades `preview` specialisms the same way, but leaves them out of AAO Verified badge issuance
 
 <Warning>
 **Implement the tools AND claim the specialism.** An agent that wires all of a specialism's required tools but omits the kebab-case ID from `capabilities.specialisms[]` will be graded **"No applicable tracks found"** by the runner — `tracks_passed = 0, tracks_failed = 0, tracks_skipped = 1`. This is a silent pass at the step level and a silent fail at the track level. The fix is to add the specialism ID (e.g., `"creative-generative"`) to your `get_adcp_capabilities` response.
