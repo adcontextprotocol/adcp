@@ -126,6 +126,70 @@
         { "required": ["latest_effective_at"] }
       ],
       "additionalProperties": false
+    },
+    {
+      "title": "Volume change constraints",
+      "type": "object",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "properties": {
+        "kind": { "type": "string", "const": "volume" },
+        "min_result_impressions": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Minimum resulting impression goal, an absolute floor."
+        },
+        "max_result_impressions": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum resulting impression goal."
+        }
+      },
+      "required": ["kind"],
+      "anyOf": [
+        { "required": ["min_result_impressions"] },
+        { "required": ["max_result_impressions"] }
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Alternates constraints",
+      "type": "object",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Seller-held only. An ordered chain of replacement targeting overlays, such as the substitute programs of a broadcast line.",
+      "properties": {
+        "kind": { "type": "string", "const": "alternates" },
+        "alternates": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Display name, such as the program title."
+              },
+              "targeting_overlay": {
+                "$ref": "/schemas/core/targeting.json",
+                "description": "A complete replacement targeting_overlay."
+              }
+            },
+            "required": ["targeting_overlay"],
+            "additionalProperties": false
+          },
+          "description": "A forward-only chain after the value in force. The seller MUST use the first available entry after the one in effect and records each skipped entry."
+        },
+        "minimum_notice": {
+          "$ref": "/schemas/core/duration.json",
+          "description": "Minimum elapsed notice before the start of the affected period."
+        }
+      },
+      "required": ["kind", "alternates"],
+      "additionalProperties": false
     }
   ],
   "definitions": {

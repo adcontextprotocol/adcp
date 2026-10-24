@@ -12,6 +12,6 @@
   ],
   "enumDescriptions": {
     "buyer": "Originated by the buyer, including a buyer's revision of a seller offer. The implied value when absent.",
-    "seller": "An offer against an accepted media buy: always committed, always carries offer_reason, and takes effect only when the buyer calls accept_proposal."
+    "seller": "An offer against an accepted media buy: always committed, always carries offer_reason, and takes effect only when the buyer calls accept_proposal. The exception is the accepted successor minted when a seller-held change term is applied (offer_reason term_applied)."
   }
 }

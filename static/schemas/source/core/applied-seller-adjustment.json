@@ -4,7 +4,7 @@
   "title": "Applied Seller Adjustment",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "Record of one change the seller applied to a live media buy within a seller_adjustable_terms entry. It is the readback in get_media_buys applied_adjustments[] and its adjustment_id is the notification_id of media_buy.allowance_applied. Each application advances the buy's revision, as every committed change does. The revision history entry records the origin in actor (seller_system for automation, seller_operator when a person applied it), plus allowance_id and reason, and the account change feed record carries the same origin.kind, allowance_id and reason. Experimental in AdCP 3.3 (media_buy.seller_adjustment_allowances).",
+  "description": "Record of one change the seller applied to a live media buy under a seller-held change term (change_terms[] with holder seller). It is the readback in get_media_buys applied_adjustments[] and its adjustment_id is the notification_id of media_buy.allowance_applied. Each application advances the buy's revision and mints an accepted successor proposal, named by accepted_proposal_id, that carries the terms forward. The revision history entry records the origin in actor (seller_system for automation, seller_operator when a person applied it), plus term_id and reason, and the account change feed record carries the same origin.kind, term_id and reason. Experimental in AdCP 3.3 (media_buy.seller_adjustment_allowances).",
   "type": "object",
   "properties": {
     "adjustment_id": {
@@ -15,17 +15,25 @@
       "x-entity": "applied_seller_adjustment",
       "description": "Seller-assigned identifier, unique within the seller's account namespace (it is the notification_id) and stable across re-emissions."
     },
-    "allowance_id": {
+    "term_id": {
       "type": "string",
       "minLength": 1,
       "maxLength": 255,
-      "x-entity": "seller_adjustment_allowance",
-      "description": "The seller_adjustable_terms entry in the accepted commercial_terms that authorized this change."
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "x-entity": "media_buy_change_term",
+      "description": "The seller-held change_terms[] entry in the accepted commercial_terms that authorized this change."
     },
     "revision": {
       "type": "integer",
       "minimum": 1,
       "description": "The media buy revision this application created."
+    },
+    "accepted_proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal",
+      "description": "The accepted successor proposal minted by this application (offer_reason term_applied). Its parent_proposal_id is the proposal that was accepted before, and its base_media_buy_revision is revision minus one. It becomes the buy's accepted_proposal_id."
     },
     "applied_at": {
       "type": "string",
@@ -42,11 +50,9 @@
       "minimum": 0,
       "description": "Echoes the term's purchase_index."
     },
-    "path": {
-      "type": "string",
-      "minLength": 2,
-      "maxLength": 500,
-      "description": "RFC 6901 JSON Pointer into the purchase, as declared by the term."
+    "action": {
+      "$ref": "/schemas/enums/canonical-media-buy-action.json",
+      "description": "The term's action: decrease_budget, update_impression_goal, update_flight_dates or update_targeting."
     },
     "package_id": {
       "type": "string",
@@ -62,7 +68,7 @@
         "array",
         "null"
       ],
-      "description": "The value at path before this change."
+      "description": "The affected field's value before this change: the purchase budget or impressions (a number), an object with start_time and end_time (update_flight_dates), or the purchase targeting_overlay (update_targeting)."
     },
     "value": {
       "type": [
@@ -73,16 +79,12 @@
         "array",
         "null"
       ],
-      "description": "The value at path after this change."
-    },
-    "cumulative_change": {
-      "type": "number",
-      "description": "Numeric fields: the absolute total change from the value in the accepted terms, including this one. Lets a buyer check max_change_fraction."
+      "description": "The affected field's value after this change, in the same shape as previous_value."
     },
     "alternate_index": {
       "type": "integer",
       "minimum": 0,
-      "description": "Position in the term's constraint.alternates[] that was used, when the change selected an alternate."
+      "description": "Position in the term's constraints.alternates[] that was used, when the change selected an alternate."
     },
     "skipped_alternates": {
       "type": "array",
@@ -114,12 +116,13 @@
   },
   "required": [
     "adjustment_id",
-    "allowance_id",
+    "term_id",
     "revision",
+    "accepted_proposal_id",
     "applied_at",
     "reason",
     "purchase_index",
-    "path",
+    "action",
     "previous_value",
     "value"
   ],
@@ -131,18 +134,18 @@
   "additionalProperties": false,
   "examples": [
     {
-      "description": "A budget release applied within a 20% reduce-only term",
+      "description": "A budget release applied within a seller-held decrease_budget term with a 4,000 USD floor",
       "data": {
         "adjustment_id": "adj_mb_a_0003",
-        "allowance_id": "allow_release_1",
+        "term_id": "release_budget_1",
         "revision": 6,
+        "accepted_proposal_id": "prop_accepted_mb_a_0006",
         "applied_at": "2026-11-12T09:30:00Z",
         "reason": "forecast_shortfall",
         "purchase_index": 0,
-        "path": "/budget",
+        "action": "decrease_budget",
         "previous_value": 5000,
-        "value": 4600,
-        "cumulative_change": 400
+        "value": 4600
       }
     }
   ]

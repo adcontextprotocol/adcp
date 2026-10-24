@@ -5029,6 +5029,7 @@ async function runTests() {
     name: 'Postpone the November installment',
     proposal_kind: 'media_buy_update',
     proposal_initiator: 'seller',
+    offer_reason: 'installment_postponed',
     proposal_status: 'committed',
     parent_proposal_id: 'prop_nova_za_01',
     media_buy_id: 'mb_nova_za_0412',

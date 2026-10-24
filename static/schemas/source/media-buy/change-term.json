@@ -2,24 +2,50 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/change-term.json",
   "title": "Media Buy Change Term",
-  "description": "A proposal-bound buyer change right. It binds to the resulting media buy and account, not personally to the caller, and may be exercised by any caller admitted by both seller account authorization and applicable signed governance delegation.",
+  "description": "A proposal-bound change right. With holder absent or buyer it is a buyer change right: it binds to the resulting media buy and account, not personally to the caller, and may be exercised by any caller admitted by both seller account authorization and applicable signed governance delegation. With holder seller (experimental) it is a bounded change the seller may apply to one purchase without an offer; the seller states it and the buyer binds it through accept_proposal. It is never a buyer right or an available_actions[] projection. Sellers MUST NOT emit holder, purchase_index or a seller-held term below AdCP 3.3.",
   "x-adcp-validation": {
     "verifier_constraints": {
       "allowed_statuses": "Every value is a non-terminal MediaBuy status. The current buy projection omits the action outside these statuses without extinguishing the negotiated right.",
       "constraint_action_compatibility": {
         "budget": ["increase_budget", "decrease_budget", "reallocate_budget", "update_budget_allocation", "update_spend_target"],
         "flight": ["extend_flight", "shorten_flight", "update_flight_dates"],
+        "volume": ["update_impression_goal"],
+        "alternates": ["update_targeting"],
         "package_count": ["add_packages", "remove_packages"],
         "effective_timing": ["pause", "resume", "cancel"],
         "on_violation": "reject_proposal"
       },
       "constraint_currency": "Every monetary constraint currency equals the commercial terms purchase currency.",
-      "constraint_consistency": "Minimum result does not exceed maximum result; earliest timestamp does not exceed latest timestamp."
+      "constraint_consistency": "Minimum result does not exceed maximum result; earliest timestamp does not exceed latest timestamp.",
+      "seller_held_terms": {
+        "purchase_index": "less_than_purchases_length_and_preserved_by_amendments",
+        "bounds": "at_least_one_absolute_result_bound_and_no_relative_bound",
+        "alternates": "valid_targeting_and_never_raises_spend",
+        "purchase_window": "inside_commercial_terms_start_time_and_end_time",
+        "flight_length": "never_lengthens_time_priced_or_shortens_flat_rate_purchase",
+        "total_budget": "budget_decrease_decreases_total_budget_when_present_by_same_amount",
+        "on_violation": "reject_proposal"
+      }
     }
   },
   "type": "object",
   "properties": {
     "term_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "media_buy_change_term" },
+    "holder": {
+      "type": "string",
+      "enum": ["buyer", "seller"],
+      "default": "buyer",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.seller_adjustment_allowances). Absent means buyer. A seller-held term requires purchase_index and constraints, takes only decrease_budget, update_impression_goal, update_flight_dates or update_targeting, and no service_mode or processing_sla."
+    },
+    "purchase_index": {
+      "type": "integer",
+      "minimum": 0,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Position in commercial_terms.purchases. Required when holder is seller; on a buyer-held term it narrows the right, and absent means the whole media buy."
+    },
     "action": { "allOf": [{ "$ref": "/schemas/enums/canonical-media-buy-action.json" }], "not": { "const": "report_media_buy_issue" }, "description": "A buyer change right. Operational issue reporting is not a commercial amendment and cannot be negotiated here." },
     "service_mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
     "allowed_statuses": {
@@ -51,6 +77,76 @@
     "description": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Display-only summary; it cannot grant authority, add an action, or override typed fields." },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
-  "required": ["term_id", "action", "service_mode"],
-  "additionalProperties": false
+  "required": ["term_id", "action"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "holder": { "const": "seller" } }, "required": ["holder"] },
+      "then": {
+        "required": ["purchase_index", "constraints"],
+        "properties": {
+          "action": { "enum": ["decrease_budget", "update_impression_goal", "update_flight_dates", "update_targeting"] }
+        },
+        "not": { "anyOf": [{ "required": ["service_mode"] }, { "required": ["processing_sla"] }] }
+      },
+      "else": {
+        "required": ["service_mode"],
+        "properties": {
+          "constraints": { "not": { "properties": { "kind": { "const": "alternates" } }, "required": ["kind"] } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "holder": { "const": "seller" } }, "required": ["holder"] },
+      "then": {
+        "allOf": [
+          {
+            "if": { "properties": { "action": { "const": "decrease_budget" } }, "required": ["action"] },
+            "then": {
+              "properties": {
+                "constraints": {
+                  "required": ["kind", "min_result_amount"],
+                  "properties": { "kind": { "const": "budget" } },
+                  "not": { "anyOf": [{ "required": ["max_delta_amount"] }, { "required": ["max_delta_percent"] }, { "required": ["max_result_amount"] }] }
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "action": { "const": "update_flight_dates" } }, "required": ["action"] },
+            "then": {
+              "properties": {
+                "constraints": {
+                  "required": ["kind"],
+                  "properties": { "kind": { "const": "flight" } },
+                  "anyOf": [{ "required": ["earliest_result"] }, { "required": ["latest_result"] }],
+                  "not": { "required": ["max_change"] }
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "action": { "const": "update_impression_goal" } }, "required": ["action"] },
+            "then": {
+              "properties": {
+                "constraints": {
+                  "required": ["kind", "min_result_impressions"],
+                  "properties": { "kind": { "const": "volume" } },
+                  "not": { "required": ["max_result_impressions"] }
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "action": { "const": "update_targeting" } }, "required": ["action"] },
+            "then": {
+              "properties": {
+                "constraints": { "required": ["kind"], "properties": { "kind": { "const": "alternates" } } }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
 }

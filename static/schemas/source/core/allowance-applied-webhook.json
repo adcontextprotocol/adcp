@@ -4,7 +4,7 @@
   "title": "Allowance Applied Webhook",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "Account-anchored invalidation fired after a seller applies a change to a live media buy under a seller_adjustable_terms entry. Experimental in AdCP 3.3 (media_buy.seller_adjustment_allowances). Registered through sync_accounts notification_configs with event_types: [\"media_buy.allowance_applied\"]. The payload is not authoritative: receivers verify signing, dedupe by idempotency_key, then repair through get_media_buys, which lists the change in applied_adjustments[]. Push is optional; polling sees every applied adjustment.",
+  "description": "Account-anchored invalidation fired after a seller applies a change to a live media buy under a seller-held change term (change_terms[] with holder seller). Experimental in AdCP 3.3 (media_buy.seller_adjustment_allowances). Registered through sync_accounts notification_configs with event_types: [\"media_buy.allowance_applied\"]. The payload is not authoritative: receivers verify signing, dedupe by idempotency_key, then repair through get_media_buys, which lists the change in applied_adjustments[]. Push is optional; polling sees every applied adjustment.",
   "type": "object",
   "properties": {
     "idempotency_key": {
@@ -52,11 +52,12 @@
       "x-entity": "applied_seller_adjustment",
       "description": "The applied adjustment. notification_id equals it."
     },
-    "allowance_id": {
+    "term_id": {
       "type": "string",
       "minLength": 1,
       "maxLength": 255,
-      "x-entity": "seller_adjustment_allowance"
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "x-entity": "media_buy_change_term"
     },
     "revision": {
       "type": "integer",
@@ -72,11 +73,9 @@
     "ext": {
       "$ref": "/schemas/core/ext.json"
     },
-    "path": {
-      "type": "string",
-      "minLength": 2,
-      "maxLength": 500,
-      "description": "RFC 6901 JSON Pointer to the field that changed. The value is in get_media_buys applied_adjustments[], never in this payload."
+    "action": {
+      "$ref": "/schemas/enums/canonical-media-buy-action.json",
+      "description": "The term's action. The values are in get_media_buys applied_adjustments[], never in this payload."
     }
   },
   "required": [
@@ -88,10 +87,10 @@
     "account_id",
     "media_buy_id",
     "adjustment_id",
-    "allowance_id",
+    "term_id",
     "revision",
     "reason",
-    "path"
+    "action"
   ],
   "additionalProperties": false,
   "examples": [
@@ -106,10 +105,10 @@
         "account_id": "acc_example",
         "media_buy_id": "mb_a",
         "adjustment_id": "adj_mb_a_0003",
-        "allowance_id": "allow_release_1",
         "revision": 6,
         "reason": "forecast_shortfall",
-        "path": "/budget"
+        "term_id": "release_budget_1",
+        "action": "decrease_budget"
       }
     }
   ]

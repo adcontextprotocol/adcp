@@ -58,7 +58,7 @@
     },
     "offer_reason": {
       "$ref": "/schemas/enums/offer-reason.json",
-      "description": "Why the seller made this offer. One of installment_postponed, installment_cancelled, preemption, under_delivery, or seller_request."
+      "description": "Why the seller made this offer. One of installment_postponed, installment_cancelled, preemption, under_delivery, or seller_request (never term_applied, which marks an accepted successor and is not announced as an offer)."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
@@ -98,13 +98,7 @@
     {
       "properties": {
         "offer_reason": {
-          "enum": [
-            "installment_postponed",
-            "installment_cancelled",
-            "preemption",
-            "under_delivery",
-            "seller_request"
-          ]
+          "not": { "const": "term_applied" }
         }
       }
     }

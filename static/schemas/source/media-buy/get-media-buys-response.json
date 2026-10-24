@@ -61,7 +61,7 @@
             "items": { "$ref": "/schemas/core/applied-seller-adjustment.json" },
             "x-status": "experimental",
             "x-added-in": "3.3.0",
-            "description": "Experimental (media_buy.seller_adjustment_allowances). Changes the seller applied under the buy's accepted seller_adjustable_terms, oldest first. This is the repair read for media_buy.allowance_applied. Omit when empty. Sellers MUST NOT include the field for callers pinned below AdCP 3.3; a caller with no declared pin is treated as pinned below 3.3."
+            "description": "Experimental (media_buy.seller_adjustment_allowances). Changes the seller applied under the buy's accepted seller-held change_terms[] entries, oldest first. Each one minted an accepted successor proposal, which is the buy's accepted_proposal_id after it. This is the repair read for media_buy.allowance_applied. Omit when empty. Sellers MUST NOT include the field for callers pinned below AdCP 3.3; a caller with no declared pin is treated as pinned below 3.3."
           },
           "account": {
             "$ref": "/schemas/core/account.json",
@@ -290,14 +290,15 @@
                   "description": "Package affected, when the change targeted a specific package.",
                   "x-entity": "package"
                 },
-                "allowance_id": {
+                "term_id": {
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 255,
-                  "x-entity": "seller_adjustment_allowance",
+                  "pattern": "^[A-Za-z0-9_.:-]+$",
+                  "x-entity": "media_buy_change_term",
                   "x-status": "experimental",
                   "x-added-in": "3.3.0",
-                  "description": "The seller_adjustable_terms entry that authorized this change. When present, actor is seller_system or seller_operator and reason is required. The account change feed record for the same change carries the same allowance_id."
+                  "description": "The seller-held change_terms[] entry that authorized this change. When present, actor is seller_system or seller_operator and reason is required. The account change feed record for the same change carries the same term_id."
                 },
                 "reason": {
                   "type": "string",
@@ -305,7 +306,7 @@
                   "pattern": "^[a-z][a-z0-9_.-]{0,99}$",
                   "x-status": "experimental",
                   "x-added-in": "3.3.0",
-                  "description": "Short machine-readable reason code, the same shape as the reason on an account change record. Human-readable text goes in summary. Required with allowance_id."
+                  "description": "Short machine-readable reason code, the same shape as the reason on an account change record. Human-readable text goes in summary. Required with term_id."
                 },
                 "ext": {
                   "$ref": "/schemas/core/ext.json"
@@ -313,7 +314,7 @@
               },
               "allOf": [
                 {
-                  "if": { "required": ["allowance_id"] },
+                  "if": { "required": ["term_id"] },
                   "then": {
                     "required": ["actor", "reason"],
                     "properties": { "actor": { "enum": ["seller_system", "seller_operator"] } }

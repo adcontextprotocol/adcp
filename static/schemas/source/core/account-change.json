@@ -170,14 +170,15 @@
       "maxLength": 100,
       "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
     },
-    "allowance_id": {
+    "term_id": {
       "type": "string",
       "minLength": 1,
       "maxLength": 255,
-      "x-entity": "seller_adjustment_allowance",
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "x-entity": "media_buy_change_term",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.seller_adjustment_allowances). The seller_adjustable_terms entry that authorized this change when the seller applied it unilaterally. origin.kind is seller_system, or seller_operator when a person applied it, and reason is present. The media buy history entry for the same revision carries the same allowance_id."
+      "description": "Experimental (media_buy.seller_adjustment_allowances). The seller-held change_terms[] entry that authorized this change when the seller applied it unilaterally. origin.kind is seller_system, or seller_operator when a person applied it, and reason is present. The media buy history entry for the same revision carries the same term_id."
     },
     "summary": {
       "type": "string",

@@ -11,13 +11,15 @@
     "installment_cancelled",
     "preemption",
     "under_delivery",
-    "seller_request"
+    "seller_request",
+    "term_applied"
   ],
   "enumDescriptions": {
     "installment_postponed": "A scheduled installment cannot run on its agreed date; the offer proposes a new date, a substitute, or a credit.",
     "installment_cancelled": "A scheduled installment will not run; the offer proposes a replacement, a credit, or a negotiated cancellation of that scope.",
     "preemption": "Booked inventory was preempted, typically linear. The offer proposes replacement inventory; the aired replacement is a by_spot row with replaces_spot_id.",
     "under_delivery": "The buy is forecast to miss its committed volume; the offer proposes a remedy such as an extension, a budget move, bonus units, or a makegood.",
-    "seller_request": "The seller needs different terms for a reason no other value names. Use sparingly; name and description explain."
+    "seller_request": "The seller needs different terms for a reason no other value names. Use sparingly; name and description explain.",
+    "term_applied": "Not an offer: the accepted successor minted when a seller applies a seller-held change term. Always accepted; never announced by proposal.offered."
   }
 }

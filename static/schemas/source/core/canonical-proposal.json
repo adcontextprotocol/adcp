@@ -11,7 +11,7 @@
       "$ref": "/schemas/enums/proposal-initiator.json",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.seller_offers). Absent means buyer. A seller proposal is an offer to amend or cancel an accepted media buy: it requires offer_reason, a media_buy_update or media_buy_cancellation kind, status committed (accepted once the buyer accepts) and a proposal_id matching the proposal.offered notification_id pattern. Sellers MUST NOT emit it to callers pinned below AdCP 3.3; no declared pin counts as below 3.3."
+      "description": "Experimental (media_buy.seller_offers). Absent means buyer. A seller proposal is an offer to amend or cancel an accepted media buy: it requires offer_reason, a media_buy_update or media_buy_cancellation kind, status committed (accepted once the buyer accepts) and a proposal_id matching the proposal.offered notification_id pattern. The exception is the accepted successor minted when a seller-held change term is applied (offer_reason term_applied). Sellers MUST NOT emit it to callers pinned below AdCP 3.3; no declared pin counts as below 3.3."
     },
     "offer_reason": {
       "$ref": "/schemas/enums/offer-reason.json",
@@ -219,7 +219,12 @@
     },
     {
       "if": { "properties": { "proposal_kind": { "const": "media_buy_cancellation" } }, "required": ["proposal_kind"] },
-      "then": { "properties": { "commercial_terms": { "required": ["cancellation_terms"], "not": { "anyOf": [{ "required": ["definition_pins"] }, { "required": ["seller_adjustable_terms"] }] } } } }
+      "then": { "properties": { "commercial_terms": { "required": ["cancellation_terms"], "not": { "required": ["definition_pins"] }, "properties": { "change_terms": { "items": { "not": { "properties": { "holder": { "const": "seller" } }, "required": ["holder"] } } } } } } }
+    },
+    {
+      "description": "term_applied marks the accepted successor of an applied seller-held term, never an offer.",
+      "if": { "properties": { "offer_reason": { "const": "term_applied" } }, "required": ["offer_reason"] },
+      "then": { "properties": { "proposal_kind": { "const": "media_buy_update" }, "proposal_status": { "const": "accepted" } } }
     }
   ],
   "additionalProperties": false

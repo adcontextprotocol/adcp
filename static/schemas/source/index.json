@@ -926,17 +926,13 @@
           "$ref": "/schemas/core/indicators-changed-webhook.json",
           "description": "Account-level invalidation payload for a semantic indicator snapshot change"
         },
-        "seller-adjustable-term": {
-          "$ref": "/schemas/core/seller-adjustable-term.json",
-          "description": "One purchase field the buyer pre-authorizes the seller to change unilaterally, with its bounds. Experimental."
-        },
         "applied-seller-adjustment": {
           "$ref": "/schemas/core/applied-seller-adjustment.json",
-          "description": "Record of one change the seller applied under an allowance. Experimental."
+          "description": "Record of one change the seller applied under a seller-held change term. Experimental."
         },
         "allowance-applied-webhook": {
           "$ref": "/schemas/core/allowance-applied-webhook.json",
-          "description": "Account-level invalidation payload for a seller change applied under an allowance. Experimental."
+          "description": "Account-level invalidation payload for a seller change applied under a seller-held change term. Experimental."
         },
         "proposal-offered-webhook": {
           "$ref": "/schemas/core/proposal-offered-webhook.json",
