@@ -25,6 +25,8 @@ const WHOLE_FILE_3_3 = [
   'error-details/account-ambiguous.json',
   'account/request-account-response.json',
   'account/get-account-requests-response.json',
+  // Account updates (account.updates, #8280).
+  'account/update-account-response.json',
   'core/audience-size.json',
   'enums/audience-size-precision.json',
   'enums/audience-match-rate-basis.json',
@@ -44,6 +46,14 @@ const WHOLE_FILE_3_3 = [
 ];
 
 const PROPERTIES_3_3 = [
+  ['account/sync-accounts-request.json', ['properties', 'accounts', 'items', 'properties', 'brand_identity']],
+  ['core/account-identity-change.json', ['oneOf', 0, 'properties', 'requested_brand_identity']],
+  ['core/account-identity-change.json', ['oneOf', 0, 'properties', 'pending_action']],
+  ['core/account-identity-change.json', ['oneOf', 1, 'properties', 'requested_brand_identity']],
+  ['core/account-identity-change-preview.json', ['oneOf', 0, 'properties', 'requested_brand_identity']],
+  ['core/account-identity-change-preview.json', ['oneOf', 1, 'properties', 'requested_brand_identity']],
+  ['core/account-identity-change-preview.json', ['oneOf', 2, 'properties', 'requested_brand_identity']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'account', 'properties', 'updates']],
   ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'request_id']],
   ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'resolution']],
   ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'setup', 'properties', 'waiting_on']],

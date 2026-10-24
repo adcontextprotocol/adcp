@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/update-account-request.json",
+  "title": "Update Account Request",
+  "x-status": "experimental",
+  "description": "Change settings or identity on one existing account (experimental, account.updates). Same semantics as a sync_accounts settings-update entry, for exactly one account: fields omitted are unchanged, every persisted change advances the account revision, and identity changes are revisioned and may wait for seller approval. Sellers enforce these runtime rules so the MCP input schema stays a plain root object: operator_identity and brand_identity each require revision; destination_billing_entity requires operator_identity; at least one change field is present. A violation is INVALID_REQUEST.",
+  "x-tool-summary": "Change settings or identity on one existing account, with optimistic concurrency.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "adcp_version": {
+      "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key that makes retries of this call safe, with the standard replay semantics. Use a fresh UUID v4 for each logical update.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "The account to change. Prefer { account_id }; a current natural key is accepted while natural-key references remain valid in 3.x."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Expected current account revision. Required with operator_identity or brand_identity; optional otherwise. The seller compares it atomically with the write and rejects a mismatch with CONFLICT, leaving the account unchanged. Obtain it from list_accounts, sync_accounts, or a previous update_account result."
+    },
+    "operator_identity": {
+      "$ref": "/schemas/core/operator-identity.json",
+      "description": "Complete desired operator identity, with the semantics of the sync_accounts settings-update field of the same name. Gated by account.identity_updates.supported_changes."
+    },
+    "destination_billing_entity": {
+      "$ref": "/schemas/core/business-entity.json",
+      "description": "Staged billing identity for the destination operator during an operator-domain handoff on an operator-billed account, with the semantics of the sync_accounts field of the same name. Write-only while approval is pending."
+    },
+    "brand_identity": {
+      "$ref": "/schemas/core/brand-key.json",
+      "description": "Complete desired BrandKey. Only countries may differ from the account's current brand; a different domain or brand_id is a different brand and is rejected with INVALID_REQUEST. Requires revision and account.identity_updates.supported_changes containing brand_countries. The seller preserves account_id and account-scoped history, rejects a collision with another account's natural key as ACCOUNT_IDENTITY_CONFLICT without merging, and may apply the change, hold it in pending_approval, or reject it."
+    },
+    "billing_entity": {
+      "$ref": "/schemas/core/business-entity.json",
+      "description": "Replacement business entity for the account's current invoiced party. Bank details are write-only."
+    },
+    "payment_terms": {
+      "$ref": "/schemas/enums/payment-terms.json",
+      "description": "Requested payment terms. The seller accepts them or rejects the update; terms are never silently remapped."
+    },
+    "notification_configs": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/notification-config.json"
+      },
+      "maxItems": 16,
+      "description": "Complete desired account-level webhook subscribers, with the sync_accounts semantics: [] removes all subscribers, and an existing subscriber_id is replaced. Credentials in authentication are write-only."
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, validate and return a preview without persisting anything or advancing revision. Identity changes return identity_change_preview."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Add a country to the advertiser identity",
+      "data": {
+        "adcp_version": "3.3",
+        "idempotency_key": "0b6c9f2e-4d1a-4a7e-8c3b-5f2d7e9a1c40",
+        "account": {
+          "account_id": "acc_renault_wpp"
+        },
+        "revision": 7,
+        "brand_identity": {
+          "domain": "renault.fr",
+          "countries": [
+            "BE",
+            "FR"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Replace the billing entity",
+      "data": {
+        "adcp_version": "3.3",
+        "idempotency_key": "7e2a4c91-3b5d-4f08-a6c2-9d1e8b7f3a20",
+        "account": {
+          "account_id": "acc_renault_wpp"
+        },
+        "billing_entity": {
+          "legal_name": "WPP Media France SAS"
+        }
+      }
+    }
+  ]
+}

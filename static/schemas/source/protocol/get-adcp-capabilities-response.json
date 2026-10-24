@@ -678,6 +678,54 @@
       }
     },
     {
+      "description": "A seller advertising account.updates.supported: true lists account.updates in experimental_features.",
+      "if": {
+        "properties": {
+          "account": {
+            "properties": {
+              "updates": {
+                "properties": { "supported": { "const": true } },
+                "required": ["supported"]
+              }
+            },
+            "required": ["updates"]
+          }
+        },
+        "required": ["account"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "account.updates" } }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "description": "Brand countries reconciliation (identity_updates.supported_changes brand_countries) is part of the experimental account.updates surface.",
+      "if": {
+        "properties": {
+          "account": {
+            "properties": {
+              "identity_updates": {
+                "properties": {
+                  "supported_changes": { "contains": { "const": "brand_countries" } }
+                },
+                "required": ["supported_changes"]
+              }
+            },
+            "required": ["identity_updates"]
+          }
+        },
+        "required": ["account"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": { "contains": { "const": "account.updates" } }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
       "description": "A seller that fires account_request.changed supports caller-scoped notification subscriptions, where buyers register for it.",
       "if": {
         "properties": {
@@ -1337,6 +1385,32 @@
           "description": "Whether the seller-assigned account_id is a durable AccountRef for every account the caller can operate, including buyer-declared accounts. When true, the seller MUST return account_id on every resolved sync_accounts provisioning result, MUST accept { account_id } wherever an AccountRef is accepted, and MUST NOT change an account's account_id for the life of the account, including across identity reconciliation. A result that is still pending_approval while the seller reviews it MAY carry request_id (experimental, account.requests) and no account_id; a seller that may resolve such a request to an existing account MUST NOT issue an account_id until it resolves, because a later match would otherwise change the ID. A seller that only ever creates accounts MAY keep a placeholder account_id while the row is pending; new implementations SHOULD use request mode. A buyer-declared seller that declares true still accepts the account's current natural key throughout 3.x. Buyers holding an account_id from a seller that declares true SHOULD send it in place of the natural key. When false or absent, buyers follow the account model declared by require_operator_auth and MUST NOT assume a buyer-declared seller accepts its returned account_id. Sellers whose accounts already use account_id references (require_operator_auth: true) SHOULD declare true when their ids meet these rules. Using the natural key as the reference after provisioning is deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare true during 3.x to give buyers a migration path.",
           "default": false
         },
+        "updates": {
+          "type": "object",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Whether the seller supports update_account: settings and identity changes on one existing account, with the semantics of a sync_accounts settings-update entry. Identity changes remain gated by account.identity_updates. Experimental in 3.3 (#8280): sellers advertising supported: true MUST list account.updates in experimental_features. Buyers SHOULD prefer update_account over sync_accounts settings-update mode when it is supported.",
+          "oneOf": [
+            {
+              "title": "AccountUpdatesSupported",
+              "properties": {
+                "supported": { "type": "boolean", "const": true },
+                "update_task": { "type": "string", "const": "update_account" }
+              },
+              "required": ["supported", "update_task"],
+              "additionalProperties": true
+            },
+            {
+              "title": "AccountUpdatesUnsupported",
+              "properties": {
+                "supported": { "type": "boolean", "const": false }
+              },
+              "required": ["supported"],
+              "not": { "required": ["update_task"] },
+              "additionalProperties": true
+            }
+          ]
+        },
         "requests": {
           "type": "object",
           "x-status": "experimental",
@@ -1541,7 +1615,7 @@
         },
         "identity_updates": {
           "type": "object",
-          "description": "Whether the seller accepts buyer-desired operator identity reconciliation through sync_accounts settings-update entries. Sellers declaring support expose the exact identity transitions they implement, MUST return account revisions from sync_accounts and list_accounts, and MUST return identity_change_preview for dry-run identity updates.",
+          "description": "Whether the seller accepts buyer-desired identity reconciliation through sync_accounts settings-update entries and, when account.updates is supported, update_account. Sellers declaring support expose the exact identity transitions they implement, MUST return account revisions from sync_accounts and list_accounts, and MUST return identity_change_preview for dry-run identity updates.",
           "oneOf": [
             {
               "title": "AccountIdentityUpdatesSupported",
@@ -1553,13 +1627,14 @@
                 },
                 "supported_changes": {
                   "type": "array",
-                  "description": "Identity changes the seller accepts. operator_unit_name covers display-name-only reconciliation within the current operator. operator_unit covers adding, removing, or changing the stable unit id within the current operator and also implies name updates. operator covers an inter-entity operator-domain handoff and encompasses the entire replacement operator identity, including any simultaneous unit addition, removal, or change; a seller need not also advertise operator_unit for that cross-operator replacement.",
+                  "description": "Identity changes the seller accepts. operator_unit_name covers display-name-only reconciliation within the current operator. operator_unit covers adding, removing, or changing the stable unit id within the current operator and also implies name updates. operator covers an inter-entity operator-domain handoff and encompasses the entire replacement operator identity, including any simultaneous unit addition, removal, or change; a seller need not also advertise operator_unit for that cross-operator replacement. brand_countries (experimental, account.updates, new in 3.3) covers changing only the countries of the account's brand through brand_identity; a seller listing it lists account.updates in experimental_features.",
                   "items": {
                     "type": "string",
                     "enum": [
                       "operator_unit_name",
                       "operator_unit",
-                      "operator"
+                      "operator",
+                      "brand_countries"
                     ]
                   },
                   "minItems": 1,

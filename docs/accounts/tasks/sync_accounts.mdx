@@ -165,7 +165,7 @@ When a buyer discovers that an existing account has the wrong operator domain or
 }
 ```
 
-Identity reconciliation changes the same advertiser account; it is never provisioning or merging. The seller MUST resolve exactly one existing account, reject a target-key collision with [`ACCOUNT_IDENTITY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-account-identity-conflict), preserve `account_id`, historical media buys, reporting continuity, and other account-scoped history, and apply no identity change if it cannot preserve that continuity. `currency`, `sandbox`, and brand identity remain immutable through this field.
+Identity reconciliation changes the same advertiser account; it is never provisioning or merging. The seller MUST resolve exactly one existing account, reject a target-key collision with [`ACCOUNT_IDENTITY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-account-identity-conflict), preserve `account_id`, historical media buys, reporting continuity, and other account-scoped history, and apply no identity change if it cannot preserve that continuity. `currency` and `sandbox` remain immutable; the brand's countries change through `brand_identity` (below).
 
 An intra-operator unit change stays within the existing account authority boundary. An operator-domain handoff crosses that boundary and therefore has additional rules:
 
@@ -189,6 +189,37 @@ With `dry_run: true`, the seller performs the same account resolution, revision,
 - `blocked` identifies continuity, authorization, billing, grant, or active-resource blockers in `blockers`.
 
 The preview's `impacts[]` records whether account ID, media buys, reporting, approval, billing, and grants would be preserved, revalidated, revoked and regranted, or block the change. A natural-key collision returns `ACCOUNT_IDENTITY_CONFLICT` and a blocked preview. Dry-run results may use `action: "updated"` to describe the change that would occur or `action: "failed"` for a blocker; the top-level `dry_run: true` and `identity_change_preview` make clear that no mutation occurred. Dry runs MUST NOT return a persisted `identity_change`.
+
+### Reconciling brand countries
+
+<Note>
+**Experimental (`account.updates`, new in 3.3).** Sellers that accept it list `brand_countries` in `account.identity_updates.supported_changes` and `account.updates` in `experimental_features`. [`update_account`](/docs/accounts/tasks/update_account) carries the same field for one account at a time and is the preferred path when the seller supports it.
+</Note>
+
+Advertisers gain and lose markets. When a brand that sold in France starts selling in Belgium, the countries in its BrandKey change, and so does every account's natural key. A new provisioning entry would create a second account beside the first. Instead, change the existing account through settings-update mode with `brand_identity`, the complete desired BrandKey:
+
+```json
+{
+  "idempotency_key": "brand-identity-018f24c0-65d1-7c3a",
+  "accounts": [
+    {
+      "account": { "account_id": "acc_renault_wpp" },
+      "revision": 7,
+      "brand_identity": { "domain": "renault.fr", "countries": ["BE", "FR"] }
+    }
+  ]
+}
+```
+
+The rules follow operator reconciliation:
+
+- Only `countries` may differ from the account's current brand. A different `domain` or `brand_id` is a different brand, rejected with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request).
+- `revision` is required, compared atomically, and a mismatch returns `CONFLICT` without side effects.
+- The seller preserves `account_id` and account-scoped history, rejects a collision with another account's natural key as `ACCOUNT_IDENTITY_CONFLICT` without merging, and tombstones the former key so it returns `ACCOUNT_MOVED`.
+- The seller decides. It may apply the change, hold it as `identity_change.status: "pending_approval"`, or reject it with a reason. A rejection is how a seller says the new market needs its own account; the buyer then requests one.
+- A pending change carries `identity_change.requested_brand_identity` and, optionally, a `pending_action` saying whose turn it is. `requested_operator_identity` is still present, equal to the current operator identity when only the brand changes.
+- On an operator-billed account, a change of market can change who is invoiced. The seller re-runs its commercial approval and may require a new `billing_entity` before applying.
+- `dry_run: true` returns an `identity_change_preview` with `requested_brand_identity`.
 
 ## Response
 

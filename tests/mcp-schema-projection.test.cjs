@@ -126,9 +126,11 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // caller-level notification enum (473,582 → 476,029 bytes / 464.9 KiB
 // measured against main); bound it at 465 KiB. Rebased onto installments on
 // the canonical product (#8246), the merged inputs measure 477,312 bytes /
-// 466.1 KiB; bound it at 467 KiB.
+// 466.1 KiB; bound it at 467 KiB. Experimental update_account (#8280)
+// joins the 3.3 media-buy line (477,312 → 487,003 bytes / 475.6 KiB
+// measured); bound it at 476 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 467,
+  'media-buy': 476,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -183,7 +185,11 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // account_request.changed notification type and the pending-action enums on
 // sync_accounts setup (1_313_240 → 1_316_098 bytes measured against main);
 // descriptions were shortened to 1_314_961 bytes, and the limit is unchanged.
-const PARITY_COMPILE_LIMIT = 1_315_000;
+// Experimental account updates (#8280, #8442) reach it through the
+// account.updates capability block, brand_countries, and the brand fields on
+// identity changes (1_314_961 → 1_319_449 bytes measured); bound it at
+// 1_320_000.
+const PARITY_COMPILE_LIMIT = 1_320_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1241,7 +1247,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // to 21_021_886 bytes, so the cap moves to 22 MiB. Experimental
   // list_collections and the collection card webhooks (#8183) take it from
   // 21_151_775 to 21_294_989 bytes, still under the cap.
-  assert.ok(totalBytes < 22 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // Experimental update_account (#8280) adds a request and an Account-bearing
+  // response to every profile (23,225,368 bytes measured), so the cap moves to
+  // 24 MiB.
+  assert.ok(totalBytes < 24 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);
