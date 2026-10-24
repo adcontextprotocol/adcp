@@ -35,6 +35,54 @@ describe('sanitizeMeasurementCapabilities', () => {
     expect(m.accreditations?.[0].accrediting_body).toBe('MRC');
   });
 
+  it('preserves a display name and collapses whitespace in it', () => {
+    const out = sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'givt_rate', name: '  Invalid Traffic\nRate (GIVT) ' }],
+    });
+    expect(out.metrics[0].name).toBe('Invalid Traffic Rate (GIVT)');
+  });
+
+  it('omits name when the vendor does not send one', () => {
+    const out = sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'attention_units' }],
+    });
+    expect(out.metrics[0]).not.toHaveProperty('name');
+  });
+
+  it('rejects a name longer than 100 chars', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: 'x'.repeat(101) }],
+    })).toThrow(/name: exceeds 100/);
+  });
+
+  it('rejects an empty or whitespace-only name', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: ' \t ' }],
+    })).toThrow(/name: empty/);
+  });
+
+  it('rejects a non-string name', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: 42 }],
+    })).toThrow(/name: expected string/);
+  });
+
+  it('rejects scriptish content in name', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: '<script>alert(1)</script>' }],
+    })).toThrow(/scriptish/);
+  });
+
+  it('accepts duplicate names across distinct metric_ids', () => {
+    const out = sanitizeMeasurementCapabilities({
+      metrics: [
+        { metric_id: 'attention_units', name: 'Attention' },
+        { metric_id: 'attention_seconds', name: 'Attention' },
+      ],
+    });
+    expect(out.metrics.map(m => m.name)).toEqual(['Attention', 'Attention']);
+  });
+
   it('always sets verified_by_aao=false on accreditations even if vendor passes true', () => {
     const out = sanitizeMeasurementCapabilities({
       metrics: [{
