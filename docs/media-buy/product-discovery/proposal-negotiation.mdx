@@ -513,7 +513,7 @@ Experimental in AdCP 3.3 (`media_buy.seller_adjustment_allowances` in `experimen
 
 A seller-held term is never a buyer right: it does not project into `available_actions[]` or `change_term_id`, and a buyer reads `holder` before treating a term as something it may exercise. A seller MUST NOT emit `holder`, `purchase_index`, or a seller-held term to a caller pinned below AdCP 3.3.
 
-A seller-held term takes `term_id`, `action`, `purchase_index`, and `constraints`, and no `service_mode` or `processing_sla`. Four actions are available, each with one constraint kind and at least one **absolute** bound:
+A seller-held term takes `term_id`, `action`, `purchase_index`, and `constraints`, with `service_mode` fixed at `seller_managed` (the seller exercises it) and no `processing_sla`. Four actions are available, each with one constraint kind and at least one **absolute** bound:
 
 | `action` | `constraints.kind` | Required bound | Also allowed |
 |---|---|---|---|
@@ -541,6 +541,7 @@ Whatever the bounds say, these rules hold:
 {
   "term_id": "release_budget_1",
   "holder": "seller",
+  "service_mode": "seller_managed",
   "purchase_index": 0,
   "action": "decrease_budget",
   "constraints": { "kind": "budget", "min_result_amount": { "amount": 4000, "currency": "USD" } }
@@ -557,6 +558,7 @@ A date shift is a window the resulting flight must stay inside. This one lets th
 {
   "term_id": "shift_flight_1",
   "holder": "seller",
+  "service_mode": "seller_managed",
   "purchase_index": 0,
   "action": "update_flight_dates",
   "constraints": { "kind": "flight", "latest_result": "2026-12-03T00:00:00Z", "minimum_notice": { "interval": 24, "unit": "hours" } }
@@ -569,6 +571,7 @@ On a `flat_rate` purchase the seller cannot shorten the flight inside that windo
 {
   "term_id": "line_alternates_1",
   "holder": "seller",
+  "service_mode": "seller_managed",
   "purchase_index": 1,
   "action": "update_targeting",
   "constraints": {

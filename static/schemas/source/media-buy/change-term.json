@@ -37,7 +37,7 @@
       "default": "buyer",
       "x-status": "experimental",
       "x-added-in": "3.3.0",
-      "description": "Experimental (media_buy.seller_adjustment_allowances). Absent means buyer. A seller-held term requires purchase_index and constraints, takes only decrease_budget, update_impression_goal, update_flight_dates or update_targeting, and no service_mode or processing_sla."
+      "description": "Experimental (media_buy.seller_adjustment_allowances). Absent means buyer. A seller-held term requires purchase_index and constraints, takes only decrease_budget, update_impression_goal, update_flight_dates or update_targeting, service_mode seller_managed, and no processing_sla."
     },
     "purchase_index": {
       "type": "integer",
@@ -77,7 +77,7 @@
     "description": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Display-only summary; it cannot grant authority, add an action, or override typed fields." },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
-  "required": ["term_id", "action"],
+  "required": ["term_id", "action", "service_mode"],
   "additionalProperties": false,
   "allOf": [
     {
@@ -85,12 +85,12 @@
       "then": {
         "required": ["purchase_index", "constraints"],
         "properties": {
-          "action": { "enum": ["decrease_budget", "update_impression_goal", "update_flight_dates", "update_targeting"] }
+          "action": { "enum": ["decrease_budget", "update_impression_goal", "update_flight_dates", "update_targeting"] },
+          "service_mode": { "const": "seller_managed" }
         },
-        "not": { "anyOf": [{ "required": ["service_mode"] }, { "required": ["processing_sla"] }] }
+        "not": { "required": ["processing_sla"] }
       },
       "else": {
-        "required": ["service_mode"],
         "properties": {
           "constraints": { "not": { "properties": { "kind": { "const": "alternates" } }, "required": ["kind"] } }
         }

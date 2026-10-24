@@ -348,6 +348,7 @@ describe("seller offers (media_buy.seller_offers)", () => {
     const budgetTerm = (extra = {}) => ({
       term_id: "release_budget_1",
       holder: "seller",
+      service_mode: "seller_managed",
       purchase_index: 0,
       action: "decrease_budget",
       constraints: { kind: "budget", min_result_amount: money(4000) },
@@ -356,6 +357,7 @@ describe("seller offers (media_buy.seller_offers)", () => {
     const flightTerm = (extra = {}) => ({
       term_id: "shift_flight_1",
       holder: "seller",
+      service_mode: "seller_managed",
       purchase_index: 0,
       action: "update_flight_dates",
       constraints: {
@@ -368,6 +370,7 @@ describe("seller offers (media_buy.seller_offers)", () => {
     const volumeTerm = (extra = {}) => ({
       term_id: "cut_goal_1",
       holder: "seller",
+      service_mode: "seller_managed",
       purchase_index: 0,
       action: "update_impression_goal",
       constraints: { kind: "volume", min_result_impressions: 800000 },
@@ -376,6 +379,7 @@ describe("seller offers (media_buy.seller_offers)", () => {
     const alternatesTerm = (extra = {}) => ({
       term_id: "line_alternates_1",
       holder: "seller",
+      service_mode: "seller_managed",
       purchase_index: 0,
       action: "update_targeting",
       constraints: {
@@ -472,7 +476,7 @@ describe("seller offers (media_buy.seller_offers)", () => {
       );
     });
 
-    it("limits a seller-held term to four actions, a purchase, and no buyer routing fields", () => {
+    it("limits a seller-held term to four actions, a purchase, and seller_managed routing", () => {
       for (const action of ["pause", "increase_budget", "extend_flight", "cancel", "update_pacing", "add_packages"]) {
         assert.equal(validateTerm(budgetTerm({ action })), false, action);
       }
@@ -481,7 +485,10 @@ describe("seller offers (media_buy.seller_offers)", () => {
         delete bad[field];
         assert.equal(validateTerm(bad), false, field);
       }
-      assert.equal(validateTerm(budgetTerm({ service_mode: "seller_managed" })), false);
+      assert.equal(validateTerm(budgetTerm({ service_mode: "self_serve" })), false, "seller-held terms are seller_managed");
+      const noMode = budgetTerm();
+      delete noMode.service_mode;
+      assert.equal(validateTerm(noMode), false, "service_mode stays required for every term");
       assert.equal(validateTerm(budgetTerm({ processing_sla: { response_max: { interval: 1, unit: "hours" } } })), false);
       assert.equal(validateTerm(budgetTerm({ purchase_index: -1 })), false);
     });
