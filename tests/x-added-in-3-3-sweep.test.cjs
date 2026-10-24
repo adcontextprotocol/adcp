@@ -53,6 +53,7 @@ const PROPERTIES_3_3 = [
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'request_signing', 'properties', 'operation_sources']],
   ['formats/canonical/video_hosted.json', ['properties', 'loudness']],
   ['core/installment-deadlines.json', ['properties', 'change_cutoff']],
+  ['protocol/get-adcp-capabilities-request.json', ['properties', 'scope']],
   ['core/reporting-status-issue.json', ['properties', 'reporting_revision_id']],
   ['governance/check-governance-request.json', ['properties', 'budget_period_id']],
   ['governance/check-governance-response.json', ['properties', 'budget_period_id']],

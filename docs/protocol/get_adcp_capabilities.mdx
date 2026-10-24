@@ -95,6 +95,7 @@ Version Negotiation Flow:
 |-------|------|-------------|
 | `adcp_major_version` | integer | Optional. The AdCP major version the buyer's payloads conform to. When provided, the seller validates against its `major_versions` and returns [`VERSION_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-version-unsupported) if not in range. When omitted, the seller assumes the highest major version it supports. |
 | `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`, `brand`). If omitted, returns all supported protocols. |
+| `scope` | string | Optional, since 3.3. `full` (default) returns the whole document. `signing_discovery` returns only `adcp` (`major_versions`, `idempotency`), `supported_protocols`, `identity`, `request_signing`, and `webhook_signing`. A verifier sends it on the [signing-key discovery path](/docs/building/by-layer/L1/security#scoped-capabilities-for-key-discovery) so the document stays under `MAX_CAPABILITIES_BYTES` however large the rest is. An agent that declares any signing posture MUST honor it. The response is not a complete capabilities document: do not cache it as one or infer from an absent block that a capability is missing. |
 
 ## Response Structure
 
@@ -1412,8 +1413,11 @@ the one field here a third party can write. Authorization flows from each
 publisher's `adagents.json`, published unilaterally by the domain owner with no
 consent from the agent it names — so a seller that mirrors "every publisher whose
 adagents.json names me" lets a stranger inflate its own capabilities document, and
-since the signing-key discovery path fetches that document unnarrowed under
-`MAX_CAPABILITIES_BYTES`, the cost is signature verification rather than discovery.
+since a pre-3.3 verifier fetches that document in full on the signing-key
+discovery path under `MAX_CAPABILITIES_BYTES`, the cost is signature
+verification rather than discovery. A 3.3 verifier requests
+[`scope: "signing_discovery"`](/docs/building/by-layer/L1/security#scoped-capabilities-for-key-discovery),
+which omits this field.
 From 3.3 the
 [per-field byte budget](/docs/building/by-layer/L1/security#response-size-bounds)
 caps it at 8,192 bytes as served, and the structural bounds (100 unique entries,
