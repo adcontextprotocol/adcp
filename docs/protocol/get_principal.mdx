@@ -6,6 +6,10 @@ description: "get_principal reads the authenticated caller's seller-resolved ide
 
 `get_principal` returns the authenticated caller's seller-resolved durable identity and current principal configuration with one AdCP agent: the same caller-scoped state that [`sync_principal`](/docs/protocol/sync_principal) replaces, plus retained superseded and revoked destination generations. A recognized durable identity remains readable before the caller has standing configuration.
 
+<Note>
+**Planned rename.** `sync_principal` and `get_principal` become `sync_buyer_agent_config` and `get_buyer_agent_config`, and `principal_kind` is removed, no earlier than the first minor release after December 7, 2026. AdCP 3.3 keeps the current names. See the [breaking-change notice](/docs/reference/migration/principal-to-buyer-agent-config).
+</Note>
+
 The read is side-effect free. It never creates a principal record, issues identifiers, sends endpoint proof challenges, mutates state, or advances `configuration_version`.
 
 For the full lifecycle from credentials through destination proof and readback, see [Set up your buyer agent with a seller](/docs/accounts/principal-registration-walkthrough).
@@ -20,7 +24,7 @@ For the full lifecycle from credentials through destination proof and readback, 
 
 Call it whenever you need current state rather than a change:
 
-- **Verify identity before configuration.** A `recognized` result exposes the seller-resolved `principal_kind` and existing `principal_id` before the first state-changing call.
+- **Verify identity before configuration.** A `recognized` result exposes the existing `principal_id` before the first state-changing call.
 - **Bootstrap the concurrency fence.** Read `configuration_version` before a guarded [`sync_principal`](/docs/protocol/sync_principal) replacement instead of writing blind.
 - **Recover after local-state loss.** A restarted service reads `principal_id`, `configuration_version`, every `destination_ref`, and each destination's setup state before deciding what to sync.
 - **Observe setup progress.** After a destination returns `action_required` or `validating`, poll here until it reaches `ready` — or subscribe to the `principal.changed` webhook and use this read as the repair path. Polling never disturbs the version fence.
@@ -43,8 +47,8 @@ For Web Bot Auth signed callers (experimental), the stable identity is the signe
 
 | `result.kind` | Meaning |
 |---|---|
-| `current` | The caller has standing configuration. Returns `principal_id`, the seller-resolved `principal_kind` (`buyer_agent` or `operator`), `configuration_version`, and complete credential-free configuration state. |
-| `recognized` | The caller maps to an existing durable principal record but has no standing configuration. Returns `principal_id` and seller-resolved `principal_kind`, with no configuration or version. |
+| `current` | The caller has standing configuration. Returns `principal_id`, the deprecated `principal_kind` (always `buyer_agent` for a bound agent), `configuration_version`, and complete credential-free configuration state. |
+| `recognized` | The caller maps to an existing durable principal record but has no standing configuration. Returns `principal_id` and the deprecated `principal_kind`, with no configuration or version. |
 | `unconfigured` | Stable authentication succeeded, but the caller has no durable principal record. Carries `kind`, and `relationship` when an application is in progress. |
 | `failed` | The read could not be served. Carries only structured errors, never identifiers or state. |
 
