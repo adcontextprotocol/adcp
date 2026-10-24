@@ -15,6 +15,7 @@ const OPERATORS = new Set([
   'contains_all',
   'any_match',
   'canonical_format_satisfies',
+  'collection_selection_satisfies',
 ]);
 const ID_FIELDS = {
   accounts: 'account_id',
@@ -63,7 +64,7 @@ function lintMatchClause(clause, at, violations) {
     violations.push({ rule: 'match_clause_shape', at });
     return;
   }
-  if (typeof clause.path !== 'string' || !clause.path.startsWith('/')) {
+  if (typeof clause.path !== 'string' || (clause.path !== '' && !clause.path.startsWith('/'))) {
     violations.push({ rule: 'match_path', at });
   }
   if (!OPERATORS.has(clause.operator)) {
@@ -86,6 +87,17 @@ function lintMatchClause(clause, at, violations) {
   }
   if (!Object.hasOwn(clause, 'value') || Object.hasOwn(clause, 'where')) {
     violations.push({ rule: 'match_value_shape', at });
+  }
+  // Keep the merged #8376 operand closed, including provisional spellings.
+  if (clause.operator === 'collection_selection_satisfies') {
+    const value = clause.value;
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        Object.keys(value).some(key => !['collection_targeting', 'minimum_pairs', 'require_cross_publisher_collection'].includes(key)) ||
+        !['fixed', 'selectable', 'any'].includes(value.collection_targeting) ||
+        (value.minimum_pairs !== undefined && ![1, 2].includes(value.minimum_pairs)) ||
+        (value.require_cross_publisher_collection !== undefined && typeof value.require_cross_publisher_collection !== 'boolean')) {
+      violations.push({ rule: 'collection_selection_value', at });
+    }
   }
   if (clause.operator === 'contains_all' && !Array.isArray(clause.value)) {
     violations.push({ rule: 'contains_all_value', at });

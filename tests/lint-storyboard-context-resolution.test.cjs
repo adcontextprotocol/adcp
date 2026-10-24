@@ -910,3 +910,24 @@ test('vendor_metric_accountability grades committed_at = confirmed_at on every d
   );
   assert.deepEqual(decoy.filter((r) => !r.passed).map((r) => r.path), ['media_buys[0].media_buy_id']);
 });
+
+test('fixture output declarations are pre-step producers without a namespace waiver', () => {
+  for (const output of [
+    { path: 'currency' },
+    { snapshot: 'selected_entity' },
+    { witness: 'declared_selectors' },
+  ]) {
+    const doc = {
+      id: 'fixture-output-producer',
+      fixture_resolution: {
+        products: [{ handle: 'selected', strategies: ['discover'],
+          context_outputs: [{ key: '__adcp_fixture_selected', ...output }] }],
+      },
+      phases: [{ id: 'use', steps: [{ id: 'read', task: 'get_products',
+        sample_request: { context: { selected: '$context.__adcp_fixture_selected' } } }] }],
+    };
+    assert.deepEqual(lintDoc(doc, 'fixture.yaml'), []);
+    doc.phases[0].steps[0].sample_request.context.selected = '$context.__adcp_fixture_undeclared';
+    assert.equal(lintDoc(doc, 'fixture.yaml')[0].key, '__adcp_fixture_undeclared');
+  }
+});

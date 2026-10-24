@@ -28,7 +28,8 @@ const SCHEMA_HOST = 'https://adcontextprotocol.org';
 // requires the default version first). Legacy aliases remain available for
 // callers that already use them.
 export const DOCS_SCHEMA_RELEASES: Readonly<Record<string, string>> = Object.freeze({
-  '3.2': '3.2.3',
+  '3.2': '3.2.6',
+  '3.3-beta': '3.3.0-beta.0',
   '3.1': '3.1.27',
   '3.0': '3.0.28',
   '2.5': '2.5.3',

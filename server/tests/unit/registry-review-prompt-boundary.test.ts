@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   notifyAddieReview: vi.fn(async () => undefined),
   notifyRegistryApproval: vi.fn(async () => undefined),
   notifyRegistryBan: vi.fn(async () => undefined),
+  recordRegistryReviewOutcome: vi.fn(async () => undefined),
 }));
 
 vi.mock('@anthropic-ai/sdk', () => {
@@ -66,6 +67,13 @@ vi.mock('../../src/notifications/registry.js', () => ({
   notifyAddieReview: mocks.notifyAddieReview,
   notifyRegistryApproval: mocks.notifyRegistryApproval,
   notifyRegistryBan: mocks.notifyRegistryBan,
+}));
+
+// The fail-safe outcomes also write the moderator queue (adcp#8338).
+// `registry-review-queue-enqueue.test.ts` is where that contract is pinned;
+// here it just must not reach a real database.
+vi.mock('../../src/db/registry-review-queue-db.js', () => ({
+  recordRegistryReviewOutcome: mocks.recordRegistryReviewOutcome,
 }));
 
 /** What the model is told to say, if the member's text could tell it. */
@@ -250,6 +258,9 @@ describe('a forced verdict only ever reaches the submitter who forced it', () =>
 
     await registryReview.reviewNewRecord(newBrandRecord({
       entity_type: 'property',
+      // The reviewer allowlists the snapshot per entity type and refuses one
+      // with no allowlisted field, so a property record needs a property row.
+      snapshot: { publisher_domain: 'acme.example', adagents_json: { authorized_agents: [] } },
       editor_user_id: 'system:addie',
       editor_email: undefined,
     }));

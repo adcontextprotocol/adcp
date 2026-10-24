@@ -535,3 +535,41 @@ test('static build preparation requires the authored opt-in contract and rejects
   assert.throws(() => normalizeStoryboardSampleRequests(storyboard, malformed, schema),
     /Invalid creative build authoring fixture path/);
 });
+
+test("whole collection witness substitutions satisfy minItems and composed required fields without excusing malformed literals", async () => {
+  const storyboard = yaml.load(
+    fs.readFileSync(
+      path.join(
+        STORYBOARD_DIR,
+        "protocols/media-buy/scenarios/collection_selection.yaml",
+      ),
+      "utf8",
+    ),
+  );
+  const step = storyboard.phases[0].steps[0];
+  assert.equal(
+    (
+      await validateStep({
+        schemaRef: step.schema_ref,
+        payload: step.sample_request,
+      })
+    ).ok,
+    true,
+  );
+  for (const collections of [[], [{ publisher_domain: "publisher.example" }]]) {
+    const malformed = structuredClone(step.sample_request);
+    malformed.packages[0].targeting_overlay.collection_selection.collections =
+      collections;
+    assert.equal(
+      (await validateStep({ schemaRef: step.schema_ref, payload: malformed }))
+        .ok,
+      false,
+    );
+  }
+});
+
+// Object-typed substitution synthesis — the lint change landed in this PR.
+// A substitution that lands at an object location (plain or inside a
+// discriminated oneOf) must produce a shape-valid placeholder or ajv will
+// reject every branch. Regression guard against refactors of `placeholderFor`
+// / `synthesizeObject` / `firstObjectBranch`.

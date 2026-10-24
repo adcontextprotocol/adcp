@@ -3,6 +3,7 @@
   "$id": "/schemas/core/definition-pin.json",
   "title": "Definition Pin",
   "description": "Seller-authored integrity pin over one third-party-published definition that a proposal's commercial_terms reference: a publisher-catalog format option, publisher-catalog placement, adagents.json collection, or data-provider signal. content_digest is the lowercase-hex SHA-256 of the RFC 8785 (JCS) serialization of the kind's closed projection of the published entry, defined normatively in docs/media-buy/specification.mdx#definition-pins. Pins live inside commercial_terms, so terms_digest covers the pin but not the definition it names: a published definition can change while terms_digest still verifies, and re-verifying the pin is what detects it. Request inputs never carry pins.",
+  "x-added-in": "3.3.0",
   "type": "object",
   "discriminator": {
     "propertyName": "ref_kind"
