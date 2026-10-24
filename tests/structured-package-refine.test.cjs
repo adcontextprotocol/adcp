@@ -202,6 +202,17 @@ test('new package inputs carry 3.3 version metadata without re-versioning the le
   }
 });
 
+test('resolved timestamps retain booking validation without importing the full package graph', () => {
+  const fields = read(RESPONSE_URI).properties.refinement_applied.items.oneOf[1].properties;
+  for (const [receiptName, packageName] of [['resolved_start_time', 'start_time'], ['resolved_end_time', 'end_time']]) {
+    const { description, 'x-added-in': addedIn, ...constraints } = fields[receiptName];
+    const { description: packageDescription, ...packageConstraints } = read(PACKAGE_URI).properties[packageName];
+    assert.ok(description && packageDescription);
+    assert.equal(addedIn, '3.3.0');
+    assert.deepEqual(constraints, packageConstraints);
+  }
+});
+
 test('reminted products and inherited local flight boundaries round-trip into create without relying on product order', () => {
   const input = {
     buying_mode: 'refine', adcp_version: '3.3', account: { account_id: 'account_streamhaus' },

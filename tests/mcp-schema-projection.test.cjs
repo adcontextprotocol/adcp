@@ -1596,72 +1596,77 @@ test('rewriteEmbeddedResourceRefs unit: root-$id collision causes projection to 
   }
 });
 
-test('comply-test-controller projected schema uses embedded-resource refs, not root-anchored pointers', () => {
-  // Regression for #8041: cross-definition refs within bundled sub-schemas must
-  // use each embedded resource's own canonical $id URL, not the long
-  // rootId#/$defs/key form. This ensures additive Product growth (new fields on
-  // product.json) adds bytes only to the single shared definition and does not
-  // balloon ref strings throughout the schema.
-  const schemaPath = path.join(PROJECTION_DIR, 'compliance/comply-test-controller-request.json');
-  assert.ok(fs.existsSync(schemaPath), 'comply-test-controller projected schema must exist');
-  const projected = readJson(schemaPath);
+for (const [relativePath, expectedDefinition] of [
+  ['compliance/comply-test-controller-request.json', 'external:core/product.json'],
+  ['media-buy/get-products-request.json', 'external:media-buy/package-forecast-input.json'],
+  ['media-buy/get-products-response.json', 'external:core/product.json'],
+]) {
+  test(`${relativePath} uses embedded-resource refs without long root-anchored pointers`, () => {
+    // Regression for #8041: cross-definition refs within bundled sub-schemas must
+    // use each embedded resource's own canonical $id URL, not the long
+    // rootId#/$defs/key form. This ensures additive Product growth (new fields on
+    // product.json) adds bytes only to the single shared definition and does not
+    // balloon ref strings throughout the schema.
+    const schemaPath = path.join(PROJECTION_DIR, relativePath);
+    assert.ok(fs.existsSync(schemaPath), `${relativePath} projected schema must exist`);
+    const projected = readJson(schemaPath);
 
-  const rootId = projected.$id;
-  assert.ok(typeof rootId === 'string' && rootId.startsWith('https://'), 'projected schema has absolute $id');
+    const rootId = projected.$id;
+    assert.ok(typeof rootId === 'string' && rootId.startsWith('https://'), 'projected schema has absolute $id');
 
-  // No cross-def ref should use the root schema URL as a base (long-pointer form)
-  const rootRefPrefix = `${rootId}#/$defs/`;
-  function walkAllRefs2(value, visit) {
-    if (!value || typeof value !== 'object') return;
-    if (typeof value.$ref === 'string') visit(value.$ref);
-    for (const child of Object.values(value)) walkAllRefs2(child, visit);
-  }
-  const longRefs = [];
-  walkAllRefs2(projected, ref => { if (ref.startsWith(rootRefPrefix)) longRefs.push(ref); });
-  assert.deepEqual(longRefs, [], `${longRefs.length} root-anchored cross-def refs remain; expected 0`);
+    // No cross-def ref should use the root schema URL as a base (long-pointer form)
+    const rootRefPrefix = `${rootId}#/$defs/`;
+    function walkAllRefs2(value, visit) {
+      if (!value || typeof value !== 'object') return;
+      if (typeof value.$ref === 'string') visit(value.$ref);
+      for (const child of Object.values(value)) walkAllRefs2(child, visit);
+    }
+    const longRefs = [];
+    walkAllRefs2(projected, ref => { if (ref.startsWith(rootRefPrefix)) longRefs.push(ref); });
+    assert.deepEqual(longRefs, [], `${longRefs.length} root-anchored cross-def refs remain; expected 0`);
 
-  const defs = projected.$defs || {};
+    const defs = projected.$defs || {};
 
-  // Product.json is present as a shared def with its canonical $id intact.
-  // compactDraft07Schema deduplicates by resolved file path, so each external
-  // schema appears at most once; the meaningful invariant is that the product
-  // graph is present and its $id is preserved (no stripping by the rewrite).
-  const productKey = 'external:core/product.json';
-  assert.ok(Object.hasOwn(defs, productKey), 'product.json is a shared def in $defs');
-  const productDef = defs[productKey];
-  assert.ok(
-    typeof productDef.$id === 'string' && productDef.$id.startsWith('https://'),
-    'product.json def retains its canonical $id',
-  );
-  assert.ok(
-    typeof productDef.properties === 'object' || typeof productDef.allOf !== 'undefined',
-    'product.json def contains its full schema (not a stub)',
-  );
-
-  // Cross-def refs must now be embedded-resource canonical $id URLs
-  const embeddedIds = new Set(
-    Object.values(defs)
-      .filter(d => d && typeof d.$id === 'string')
-      .map(d => d.$id.split('#')[0])
-  );
-  const allEmbeddedRefs = [];
-  walkAllRefs2(projected, ref => {
-    const base = ref.split('#')[0];
-    if (base.startsWith('https://') && embeddedIds.has(base)) allEmbeddedRefs.push(ref);
-  });
-  assert.ok(
-    allEmbeddedRefs.length > 100,
-    `expected >100 embedded-resource refs, saw ${allEmbeddedRefs.length}`,
-  );
-
-  // All $id values are preserved on every def (no stripping)
-  for (const [key, def] of Object.entries(defs)) {
+    // The shared product/package graph retains its canonical $id.
+    // compactDraft07Schema deduplicates by resolved file path, so each external
+    // schema appears at most once; the meaningful invariant is that the product
+    // graph is present and its $id is preserved (no stripping by the rewrite).
+    assert.ok(Object.hasOwn(defs, expectedDefinition), `${expectedDefinition} is a shared def in $defs`);
+    const productDef = defs[expectedDefinition];
     assert.ok(
-      !key.startsWith('external:') || (def && typeof def.$id === 'string'),
-      `external def ${key} must retain its $id`,
+      typeof productDef.$id === 'string' && productDef.$id.startsWith('https://'),
+      `${expectedDefinition} retains its canonical $id`,
     );
-  }
-});
+    assert.ok(
+      typeof productDef.properties === 'object' || typeof productDef.allOf !== 'undefined',
+      `${expectedDefinition} contains its full schema (not a stub)`,
+    );
+
+    // Cross-def refs must now be embedded-resource canonical $id URLs
+    const embeddedIds = new Set(
+      Object.values(defs)
+        .filter(d => d && typeof d.$id === 'string')
+        .map(d => d.$id.split('#')[0])
+    );
+    const allEmbeddedRefs = [];
+    walkAllRefs2(projected, ref => {
+      const base = ref.split('#')[0];
+      if (base.startsWith('https://') && embeddedIds.has(base)) allEmbeddedRefs.push(ref);
+    });
+    assert.ok(
+      allEmbeddedRefs.length > 100,
+      `expected >100 embedded-resource refs, saw ${allEmbeddedRefs.length}`,
+    );
+
+    // All $id values are preserved on every def (no stripping)
+    for (const [key, def] of Object.entries(defs)) {
+      assert.ok(
+        !key.startsWith('external:') || (def && typeof def.$id === 'string'),
+        `external def ${key} must retain its $id`,
+      );
+    }
+  });
+}
 
 test('generated production profile exposes the active 3.2 surface without compliance annotations', () => {
   assert.ok(fs.existsSync(PRODUCTION_PROFILE_DIR), 'production profile is missing');

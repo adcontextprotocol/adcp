@@ -204,12 +204,15 @@
                 "description": "Required for an applied structured package forecast. Identifies exactly one returned Product carrying this entry's exact forecast, even when its configured ID differs from the request product_id. The requested pricing_option_id and pricing terms MUST remain unchanged. Buyers use this ID at create."
               },
               "resolved_start_time": {
-                "$ref": "/schemas/media-buy/package-request.json#/properties/start_time",
+                "type": "string",
+                "format": "date-time",
+                "not": { "const": "asap" },
                 "x-added-in": "3.3.0",
                 "description": "Required with result_product_id. Exact forecast flight start after resolving explicit package timestamps or date-filter defaults. Buyers materialize this timestamp on the package at create."
               },
               "resolved_end_time": {
-                "$ref": "/schemas/media-buy/package-request.json#/properties/end_time",
+                "type": "string",
+                "format": "date-time",
                 "x-added-in": "3.3.0",
                 "description": "Required with result_product_id. Exact forecast flight end after resolving explicit package timestamps or date-filter defaults. Buyers materialize this timestamp on the package at create. MUST be after resolved_start_time."
               },
