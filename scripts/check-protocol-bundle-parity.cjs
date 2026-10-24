@@ -26,7 +26,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const STABLE_SEMVER = /^\d+\.\d+\.\d+$/;
+// Exact stable or -beta.N / -rc.N prerelease; authority comes from the
+// published-release fence that runs before parity.
+const RELEASE_SEMVER = /^\d+\.\d+\.\d+(?:-(?:beta|rc)\.\d+)?$/;
 // Bounded fractional seconds. The published bytes for the two files below are
 // the committed ones, so this field's value is the only thing the release
 // signature does not cover; an unbounded fraction would let a release PR
@@ -158,8 +160,8 @@ function compareSurface(surface, releasedRoot, bundleRoot) {
 }
 
 function checkBundleParity(version, releasedRoot, bundleRoot) {
-  if (!STABLE_SEMVER.test(version || ""))
-    fail("Bundle parity requires an exact stable semver version.");
+  if (!RELEASE_SEMVER.test(version || ""))
+    fail("Bundle parity requires an exact semver version (optionally -beta.N or -rc.N).");
   const counts = {};
   for (const surface of ["schemas", "compliance"]) {
     counts[surface] = compareSurface(

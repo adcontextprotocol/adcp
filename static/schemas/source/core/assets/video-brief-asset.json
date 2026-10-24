@@ -3,6 +3,7 @@
   "$id": "/schemas/core/assets/video-brief-asset.json",
   "title": "Video Brief Asset",
   "description": "Typed per-segment generation brief supplied in a creative manifest's video_brief slot. Carries the existing VideoBrief structure as an asset, independently of the generated video output.",
+  "x-added-in": "3.3.0",
   "type": "object",
   "properties": {
     "asset_type": { "type": "string", "const": "video_brief" },

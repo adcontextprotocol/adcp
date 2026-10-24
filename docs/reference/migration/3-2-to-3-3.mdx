@@ -11,18 +11,18 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 **3.3 is in its beta cycle.** Keep production traffic pinned to `"3.2"` while validating 3.3 in staging. See the [3.3 beta program](/docs/reference/3-3-beta) for artifact and SDK timing.
 </Warning>
 
-3.3 is a minor release over 3.2. It adds optional fields, enum values, and capability declarations. No stable field, enum value, or task is removed. `seller_id` on event source and audience results is deprecated in favor of the new `platform_id` field, and natural-key account references after provisioning are deprecated (see [Deprecations](#deprecations)). A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
+3.3 is a minor release over 3.2. It adds optional fields, enum values, and capability declarations. No stable field, enum value, or task is removed; the one removal is the experimental `build_creative.evaluator.evaluator_id` source form (see [below](#experimental-creative-evaluator-drops-evaluator_id)). `seller_id` on event source and audience results is deprecated in favor of the new `platform_id` field, and natural-key account references after provisioning are deprecated (see [Deprecations](#deprecations)). A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
 Read these first:
 
-- [Required to claim 3.3 behavior](#required-to-claim-3-3-behavior): rules that narrow what a conformant implementation may do, including [webhook mode selection and batch bodies](#webhook-signing-mode-and-batch-bodies), [responses that conform to the served release](#responses-conform-to-the-served-release), [bounded counterparty-asserted domain lists](#counterparty-asserted-domain-lists-are-bounded), [seller revisions that advance on every committed change](#seller-revisions-advance-on-every-committed-change), [enforceable domain identifiers](#property-domain-identifiers-have-an-enforceable-format), [property list references through AdCP tasks](#property-list-references-resolve-through-adcp-tasks), and [dual emission of platform IDs](#platform-ids-are-emitted-under-both-names).
+- [Required to claim 3.3 behavior](#required-to-claim-3-3-behavior): rules that narrow what a conformant implementation may do, including [webhook mode selection and batch bodies](#webhook-signing-mode-and-batch-bodies), [responses that conform to the served release](#responses-conform-to-the-served-release), [refinement that carries compliance forward](#refinement-carries-compliance-forward), [bounded counterparty-asserted domain lists](#counterparty-asserted-domain-lists-are-bounded), [seller revisions that advance on every committed change](#seller-revisions-advance-on-every-committed-change), [flight start for committed buys only](#flight-start-activates-committed-buys-only), [flat totals for multi-qualifier metrics](#multi-qualifier-metrics-omit-flat-totals), [enforceable domain identifiers](#property-domain-identifiers-have-an-enforceable-format), [property list references through AdCP tasks](#property-list-references-resolve-through-adcp-tasks), and [dual emission of platform IDs](#platform-ids-are-emitted-under-both-names).
 - [Brand JSON size cap rises to 2 MiB](#brand-json-size-cap-rises-to-2-mib), [audience match counts](#audience-match-counts-may-be-absent), and the [4 MiB response-size default](#client-response-size-default-rises-to-4-mib): three loosened guarantees, so a 3.2 peer can reject or misread what a 3.3 peer sends.
 - [Recommended: bound agent response size](#recommended-bound-agent-response-size): a new SHOULD that tightens what an adopting buyer accepts.
 - [Send only to 3.3 peers](#send-only-to-3-3-peers): new fields a 3.2 validator rejects.
 - [Deprecations](#deprecations): `seller_id` on event source and audience results, and the natural-key account reference after provisioning; removal no earlier than 4.0.
 - [SDK and code-generator maintainers](#sdk-and-code-generator-maintainers): schema-shape changes that alter generated types.
 
-Everything else is an optional declaration or a clarification. Agent identity (DR-0023) and demand-side grants (DR-0025) are WG-approved but their normative text is still in review; they are listed in the [3.3 beta program](/docs/reference/3-3-beta#in-review-for-3-3) and are not part of this guide until they merge. For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3).
+Everything else is an optional declaration or a clarification. Agent identity (DR-0023) and demand-side grants (DR-0025) have their own role-by-role guide, [Migrating agent identity in AdCP 3.3](/docs/reference/migration/agent-identity-3-3). For the feature narrative, start with [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3).
 
 ## Upgrade checklist
 
@@ -55,6 +55,10 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 25 | Buyers that update media buys | Pass the latest `revision`, and expect `CONFLICT` after a seller or connected-platform change; re-read and retry. |
 | 26 | Compliance operators | Use beta.0 for protocol feedback; do not issue a 3.3 badge from beta.0. |
 | 27 | Buyers and sellers of hosted video or audio | Optionally move playback trackers from `event: custom` to the new `pixel_tracker` playback events. |
+| 28 | Users of the experimental `creative.evaluator` surface | Replace `evaluator_id` with an allowlisted `agent_url` or inline `exemplars` ([details](#experimental-creative-evaluator-drops-evaluator_id)). |
+| 29 | Creative agents that advertise `creative.supports_refinement` | Retain each leaf's compliance inputs for as long as the leaf, apply them to every refinement, and never treat a refined leaf as approved ([details](#refinement-carries-compliance-forward)). |
+| 30 | Sellers that hold buys for review | Keep a provisional buy (`confirmed_at: null`) in `pending_start` at flight start until you confirm or reject it ([details](#flight-start-activates-committed-buys-only)). |
+| 31 | Sellers reporting qualified metrics | Omit a metric's flat carrier from buy and window `totals` when packages report it under more than one qualifier set ([details](#multi-qualifier-metrics-omit-flat-totals)). |
 
 ## Required to claim 3.3 behavior
 
@@ -253,6 +257,18 @@ admits dotless labels like `localhost`. See
 
 **Buyers.** An update that carries a stale `revision` was already rejected with `CONFLICT`; a buyer that omits `revision` is not fenced and sees nothing new. The rejection now also happens after a change you did not make, including a `sync_creatives` assignment from another caller or your own earlier call. Re-read with `get_media_buys` (the `sync_creatives` response does not return the new revision in 3.3), reconcile, and retry with the new `revision` and a fresh `idempotency_key`; never retry the same stale `revision`. Do not treat an unchanged `revision` as proof that package assignments are unchanged on a 3.2 seller.
 
+### Flight start activates committed buys only
+
+The 3.x rule that a seller MUST move a buy from `pending_start` to `active` when the flight date arrives now applies only to committed buys (`confirmed_at` non-null). A provisional buy (`confirmed_at: null`) stays `pending_start` until the seller confirms or rejects it ([#7963](https://github.com/adcontextprotocol/adcp/pull/7963)). `status` is the buyer-actionable readiness axis and `confirmed_at` the seller-commitment axis.
+
+**Sellers** that hold buys for review never auto-activate a held buy, and can set `expected_confirmation_at` on `get_media_buys` while `confirmed_at` is null. **Buyers** read `confirmed_at`, not `status`, to learn whether the seller has committed. See [Provisional buys](/docs/media-buy/specification#provisional-buys-seller-review-hold).
+
+### Multi-qualifier metrics omit flat totals
+
+When a buy's packages report a `metric_id` under more than one qualifier set, in `by_package[].metric_values` or in a package's flat carrier, sellers MUST omit that metric's flat carrier (the whole nested object, such as `viewability`) from per-buy `totals` and every window slice's `totals` on `get_media_buy_delivery`, and from per-buy `totals` in delivery webhooks ([#8055](https://github.com/adcontextprotocol/adcp/pull/8055)). The rule applies across packages, so one package at `mrc` and another at `groupm` no longer combine into one flat `viewability`. One row is one `(scope, metric_id, qualifier)` key; `impressions` and `spend` are unaffected.
+
+**Buyers** read the package rows instead of expecting a buy-level value for such a metric. See [Media buy delivery object](/docs/media-buy/task-reference/get_media_buy_delivery#media-buy-delivery-object).
+
 ### Responses conform to the served release
 
 Once you list 3.3 in `supported_versions`, every release you list is a promise about response shape: [Serving an older pin](/docs/reference/versioning#serving-an-older-pin) has the rule, which covers `get_adcp_capabilities` and webhook payloads ([DR-0024](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0024-responses-conform-to-served-release.md)).
@@ -260,6 +276,14 @@ Once you list 3.3 in `supported_versions`, every release you list is a promise a
 **Sellers.** Check each response against the published schema of the release you echo, and stop listing a release you can't serve that way. 3.2 sellers serving a `"3.1"` pin could emit six shapes a strict 3.1 validator rejects, led by the `sync_accounts` required-field flip; see the [3.1 to 3.2 list](/docs/reference/migration/3-1-to-3-2#version-negotiation-across-3-1-and-3-2).
 
 **Buyers.** Keep parsing tolerantly, because sellers that list no release later than 3.2 aren't bound by the rule.
+
+### Refinement carries compliance forward
+
+A `build_creative` refinement (`refine_from_build_variant_id`) inherits the parent leaf's compliance set (`required_disclosures`, `prohibited_claims`). A refine request can add to it and never remove or narrow it; `message` and `config` cannot reduce it. An instruction such as "remove the disclaimer" fails the whole call with `COMPLIANCE_UNSATISFIED`. A refined leaf gets its own `creative_id`, and neither seller nor buyer-side approval of the parent extends to it. Schemas gain no field or error code.
+
+**Creative agents.** If you advertise `creative.supports_refinement`, retain each leaf's compliance inputs for the same window you retain the leaf. An agent that retains none can newly fail refinements of briefed leaves. See [Compliance and approval across refinement](/docs/creative/task-reference/build_creative#compliance-and-approval-across-refinement).
+
+**Buyers.** Re-send nothing: the parent's compliance carries forward. Treat each refined leaf as unapproved until it goes through your own review.
 
 ### Platform IDs are emitted under both names
 
@@ -358,6 +382,7 @@ A schema-valid 3.2 message stays schema-valid under 3.3 except for the [domain i
 - `reporting_webhook.operation_id`: previously an open extra field, now constrained to 1–255 characters from the pattern above.
 - `audience_size`, `targetable_size`, and `match_rate_basis` on a `sync_audiences` audience result, if used with a different shape.
 - `compact-task-submitted.json` responses that break the version-envelope grammar or carry `task_status` / `response_status` (tightened in 3.2.4). Conformant sellers already satisfy both.
+- `validate_input` warning items whose `field` is not a string. The schema always required `field` but never declared it; it is now declared as a string (#8212).
 
 ## SDK and code-generator maintainers
 
@@ -502,10 +527,22 @@ The field is stable in 3.3, not experimental. It completes the basis vocabulary 
 
 - **Catalog ingestion.** Declare `media_buy.features.catalog_ingestion` with `accepted_catalog_types`, `ingestion_modes`, and `item_status_reporting` (required), plus `supported_feed_formats` whenever `feed_url` is listed. Declaring it requires `catalog_management: true`. Reject an unlisted catalog type, mode, or feed format, or an explicit `content_id_type` outside a declared list, with `UNSUPPORTED_FEATURE` before mutation, including on `dry_run`; inline items beyond `max_inline_items_per_request` fail with `INVALID_REQUEST`. Buyers treat an absent declaration as unknown, not unrestricted. See [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs#ingestion-compatibility).
 - **`request_signing.operation_sources`.** List `mcp_tools_call` and `a2a_invocation_skill` only for the sources your verifier implements and passes vectors for, and list every source you support: an array without `a2a_invocation_skill` tells peers you do not enforce over A2A. See [above](#a2a-operation-resolution-hardening-becomes-must).
-- **`trust.json` (experimental, schemas only).** `trust/v1/trust.json` and `trust/v1/trust-acknowledgements.json` are published for review under `identity.trust_json` (#8067). An agent is identified by the canonical origin of its URL, one agent per origin, and the record carries no keys (#8121). Nothing consumes them in 3.3, `brand.json` behavior is unchanged, and there is nothing to declare. See [trust.json](/docs/reference/trust-json).
+- **`trust.json` (experimental).** `trust/v1/trust.json` and `trust/v1/trust-acknowledgements.json` are published under `identity.trust_json` (#8067). An agent is identified by the canonical origin of its URL, one agent per origin, and the record carries no keys (#8121). In 3.3 its reader is the experimental Web Bot Auth profile, which derives the record from the agent's origin, and grants are read at `sync_accounts`. Publishers declare nothing. See [trust.json](/docs/reference/trust-json) and the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
 - **`ext.adcp.opportunity`.** Cooperating `get_products` integrations can carry an opportunity binding under `ext.adcp.opportunity`, declared by listing `adcp` in `extensions_supported`. Durable association needs an authorized account scope, and a mismatched ID on refine is rejected with `INVALID_REQUEST`. The core `opportunity` field is still in review. See [AdCP opportunity extension](/docs/building/by-layer/L2/context-sessions#adcp-opportunity-extension).
 
 ## Experimental surface notices
+
+### Experimental creative evaluator drops `evaluator_id`
+
+Applies only to sellers and buyers that use the experimental `creative.evaluator` surface (`build_creative.evaluator`). The `evaluator_id` source form is removed from `core/evaluator-spec.json`, and the `evaluator` entity is removed from `x-entity-types`. The evaluator object stays the request primitive, with two source forms: inline `exemplars` or an external `agent_url`. A seller's house evaluator is an evaluator agent it lists in `creative_policy.accepted_verifiers[]`. The `list_evaluators` follow-on that existed only to resolve `evaluator_id` is withdrawn.
+
+| Before (3.1 and 3.2) | After (3.3) |
+|---|---|
+| `"evaluator": { "evaluator_id": "quality-default", "rank_by": [...] }` | `"evaluator": { "agent_url": "https://quality-evaluator.example/adcp", "rank_by": [...] }` |
+
+The seller exposes the evaluator behind an agent that implements `get_creative_features`, adds its URL to `creative_policy.accepted_verifiers[]`, and the buyer names that URL. An `evaluator` carrying only `evaluator_id` no longer validates, because no source form matches, so a 3.3 validator rejects the whole `build_creative` request where 3.2 degraded to seller-default ranking. A stale `evaluator_id` sent alongside `exemplars` or `agent_url` still validates (the object stays open) and sellers ignore it. No alias is offered: the id had no on-wire resolution path, and an unknown id already degraded to seller-default ranking.
+
+This is a removal on an experimental surface, which the [experimental status](/docs/reference/experimental-status#contract-for-experimental-surfaces) contract allows with notice; 3.1 and 3.2 keep `evaluator_id`. The 6-week pre-landing notice is waived: beta.0 is the notice vehicle, and 3.3 GA ships no earlier than 6 weeks after the beta.0 tag. A fourth source form for conversion-outcome evaluators stays open, and `supports_evaluator_gate` and hard-gate semantics stay reserved. See [Evaluator source model](/docs/creative/buyer-attached-inputs#evaluator-source-model).
 
 ### Superseded reporting snapshots may be compacted
 
@@ -557,6 +594,7 @@ Adopters of these patches have already seen these; their changesets reappear in 
 
 - `version_negotiation` gains an optional scenario for 3.1-pinned response shapes. Its checks stay advisory until runners can validate against the served release's schema bundle.
 - `sales-broadcast-tv` (`sales_broadcast_tv` 1.1.0) now certifies one authorized TV transaction on either a guaranteed or a non-guaranteed fixed-price path (#8046). Existing claimants should expect new failures: seeded products are demo-priced `cpm` with Live/C3/C7 windows, creatives are assigned through `sync_creatives` `assignment_operations`, and Live and C7 reads must carry `measurement_window`, `is_final`, and `finalized_at`. Claims graded on 1.0.x have a grace window recorded in the compliance catalog. A spot-lifecycle phase runs only for sellers that list `media_buy.spot_lifecycle`.
+- `sales-fixed-rate` is a new specialism for non-guaranteed, fixed-price sellers in any medium (#7963). Its `sales_fixed_rate` storyboard grades capability discovery, fixed-price product discovery, and a bid-less `create_media_buy`; optional hold phases run only when the seller advertises the `force_media_buy_confirmation` controller scenario. See [Choosing a sales specialism](/docs/building/verification/compliance-catalog#choosing-a-sales-specialism).
 - `media_buy_seller/unprovisioned_account_reference` is new and advisory until runner capability `14.1.0`.
 - `media_buy_seller/stable_account_id` is new and runs only for buyer-declared sellers that declare `account.stable_account_id: true`. It addresses the account by `account_id` on `get_media_buys` and requires `@adcp/sdk` 15.8.0 or later, whose storyboard runner sends an authored `account_id` as written.
 - New capability-gated scenarios: `media_buy_seller/definition_pin_drift`, `governance/budget_periods`, `media_buy_seller/property_delivery_reporting`, `media_buy_seller/installment_property_delivery_reporting`, `media_buy_seller/outcome_target_vendor_metric`, and `media_buy_seller/outcome_target_event_cost`. Sellers that do not declare the capability skip them.

@@ -15,6 +15,7 @@ requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/advanced_delivery_reporting
+  - media_buy_seller/time_based_delivery_reporting
   - media_buy_seller/property_delivery_reporting
   - media_buy_seller/installment_property_delivery_reporting
   - media_buy_seller/audience_activation_discovery
@@ -26,6 +27,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/product_signal_targeting
   - media_buy_seller/demographic_targeting
+  - media_buy_seller/gender_targeting
   - media_buy_seller/product_filter_behavior
   - media_buy_seller/read_filter_behavior
   - media_buy_seller/list_creatives_filter_behavior
@@ -67,6 +69,12 @@ requires_scenarios:
   - media_buy_seller/budget_cap_timezone_override_rejected
   - media_buy_seller/owner_sold_channel_carriage
   - media_buy_seller/collection_selection
+  - media_buy_seller/collection_default_materialization
+  - media_buy_seller/collection_selection_readback
+  - media_buy_seller/collection_default_materialization_readback
+  - media_buy_seller/fixed_bundle_enforcement
+  - media_buy_seller/fixed_bundle_restatement
+  - media_buy_seller/owner_sold_channel_subset
   - media_buy_seller/outcome_target_list_products_inert
 
 narrative: |
@@ -392,11 +400,11 @@ phases:
 
         context_outputs:
           - name: product_format_kind
-            path: 'products[0].format_options[0].format_kind'
+            path: "products[0].format_options[0].format_kind"
           - name: product_id
-            path: 'products[0].product_id'
+            path: "products[0].product_id"
           - name: pricing_option_id
-            path: 'products[0].pricing_options[0].pricing_option_id'
+            path: "products[0].pricing_options[0].pricing_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -532,7 +540,7 @@ phases:
 
         context_outputs:
           - name: media_buy_id
-            path: 'media_buy_id'
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -703,11 +711,11 @@ phases:
             correlation_id: "media_buy_seller--get_products_brief"
         context_outputs:
           - name: product_format_kind
-            path: 'products[0].format_options[0].format_kind'
+            path: "products[0].format_options[0].format_kind"
           - name: product_id
-            path: 'products[0].product_id'
+            path: "products[0].product_id"
           - name: pricing_option_id
-            path: 'products[0].pricing_options[0].pricing_option_id'
+            path: "products[0].pricing_options[0].pricing_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -787,7 +795,7 @@ phases:
             correlation_id: "media_buy_seller--create_media_buy"
         context_outputs:
           - name: media_buy_id
-            path: 'media_buy_id'
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"

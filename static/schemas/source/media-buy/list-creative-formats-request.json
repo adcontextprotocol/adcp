@@ -15,6 +15,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Return only these specific named-format IDs (for example, from a 3.x get_products response). Use canonical-format discovery in 4.0.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
@@ -104,6 +105,7 @@
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "**DEPRECATED with `list_creative_formats` in 3.2. Removed at 4.0.** Use `get_products` with `account`; each `Product.format_options[]` lists the formats this seller can deliver for that account. *Legacy 3.x behavior:* scopes the returned formats to this account. Sellers that keep account-specific format catalogs (including sandbox accounts) return that account's formats; sellers with a single catalog MAY ignore this field."
     },
     "pagination": {

@@ -20,6 +20,30 @@
   },
   "allOf": [
     {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": { "issue_reporting": { "const": true } },
+            "required": ["issue_reporting"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "idempotency": {
+                "properties": { "supported": { "const": true } },
+                "required": ["supported", "replay_ttl_seconds"]
+              }
+            },
+            "required": ["idempotency"]
+          }
+        }
+      }
+    },
+    {
       "$ref": "/schemas/core/version-envelope.json"
     },
     {
@@ -232,6 +256,34 @@
             "required": ["supported", "profile", "algorithms", "legacy_hmac_fallback"]
           }
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "signals": {
+            "properties": {
+              "features": {
+                "properties": {
+                  "signal_lifecycle": {
+                    "const": true
+                  }
+                },
+                "required": ["signal_lifecycle"]
+              }
+            },
+            "required": ["features"]
+          }
+        },
+        "required": ["signals"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "signals.signal_lifecycle" }
+          }
+        },
+        "required": ["experimental_features"]
       }
     },
     {
@@ -530,6 +582,65 @@
     },
     {
       "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "execution": {
+                "properties": {
+                  "targeting": {
+                    "properties": {
+                      "demographics": {
+                        "properties": {
+                          "gender": {
+                            "properties": {
+                              "supported": {
+                                "const": true
+                              }
+                            },
+                            "required": [
+                              "supported"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "gender"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "demographics"
+                    ]
+                  }
+                },
+                "required": [
+                  "targeting"
+                ]
+              }
+            },
+            "required": [
+              "execution"
+            ]
+          }
+        },
+        "required": [
+          "media_buy"
+        ]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": {
+              "const": "media_buy.gender_targeting"
+            }
+          }
+        },
+        "required": [
+          "experimental_features"
+        ]
+      }
+    },
+    {
+      "if": {
         "required": ["account"],
         "properties": { "account": { "required": ["agent_onboarding"] } }
       },
@@ -542,6 +653,14 @@
     }
   ],
   "properties": {
+    "business_calendars": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/business-calendar.json" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-added-in": "3.3.0",
+      "description": "Seller working-time calendars, uniquely keyed by immutable calendar_id. Every published business-clock SLA MUST resolve to one declaration here. Retain earlier declarations while requests referencing them remain pending. Presence declares calendar support, not any product-level timing commitment."
+    },
     "adcp": {
       "type": "object",
       "description": "Core AdCP protocol information",
@@ -549,6 +668,7 @@
         "major_versions": {
           "type": "array",
           "deprecated": true,
+          "x-removed-in": "4.0.0",
           "description": "DEPRECATED in favor of `supported_versions` (release-precision strings). Servers MUST continue to emit this field through 3.x for backwards compatibility. Removed in 4.0. Original semantics: AdCP major versions supported by this seller. Major versions indicate breaking changes.",
           "items": {
             "type": "integer",
@@ -579,6 +699,7 @@
           ]
         },
         "implementation": {
+          "x-added-in": "3.3.0",
           "type": "object",
           "description": "Optional, self-reported AdCP SDK identity and integration metadata, introduced in 3.3. Omission means SDK use is unknown. An empty sdks array explicitly reports no AdCP SDK use. This metadata is advisory: it does not establish SDK approval, prove deployed code execution, change capability obligations, or justify skipping conformance checks without independently trusted evidence covering this endpoint and integration. Buyers MUST NOT use it for version negotiation.",
           "properties": {
@@ -1129,6 +1250,7 @@
           "description": "OAuth authorization endpoint for obtaining operator-level credentials. Present when the seller supports OAuth for operator authentication. The agent directs the operator to this URL to authenticate and obtain a bearer token. If absent and require_operator_auth is true, operators obtain credentials out-of-band (e.g., seller portal, API key)."
         },
         "stable_account_id": {
+          "x-added-in": "3.3.0",
           "type": "boolean",
           "description": "Whether the seller-assigned account_id is a durable AccountRef for every account the caller can operate, including buyer-declared accounts. When true, the seller MUST return account_id on every non-failed sync_accounts provisioning result, MUST accept { account_id } wherever an AccountRef is accepted, and MUST NOT change an account's account_id for the life of the account, including across identity reconciliation. A buyer-declared seller that declares true still accepts the account's current natural key throughout 3.x. Buyers holding an account_id from a seller that declares true SHOULD send it in place of the natural key. When false or absent, buyers follow the account model declared by require_operator_auth and MUST NOT assume a buyer-declared seller accepts its returned account_id. Sellers whose accounts already use account_id references (require_operator_auth: true) SHOULD declare true when their ids meet these rules. Using the natural key as the reference after provisioning is deprecated as of 3.3 and planned for removal in 4.0, so sellers SHOULD declare true during 3.x to give buyers a migration path.",
           "default": false
@@ -1361,6 +1483,12 @@
       "type": "object",
       "description": "Media-buy protocol capabilities. Expected when media_buy is in supported_protocols. Sellers declaring media_buy should also include account with supported_billing.",
       "properties": {
+        "issue_reporting": {
+          "type": "boolean",
+          "default": false,
+          "x-added-in": "3.3.0",
+          "description": "Supports report_media_buy_issue and get_media_buy_issue, including durable human acknowledgement and resolution polling. Products advertise the report_media_buy_issue action and any critical-report SLA through allowed_actions; each buy resolves current support and commitment in available_actions. Absence or false means unsupported. Reporting is separate from controls and does not pause delivery."
+        },
         "anonymous_discovery": {
           "type": "boolean",
           "description": "Whether this seller accepts product discovery without caller credentials. This applies to list_products and to get_products in brief or wholesale mode; it does not apply to proposal refinement or finalization, purchasing, account-scoped reads, or mutations. true means an anonymous discovery request can produce a successful response, but the response may be a public subset and may differ from results for an authenticated principal or selected account. false means these discovery calls require an authenticated principal. Absence means unspecified legacy behavior, so callers probe and handle AUTH_MISSING. A valid authenticated request is never rejected merely because credentials were supplied. true is inconsistent with account.required_for_products=true because an anonymous caller cannot select protected account context.",
@@ -1890,11 +2018,29 @@
                 },
                 "demographics": {
                   "type": "object",
-                  "description": "Seller-wide discovery rollup for canonical demographic targeting. supported=true means at least one product implements the demographic targeting contract; it does not authorize demographic targeting on every product. Buyers MUST inspect Product.demographic_targeting for exact execution modes, bounds, intervals, and unknown-age behavior.",
+                  "description": "Seller-wide discovery rollup for canonical demographic targeting. supported=true means at least one product implements the demographic targeting contract; it does not authorize demographic targeting on every product. Buyers MUST inspect Product.demographic_targeting for exact execution modes, supported dimensions, bounds, intervals, gender values, and per-dimension unknown behavior.",
                   "properties": {
                     "supported": {
                       "type": "boolean",
                       "description": "Whether at least one seller product supports canonical demographic targeting."
+                    },
+                    "gender": {
+                      "type": "object",
+                      "properties": {
+                        "supported": {
+                          "type": "boolean",
+                          "description": "Whether at least one product supports core gender targeting. Omission makes no core gender support commitment; inspect Product.demographic_targeting.gender before purchase.",
+                          "x-status": "experimental",
+                          "x-added-in": "3.3.0"
+                        }
+                      },
+                      "required": [
+                        "supported"
+                      ],
+                      "additionalProperties": true,
+                      "x-status": "experimental",
+                      "x-added-in": "3.3.0",
+                      "description": "Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only."
                     }
                   },
                   "required": ["supported"],
@@ -2135,6 +2281,7 @@
           "description": "Seller-level rollup of vendor-metric optimization capabilities supported by at least one product. Product-level vendor_metric_optimization.supported_metrics[] remains authoritative for the specific (vendor, metric_id) pairs and target kinds a buyer may bind on a package; this seller-level object exists so buyers and compliance runners can discover whether vendor_metric goals are in scope before walking the catalog. Sellers MUST keep this in sync with product-level vendor_metric_optimization declarations.",
           "properties": {
             "supported_metrics": {
+              "x-added-in": "3.3.0",
               "type": "array",
               "description": "(vendor, metric_id) pairs this seller can optimize toward on at least one of its products. Seller-level rollup of product-level vendor_metric_optimization.supported_metrics[] declarations (core/product.json); each entry has the product-level shape, and its supported_targets, when present, are the target kinds at least one product supports for the pair. Pairs are matched on vendor.domain and vendor.brand_id, as at the product level, and sellers MUST list each pair once, with supported_targets unioned across products; the object-level supported_targets covers the union of the per-pair values. Buyers SHOULD check this list before sending a vendor_metric goal, including an outcome_target vendor_metric goal, rather than learning an unsupported pair from an INVALID_REQUEST rejection. Product-level declarations remain authoritative for a specific package. Sellers MUST keep this in sync with their product catalog — if no product supports a pair, it must not appear here. Omitting this field means the seller declares no specific guarantees about which pairs it supports; buyers should fall back to per-product inspection of vendor_metric_optimization.supported_metrics.",
               "items": {
@@ -2155,6 +2302,11 @@
             }
           },
           "additionalProperties": true
+        },
+        "event_source_archive": {
+          "type": "boolean",
+          "description": "Whether this seller supports the per-source `archived` field on `sync_event_sources` request items. When true, `archived: true` archives an event source and `archived: false` undoes it. When false or absent, the seller MUST reject a request that sends `archived` with `UNSUPPORTED_FEATURE`, so a buyer never mistakes an ignored field for an archive.",
+          "x-added-in": "3.3.0"
         },
         "conversion_tracking": {
           "type": "object",
@@ -2495,6 +2647,12 @@
           "type": "object",
           "description": "Optional signals features supported",
           "properties": {
+            "signal_lifecycle": {
+              "type": "boolean",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "true means this signals agent builds segments on demand and may emit signal_status ('processing' or 'failed') and source_audience_id on get_signals results. Absent or false means every returned signal is ready. Experimental (x-status: experimental): agents declaring this MUST list signals.signal_lifecycle in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice."
+            },
             "catalog_signals": {
               "type": "boolean",
               "description": "DEPRECATED. Legacy wire flag for structured signal_ref references to provider-published signal definitions. New agents SHOULD omit this flag; callers MUST NOT require it before using signal_ref with the Signals protocol.",
@@ -2548,6 +2706,7 @@
           "description": "Trailing window (in days) over which this governance agent aggregates committed spend when evaluating dollar-valued thresholds (reallocation_threshold, human_review triggers, registry-policy floors). Required for fragmentation defense: without aggregation, a buyer can split a single large spend into many sub-threshold commits across plans / task surfaces / time and bypass every dollar-gated escalation. Aggregation is keyed on (buyer_agent, seller_agent, account_id) and spans all spend-commit task types. Upper bound 365 represents a one-year trailing window (fiscal-year alignment with grace); governance agents needing longer scopes negotiate via operator sign-off, not this capability. No schema default: absence of this field indicates the governance agent has not committed to any aggregation window and buyers MUST assume per-commit evaluation only (the fragmentation attack surface is open). A declared value of 30 is a common starting point but is not implied by omission. Buyers depending on a specific window for compliance MUST check this capability before relying on aggregation semantics — an agent declaring 7 days does not defend against fragmentation spread across a 30-day quarter-end push."
         },
         "supports_budget_periods": {
+          "x-added-in": "3.3.0",
           "type": "boolean",
           "description": "Whether this governance agent accepts `plans[].budget.periods[]` on sync_plans and enforces it on check_governance: deriving the containing period for dated actions, denying straddling or over-period commitments, and returning `budget_period_id`. When false or absent, buyers MUST NOT rely on period limits being enforced and SHOULD NOT send `budget.periods`; an agent that does not implement the field cannot honor a time-partitioned budget."
         },
@@ -2844,7 +3003,7 @@
           "type": "boolean",
           "default": false,
           "x-status": "experimental",
-          "description": "Experimental (x-status: experimental) — agents setting this true MUST also list `creative.evaluator` in `experimental_features`; the surface MAY change between 3.x releases with notice (see docs/reference/experimental-status). When true, build_creative accepts an advisory `evaluator` input (exemplars / account-arranged evaluator_id / agent_url, plus an optional `feature_requirement[]` gate, a `rank_by` ordering, and an allowlisted `feature_agent` pointer). Feature discovery uses this response's governance.creative_features catalog: rank_by, feature_requirement, and eval.features[] all share the same creative-feature vocabulary as get_creative_features. evaluator_id is not discovered from this catalog; it is a pre-provisioned account preset whose emitted feature_ids still come from it. The evaluator populates a per-leaf `eval` block of creative-feature values (creative-feature-result[], the same shape get_creative_features returns) on BuildCreativeVariantSuccess leaves, which is what the recommended/rank it sets on the best_of_n axis are computed over. The agent runs a gate-then-rank pipeline over its best_of_n exploration: it evaluates each leaf, DROPS leaves failing `feature_requirement[]` from its recommended survivors, then orders survivors by `rank_by`. The gate is internal pruning of which leaves the agent recommends/returns from its own exploration — it never blocks an already-produced billable leaf: what is produced and billed is governed by max_variants/max_creatives/max_spend, not the evaluator. When the evaluator names an external agent, it MUST appear in `creative_policy.accepted_verifiers[]` (off-list → EVALUATOR_AGENT_NOT_ACCEPTED), and the producing agent authenticates the outbound evaluator call on the transport. Evaluator credentials and caller-supplied trust material MUST NOT be passed in the build_creative payload; credential- or trust-material payload keys should be rejected with CREDENTIAL_IN_ARGS. When false or absent, the `evaluator` input is ignored and no `eval` block is emitted."
+          "description": "Experimental (x-status: experimental) — agents setting this true MUST also list `creative.evaluator` in `experimental_features`; the surface MAY change between 3.x releases with notice (see docs/reference/experimental-status). When true, build_creative accepts an advisory `evaluator` input (exemplars / agent_url, plus an optional `feature_requirement[]` gate, a `rank_by` ordering, and an allowlisted `feature_agent` pointer). Feature discovery uses this response's governance.creative_features catalog: rank_by, feature_requirement, and eval.features[] all share the same creative-feature vocabulary as get_creative_features. A seller's house evaluator is an agent it lists in `creative_policy.accepted_verifiers[]`, named via `agent_url`; its emitted feature_ids still come from this catalog. The evaluator populates a per-leaf `eval` block of creative-feature values (creative-feature-result[], the same shape get_creative_features returns) on BuildCreativeVariantSuccess leaves, which is what the recommended/rank it sets on the best_of_n axis are computed over. The agent runs a gate-then-rank pipeline over its best_of_n exploration: it evaluates each leaf, DROPS leaves failing `feature_requirement[]` from its recommended survivors, then orders survivors by `rank_by`. The gate is internal pruning of which leaves the agent recommends/returns from its own exploration — it never blocks an already-produced billable leaf: what is produced and billed is governed by max_variants/max_creatives/max_spend, not the evaluator. When the evaluator names an external agent, it MUST appear in `creative_policy.accepted_verifiers[]` (off-list → EVALUATOR_AGENT_NOT_ACCEPTED), and the producing agent authenticates the outbound evaluator call on the transport. Evaluator credentials and caller-supplied trust material MUST NOT be passed in the build_creative payload; credential- or trust-material payload keys should be rejected with CREDENTIAL_IN_ARGS. When false or absent, the `evaluator` input is ignored and no `eval` block is emitted."
         },
         "refinable_retention_seconds": {
           "type": "integer",
@@ -3245,6 +3404,7 @@
           }
         },
         "operation_sources": {
+          "x-added-in": "3.3.0",
           "type": "array",
           "description": "Transport bindings from which this verifier resolves the AdCP operation name it matches against supported_for, warn_for, and required_for. 'mcp_tools_call' resolves from the decoded params.name of a JSON-RPC tools/call request. 'a2a_invocation_skill' resolves from the decoded skill of the sole DataPart of an A2A message (SendMessage, SendStreamingMessage, message/send, message/stream, and the HTTP+JSON and gRPC equivalents), and commits the verifier to the fail-closed and skill-to-handler binding rules and the hardening clauses in docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a for every A2A version and binding the endpoint serves. A verifier MUST list a source only if it implements that source's rules and passes its conformance vectors, including the hardening tier, and a present array MUST list every source the verifier supports. Absent means a verifier that has not declared this: a counterparty MUST NOT infer that required_for is enforced over A2A. The field is self-attested and informational; buyers SHOULD sign any operation listed in required_for regardless of it. It never changes the protocol_methods_* namespace, which matches the JSON-RPC method only.",
           "items": {
@@ -3270,7 +3430,8 @@
           "default": ["adcp/request-signing/v1"],
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/wba-profile.mdx#capability"
-          }
+          },
+          "x-added-in": "3.3.0"
         }
       },
       "required": ["supported"]
@@ -3335,6 +3496,7 @@
         "legacy_hmac_fallback": {
           "type": "boolean",
           "deprecated": true,
+          "x-removed-in": "4.0.0",
           "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_principal.configuration.notification_configs[].authentication, sync_agent_notification_configs.notification_configs[].authentication, reporting_webhook.authentication, or create_media_buy.artifact_webhook.authentication paths for receivers that have not adopted RFC 9421. With the seller's onboarding record, the sole selector of webhook-signing mode; when false, a registration carrying `authentication` is rejected with `webhook_hmac_not_supported`. Deprecated; removed in AdCP 4.0.",
           "default": false
         },
@@ -3356,7 +3518,8 @@
           "default": ["adcp/webhook-signing/v1"],
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/wba-profile.mdx#webhooks"
-          }
+          },
+          "x-added-in": "3.3.0"
         }
       },
       "required": ["supported"]

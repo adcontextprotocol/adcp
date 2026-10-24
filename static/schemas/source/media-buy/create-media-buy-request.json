@@ -71,6 +71,7 @@
       "type": "string",
       "description": "DEPRECATED on seller-facing requests. New buyers send the approved governance_context on the protocol envelope; the seller forwards that opaque context and does not need the plan identifier. If both are present, the governance agent MUST reject a mismatch. Removed in 4.0.",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "x-entity": "governance_plan"
     },
     "account": {
@@ -161,6 +162,21 @@
     "invoice_recipient": {
       "$ref": "/schemas/core/business-entity.json",
       "description": "Override the account's default billing entity for this specific buy. When provided, the seller invoices this entity instead. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
+    },
+    "predecessor_media_buy_id": {
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "media_buy",
+      "description": "Media buy this one succeeds (renewal, migration, or sunset). Forward-only: set once at creation; the predecessor is never modified. MUST be an existing buy of the same seller and account, else `MEDIA_BUY_NOT_FOUND`. Requires `lineage_reason`. See the Media Buy Lineage section of the media-buy specification. Experimental in AdCP 3.3: sellers that implement it list `media_buy.lineage` in `experimental_features`, buyers send it only to sellers that do, and a seller that cannot record it rejects the request with `UNSUPPORTED_FEATURE`."
+    },
+    "lineage_reason": {
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "$ref": "/schemas/enums/media-buy-lineage-reason.json",
+      "description": "Why this buy succeeds its predecessor. Supplied with, and only with, `predecessor_media_buy_id` (`INVALID_REQUEST` otherwise). Reasons outside the closed enum go in `ext`."
     },
     "io_acceptance": {
       "type": "object",
@@ -258,6 +274,7 @@
         "authentication": {
           "type": "object",
           "deprecated": true,
+          "x-removed-in": "4.0.0",
           "description": "Legacy authentication for webhook delivery (A2A-compatible): Bearer or HMAC-SHA256, both deprecated and removed in AdCP 4.0 (#4288). Required on a request served below 3.3. When this block is absent, the seller signs every delivery under the profile the registration's `signing_profile` selects (`adcp/webhook-signing/v1` when it is omitted), as for `push_notification_config` (docs/building/by-layer/L1/security.mdx#webhook-callbacks).",
           "properties": {
             "schemes": {
@@ -300,7 +317,8 @@
         "signing_profile": {
           "x-status": "experimental",
           "$ref": "/schemas/enums/webhook-signing-profile.json",
-          "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the registration with `INVALID_REQUEST`. MUST NOT be combined with `authentication`."
+          "description": "Webhook-signing profile the seller uses for every delivery to this `url`. When it is omitted, the seller signs with `adcp/webhook-signing/v1`, or with the legacy scheme when `authentication` is present. A seller whose `webhook_signing.profiles` does not list it rejects the registration with `INVALID_REQUEST`. MUST NOT be combined with `authentication`.",
+          "x-added-in": "3.3.0"
         },
         "sampling_rate": {
           "type": "number",
@@ -430,6 +448,12 @@
   "dependencies": {
     "proposal_id": [
       "total_budget"
+    ],
+    "predecessor_media_buy_id": [
+      "lineage_reason"
+    ],
+    "lineage_reason": [
+      "predecessor_media_buy_id"
     ]
   },
   "additionalProperties": true
