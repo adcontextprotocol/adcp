@@ -101,7 +101,114 @@ Returns an array of media buys with current status, creative approval state, and
 | `history` | Revision history entries, most recent first. Only present when `include_history > 0`. Append-only — entries are never modified or deleted. |
 | `webhook_activity` | Recent delivery, health, `indicators.changed`, and `creative.assignment_changed` attempts relevant to this buy. Only present when requested and supported. |
 | `context` | Opaque media-buy-level correlation data echoed unchanged from `create_media_buy`. Sellers MUST include persisted context when the media buy was created through AdCP with context, and MAY omit it for media buys created outside AdCP or without context. Use it to reconcile `media_buy_id` with buyer tracking state. |
-| `packages` | Array of packages with creative status and optional snapshots |
+| `packages` | Array of packages with creative status and optional snapshots. In AdCP 3.3, canceled and completed buys retain their recorded packages; see [terminal package retention](#terminal-package-retention). |
+
+### Terminal package retention
+
+**Beginning with AdCP 3.3**, a seller returning a `canceled` or `completed`
+media buy MUST keep listing all retained package records, including packages
+canceled individually. Canceling an individual package MUST also preserve it in
+readback while the buy continues running. On adopting 3.3, sellers MUST preserve
+package records they already hold and durably record packages subsequently
+created through AdCP (including added packages), imported, discovered, or returned
+from the native platform. Deleting a campaign or losing access to its platform
+packages MUST NOT discard any of these known records.
+
+Sellers are not required to reconstruct records irrecoverably lost before
+adoption or external package history they never observed. If a returned buy's
+historical package set cannot be established, the seller MUST return all retained
+records and disclose the incomplete history in a nonfatal `errors[]` entry. That
+entry MUST use a seller-defined code following the
+[`X_{VENDOR}_{CODE}` convention](/docs/building/operating/transport-errors#seller-specific-error-codes),
+set `recovery: "terminal"`, point `field` at `media_buys[N].packages`, and include
+the affected `media_buy_id` in `details`. The message MUST explain the missing
+history. The buy remains in the successful response. An empty array with this
+disclosure means unknown history; it does not establish that the buy never had
+packages or delivery. This exception never permits dropping records held at or
+after adoption. Without such a disclosure, an empty terminal package list asserts
+that the buy had no packages.
+
+Sellers MUST preserve each retained package's `package_id`, recorded
+`product_id`, persisted package `context`, and any platform identity mappings
+previously exposed in seller extensions. The seller MUST retain the underlying
+package-to-platform association needed to attribute historical delivery. When
+the platform no longer exposes the packages, sellers MUST return persisted
+records reflecting the latest recorded committed configuration, including
+successful AdCP updates and ingested changes from seller operators, automation,
+or connected platforms. The creation record is sufficient only if no subsequent
+changes were recorded. This requirement applies for as long as the seller
+returns the buy; it does not establish a retention period for the buy itself.
+
+Terminal state uses the existing fields:
+
+- The containing buy's `canceled` or `completed` status makes all retained
+  packages terminal for serving. There is no separate package `status` field.
+- Package `canceled` and `cancellation` fields describe package-level
+  cancellation independently of the buy's status. Whole-buy cancellation MAY
+  leave those fields unchanged; sellers do not need to synthesize a cancellation
+  record for each package. Previously canceled packages MUST keep their recorded
+  cancellation state and original metadata; optional fields do not become required
+  solely because the buy is terminal.
+- Sellers MUST preserve previously recorded terminal package outcomes. A package
+  that finished its flight, goal, or budget before whole-buy cancellation MUST
+  NOT be relabeled as canceled solely because the buy was canceled. Preserve any
+  available terminal snapshot outcome without inventing a snapshot.
+
+Retaining package records does not restore released creative assignments:
+`creative_approvals` MUST NOT list assignments released by cancellation. Package
+identity retention also does not guarantee a delivery snapshot. Sellers MUST NOT
+fabricate zero impressions or spend when statistics are unavailable. Use
+[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
+for historical reporting and reconciliation; delivery before cancellation
+remains attributable to the same `package_id`.
+
+**Version compatibility:** use the echoed response `adcp_version` to determine
+the release actually served, rather than the requested pin or the seller's build
+version. A 3.3 request can downshift to an older supported release; an absent
+version echo gives no 3.3 retention assurance. Even a response served as 3.3 may
+disclose an incomplete historical package set as described above.
+
+For a response served as **AdCP 3.2**, the required `packages` array has no
+minimum length, and 3.2 does not guarantee retention after cancellation or completion.
+An empty list is allowed and does not mean the buy never had packages or
+delivery. Buyers integrating with 3.2 sellers should retain their own package
+identities and correlation data. See [version negotiation](/docs/reference/versioning#version-negotiation).
+
+For example, after a whole-buy cancellation, the package and its previously
+exposed platform mapping remain available even if the platform campaign has
+been deleted. `ext.streamhaus.ad_set_id` here is a seller-defined extension:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buys-response.json",
+  "adcp_version": "3.3",
+  "status": "completed",
+  "media_buys": [
+    {
+      "media_buy_id": "mb_nova_autumn",
+      "status": "canceled",
+      "currency": "USD",
+      "total_budget": 5000,
+      "confirmed_at": "2026-10-01T09:00:00Z",
+      "revision": 3,
+      "cancellation": {
+        "canceled_at": "2026-10-15T12:00:00Z",
+        "canceled_by": "buyer"
+      },
+      "packages": [
+        {
+          "package_id": "pkg_autumn_display",
+          "product_id": "prod_display",
+          "context": { "buyer_ref": "nova_line_01" },
+          "ext": {
+            "streamhaus": { "ad_set_id": "adset_789" }
+          }
+        }
+      ]
+    }
+  ]
+}
+```
 
 ### Package Object
 
