@@ -96,7 +96,7 @@ Returns financial data for the account. Only `account`, `currency`, `period`, an
 | `balance` | Present for prepay accounts. Contains `available` balance and optional `last_top_up` (`amount`, `date`). |
 | `payment_status` | `current`, `past_due`, or `suspended`. |
 | `payment_terms` | Payment terms in effect: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. |
-| `invoices` | Array of recent invoices: `invoice_id`, `amount`, `status` (`draft`, `issued`, `paid`, `past_due`, `void`), optional `period`, `due_date`, `paid_date`. Sellers may limit the list, except that a seller listing `invoice` in `account.change_feed.resource_types` MUST return every invoice with a retained change record, as defined in [Invoices](/docs/accounts/tasks/list_account_changes#invoices). |
+| `invoices` | Array of recent invoices: `invoice_id`, `amount`, `status` (`draft`, `issued`, `paid`, `past_due`, `void`), optional `period`, `due_date`, `paid_date`. Sellers may limit the list, except that a seller listing `invoice` in `account.change_feed.resource_types` MUST return every invoice with a retained change record, as defined in [Invoices](/docs/accounts/tasks/list_account_changes#invoices). Experimental in 3.3 (`account.invoice_lines`): optional `lines[]`, `invoice_kind` (`invoice` or `credit_note`), and `adjusts_invoice_id`; see [Invoice lines](#invoice-lines-experimental). |
 
 **Error response:**
 
@@ -221,6 +221,26 @@ asyncio.run(main())
 ```
 
 </CodeGroup>
+
+### Invoice lines (experimental)
+
+<Warning>
+Experimental in AdCP 3.3 under the `account.invoice_lines` feature id. A seller that returns `lines`, `invoice_kind`, or `adjusts_invoice_id` MUST list `account.invoice_lines` in `experimental_features` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). See [Experimental status](/docs/reference/experimental-status).
+</Warning>
+
+An official reporting revision is the invoice-addressable close for its reporting slice, but an invoice that carries only `invoice_id` and `amount` cannot say which of that reporting it billed. Sellers that itemise add optional fields to each `invoices[]` item:
+
+| Field | Description |
+|-------|-------------|
+| `lines[]` | Itemised lines. Each has a required `media_buy_id` and optional `package_id`, `reporting_revision_ids[]` (official revisions the line bills from), `reporting_adjustment_ids[]` (adjustments the line applies, for corrections billed in a later period), `billed_quantity` (the `core/reporting-control-total.json` value and unit shape), and `amount`. |
+| `invoice_kind` | `invoice` (default) or `credit_note`. |
+| `adjusts_invoice_id` | For a credit note or rebill, the `invoice_id` it changes. |
+
+Amounts are never negative. A credit note is `invoice_kind: "credit_note"` with a non-negative `amount`; the kind carries the sign, and a buyer subtracts it from what is owed. A credit note has no `due_date`; its `paid_date`, when present, is the date the credit was applied or refunded. A document is one direction: a net-negative correction goes on a `credit_note`, never on an `invoice`, and line `billed_quantity` values are non-negative. Sellers MUST NOT send `credit_note` records to callers pinned below AdCP 3.3, because a legacy buyer summing `invoices[].amount` would count the credit as a charge. A rebill is a new `invoice` that carries `adjusts_invoice_id`; the replaced invoice is reported `void` or offset by a credit note, so buyers do not count both. `reporting_revision_ids` and `reporting_adjustment_ids` are the opaque ids from the `media_buy.reporting_delivery` surface.
+
+Lines are reference only and never settle. They identify which reporting an invoice amount covers; they do not create, approve, or settle invoices, calculate tax or FX, or determine payment obligations, which stays inside the boundary set by `core/reporting-adjustment.json` and `enums/billing-party.json`. The sum of line amounts SHOULD NOT exceed the invoice `amount`; taxes, fees, and unitemised charges may sit outside the lines. Sellers that do not itemise keep returning invoices without `lines`.
+
+Buyers read `lines` through `get_account_financials`, including as the repair read for an invoice change on the [account change feed](/docs/accounts/tasks/list_account_changes). The line shape is the standalone `core/invoice-line.json`, so a later invoice notification can carry the same `lines` without changing shape.
 
 ## Error handling
 
