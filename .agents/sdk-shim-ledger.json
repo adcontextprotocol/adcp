@@ -1,1 +1,21 @@
-[]
+[
+  {
+    "id": "creative-build-probe-8240",
+    "title": "Portable evaluator build probe preparation",
+    "kind": "integrity-pinned-package-patch",
+    "status": "temporary",
+    "owner": "adcp compliance maintainers / issue 8240",
+    "upstream": "https://github.com/adcontextprotocol/adcp-client/pull/3332",
+    "problem": "The pinned SDK lacks portable valid build-probe preparation and the served-catalog authority prerequisite required by the merged upstream fix.",
+    "localBehavior": "Patch only reviewed SDK14.0.0-rc.53 CJS/ESM loader, runner, schema-authority and declaration preimages. A local creative_build_probe ALS scope is established before preflight and pairs served catalog selection with actual JSON capability validation (builtin or external); stock14 behavior remains outside that opt-in and for other tasks. Unlike the initial candidate, authority modules include an explicit maintenance delta and do not claim whole-module identity to15.9.5. Preserve request pins, accounting, general TaskExecutor and all four main helper payloads. Authority regressions use ledgered private scope/validator interfaces and owned temporary stock copies reconstructed by exact reverse hashes; no direct installed-package edits.",
+    "removalCondition": "Remove after the upstream creative-build-probe runner fix is merged, available in a qualified SDK release, and both full and standalone regression suites pass after upgrading the pinned dependency. Do not release the SDK from this task.",
+    "paths": [
+      "scripts/install-sdk-creative-build-probe.cjs",
+      "tests/evaluator-build-probe-authority.test.cjs"
+    ],
+    "terms": [
+      "dist/lib/testing/",
+      "dist/lib/validation/"
+    ]
+  }
+]

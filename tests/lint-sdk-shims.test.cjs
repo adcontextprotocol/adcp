@@ -38,9 +38,10 @@ test('ledger entries include removal conditions and upstream asks', () => {
   }
 });
 
-test('source tree has no remaining private SDK reach-ins', () => {
+test('private SDK reach-ins remain bounded to the owned installer and authority regression', () => {
   const findings = collectFindings();
-  assert.deepEqual(findings, []);
+  assert.deepEqual([...new Set(findings.map(finding => finding.file))], ['scripts/install-sdk-creative-build-probe.cjs', 'tests/evaluator-build-probe-authority.test.cjs']);
+  assert.ok(findings.every(finding => ['dist/lib/testing/', 'dist/lib/validation/'].some(term => finding.term.includes(term))));
 });
 
 test('matchingPrivateTerm ignores comment-only lines but catches private SDK code', () => {

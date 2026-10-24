@@ -1,0 +1,434 @@
+{
+  "package": "@adcp/sdk",
+  "version": "14.0.0-rc.53",
+  "provenance": {
+    "main_fix": "7cf1eddf8050f052fa40c830d1953eecd7db5e52",
+    "evaluator_source": "9f932f174e8125e00ec55d64db2a292cba2be7f9",
+    "served_authority_prerequisite": "@adcp/sdk@15.9.5 served-selection additions with explicit SDK14 maintenance delta: local creative_build_probe ALS opt-in before preflight, paired actual JSON catalog authority, stock semantics elsewhere; no complete module identity or whole-SDK parity claim, no OAuth/TaskExecutor changes"
+  },
+  "files": [
+    {
+      "path": "dist/lib/testing/storyboard/runner.js",
+      "before": "8a78c2f3f24a70758d6a9f244d0762b08ac169aba8098e9c90cdad4f8b4bf058",
+      "after": "e3a145aadb7a7fae00fd4d5d293b715e5345cab562482ab99c3c84064fdb07e6",
+      "replacements": [
+        {
+          "from": "var import_node_crypto = require(\"node:crypto\");\n",
+          "to": "var import_creative_build_probe = require(\"./creative-build-probe.js\");\nvar import_node_crypto = require(\"node:crypto\");\n"
+        },
+        {
+          "from": "  let seedingFailed = false;",
+          "to": "  let seedingFailed = false;\n  let creativeBuildCatalogFailed = false;"
+        },
+        {
+          "from": "  let fixtureCoverageGap;\n  {\n    let seeding;",
+          "to": "  let fixtureCoverageGap;\n  if (storyboard.creative_build_probe && !skipControllerSeedingForPhaseGates) {\n    let resolution;\n    try {\n      resolution = routingContext || isMultiInstance ? {\n        status: \"unsatisfied\",\n        detail: `fixture_unsatisfied: creative_format:${storyboard.creative_build_probe.context_prefix}: resolve an independent fixture for each routed or replicated agent in a single-agent run`\n      } : (0, import_creative_build_probe.prepareCreativeBuildProbe)(\n        profile?.raw_capabilities,\n        storyboard.creative_build_probe,\n        options.test_kit,\n        options.adcpVersion\n      );\n    } catch (error) {\n      await Promise.allSettled([\n        ...webhookReceiver ? [webhookReceiver.close()] : [],\n        ...!callerOwnsClients ? [(0, import_protocols.closeScopedConnections)(options.protocol)] : []\n      ]);\n      throw error;\n    }\n    const handle = storyboard.creative_build_probe.context_prefix;\n    fixtureResolutionRecords = [\n      {\n        fixture_type: \"creative_format\",\n        handle,\n        requirements: resolution.status === \"resolved\" ? resolution.requirements : [],\n        status: resolution.status,\n        ...resolution.status === \"resolved\" ? {\n          seller_ids: resolution.capabilityId !== void 0 ? { capability_id: resolution.capabilityId } : { format_id: resolution.formatId }\n        } : {},\n        strategy: \"discover\",\n        strategies_attempted: [\n          {\n            strategy: \"discover\",\n            disposition: resolution.status === \"unsatisfied\" ? \"unavailable\" : resolution.status,\n            detail: resolution.status === \"resolved\" ? `Bound build route using ${resolution.source} input` : resolution.detail\n          }\n        ]\n      }\n    ];\n    if (resolution.status !== \"resolved\") {\n      const noPhasesIndex = phaseResults.findIndex((phase) => phase.phase_id === \"no_phases\");\n      if (noPhasesIndex >= 0) {\n        skippedCount -= phaseResults[noPhasesIndex].steps.filter((step) => step.skipped).length;\n        phaseResults.splice(noPhasesIndex, 1);\n      }\n    }\n    if (resolution.status === \"failed\") {\n      seedingFailed = true;\n      creativeBuildCatalogFailed = true;\n      failedCount += 1;\n      seedingPhaseResult = {\n        phase_id: \"fixture_resolution\",\n        phase_title: \"Creative build fixture resolution\",\n        passed: false,\n        duration_ms: 0,\n        steps: [\n          {\n            storyboard_id: storyboard.id,\n            phase_id: \"fixture_resolution\",\n            step_id: \"creative_build_catalog\",\n            title: \"Validate advertised creative build catalog\",\n            task: \"get_adcp_capabilities\",\n            passed: false,\n            duration_ms: 0,\n            context: {},\n            extraction: { path: \"none\" },\n            validations: [\n              {\n                check: \"creative_build_probe_catalog\",\n                passed: false,\n                description: \"Advertised creative catalog satisfies its format and routing contract\",\n                error: resolution.detail\n              }\n            ]\n          }\n        ]\n      };\n    } else if (resolution.status === \"resolved\") {\n      for (const key of [\n        \"capability_id\",\n        \"target_format_id\",\n        \"message\",\n        \"creative_manifest\",\n        \"creative_id\",\n        \"transformer_id\",\n        \"config\"\n      ]) {\n        delete context[`${handle}_${key}`];\n      }\n      Object.assign(context, resolution.context);\n      options = { ...options, contracts: [.../* @__PURE__ */ new Set([...options.contracts ?? [], \"creative_build_probe_runner\"])] };\n    } else {\n      fixtureUnsatisfied = true;\n      if (preSeeded === void 0 || preSeeded.attach) skippedCount += 1;\n      fixtureCoverageGap = {\n        reason: \"fixture_unsatisfied\",\n        detail: resolution.detail,\n        fixtures: [{ fixture_type: \"creative_format\", handle, requirements: [] }]\n      };\n    }\n  }\n  {\n    let seeding;"
+        },
+        {
+          "from": "creativeAssetFixtureGap || skipControllerSeedingForPhaseGates ? null",
+          "to": "creativeAssetFixtureGap || fixtureUnsatisfied || seedingFailed || skipControllerSeedingForPhaseGates ? null"
+        },
+        {
+          "from": "fixtureResolutionRecords = seeding.resolutionRecords;",
+          "to": "fixtureResolutionRecords = fixtureResolutionRecords ? [...fixtureResolutionRecords, ...seeding.resolutionRecords ?? []] : seeding.resolutionRecords;"
+        },
+        {
+          "from": "    return runMultiPass(agentUrls, storyboard, options);",
+          "to": "    if (storyboard.creative_build_probe) return executeStoryboardPass(agentUrls, storyboard, options, 0);\n    return runMultiPass(agentUrls, storyboard, options);"
+        },
+        {
+          "from": "      const cascadeSkip = seedingMissingController ? {\n        skip_reason: \"missing_test_controller\",\n        skip: { reason: \"missing_test_controller\", detail: SKIP_DETAILS.missing_test_controller }\n      } : seedingUnsupported ? {\n        skip_reason: \"fixture_seed_unsupported\",\n        skip: { reason: \"not_applicable\", detail: FIXTURE_SEED_UNSUPPORTED_DETAIL }\n      } : seedingFailed ? {\n        skip_reason: \"controller_seeding_failed\",\n        skip: { reason: \"prerequisite_failed\", detail: CONTROLLER_SEEDING_FAILED_DETAIL }\n      } : {\n        skip_reason: \"controller_seeding_failed\",\n        skip: { reason: \"prerequisite_failed\", detail: CONTROLLER_SEEDING_FAILED_DETAIL }\n      };",
+          "to": "      const cascadeSkip = seedingMissingController ? {\n        skip_reason: \"missing_test_controller\",\n        skip: { reason: \"missing_test_controller\", detail: SKIP_DETAILS.missing_test_controller }\n      } : seedingUnsupported ? {\n        skip_reason: \"fixture_seed_unsupported\",\n        skip: { reason: \"not_applicable\", detail: FIXTURE_SEED_UNSUPPORTED_DETAIL }\n      } : creativeBuildCatalogFailed ? {\n        skip_reason: \"prerequisite_failed\",\n        skip: {\n          reason: \"prerequisite_failed\",\n          detail: \"Creative build catalog validation failed in fixture_resolution.creative_build_catalog.\"\n        }\n      } : seedingFailed ? {\n        skip_reason: \"controller_seeding_failed\",\n        skip: { reason: \"prerequisite_failed\", detail: CONTROLLER_SEEDING_FAILED_DETAIL }\n      } : {\n        skip_reason: \"controller_seeding_failed\",\n        skip: { reason: \"prerequisite_failed\", detail: CONTROLLER_SEEDING_FAILED_DETAIL }\n      };"
+        },
+        {
+          "from": "  const injectedReceiver = options._webhookReceiver;",
+          "to": "  if (storyboard.creative_build_probe) {\n    let resolution;\n    try {\n      resolution = (0, import_creative_build_probe.prepareCreativeBuildProbe)(\n        profile?.raw_capabilities,\n        storyboard.creative_build_probe,\n        options.test_kit,\n        options.adcpVersion\n      );\n    } catch (error) {\n      if (!clientResolution.reusedShared) {\n        await Promise.allSettled([(0, import_protocols.closeScopedConnections)(options.protocol)]);\n      }\n      throw error;\n    }\n    if (resolution.status === \"failed\") {\n      if (!clientResolution.reusedShared) await (0, import_protocols.closeScopedConnections)(options.protocol);\n      return {\n        storyboard_id: storyboard.id,\n        step_id: found.step.id,\n        phase_id: found.phaseId,\n        title: found.step.title,\n        task: found.step.task,\n        passed: false,\n        duration_ms: 0,\n        validations: [\n          {\n            check: \"creative_build_probe_catalog\",\n            passed: false,\n            description: \"Advertised creative catalog satisfies its format and routing contract\",\n            error: resolution.detail\n          }\n        ],\n        context,\n        extraction: { path: \"none\" },\n        contributions: Array.from(options.contributions ?? [])\n      };\n    }\n    if (resolution.status === \"unsatisfied\") {\n      if (!clientResolution.reusedShared) await (0, import_protocols.closeScopedConnections)(options.protocol);\n      return {\n        storyboard_id: storyboard.id,\n        step_id: found.step.id,\n        phase_id: found.phaseId,\n        title: found.step.title,\n        task: found.step.task,\n        passed: true,\n        skipped: true,\n        skip_reason: \"fixture_unsatisfied\",\n        skip: { reason: \"not_applicable\", detail: resolution.detail },\n        duration_ms: 0,\n        validations: [],\n        context,\n        extraction: { path: \"none\" },\n        contributions: Array.from(options.contributions ?? [])\n      };\n    }\n    for (const key of [\n      \"capability_id\",\n      \"target_format_id\",\n      \"message\",\n      \"creative_manifest\",\n      \"creative_id\",\n      \"transformer_id\",\n      \"config\"\n    ]) {\n      delete context[`${storyboard.creative_build_probe.context_prefix}_${key}`];\n    }\n    Object.assign(context, resolution.context);\n    options = { ...options, contracts: [.../* @__PURE__ */ new Set([...options.contracts ?? [], \"creative_build_probe_runner\"])] };\n  }\n  const injectedReceiver = options._webhookReceiver;"
+        },
+        {
+          "from": "      const schemaRoot = getRunSchemaRoot(options);\n      if (schemaRoot) {\n        return await (0, import_schema_loader.withExternalSchemaRoot)(\n          schemaRoot.adcpVersion,\n          schemaRoot.schemaRoot,\n          () => runStoryboardBody(agentUrlOrUrls, storyboard, options)\n        );\n      }\n      return await runStoryboardBody(agentUrlOrUrls, storyboard, options);",
+          "to": "      const runBody = () => (0, import_schema_loader.withCreativeBuildProbeSchemaScope)(\n        Boolean(storyboard.creative_build_probe),\n        () => storyboard.creative_build_probe\n          ? (0, import_schema_loader.withServedReleaseSchemaRoots)(options.servedReleaseSchemaRoots, () => runStoryboardBody(agentUrlOrUrls, storyboard, options))\n          : runStoryboardBody(agentUrlOrUrls, storyboard, options)\n      );\n      const schemaRoot = getRunSchemaRoot(options);\n      if (schemaRoot) {\n        return await (0, import_schema_loader.withExternalSchemaRoot)(schemaRoot.adcpVersion, schemaRoot.schemaRoot, runBody);\n      }\n      return await runBody();"
+        },
+        {
+          "from": "      const schemaRoot = getRunSchemaRoot(options);\n      if (schemaRoot) {\n        return await (0, import_schema_loader.withExternalSchemaRoot)(\n          schemaRoot.adcpVersion,\n          schemaRoot.schemaRoot,\n          () => runStoryboardStepBody(agentUrl, storyboard, stepId, options)\n        );\n      }\n      return await runStoryboardStepBody(agentUrl, storyboard, stepId, options);",
+          "to": "      const runBody = () => (0, import_schema_loader.withCreativeBuildProbeSchemaScope)(\n        Boolean(storyboard.creative_build_probe),\n        () => storyboard.creative_build_probe\n          ? (0, import_schema_loader.withServedReleaseSchemaRoots)(options.servedReleaseSchemaRoots, () => runStoryboardStepBody(agentUrl, storyboard, stepId, options))\n          : runStoryboardStepBody(agentUrl, storyboard, stepId, options)\n      );\n      const schemaRoot = getRunSchemaRoot(options);\n      if (schemaRoot) {\n        return await (0, import_schema_loader.withExternalSchemaRoot)(schemaRoot.adcpVersion, schemaRoot.schemaRoot, runBody);\n      }\n      return await runBody();"
+        },
+        {
+          "from": "    message: `The agent's get_adcp_capabilities response failed schema validation at ${issue.pointer || \"/\"}: ${issue.message}. Track results may share this root cause; fix it first, then re-read the failures.`,",
+          "to": "    message: (0, import_schema_loader.isCreativeBuildProbeSchemaScopeActive)()\n      ? `Cached capability-discovery diagnostic (not this run's response_schema verdict) at ${issue.pointer || \"/\"}: ${issue.message}`\n      : `The agent's get_adcp_capabilities response failed schema validation at ${issue.pointer || \"/\"}: ${issue.message}. Track results may share this root cause; fix it first, then re-read the failures.`,"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/loader.js",
+      "before": "bf94284049dcae7d7072293c5182867aad01752930581ce90b40852f0fd1a9dd",
+      "after": "a2f6a9420f8e82bcdf8a4772e4587c914cf3cfce3b2da19e34f9678a8ce47024",
+      "replacements": [
+        {
+          "from": "var import_fs = require(\"fs\");\n",
+          "to": "var import_creative_build_probe = require(\"./creative-build-probe.js\");\nvar import_fs = require(\"fs\");\n"
+        },
+        {
+          "from": "function validateStoryboardShape(storyboard) {",
+          "to": "function validateStoryboardShape(storyboard) {\n  if (storyboard.creative_build_probe !== undefined) (0, import_creative_build_probe.validateCreativeBuildProbeSpec)(storyboard.creative_build_probe);"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/runner.mjs",
+      "before": "5586b950b02f9dad5fcef4d8d018a96584640289c0ce0091ad7f7e818f39dd7d",
+      "after": "b23e3614488ce3afdb6fcc9aede98e001f1be880656829b1ed2197d6ef95c454",
+      "replacements": [
+        {
+          "from": "  withExternalSchemaRoot\n} from \"../../validation/schema-loader.mjs\";\n",
+          "to": "  withExternalSchemaRoot,\n  withServedReleaseSchemaRoots,\n  withCreativeBuildProbeSchemaScope,\n  isCreativeBuildProbeSchemaScopeActive\n} from \"../../validation/schema-loader.mjs\";\n"
+        },
+        {
+          "from": "import { createHash, createHmac } from \"node:crypto\";\n",
+          "to": "import { prepareCreativeBuildProbe } from \"./creative-build-probe.mjs\";\nimport { createHash, createHmac } from \"node:crypto\";\n"
+        },
+        {
+          "from": "  let seedingFailed = false;",
+          "to": "  let seedingFailed = false;\n  let creativeBuildCatalogFailed = false;"
+        },
+        {
+          "from": "  let fixtureCoverageGap;\n  {\n    let seeding;",
+          "to": "  let fixtureCoverageGap;\n  if (storyboard.creative_build_probe && !skipControllerSeedingForPhaseGates) {\n    let resolution;\n    try {\n      resolution = routingContext || isMultiInstance ? {\n        status: \"unsatisfied\",\n        detail: `fixture_unsatisfied: creative_format:${storyboard.creative_build_probe.context_prefix}: resolve an independent fixture for each routed or replicated agent in a single-agent run`\n      } : prepareCreativeBuildProbe(\n        profile?.raw_capabilities,\n        storyboard.creative_build_probe,\n        options.test_kit,\n        options.adcpVersion\n      );\n    } catch (error) {\n      await Promise.allSettled([\n        ...webhookReceiver ? [webhookReceiver.close()] : [],\n        ...!callerOwnsClients ? [closeScopedConnections(options.protocol)] : []\n      ]);\n      throw error;\n    }\n    const handle = storyboard.creative_build_probe.context_prefix;\n    fixtureResolutionRecords = [\n      {\n        fixture_type: \"creative_format\",\n        handle,\n        requirements: resolution.status === \"resolved\" ? resolution.requirements : [],\n        status: resolution.status,\n        ...resolution.status === \"resolved\" ? {\n          seller_ids: resolution.capabilityId !== void 0 ? { capability_id: resolution.capabilityId } : { format_id: resolution.formatId }\n        } : {},\n        strategy: \"discover\",\n        strategies_attempted: [\n          {\n            strategy: \"discover\",\n            disposition: resolution.status === \"unsatisfied\" ? \"unavailable\" : resolution.status,\n            detail: resolution.status === \"resolved\" ? `Bound build route using ${resolution.source} input` : resolution.detail\n          }\n        ]\n      }\n    ];\n    if (resolution.status !== \"resolved\") {\n      const noPhasesIndex = phaseResults.findIndex((phase) => phase.phase_id === \"no_phases\");\n      if (noPhasesIndex >= 0) {\n        skippedCount -= phaseResults[noPhasesIndex].steps.filter((step) => step.skipped).length;\n        phaseResults.splice(noPhasesIndex, 1);\n      }\n    }\n    if (resolution.status === \"failed\") {\n      seedingFailed = true;\n      creativeBuildCatalogFailed = true;\n      failedCount += 1;\n      seedingPhaseResult = {\n        phase_id: \"fixture_resolution\",\n        phase_title: \"Creative build fixture resolution\",\n        passed: false,\n        duration_ms: 0,\n        steps: [\n          {\n            storyboard_id: storyboard.id,\n            phase_id: \"fixture_resolution\",\n            step_id: \"creative_build_catalog\",\n            title: \"Validate advertised creative build catalog\",\n            task: \"get_adcp_capabilities\",\n            passed: false,\n            duration_ms: 0,\n            context: {},\n            extraction: { path: \"none\" },\n            validations: [\n              {\n                check: \"creative_build_probe_catalog\",\n                passed: false,\n                description: \"Advertised creative catalog satisfies its format and routing contract\",\n                error: resolution.detail\n              }\n            ]\n          }\n        ]\n      };\n    } else if (resolution.status === \"resolved\") {\n      for (const key of [\n        \"capability_id\",\n        \"target_format_id\",\n        \"message\",\n        \"creative_manifest\",\n        \"creative_id\",\n        \"transformer_id\",\n        \"config\"\n      ]) {\n        delete context[`${handle}_${key}`];\n      }\n      Object.assign(context, resolution.context);\n      options = { ...options, contracts: [.../* @__PURE__ */ new Set([...options.contracts ?? [], \"creative_build_probe_runner\"])] };\n    } else {\n      fixtureUnsatisfied = true;\n      if (preSeeded === void 0 || preSeeded.attach) skippedCount += 1;\n      fixtureCoverageGap = {\n        reason: \"fixture_unsatisfied\",\n        detail: resolution.detail,\n        fixtures: [{ fixture_type: \"creative_format\", handle, requirements: [] }]\n      };\n    }\n  }\n  {\n    let seeding;"
+        },
+        {
+          "from": "creativeAssetFixtureGap || skipControllerSeedingForPhaseGates ? null",
+          "to": "creativeAssetFixtureGap || fixtureUnsatisfied || seedingFailed || skipControllerSeedingForPhaseGates ? null"
+        },
+        {
+          "from": "fixtureResolutionRecords = seeding.resolutionRecords;",
+          "to": "fixtureResolutionRecords = fixtureResolutionRecords ? [...fixtureResolutionRecords, ...seeding.resolutionRecords ?? []] : seeding.resolutionRecords;"
+        },
+        {
+          "from": "    return runMultiPass(agentUrls, storyboard, options);",
+          "to": "    if (storyboard.creative_build_probe) return executeStoryboardPass(agentUrls, storyboard, options, 0);\n    return runMultiPass(agentUrls, storyboard, options);"
+        },
+        {
+          "from": "      const cascadeSkip = seedingMissingController ? {\n        skip_reason: \"missing_test_controller\",\n        skip: { reason: \"missing_test_controller\", detail: SKIP_DETAILS.missing_test_controller }\n      } : seedingUnsupported ? {\n        skip_reason: \"fixture_seed_unsupported\",\n        skip: { reason: \"not_applicable\", detail: FIXTURE_SEED_UNSUPPORTED_DETAIL }\n      } : seedingFailed ? {\n        skip_reason: \"controller_seeding_failed\",\n        skip: { reason: \"prerequisite_failed\", detail: CONTROLLER_SEEDING_FAILED_DETAIL }\n      } : {\n        skip_reason: \"controller_seeding_failed\",\n        skip: { reason: \"prerequisite_failed\", detail: CONTROLLER_SEEDING_FAILED_DETAIL }\n      };",
+          "to": "      const cascadeSkip = seedingMissingController ? {\n        skip_reason: \"missing_test_controller\",\n        skip: { reason: \"missing_test_controller\", detail: SKIP_DETAILS.missing_test_controller }\n      } : seedingUnsupported ? {\n        skip_reason: \"fixture_seed_unsupported\",\n        skip: { reason: \"not_applicable\", detail: FIXTURE_SEED_UNSUPPORTED_DETAIL }\n      } : creativeBuildCatalogFailed ? {\n        skip_reason: \"prerequisite_failed\",\n        skip: {\n          reason: \"prerequisite_failed\",\n          detail: \"Creative build catalog validation failed in fixture_resolution.creative_build_catalog.\"\n        }\n      } : seedingFailed ? {\n        skip_reason: \"controller_seeding_failed\",\n        skip: { reason: \"prerequisite_failed\", detail: CONTROLLER_SEEDING_FAILED_DETAIL }\n      } : {\n        skip_reason: \"controller_seeding_failed\",\n        skip: { reason: \"prerequisite_failed\", detail: CONTROLLER_SEEDING_FAILED_DETAIL }\n      };"
+        },
+        {
+          "from": "  const injectedReceiver = options._webhookReceiver;",
+          "to": "  if (storyboard.creative_build_probe) {\n    let resolution;\n    try {\n      resolution = prepareCreativeBuildProbe(\n        profile?.raw_capabilities,\n        storyboard.creative_build_probe,\n        options.test_kit,\n        options.adcpVersion\n      );\n    } catch (error) {\n      if (!clientResolution.reusedShared) {\n        await Promise.allSettled([closeScopedConnections(options.protocol)]);\n      }\n      throw error;\n    }\n    if (resolution.status === \"failed\") {\n      if (!clientResolution.reusedShared) await closeScopedConnections(options.protocol);\n      return {\n        storyboard_id: storyboard.id,\n        step_id: found.step.id,\n        phase_id: found.phaseId,\n        title: found.step.title,\n        task: found.step.task,\n        passed: false,\n        duration_ms: 0,\n        validations: [\n          {\n            check: \"creative_build_probe_catalog\",\n            passed: false,\n            description: \"Advertised creative catalog satisfies its format and routing contract\",\n            error: resolution.detail\n          }\n        ],\n        context,\n        extraction: { path: \"none\" },\n        contributions: Array.from(options.contributions ?? [])\n      };\n    }\n    if (resolution.status === \"unsatisfied\") {\n      if (!clientResolution.reusedShared) await closeScopedConnections(options.protocol);\n      return {\n        storyboard_id: storyboard.id,\n        step_id: found.step.id,\n        phase_id: found.phaseId,\n        title: found.step.title,\n        task: found.step.task,\n        passed: true,\n        skipped: true,\n        skip_reason: \"fixture_unsatisfied\",\n        skip: { reason: \"not_applicable\", detail: resolution.detail },\n        duration_ms: 0,\n        validations: [],\n        context,\n        extraction: { path: \"none\" },\n        contributions: Array.from(options.contributions ?? [])\n      };\n    }\n    for (const key of [\n      \"capability_id\",\n      \"target_format_id\",\n      \"message\",\n      \"creative_manifest\",\n      \"creative_id\",\n      \"transformer_id\",\n      \"config\"\n    ]) {\n      delete context[`${storyboard.creative_build_probe.context_prefix}_${key}`];\n    }\n    Object.assign(context, resolution.context);\n    options = { ...options, contracts: [.../* @__PURE__ */ new Set([...options.contracts ?? [], \"creative_build_probe_runner\"])] };\n  }\n  const injectedReceiver = options._webhookReceiver;"
+        },
+        {
+          "from": "      const schemaRoot = getRunSchemaRoot(options);\n      if (schemaRoot) {\n        return await withExternalSchemaRoot(\n          schemaRoot.adcpVersion,\n          schemaRoot.schemaRoot,\n          () => runStoryboardBody(agentUrlOrUrls, storyboard, options)\n        );\n      }\n      return await runStoryboardBody(agentUrlOrUrls, storyboard, options);",
+          "to": "      const runBody = () => withCreativeBuildProbeSchemaScope(\n        Boolean(storyboard.creative_build_probe),\n        () => storyboard.creative_build_probe\n          ? withServedReleaseSchemaRoots(options.servedReleaseSchemaRoots, () => runStoryboardBody(agentUrlOrUrls, storyboard, options))\n          : runStoryboardBody(agentUrlOrUrls, storyboard, options)\n      );\n      const schemaRoot = getRunSchemaRoot(options);\n      if (schemaRoot) {\n        return await withExternalSchemaRoot(schemaRoot.adcpVersion, schemaRoot.schemaRoot, runBody);\n      }\n      return await runBody();"
+        },
+        {
+          "from": "      const schemaRoot = getRunSchemaRoot(options);\n      if (schemaRoot) {\n        return await withExternalSchemaRoot(\n          schemaRoot.adcpVersion,\n          schemaRoot.schemaRoot,\n          () => runStoryboardStepBody(agentUrl, storyboard, stepId, options)\n        );\n      }\n      return await runStoryboardStepBody(agentUrl, storyboard, stepId, options);",
+          "to": "      const runBody = () => withCreativeBuildProbeSchemaScope(\n        Boolean(storyboard.creative_build_probe),\n        () => storyboard.creative_build_probe\n          ? withServedReleaseSchemaRoots(options.servedReleaseSchemaRoots, () => runStoryboardStepBody(agentUrl, storyboard, stepId, options))\n          : runStoryboardStepBody(agentUrl, storyboard, stepId, options)\n      );\n      const schemaRoot = getRunSchemaRoot(options);\n      if (schemaRoot) {\n        return await withExternalSchemaRoot(schemaRoot.adcpVersion, schemaRoot.schemaRoot, runBody);\n      }\n      return await runBody();"
+        },
+        {
+          "from": "    message: `The agent's get_adcp_capabilities response failed schema validation at ${issue.pointer || \"/\"}: ${issue.message}. Track results may share this root cause; fix it first, then re-read the failures.`,",
+          "to": "    message: isCreativeBuildProbeSchemaScopeActive()\n      ? `Cached capability-discovery diagnostic (not this run's response_schema verdict) at ${issue.pointer || \"/\"}: ${issue.message}`\n      : `The agent's get_adcp_capabilities response failed schema validation at ${issue.pointer || \"/\"}: ${issue.message}. Track results may share this root cause; fix it first, then re-read the failures.`,"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/loader.mjs",
+      "before": "ee3098c582ad0ca84610be3cf0d80984c01f12006d1e82ced64ff13e2e1337b3",
+      "after": "d1872a6505fdfb3005789e526667564e9b311d440129991ef9df77e33f344881",
+      "replacements": [
+        {
+          "from": "import { readFileSync } from \"fs\";\n",
+          "to": "import { validateCreativeBuildProbeSpec } from \"./creative-build-probe.mjs\";\nimport { readFileSync } from \"fs\";\n"
+        },
+        {
+          "from": "function validateStoryboardShape(storyboard) {",
+          "to": "function validateStoryboardShape(storyboard) {\n  if (storyboard.creative_build_probe !== undefined) validateCreativeBuildProbeSpec(storyboard.creative_build_probe);"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/creative-build-probe.js",
+      "before": null,
+      "after": "f38d54503cc84fba64c4d9c19bcad69eb76bb4e73f42ec95bf3c7a4eb6ccc4d2",
+      "contents_file": "creative-build-probe.js"
+    },
+    {
+      "path": "dist/lib/testing/storyboard/creative-build-probe.mjs",
+      "before": null,
+      "after": "9c781d45603dd7017eb3462fcbd695f289feffbd2b76b67852f8b5dbf667fd3b",
+      "contents_file": "creative-build-probe.mjs"
+    },
+    {
+      "path": "dist/lib/testing/storyboard/creative-build-probe.d.ts",
+      "before": null,
+      "after": "1ad23d5ba9f22d3c38efc77d491e9f1742e71e430e221781ab08b1f18f22c311",
+      "contents_file": "creative-build-probe.d.ts"
+    },
+    {
+      "path": "dist/lib/testing/storyboard/creative-build-probe.d.mts",
+      "before": null,
+      "after": "d5d17d4d127dc881aef744f317a9fd37382aec20d0783f919bd8945dd5d25e25",
+      "contents_file": "creative-build-probe.d.mts"
+    },
+    {
+      "path": "dist/lib/testing/storyboard/types.d.ts",
+      "before": "0b04ca12e237245e4b25c09c078cbd18f715312fc91ea7515fd7c9869549a184",
+      "after": "e5277b985dd3827d3565f0123b66ee5adb2b9f2b677b95f2e464f7722ddc06d1",
+      "replacements": [
+        {
+          "from": "export interface Storyboard {",
+          "to": "export interface Storyboard {\n    /** Opt-in read-only preparation of a valid evaluator build fixture. */\n    creative_build_probe?: import(\"./creative-build-probe\").CreativeBuildProbeSpec;"
+        },
+        {
+          "from": "fixture_type: 'product' | 'pricing_option';",
+          "to": "fixture_type: 'product' | 'pricing_option' | 'creative_format';"
+        },
+        {
+          "from": "    seller_ids?: {\n        product_id: string;\n        pricing_option_id?: string;\n    };",
+          "to": "    seller_ids?: {\n        product_id?: string;\n        pricing_option_id?: string;\n        capability_id?: string;\n        format_id?: Record<string, unknown>;\n    };"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/types.d.mts",
+      "before": "86e36c5115b5fd80087b8ae5570b571718eda4c324ed9a6af64a6a003cbb94a2",
+      "after": "d1dd9de48016ad66efd847336c2d589e2a7b1b5920c675bcf5e7cd8ae8d43206",
+      "replacements": [
+        {
+          "from": "export interface Storyboard {",
+          "to": "export interface Storyboard {\n    /** Opt-in read-only preparation of a valid evaluator build fixture. */\n    creative_build_probe?: import(\"./creative-build-probe.mjs\").CreativeBuildProbeSpec;"
+        },
+        {
+          "from": "fixture_type: 'product' | 'pricing_option';",
+          "to": "fixture_type: 'product' | 'pricing_option' | 'creative_format';"
+        },
+        {
+          "from": "    seller_ids?: {\n        product_id: string;\n        pricing_option_id?: string;\n    };",
+          "to": "    seller_ids?: {\n        product_id?: string;\n        pricing_option_id?: string;\n        capability_id?: string;\n        format_id?: Record<string, unknown>;\n    };"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/index.js",
+      "before": "3e58ae34a1f86a2406956b77f4aafb132f05c448782da90ecbef3f5c3ef1b14c",
+      "after": "5ff83c7fd3408b87c0dd89ce64cb3b8dd41f486869f0437e710292ef0ba1487a",
+      "replacements": [
+        {
+          "from": " testTerminalStateEnforcement,\n  testValidation,\n  unregisterExternalSchemaRoot,\n  validateFixtureResolutionDeclarations,\n  validateRateLimitTripSpec,\n  withExternalSchemaRoot\n});\n",
+          "to": " testTerminalStateEnforcement,\n  testValidation,\n  unregisterExternalSchemaRoot,\n  validateFixtureResolutionDeclarations,\n  validateRateLimitTripSpec,\n  withExternalSchemaRoot\n});\n\nvar creativeBuildProbeBridge = require(\"./storyboard/creative-build-probe.js\");\nObject.defineProperties(module.exports, { resolveCreativeBuildProbe: { enumerable: true, get: () => creativeBuildProbeBridge.resolveCreativeBuildProbe }, validateCreativeBuildProbeSpec: { enumerable: true, get: () => creativeBuildProbeBridge.validateCreativeBuildProbeSpec } });\n"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/index.mjs",
+      "before": "72628ff75d57ced764885a9c4ab418e51ddbd564fad90bad2b956a38ad417751",
+      "after": "48c67607ed0a4308811da152248dd7e53421093b86a06ef7d91a6d6b7f32eb0b",
+      "replacements": [
+        {
+          "from": "  testTerminalStateEnforcement,\n  testValidation,\n  unregisterExternalSchemaRoot,\n  validateFixtureResolutionDeclarations,\n  validateRateLimitTripSpec,\n  withExternalSchemaRoot\n};\n",
+          "to": "  testTerminalStateEnforcement,\n  testValidation,\n  unregisterExternalSchemaRoot,\n  validateFixtureResolutionDeclarations,\n  validateRateLimitTripSpec,\n  withExternalSchemaRoot\n};\n\nexport { resolveCreativeBuildProbe, validateCreativeBuildProbeSpec } from \"./storyboard/creative-build-probe.mjs\";\n"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/index.d.ts",
+      "before": "333861ed3322c450de3c92eebe8bb85d6894674ff9c7554755212be5882ff783",
+      "after": "236bce4bb4f79173f3b90e9dbfa570bf0cdcf91123ccfacfc8e19cf1d78778c2",
+      "replacements": [
+        {
+          "from": "GraphGrade, type OAuthMetadataGraphObservation, type OAuthMetadataGraphVector, type OAuthMetadataGraphVectorCorpus, BrandJsonSchema, AdagentsJsonSchema, MCP_SESSION_PROBE_TASK, } from './storyboard';\n",
+          "to": "GraphGrade, type OAuthMetadataGraphObservation, type OAuthMetadataGraphVector, type OAuthMetadataGraphVectorCorpus, BrandJsonSchema, AdagentsJsonSchema, MCP_SESSION_PROBE_TASK, } from './storyboard';\n\nexport { resolveCreativeBuildProbe, validateCreativeBuildProbeSpec } from \"./storyboard/creative-build-probe\";\nexport type { CreativeBuildProbeSpec, CreativeBuildProbeInputFixture, CreativeBuildProbeResolution } from \"./storyboard/creative-build-probe\";\n"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/index.d.mts",
+      "before": "c94fb41ec7bfca7c513d82f46f2d049a85f8433e8859a53738cec18a35520a00",
+      "after": "6f44c6faa29f6635a76b5cfdadbfc2ac72d5af3e9d82c914ae50e4f1ad914bb1",
+      "replacements": [
+        {
+          "from": ", type OAuthMetadataGraphObservation, type OAuthMetadataGraphVector, type OAuthMetadataGraphVectorCorpus, BrandJsonSchema, AdagentsJsonSchema, MCP_SESSION_PROBE_TASK, } from './storyboard/index.mjs';\n",
+          "to": ", type OAuthMetadataGraphObservation, type OAuthMetadataGraphVector, type OAuthMetadataGraphVectorCorpus, BrandJsonSchema, AdagentsJsonSchema, MCP_SESSION_PROBE_TASK, } from './storyboard/index.mjs';\n\nexport { resolveCreativeBuildProbe, validateCreativeBuildProbeSpec } from \"./storyboard/creative-build-probe.mjs\";\nexport type { CreativeBuildProbeSpec, CreativeBuildProbeInputFixture, CreativeBuildProbeResolution } from \"./storyboard/creative-build-probe.mjs\";\n"
+        }
+      ]
+    },
+    {
+      "path": "bin/adcp.js",
+      "before": "b8b3f32d36bb7a1894c0610b4ae47d6c338e2bc1196c798840d948790430a639",
+      "after": "d94f87523610c0479fcf83bf3643bfe9dd094027dc5a7addbb5f74d20c03ff92",
+      "replacements": [
+        {
+          "from": "ids.pricing_option_id || ids.product_id || '?'",
+          "to": "ids.pricing_option_id || ids.product_id || ids.capability_id || ids.format_id?.id || '?'"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/validation/schema-loader.js",
+      "before": "53b8cb00dcae5cb35307f8a6c40f030e4d3d59381714e4ea9fa112ef8ae1bffc",
+      "after": "6f8a69c7fb6cd7831d5e16ea1fa3300e42192398d76574c21a5c4b507d30cb59",
+      "replacements": [
+        {
+          "from": "  listValidatorKeys: () => listValidatorKeys,\n  registerExternalSchemaRoot: () => registerExternalSchemaRoot,\n  resolveBundleKey: () => resolveBundleKey,\n  schemaAllowsTopLevelField: () => schemaAllowsTopLevelField,\n  toReleasePrecisionWire: () => toReleasePrecisionWire,\n  unregisterExternalSchemaRoot: () => unregisterExternalSchemaRoot,\n  validateAdcpVersionWire: () => validateAdcpVersionWire,\n  withExternalSchemaRoot: () => withExternalSchemaRoot\n});\nmodule.exports = __toCommonJS(schema_loader_exports);\nvar import_ajv = __toESM(require(\"ajv\"));\n",
+          "to": "  listValidatorKeys: () => listValidatorKeys,\n  registerExternalSchemaRoot: () => registerExternalSchemaRoot,\n  resolveBundleKey: () => resolveBundleKey,\n  resolveServedValidationVersion: () => resolveServedValidationVersion,\n  schemaAllowsTopLevelField: () => schemaAllowsTopLevelField,\n  toReleasePrecisionWire: () => toReleasePrecisionWire,\n  unregisterExternalSchemaRoot: () => unregisterExternalSchemaRoot,\n  validateAdcpVersionWire: () => validateAdcpVersionWire,\n  withExternalSchemaRoot: () => withExternalSchemaRoot,\n  withCreativeBuildProbeSchemaScope: () => withCreativeBuildProbeSchemaScope,\n  isCreativeBuildProbeSchemaScopeActive: () => isCreativeBuildProbeSchemaScopeActive,\n  withServedReleaseSchemaRoots: () => withServedReleaseSchemaRoots,\n  withServedValidationVersion: () => withServedValidationVersion\n});\nmodule.exports = __toCommonJS(schema_loader_exports);\nvar import_ajv = __toESM(require(\"ajv\"));\n"
+        },
+        {
+          "from": "    return false;\n  }\n}\nconst mcpToolSchemaCache = /* @__PURE__ */ new Map();\nconst mcpToolSummaryCache = /* @__PURE__ */ new Map();\nfunction boundedMcpToolSummary(value) {\n",
+          "to": "    return false;\n  }\n}\n// Maintenance-only boundary: producer responses cannot enable this scope.\nconst creativeBuildProbeSchemaScope = new import_async_hooks.AsyncLocalStorage();\nfunction withCreativeBuildProbeSchemaScope(enabled, fn) {\n  return creativeBuildProbeSchemaScope.run(enabled === true, fn);\n}\nfunction isCreativeBuildProbeSchemaScopeActive() {\n  return creativeBuildProbeSchemaScope.getStore() === true;\n}\nconst servedReleaseSchemaRootScope = new import_async_hooks.AsyncLocalStorage();\nconst servedReleaseRootAliases = /* @__PURE__ */ new Map();\nfunction withServedReleaseSchemaRoots(roots, fn) {\n  if (roots === void 0) return fn();\n  if (roots === null || typeof roots !== \"object\" || Array.isArray(roots)) {\n    throw new TypeError(\"servedReleaseSchemaRoots must be an object mapping AdCP versions to schema roots\");\n  }\n  const entries = [];\n  for (const [version, root] of Object.entries(roots)) {\n    resolveBundleKey(version);\n    if (typeof root !== \"string\" || root.length === 0) {\n      throw new TypeError(`servedReleaseSchemaRoots[\"${version}\"] must be a non-empty schema root path`);\n    }\n    const memoKey = `${version}\\0${root}`;\n    let aliases = servedReleaseRootAliases.get(memoKey);\n    if (!aliases) {\n      if (!hasSchemaRootShape(root)) {\n        throw new Error(`Served-release AdCP schema root for version \"${version}\" not found or empty at ${root}`);\n      }\n      aliases = assertSchemaRootMatchesVersion(version, root);\n      servedReleaseRootAliases.set(memoKey, aliases);\n    }\n    const conflict = entries.find((entry) => entry.root !== root && [...aliases].some((alias) => entry.aliases.has(alias)));\n    if (conflict) {\n      throw new Error(\n        `servedReleaseSchemaRoots[\"${version}\"] and servedReleaseSchemaRoots[\"${conflict.version}\"] name the same release with different schema roots (${root}, ${conflict.root})`\n      );\n    }\n    entries.push({ version, root, aliases });\n  }\n  if (entries.length === 0) return fn();\n  const parent = servedReleaseSchemaRootScope.getStore() ?? [];\n  return servedReleaseSchemaRootScope.run([...entries, ...parent], fn);\n}\nfunction findServedReleaseSchemaRoot(release) {\n  const entries = servedReleaseSchemaRootScope.getStore();\n  if (!entries?.length) return void 0;\n  let key;\n  try {\n    key = resolveBundleKey(release);\n  } catch {\n    return void 0;\n  }\n  return entries.find((entry) => entry.aliases.has(key) || entry.aliases.has(release));\n}\nconst SERVED_RELEASE_MAJOR = /^(\\d+)\\.\\d+(?:-[a-zA-Z0-9.-]+)?$/;\nconst NUMERIC_PIN_MAJOR = /^(\\d+)\\.\\d+/;\nfunction listsSupportedRelease(response, release) {\n  const adcp = response.adcp;\n  if (adcp === null || typeof adcp !== \"object\") return false;\n  const supported = adcp.supported_versions;\n  if (!Array.isArray(supported)) return false;\n  return supported.some((entry) => {\n    if (typeof entry !== \"string\") return false;\n    if (entry === release) return true;\n    try {\n      return toReleasePrecisionWire(entry) === release;\n    } catch {\n      return false;\n    }\n  });\n}\nfunction selectServedValidationVersion(response, pinnedVersion) {\n  const pin = { version: pinnedVersion };\n  const pinMajor = NUMERIC_PIN_MAJOR.exec(pinnedVersion)?.[1];\n  if (pinMajor === void 0) return pin;\n  if (response === null || typeof response !== \"object\") return pin;\n  const echoed = response.adcp_version;\n  if (typeof echoed !== \"string\") return pin;\n  const echoMajor = SERVED_RELEASE_MAJOR.exec(echoed)?.[1];\n  if (echoMajor === void 0 || echoMajor !== pinMajor) return pin;\n  let pinnedRelease;\n  try {\n    pinnedRelease = toReleasePrecisionWire(pinnedVersion);\n  } catch {\n    return pin;\n  }\n  if (echoed === pinnedRelease) return pin;\n  if (!listsSupportedRelease(response, echoed)) return pin;\n  const served = findServedReleaseSchemaRoot(echoed);\n  if (served) return { version: echoed, served };\n  return hasSchemaBundle(echoed) ? { version: echoed } : pin;\n}\nfunction resolveServedValidationVersion(response, pinnedVersion) {\n  try {\n    return selectServedValidationVersion(response, pinnedVersion).version;\n  } catch {\n    return pinnedVersion;\n  }\n}\nfunction withServedValidationVersion(response, pinnedVersion, fn) {\n  let selection;\n  try {\n    selection = selectServedValidationVersion(response, pinnedVersion);\n  } catch {\n    selection = { version: pinnedVersion };\n  }\n  const { version, served } = selection;\n  if (!served) return fn(version);\n  const next = new Map(scopedExternalSchemaRoots.getStore());\n  for (const alias of served.aliases) next.set(alias, served.root);\n  return scopedExternalSchemaRoots.run(next, () => fn(version));\n}\nconst mcpToolSchemaCache = /* @__PURE__ */ new Map();\nconst mcpToolSummaryCache = /* @__PURE__ */ new Map();\nfunction boundedMcpToolSummary(value) {\n"
+        },
+        {
+          "from": "  listValidatorKeys,\n  registerExternalSchemaRoot,\n  resolveBundleKey,\n  schemaAllowsTopLevelField,\n  toReleasePrecisionWire,\n  unregisterExternalSchemaRoot,\n  validateAdcpVersionWire,\n  withExternalSchemaRoot\n});\n",
+          "to": "  listValidatorKeys,\n  registerExternalSchemaRoot,\n  resolveBundleKey,\n  resolveServedValidationVersion,\n  schemaAllowsTopLevelField,\n  toReleasePrecisionWire,\n  unregisterExternalSchemaRoot,\n  validateAdcpVersionWire,\n  withExternalSchemaRoot,\n  withCreativeBuildProbeSchemaScope,\n  isCreativeBuildProbeSchemaScopeActive,\n  withServedReleaseSchemaRoots,\n  withServedValidationVersion\n});\n"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/validation/schema-loader.mjs",
+      "before": "6c81e915b9a88381df3d0fdd0a4d951d3577c9d84327be330c5c037d6c0dcbba",
+      "after": "32504ca15f472d82e8eb04bb2224b131a3d8a817eec9d011ac27d3d74c5426ef",
+      "replacements": [
+        {
+          "from": "    return false;\n  }\n}\nconst mcpToolSchemaCache = /* @__PURE__ */ new Map();\nconst mcpToolSummaryCache = /* @__PURE__ */ new Map();\nfunction boundedMcpToolSummary(value) {\n",
+          "to": "    return false;\n  }\n}\n// Maintenance-only boundary: producer responses cannot enable this scope.\nconst creativeBuildProbeSchemaScope = new AsyncLocalStorage();\nfunction withCreativeBuildProbeSchemaScope(enabled, fn) {\n  return creativeBuildProbeSchemaScope.run(enabled === true, fn);\n}\nfunction isCreativeBuildProbeSchemaScopeActive() {\n  return creativeBuildProbeSchemaScope.getStore() === true;\n}\nconst servedReleaseSchemaRootScope = new AsyncLocalStorage();\nconst servedReleaseRootAliases = /* @__PURE__ */ new Map();\nfunction withServedReleaseSchemaRoots(roots, fn) {\n  if (roots === void 0) return fn();\n  if (roots === null || typeof roots !== \"object\" || Array.isArray(roots)) {\n    throw new TypeError(\"servedReleaseSchemaRoots must be an object mapping AdCP versions to schema roots\");\n  }\n  const entries = [];\n  for (const [version, root] of Object.entries(roots)) {\n    resolveBundleKey(version);\n    if (typeof root !== \"string\" || root.length === 0) {\n      throw new TypeError(`servedReleaseSchemaRoots[\"${version}\"] must be a non-empty schema root path`);\n    }\n    const memoKey = `${version}\\0${root}`;\n    let aliases = servedReleaseRootAliases.get(memoKey);\n    if (!aliases) {\n      if (!hasSchemaRootShape(root)) {\n        throw new Error(`Served-release AdCP schema root for version \"${version}\" not found or empty at ${root}`);\n      }\n      aliases = assertSchemaRootMatchesVersion(version, root);\n      servedReleaseRootAliases.set(memoKey, aliases);\n    }\n    const conflict = entries.find((entry) => entry.root !== root && [...aliases].some((alias) => entry.aliases.has(alias)));\n    if (conflict) {\n      throw new Error(\n        `servedReleaseSchemaRoots[\"${version}\"] and servedReleaseSchemaRoots[\"${conflict.version}\"] name the same release with different schema roots (${root}, ${conflict.root})`\n      );\n    }\n    entries.push({ version, root, aliases });\n  }\n  if (entries.length === 0) return fn();\n  const parent = servedReleaseSchemaRootScope.getStore() ?? [];\n  return servedReleaseSchemaRootScope.run([...entries, ...parent], fn);\n}\nfunction findServedReleaseSchemaRoot(release) {\n  const entries = servedReleaseSchemaRootScope.getStore();\n  if (!entries?.length) return void 0;\n  let key;\n  try {\n    key = resolveBundleKey(release);\n  } catch {\n    return void 0;\n  }\n  return entries.find((entry) => entry.aliases.has(key) || entry.aliases.has(release));\n}\nconst SERVED_RELEASE_MAJOR = /^(\\d+)\\.\\d+(?:-[a-zA-Z0-9.-]+)?$/;\nconst NUMERIC_PIN_MAJOR = /^(\\d+)\\.\\d+/;\nfunction listsSupportedRelease(response, release) {\n  const adcp = response.adcp;\n  if (adcp === null || typeof adcp !== \"object\") return false;\n  const supported = adcp.supported_versions;\n  if (!Array.isArray(supported)) return false;\n  return supported.some((entry) => {\n    if (typeof entry !== \"string\") return false;\n    if (entry === release) return true;\n    try {\n      return toReleasePrecisionWire(entry) === release;\n    } catch {\n      return false;\n    }\n  });\n}\nfunction selectServedValidationVersion(response, pinnedVersion) {\n  const pin = { version: pinnedVersion };\n  const pinMajor = NUMERIC_PIN_MAJOR.exec(pinnedVersion)?.[1];\n  if (pinMajor === void 0) return pin;\n  if (response === null || typeof response !== \"object\") return pin;\n  const echoed = response.adcp_version;\n  if (typeof echoed !== \"string\") return pin;\n  const echoMajor = SERVED_RELEASE_MAJOR.exec(echoed)?.[1];\n  if (echoMajor === void 0 || echoMajor !== pinMajor) return pin;\n  let pinnedRelease;\n  try {\n    pinnedRelease = toReleasePrecisionWire(pinnedVersion);\n  } catch {\n    return pin;\n  }\n  if (echoed === pinnedRelease) return pin;\n  if (!listsSupportedRelease(response, echoed)) return pin;\n  const served = findServedReleaseSchemaRoot(echoed);\n  if (served) return { version: echoed, served };\n  return hasSchemaBundle(echoed) ? { version: echoed } : pin;\n}\nfunction resolveServedValidationVersion(response, pinnedVersion) {\n  try {\n    return selectServedValidationVersion(response, pinnedVersion).version;\n  } catch {\n    return pinnedVersion;\n  }\n}\nfunction withServedValidationVersion(response, pinnedVersion, fn) {\n  let selection;\n  try {\n    selection = selectServedValidationVersion(response, pinnedVersion);\n  } catch {\n    selection = { version: pinnedVersion };\n  }\n  const { version, served } = selection;\n  if (!served) return fn(version);\n  const next = new Map(scopedExternalSchemaRoots.getStore());\n  for (const alias of served.aliases) next.set(alias, served.root);\n  return scopedExternalSchemaRoots.run(next, () => fn(version));\n}\nconst mcpToolSchemaCache = /* @__PURE__ */ new Map();\nconst mcpToolSummaryCache = /* @__PURE__ */ new Map();\nfunction boundedMcpToolSummary(value) {\n"
+        },
+        {
+          "from": "  listValidatorKeys,\n  registerExternalSchemaRoot,\n  resolveBundleKey,\n  schemaAllowsTopLevelField,\n  toReleasePrecisionWire,\n  unregisterExternalSchemaRoot,\n  validateAdcpVersionWire,\n  withExternalSchemaRoot\n};\n",
+          "to": "  listValidatorKeys,\n  registerExternalSchemaRoot,\n  resolveBundleKey,\n  resolveServedValidationVersion,\n  schemaAllowsTopLevelField,\n  toReleasePrecisionWire,\n  unregisterExternalSchemaRoot,\n  validateAdcpVersionWire,\n  withExternalSchemaRoot,\n  withCreativeBuildProbeSchemaScope,\n  isCreativeBuildProbeSchemaScopeActive,\n  withServedReleaseSchemaRoots,\n  withServedValidationVersion\n};\n"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/validations.js",
+      "before": "3db2672148177a37ff8c049ac5bf7cb874b298c67f089aa615053dda986a36a1",
+      "after": "9d20a7cf23a73c7159a0351ff59ef997ff2f3a98d9104908e2f92cc038970127",
+      "replacements": [
+        {
+          "from": "  }\n}\nfunction validateResponseSchema(validation, ctx, taskResult) {\n  const taskName = ctx.taskName;\n  const schemaIdentityVersion = ctx.adcpVersion ?? ctx.responseAdcpVersion ?? import_version.ADCP_VERSION;\n  const { schema_id, schema_url } = resolveSchemaIdentity(ctx.responseSchemaRef, schemaIdentityVersion);\n",
+          "to": "  }\n}\nfunction validateResponseSchema(validation, ctx, taskResult) {\n  const pinnedVersion = ctx.adcpVersion ?? import_version.ADCP_VERSION;\n  if ((0, import_schema_loader.isCreativeBuildProbeSchemaScopeActive)() && ctx.taskName === \"get_adcp_capabilities\" && pinnedVersion !== void 0) {\n    return (0, import_schema_loader.withServedValidationVersion)(\n      taskResult.data,\n      pinnedVersion,\n      (validationVersion) => validateResponseSchemaForVersion(\n        validation,\n        { ...ctx, adcpVersion: validationVersion, responseAdcpVersion: validationVersion },\n        taskResult\n      )\n    );\n  }\n  return validateResponseSchemaForVersion(validation, ctx, taskResult);\n}\nfunction validateResponseSchemaForVersion(validation, ctx, taskResult) {\n  const taskName = ctx.taskName;\n  const schemaIdentityVersion = ctx.adcpVersion ?? ctx.responseAdcpVersion ?? import_version.ADCP_VERSION;\n  const { schema_id, schema_url } = resolveSchemaIdentity(ctx.responseSchemaRef, schemaIdentityVersion);\n"
+        },
+        {
+          "from": "        schema_url,\n        strict\n      };\n      const warning = buildStrictWarning(strict);\n      return warning ? { ...base, warning } : base;\n    }\n    const issues2 = strict.issues ?? [];\n",
+          "to": "        schema_url,\n        strict\n      };\n      const warning = [\n        buildStrictWarning(strict),\n        (0, import_schema_loader.isCreativeBuildProbeSchemaScopeActive)() && taskName === \"get_adcp_capabilities\" && strict.lenient_valid === false\n          ? `Authorized catalog JSON schema ${schema_url ?? schemaIdentityVersion} accepted this response; the SDK14 generated Zod schema disagrees`\n          : void 0\n      ].filter(Boolean).join(\"; \");\n      return warning ? { ...base, warning } : base;\n    }\n    const issues2 = strict.issues ?? [];\n"
+        },
+        {
+          "from": "  return strict ? { ...failed, strict } : failed;\n}\nfunction isExternalResponseSchemaAuthoritative(ctx) {\n  const validationVersion = responseSchemaValidationVersion(ctx.adcpVersion, ctx.responseAdcpVersion);\n  return validationVersion !== void 0 && (0, import_schema_loader.isExternalSchemaRootActive)(validationVersion);\n}\n",
+          "to": "  return strict ? { ...failed, strict } : failed;\n}\nfunction isExternalResponseSchemaAuthoritative(ctx) {\n  // The actual selected catalog JSON schema governs this opted testing surface,\n  // including builtin roots. Unavailable strict verdicts still fail no-schema.\n  if ((0, import_schema_loader.isCreativeBuildProbeSchemaScopeActive)() && ctx.taskName === \"get_adcp_capabilities\") return true;\n  const validationVersion = responseSchemaValidationVersion(ctx.adcpVersion, ctx.responseAdcpVersion);\n  return validationVersion !== void 0 && (0, import_schema_loader.isExternalSchemaRootActive)(validationVersion);\n}\n"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/storyboard/validations.mjs",
+      "before": "544843dfe357b0cf7e58888eed21f0b3c0bef0305f1b7d6b2651a447e0d0d8a3",
+      "after": "da94a605da35d4d308aebdf425f96aaa63e46b93171f69fa45719622e7c683cd",
+      "replacements": [
+        {
+          "from": "import { injectLegacyEnvelopeStatus } from \"../../utils/envelope-status-compat.mjs\";\nimport { TRANSPORT_SUFFIX_REGEX } from \"../../utils/a2a-discovery.mjs\";\nimport { validateResponse } from \"../../validation/schema-validator.mjs\";\nimport { hasSchemaBundle, isExternalSchemaRootActive } from \"../../validation/schema-loader.mjs\";\nimport { ADCP_VERSION, LIBRARY_VERSION } from \"../../version.mjs\";\nimport { isPre31AdcpVersion } from \"../../utils/adcp-version-config.mjs\";\nimport { gte as semverGte, valid as validSemver } from \"semver\";\n",
+          "to": "import { injectLegacyEnvelopeStatus } from \"../../utils/envelope-status-compat.mjs\";\nimport { TRANSPORT_SUFFIX_REGEX } from \"../../utils/a2a-discovery.mjs\";\nimport { validateResponse } from \"../../validation/schema-validator.mjs\";\nimport {\n  hasSchemaBundle,\n  isExternalSchemaRootActive,\n  withServedValidationVersion,\n  isCreativeBuildProbeSchemaScopeActive\n} from \"../../validation/schema-loader.mjs\";\nimport { ADCP_VERSION, LIBRARY_VERSION } from \"../../version.mjs\";\nimport { isPre31AdcpVersion } from \"../../utils/adcp-version-config.mjs\";\nimport { gte as semverGte, valid as validSemver } from \"semver\";\n"
+        },
+        {
+          "from": "  }\n}\nfunction validateResponseSchema(validation, ctx, taskResult) {\n  const taskName = ctx.taskName;\n  const schemaIdentityVersion = ctx.adcpVersion ?? ctx.responseAdcpVersion ?? ADCP_VERSION;\n  const { schema_id, schema_url } = resolveSchemaIdentity(ctx.responseSchemaRef, schemaIdentityVersion);\n",
+          "to": "  }\n}\nfunction validateResponseSchema(validation, ctx, taskResult) {\n  const pinnedVersion = ctx.adcpVersion ?? ADCP_VERSION;\n  if (isCreativeBuildProbeSchemaScopeActive() && ctx.taskName === \"get_adcp_capabilities\" && pinnedVersion !== void 0) {\n    return withServedValidationVersion(\n      taskResult.data,\n      pinnedVersion,\n      (validationVersion) => validateResponseSchemaForVersion(\n        validation,\n        { ...ctx, adcpVersion: validationVersion, responseAdcpVersion: validationVersion },\n        taskResult\n      )\n    );\n  }\n  return validateResponseSchemaForVersion(validation, ctx, taskResult);\n}\nfunction validateResponseSchemaForVersion(validation, ctx, taskResult) {\n  const taskName = ctx.taskName;\n  const schemaIdentityVersion = ctx.adcpVersion ?? ctx.responseAdcpVersion ?? ADCP_VERSION;\n  const { schema_id, schema_url } = resolveSchemaIdentity(ctx.responseSchemaRef, schemaIdentityVersion);\n"
+        },
+        {
+          "from": "        schema_url,\n        strict\n      };\n      const warning = buildStrictWarning(strict);\n      return warning ? { ...base, warning } : base;\n    }\n    const issues2 = strict.issues ?? [];\n",
+          "to": "        schema_url,\n        strict\n      };\n      const warning = [\n        buildStrictWarning(strict),\n        isCreativeBuildProbeSchemaScopeActive() && taskName === \"get_adcp_capabilities\" && strict.lenient_valid === false\n          ? `Authorized catalog JSON schema ${schema_url ?? schemaIdentityVersion} accepted this response; the SDK14 generated Zod schema disagrees`\n          : void 0\n      ].filter(Boolean).join(\"; \");\n      return warning ? { ...base, warning } : base;\n    }\n    const issues2 = strict.issues ?? [];\n"
+        },
+        {
+          "from": "  return strict ? { ...failed, strict } : failed;\n}\nfunction isExternalResponseSchemaAuthoritative(ctx) {\n  const validationVersion = responseSchemaValidationVersion(ctx.adcpVersion, ctx.responseAdcpVersion);\n  return validationVersion !== void 0 && isExternalSchemaRootActive(validationVersion);\n}\n",
+          "to": "  return strict ? { ...failed, strict } : failed;\n}\nfunction isExternalResponseSchemaAuthoritative(ctx) {\n  // The actual selected catalog JSON schema governs this opted testing surface,\n  // including builtin roots. Unavailable strict verdicts still fail no-schema.\n  if (isCreativeBuildProbeSchemaScopeActive() && ctx.taskName === \"get_adcp_capabilities\") return true;\n  const validationVersion = responseSchemaValidationVersion(ctx.adcpVersion, ctx.responseAdcpVersion);\n  return validationVersion !== void 0 && isExternalSchemaRootActive(validationVersion);\n}\n"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/client.js",
+      "before": "e1c9dce20baea6f08f896d839a566f430fedd990003fbd3eca2a1c9536786131",
+      "after": "ebd7d4551e3395568aa056b611667db5ec4fdf94a7815ecda15c5f6ba9c3d110",
+      "replacements": [
+        {
+          "from": "var import_client_hooks = require('../validation/client-hooks.js');\n",
+          "to": "var import_client_hooks = require('../validation/client-hooks.js');\nvar import_schema_loader = require('../validation/schema-loader.js');\n"
+        },
+        {
+          "from": "        const validation = (0, import_client_hooks.validateIncomingResponse)(\n          \"get_adcp_capabilities\",\n          caps.data,\n          \"strict\",\n          void 0,\n          schemaAdcpVersion ?? client.getAdcpVersion()\n        );",
+          "to": "        const validation = (0, import_schema_loader.isCreativeBuildProbeSchemaScopeActive)()\n          ? (0, import_schema_loader.withServedValidationVersion)(caps.data, schemaAdcpVersion ?? client.getAdcpVersion(), (validationVersion) => ({\n              ...(0, import_client_hooks.validateIncomingResponse)(\"get_adcp_capabilities\", caps.data, \"strict\", void 0, validationVersion),\n              catalogSchemaAuthority: validationVersion\n            }))\n          : (0, import_client_hooks.validateIncomingResponse)(\n          \"get_adcp_capabilities\",\n          caps.data,\n          \"strict\",\n          void 0,\n          schemaAdcpVersion ?? client.getAdcpVersion()\n        );"
+        },
+        {
+          "from": "            message: issue.message\n          }));",
+          "to": "            message: validation.catalogSchemaAuthority !== void 0\n              ? `Capability catalog JSON schema ${validation.catalogSchemaAuthority}: ${issue.message}`\n              : issue.message\n          }));"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/client.mjs",
+      "before": "4cb2fc25d79a7e984025dabedba992192dbd8829b983a0f33622cde5bc15d385",
+      "after": "b5001aaa6a1fea775f350b965b27219c0e51586c5050dfe644f63a56705c2bbb",
+      "replacements": [
+        {
+          "from": "import { validateIncomingResponse } from \"../validation/client-hooks.mjs\";\n",
+          "to": "import { validateIncomingResponse } from \"../validation/client-hooks.mjs\";\nimport { withServedValidationVersion, isCreativeBuildProbeSchemaScopeActive } from \"../validation/schema-loader.mjs\";\n"
+        },
+        {
+          "from": "        const validation = validateIncomingResponse(\n          \"get_adcp_capabilities\",\n          caps.data,\n          \"strict\",\n          void 0,\n          schemaAdcpVersion ?? client.getAdcpVersion()\n        );",
+          "to": "        const validation = isCreativeBuildProbeSchemaScopeActive()\n          ? withServedValidationVersion(caps.data, schemaAdcpVersion ?? client.getAdcpVersion(), (validationVersion) => ({\n              ...validateIncomingResponse(\"get_adcp_capabilities\", caps.data, \"strict\", void 0, validationVersion),\n              catalogSchemaAuthority: validationVersion\n            }))\n          : validateIncomingResponse(\n          \"get_adcp_capabilities\",\n          caps.data,\n          \"strict\",\n          void 0,\n          schemaAdcpVersion ?? client.getAdcpVersion()\n        );"
+        },
+        {
+          "from": "            message: issue.message\n          }));",
+          "to": "            message: validation.catalogSchemaAuthority !== void 0\n              ? `Capability catalog JSON schema ${validation.catalogSchemaAuthority}: ${issue.message}`\n              : issue.message\n          }));"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/compliance/comply.js",
+      "before": "9cb712b245ccb269b846028e50313eb4bd7576440a9e7d1ece3ccda1b615c0b0",
+      "after": "66bbd6f791db3035ff2aa0d9bc707a68ad168698014218633d77b3e6333d228d",
+      "replacements": [
+        {
+          "from": "return await (0, import_schema_loader.withExternalSchemaRoot)(complianceIndex.adcp_version, scopedSchemaRoot, async () => {",
+          "to": "return await (0, import_schema_loader.withExternalSchemaRoot)(\n    complianceIndex.adcp_version,\n    scopedSchemaRoot,\n    () => (0, import_schema_loader.withCreativeBuildProbeSchemaScope)(false, () => complyInSchemaScope())\n  );\n  async function complyInSchemaScope() {"
+        },
+        {
+          "from": "\n      controller_scenarios: controllerDetection.detected ? controllerDetection.scenarios : void 0,\n      tested_at: (/* @__PURE__ */ new Date()).toISOString(),\n      total_duration_ms: Date.now() - start,\n      notices: noticesDedup\n    };\n  });\n}",
+          "to": "\n      controller_scenarios: controllerDetection.detected ? controllerDetection.scenarios : void 0,\n      tested_at: (/* @__PURE__ */ new Date()).toISOString(),\n      total_duration_ms: Date.now() - start,\n      notices: noticesDedup\n    };\n  }\n}"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/compliance/comply.mjs",
+      "before": "56cd87b2720db9de2618d8cb074fbb8ff08261479b828455cb053cbf6af2e962",
+      "after": "a96069a889e271af1e5b858a76179474f73d22ee0dceda92cfd8222bea766e60",
+      "replacements": [
+        {
+          "from": "import { withExternalSchemaRoot } from \"../../validation/schema-loader.mjs\";\n",
+          "to": "import { withExternalSchemaRoot, withCreativeBuildProbeSchemaScope } from \"../../validation/schema-loader.mjs\";\n"
+        },
+        {
+          "from": "return await withExternalSchemaRoot(complianceIndex.adcp_version, scopedSchemaRoot, async () => {",
+          "to": "return await withExternalSchemaRoot(\n    complianceIndex.adcp_version,\n    scopedSchemaRoot,\n    () => withCreativeBuildProbeSchemaScope(false, () => complyInSchemaScope())\n  );\n  async function complyInSchemaScope() {"
+        },
+        {
+          "from": "\n      controller_scenarios: controllerDetection.detected ? controllerDetection.scenarios : void 0,\n      tested_at: (/* @__PURE__ */ new Date()).toISOString(),\n      total_duration_ms: Date.now() - start,\n      notices: noticesDedup\n    };\n  });\n}",
+          "to": "\n      controller_scenarios: controllerDetection.detected ? controllerDetection.scenarios : void 0,\n      tested_at: (/* @__PURE__ */ new Date()).toISOString(),\n      total_duration_ms: Date.now() - start,\n      notices: noticesDedup\n    };\n  }\n}"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/types.d.ts",
+      "before": "27b26f247b230d25bd04116c08a9962e2670d858fb2bb8770d31b437e74ba2fc",
+      "after": "17a1f539173828f9dd23ba8215553a8fb1b934994e9384a843e1de12f1aa4f3d",
+      "replacements": [
+        {
+          "from": "    schemaRoot?: string;",
+          "to": "    schemaRoot?: string;\n    /** Explicit same-major served-release schema roots for creative_build_probe catalogs.\n     * Identity is checked; request schemas and dispatch retain the run pin.\n     * Honored only by opted creative_build_probe storyboards, including inside\n     * comply(). Deferred/inert for other storyboards and bundle discovery. */\n    servedReleaseSchemaRoots?: Readonly<Record<string, string>>;"
+        }
+      ]
+    },
+    {
+      "path": "dist/lib/testing/types.d.mts",
+      "before": "12c6b39b9fe6ae32aa4c526ffb9c5d376a939183daa3fc369a8bcd25fa219932",
+      "after": "b533f66d73e8b22ea5a5789dab350c4054247be10a9a1ab2f506bed5d9ad015a",
+      "replacements": [
+        {
+          "from": "    schemaRoot?: string;",
+          "to": "    schemaRoot?: string;\n    /** Explicit same-major served-release schema roots for creative_build_probe catalogs.\n     * Identity is checked; request schemas and dispatch retain the run pin.\n     * Honored only by opted creative_build_probe storyboards, including inside\n     * comply(). Deferred/inert for other storyboards and bundle discovery. */\n    servedReleaseSchemaRoots?: Readonly<Record<string, string>>;"
+        }
+      ]
+    }
+  ]
+}
