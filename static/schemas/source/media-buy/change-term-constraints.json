@@ -164,23 +164,7 @@
           "type": "array",
           "minItems": 1,
           "maxItems": 50,
-          "items": {
-            "type": "object",
-            "properties": {
-              "label": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 255,
-                "description": "Display name, such as the program title."
-              },
-              "targeting_overlay": {
-                "$ref": "/schemas/core/targeting.json",
-                "description": "A complete replacement targeting_overlay."
-              }
-            },
-            "required": ["targeting_overlay"],
-            "additionalProperties": false
-          },
+          "items": { "$ref": "#/definitions/alternate" },
           "description": "A forward-only chain after the value in force. The seller MUST use the first available entry after the one in effect and records each skipped entry."
         },
         "minimum_notice": {
@@ -189,10 +173,30 @@
         }
       },
       "required": ["kind", "alternates"],
+      "anyOf": [
+        { "required": ["alternates"] }
+      ],
       "additionalProperties": false
     }
   ],
   "definitions": {
+    "alternate": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Display name, such as the program title."
+        },
+        "targeting_overlay": {
+          "$ref": "/schemas/core/targeting.json",
+          "description": "A complete replacement targeting_overlay."
+        }
+      },
+      "required": ["targeting_overlay"],
+      "additionalProperties": false
+    },
     "money": {
       "type": "object",
       "properties": {
