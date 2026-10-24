@@ -4,7 +4,11 @@ description: "sync_principal synchronizes authenticated caller-scoped webhooks a
 "og:title": "AdCP — sync_principal"
 ---
 
-A **principal** is the durable party behind an authenticated caller — a buyer agent, or an operator-side identity. `sync_principal` replaces the principal's standing configuration with one AdCP seller agent: webhooks, reusable reporting destinations, and its position in capability negotiation. The three tiers of the hierarchy:
+<Note>
+**Planned rename.** `sync_principal` and [`get_principal`](/docs/protocol/get_principal) become `sync_buyer_agent_config` and `get_buyer_agent_config`, and `principal_kind` is removed, no earlier than the first minor release after December 7, 2026. AdCP 3.3 keeps the current names. See the [breaking-change notice](/docs/reference/migration/principal-to-buyer-agent-config).
+</Note>
+
+A **principal** is the buyer agent as this seller has bound it: the durable record behind an authenticated agent. `sync_principal` replaces the principal's standing configuration with one AdCP seller agent: webhooks, reusable reporting destinations, and its position in capability negotiation. The three tiers of the hierarchy:
 
 | Tier | Entity | Surface |
 |---|---|---|
@@ -41,7 +45,7 @@ Whether "the operator's identity" means individual users or one org-level servic
 
 If an interactive client presents only one shared service credential for all its users, the seller cannot isolate user-owned configuration — one user's sync could read or erase another's — so it MUST refuse to persist configuration under it until the client completes delegated authorization or account linking. Anonymous and shared-credential callers own nothing durable, at this layer or the account layer.
 
-The model composes across hops. A buyer agent → Interchange → seller chain is two independent principal relationships: Interchange is the (agent) principal at the seller, and the buyer agent is the (agent) principal at Interchange. A person using Claude to buy through Interchange is an operator principal at Interchange. No hop sees through the next; each holds its own counterparty accountable, and end-to-end reconciliation happens at the data layer, where rows and partitions carry seller and account identity.
+The model composes across hops. A buyer agent → Interchange → seller chain is two independent principal relationships: Interchange is the (agent) principal at the seller, and the buyer agent is the (agent) principal at Interchange. No hop sees through the next; each holds its own counterparty accountable, and end-to-end reconciliation happens at the data layer, where rows and partitions carry seller and account identity.
 
 Request-body fields, a raw signing key ID, an API-key fingerprint, an access token, a session ID, and a bucket URL are not owner identifiers. A verified JWKS key proves which key signed a request; it does not by itself prove authority to act for an advertiser account. Key rotation or token renewal preserves the configuration only when the seller maps the new credential to the same stable principal.
 
@@ -49,17 +53,17 @@ For an RFC 9421 signed caller, the stable Agent subject is the canonical URL of 
 
 For a Web Bot Auth signed caller (experimental), the stable Agent subject is the signer's [canonical origin](/docs/reference/url-canonicalization#canonical-origin), verified as [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) describes. One agent occupies one origin, so key rotation within the origin's directory preserves the principal. Whether a verified origin has a principal, and how it gets one, is [first contact and binding](/docs/building/by-layer/L2/accounts-and-agents#first-contact-and-binding).
 
-Every applied, current, or recognized readback carries the seller-resolved `principal_kind` — `buyer_agent` or `operator` — resolved solely from the authorization system, never from request content, so per-party policy such as billing gates can rely on it before configuration begins. A request may carry `expected_principal_kind` as an assertion fence ("I believe I am authenticating as the agent"); on mismatch with the resolved kind the seller rejects with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) before mutation. The assertion never influences resolution.
+Every applied, current, or recognized readback still carries the seller-resolved `principal_kind`, deprecated in 3.3: a bound buyer agent is always `buyer_agent`, so the field carries no information and is removed with the rename. `expected_principal_kind` is deprecated with it. Sellers still honor it as an assertion fence until then, rejecting a mismatch with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) before mutation; the assertion never influences resolution.
 
 The response's `principal_id` is a seller-issued audit and routing handle for the principal record. It is not a credential and does not authorize any advertiser account.
 
 ## Establishing a connection
 
-The principal layer begins **after authentication**. AdCP defines no credential-registration protocol: the seller's authorization system — OAuth, API keys, signed requests, workload identity — issues and maps credentials before the first call. The same lifecycle then works for an autonomous buyer agent, a person in an interactive client, an API-key integration, or M2M OAuth:
+The principal layer begins **after authentication**. AdCP defines no credential-registration protocol: the seller's authorization system — OAuth, API keys, signed requests, workload identity — issues and maps credentials before the first call. The same lifecycle works whatever credential identifies the buyer agent: signed requests, OAuth, API keys, or workload identity.
 
-1. **Authenticate.** Autonomous software presents its workload identity; a person presents their delegated user identity. No `register_buyer_agent` step exists or is needed.
+1. **Authenticate.** The buyer agent presents its own credential. Binding is described in [first contact and binding](/docs/building/by-layer/L2/accounts-and-agents#first-contact-and-binding).
 2. **Read [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).** Discover `adcp.principal`, its supported sections, event and delivery offerings, and limits.
-3. **Verify the resolved identity.** Call [`get_principal`](/docs/protocol/get_principal). A `recognized` result returns the existing durable `principal_id` and seller-resolved `principal_kind` without standing configuration. `unconfigured` means stable authentication succeeded but no durable record exists. The read creates neither records nor identifiers. When the result carries `principal_kind` (`current` or `recognized`), buyers MAY use it as a preflight before account calls: `buyer_agent` matches `account.require_operator_auth: false`, and `operator` matches `true`. A mismatch means the buyer presented the wrong credential for this seller's account model.
+3. **Verify the resolved identity.** Call [`get_principal`](/docs/protocol/get_principal). A `recognized` result returns the existing durable `principal_id` and seller-resolved `principal_kind` without standing configuration. `unconfigured` means stable authentication succeeded but no durable record exists. The read creates neither records nor identifiers.
 4. **Call `sync_principal`.** Declare consumption facts (`declarations`), register webhook subscribers (including `principal.changed` and, with explicit scope, account-anchored events), and register reusable reporting destinations.
 5. **Authorize advertiser accounts separately** through [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and account-level tasks. Nothing in steps 1–4 grants account authority.
 6. **Bind each account's feeds** to the reusable `destination_ref`s.

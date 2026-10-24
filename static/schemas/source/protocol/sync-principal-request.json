@@ -54,7 +54,9 @@
     },
     "expected_principal_kind": {
       "$ref": "/schemas/enums/principal-kind.json",
-      "description": "Optional assertion fence, not identity input: the caller states which party kind it believes it is authenticating as. When present and different from the seller-resolved principal_kind, the seller rejects the whole request with CONFLICT before mutation. The field never influences resolution."
+      "deprecated": true,
+      "x-deprecated-in": "3.3.0",
+      "description": "Deprecated in 3.3. Optional assertion fence, not identity input: the caller states which party kind it believes it is authenticating as. When present and different from the seller-resolved principal_kind, the seller rejects the whole request with CONFLICT before mutation. The field never influences resolution."
     },
     "configuration": {
       "type": "object",
