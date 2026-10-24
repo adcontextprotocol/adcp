@@ -117,6 +117,8 @@ A check is added once its 4.0 change is decided. These changes are still proposa
 - the `account_id` from `sync_accounts` as the only account reference after provisioning ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850))
 - nested `status` renamed to `media_buy_status` ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905))
 
+The schemas also mark 46 deprecated fields with `x-removed-in: "4.0.0"`. The registry lists each one, either under the check that covers it or in `schema_removals_not_checked` with the reason no check covers it yet. Most uncovered fields are sent by buyers, so a seller run can't observe them. A few are seller-emitted and checkable but not graded yet: flat `valid_actions`, response-wide delivery `currency` and `aggregated_totals`, `inline_creative_management`, and the format-level build and pricing surface that `list_transformers` replaces.
+
 The full list of planned 4.0 work is the [4.0 milestone](https://github.com/adcontextprotocol/adcp/milestone/5).
 
 ## Adding a check
@@ -124,7 +126,9 @@ The full list of planned 4.0 work is the [4.0 milestone](https://github.com/adco
 Every 4.0 issue that removes or tightens something an agent relies on declares a stable check id and a one-line detection rule. When the change is accepted, the same PR:
 
 1. Adds the observation. Prefer an advisory validation on a step that already makes the needed call, with `id` set to the check id, `severity: advisory`, and `permanent_advisory`. Don't use `expires_after_version`, which promotes the check on runner version rather than on the spec version the agent is graded against. A check the runner already reports as a canonical notice with `effective_version: "4.0"` uses the notice code as its id.
-2. Adds the entry to `universal/v4-compatibility.yaml`.
+2. Adds the entry to `universal/v4-compatibility.yaml`, with the removed schema nodes in `schema_sites`.
 3. Adds a section here with an `<a id>` anchor that matches the check id.
 
-`scripts/lint-v4-compatibility-registry.cjs` fails the compliance build when the registry, the storyboards, the notice codes, and this page disagree.
+A schema node that 4.0 removes is marked `"deprecated": true` and `"x-removed-in": "4.0.0"`, and the registry lists it once: in a check's `schema_sites`, or in `schema_removals_not_checked` with its 4.0 tracking issue and a reason. Marking a node therefore forces the decision of whether a 3.x agent can be checked for it, and gives every removal a tracking issue.
+
+`scripts/lint-v4-compatibility-registry.cjs` fails the compliance build when the registry, the storyboards, the notice codes, the schema markers, and this page disagree.

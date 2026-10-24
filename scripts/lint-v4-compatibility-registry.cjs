@@ -35,6 +35,12 @@
  *                           `_in_4_0`, so the reverse-parity scan could not
  *                           catch an unregistered reuse of it.
  *   migration_anchor_missing the migration guide has no anchor for an id.
+ *   schema_site_unlisted    a schema node marked `x-removed-in: "4.0.0"` is
+ *                           not listed in any check's `schema_sites` or in
+ *                           `schema_removals_not_checked`.
+ *   schema_site_invalid     a listed site does not resolve to a schema node
+ *                           marked `x-removed-in: "4.0.0"`.
+ *   schema_site_duplicate   a site is listed more than once.
  *   stray_migration_anchor  the migration guide has a check-shaped anchor
  *                           (`*_in_4_0`) that is not a registry id.
  */
@@ -50,6 +56,8 @@ const DEFAULT_SOURCE_DIR = path.join(REPO_ROOT, 'static/compliance/source');
 const REGISTRY_REL = 'universal/v4-compatibility.yaml';
 const CONTRACT_REL = 'universal/runner-output-contract.yaml';
 const STORYBOARD_DIRS = ['universal', 'protocols', 'specialisms'];
+const SCHEMA_REL = 'static/schemas/source';
+const REMOVAL_VERSION = '4.0.0';
 
 const ID_PATTERN = /^[a-z][a-z0-9_]*$/;
 const CHECK_SHAPED_ID = /_in_4_0$/;
@@ -103,6 +111,9 @@ function checkShape(entry, index, errors) {
   }
   if (!nonEmptyString(entry.detection)) fail('detection is required');
   if (!nonEmptyString(entry.fix)) fail('fix is required');
+  if (entry.schema_sites !== undefined && (!Array.isArray(entry.schema_sites) || !entry.schema_sites.every(nonEmptyString))) {
+    fail('schema_sites must be a list of schema sites');
+  }
   const observed = entry.observed_by;
   const kinds = observed && typeof observed === 'object' ? Object.keys(observed) : [];
   if (kinds.length !== 1 || !['validation', 'notice', 'none'].includes(kinds[0])) {
@@ -128,6 +139,83 @@ function checkShape(entry, index, errors) {
   }
 }
 
+function walkJson(dir) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return walkJson(full);
+    return entry.name.endsWith('.json') ? [full] : [];
+  });
+}
+
+function escapePointerSegment(segment) {
+  return segment.replaceAll('~', '~0').replaceAll('/', '~1');
+}
+
+// Every schema node marked for removal in 4.0, as `<file>#<JSON Pointer>`.
+function findRemovalSites(schemaDir) {
+  const sites = new Set();
+  for (const file of walkJson(schemaDir)) {
+    let doc;
+    try {
+      doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      continue; // malformed JSON is reported by the schema build
+    }
+    const rel = path.relative(schemaDir, file).split(path.sep).join('/');
+    const visit = (node, pointer) => {
+      if (!node || typeof node !== 'object') return;
+      if (pointer.includes('/examples/')) return;
+      if (node['x-removed-in'] === REMOVAL_VERSION) sites.add(`${rel}#${pointer}`);
+      for (const [key, child] of Object.entries(node)) visit(child, `${pointer}/${escapePointerSegment(key)}`);
+    };
+    visit(doc, '');
+  }
+  return sites;
+}
+
+function checkSchemaSites(registry, schemaDir, errors) {
+  const listed = [];
+  for (const entry of registry.checks) {
+    for (const site of entry.schema_sites || []) listed.push({ site, owner: `check ${entry.id}` });
+  }
+  const groups = registry.schema_removals_not_checked || [];
+  if (!Array.isArray(groups)) {
+    errors.push('registry_shape: schema_removals_not_checked must be a list');
+    return;
+  }
+  groups.forEach((group, i) => {
+    const where = `schema_removals_not_checked[${i}]`;
+    if (!group || !nonEmptyString(group.change)) errors.push(`registry_shape: ${where}: change is required`);
+    if (!group || !nonEmptyString(group.reason)) errors.push(`registry_shape: ${where}: reason is required`);
+    if (!group || !Number.isInteger(group.issue) || group.issue <= 0) {
+      errors.push(`registry_shape: ${where}: issue must be the removal's 4.0 tracking issue number`);
+    }
+    if (!group || !Array.isArray(group.sites) || group.sites.length === 0 || !group.sites.every(nonEmptyString)) {
+      errors.push(`registry_shape: ${where}: sites must be a non-empty list`);
+      return;
+    }
+    for (const site of group.sites) listed.push({ site, owner: where });
+  });
+
+  const marked = findRemovalSites(schemaDir);
+  const seen = new Set();
+  for (const { site, owner } of listed) {
+    if (seen.has(site)) errors.push(`schema_site_duplicate: ${site} is listed more than once`);
+    seen.add(site);
+    if (!marked.has(site)) {
+      errors.push(`schema_site_invalid: ${owner} lists ${site}, which is not a schema node marked x-removed-in "${REMOVAL_VERSION}"`);
+    }
+  }
+  for (const site of marked) {
+    if (!seen.has(site)) {
+      errors.push(
+        `schema_site_unlisted: ${site} is marked x-removed-in "${REMOVAL_VERSION}" but is not in any check's schema_sites or in schema_removals_not_checked`,
+      );
+    }
+  }
+}
+
 function migrationAnchors(content) {
   const anchors = new Set();
   for (const m of content.matchAll(/<a\s+id="([^"]+)"\s*(?:\/>|><\/a>)/g)) anchors.add(m[1]);
@@ -138,7 +226,7 @@ function migrationAnchors(content) {
  * Run the lint. Returns an array of error strings (empty = clean).
  * Pass `{ sourceDir, repoRoot }` to override default paths (used by tests).
  */
-function lint({ sourceDir = DEFAULT_SOURCE_DIR, repoRoot = REPO_ROOT } = {}) {
+function lint({ sourceDir = DEFAULT_SOURCE_DIR, repoRoot = REPO_ROOT, schemaDir = path.join(repoRoot, SCHEMA_REL) } = {}) {
   const errors = [];
   const registryPath = path.join(sourceDir, REGISTRY_REL);
   if (!fs.existsSync(registryPath)) return [`registry_shape: ${REGISTRY_REL} is missing`];
@@ -225,6 +313,8 @@ function lint({ sourceDir = DEFAULT_SOURCE_DIR, repoRoot = REPO_ROOT } = {}) {
     }
   }
 
+  checkSchemaSites(registry, schemaDir, errors);
+
   // Migration guide anchors.
   const guideRel = registry.migration_guide;
   const guidePath = nonEmptyString(guideRel) ? path.join(repoRoot, guideRel) : null;
@@ -254,4 +344,4 @@ if (require.main === module) {
   console.log('✓ v4 compatibility registry lint: registry, storyboards, notices, and migration guide agree');
 }
 
-module.exports = { lint, loadStoryboards, migrationAnchors };
+module.exports = { lint, loadStoryboards, migrationAnchors, findRemovalSites };

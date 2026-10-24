@@ -167,6 +167,17 @@ const SHA256_DIGEST_PLACEHOLDER = `sha256:${'A'.repeat(43)}`;
  * The `depth` guard prevents infinite recursion on self-referential schemas.
  */
 function placeholderFor(schema, depth = 0) {
+  // Whole-value witnesses can contain selectors composed with allOf. Merge
+  // required object fields for placeholders only; AJV validates the full schema.
+  if (Array.isArray(schema?.allOf)) {
+    const branches = schema.allOf.map(branch => resolveSchemaNode(branch));
+    if (branches.every(branch => branch && (branch.type === 'object' || branch.properties || branch.required))) {
+      return synthesizeObject({
+        required: [...new Set(branches.flatMap(branch => branch.required ?? []))],
+        properties: Object.assign({}, ...branches.map(branch => branch.properties ?? {})),
+      }, depth);
+    }
+  }
   const resolved = resolveSchemaNode(schema);
   if (!resolved) return STRING_PLACEHOLDER;
   const types = Array.isArray(resolved.type) ? resolved.type : [resolved.type];
@@ -193,7 +204,10 @@ function placeholderFor(schema, depth = 0) {
   if (types.includes('integer')) return resolved.minimum ?? 1;
   if (types.includes('number')) return resolved.minimum ?? 0;
   if (types.includes('boolean')) return true;
-  if (types.includes('array')) return [];
+  if (types.includes('array')) {
+    if (depth > 4) return [];
+    return Array.from({ length: resolved.minItems ?? 0 }, () => placeholderFor(resolved.items, depth + 1));
+  }
   if (types.includes('object')) {
     // A discriminated union written as `{ type: "object", discriminator, oneOf: [...] }`
     // (e.g. core/format-option-ref.json) carries no top-level `properties`, so

@@ -78,6 +78,18 @@
 #   detection       one line: what the check looks for.
 #   fix             what the agent changes before 4.0.
 #   observed_by     exactly one of validation, notice, or none (see above).
+#   schema_sites    optional: the schema nodes marked `x-removed-in: "4.0.0"`
+#                   whose removal this check covers, as
+#                   `<path under static/schemas/source>#<JSON Pointer>`.
+#
+# Schema removals
+# ---------------
+# Every schema node marked `x-removed-in: "4.0.0"` appears exactly once: in a
+# check's `schema_sites`, or in `schema_removals_not_checked` with its 4.0
+# tracking issue and the reason no check covers it yet (most often a
+# buyer-sent request field, which a seller run cannot observe). Marking a node
+# for 4.0 removal therefore forces a decision here and a tracking issue. `tests/schema-deprecation-metadata.test.cjs` requires the
+# marker on every deprecated node whose description says it is removed in 4.0.
 #
 # Each id has an anchor of the same name on the migration guide
 # (`migration_guide` below). `scripts/lint-v4-compatibility-registry.cjs`
@@ -103,6 +115,8 @@ checks:
       validation:
         storyboard: media_buy_seller
         steps: [get_products_brief, get_products_brief_buyer_selected_timezone]
+    schema_sites:
+      - "core/product.json#/properties/format_ids"
 
   - id: major_versions_removed_in_4_0
     issue: 3572
@@ -117,6 +131,8 @@ checks:
       validation:
         storyboard: version_negotiation
         steps: [get_capabilities_with_version]
+    schema_sites:
+      - "protocol/get-adcp-capabilities-response.json#/properties/adcp/properties/major_versions"
 
   - id: adcp_version_echo_required_in_4_0
     issue: 3572
@@ -169,3 +185,147 @@ checks:
       validation:
         storyboard: capability_discovery
         steps: [get_capabilities]
+    schema_sites:
+      - "protocol/get-adcp-capabilities-response.json#/properties/webhook_signing/properties/legacy_hmac_fallback"
+
+# Schema nodes marked for 4.0 removal that no check covers yet. `change` names
+# the removal, `issue` is its 4.0 tracking issue (required), and `reason` says
+# why a 3.x agent is not graded on it.
+schema_removals_not_checked:
+  - change: "Exact plural format_ids in requests"
+    issue: 7629
+    reason: >-
+      Buyer-sent fields. Sellers keep accepting them through 3.x, and a seller
+      run cannot observe whether a buyer still sends them.
+    sites:
+      - "brand/acquire-rights-request.json#/properties/campaign/properties/format_ids"
+      - "core/creative-filters.json#/properties/format_ids"
+      - "core/product-filters.json#/properties/format_ids"
+      - "creative/list-creative-formats-request.json#/properties/format_ids"
+      - "media-buy/list-creative-formats-request.json#/properties/format_ids"
+      - "media-buy/package-request.json#/properties/format_ids"
+
+  - change: "Exact plural format_ids projections outside the product"
+    issue: 7629
+    reason: >-
+      Seller-emitted projections of the product's canonical declaration.
+      format_ids_removed_in_4_0 grades the authoring change on the product;
+      these projections are not graded separately yet.
+    sites:
+      - "core/package.json#/properties/format_ids"
+      - "core/placement.json#/properties/format_ids"
+      - "core/registry-event.json#/$defs/agentProfilePayload/properties/format_ids"
+      - "media-buy/acceptance-policy-requirement.json#/oneOf/13/properties/format_ids"
+      - "media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/format_ids"
+      - "trusted-match/available-package.json#/properties/format_ids"
+
+  - change: "Format-level build and pricing surface, replaced by list_transformers and v1_format_ref"
+    issue: 8377
+    reason: >-
+      Creative-agent surface deprecated in 3.1. The response fields are
+      observable on list_creative_formats but not graded yet; the request
+      fields are buyer-sent.
+    sites:
+      - "core/format.json#/properties/input_format_ids"
+      - "core/format.json#/properties/output_format_ids"
+      - "core/format.json#/properties/pricing_options"
+      - "core/format.json#/properties/canonical_parameters"
+      - "creative/list-creative-formats-request.json#/properties/include_pricing"
+      - "creative/list-creative-formats-request.json#/properties/account"
+      - "media-buy/list-creative-formats-request.json#/properties/account"
+
+  - change: "Legacy Bearer and HMAC webhook authentication"
+    issue: 4205
+    reason: >-
+      Buyer-sent webhook registration. The seller-side dependency is graded by
+      legacy_hmac_fallback_removed_in_4_0.
+    sites:
+      - "core/agent-notification-config.json#/properties/authentication"
+      - "core/notification-config.json#/properties/authentication"
+      - "core/push-notification-config.json#/properties/authentication"
+      - "core/reporting-webhook.json#/properties/authentication"
+      - "enums/auth-scheme.json#"
+      - "media-buy/create-media-buy-request.json#/properties/artifact_webhook/properties/authentication"
+
+  - change: "Major-precision version fields outside capabilities"
+    issue: 3572
+    reason: >-
+      Request envelopes are buyer-sent. supported_majors appears only on a
+      VERSION_UNSUPPORTED error, which the suite does not provoke yet.
+      Trusted Match requests are outside seller runs.
+    sites:
+      - "core/version-envelope.json#/properties/adcp_major_version"
+      - "error-details/version-unsupported.json#/properties/supported_majors"
+      - "trusted-match/context-match-request.json#/properties/adcp_major_version"
+      - "trusted-match/identity-match-request.json#/properties/adcp_major_version"
+
+  - change: "Flat valid_actions vocabulary, replaced by available_actions"
+    issue: 8378
+    reason: >-
+      Seller-emitted and observable on create, update, and get_media_buys
+      responses, but not graded yet.
+    sites:
+      - "media-buy/create-media-buy-response.json#/oneOf/0/properties/valid_actions"
+      - "media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/valid_actions"
+      - "media-buy/update-media-buy-response.json#/oneOf/0/properties/valid_actions"
+
+  - change: "Response-wide delivery currency and aggregated_totals"
+    issue: 8379
+    reason: >-
+      Seller-emitted legacy rollups that 4.0 buyers stop reading. Observable on
+      get_media_buy_delivery but not graded yet.
+    sites:
+      - "media-buy/get-media-buy-delivery-response.json#/properties/currency"
+      - "media-buy/get-media-buy-delivery-response.json#/properties/aggregated_totals"
+      - "media-buy/media-buy-delivery-webhook-result.json#/properties/currency"
+
+  - change: "Inline creatives in create_media_buy and update_media_buy"
+    issue: 8380
+    reason: >-
+      Seller capability declaration (media_buy.features.inline_creative_management).
+      Observable on get_adcp_capabilities but not graded yet.
+    sites:
+      - "core/media-buy-features.json#/properties/inline_creative_management"
+
+  - change: "plan_id on create_media_buy"
+    issue: 8381
+    reason: "Buyer-sent field, replaced by governance_context on the envelope."
+    sites:
+      - "media-buy/create-media-buy-request.json#/properties/plan_id"
+
+  - change: "get_signals top-level max_results"
+    issue: 8382
+    reason: "Buyer-sent field, replaced by pagination.max_results."
+    sites:
+      - "signals/get-signals-request.json#/properties/max_results"
+
+  - change: "get_creative_delivery pagination.total"
+    issue: 8383
+    reason: >-
+      3.x already requires total_count alongside it, so dropping the alias
+      needs no agent change.
+    sites:
+      - "creative/get-creative-delivery-response.json#/properties/pagination/properties/total"
+
+  - change: "property_list_changed signature marker"
+    issue: 8384
+    reason: >-
+      3.x requires the literal rfc9421 marker and receivers already ignore it,
+      so dropping the field needs no agent change.
+    sites:
+      - "property/property-list-changed-webhook.json#/properties/signature"
+
+  - change: "Single-token tmpx on identity_match responses"
+    issue: 8385
+    reason: "Trusted Match router output, outside seller runs. Replaced by tmpx_providers."
+    sites:
+      - "trusted-match/identity-match-response.json#/properties/tmpx"
+
+  - change: "3.1 compatibility projections for older buyers"
+    issue: 8386
+    reason: >-
+      Projections a 3.2 seller emits only for 3.1 peers (a native 3.2 seller
+      must not emit purchase_continuation). Not graded.
+    sites:
+      - "core/media-buy-legacy-terms-ref.json#"
+      - "media-buy/request-proposals-response.json#/properties/purchase_continuation"

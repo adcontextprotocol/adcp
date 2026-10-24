@@ -65,6 +65,7 @@
             "description": "Requested product actions not satisfied by every returned draft. This is a subset of the request product_changes map and is valid only on partial or unable results."
           },
           "drifted_pins": {
+            "x-added-in": "3.3.0",
             "type": "array",
             "description": "Pins from the source proposal's commercial_terms.definition_pins[] whose published definition no longer resolves to the pinned content_digest, in the pins' canonical order. Required on, and valid only with, reason_code definition_changed.",
             "items": {

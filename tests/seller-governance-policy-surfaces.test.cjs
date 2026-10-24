@@ -34,6 +34,79 @@ async function validator(uri, root = schemaRoot) {
   return ajv.compileAsync(readSchema(uri, root));
 }
 
+test('campaigns can restrict gender through the core governance vocabulary', async () => {
+  const validate = await validator('/schemas/governance/sync-plans-request.json');
+  const request = {
+    idempotency_key: 'gender-restricted-plan-1',
+    plans: [{
+      plan_id: 'gender-restricted-campaign',
+      brand: { domain: 'acme.example' },
+      objectives: 'Reach a broad audience without gender targeting.',
+      budget: { total: 1000, currency: 'USD', reallocation_threshold: 0 },
+      flight: { start: '2026-10-01T00:00:00Z', end: '2026-11-01T00:00:00Z' },
+      restricted_attributes: ['sex_gender'],
+    }],
+  };
+
+  assert.equal(validate(request), true, JSON.stringify(validate.errors));
+  const unsupported = structuredClone(request);
+  unsupported.plans[0].restricted_attributes = ['gender'];
+  assert.equal(validate(unsupported), false, 'the interim custom name is not a core enum value');
+  delete unsupported.plans[0].restricted_attributes;
+  unsupported.plans[0].restricted_attributes_custom = ['gender'];
+  assert.equal(validate(unsupported), true, '3.2 custom-policy agreement remains representable');
+});
+
+test('seller acceptance catalogs preserve explicit gender targeting restrictions', async () => {
+  const validate = await validator('/schemas/media-buy/acceptance-policy-catalog.json');
+  const catalog = {
+    catalog_version: 'gender-restrictions-1',
+    profiles: [{
+      profile_id: 'seller-gender-policy',
+      version: '1.0.0',
+      content_digest: SHA256_ZERO,
+      policy_refs: [{ policy_id: 'seller_gender_policy', version: '1.0.0', content_digest: SHA256_ZERO }],
+      coverage: 'partial',
+      rules: [{
+        rule_id: 'gender-restriction',
+        subject_category: 'regulated_campaign',
+        applies_to: ['targeting'],
+        disposition: 'conditional',
+        requirements: [{ kind: 'targeting_restriction', restricted_attributes: ['sex_gender'] }],
+      }],
+    }],
+  };
+
+  assert.equal(validate(catalog), true, JSON.stringify(validate.errors));
+  const unsupported = structuredClone(catalog);
+  unsupported.profiles[0].rules[0].requirements[0].restricted_attributes = ['unknown_attribute'];
+  assert.equal(validate(unsupported), false);
+});
+
+test('gender and orientation registry definitions validate as separate attributes', async () => {
+  const validate = await validator('/schemas/governance/attribute-definition.json');
+  for (const attribute of ['sex_gender', 'sex_life_sexual_orientation']) {
+    const definition = JSON.parse(fs.readFileSync(
+      path.join(__dirname, `../static/registry/attributes/${attribute}.json`), 'utf8'));
+    assert.equal(validate(definition), true, `${attribute}: ${JSON.stringify(validate.errors)}`);
+  }
+});
+
+test('new gender predicates retain existing provider restricted-attribute declarations', async () => {
+  const validate = await validator('/schemas/core/signal-listing.json');
+  const listing = {
+    signal_ref: { scope: 'product', signal_id: 'provider-gender-signal' },
+    name: 'Provider audience',
+    value_type: 'binary',
+    demographic_predicate: { gender: { values: ['non_binary'], include_unknown: false } },
+    restricted_attributes: ['sex_life_sexual_orientation', 'sex_gender'],
+  };
+
+  assert.equal(validate(listing), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...listing, restricted_attributes: ['sex_life_sexual_orientation'] }), false,
+    'the new core predicate adds sex_gender rather than substituting an existing declaration');
+});
+
 test('acceptance catalogs represent conditional political rules and partial disclosure', async () => {
   const validate = await validator('/schemas/media-buy/acceptance-policy-catalog.json');
   const catalog = {

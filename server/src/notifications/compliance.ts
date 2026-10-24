@@ -11,6 +11,7 @@ import { notifyUser } from './notification-service.js';
 import { NotificationDatabase } from '../db/notification-db.js';
 import { CatalogEventsDatabase } from '../db/catalog-events-db.js';
 import { query } from '../db/client.js';
+import { agentIdentityContainment } from '../db/agent-identity-match.js';
 import { registryAgentUrlKeySpellings } from '../db/registry-agent-url-key.js';
 import { ComplianceDatabase, type ComplianceStatus, type TrackSummaryEntry, type StoryboardStatusEntry } from '../db/compliance-db.js';
 import type { SlackBlockMessage } from '../slack/types.js';
@@ -39,33 +40,27 @@ interface ComplianceChangeInput {
  *
  * The notifiers are handed the registry identity key, which folds a trailing
  * slash (#7830): `/mcp` and `/mcp/` are one agent. The owner's profile can
- * still hold the other spelling. Most writers key `agents[].url` before
- * storing it (`routes/member-agents.ts`, the member create/update paths in
- * `routes/member-profiles.ts`), but rows predate the fold and the admin
- * `PUT /api/admin/member-profiles/:id` handler still writes `agents` through
- * unkeyed (#8322) — so unfolded rows both exist and are still being created.
+ * still hold the other spelling. Every writer now keys `agents[].url` before
+ * storing it (`routes/member-agents.ts`, `routes/admin/agents.ts`, and both
+ * the member and admin paths in `routes/member-profiles.ts` — the admin PUT
+ * was the last unkeyed one, closed in #8322), but rows predate the fold.
  * Matching the raw URL alone left those owners with no DM at all: compliance,
  * verification and the heartbeat-timeout notice each failed closed and
- * silently. Ownership resolution keys its input
- * (`services/agent-ownership.ts`); this keys both sides, since SQL may not
- * fold the stored one.
+ * silently. The ownership and badge predicates fold the same way, through
+ * `db/agent-identity-match.ts` (#8322); this keys both sides directly, since
+ * SQL may not fold the stored one.
  *
  * `declared_url` is deliberately not consulted: it is the AUTHORIZATION
  * spelling (#7829) and must never decide identity.
  */
 async function resolveAgentOwnerUserIds(agentUrl: string): Promise<string[]> {
   try {
-    const spellings = registryAgentUrlKeySpellings(agentUrl);
-    // The helper never returns an empty set; keep the invariant local so an
-    // empty one could not assemble `WHERE  LIMIT 5` and be swallowed below.
-    if (spellings.length === 0) return [];
     // One `@>` per spelling, OR'd, so the GIN index on member_profiles.agents
-    // still serves the lookup. The clause is built from placeholder indexes
-    // only — no caller-supplied text reaches the SQL text. Parenthesized so a
-    // future `AND` cannot silently rebind against the `OR` and widen it.
-    const containment = spellings
-      .map((_, i) => `mp.agents @> $${i + 1}::jsonb`)
-      .join(' OR ');
+    // still serves the lookup. Shared with the ownership and badge predicates
+    // (#8322) so the two cannot drift: the DM that says "your agent" and the
+    // dashboard that decides whether you may touch it must agree on which
+    // rows are this agent.
+    const owners = agentIdentityContainment('mp.agents', agentUrl, 1);
     // DISTINCT because two orgs can co-claim one agent and a user can belong
     // to both; ORDER BY because the cap below is otherwise planner-dependent,
     // and silently dropping the true owner for a co-claimant is the same
@@ -75,10 +70,10 @@ async function resolveAgentOwnerUserIds(agentUrl: string): Promise<string[]> {
        FROM member_profiles mp
        JOIN organization_memberships om
          ON om.workos_organization_id = mp.workos_organization_id
-       WHERE (${containment})
+       WHERE ${owners.sql}
        ORDER BY om.workos_user_id
        LIMIT 5`,
-      spellings.map((spelling) => JSON.stringify([{ url: spelling }])),
+      owners.params,
     );
     return result.rows.map((r: any) => r.workos_user_id);
   } catch (error) {
