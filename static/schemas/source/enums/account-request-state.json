@@ -4,7 +4,6 @@
   "title": "Account Request State",
   "x-added-in": "3.3.0",
   "x-status": "experimental",
-  "x-added-in": "3.3.0",
   "description": "Lifecycle state of an account request (experimental, account.requests). in_review and ambiguous are open; resolved and rejected are terminal for that request.",
   "type": "string",
   "enum": ["in_review", "resolved", "ambiguous", "rejected"],

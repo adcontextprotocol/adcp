@@ -4,7 +4,6 @@
   "title": "Get Account Requests Response",
   "x-added-in": "3.3.0",
   "x-status": "experimental",
-  "x-added-in": "3.3.0",
   "description": "The authenticated caller's account requests (experimental, account.requests), newest updated_at first.",
   "type": "object",
   "allOf": [

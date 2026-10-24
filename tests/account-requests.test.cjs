@@ -205,3 +205,43 @@ test('request_account keys deduplication on the sync_accounts natural key, with 
     assert.match(schema.properties[term].description, /not part of the dedup key/, term);
   }
 });
+
+test('no source schema repeats a key within one object', () => {
+  // JSON.parse keeps the last duplicate silently, so concurrent edits that
+  // each add the same annotation (for example x-added-in) go unnoticed.
+  const offenders = [];
+  const walkDir = dir => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walkDir(full);
+      else if (entry.name.endsWith('.json')) {
+        const text = fs.readFileSync(full, 'utf8');
+        const stack = [];
+        let i = 0;
+        while (i < text.length) {
+          const ch = text[i];
+          if (ch === '"') {
+            let j = i + 1;
+            while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+            const token = text.slice(i + 1, j);
+            let k = j + 1;
+            while (/\s/.test(text[k])) k++;
+            const top = stack[stack.length - 1];
+            if (text[k] === ':' && top instanceof Set) {
+              if (top.has(token)) offenders.push(`${path.relative(SCHEMAS, full)}: ${token}`);
+              top.add(token);
+            }
+            i = j + 1;
+            continue;
+          }
+          if (ch === '{') stack.push(new Set());
+          else if (ch === '[') stack.push('array');
+          else if (ch === '}' || ch === ']') stack.pop();
+          i++;
+        }
+      }
+    }
+  };
+  walkDir(SCHEMAS);
+  assert.deepEqual(offenders, []);
+});
