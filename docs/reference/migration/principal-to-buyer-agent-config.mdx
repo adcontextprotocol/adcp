@@ -10,7 +10,7 @@ description: "Breaking-change notice and migration guide: sync_principal and get
 
 ## Why
 
-The principal layer (`protocol.principal`) is the seller's record of the calling buyer agent: who it was resolved to, its relationship with the seller, and the webhooks, reporting destinations, and declarations it configured. Since the 3.3 agent identity work, a principal is always one bound buyer agent, keyed by its origin. The word has no other meaning left in AdCP:
+The principal layer (`protocol.principal`) is the seller's record of the calling buyer agent: who it was resolved to, its relationship with the seller, and the webhooks, reporting destinations, and declarations it configured. Since the 3.3 agent identity work, a principal is always one bound buyer agent, keyed by its stable subject (the canonical Agent URL for RFC 9421 signers, the canonical origin for Web Bot Auth signers). The word has no other meaning left in AdCP:
 
 - `principal_kind: operator` described a person or operator login calling a seller directly. No deployment uses it. When an agent holds an operator's credential for a platform that owns its account namespace, the account access belongs to the credential, and the agent is still the caller.
 - The operators an agent acts for are facts on its accounts, never principals.
