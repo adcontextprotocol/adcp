@@ -57,4 +57,53 @@ describe('Addie reporting fixture coverage presentation', () => {
     mocks.result.passed_count = 5;
     expect(await render()).toContain('**Result:** PASSED');
   });
+  it.each([
+    "collection_selection",
+    "collection_default_materialization",
+    "fixed_bundle_enforcement",
+    "fixed_bundle_restatement",
+    "owner_sold_channel_carriage",
+    "owner_sold_channel_subset",
+    "collection_selection_readback",
+    "collection_default_materialization_readback",
+  ])(
+    "presents %s catalog fixture gaps as untested without changing raw accounting",
+    async (id) => {
+      expect(await render(`media_buy_seller/${id}`)).toContain(
+        "NOT APPLICABLE — no qualifying product",
+      );
+      expect(mocks.result.passed_count).toBe(0);
+      expect(mocks.result.overall_passed).toBe(true);
+    },
+  );
+  it.each([
+    "collection_selection_readback",
+    "collection_default_materialization_readback",
+  ])(
+    "does not credit absent optional reader in %s as passed support",
+    async (id) => {
+      mocks.result.coverage_gaps = [];
+      mocks.result.skipped_count = 1;
+      mocks.result.phases = [
+        {
+          phase_id: "missing_tool",
+          steps: [
+            {
+              step_id: "missing_tool",
+              skipped: true,
+              passed: false,
+              skip_reason: "missing_tool",
+            },
+          ],
+        },
+      ];
+      expect(await render(`media_buy_seller/${id}`)).toContain(
+        "NOT APPLICABLE — get_media_buys is not advertised",
+      );
+      mocks.result.failed_count = 1;
+      expect(await render(`media_buy_seller/${id}`)).toContain(
+        "**Result:** FAILED",
+      );
+    },
+  );
 });
