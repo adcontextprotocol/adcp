@@ -107,6 +107,22 @@ Each entry in the `performance_standards` array specifies:
 - **`threshold`** — Rate as a decimal (0-1). Whether this is a floor or ceiling depends on the metric: viewability, completion_rate, brand_safety, attention_score are floors (must exceed); ivt is a ceiling (must not exceed).
 - **`standard`** — Required for viewability (`"mrc"` or `"groupm"`). Omit for other metrics.
 - **`vendor`** — Who measures it, identified by domain. When agreed on a confirmed package, creatives MUST include tracker assets from specified vendors.
+- **`metric_id`** — Optional. Which of the vendor's metrics carries the value judged against `threshold`, in the vendor's own vocabulary (the `metric_id` in its `measurement.metrics[]` catalog and in delivery's `vendor_metric_values[]`). Allowed only for `ivt`, `brand_safety`, and `attention_score`. `viewability` and `completion_rate` are judged against their delivery scalars (`viewability` under `standard`; a vendor-attested completion rate carries `completion_source: vendor_attested`).
+
+Verification vendors usually report several metrics per category: general, sophisticated, and combined invalid traffic rates, or several brand-safety rates. `metric_id` says which one the standard means:
+
+```json
+{
+  "metric": "ivt",
+  "threshold": 0.03,
+  "vendor": { "domain": "verification-vendor.example" },
+  "metric_id": "givt_rate"
+}
+```
+
+When `metric_id` is present, the standard is judged only against `vendor_metric_values[]` entries with the same `vendor` and `metric_id`. Values for the vendor's other metrics are not evidence for it. The judged value is a rate on the same 0–1 scale as `threshold`; a reported value outside 0–1 is not evidence and MUST NOT be converted (for example from a percent). A package whose standard carries `metric_id` SHOULD also carry a matching vendor-scope `committed_metrics` entry, so `missing_metrics` audits the value.
+
+When `metric_id` is absent on an `ivt`, `brand_safety`, or `attention_score` standard, nothing says which vendor metric carries it. Parties MUST NOT infer one from the vendor's catalog or metric naming, and treat the standard as not judged from `vendor_metric_values`.
 
 **Negotiation flow:**
 
