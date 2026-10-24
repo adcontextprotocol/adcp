@@ -74,10 +74,9 @@ fits, using the same field types and validation rules as a package on
 `create_media_buy`. The enclosing entry supplies `product_id`; omit it inside
 `package`. `pricing_option_id` and numeric `budget` are required.
 
-{/* Uses latest because structured package refinement is new in AdCP 3.3. */}
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/get-products-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
   "adcp_version": "3.3",
   "adcp_major_version": 3,
   "buying_mode": "refine",
