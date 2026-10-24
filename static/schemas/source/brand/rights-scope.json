@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/rights-scope.json",
+  "title": "Rights Scope",
+  "description": "Uses, grant window, and exclusivity of a rights grant. Shared by rights-terms and media-buy purchases.",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "uses": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/right-use.json" },
+      "minItems": 1
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "exclusivity": {
+      "type": "object",
+      "description": "Exclusivity terms if applicable",
+      "properties": {
+        "scope": { "type": "string" },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["uses"],
+  "additionalProperties": true
+}
