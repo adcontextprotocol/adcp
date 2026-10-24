@@ -13,7 +13,7 @@
     },
     "vendor": {
       "$ref": "/schemas/core/brand-ref.json",
-      "description": "Graph or resolution vendor that produces this key at the declared scopes. Required when uid_type is other; otherwise declare it when the scope depends on a graph, for example maid resolved to households."
+      "description": "Graph or resolution vendor that produces this key at the declared scopes. Required when uid_type is other, when scopes include households, and when a maid or publisher_first_party key lists individuals: those scopes always come from a graph, so the graph is named."
     },
     "scopes": {
       "type": "array",
@@ -60,7 +60,26 @@
       "then": { "required": ["vendor"] }
     },
     {
-      "description": "PAIR is publisher-scoped and rotates every 30 days, and unsalted hashed_email in TMP widens the identity-leak surface, so neither is forwarded to buyer-side Identity Match.",
+      "description": "Household resolution always comes from a graph.",
+      "if": {
+        "properties": { "scopes": { "contains": { "const": "households" } } },
+        "required": ["scopes"]
+      },
+      "then": { "required": ["vendor"] }
+    },
+    {
+      "description": "A device or publisher identifier reaches a person only through a graph.",
+      "if": {
+        "properties": {
+          "uid_type": { "enum": ["maid", "publisher_first_party"] },
+          "scopes": { "contains": { "const": "individuals" } }
+        },
+        "required": ["uid_type", "scopes"]
+      },
+      "then": { "required": ["vendor"] }
+    },
+    {
+      "description": "PAIR is publisher-scoped and rotates every 30 days, and unsalted hashed_email in TMP widens the identity-leak surface until #8449 is resolved, so neither is forwarded to buyer-side Identity Match.",
       "if": {
         "properties": { "uid_type": { "enum": ["pairid", "hashed_email"] } },
         "required": ["uid_type"]

@@ -43,6 +43,22 @@ test('match keys accept multiple scopes and require a vendor for other', async (
   assert.equal(validate({ ...householdKey, match_rate: 0.4 }), false, 'capability only, no match rates');
 });
 
+test('scopes that come from a graph name the graph', async () => {
+  const validate = await compile('/schemas/core/match-key.json');
+  const { vendor, ...noVendor } = householdKey;
+  assert.equal(validate(noVendor), false, 'households needs vendor');
+  for (const uid_type of ['rampid', 'id5', 'uid2']) {
+    assert.equal(validate({ ...noVendor, uid_type }), false, `${uid_type} at households needs vendor`);
+    assert.equal(validate({ ...noVendor, uid_type, scopes: ['individuals'] }), true, `${uid_type} at individuals is native`);
+  }
+  for (const uid_type of ['maid', 'publisher_first_party']) {
+    assert.equal(validate({ ...noVendor, uid_type, scopes: ['individuals'] }), false, `${uid_type} at individuals needs vendor`);
+    assert.equal(validate({ ...noVendor, uid_type, scopes: ['individuals'], vendor }), true, uid_type);
+  }
+  assert.equal(validate({ ...noVendor, scopes: ['devices'] }), true, 'maid at devices is native');
+  assert.equal(validate({ ...noVendor, uid_type: 'publisher_first_party', scopes: ['cookies', 'accounts'] }), true);
+});
+
 test('PAIR and hashed_email are never forwarded to Identity Match', async () => {
   const validate = await compile('/schemas/core/match-key.json');
   for (const uid_type of ['pairid', 'hashed_email']) {
