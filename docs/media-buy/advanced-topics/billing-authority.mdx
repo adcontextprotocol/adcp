@@ -45,11 +45,43 @@ buyer-deposited revision task. Tracked in
 | Field | Meaning |
 |---|---|
 | `vendor` (required, [BrandRef](/docs/brand-protocol/brand-json)) | The party whose count of the billing metric governs invoicing. Same field shape covers seller's ad server, buyer's 3PAS, or a third-party vendor — the BrandRef domain disambiguates. |
+| `counting_mechanisms[]` (optional, [`collection-mechanism`](https://adcontextprotocol.org/schemas/latest/enums/collection-mechanism.json)) | What the billing count named by `vendor` is counted from: `server_logs`, `client_tracker`, `sdk`, `set_top_box`, `acr`, `panel`. `vendor` says *who* counts; `counting_mechanisms` says *how*. See [Declaring how the billing count is built](#declaring-how-the-billing-count-is-built-experimental). |
 | `max_variance_percent` | Tolerance above which the seller's and authoritative party's counts trigger resolution under `makegood_policy`. IAB default is 10%; broadcast/CTV often 5%. |
 | `measurement_window` | Which maturation stage of the data is the reconciliation point (`c7`, `post_sivt`, `downloads_30d`, etc.) — references a `window_id` from the product's `reporting_capabilities.measurement_windows`. |
 | `finalization_deadline_hours` | Maximum hours by which the authoritative party MUST publish a final record. When `measurement_window` is set, hours are counted from the window's close (not from `reporting_period.end`); when absent, from `reporting_period.end`. The deadline applies symmetrically to whichever party is named in `vendor`. On miss, the counterparty MAY fall back to its own attestation; the breach is handled under `makegood_policy`. |
 
 Absence is informative: when `billing_measurement` is absent the default is seller-attested, with no contractual finalization deadline.
+
+## Declaring how the billing count is built (experimental)
+
+<Note>
+**Experimental in 3.3** (feature id `media_buy.measurement_provenance`). `counting_mechanisms[]` and the `collection-mechanism` enum may change within 3.x with the notice described in [Experimental status](/docs/reference/experimental-status). Sellers that emit it declare the feature id in `experimental_features`.
+</Note>
+
+Two sellers can both name themselves as `billing_measurement.vendor` and still count differently: one bills from server-side delivery logs, another from begin-to-render beacons. When variance later exceeds `max_variance_percent`, a common cause is that difference, and it was never on the wire. `counting_mechanisms[]` puts it there before the buy, so a buyer agent can compare declared mechanisms across products (client-side on `measurement_terms`; a `get_products` filter is an additive follow-up) and the field is part of what gets negotiated.
+
+- **Billing count only.** It lists the mechanisms whose events enter the billed number. Mechanisms used only for audit or cross-check are not listed. If several are listed, the merge rule is not encoded; the seller describes it in its methodology. Provenance on individual reported vendor values is [`measurement_provenance`](/docs/media-buy/media-buys/optimization-reporting#collection-mechanism-provenance-on-vendor-values-experimental), which shares the vocabulary. Neither field is `measurement_source`, which names the provider.
+- **A claim, not a probe.** It is a claim by the declaring party, enforced through the contract (`vendor`, `max_variance_percent`, `makegood_policy`) rather than tested by AdCP. A count that materially differs from what was declared is handled like any other variance under those terms.
+- **Absence means undeclared.** Never read an absent field as `server_logs` or any other default. It is declared alongside `vendor`; a seller that omits `billing_measurement` declares nothing.
+- **Self-counting sellers SHOULD declare it.** When the seller (or its ad server) is the named `vendor`, declare `counting_mechanisms[]`. Buyer-attested and third-party vendors describe their own method in their measurement-agent catalog and MAY omit it.
+- **Negotiable like any other term.** On a product it is the seller's default; on a package request it is a buyer's proposed term; the seller accepts, adjusts, or rejects with `TERMS_REJECTED`. In practice a seller will rarely agree to a different method for its own count, so treat it as a handshake more than a lever.
+- **A set.** Order carries no meaning and values MUST NOT repeat.
+- **Airing evidence is not a counting mechanism.** Broadcast as-run logs and station affidavits prove that a spot ran; they are not a mechanism for audience measurement and have no value in this vocabulary. Delivery reports carry as-run data in `by_spot[]`, separate from the audience rows that `counting_mechanisms[]` and `measurement_provenance` describe.
+
+```json title="Product excerpt — a CTV seller billing from its server-side logs"
+{
+  "measurement_terms": {
+    "billing_measurement": {
+      "vendor": { "domain": "streamhaus.example" },
+      "counting_mechanisms": ["server_logs"],
+      "max_variance_percent": 10,
+      "measurement_window": "post_ivt"
+    }
+  }
+}
+```
+
+A buyer whose third-party ad server counts tag fires (`client_tracker`) can see from this declaration that its count will run below the seller's, and a gap inside the stated variance is expected rather than disputed. The buyer can instead propose its own ad server as `billing_measurement.vendor` on the package request.
 
 ## Marking numbers as final
 

@@ -118,6 +118,22 @@ When evaluating where a measurement field belongs, ask **who is the source of tr
 
 This single question resolves most placement debates. If two layers seem to claim the same field, the field is probably two fields wearing one name — split it.
 
+## Vocabulary: provider, vendor, mechanism, window
+
+Several fields answer different questions about one number. They are not interchangeable.
+
+| Question | Field | Values | Where |
+|---|---|---|---|
+| Which provider produced it? | `measurement_source` | Provider slug (`nielsen`, `videoamp`, `ivw`) | Delivery metrics, delivery forecast |
+| Which party's count governs invoicing, and who is the vendor of a metric? | `billing_measurement.vendor`, `vendor_metric_values[].vendor` (BrandRef) | A brand reference | Measurement terms, delivery rows |
+| How does that party relate to the seller? | `vendor_relationship` | `first_party`, `affiliated`, `third_party` | Product reporting capabilities, delivery rows |
+| What was observed to build the count? | `counting_mechanisms[]`, `measurement_provenance.mechanisms[]` (experimental) | [`collection-mechanism`](https://adcontextprotocol.org/schemas/latest/enums/collection-mechanism.json): `set_top_box`, `acr`, `panel`, `server_logs`, `client_tracker`, `sdk` | Measurement terms, vendor metric rows |
+| How mature is the data? | `measurement_window` | A product-declared window id (`live`, `c7`, `post_ivt`) | Measurement terms, delivery rows |
+| How was an outcome attributed? | `qualifier.attribution_methodology` | `deterministic_purchase`, `probabilistic`, `panel_based`, `modeled` | Metric qualifiers |
+| Who attested the event? | `qualifier.completion_source` | `seller_attested`, `vendor_attested` | Metric qualifiers |
+
+Broadcast as-run logs and station affidavits are airing evidence (proof that a spot ran), not a collection mechanism; they travel in `by_spot[]`.
+
 ## The atomic unit: `(metric_id, qualifier)`
 
 The protocol's measurement primitives reduce to one tuple, indexed and reconciled the same way:
