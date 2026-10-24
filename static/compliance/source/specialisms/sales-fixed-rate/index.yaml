@@ -5,7 +5,7 @@ protocol: media-buy
 category: sales_fixed_rate
 summary: "Seller of non-guaranteed inventory at a published fixed price: no reserved inventory, no delivery commitment, no auction or bid. The seller MAY hold a buy for review before committing to it."
 track: media_buy
-status: preview
+status: stable
 requires:
   - controller
 
