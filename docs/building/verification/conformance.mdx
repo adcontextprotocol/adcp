@@ -225,7 +225,7 @@ A `supported_protocols` claim obligates the protocol's baseline storyboard.
 
 A `specialisms` claim obligates the specialism's storyboard in addition to its parent protocol baseline. The catalog lives at [`/compliance/latest/index.json`](https://adcontextprotocol.org/compliance/latest/index.json); the human-readable index is the [Compliance Catalog](/docs/building/verification/compliance-catalog).
 
-Specialisms carry a `status` — `stable` (verified pass/fail), `preview` (storyboard not yet defined; runner emits `passed: null`), `deprecated` (scheduled for removal). Agents MAY claim preview specialisms, but preview claims do not yield a pass/fail verdict.
+Specialisms carry a `status`: `stable`, `preview`, or `deprecated` (scheduled for removal). The runner grades preview claims the same way as stable ones, but only stable claims count toward AAO Verified badges, and a preview specialism can change in a patch release. Agents MAY claim preview specialisms. See [specialism status](/docs/building/verification/compliance-catalog#specialisms) for what each status means and when a preview specialism is promoted.
 
 ## Outside the wire
 
