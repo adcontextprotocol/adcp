@@ -3,6 +3,7 @@
   "$id": "/schemas/account/update-account-request.json",
   "title": "Update Account Request",
   "x-status": "experimental",
+  "x-added-in": "3.3.0",
   "description": "Change settings or identity on one existing account (experimental, account.updates). Same semantics as a sync_accounts settings-update entry, for exactly one account: fields omitted are unchanged, every persisted change advances the account revision, and identity changes are revisioned and may wait for seller approval. Sellers enforce these runtime rules so the MCP input schema stays a plain root object: operator_identity and brand_identity each require revision; destination_billing_entity requires operator_identity; at least one change field is present. A violation is INVALID_REQUEST.",
   "x-tool-summary": "Change settings or identity on one existing account, with optimistic concurrency.",
   "type": "object",

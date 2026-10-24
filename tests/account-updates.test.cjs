@@ -46,7 +46,9 @@ test('update_account input stays a plain root object for MCP', () => {
     assert.equal(schema[keyword], undefined, `no top-level ${keyword}`);
   }
   assert.deepEqual(schema.required, ['idempotency_key', 'account']);
-  assert.equal(schema['x-added-in'], undefined, 'task request schemas stay unmarked');
+  // Gated through the 3.3.0 role-profile line tools, so the request carries
+  // x-added-in like request_account's.
+  assert.equal(schema['x-added-in'], '3.3.0');
   for (const key of ['revision', 'operator_identity', 'destination_billing_entity', 'brand_identity', 'billing_entity', 'payment_terms', 'notification_configs', 'dry_run']) {
     assert.ok(schema.properties[key], `${key} is accepted`);
   }

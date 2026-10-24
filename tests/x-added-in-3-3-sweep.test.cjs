@@ -26,6 +26,7 @@ const WHOLE_FILE_3_3 = [
   'account/request-account-response.json',
   'account/get-account-requests-response.json',
   // Account updates (account.updates, #8280).
+  'account/update-account-request.json',
   'account/update-account-response.json',
   'core/audience-size.json',
   'enums/audience-size-precision.json',
