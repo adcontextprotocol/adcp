@@ -463,9 +463,15 @@ Both successors must be finalized and accepted. Direct [`control_media_buy`](/do
 
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/product-purchase.json",
   "product_id": "creator_video_series",
   "pricing_option_id": "flat_rate_usd",
-  "pricing": { "...": "resolved pricing, which covers the rights" },
+  "pricing": {
+    "pricing_option_id": "flat_rate_usd",
+    "pricing_model": "flat_rate",
+    "currency": "USD",
+    "fixed_price": 5000
+  },
   "start_time": "2026-11-01T00:00:00Z",
   "end_time": "2027-01-31T23:59:59Z",
   "rights": [
