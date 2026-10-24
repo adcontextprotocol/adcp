@@ -1,0 +1,205 @@
+{
+  "$comment": "Crossings recorded by scripts/lint-schema-ownership.cjs. This list only shrinks: fix a crossing, then delete its entry. A new entry needs reviewer sign-off in the PR that adds it.",
+  "entries": [
+    {
+      "from": "core/assets/video-brief-asset.json",
+      "to": "creative/video-brief.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/canonical-pricing-option.json",
+      "to": "pricing-options/price-breakdown.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/canonical-pricing-option.json",
+      "to": "pricing-options/price-guidance.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/canonical-product-action.json",
+      "to": "media-buy/change-term-constraints.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/canonical-proposal.json",
+      "to": "media-buy/commercial-terms.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/evaluator-spec.json",
+      "to": "content-standards/artifact.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/mcp-webhook-payload.json",
+      "to": "media-buy/get-products-rejected.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/package.json",
+      "to": "pricing-options/price-breakdown.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/pricing-option.json",
+      "to": "pricing-options/cpa-option.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/pricing-option.json",
+      "to": "pricing-options/cpc-option.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/pricing-option.json",
+      "to": "pricing-options/cpcv-option.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/pricing-option.json",
+      "to": "pricing-options/cpm-option.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/pricing-option.json",
+      "to": "pricing-options/cpp-option.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/pricing-option.json",
+      "to": "pricing-options/cpv-option.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/pricing-option.json",
+      "to": "pricing-options/flat-rate-option.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/pricing-option.json",
+      "to": "pricing-options/revenue-share-option.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/pricing-option.json",
+      "to": "pricing-options/time-option.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/pricing-option.json",
+      "to": "pricing-options/vcpm-option.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-allowed-action.json",
+      "to": "media-buy/change-term-constraints.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/agent_placement.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/audio_daast.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/audio_hosted.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/audio_vast.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/coordinated_placements.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/display_tag.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/html5.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/image_carousel.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/image.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/native_in_feed.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/responsive_creative.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/seller_rendered_stateful_display.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/sponsored_placement.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/video_hosted.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/product-format-declaration.json",
+      "to": "formats/canonical/video_vast.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "core/tasks-get-response.json",
+      "to": "media-buy/get-products-rejected.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "error-details/governance-agent-not-accepted.json",
+      "to": "governance/accepted-governance-agents.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "governance/policy-entry.json",
+      "to": "media-buy/acceptance-policy-profile.json",
+      "rule": "undeclared-domain-dependency"
+    },
+    {
+      "from": "protocol/get-adcp-capabilities-response.json",
+      "to": "governance/accepted-governance-agents.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "protocol/get-adcp-capabilities-response.json",
+      "to": "sponsored-intelligence/si-capabilities.json",
+      "rule": "shared-to-domain"
+    },
+    {
+      "from": "protocol/get-task-status-response.json",
+      "to": "media-buy/get-products-rejected.json",
+      "rule": "shared-to-domain"
+    }
+  ]
+}
