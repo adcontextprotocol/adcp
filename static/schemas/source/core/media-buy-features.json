@@ -8,6 +8,7 @@
     "inline_creative_management": {
       "type": "boolean",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Deprecated 3.x compatibility capability for creatives provided inline in create_media_buy and update_media_buy package payloads. buy_products, accept_proposal, and control_media_buy never accept inline creatives. New integrations use the dedicated creative lifecycle. Removed in 4.0."
     },
     "property_list_filtering": {
