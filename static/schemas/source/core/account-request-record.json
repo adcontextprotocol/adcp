@@ -4,7 +4,6 @@
   "title": "Account Request",
   "x-added-in": "3.3.0",
   "x-status": "experimental",
-  "x-added-in": "3.3.0",
   "description": "A buyer agent's request for an advertiser account, and its lifecycle (experimental, account.requests). The request is its own object: no account exists until the request resolves, so a seller can match the request to an existing account without changing an account_id. Requests are scoped to the authenticated caller that made them and are never visible to another caller.",
   "type": "object",
   "properties": {
