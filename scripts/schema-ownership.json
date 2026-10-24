@@ -17,7 +17,7 @@
   "domains": {
     "media_buy": {
       "paths": ["media-buy/", "pricing-options/"],
-      "may_depend_on": ["creative"]
+      "may_depend_on": ["creative", "brand"]
     },
     "creative": {
       "paths": ["creative/", "formats/"],
