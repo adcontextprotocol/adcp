@@ -116,6 +116,8 @@ If the seller can resolve the post but needs creator/page authorization before p
 
 `reference_authorization` on a `published_post` asset is server-emitted authorization state. Sellers may return it on read surfaces, but must ignore buyer-supplied authorization-state claims on write requests unless a platform extension defines a signed proof and the seller verifies that proof.
 
+When the purchase carries [`rights[]`](/docs/media-buy/product-discovery/proposal-negotiation#rights-in-the-purchase) with `paid_amplification`, the seller serves the creator's post as paid media from the creator's identity. The contract is `rights[]`; `reference_authorization` on the `published_post` asset is the seller's separate evidence of the platform authorization, and the platform authorization SHOULD cover the rights window. Rights in the purchase are experimental (`media_buy.purchase_rights`); 3.3 does not mint a rights grant at acceptance.
+
 ```json
 {
   "errors": [
