@@ -1558,7 +1558,7 @@
         "supported_delivery_types": {
           "x-added-in": "3.3.0",
           "type": "array",
-          "description": "Delivery types this seller sells across its product portfolio: guaranteed (reserved inventory) and/or non_guaranteed. Buyers can use this for pre-flight filtering before querying individual products. Like every capability declaration, it is a commitment: the products this seller returns carry a delivery_type listed here. When absent, the seller has not declared its delivery types, and buyers treat them as unknown rather than as an empty set.",
+          "description": "Delivery types this seller sells across its product portfolio: guaranteed (reserved inventory) and/or non_guaranteed. Buyers can use this for pre-flight filtering before querying individual products. Like every capability declaration, it is a commitment: the products this seller returns carry a delivery_type listed here. When absent, the seller has not declared its delivery types, and buyers treat them as unknown rather than as an empty set. Values come from the product delivery_type enum (guaranteed, non_guaranteed); this is unrelated to the display_tag format parameter of the same name, which lists creative serving modes such as inline_markup.",
           "items": {
             "$ref": "/schemas/enums/delivery-type.json"
           },
