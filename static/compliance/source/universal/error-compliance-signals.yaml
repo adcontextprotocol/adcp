@@ -152,6 +152,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance_signals-2d7e8fc7"
+            sandbox: true
           signal_agent_segment_id: "nonexistent-signal-id-xyz"
           destinations:
             - type: "agent"
@@ -201,6 +202,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance_signals-2d7e8fc7"
+            sandbox: true
           destinations:
             - type: "agent"
               agent_url: "https://test-dsp.example"
@@ -255,6 +257,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance_signals-2d7e8fc7"
+            sandbox: true
           signal_agent_segment_id: "nonexistent-signal-error-structure"
           destinations:
             - type: "agent"
@@ -312,6 +315,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance_signals-2d7e8fc7"
+            sandbox: true
 
           context:
             correlation_id: "error_compliance_signals--unsupported_major_version"
@@ -351,6 +355,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance_signals-2d7e8fc7"
+            sandbox: true
 
           context:
             correlation_id: "error_compliance_signals--supported_major_version"
@@ -398,6 +403,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-error_compliance_signals-2d7e8fc7"
+            sandbox: true
           signal_agent_segment_id: "nonexistent-signal-transport-test"
           destinations:
             - type: "agent"

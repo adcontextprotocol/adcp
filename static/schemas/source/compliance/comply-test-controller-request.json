@@ -198,6 +198,29 @@
       "if": {
         "properties": {
           "scenario": {
+            "const": "force_media_buy_confirmation"
+          }
+        }
+      },
+      "then": {
+        "required": ["params"],
+        "properties": {
+          "params": {
+            "required": ["action"],
+            "allOf": [
+              {
+                "if": { "properties": { "action": { "const": "confirm" } } },
+                "then": { "required": ["media_buy_id"] }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
             "const": "force_get_products_arm"
           }
         }
@@ -442,6 +465,28 @@
           "params": {
             "required": [
               "media_buy_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "simulate_later_proposal"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "account_id",
+              "opportunity_id"
             ]
           }
         }
@@ -749,6 +794,27 @@
       "if": {
         "properties": {
           "scenario": {
+            "const": "force_hold_unavailable"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "proposal_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
             "const": "force_upstream_unavailable"
           }
         }
@@ -981,7 +1047,7 @@
   "properties": {
     "scenario": {
       "type": "string",
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'reporting_core_lifecycle_probe' installs a caller/account-scoped Core fixture whose first elapsed obligation is visible before any report, advances its virtual clock into delayed or action_required, and can publish deterministic zero-row or non-empty revisions, restate a provisional revision, restate one the caller already received, or cross the consumer-status deadline and consumer-mismatch escalation boundaries, without waiting for wall-clock boundaries. Other scenarios provide deterministic sandbox probes for their documented lifecycle checks. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'reporting_core_lifecycle_probe' installs a caller/account-scoped Core fixture whose first elapsed obligation is visible before any report, advances its virtual clock into delayed or action_required, and can publish deterministic zero-row or non-empty revisions, restate a provisional revision, restate one the caller already received, or cross the consumer-status deadline and consumer-mismatch escalation boundaries, without waiting for wall-clock boundaries. 'force_hold_unavailable' (experimental, media_buy.hold_policy) makes the next refine_proposals finalize of one draft proposal fail with hold_unavailable, its batch siblings with batch_aborted, and is then consumed. Other scenarios provide deterministic sandbox probes for their documented lifecycle checks. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
     },
     "params": {
       "type": "object",
@@ -1006,15 +1072,28 @@
           "type": "string",
           "description": "Session to transition. Used by force_session_status."
         },
+        "action": {
+          "type": "string",
+          "enum": ["hold", "confirm"],
+          "description": "force_media_buy_confirmation: hold the next create_media_buy (confirmed_at null), or confirm media_buy_id."
+        },
         "product_id": {
           "type": "string",
           "description": "Product to seed or prepare for deterministic compact lifecycle testing. Used by seed_product, seed_pricing_option, compact_product_lifecycle_probe prepare, compact_direct_buy_lifecycle_probe prepare, and definition_pin_probe prepare.",
           "x-entity": "product"
         },
+        "opportunity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "description": "Open opportunity with later_proposals consent for which simulate_later_proposal makes the seller create one later proposal now, as it would after the creating task completed, including the proposal.created notification and any change-feed record. Experimental (media_buy.open_opportunities). The seller still enforces the consent window, max_count, and min_interval and fails the scenario when they forbid a proposal.",
+          "x-entity": "opportunity"
+        },
         "proposal_id": {
           "type": "string",
           "minLength": 1,
-          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires, or the draft or committed proposal whose pinned definition definition_pin_probe mutate_definition changes.",
+          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires, the draft or committed proposal whose pinned definition definition_pin_probe mutate_definition changes, or the holdable draft proposal whose next finalize force_hold_unavailable fails with hold_unavailable.",
           "x-entity": "proposal"
         },
         "pricing_option_id": {
@@ -1179,6 +1258,23 @@
             "additionalProperties": true
           },
           "description": "Installment x property rows for simulate_delivery on single-package buys; each MUST be a complete core/installment-property-delivery-metrics.json row, where installment_ref.collection_ref.publisher_domain is the collection owner and publisher_domain namespaces the host property. Same replace, undated, suppression-exempt, and rejection rules as property_delivery; sandbox sellers MUST build by_installment_property from exactly these rows."
+        },
+        "installment_delivery": {
+          "type": "array",
+          "minItems": 1,
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "items": {
+            "type": "object",
+            "required": ["installment_ref", "spend"],
+            "properties": {
+              "installment_ref": { "type": "object", "required": ["collection_ref", "installment_id"] },
+              "impressions": { "type": "number", "minimum": 0 },
+              "spend": { "type": "number", "minimum": 0 }
+            },
+            "additionalProperties": true
+          },
+          "description": "Installment rows for simulate_delivery on single-package buys; each MUST be a complete core/installment-delivery-metrics.json row, including installment_status and publication when set; this item schema is loose, so sellers SHOULD validate each row against the full row schema. Same replace, undated, and rejection rules as installment_property_delivery; sandbox sellers MUST build by_installment from exactly these rows."
         },
         "conversions": {
           "type": "integer",
@@ -1586,6 +1682,19 @@
             "amount": 150,
             "currency": "USD"
           }
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Make the seller create a later proposal for an open, consented opportunity",
+      "data": {
+        "scenario": "simulate_later_proposal",
+        "params": {
+          "account_id": "acc_nova_za",
+          "opportunity_id": "opp_nova_za_q4"
         },
         "account": {
           "sandbox": true

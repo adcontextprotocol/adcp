@@ -49,8 +49,9 @@ import {
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
 import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } from '../seller-optimized-budget.js';
-import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { advertisesSalesFixedRateSpecialism, supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
+import { complianceScenariosForServedVersion } from '../compliance-scenarios.js';
 import { runWithReleaseLineEcho } from './release-line-echo.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -182,6 +183,7 @@ const SALES_THREE_ZERO_COMPLY_SCENARIOS = [
 const SALES_CURRENT_SCENARIOS = [
   ...SALES_LEGACY_CAPABILITY_SCENARIOS,
   'force_create_media_buy_arm',
+  'force_media_buy_confirmation',
   'force_get_products_arm',
   'force_task_completion',
   'force_creative_purge',
@@ -247,7 +249,7 @@ function salesComplyScenarios(
   servedVersion?: string,
 ): string[] {
   if (storyboardCompat?.version === '3.0') return [...SALES_THREE_ZERO_COMPLY_SCENARIOS];
-  const current = supportsReliableReporting(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+  const withReporting = supportsReliableReporting(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...SALES_CURRENT_SCENARIOS]
     : SALES_CURRENT_SCENARIOS.filter(scenario => (
       scenario !== 'reporting_core_lifecycle_probe'
@@ -255,6 +257,11 @@ function salesComplyScenarios(
       && scenario !== 'reliable_reporting_managed_delivery_probe'
       && scenario !== 'reliable_reporting_reconciled_billing_probe'
     ));
+  // The hold scenario ships with `sales-fixed-rate`; older pins neither see
+  // the specialism nor the scenario that grades it.
+  const current = supportsSalesFixedRate(servedVersion)
+    ? withReporting
+    : withReporting.filter(scenario => scenario !== 'force_media_buy_confirmation');
   return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...current, 'expire_account_change_cursor']
     : current;
@@ -264,8 +271,13 @@ function salesCapabilityScenarios(
   storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
   servedVersion?: string,
 ): string[] {
-  if (storyboardCompat?.version === '3.0') return [...SALES_LEGACY_CAPABILITY_SCENARIOS];
-  return salesComplyScenarios(storyboardCompat, servedVersion);
+  // Capability discovery advertises only the scenarios the served release's
+  // schema allows. comply_test_controller list_scenarios is not limited by
+  // that enum, so the frozen 3.0 facade still lists its seed scenarios there.
+  return complianceScenariosForServedVersion(
+    salesComplyScenarios(storyboardCompat, servedVersion),
+    storyboardCompat?.version === '3.0' ? '3.0' : servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
 }
 
 /**
@@ -682,6 +694,7 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'reliable_reporting_managed_delivery_probe'
     && rawArgs.scenario !== 'reliable_reporting_reconciled_billing_probe'
     && rawArgs.scenario !== 'query_account_governance_binding'
+    && rawArgs.scenario !== 'force_media_buy_confirmation'
     && rawArgs.scenario !== 'list_scenarios'
     && !isCompactLifecycleProbe
     && !isRejectedGetProductsDirective
@@ -701,6 +714,7 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'reliable_reporting_managed_delivery_probe'
       || rawArgs.scenario === 'reliable_reporting_reconciled_billing_probe'
       || rawArgs.scenario === 'query_account_governance_binding'
+      || rawArgs.scenario === 'force_media_buy_confirmation'
       || isRejectedGetProductsDirective
     )
   ) return false;
@@ -1000,6 +1014,12 @@ function projectTenantCapabilities(
         ? structured.adcp_version
         : TRAINING_AGENT_DEFAULT_ADCP_VERSION);
     structured.adcp_version = servedVersion;
+    // `sales-fixed-rate` is a 3.3 enum value. Consumers served 3.2 or below
+    // validate `specialisms` against a closed enum that predates it, so the
+    // id is withdrawn from their capability response (DR-0024).
+    if (Array.isArray(structured.specialisms) && !advertisesSalesFixedRateSpecialism(servedVersion)) {
+      structured.specialisms = structured.specialisms.filter(id => id !== 'sales-fixed-rate');
+    }
     const adcp = structured.adcp && typeof structured.adcp === 'object'
       ? structured.adcp
       : {};
@@ -1292,6 +1312,25 @@ function projectTenantCapabilities(
         ...complianceTesting,
         scenarios: [...scenarios],
       };
+    }
+    // Every tenant: a release whose capabilities schema closes the scenario
+    // enum (3.0) never sees scenarios added after it, whichever projection
+    // above or SDK derivation contributed them.
+    if (structured.compliance_testing && typeof structured.compliance_testing === 'object') {
+      const listed = (structured.compliance_testing as { scenarios?: unknown }).scenarios;
+      if (Array.isArray(listed)) {
+        const scenarios = complianceScenariosForServedVersion(
+          listed.filter((s): s is string => typeof s === 'string'),
+          storyboardCompat?.version === '3.0' ? '3.0' : servedVersion,
+        );
+        // The schema requires a non-empty list; with nothing left to claim,
+        // drop the block rather than advertise an invalid one.
+        if (scenarios.length > 0) {
+          structured.compliance_testing = { ...structured.compliance_testing, scenarios };
+        } else {
+          delete structured.compliance_testing;
+        }
+      }
     }
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
     const firstText = parsed.result?.content?.[0];

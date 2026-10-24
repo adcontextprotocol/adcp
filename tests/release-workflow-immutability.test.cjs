@@ -4,6 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 const crypto = require('crypto');
+const os = require('os');
+const vm = require('vm');
+const { spawnSync } = require('child_process');
 const YAML = require('yaml');
 
 const repoRoot = path.join(__dirname, '..');
@@ -82,8 +85,8 @@ assert(
 
 assert.deepStrictEqual(
   schemaPrWorkflowConfig.on.pull_request.paths,
-  ['static/schemas/source/**'],
-  'Schema PR bundle validation must run only for canonical schema source changes.'
+  ['static/schemas/source/**', 'scripts/probe-generated-sdk-creative-assets.cjs', '.github/workflows/validate-schema-bundle.yml'],
+  'Schema PR bundle validation must cover canonical sources and edits to its SDK semantic gate.'
 );
 
 const typescriptCandidateStep = schemaPrWorkflowConfig.jobs['typescript-sdk'].steps.find(
@@ -99,6 +102,71 @@ assert(
 assert(
   !typescriptCandidateStep.includes('sync-version -- --auto-update'),
   'Candidate validation must not bump the TypeScript SDK package release number.'
+);
+const candidateVersionBridge = typescriptCandidateStep.match(
+  /node <<'NODE_CANDIDATE_VERSION'\n([\s\S]*?)\nNODE_CANDIDATE_VERSION/
+)?.[1];
+assert(candidateVersionBridge, 'Candidate compatibility bridge must remain executable and isolated.');
+const compatibilityFixture = `function buildCompatibleVersions(adcpVersion: string): string[] {
+  const [, majorText, minorText, patchText, prerelease] = /^(\\d+)\\.(\\d+)\\.(\\d+)(?:-(.+))?$/.exec(adcpVersion);
+  const major = Number(majorText), minor = Number(minorText), patch = Number(patchText);
+  // 3.2 prereleases are exact.
+  if (adcpVersion === '3.2.5') return ['v3', '3.2.1', '3.2.5', '3.2'];
+  throw new Error('unsupported version');
+}`;
+function bridgeCandidateVersion(candidate, pinned = '3.2.5', original = compatibilityFixture) {
+  let generated = original;
+  vm.runInNewContext(candidateVersionBridge, {
+    process: { env: { BUNDLE_VERSION: candidate } },
+    require(name) {
+      assert.strictEqual(name, 'node:fs');
+      return {
+        readFileSync(filename) { return filename === 'sdk/ADCP_VERSION' ? pinned : original; },
+        writeFileSync(filename, source) {
+          assert.strictEqual(filename, 'sdk/scripts/sync-version.ts');
+          generated = source;
+        },
+      };
+    },
+  });
+  return generated;
+}
+for (const candidate of ['3.3.0-beta.0', '3.3.0-rc.2']) {
+  const generated = bridgeCandidateVersion(candidate).replace('(adcpVersion: string): string[]', '(adcpVersion)');
+  const context = {};
+  vm.runInNewContext(generated, context);
+  assert.deepStrictEqual(Array.from(context.buildCompatibleVersions(candidate)), [
+    'v3', '3.2.1', '3.2.5', '3.2', candidate, candidate.replace('3.3.0-', '3.3-'),
+  ], 'The bridge must retain stable peers and add only the exact preview aliases.');
+  assert.throws(() => context.buildCompatibleVersions('3.4.0-beta.0'), /unsupported version/);
+  assert.deepStrictEqual(Array.from(context.buildCompatibleVersions('3.2.5')), ['v3', '3.2.1', '3.2.5', '3.2']);
+}
+for (const candidate of ['3.2.5', '3.3.0', '3.3.0-alpha.0', '3.4.0-beta.0']) {
+  assert.strictEqual(bridgeCandidateVersion(candidate), compatibilityFixture,
+    'The bridge must leave released versions and unrecognized candidate lines untouched.');
+}
+assert.throws(() => bridgeCandidateVersion('3.3.0-beta.0', '3.2.5', 'changed generator'), /generator changed/);
+const typescriptProtocolCheckout = schemaPrWorkflowConfig.jobs['typescript-sdk'].steps.find(
+  step => step.uses?.startsWith('actions/checkout@') && step.with?.path === 'protocol'
+);
+assert.strictEqual(
+  typescriptProtocolCheckout?.with?.ref,
+  '${{ github.event.pull_request.head.sha }}',
+  'Generated SDK probes must come from the exact protocol PR head.'
+);
+assert.strictEqual(typescriptProtocolCheckout.with['persist-credentials'], false);
+assert.strictEqual(typescriptProtocolCheckout.with['sparse-checkout-cone-mode'], false,
+  'Exact probe file patterns require non-cone sparse checkout.');
+assert(
+  typescriptProtocolCheckout.with['sparse-checkout'].includes('scripts/probe-generated-sdk-creative-assets.cjs') &&
+    typescriptProtocolCheckout.with['sparse-checkout'].includes('static/schemas/source/core/assets'),
+  'The candidate SDK job must check out the probe and source asset feature declarations.'
+);
+const candidateProbeIndex = typescriptCandidateStep.indexOf('node protocol/scripts/probe-generated-sdk-creative-assets.cjs');
+assert(
+  candidateProbeIndex > typescriptCandidateStep.indexOf('npm --prefix sdk run build:lib') &&
+    typescriptCandidateStep.includes('--source-root protocol/static/schemas/source --sdk-root sdk'),
+  'Creative asset semantics must be probed through the built SDK against this PR source.'
 );
 
 const pythonCandidateStep = schemaPrWorkflowConfig.jobs['python-sdk'].steps.find(
@@ -122,6 +190,51 @@ assert(
     pythonCandidateStep.includes('f"recursive-include schemas/cache/{new_key} *.json"'),
   'Python candidate validation must key the wheel and both sdist schema allowlist syntaxes with the SDK bundle key.'
 );
+const pythonPackageBridge = pythonCandidateStep.match(
+  /SDK_VERSION="\$\{sdk_version\}" BUNDLE_VERSION="\$\{bundle_version\}" python - <<'PY'\n([\s\S]*?)\nPY/
+)?.[1];
+assert(pythonPackageBridge, 'Python candidate package-data bridge must remain executable.');
+const packageBridgeTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-sdk-candidate-'));
+try {
+  const sdkDir = path.join(packageBridgeTemp, 'sdk');
+  fs.mkdirSync(sdkDir);
+  const importStub = `import sys, types
+module = types.ModuleType("adcp.validation.version")
+module.resolve_bundle_key = lambda value: value if "-" in value else ".".join(value.split(".")[:2])
+sys.modules["adcp.validation.version"] = module
+`;
+  for (const manifest of [
+    'prune src/adcp/_schemas\nrecursive-include schemas/cache/3.2 *.json\n',
+    'recursive-include src/adcp/_schemas/3.2 *.json\nrecursive-include schemas/cache/3.2 *.json\n',
+  ]) {
+    fs.writeFileSync(path.join(sdkDir, 'pyproject.toml'), 'adcp = ["_schemas/3.2/**/*.json"]\n');
+    fs.writeFileSync(path.join(sdkDir, 'MANIFEST.in'), manifest);
+    const result = spawnSync('python3', ['-c', importStub + pythonPackageBridge], {
+      cwd: packageBridgeTemp,
+      env: { ...process.env, SDK_VERSION: '3.2.5', BUNDLE_VERSION: '3.3.0-beta.0' },
+      encoding: 'utf8',
+    });
+    assert.strictEqual(result.status, 0, result.stderr);
+    const updated = fs.readFileSync(path.join(sdkDir, 'MANIFEST.in'), 'utf8');
+    assert(updated.includes('recursive-include schemas/cache/3.3.0-beta.0 *.json'));
+    assert.strictEqual(updated.includes('recursive-include src/adcp/_schemas/3.3.0-beta.0 *.json'),
+      !manifest.startsWith('prune'), 'A pruned generated copy must stay excluded from sdists.');
+    assert(fs.readFileSync(path.join(sdkDir, 'pyproject.toml'), 'utf8').includes('"_schemas/3.3.0-beta.0/**/*.json"'));
+  }
+  for (const manifest of ['prune src/adcp/_schemas\n', 'recursive-include schemas/cache/3.2 *.json\n']) {
+    fs.writeFileSync(path.join(sdkDir, 'pyproject.toml'), 'adcp = ["_schemas/3.2/**/*.json"]\n');
+    fs.writeFileSync(path.join(sdkDir, 'MANIFEST.in'), manifest);
+    const result = spawnSync('python3', ['-c', importStub + pythonPackageBridge], {
+      cwd: packageBridgeTemp,
+      env: { ...process.env, SDK_VERSION: '3.2.5', BUNDLE_VERSION: '3.3.0-beta.0' },
+      encoding: 'utf8',
+    });
+    assert.notStrictEqual(result.status, 0, 'Missing package-data authority must fail closed.');
+    assert.match(result.stderr, /does not package the pinned SDK schema/);
+  }
+} finally {
+  fs.rmSync(packageBridgeTemp, { recursive: true, force: true });
+}
 
 const storyboardCandidateMode = trainingAgentWorkflowConfig.jobs.storyboards.steps.find(
   step => step.name === 'Run storyboards against /${{ matrix.tenant }}'
@@ -242,9 +355,117 @@ assert.strictEqual(
 
 assert.deepStrictEqual(
   verificationJob.permissions,
-  { contents: 'read' },
-  'The verification job must not receive release mutation or signing permissions.'
+  { contents: 'read', actions: 'read', 'pull-requests': 'read' },
+  'The verification job must not receive release mutation or signing permissions; it reads only the release PR and its storyboard run.'
 );
+
+// Strict exact-head freshness guards every step that can lead to Changesets
+// generation. Only steps publishing the already-committed release relax it.
+const fenceModes = (source) =>
+  [...source.matchAll(/check-release-state\.cjs"? ([a-z-]+)/g)].map(match => match[1]);
+const stepRun = (job, name) => {
+  const found = workflowConfig.jobs[job].steps.find(step => step.name === name);
+  assert(found, `Missing ${job} step: ${name}`);
+  return found.run;
+};
+assert.deepStrictEqual(fenceModes(stepRun('verify-release', 'Require current release branch')), ['current']);
+assert.deepStrictEqual(fenceModes(stepRun('release', 'Require current release branch')), ['current']);
+assert.deepStrictEqual(
+  fenceModes(stepRun('release', 'Recheck current release branch after installation')),
+  ['current']
+);
+assert.deepStrictEqual(
+  fenceModes(artifactDetection),
+  ['recovery', 'current'],
+  'Release artifact detection precedes the Changesets path and must keep the strict fence.'
+);
+assert(
+  workflow.includes(`printf '#!/bin/sh\\nnode "$RUNNER_TEMP/release-hooks/check.cjs" current\\n'`),
+  'The Changesets pre-push hook must keep the strict exact-head fence.'
+);
+assert(
+  fenceModes(uploadStep).length > 0 &&
+    fenceModes(uploadStep).every(mode => ['publication-current', 'published', 'committed', 'approval'].includes(mode)) &&
+    !fenceModes(uploadStep).includes('current'),
+  'GitHub Release staging publishes the committed release and must use publication-scoped freshness.'
+);
+assert.match(
+  stepRun('verify-release', 'Detect stranded committed release'),
+  /check-release-state\.cjs pending/,
+  'Stranded-release detection keeps the strict pending fence.'
+);
+
+const verifiedMergeStep = verificationJob.steps.find(
+  step => step.name === 'Detect provenance-verified release merge'
+);
+assert(verifiedMergeStep, 'verify-release must try to prove a verified release merge.');
+assert.strictEqual(verifiedMergeStep.id, 'verified-merge');
+assert.strictEqual(verifiedMergeStep['continue-on-error'], true, 'Failure to prove verification must not fail the job.');
+assert.match(verifiedMergeStep.if, /github\.event_name == 'push'/);
+assert(
+  verificationJob.steps.indexOf(verifiedMergeStep) <
+    verificationJob.steps.findIndex(step => step.name === 'Install Dependencies'),
+  'Release merge verification must be decided before installing dependencies.'
+);
+assert(
+  verifiedMergeStep.run.includes('grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "$changed_files"') &&
+    verifiedMergeStep.run.includes('git show --first-parent --format= --name-only --no-renames "$GITHUB_SHA"') &&
+    /if node scripts\/check-release-state\.cjs verified-merge; then\n\s*echo "verified=true" >> "\$GITHUB_OUTPUT"/.test(verifiedMergeStep.run),
+  'Only a Version Packages merge proven by verified-merge may set verified=true.'
+);
+assert.match(
+  verifiedMergeStep.if,
+  /github\.ref_name == 'main'/,
+  'verified-merge is main-only: maintenance PR runs use a different candidate-version mode.'
+);
+assert.strictEqual(
+  verificationJob.steps.find(step => step.name === 'Checkout Repo').with['persist-credentials'],
+  false,
+  'verify-release reads the public repository anonymously and must not persist a token.'
+);
+
+// verified-merge requires every job the storyboard matrix produces. Expand
+// the workflow's matrix (product, exclude, include) and compare.
+{
+  const { storyboardJobs } = require(path.join(repoRoot, 'scripts/check-release-state.cjs'));
+  const jobs = trainingAgentWorkflowConfig.jobs;
+  const matrix = jobs.storyboards.strategy.matrix;
+  const keys = ['surface', 'tenant'];
+  let combos = matrix.surface.flatMap(surface => matrix.tenant.map(tenant => ({ surface, tenant })));
+  combos = combos.filter(combo => !matrix.exclude.some(ex => keys.every(key => ex[key] === combo[key])));
+  for (const extra of matrix.include) {
+    if (!combos.some(combo => keys.every(key => combo[key] === extra[key])))
+      combos.push({ surface: extra.surface, tenant: extra.tenant });
+  }
+  const orchestrators = jobs.sales_storyboard_orchestrators.strategy.matrix.orchestrator;
+  const expected = [
+    ...combos.map(({ surface, tenant }) =>
+      jobs.storyboards.name.replace('${{ matrix.surface }}', surface).replace('${{ matrix.tenant }}', tenant)
+    ),
+    ...orchestrators.map(n =>
+      jobs.sales_storyboard_orchestrators.name.replace('${{ matrix.orchestrator }}', String(n))
+    ),
+    jobs.sales_storyboards.name,
+  ];
+  assert.deepStrictEqual(
+    Object.keys(jobs).sort(),
+    ['sales_storyboard_orchestrators', 'sales_storyboards', 'storyboards'],
+    'A new storyboard job must be added to check-release-state.cjs storyboardJobs.'
+  );
+  assert.deepStrictEqual(
+    [...storyboardJobs].sort(),
+    expected.sort(),
+    'check-release-state.cjs storyboardJobs must equal the full training-agent-storyboards.yml matrix.'
+  );
+}
+
+for (const name of ['Verify current storyboard coverage', 'Verify 3.0 storyboard compatibility']) {
+  const gate = verificationJob.steps.find(step => step.name === name);
+  assert(
+    gate.if.includes("steps.release-relevance.outputs.relevant == 'true' && steps.verified-merge.outputs.verified != 'true'"),
+    `${name} must run unless the exact approved head is provenance-verified.`
+  );
+}
 
 assert.strictEqual(
   releaseJob.permissions['id-token'],

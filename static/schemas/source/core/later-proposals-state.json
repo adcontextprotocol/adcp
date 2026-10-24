@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/later-proposals-state.json",
+  "title": "Later Proposals State",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Seller-recorded later-proposal consent for one opportunity, as the seller will enforce it. Experimental (media_buy.open_opportunities). Returned on request_proposals and list_proposals so the buyer can see whether consent was recorded and when the window ends, rather than waiting for proposals that will never arrive.",
+  "type": "object",
+  "properties": {
+    "accepted": {
+      "type": "boolean",
+      "description": "Whether the seller will create later proposals for this opportunity. False when the buyer withheld or withdrew consent, and also when the seller could not record it, for example because the request resolved no account."
+    },
+    "window_ends_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Computed end of the later-proposal window: the earliest of later_proposals.until, the end of planning_horizon.end in UTC, and the seller's max_open_duration measured from the call that last set accepted true. Required when accepted is true. Closing the opportunity ends the window earlier."
+    },
+    "max_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Effective cap on later proposals under the current consent: the buyer's value, the protocol default of 5, or a lower seller cap. Required when accepted is true."
+    },
+    "min_interval": {
+      "allOf": [{ "$ref": "/schemas/core/duration.json" }, { "not": { "properties": { "unit": { "const": "campaign" } }, "required": ["unit"] } }],
+      "description": "Effective minimum time between later proposals: the buyer's value, the protocol default of 1 day, or a longer seller interval. Required when accepted is true."
+    },
+    "created_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Later proposals the seller has created under the current consent."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the consent was last set or changed. A change the buyer does not recognize indicates another principal on the account updated the opportunity."
+    }
+  },
+  "required": ["accepted", "updated_at"],
+  "if": {
+    "properties": { "accepted": { "const": true } },
+    "required": ["accepted"]
+  },
+  "then": { "required": ["window_ends_at", "max_count", "min_interval"] },
+  "additionalProperties": false
+}

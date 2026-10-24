@@ -141,6 +141,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-pagination_integrity_content_standar-5d853181"
+            sandbox: true
           scope:
             languages_any: ["en"]
             channels_any: ["display"]
@@ -179,6 +180,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-pagination_integrity_content_standar-5d853181"
+            sandbox: true
           scope:
             languages_any: ["es"]
             channels_any: ["olv"]
@@ -217,6 +219,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-pagination_integrity_content_standar-5d853181"
+            sandbox: true
           scope:
             languages_any: ["fr"]
             channels_any: ["ctv"]
@@ -278,6 +281,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-pagination_integrity_content_standar-5d853181"
+            sandbox: true
           pagination:
             max_results: 2
 
@@ -331,6 +335,7 @@ phases:
             operator: "pinnacle-agency.example"
             operator_unit:
               id: "compliance-pagination_integrity_content_standar-5d853181"
+            sandbox: true
           pagination:
             cursor: "$context.next_cursor"
             max_results: 2

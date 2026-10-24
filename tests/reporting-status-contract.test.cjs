@@ -846,6 +846,20 @@ describe('managed reporting status contract', () => {
     };
     assert.equal(validateReportDefinition(definition), true, JSON.stringify(validateReportDefinition.errors));
     assert.match(readSchema('/schemas/core/reporting-report-definition.json')['x-adcp-validation'].binding, /official revision/);
+
+    // custody is optional, so a definition without it stays valid and keeps its digest.
+    const custodyEnum = readSchema('/schemas/enums/reporting-custody.json');
+    assert.deepEqual(custodyEnum.enum, ['system_of_record', 'upstream_derived']);
+    assert.deepEqual(Object.keys(custodyEnum.enumDescriptions), custodyEnum.enum);
+    assert.equal(custodyEnum['x-added-in'], '3.3.0');
+    const sourceCustody = readSchema('/schemas/core/reporting-report-definition.json').properties.source.properties.custody;
+    assert.equal(sourceCustody.$ref, '/schemas/enums/reporting-custody.json');
+    assert.equal(sourceCustody['x-added-in'], '3.3.0');
+    for (const custody of custodyEnum.enum) {
+      const withCustody = { ...definition, source: { ...definition.source, custody } };
+      assert.equal(validateReportDefinition(withCustody), true, JSON.stringify(validateReportDefinition.errors));
+    }
+    assert.equal(validateReportDefinition({ ...definition, source: { ...definition.source, custody: 'shared' } }), false);
   });
 
   it('returns auditable summary scope and does not allow complete on an open scope', () => {
