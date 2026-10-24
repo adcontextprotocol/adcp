@@ -1,0 +1,1167 @@
+{
+  "description": "Cross-version translation between consecutive AdCP minor releases (DR-0032, DR-0033): request down-conversion and response up-conversion on the client, response down-conversion on the server, release negotiation, and one-to-one account-key reduction.",
+  "reference_implementation": "@adcp/sdk (adcontextprotocol/adcp-client#3372, #3376)",
+  "version_pair": [
+    "3.2",
+    "3.1"
+  ],
+  "cases": [
+    {
+      "id": "create_media_buy-bid-amount-moves",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "create_media_buy",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "A media-buy bid_amount default is inherited as package bid_price; a package bid_amount moves to its own bid_price. Labels and rotation hints drop.",
+      "input": {
+        "idempotency_key": "vt-create-media-buy-0001",
+        "account": {
+          "brand": {
+            "domain": "acme.example"
+          },
+          "operator": "pinnacle-media.example"
+        },
+        "brand": {
+          "domain": "acme.example"
+        },
+        "start_time": "asap",
+        "end_time": "2027-01-31T23:59:59Z",
+        "packages": [
+          {
+            "product_id": "prod_1",
+            "pricing_option_id": "po_1",
+            "budget": 1000,
+            "creative_assignments": [
+              {
+                "creative_id": "cr_1",
+                "rotation_mode": "even"
+              }
+            ]
+          },
+          {
+            "product_id": "prod_2",
+            "pricing_option_id": "po_2",
+            "budget": 500,
+            "bidding": {
+              "bid_amount": 9
+            }
+          }
+        ],
+        "name": "Q1 launch",
+        "bidding": {
+          "bid_amount": 4.5
+        }
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "idempotency_key": "vt-create-media-buy-0001",
+          "account": {
+            "brand": {
+              "domain": "acme.example"
+            },
+            "operator": "pinnacle-media.example"
+          },
+          "brand": {
+            "domain": "acme.example"
+          },
+          "start_time": "asap",
+          "end_time": "2027-01-31T23:59:59Z",
+          "packages": [
+            {
+              "product_id": "prod_1",
+              "pricing_option_id": "po_1",
+              "budget": 1000,
+              "creative_assignments": [
+                {
+                  "creative_id": "cr_1"
+                }
+              ],
+              "bid_price": 4.5
+            },
+            {
+              "product_id": "prod_2",
+              "pricing_option_id": "po_2",
+              "budget": 500,
+              "bid_price": 9
+            }
+          ]
+        },
+        "dropped": [
+          "packages[0].creative_assignments[0].rotation_mode",
+          "name"
+        ],
+        "moved": [
+          {
+            "from": "bidding",
+            "to": "packages[0].bid_price"
+          },
+          {
+            "from": "packages[1].bidding",
+            "to": "packages[1].bid_price"
+          }
+        ]
+      }
+    },
+    {
+      "id": "create_media_buy-default-overridden",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "create_media_buy",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "A media-buy default that every package overrides is redundant and is removed, not refused.",
+      "input": {
+        "idempotency_key": "vt-create-media-buy-0001",
+        "account": {
+          "brand": {
+            "domain": "acme.example"
+          },
+          "operator": "pinnacle-media.example"
+        },
+        "brand": {
+          "domain": "acme.example"
+        },
+        "start_time": "asap",
+        "end_time": "2027-01-31T23:59:59Z",
+        "packages": [
+          {
+            "product_id": "prod_1",
+            "pricing_option_id": "po_1",
+            "budget": 1000,
+            "bid_price": 3
+          }
+        ],
+        "bidding": {
+          "bid_amount": 4.5
+        }
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "idempotency_key": "vt-create-media-buy-0001",
+          "account": {
+            "brand": {
+              "domain": "acme.example"
+            },
+            "operator": "pinnacle-media.example"
+          },
+          "brand": {
+            "domain": "acme.example"
+          },
+          "start_time": "asap",
+          "end_time": "2027-01-31T23:59:59Z",
+          "packages": [
+            {
+              "product_id": "prod_1",
+              "pricing_option_id": "po_1",
+              "budget": 1000,
+              "bid_price": 3
+            }
+          ]
+        },
+        "dropped": [
+          "bidding"
+        ],
+        "moved": []
+      }
+    },
+    {
+      "id": "create_media_buy-max-bid-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "create_media_buy",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "max_bid has no safe 3.1 form without the pricing option flag, so the mutation is refused.",
+      "input": {
+        "idempotency_key": "vt-create-media-buy-0001",
+        "account": {
+          "brand": {
+            "domain": "acme.example"
+          },
+          "operator": "pinnacle-media.example"
+        },
+        "brand": {
+          "domain": "acme.example"
+        },
+        "start_time": "asap",
+        "end_time": "2027-01-31T23:59:59Z",
+        "packages": [
+          {
+            "product_id": "prod_1",
+            "pricing_option_id": "po_1",
+            "budget": 1000,
+            "bidding": {
+              "max_bid": 9
+            }
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "field_not_expressible",
+        "fields": [
+          "packages[0].bidding"
+        ]
+      }
+    },
+    {
+      "id": "create_media_buy-daily-cap-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "create_media_buy",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "A spend cap the older release cannot express is refused on a mutation.",
+      "input": {
+        "idempotency_key": "vt-create-media-buy-0001",
+        "account": {
+          "brand": {
+            "domain": "acme.example"
+          },
+          "operator": "pinnacle-media.example"
+        },
+        "brand": {
+          "domain": "acme.example"
+        },
+        "start_time": "asap",
+        "end_time": "2027-01-31T23:59:59Z",
+        "packages": [
+          {
+            "product_id": "prod_1",
+            "pricing_option_id": "po_1",
+            "budget": 1000
+          }
+        ],
+        "daily_budget_cap": 100
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "field_not_expressible",
+        "fields": [
+          "daily_budget_cap"
+        ]
+      }
+    },
+    {
+      "id": "create_media_buy-exclusion-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "create_media_buy",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "A targeting exclusion the older release cannot express is refused on a mutation.",
+      "input": {
+        "idempotency_key": "vt-create-media-buy-0001",
+        "account": {
+          "brand": {
+            "domain": "acme.example"
+          },
+          "operator": "pinnacle-media.example"
+        },
+        "brand": {
+          "domain": "acme.example"
+        },
+        "start_time": "asap",
+        "end_time": "2027-01-31T23:59:59Z",
+        "packages": [
+          {
+            "product_id": "prod_1",
+            "pricing_option_id": "po_1",
+            "budget": 1000,
+            "targeting_overlay": {
+              "geo_countries": [
+                "US"
+              ],
+              "device_platform_exclude": [
+                "ios"
+              ]
+            }
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "field_not_expressible",
+        "fields": [
+          "packages[0].targeting_overlay.device_platform_exclude"
+        ]
+      }
+    },
+    {
+      "id": "update_media_buy-any-lost-field-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "update_media_buy",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "On an update, any lost field is a requested change that would not happen.",
+      "input": {
+        "idempotency_key": "vt-update-media-buy-0001",
+        "media_buy_id": "mb_1",
+        "name": "Renamed"
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "field_not_expressible",
+        "fields": [
+          "name"
+        ]
+      }
+    },
+    {
+      "id": "create_media_buy-account-identity-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "create_media_buy",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "account_identity": "refuse",
+      "note": "Under accountIdentityDowngrade 'refuse', an account key field the older release cannot express is refused.",
+      "input": {
+        "idempotency_key": "vt-create-media-buy-0001",
+        "account": {
+          "brand": {
+            "domain": "acme.example"
+          },
+          "operator": "pinnacle-media.example",
+          "operator_unit": {
+            "id": "desk-ca"
+          }
+        },
+        "brand": {
+          "domain": "acme.example"
+        },
+        "start_time": "asap",
+        "end_time": "2027-01-31T23:59:59Z",
+        "packages": [
+          {
+            "product_id": "prod_1",
+            "pricing_option_id": "po_1",
+            "budget": 1000
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "account_identity",
+        "fields": [
+          "account.operator_unit"
+        ]
+      }
+    },
+    {
+      "id": "sync_accounts-account-identity-reduced",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "sync_accounts",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "account_identity": "reduce",
+      "note": "Under 'reduce', the older account key is sent and the reduction reported.",
+      "input": {
+        "idempotency_key": "vt-sync-accounts-0001",
+        "accounts": [
+          {
+            "brand": {
+              "domain": "acme.example",
+              "countries": [
+                "CA"
+              ]
+            },
+            "operator": "pinnacle-media.example",
+            "currency": "CAD",
+            "billing": "operator"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "idempotency_key": "vt-sync-accounts-0001",
+          "accounts": [
+            {
+              "brand": {
+                "domain": "acme.example"
+              },
+              "operator": "pinnacle-media.example",
+              "billing": "operator"
+            }
+          ]
+        },
+        "dropped": [],
+        "moved": [],
+        "account_identity_reduced": [
+          "accounts[0].brand.countries",
+          "accounts[0].currency"
+        ]
+      }
+    },
+    {
+      "id": "sync_accounts-account-move-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "sync_accounts",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "A 3.2 rekey or operator handoff (operator_identity, revision) has no 3.1 form.",
+      "input": {
+        "idempotency_key": "vt-sync-accounts-0002",
+        "accounts": [
+          {
+            "account": {
+              "account_id": "acct_1"
+            },
+            "operator_identity": {
+              "operator": "pinnacle-media.example",
+              "operator_unit": {
+                "id": "desk-ca"
+              }
+            },
+            "revision": 3
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "field_not_expressible",
+        "fields": [
+          "accounts[0].operator_identity",
+          "accounts[0].revision"
+        ]
+      }
+    },
+    {
+      "id": "get_products-read-drops",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "get_products",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "On a read, fields the older release cannot express drop and are reported. A top-level brand is not an account key.",
+      "input": {
+        "brief": "running shoes",
+        "brand": {
+          "domain": "acme.example",
+          "countries": [
+            "CA"
+          ]
+        },
+        "targeting_overlay": {
+          "geo_countries": [
+            "CA"
+          ]
+        }
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "brief": "running shoes",
+          "brand": {
+            "domain": "acme.example"
+          }
+        },
+        "dropped": [
+          "brand.countries",
+          "targeting_overlay"
+        ],
+        "moved": []
+      }
+    },
+    {
+      "id": "get_media_buy_delivery-read-drops",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "get_media_buy_delivery",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "Newer reporting requests drop on a read.",
+      "input": {
+        "media_buy_ids": [
+          "mb_1"
+        ],
+        "requested_metrics": [
+          "impressions"
+        ],
+        "reporting_dimensions": {
+          "creative": {}
+        }
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "media_buy_ids": [
+            "mb_1"
+          ],
+          "reporting_dimensions": {}
+        },
+        "dropped": [
+          "requested_metrics",
+          "reporting_dimensions.creative"
+        ],
+        "moved": []
+      }
+    },
+    {
+      "id": "sync_creatives-assign-operations-move",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "sync_creatives",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "assign-only assignment_operations become 3.1 assignments, validated strictly to keep 3.2 atomicity.",
+      "input": {
+        "idempotency_key": "vt-sync-creatives-0001",
+        "assignment_operations": [
+          {
+            "operation": "assign",
+            "creative_id": "cr_1",
+            "package_id": "pkg_1",
+            "weight": 50
+          },
+          {
+            "operation": "assign",
+            "creative_id": "cr_2",
+            "package_id": "pkg_2"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "idempotency_key": "vt-sync-creatives-0001",
+          "assignments": [
+            {
+              "creative_id": "cr_1",
+              "package_id": "pkg_1",
+              "weight": 50
+            },
+            {
+              "creative_id": "cr_2",
+              "package_id": "pkg_2"
+            }
+          ],
+          "validation_mode": "strict"
+        },
+        "dropped": [],
+        "moved": [
+          {
+            "from": "assignment_operations[0]",
+            "to": "assignments[0]"
+          },
+          {
+            "from": "assignment_operations[1]",
+            "to": "assignments[1]"
+          }
+        ]
+      }
+    },
+    {
+      "id": "sync_creatives-unassign-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "sync_creatives",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "unassign and replace have no 3.1 form.",
+      "input": {
+        "idempotency_key": "vt-sync-creatives-0002",
+        "assignment_operations": [
+          {
+            "operation": "unassign",
+            "creative_id": "cr_1",
+            "package_id": "pkg_1"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "field_not_expressible",
+        "fields": [
+          "assignment_operations"
+        ]
+      }
+    },
+    {
+      "id": "report_plan_outcome-cumulative-spend-refused",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "report_plan_outcome",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "3.2 cumulative_spend is lifetime spend; 3.1 spend is period spend. They cannot be equated, so the call is refused.",
+      "input": {
+        "idempotency_key": "vt-report-plan-outcome-0001",
+        "plan_id": "plan_1",
+        "outcome": "delivery",
+        "governance_context": "eyJhbGciOi...",
+        "delivery": {
+          "observation_id": "obs_1",
+          "source": "buyer_measurement",
+          "observed_at": "2027-01-02T00:00:00Z",
+          "reporting_period": {
+            "start": "2027-01-01T00:00:00Z",
+            "end": "2027-01-02T00:00:00Z"
+          },
+          "cumulative_spend": 120,
+          "currency": "USD"
+        }
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "field_not_expressible",
+        "fields": [
+          "delivery.observation_id",
+          "delivery.source",
+          "delivery.observed_at",
+          "delivery.cumulative_spend",
+          "delivery.currency"
+        ]
+      }
+    },
+    {
+      "id": "get_products-chain-to-3.0",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "get_products",
+      "from_version": "3.2",
+      "to_version": "3.0",
+      "note": "Larger gaps chain one minor at a time: 3.2 to 3.1 drops targeting_overlay, then 3.1 to 3.0 drops brand_kit_override.",
+      "input": {
+        "brief": "running shoes",
+        "brand": {
+          "domain": "acme.example",
+          "brand_kit_override": {
+            "colors": {
+              "accent": "#000000"
+            }
+          }
+        },
+        "targeting_overlay": {
+          "geo_countries": [
+            "US"
+          ]
+        }
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "brief": "running shoes",
+          "brand": {
+            "domain": "acme.example"
+          }
+        },
+        "dropped": [
+          "targeting_overlay",
+          "brand.brand_kit_override"
+        ],
+        "moved": []
+      }
+    },
+    {
+      "id": "create_media_buy-status-alias",
+      "side": "client",
+      "direction": "response_up",
+      "tool": "create_media_buy",
+      "from_version": "3.1",
+      "to_version": "3.2",
+      "note": "The 3.1 media-buy status alias moves to media_buy_status.",
+      "input": {
+        "adcp_version": "3.1",
+        "status": "active",
+        "media_buy_id": "mb_1",
+        "packages": []
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "adcp_version": "3.1",
+          "status": "completed",
+          "media_buy_id": "mb_1",
+          "packages": [],
+          "media_buy_status": "active"
+        },
+        "moved": [
+          {
+            "from": "status",
+            "to": "media_buy_status"
+          }
+        ]
+      }
+    },
+    {
+      "id": "get_media_buy_delivery-currency-per-buy",
+      "side": "client",
+      "direction": "response_up",
+      "tool": "get_media_buy_delivery",
+      "from_version": "3.1",
+      "to_version": "3.2",
+      "note": "The single 3.1 root currency is copied onto each media buy.",
+      "input": {
+        "currency": "USD",
+        "reporting_period": {
+          "start": "2027-01-01T00:00:00Z",
+          "end": "2027-01-02T00:00:00Z"
+        },
+        "media_buy_deliveries": [
+          {
+            "media_buy_id": "mb_1",
+            "status": "active",
+            "totals": {
+              "impressions": 1000,
+              "spend": 12.5
+            },
+            "by_package": []
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "currency": "USD",
+          "reporting_period": {
+            "start": "2027-01-01T00:00:00Z",
+            "end": "2027-01-02T00:00:00Z"
+          },
+          "media_buy_deliveries": [
+            {
+              "media_buy_id": "mb_1",
+              "status": "active",
+              "totals": {
+                "impressions": 1000,
+                "spend": 12.5
+              },
+              "by_package": [],
+              "currency": "USD"
+            }
+          ]
+        },
+        "moved": [
+          {
+            "from": "currency",
+            "to": "media_buy_deliveries[0].currency"
+          }
+        ]
+      }
+    },
+    {
+      "id": "get_media_buy_delivery-root-currency",
+      "side": "server",
+      "direction": "response_down",
+      "tool": "get_media_buy_delivery",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "A shared per-buy currency becomes the root currency 3.1 requires; 3.2-only fields drop.",
+      "input": {
+        "reporting_period": {
+          "start": "2027-01-01T00:00:00Z",
+          "end": "2027-01-02T00:00:00Z"
+        },
+        "media_buy_deliveries": [
+          {
+            "media_buy_id": "mb_1",
+            "status": "active",
+            "currency": "USD",
+            "pacing_index": 1.02,
+            "totals": {
+              "impressions": 1000,
+              "spend": 12.5
+            },
+            "by_package": []
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "reporting_period": {
+            "start": "2027-01-01T00:00:00Z",
+            "end": "2027-01-02T00:00:00Z"
+          },
+          "media_buy_deliveries": [
+            {
+              "media_buy_id": "mb_1",
+              "status": "active",
+              "totals": {
+                "impressions": 1000,
+                "spend": 12.5
+              },
+              "by_package": []
+            }
+          ],
+          "currency": "USD"
+        },
+        "dropped": [
+          "media_buy_deliveries[0].currency",
+          "media_buy_deliveries[0].pacing_index"
+        ],
+        "moved": [
+          {
+            "from": "media_buy_deliveries[].currency",
+            "to": "currency"
+          }
+        ]
+      }
+    },
+    {
+      "id": "create_media_buy-response-drops",
+      "side": "server",
+      "direction": "response_down",
+      "tool": "create_media_buy",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "Response fields the older release cannot express drop.",
+      "input": {
+        "status": "completed",
+        "media_buy_id": "mb_1",
+        "media_buy_status": "active",
+        "name": "Q1 launch",
+        "packages": []
+      },
+      "expect": {
+        "outcome": "converted",
+        "output": {
+          "status": "completed",
+          "media_buy_id": "mb_1",
+          "media_buy_status": "active",
+          "packages": []
+        },
+        "dropped": [
+          "name"
+        ],
+        "moved": []
+      }
+    },
+    {
+      "id": "list_account_changes-not-defined",
+      "side": "client",
+      "direction": "request_down",
+      "tool": "list_account_changes",
+      "from_version": "3.2",
+      "to_version": "3.1",
+      "note": "A task the negotiated release does not define is refused before sending, unless the seller lists the tool.",
+      "input": {
+        "account": {
+          "brand": {
+            "domain": "acme.example"
+          },
+          "operator": "pinnacle-media.example"
+        }
+      },
+      "expect": {
+        "outcome": "refused",
+        "reason": "task_not_defined"
+      }
+    }
+  ],
+  "negotiation": [
+    {
+      "client_version": "3.2",
+      "seller_supported_versions": [
+        "3.0",
+        "3.1"
+      ],
+      "note": "Highest release on or below the client line.",
+      "expect": {
+        "outcome": "negotiated",
+        "version": "3.1"
+      }
+    },
+    {
+      "client_version": "3.2",
+      "seller_supported_versions": [
+        "3.1",
+        "3.2"
+      ],
+      "note": "Same line: the client release is spoken.",
+      "expect": {
+        "outcome": "negotiated",
+        "version": "3.2"
+      }
+    },
+    {
+      "client_version": "3.2-beta.6",
+      "seller_supported_versions": [
+        "3.1",
+        "3.2"
+      ],
+      "note": "A prerelease client does not match a GA seller of its line.",
+      "expect": {
+        "outcome": "negotiated",
+        "version": "3.1"
+      }
+    },
+    {
+      "client_version": "3.2",
+      "seller_supported_versions": [
+        "3.0",
+        "3.1-beta.1"
+      ],
+      "note": "Older-line prereleases are never selected.",
+      "expect": {
+        "outcome": "negotiated",
+        "version": "3.0"
+      }
+    },
+    {
+      "client_version": "3.1",
+      "seller_supported_versions": [
+        "3.2"
+      ],
+      "note": "No release on or below the client line.",
+      "expect": {
+        "outcome": "no_common_version"
+      }
+    }
+  ],
+  "account_sequences": [
+    {
+      "id": "reduced-then-second-key",
+      "note": "A second buyer key that reduces onto an already-claimed seller account is refused.",
+      "seller_version": "3.1",
+      "steps": [
+        {
+          "tool": "sync_accounts",
+          "accounts": [
+            {
+              "brand": {
+                "domain": "acme.example",
+                "countries": [
+                  "CA"
+                ]
+              },
+              "operator": "pinnacle-media.example",
+              "currency": "CAD"
+            }
+          ],
+          "expect": {
+            "outcome": "sent",
+            "account_keys": [
+              {
+                "brand": {
+                  "domain": "acme.example"
+                },
+                "operator": "pinnacle-media.example"
+              }
+            ]
+          }
+        },
+        {
+          "tool": "sync_accounts",
+          "accounts": [
+            {
+              "brand": {
+                "domain": "acme.example",
+                "countries": [
+                  "US"
+                ]
+              },
+              "operator": "pinnacle-media.example",
+              "currency": "USD"
+            }
+          ],
+          "expect": {
+            "outcome": "refused",
+            "reason": "account_identity_collision"
+          }
+        }
+      ]
+    },
+    {
+      "id": "plain-then-reduced",
+      "note": "A key sent unreduced claims itself, so a later key that reduces onto it is refused.",
+      "seller_version": "3.1",
+      "steps": [
+        {
+          "tool": "sync_accounts",
+          "accounts": [
+            {
+              "brand": {
+                "domain": "acme.example"
+              },
+              "operator": "pinnacle-media.example"
+            }
+          ],
+          "expect": {
+            "outcome": "sent",
+            "account_keys": [
+              {
+                "brand": {
+                  "domain": "acme.example"
+                },
+                "operator": "pinnacle-media.example"
+              }
+            ]
+          }
+        },
+        {
+          "tool": "create_media_buy",
+          "account": {
+            "brand": {
+              "domain": "acme.example",
+              "countries": [
+                "CA"
+              ]
+            },
+            "operator": "pinnacle-media.example",
+            "currency": "CAD"
+          },
+          "expect": {
+            "outcome": "refused",
+            "reason": "account_identity_collision"
+          }
+        },
+        {
+          "tool": "create_media_buy",
+          "account": {
+            "brand": {
+              "domain": "acme.example"
+            },
+            "operator": "pinnacle-media.example"
+          },
+          "expect": {
+            "outcome": "sent",
+            "account_keys": [
+              {
+                "brand": {
+                  "domain": "acme.example"
+                },
+                "operator": "pinnacle-media.example"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "collision-within-one-request",
+      "note": "Claims are all-or-nothing per request: a refused request claims nothing.",
+      "seller_version": "3.1",
+      "steps": [
+        {
+          "tool": "sync_accounts",
+          "accounts": [
+            {
+              "brand": {
+                "domain": "acme.example",
+                "countries": [
+                  "CA"
+                ]
+              },
+              "operator": "pinnacle-media.example",
+              "currency": "CAD"
+            },
+            {
+              "brand": {
+                "domain": "acme.example",
+                "countries": [
+                  "US"
+                ]
+              },
+              "operator": "pinnacle-media.example",
+              "currency": "USD"
+            }
+          ],
+          "expect": {
+            "outcome": "refused",
+            "reason": "account_identity_collision"
+          }
+        },
+        {
+          "tool": "sync_accounts",
+          "accounts": [
+            {
+              "brand": {
+                "domain": "acme.example",
+                "countries": [
+                  "US"
+                ]
+              },
+              "operator": "pinnacle-media.example",
+              "currency": "USD"
+            }
+          ],
+          "expect": {
+            "outcome": "sent",
+            "account_keys": [
+              {
+                "brand": {
+                  "domain": "acme.example"
+                },
+                "operator": "pinnacle-media.example"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "seller-upgrade-keeps-reduced-key",
+      "note": "After the seller upgrades, a reduced account is still addressed by its reduced key until the buyer migrates it.",
+      "steps": [
+        {
+          "seller_version": "3.1",
+          "tool": "sync_accounts",
+          "accounts": [
+            {
+              "brand": {
+                "domain": "acme.example",
+                "countries": [
+                  "CA"
+                ]
+              },
+              "operator": "pinnacle-media.example",
+              "currency": "CAD"
+            }
+          ],
+          "expect": {
+            "outcome": "sent",
+            "account_keys": [
+              {
+                "brand": {
+                  "domain": "acme.example"
+                },
+                "operator": "pinnacle-media.example"
+              }
+            ]
+          }
+        },
+        {
+          "seller_version": "3.2",
+          "tool": "create_media_buy",
+          "account": {
+            "brand": {
+              "domain": "acme.example",
+              "countries": [
+                "CA"
+              ]
+            },
+            "operator": "pinnacle-media.example",
+            "currency": "CAD"
+          },
+          "expect": {
+            "outcome": "sent",
+            "account_keys": [
+              {
+                "brand": {
+                  "domain": "acme.example"
+                },
+                "operator": "pinnacle-media.example"
+              }
+            ],
+            "migration_pending": {
+              "fields": [
+                "currency",
+                "brand.countries"
+              ],
+              "in_place": false
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "status": "proposed (DR-0032 and DR-0033 pending ratification; DR-0034 escalated)"
+}
