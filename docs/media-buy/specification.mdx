@@ -425,7 +425,7 @@ in `experimental_features`.
 | Field | Meaning |
 |---|---|
 | `uid_type` | Identifier type from `enums/uid-type.json`. Match keys draw from this enum only. `supported_identifier_types` (`hashed_email`, `hashed_phone`) remains the list of PII-derived identifiers that `sync_audiences` accepts, and is not a source of match keys. |
-| `vendor` | BrandRef domain of the graph or resolution vendor that produces the key at the declared scopes. Required when `uid_type` is `other`. Declare it for other types when the scope depends on a graph, for example `maid` resolved to `households`. |
+| `vendor` | BrandRef domain of the graph or resolution vendor that produces the key at the declared scopes. Required when `uid_type` is `other`, when `scopes` include `households`, and when a `maid` or `publisher_first_party` key lists `individuals`. Those scopes always come from a graph, so the graph is named. |
 | `scopes` | One or more values from `enums/reach-unit.json`, excluding `custom`. A key that resolves at more than one scope lists each. |
 | `uses` | `audience_include`, `audience_exclude`, `frequency_cap`, `identity_match`, `conversion_attribution`. Retargeting is `audience_include` with a `crm` audience. |
 | `property_types` | Seller-wide entries only. The property types (`website`, `mobile_app`, `ctv_app`, …) on which the key resolves. Omitted means every property type the seller sells. |
@@ -481,8 +481,8 @@ appear in `uid_types` of an Identity Match provider the product lists. When
 
 `pairid` and `hashed_email` keys MUST NOT list `identity_match`. PAIR is
 publisher-scoped and rotates every 30 days. Unsalted hashed email in TMP widens
-the identity-leak surface; this restriction stays until that TMP follow-up is
-resolved. Both remain valid for audience and attribution uses.
+the identity-leak surface; this restriction stays until
+[#8449](https://github.com/adcontextprotocol/adcp/issues/8449) is resolved. Both remain valid for audience and attribution uses.
 
 #### Compatibility across sellers
 
@@ -491,8 +491,9 @@ Two match keys are compatible at scope `S` when:
 1. they have the same `uid_type`,
 2. both list `S` in `scopes`, and
 3. when both declare `vendor`, the vendor domains are equal. Because `vendor`
-   is required for `other`, two `other` keys are compatible only under the
-   same vendor.
+   is required for `other` and for every graph-derived scope, two keys at
+   `households`, or two `other` keys, are compatible only under the same
+   vendor.
 
 A buyer planning a cap per `households` across sellers counts it only on
 products whose `identity_match` keys are compatible at `households` with a
