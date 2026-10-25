@@ -26,7 +26,7 @@
     "metric_id": {
       "$ref": "/schemas/core/vendor-metric-id.json",
       "x-added-in": "3.3.0",
-      "description": "The metric, in the vendor's vocabulary, whose reported value is judged against threshold: only vendor_metric_values[] entries with this vendor and metric_id are evidence. The value is a 0-1 rate like threshold; a value outside 0-1 is not evidence and MUST NOT be converted. Allowed only for ivt, brand_safety, and attention_score; viewability and completion_rate are judged against their delivery scalars. When absent for ivt, brand_safety, or attention_score, parties MUST NOT infer which vendor metric carries the standard, and treat it as not judged from vendor_metric_values. A package standard carrying metric_id SHOULD have a matching vendor-scope committed_metrics entry."
+      "description": "The metric, in the vendor's vocabulary, whose reported value is judged against threshold: only vendor_metric_values[] entries with this vendor (equal domain and brand_id) and metric_id are evidence. It MUST name a metric the vendor reports as a 0-1 fraction that runs the same way as metric (share invalid for ivt, share safe for brand_safety), judged as reported without the enum's denominators; a value outside 0-1 is not evidence and MUST NOT be converted. Allowed only for ivt, brand_safety, and attention_score; viewability and completion_rate are judged against their delivery scalars. When absent for ivt, brand_safety, or attention_score, parties MUST NOT infer which vendor metric carries the standard, and treat it as not judged from vendor_metric_values. A package standard carrying metric_id SHOULD have a matching vendor-scope committed_metrics entry."
     }
   },
   "required": ["metric", "threshold", "vendor"],

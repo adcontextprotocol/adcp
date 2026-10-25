@@ -120,7 +120,14 @@ Verification vendors usually report several metrics per category: general, sophi
 }
 ```
 
-When `metric_id` is present, the standard is judged only against `vendor_metric_values[]` entries with the same `vendor` and `metric_id`. Values for the vendor's other metrics are not evidence for it. The judged value is a rate on the same 0–1 scale as `threshold`; a reported value outside 0–1 is not evidence and MUST NOT be converted (for example from a percent). A package whose standard carries `metric_id` SHOULD also carry a matching vendor-scope `committed_metrics` entry, so `missing_metrics` audits the value.
+When `metric_id` is present:
+
+- **Evidence.** The standard is judged only against `vendor_metric_values[]` entries from the same vendor (equal `domain` and `brand_id`) with the same `metric_id`. Values for the vendor's other metrics are not evidence for it. If several rows match because their `qualifier`s differ, only the row whose qualifier matches the package's vendor-scope `committed_metrics` entry counts; if that does not leave exactly one row, the standard is not judged.
+- **Scale.** `metric_id` MUST name a metric the vendor reports as a 0–1 fraction, on the same scale as `threshold`. A reported value outside 0–1 is not evidence and MUST NOT be converted (for example from a percent).
+- **Direction.** `metric_id` MUST name a metric that runs the same way as `metric`: for `ivt`, the share of invalid traffic (judged as a ceiling); for `brand_safety`, the share of safe impressions; for `attention_score`, higher is better (both judged as floors). An inverted metric such as an unsafe-impression rate cannot carry a `brand_safety` standard.
+- **Denominator.** The judged value is the vendor's reported value as-is. The denominators in the `performance-standard-metric` enum descriptions do not apply.
+- **Reporting.** A package whose standard carries `metric_id` SHOULD also carry a matching vendor-scope `committed_metrics` entry, so `missing_metrics` audits the value.
+- **Versions.** The field is new in 3.3. Senders MUST omit `metric_id` toward counterparties pinned below 3.3: canonical 3.2 shapes reject it, and legacy shapes ignore it, so a standard sent that way does not bind the metric.
 
 When `metric_id` is absent on an `ivt`, `brand_safety`, or `attention_score` standard, nothing says which vendor metric carries it. Parties MUST NOT infer one from the vendor's catalog or metric naming, and treat the standard as not judged from `vendor_metric_values`.
 

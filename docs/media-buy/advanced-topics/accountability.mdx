@@ -178,7 +178,7 @@ Viewability is judged against the delivery `viewability` block under the standar
 }
 ```
 
-With `metric_id`, only `vendor_metric_values[]` entries with the same `vendor` and `metric_id` are evidence, and the value must be a 0–1 rate like `threshold` (a value outside 0–1 is not evidence and is never converted). Without it, parties MUST NOT guess which of the vendor's metrics answers the standard, and treat it as not judged from vendor values. See [Measurement terms and performance standards](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards).
+With `metric_id`, only `vendor_metric_values[]` entries with the same `vendor` and `metric_id` are evidence. The named metric MUST be a 0–1 fraction that runs the same way as `metric`, and a value outside 0–1 is not evidence and MUST NOT be converted. Without it, parties MUST NOT guess which of the vendor's metrics answers the standard, and treat it as not judged from vendor values. See [Measurement terms and performance standards](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards).
 
 ### 8. Breach and Resolution
 
