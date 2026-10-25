@@ -445,7 +445,7 @@
         "exclusive_grants": {
           "type": "boolean",
           "default": false,
-          "description": "When true, grants[] is exhaustive: relying parties MUST reject an acts-for claim that no active grant covers, whatever its scope. When false or absent, an uncovered claim is at the relying party's discretion."
+          "description": "When true, grants[] is exhaustive: relying parties MUST reject an acts-for claim that no active grant covers, whatever its scope. When false or absent, an uncovered claim is at the relying party's discretion. In the AdCP profile, only the parent organization's record counts: relying parties ignore exclusive_grants in a brand's own record and in an intermediary's record."
         },
         "acknowledgements": {
           "type": "array",
