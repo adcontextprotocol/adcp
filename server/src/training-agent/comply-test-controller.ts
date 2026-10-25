@@ -889,7 +889,13 @@ function createStore(
   controllerAccount?: NaturalAccountIdentity,
   controllerAccountRef?: AccountRef,
   controllerAccountId?: string,
+  servedAdcpVersion?: string,
 ): TestControllerStore {
+  // A seller review rejection can introduce buyer work before activation in
+  // 3.3. Older profiles retain their published transition contract.
+  const mediaBuyTransitions = atLeastAdcpVersion(servedAdcpVersion, '3.3-beta')
+    ? { ...MEDIA_BUY_TRANSITIONS, pending_start: ['pending_creatives', ...MEDIA_BUY_TRANSITIONS.pending_start!] }
+    : MEDIA_BUY_TRANSITIONS;
   return {
     async forceAudienceStatus(audienceId, status, reason) {
       const audience = findAudienceInSession(sessionKey, audienceId);
@@ -1021,7 +1027,7 @@ function createStore(
       if (!mb) {
         const priorTerminalState = session.complyExtensions.forcedMediaBuyTerminalStates.get(mediaBuyId);
         if (priorTerminalState) {
-          validateTransition(MEDIA_BUY_TRANSITIONS, MEDIA_BUY_TERMINAL, priorTerminalState, status, 'media buy');
+          validateTransition(mediaBuyTransitions, MEDIA_BUY_TERMINAL, priorTerminalState, status, 'media buy');
         }
         throw new TestControllerError('NOT_FOUND', `Media buy ${mediaBuyId} not found`, null);
       }
@@ -1036,7 +1042,7 @@ function createStore(
         return { success: true, previous_state: prev, current_state: status, message: `Media buy ${mediaBuyId} is already ${status}` };
       }
 
-      validateTransition(MEDIA_BUY_TRANSITIONS, MEDIA_BUY_TERMINAL, prev, status, 'media buy');
+      validateTransition(mediaBuyTransitions, MEDIA_BUY_TERMINAL, prev, status, 'media buy');
 
       if (status === 'rejected' && !rejectionReason) {
         throw new TestControllerError('INVALID_PARAMS', 'rejection_reason is required when status = rejected', prev);
@@ -2612,6 +2618,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     sandboxControllerIdentity(args.account),
     args.account,
     controllerAccountId,
+    ctx.servedAdcpVersion,
   );
   const sdkResponse = await handleTestControllerRequest(store, rawArgs, {
     seedCache: seedCacheForSession(sessionKey),

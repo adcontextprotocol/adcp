@@ -2006,6 +2006,33 @@ function packageReadinessFields(pkg: PackageState, session: SessionState): Recor
   };
 }
 
+/** The reference seller serves approved assignments independently and does not
+ * implement an initial all-creatives gate. Never acknowledge a requested hold
+ * that delivery simulation would ignore. */
+function unsupportedCreativeStartPolicyError(request: unknown): TaskError | undefined {
+  if (!isRecord(request)) return undefined;
+  for (const field of ['packages', 'new_packages'] as const) {
+    const packages = request[field];
+    if (!Array.isArray(packages)) continue;
+    const index = packages.findIndex(pkg => isRecord(pkg) && pkg.start_requires_all_creatives_approved === true);
+    if (index < 0) continue;
+    return {
+      code: 'UNSUPPORTED_FEATURE',
+      message: 'This seller does not support holding package startup until every assigned creative is approved.',
+      field: `${field}[${index}].start_requires_all_creatives_approved`,
+      recovery: 'correctable',
+    };
+  }
+  return undefined;
+}
+
+function creativeStartPolicyForWire(ctx: TrainingContext): Record<string, boolean> {
+  const version = parseAdcpReleaseVersion(lifecycleSplitVersionForContext(ctx) ?? DEFAULT_ADCP_VERSION);
+  return version && (version.major > 3 || (version.major === 3 && version.minor >= 3))
+    ? { start_requires_all_creatives_approved: false }
+    : {};
+}
+
 const MAX_URL_LEN = 2048;
 const MAX_ID_LEN = 256;
 const MAX_TOKEN_LEN = 4096;
@@ -5363,7 +5390,7 @@ function legacyUpdateChangesCommercialEnvelope(req: UpdateMediaBuyArgs): boolean
   ].some(field => Object.hasOwn(root, field))) return true;
   if (req.new_packages?.length) return true;
   return Boolean(req.packages?.some(update => Object.keys(update as unknown as Record<string, unknown>)
-    .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives'].includes(field))));
+    .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives', 'start_requires_all_creatives_approved'].includes(field))));
 }
 
 const UNTYPED_ACCEPTED_CHANGE_ROOT_FIELDS = [
@@ -15321,6 +15348,8 @@ export async function handleCreateMediaBuy(
 ) {
   const invalidCollectionSelector = invalidSelectedCollectionSelector(args, ['packages']);
   if (invalidCollectionSelector) return { errors: invalidCollectionSelector };
+  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
+  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
 
   const proposalId = (args as unknown as Record<string, unknown>).proposal_id;
   if (typeof proposalId !== 'string') return handleCreateMediaBuyUnlocked(args, ctx, options);
@@ -16964,6 +16993,7 @@ async function handleCreateMediaBuyUnlocked(
       end_time: pkg.endTime,
       ...packageFormatSelectorForWire(pkg, ctx),
       ...packageReadinessFields(pkg, session),
+      ...creativeStartPolicyForWire(ctx),
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
       ...(pkg.context && { context: pkg.context }),
@@ -17135,6 +17165,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             end_time: pkg.endTime,
             ...packageFormatSelectorForWire(pkg, ctx),
             ...packageReadinessFields(pkg, session),
+            ...creativeStartPolicyForWire(ctx),
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
               approval_status: 'approved' as const,
@@ -19178,6 +19209,9 @@ async function handleUpdateMediaBuyUnlocked(
     };
   }
 
+  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(req);
+  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
+
   if (
     !options.acceptedProposalExecution
     && Object.hasOwn(req as unknown as Record<string, unknown>, 'invoice_recipient')
@@ -20216,6 +20250,7 @@ async function handleUpdateMediaBuyUnlocked(
     end_time: pkg.endTime,
     ...packageFormatSelectorForWire(pkg, ctx),
     ...packageReadinessFields(pkg, session),
+    ...creativeStartPolicyForWire(ctx),
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
     ...(pkg.context && { context: pkg.context }),
@@ -23930,6 +23965,8 @@ async function handleControlMediaBuyUnlocked(
     if (args.revision !== mediaBuy.revision) {
       return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mediaBuy.revision}, got ${args.revision}` }] };
     }
+    const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
+    if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
     const currentStatus = deriveStatus(mediaBuy, session);
     const productMap = new Map(getCatalog(ctx).map(cp => [cp.product.product_id, cp.product]));
     if (requestSession !== session) overlaySeededProducts(requestSession, productMap);
