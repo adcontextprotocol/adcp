@@ -37,15 +37,14 @@ function evaluate(input) {
     if (![...self, first.grantee].includes(operator)) continue;
     const second = record(first.grantee).grants.find((g) => g.grantee === signer.operator && covers(g, input));
     const chain = first.grantee === signer.operator ? [first] : second && [first, second];
-    if (chain) return authorized(parent, chain);
+    if (chain) return authorized(chain);
   }
   return { outcome: 'grant_absent' };
 }
 
-function authorized(parent, chain) {
+function authorized(chain) {
   return {
     outcome: 'authorized',
-    delegation_chain: [parent, ...chain.map((g) => g.grantee)],
     effective: {
       scopes: chain.map((g) => g.scopes).reduce(intersect).sort(),
       countries: chain.map((g) => g.countries ?? null).reduce(intersect)?.sort() ?? null,

@@ -2,7 +2,7 @@
   "version": 1,
   "name": "Delegation chains for demand-side grants",
   "specification": "https://adcontextprotocol.org/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental",
-  "description": "Cross-SDK vectors for the delegation-chain rule in L2 Grants in trust records, which is experimental in 3.3 (adcontextprotocol/adcp#8118, P7). Each vector gives an acts-for claim and the trust records that each registrable domain publishes, and the seller's expected outcome. `input.brand` is `account.brand`. `input.parent_organization` is the parent organization that brand.json resolves, or null for a standalone brand. `input.signer.operator` is the signer's operator, and `input.signer.origin` is the signer's canonical origin. `input.trust_records` maps each registrable domain to the `grants` and `exclusive_grants` of its trust.json; a domain that is absent publishes no grants. All domains are registrable domains already, so no Public Suffix List lookup is needed, and every record is fetched. `expected.outcome` is one of `implicit`, `authorized`, or `grant_absent` (no delegation chain covers the claim). Every record that a denial vector reads sets `exclusive_grants` for the requested scope, so `grant_absent` is the seller's answer. An `authorized` outcome lists the domains of the `delegation_chain` from the grantor of the first grant, and the `effective` scopes, countries (null is global), and window (null is unbounded). Each vector has one covering chain at most. Look up vectors by `id`; `description` prose may change.",
+  "description": "Cross-SDK vectors for the delegation-chain rule in L2 Grants in trust records, which is experimental in 3.3 (adcontextprotocol/adcp#8118, P7). Each vector gives an acts-for claim and the trust records that each registrable domain publishes, and the seller's expected outcome. `input.brand` is `account.brand`. `input.parent_organization` is the parent organization that brand.json resolves, or null for a standalone brand. `input.signer.operator` is the signer's operator, and `input.signer.origin` is the signer's canonical origin. `input.trust_records` maps each registrable domain to the `grants` and `exclusive_grants` of its trust.json; a domain that is absent publishes no grants. All domains are registrable domains already, so no Public Suffix List lookup is needed, and every record is fetched. `expected.outcome` is one of `implicit`, `authorized`, or `grant_absent` (no delegation chain covers the claim). Every trust record in a `grant_absent` vector sets `exclusive_grants: true` for the requested scope, so `grant_absent` is the seller's answer. An `authorized` outcome gives the `effective` scopes, countries (null is global), and window (null is unbounded). Look up vectors by `id`; `description` prose may change.",
   "vectors": [
     {
       "id": "parent-grants-signer-operator",
@@ -47,10 +47,6 @@
       },
       "expected": {
         "outcome": "authorized",
-        "delegation_chain": [
-          "nova-holdings.example",
-          "pinnacle-agency.example"
-        ],
         "effective": {
           "scopes": [
             "adcp:media_buying"
@@ -109,10 +105,6 @@
       },
       "expected": {
         "outcome": "authorized",
-        "delegation_chain": [
-          "nova-holdings.example",
-          "orbit-platform.example"
-        ],
         "effective": {
           "scopes": [
             "adcp:media_buying"
@@ -189,11 +181,6 @@
       },
       "expected": {
         "outcome": "authorized",
-        "delegation_chain": [
-          "nova-holdings.example",
-          "pinnacle-agency.example",
-          "orbit-platform.example"
-        ],
         "effective": {
           "scopes": [
             "adcp:media_buying"
@@ -252,10 +239,6 @@
       },
       "expected": {
         "outcome": "authorized",
-        "delegation_chain": [
-          "nova-holdings.example",
-          "orbit-platform.example"
-        ],
         "effective": {
           "scopes": [
             "adcp:media_buying"
@@ -332,11 +315,6 @@
       },
       "expected": {
         "outcome": "authorized",
-        "delegation_chain": [
-          "nova-holdings.example",
-          "pinnacle-agency.example",
-          "orbit-platform.example"
-        ],
         "effective": {
           "scopes": [
             "adcp:media_buying"
@@ -413,11 +391,6 @@
       },
       "expected": {
         "outcome": "authorized",
-        "delegation_chain": [
-          "nova-holdings.example",
-          "pinnacle-agency.example",
-          "orbit-platform.example"
-        ],
         "effective": {
           "scopes": [
             "adcp:media_buying"
@@ -561,10 +534,6 @@
       },
       "expected": {
         "outcome": "authorized",
-        "delegation_chain": [
-          "nova-motors.example",
-          "pinnacle-agency.example"
-        ],
         "effective": {
           "scopes": [
             "adcp:media_buying"
@@ -628,7 +597,8 @@
                 },
                 "valid_until": "2027-06-30T00:00:00Z"
               }
-            ]
+            ],
+            "exclusive_grants": true
           },
           "orbit-platform.example": {
             "grants": [
@@ -646,7 +616,8 @@
                 },
                 "valid_until": "2027-06-30T00:00:00Z"
               }
-            ]
+            ],
+            "exclusive_grants": true
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -754,7 +725,8 @@
                 },
                 "valid_until": "2027-06-30T00:00:00Z"
               }
-            ]
+            ],
+            "exclusive_grants": true
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -827,7 +799,8 @@
                   }
                 ]
               }
-            ]
+            ],
+            "exclusive_grants": true
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -909,11 +882,6 @@
       },
       "expected": {
         "outcome": "authorized",
-        "delegation_chain": [
-          "nova-holdings.example",
-          "pinnacle-agency.example",
-          "orbit-platform.example"
-        ],
         "effective": {
           "scopes": [
             "adcp:media_buying"
@@ -985,7 +953,8 @@
                   "US"
                 ]
               }
-            ]
+            ],
+            "exclusive_grants": true
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -1048,10 +1017,76 @@
                 },
                 "valid_until": "2027-12-31T00:00:00Z"
               }
-            ]
+            ],
+            "exclusive_grants": true
           }
         },
         "check_time": "2027-07-15T00:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "check-time-before-second-grant-denied",
+      "description": "The first grant is still valid, but the check time is before the second grant's valid_from.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "pinnacle-agency.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-12-31T00:00:00Z",
+                "valid_from": "2026-11-01T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
         "scope": "adcp:media_buying"
       },
       "expected": {
@@ -1215,7 +1250,8 @@
                 },
                 "valid_until": "2027-06-30T00:00:00Z"
               }
-            ]
+            ],
+            "exclusive_grants": true
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -1287,10 +1323,6 @@
       },
       "expected": {
         "outcome": "authorized",
-        "delegation_chain": [
-          "nova-holdings.example",
-          "orbit-platform.example"
-        ],
         "effective": {
           "scopes": [
             "adcp:media_buying"
