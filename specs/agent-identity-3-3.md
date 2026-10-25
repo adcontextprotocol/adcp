@@ -167,8 +167,8 @@ These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md`
 ### R6. Authority: grants (P5, `L2/accounts-and-agents.mdx`)
 
 - The parent organization's trust record authorizes an acts-for claim: the record of the parent organization that brand.json's mutual-assertion model resolves, or the brand's own when the model resolves none, as L2 says.
-- Authority is implicit when `account.operator` and the signer's operator (R3a) are the same registrable domain as the brand's domain or its parent organization.
-- Otherwise a delegation chain of at most two grants must reach the signer's operator with a scope covering the operation. `account.operator` is the brand, the parent organization, or the grantee of the first grant.
+- Implicit authority holds when `account.operator` and the signer's operator (R3a) are each the brand or its parent organization, in either combination.
+- Otherwise a delegation chain of at most two grants must reach the signer's operator with a scope covering the operation. `account.operator` is the brand, the parent organization, or the grantee of the first grant; otherwise the chain doesn't cover the claim.
 - Effective authority is the intersection along the delegation chain.
 
 The rules (which record, domain matching, the delegation-chain rule, `agents[]` narrowing, the intersection's operands, absence, fetch failure, freshness, and the error) are stated once, in `L2/accounts-and-agents.mdx` §Grants in trust records. The decision is [DR-0025](../governance/decisions/DR-0025-demand-side-grants-in-trust-json.md) (#6033). R7 relies on R6 for the `grant` requirement kind.

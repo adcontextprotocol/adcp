@@ -110,6 +110,7 @@ const PROOFS = {
   'standalone-brand-record-authorizes': { chain: 'nova-motors > pinnacle-agency' },
   'standalone-brand-exclusive-record-denied': { repair: (i) => { grant(i, BRAND).scopes = ['adcp:media_buying']; } },
   'three-grant-chain-denied': { repair: (i) => { second(i).grantee = 'relay-exchange.example'; } },
+  'three-grant-chain-through-brand-denied': { repair: (i) => { grant(i, BRAND).grantee = PLATFORM; } },
   'account-operator-not-on-chain-denied': { repair: (i) => { i.account_operator = PLATFORM; } },
   'account-operator-is-second-grantee-denied': { repair: (i) => { i.account_operator = AGENCY; } },
   'first-grant-scope-denied': { cell: ['scope', 1], repair: coverScope },
@@ -209,6 +210,7 @@ test('exclusive_grants outside the parent organization record appears only where
 for (const v of fixture.vectors) {
   test(`${v.id}: single fault`, () => {
     const proof = PROOFS[v.id];
+    assert.ok(proof, `${v.id} has a single-fault proof`);
     const chains = coveringChains(v.input);
     const { outcome } = v.expected;
     if (outcome === 'implicit') {
