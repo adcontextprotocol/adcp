@@ -492,6 +492,51 @@
       }
     },
     {
+      "id": "agency-account-brand-signer-denied",
+      "description": "The brand signs with its own agent, but the account names the agency as its operator. Implicit authority needs the brand or the parent organization as both the account operator and the signer's operator.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "nova-motors.example",
+          "origin": "https://buyer.nova-motors.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
       "id": "standalone-brand-record-authorizes",
       "description": "A brand with no parent organization authorizes from its own record.",
       "input": {
@@ -808,7 +853,7 @@
     },
     {
       "id": "countries-and-window-intersect",
-      "description": "Effective authority is the intersection along the chain: the common countries, the latest valid_from, and the earliest valid_until.",
+      "description": "Effective authority is the intersection along the chain: the common scopes and countries, the latest valid_from, and the earliest valid_until.",
       "input": {
         "brand": {
           "domain": "nova-motors.example",
@@ -829,7 +874,8 @@
               {
                 "grantee": "pinnacle-agency.example",
                 "scopes": [
-                  "adcp:media_buying"
+                  "adcp:media_buying",
+                  "adcp:governance"
                 ],
                 "profiles": {
                   "adcp": {
@@ -854,6 +900,7 @@
               {
                 "grantee": "orbit-platform.example",
                 "scopes": [
+                  "adcp:measurement",
                   "adcp:media_buying"
                 ],
                 "profiles": {
@@ -866,6 +913,7 @@
                 "valid_until": "2027-12-31T00:00:00Z",
                 "countries": [
                   "CA",
+                  "GB",
                   "US"
                 ],
                 "valid_from": "2026-09-01T00:00:00Z"
@@ -950,6 +998,51 @@
                 ]
               }
             ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "brand-without-countries-needs-global-grant-denied",
+      "description": "The account's brand lists no countries, and the grant covers the US only. A brand reference with no countries is covered only by a global grant.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors"
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "pinnacle-agency.example",
+          "origin": "https://buyer.pinnacle-agency.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "countries": [
+                  "US"
+                ]
+              }
+            ],
+            "exclusive_grants": true
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -1129,6 +1222,59 @@
       },
       "expected": {
         "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "wildcard-brands-grant-authorizes",
+      "description": "The grant lists [\"*\"] as its brands, which covers every brand the parent organization owns.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "pinnacle-agency.example",
+          "origin": "https://buyer.pinnacle-agency.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "*"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": null,
+          "valid_from": null,
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
       }
     },
     {
