@@ -111,10 +111,15 @@ describe('sanitizeMeasurementCapabilities', () => {
     })).toThrow(/scriptish/);
   });
 
-  it('rejects scriptish content split by zero-width characters', () => {
-    expect(() => sanitizeMeasurementCapabilities({
-      metrics: [{ metric_id: 'm', name: 'x on\u200Bload=y' }],
-    })).toThrow(/scriptish/);
+  it('rejects scriptish content split by any invisible format character', () => {
+    for (const sep of ['\u200B', '\u2060', '\u00AD', '\u2063', '\u206A', '\u180E']) {
+      expect(() => sanitizeMeasurementCapabilities({
+        metrics: [{ metric_id: 'm', name: `x on${sep}load=y` }],
+      })).toThrow(/scriptish/);
+      expect(() => sanitizeMeasurementCapabilities({
+        metrics: [{ metric_id: 'm', name: `<scr${sep}ipt>` }],
+      })).toThrow(/scriptish/);
+    }
   });
 
   it('accepts duplicate names across distinct metric_ids', () => {

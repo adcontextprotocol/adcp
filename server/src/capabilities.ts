@@ -358,9 +358,11 @@ function validateUri(value: string, field: string): string {
   return parsed.toString();
 }
 
-// C1 controls, zero-width and directional marks, bidi embeddings/overrides,
-// bidi isolates, and the BOM: invisible in a rendered label.
-const INVISIBLE_LABEL_CHARS = /[\u0080-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
+// C1 controls and every Unicode format character (Cf): zero-width and
+// directional marks, bidi embeddings/overrides/isolates, word joiner and
+// invisible operators, soft hyphen, BOM. All are invisible in a rendered label
+// and can split a scriptish pattern without changing what it displays.
+const INVISIBLE_LABEL_CHARS = /[\u0080-\u009F\p{Cf}]/gu;
 
 function clampString(value: unknown, max: number, field: string): string {
   if (typeof value !== 'string') {
