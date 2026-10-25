@@ -102,11 +102,13 @@ Four rules connect the layers and prevent orphaned goals:
 
 ### Telling a seller what success looks like
 
-A seller wants to know whether it is making the buyer happy, and that means knowing which goals are real, how hard the buyer holds it to them, and whose count decides. AdCP has no separate "commitment wanted" field. Each part of that statement already has a home, so state each one where it lives:
+A seller wants to know whether it is making the buyer happy, and that means knowing which goals are real, what the seller is liable for, and whose count decides. AdCP has no separate "commitment wanted" field. Each part of that statement already has a home, so state each one where it lives:
 
 | The buyer wants | Say it with |
 |---|---|
-| The seller to stand behind the outcome | An outcome pricing model, so the seller is paid only for results: [CPC](/docs/media-buy/advanced-topics/pricing-models#cpc-cost-per-click), [CPCV](/docs/media-buy/advanced-topics/pricing-models#cpcv-cost-per-completed-view), or [CPA](/docs/media-buy/advanced-topics/pricing-models#cpa-cost-per-acquisition). Add `performance_standards[]` for a floor or ceiling the seller owes, with makegoods on breach, and `delivery_type: "guaranteed"` for volume. |
+| The seller to own the cost per result | A fixed price on an outcome pricing model: [CPC](/docs/media-buy/advanced-topics/pricing-models#cpc-cost-per-click), [CPCV](/docs/media-buy/advanced-topics/pricing-models#cpcv-cost-per-completed-view), or [CPA](/docs/media-buy/advanced-topics/pricing-models#cpa-cost-per-acquisition). The buyer pays only for results, at that price. This covers cost alone, not volume or quality. |
+| The seller to own the volume | `delivery_type: "guaranteed"`. |
+| The seller to own the quality | `performance_standards[]`: a floor or ceiling the seller owes, measured by the named vendor, with makegoods on breach. |
 | The seller to optimize toward it | `optimization_goals[]` with a `target`; `priority` says which goal is primary. `bidding.cost_per` with `strength` `cap` or `target` says how tightly to hold the cost. |
 | The metric reported, not optimized | `committed_metrics[]` with no matching optimization goal. |
 | A specific count to decide | The goal's or standard's `vendor`, a `vendor_metric` goal, or an `event` goal fed by the buyer's own event sources. |
