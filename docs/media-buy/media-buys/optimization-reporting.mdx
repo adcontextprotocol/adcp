@@ -167,7 +167,7 @@ A buyer wants to optimize against Adelaide's `attention_score` with a threshold 
 }
 ```
 
-A `performance_standard` MAY be layered on top if the buyer wants a contractual floor — e.g., `{ "metric": "attention_score", "vendor": { "domain": "adelaidemetrics.com" }, "threshold": 65 }` — but it's independent of the goal.
+A `performance_standard` MAY be layered on top if the buyer wants a contractual floor, independent of the goal. Its `metric_id` names the vendor metric it is judged against, and its `threshold` is a 0–1 rate judged against the reported value without conversion. A floor therefore fits only a vendor metric reported as a 0–1 rate. For example, a different vendor that reports one: `{ "metric": "attention_score", "vendor": { "domain": "attentionvendor.example" }, "metric_id": "attentive_rate", "threshold": 0.65 }`. This example's 0–100 `attention_score` is not a rate, so it cannot carry a performance standard; the `threshold_rate` goal is the buyer's lever.
 
 **3. Delivery** (`by_package` excerpt from a `get_media_buy_delivery` response):
 

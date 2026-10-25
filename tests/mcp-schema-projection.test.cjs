@@ -176,7 +176,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // capabilities. After shortening repeated SLA prose, the controller measures
 // 1_313_240 bytes; bound compilation at 1_315_000. Every fixture still compiles;
 // the independent 4 MiB schema and 22 MiB projection budgets are unchanged.
-const PARITY_COMPILE_LIMIT = 1_315_000;
+// performance_standard.metric_id (#8394) reaches the controller through the
+// seeded Product's canonical performance standards; the controller measures
+// 1_315_463 bytes, bound at 1_316_000.
+const PARITY_COMPILE_LIMIT = 1_316_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
