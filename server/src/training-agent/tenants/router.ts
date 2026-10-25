@@ -16,7 +16,9 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { AdcpCredential } from '@adcp/sdk/server';
 import { createLogger } from '../../logger.js';
 import { runWithAccountIdAliasScope, runWithSessionContext, flushDirtySessions } from '../state.js';
-import { createRegistryHolder, resolveTenantHost, type RegistryHolder } from './registry.js';
+import { createRegistryHolder, pickStateStore, resolveTenantHost, type RegistryHolder } from './registry.js';
+import { createIdentity33Runtime } from '../identity33/runtime.js';
+import { advertiseIdentity33Capabilities, requireIdentity33, signedRequestUrl } from '../identity33/route.js';
 import { getTrainingGovernanceIssuer } from '../canonical-base.js';
 import {
   GOVERNANCE_AGENT_CREDENTIAL_EXTRA_KEY,
@@ -1458,6 +1460,16 @@ export const PROPOSAL_NEGOTIATION_PROFILE_ROUTES = [
   profile: Exclude<NonNullable<TrainingContext['proposalNegotiationProfile']>, 'ask-only'>;
 }>;
 
+/** Experimental AdCP 3.3 identity route: Web Bot Auth and demand-side grants. */
+export const IDENTITY33_ROUTE = '/sales/identity/mcp';
+
+/** Production deployments opt in, as for the proposal-profile lab routes. */
+export function identity33RouteEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  const configured = env.ENABLE_ADCP_3_3_IDENTITY_ROUTE;
+  if (configured !== undefined) return configured === '1' || configured.toLowerCase() === 'true';
+  return env.NODE_ENV !== 'production';
+}
+
 /** Production deployments opt in so private installations do not expose public lab routes unintentionally. */
 export function proposalNegotiationProfilesEnabled(
   env: Record<string, string | undefined> = process.env,
@@ -1585,6 +1597,22 @@ export function mountTenantRoutes(
         });
       });
     }
+  }
+
+  if (tenantIds.includes('sales') && middleware.storyboardCompat?.version !== '3.0' && identity33RouteEnabled()) {
+    const runtime = createIdentity33Runtime({ stateStore: pickStateStore(), getUrl: signedRequestUrl });
+    const identityHolder = createRegistryHolder({ identity33: { authorize: runtime.authorize }, tenantIds: ['sales'] });
+    parent.options(IDENTITY33_ROUTE, (_req, res) => {
+      setCORSHeaders(res);
+      res.status(204).end();
+    });
+    parent.post(
+      IDENTITY33_ROUTE,
+      ...(middleware.rateLimit ? [middleware.rateLimit] : []),
+      requireIdentity33(runtime),
+      advertiseIdentity33Capabilities(),
+      tenantMcpHandler(identityHolder, 'sales', middleware.storyboardCompat),
+    );
   }
 
   // brand.json discovery is mounted at the parent training-agent router in
