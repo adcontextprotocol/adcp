@@ -153,6 +153,17 @@ describe('public trust lookup', () => {
     expect(result.exclusive_scopes).toEqual(['adcp:media_buying', 'adcp:governance']);
   });
 
+  it('shows an agent URL that cannot be canonicalized as published instead of failing the lookup', async () => {
+    const { service } = setup({ brand }, present({ agents: [
+      { url: 'https://buyer.nova-motors.com/mcp', roles: ['adcp:buying'] },
+      { url: 'not a url', roles: ['adcp:buying'] },
+    ], grants: [{ ...grant, agents: [{ url: 'not a url' }] }] }));
+    const result = await service.lookup(domain);
+    expect(result.status).toBe('published');
+    expect(result.agents.map(agent => agent.origin)).toEqual(['https://buyer.nova-motors.com', 'not a url']);
+    expect(result.grants[0].agents).toEqual(['not a url']);
+  });
+
   it('bounds rendered records while retaining total counts', async () => {
     const { service } = setup({ brand }, present({ grants: Array.from({ length: 101 }, () => grant) }));
     const result = await service.lookup(domain);

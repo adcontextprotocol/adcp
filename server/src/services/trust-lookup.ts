@@ -27,6 +27,11 @@ export function normalizeTrustLookupDomain(input: string): string {
   }
 }
 
+/** Display an agent by its canonical origin, or as published if it cannot be canonicalized. */
+function displayOrigin(url: string): string {
+  try { return canonicalAgentOrigin(url); } catch { return url; }
+}
+
 function registrableDomain(domain: string): string {
   const normalized = normalizeTrustLookupDomain(domain);
   return parseDomain(normalized, { allowPrivateDomains: true }).domain!;
@@ -178,7 +183,7 @@ export class TrustLookupService {
       result.total_grants = grants.length;
       result.matching_grants = matching.length;
       result.agents = agents.slice(0, 100).map(agent => ({
-        origin: canonicalAgentOrigin(agent.url), roles: agent.roles, countries: agent.countries ?? null,
+        origin: displayOrigin(agent.url), roles: agent.roles, countries: agent.countries ?? null,
       }));
       result.grants = matching.slice(0, 100).map(grant => this.summarizeGrant(grant));
       // A few entries can still carry enormous scope/brand arrays. Bound the
@@ -212,9 +217,7 @@ export class TrustLookupService {
     } catch { status = 'invalid'; }
     return {
       grantee: grant.grantee, scopes: grant.scopes,
-      agents: grant.agents?.map(agent => {
-        try { return canonicalAgentOrigin(agent.url); } catch { return agent.url; }
-      }) ?? null,
+      agents: grant.agents?.map(agent => displayOrigin(agent.url)) ?? null,
       brands: grant.profiles?.adcp?.brands ?? null, countries: grant.countries ?? null,
       valid_from: grant.valid_from ?? null, valid_until: grant.valid_until ?? null, status,
     };
