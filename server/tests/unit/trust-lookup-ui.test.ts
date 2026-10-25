@@ -9,7 +9,7 @@ const base = {
   domain: 'nova-motors.com', status: 'not_found', authority_domain: 'nova-motors.com',
   record_url: 'https://nova-motors.com/.well-known/trust.json', checked_at: '2026-10-24T12:00:00Z',
   message: 'No public record was found.', brand_name: null, parent_domain: null, brand_id: null,
-  exclusive_grants: false, exclusive_scopes: [], agents: [], grants: [],
+  exclusive_grants: false, agents: [], grants: [],
   total_agents: 0, total_grants: 0, matching_grants: 0,
 };
 const response = (data: object, ok = true) => ({ ok, json: async () => data });
@@ -50,7 +50,7 @@ describe('trust homepage lookup', () => {
   it('renders a verified parent record and expired grant as published declarations', async () => {
     const ui = setup(vi.fn().mockResolvedValue(response({ ...base, status: 'published',
       authority_domain: 'nova-brands.com', parent_domain: 'nova-brands.com', brand_id: 'nova_motors',
-      exclusive_grants: true, exclusive_scopes: ['adcp:media_buying'],
+      exclusive_grants: true,
       matching_grants: 1, total_grants: 1, grants: [{ grantee: 'pinnacle-agency.com', scopes: ['adcp:media_buying'],
         agents: ['https://buyer.pinnacle-agency.com'], countries: ['US'], brands: ['nova_motors'],
         valid_from: null, valid_until: '2026-01-01T00:00:00Z', status: 'expired' }],
@@ -61,6 +61,8 @@ describe('trust homepage lookup', () => {
     expect(ui.result.textContent).toContain('pinnacle-agency.com');
     expect(ui.result.querySelector('[data-state="expired"]')?.textContent).toBe('Expired');
     expect(ui.result.textContent).toContain('not a verdict on a particular request');
+    expect(ui.result.querySelector('.trust-result-coverage')?.textContent)
+      .toBe('Exclusive. Sellers that check turn away agencies not on this list.');
   });
 
   it.each(['unavailable', 'unverified_parent'])('never describes %s as not implemented', async state => {
