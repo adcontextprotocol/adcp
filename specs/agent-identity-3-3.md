@@ -268,7 +268,7 @@ The window of exposure is the time between compromise and the revocation reachin
 | Origin control used to take over a 3.2 principal | Binding onto a 3.2 principal needs out-of-band seller approval (R5 rule 4). |
 | Downgrade to a stale 3.2 key | No downgrade after binding; before binding, the operator removes the 3.2 keys from brand.json (R4). |
 | Stale brand.json grants override trust.json | A 200 from trust.json disables `authorized_operators[]` (R4). |
-| Anonymous party opens billed accounts | `open` binds identity only. Spend needs an existing billing relationship, and an out-of-domain brand needs a grant whose chain includes `account.operator` (R6, R7). |
+| Anonymous party opens billed accounts | `open` binds identity only. Spend needs an existing billing relationship, and an out-of-domain brand needs a delegation chain that R6 admits (R6, R7). |
 | Free registrable domains on hosting platforms defeat quotas | Sellers SHOULD limit PRIVATE-section domains to `sandbox` and count quotas per operator domain (R7). |
 | Trust-record fetches used as an amplifier or network probe | Evaluated only at gates and, for a JWS artifact, to select the profile (R4); never on the request-signature path. One hop, fetch limits, and one external authorization code (R3a). |
 | Signature errors used to probe which check failed | WBA status and headers only; no signature-specific body detail (R2). |

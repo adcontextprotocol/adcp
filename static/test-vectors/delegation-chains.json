@@ -1332,6 +1332,82 @@
           "valid_until": "2027-06-30T00:00:00Z"
         }
       }
+    },
+    {
+      "id": "brand-record-supplies-second-grant",
+      "description": "The parent organization grants the brand, and the brand operates the account. The brand's own record supplies the second grant, to the platform that hosts the signing agent.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "nova-motors.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "nova-motors.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "nova-motors.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "agents": [
+                  {
+                    "url": "https://agents.orbit-platform.example/mcp"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": null,
+          "valid_from": null,
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
+      }
     }
   ]
 }
