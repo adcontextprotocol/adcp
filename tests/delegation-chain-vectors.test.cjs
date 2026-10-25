@@ -25,7 +25,10 @@ function covers(grant, { brand, scope, check_time: now, signer }) {
     && (!grant.agents || grant.agents.some((agent) => new URL(agent.url).origin === signer.origin));
 }
 
-/** The one rule: at most two grants from the parent organization to the signer's operator. */
+/**
+ * The one rule: at most two grants from the parent organization to the signer's operator.
+ * An uncovered claim is `grant_absent` under an exclusive parent record, and `seller_discretion` otherwise.
+ */
 function evaluate(input) {
   const { brand, account_operator: operator, signer } = input;
   const parent = input.parent_organization ?? brand.domain;
@@ -39,7 +42,7 @@ function evaluate(input) {
     const chain = first.grantee === signer.operator ? [first] : second && [first, second];
     if (chain) return authorized(chain);
   }
-  return { outcome: 'grant_absent' };
+  return { outcome: record(parent).exclusive_grants === true ? 'grant_absent' : 'seller_discretion' };
 }
 
 function authorized(chain) {

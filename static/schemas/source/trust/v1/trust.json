@@ -231,7 +231,7 @@
       "properties": {
         "grantee": {
           "$ref": "#/definitions/domain",
-          "description": "Registrable domain (eTLD+1) of the organization receiving the grant, under the pinned Public Suffix List snapshot, ICANN and private sections (spec R3a step 1). Its agents resolve to this domain through its own trust.json. A host below a registrable domain (t1.vendor.example) is not one, and neither is a public suffix itself (github.io); alice.github.io is one, because github.io is in the private section. A grant whose grantee is not a registrable domain covers no claim, and its scopes still count for exclusive_grants, as L2 §Grants in trust records describes (docs/building/by-layer/L2/accounts-and-agents.mdx). A pattern can't evaluate the Public Suffix List, so verifiers apply the rule. To limit a grant to some of the grantee's agents, list them in agents[]."
+          "description": "Registrable domain (eTLD+1) of the organization receiving the grant, under the pinned Public Suffix List snapshot, ICANN and private sections (spec R3a step 1). Its agents resolve to this domain through its own trust.json. A host below a registrable domain (t1.vendor.example) is not one, and neither is a public suffix itself (github.io); alice.github.io is one, because github.io is in the private section. A grant whose grantee is not a registrable domain covers no claim, as L2 §Grants in trust records describes (docs/building/by-layer/L2/accounts-and-agents.mdx). A pattern can't evaluate the Public Suffix List, so verifiers apply the rule. To limit a grant to some of the grantee's agents, list them in agents[]."
         },
         "agents": {
           "type": "array",
@@ -445,7 +445,7 @@
         "exclusive_grants": {
           "type": "boolean",
           "default": false,
-          "description": "When true, grants[] is exhaustive for every scope it names: relying parties MUST reject acts-for claims no active grant covers. When false or absent, an uncovered claim is at the relying party's discretion."
+          "description": "When true, grants[] is exhaustive: relying parties MUST reject an acts-for claim that no active grant covers, whatever its scope. When false or absent, an uncovered claim is at the relying party's discretion."
         },
         "acknowledgements": {
           "type": "array",

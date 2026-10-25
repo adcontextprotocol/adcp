@@ -2,7 +2,7 @@
   "version": 1,
   "name": "Delegation chains for demand-side grants",
   "specification": "https://adcontextprotocol.org/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental",
-  "description": "Cross-SDK vectors for the delegation-chain rule in L2 Grants in trust records, which is experimental in 3.3 (adcontextprotocol/adcp#8118, P7). Each vector gives an acts-for claim and the trust records that each registrable domain publishes, and the seller's expected outcome. `input.brand` is `account.brand`. `input.parent_organization` is the parent organization that brand.json resolves, or null for a standalone brand. `input.signer.operator` is the signer's operator, and `input.signer.origin` is the signer's canonical origin. `input.trust_records` maps each registrable domain to the `grants` and `exclusive_grants` of its trust.json; a domain that is absent publishes no grants. All domains are registrable domains already, so no Public Suffix List lookup is needed, and every record is fetched. `expected.outcome` is one of `implicit`, `authorized`, or `grant_absent` (no delegation chain covers the claim). Every trust record in a `grant_absent` vector sets `exclusive_grants: true` for the requested scope, so `grant_absent` is the seller's answer. An `authorized` outcome gives the `effective` scopes, countries (null is global), and window (null is unbounded). Look up vectors by `id`; `description` prose may change.",
+  "description": "Cross-SDK vectors for the delegation-chain rule in L2 Grants in trust records, which is experimental in 3.3 (adcontextprotocol/adcp#8118, P7). Each vector gives an acts-for claim and the trust records that each registrable domain publishes, and the seller's expected outcome. `input.brand` is `account.brand`. `input.parent_organization` is the parent organization that brand.json resolves, or null for a standalone brand. `input.signer.operator` is the signer's operator, and `input.signer.origin` is the signer's canonical origin. `input.trust_records` maps each registrable domain to the `grants` and `exclusive_grants` of its trust.json; a domain that is absent publishes no grants. All domains are registrable domains already, so no Public Suffix List lookup is needed, and every record is fetched. `expected.outcome` is one of `implicit`, `authorized`, `grant_absent`, or `seller_discretion`. When no delegation chain covers the claim, the outcome is `grant_absent` if the parent organization's record sets `exclusive_grants: true`, and `seller_discretion` otherwise: the seller's own onboarding records decide. An `authorized` outcome gives the `effective` scopes, countries (null is global), and window (null is unbounded). Look up vectors by `id`; `description` prose may change.",
   "vectors": [
     {
       "id": "parent-grants-signer-operator",
@@ -597,8 +597,7 @@
                 },
                 "valid_until": "2027-06-30T00:00:00Z"
               }
-            ],
-            "exclusive_grants": true
+            ]
           },
           "orbit-platform.example": {
             "grants": [
@@ -616,8 +615,7 @@
                 },
                 "valid_until": "2027-06-30T00:00:00Z"
               }
-            ],
-            "exclusive_grants": true
+            ]
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -725,8 +723,7 @@
                 },
                 "valid_until": "2027-06-30T00:00:00Z"
               }
-            ],
-            "exclusive_grants": true
+            ]
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -799,8 +796,7 @@
                   }
                 ]
               }
-            ],
-            "exclusive_grants": true
+            ]
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -953,8 +949,7 @@
                   "US"
                 ]
               }
-            ],
-            "exclusive_grants": true
+            ]
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -1017,8 +1012,7 @@
                 },
                 "valid_until": "2027-12-31T00:00:00Z"
               }
-            ],
-            "exclusive_grants": true
+            ]
           }
         },
         "check_time": "2027-07-15T00:00:00Z",
@@ -1082,8 +1076,7 @@
                 "valid_until": "2027-12-31T00:00:00Z",
                 "valid_from": "2026-11-01T00:00:00Z"
               }
-            ],
-            "exclusive_grants": true
+            ]
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -1140,7 +1133,7 @@
     },
     {
       "id": "scope-mismatch-denied",
-      "description": "The parent organization grants the platform governance only, and names media buying in a grant to another domain, so media buying is exclusive.",
+      "description": "The parent organization's exclusive record grants the platform governance only. No grant covers media buying, and the record is the complete list for every scope, so the claim is denied.",
       "input": {
         "brand": {
           "domain": "nova-motors.example",
@@ -1162,20 +1155,6 @@
                 "grantee": "orbit-platform.example",
                 "scopes": [
                   "adcp:governance"
-                ],
-                "profiles": {
-                  "adcp": {
-                    "brands": [
-                      "nova_motors"
-                    ]
-                  }
-                },
-                "valid_until": "2027-06-30T00:00:00Z"
-              },
-              {
-                "grantee": "acme-media.example",
-                "scopes": [
-                  "adcp:media_buying"
                 ],
                 "profiles": {
                   "adcp": {
@@ -1250,8 +1229,7 @@
                 },
                 "valid_until": "2027-06-30T00:00:00Z"
               }
-            ],
-            "exclusive_grants": true
+            ]
           }
         },
         "check_time": "2026-10-24T12:00:00Z",
@@ -1407,6 +1385,172 @@
           "valid_from": null,
           "valid_until": "2027-06-30T00:00:00Z"
         }
+      }
+    },
+    {
+      "id": "exclusive-no-grants-denied",
+      "description": "The parent organization's exclusive record lists no grants, so no third party acts for it.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "pinnacle-agency.example",
+          "origin": "https://buyer.pinnacle-agency.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "nonexclusive-uncovered-seller-discretion",
+      "description": "The parent organization's record is not exclusive and grants the platform governance only. No delegation chain covers the platform's media-buying claim, so the seller's onboarding records decide.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "orbit-platform.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:governance"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "seller_discretion"
+      }
+    },
+    {
+      "id": "nonexclusive-nonmatching-grant-seller-discretion",
+      "description": "The parent organization's nonexclusive record grants the agency media buying for another brand it owns. The grant covers nothing for this brand and doesn't narrow the seller's discretion.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "pinnacle-agency.example",
+          "origin": "https://buyer.pinnacle-agency.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_trucks"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "seller_discretion"
+      }
+    },
+    {
+      "id": "exclusive-brand-record-seller-discretion",
+      "description": "The brand's own record is exclusive and lists no grants, and the parent organization's record is not exclusive. Only the parent organization's exclusive_grants counts, so a claim that no delegation chain covers stays at the seller's discretion.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "pinnacle-agency.example",
+          "origin": "https://buyer.pinnacle-agency.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_trucks"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ]
+          },
+          "nova-motors.example": {
+            "grants": [],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "seller_discretion"
       }
     }
   ]
