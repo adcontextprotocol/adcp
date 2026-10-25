@@ -1901,6 +1901,56 @@
       }
     },
     {
+      "id": "agents-origin-port-mismatch-denied",
+      "description": "The parent organization grants the platform for an agent on port 8443. The signer's canonical origin has the default port, so it is a different origin and the grant does not cover it.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "nova-motors.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "agents": [
+                  {
+                    "url": "https://agents.orbit-platform.example:8443/mcp"
+                  }
+                ]
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
       "id": "valid-until-at-check-time-denied",
       "description": "The check time equals the grant's valid_until. A grant is inactive at or after valid_until, so it doesn't cover the claim.",
       "input": {

@@ -125,6 +125,7 @@ const PROOFS = {
   'second-grant-valid-from-denied': { cell: ['valid_from', 2], repair: (i) => { delete second(i).valid_from; } },
   'second-grant-valid-until-denied': { cell: ['valid_until', 2], repair: (i) => { second(i).valid_until = '2027-06-30T00:00:00Z'; } },
   'second-grant-agents-denied': { cell: ['agents', 2], repair: (i) => { second(i).agents[0].url = 'https://agents.orbit-platform.example/mcp'; } },
+  'agents-origin-port-mismatch-denied': { repair: (i) => { first(i).agents[0].url = 'https://agents.orbit-platform.example/mcp'; } },
   'valid-until-at-check-time-denied': { repair: (i) => { first(i).valid_until = '2027-06-30T00:00:00Z'; } },
   'valid-from-at-check-time-authorizes': { chain: 'nova-holdings > pinnacle-agency' },
   'brand-without-countries-needs-global-grant-denied': { repair: (i) => { delete first(i).countries; } },
