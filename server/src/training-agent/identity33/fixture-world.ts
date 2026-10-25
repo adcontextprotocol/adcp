@@ -131,8 +131,14 @@ export function fixtureBrandHouse(brandDomain: string): { domain: string; brand_
   return ref ? { domain: brand.house_domain, brand_id: ref.brand_id } : undefined;
 }
 
+/** Every host the fixture world serves: its registrable domains and agent origins. */
+const FIXTURE_HOSTS = new Set<string>([
+  ...Object.values(FIXTURE_DOMAINS),
+  ...Object.values(FIXTURE_AGENTS).map(agent => new URL(agent.origin).hostname),
+]);
+
 export function isFixtureDomain(domain: string): boolean {
-  return domain.toLowerCase().endsWith(FIXTURE_SUFFIX);
+  return FIXTURE_HOSTS.has(domain.toLowerCase());
 }
 
 const json = (body: unknown, status = 200) =>
@@ -145,7 +151,7 @@ const json = (body: unknown, status = 200) =>
 export const fixtureFetch: typeof fetch = async input => {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
   if (url.protocol !== 'https:' || !isFixtureDomain(url.hostname)) {
-    throw new Error(`The sandbox identity route resolves only ${FIXTURE_SUFFIX} fixture identities`);
+    throw new Error('The sandbox identity route resolves only its fixture identities');
   }
   const agent = Object.values(FIXTURE_AGENTS).find(entry => entry.origin === url.origin);
   switch (url.pathname) {

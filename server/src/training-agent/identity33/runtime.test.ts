@@ -56,3 +56,15 @@ describe('identity route availability', () => {
     expect(identity33RouteEnabled({ NODE_ENV: 'test', ENABLE_ADCP_3_3_IDENTITY_ROUTE: '0' })).toBe(false);
   });
 });
+
+describe('fixture world hosts', () => {
+  it('serves only the exact fixture hosts, never a look-alike suffix', async () => {
+    const { fixtureFetch, isFixtureDomain, FIXTURE_DOMAINS } = await import('./fixture-world.js');
+    expect(isFixtureDomain(FIXTURE_DOMAINS.house)).toBe(true);
+    expect(isFixtureDomain('buyer.pinnacle-agency-7k3q.com')).toBe(true);
+    expect(isFixtureDomain('attacker-7k3q.com')).toBe(false);
+    expect(isFixtureDomain(`evil.${FIXTURE_DOMAINS.house}`)).toBe(false);
+    await expect(fixtureFetch('https://attacker-7k3q.com/.well-known/trust.json')).rejects.toThrow();
+    expect((await fixtureFetch(`https://${FIXTURE_DOMAINS.house}/.well-known/trust.json`)).status).toBe(200);
+  });
+});
