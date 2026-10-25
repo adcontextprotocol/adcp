@@ -179,7 +179,11 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // performance_standard.metric_id (#8394) reaches the controller through the
 // seeded Product's canonical performance standards; the controller measures
 // 1_315_463 bytes, bound at 1_316_000.
-const PARITY_COMPILE_LIMIT = 1_316_000;
+// Creative approval startup policy (#8479) adds the package gate, capability
+// and scoped control action to the controller closure. After condensing shared
+// field prose, it measures 1_318_217 bytes; bound it at 1_320_000. The 4 MiB
+// schema and 22 MiB projection caps and all fixture parity checks remain.
+const PARITY_COMPILE_LIMIT = 1_320_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
