@@ -8,4 +8,4 @@ A verifier now rejects a JSON-RPC batch (a JSON array body) with `request_body_m
 
 Conformance: vector `request-signing/negative/027` (and its 3.2 mirror) now declares `applies_when: "webhook_signing.legacy_hmac_fallback == true"` and is graded only for such agents. The functional create fixtures in `media_buy_seller` (two steps), `create_media_buy_async`, `creative_generative/seller` and `sales_broadcast_tv` no longer send `push_notification_config.authentication`, so a signing seller with `legacy_hmac_fallback: false` is not forced to fail either 027 or an unrelated create step. Webhook-emission grading of the 9421 baseline is unchanged.
 
-Composition with the 3.3 rule that `reporting_webhook` and `artifact_webhook` may omit `authentication` (adcp#8177): on those two registrations, condition (b) applies only to a request served at 3.3 or later. Below 3.3, `authentication` stays required, so it carries no preference signal.
+On a request served below 3.3, `reporting_webhook` and `artifact_webhook` must carry `authentication` (adcp#8177), so condition (b) applies to them only from 3.3.

@@ -55,7 +55,7 @@
       "type": "object",
       "deprecated": true,
       "x-removed-in": "4.0.0",
-      "description": "Legacy authentication selector. Same semantics as `push-notification-config.authentication` and account-level `notification-config.authentication`: presence asks the seller for Bearer or HMAC-SHA256, and absence selects the profile `signing_profile` names. A seller whose `webhook_signing.legacy_hmac_fallback` is `false` rejects the entry with `UNSUPPORTED_FEATURE`. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on reads.",
+      "description": "Legacy authentication selector. Same semantics as `push-notification-config.authentication` and account-level `notification-config.authentication`: presence asks the seller for Bearer or HMAC-SHA256, and absence selects the profile `signing_profile` names. A seller whose `webhook_signing.legacy_hmac_fallback` is `false` rejects the entry with `UNSUPPORTED_FEATURE` and `error.field` pointing at it. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on reads.",
       "properties": {
         "schemes": {
           "type": "array",

@@ -11,7 +11,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.3 beta whil
 **3.3 is in its beta cycle.** Keep production traffic pinned to `"3.2"` while validating 3.3 in staging. See the [3.3 beta program](/docs/reference/3-3-beta) for artifact and SDK timing.
 </Warning>
 
-3.3 is a minor release over 3.2. It adds optional fields, enum values, and capability declarations. No stable field, enum value, or task is removed; the one removal is the experimental `build_creative.evaluator.evaluator_id` source form (see [below](#experimental-creative-evaluator-drops-evaluator_id)). `seller_id` on event source and audience results is deprecated in favor of the new `platform_id` field, and natural-key account references after provisioning are deprecated (see [Deprecations](#deprecations)). A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
+3.3 is a minor release over 3.2. It adds optional fields, enum values, and capability declarations. No stable field, enum value, or task is removed; the one removal is the experimental `build_creative.evaluator.evaluator_id` source form (see [below](#experimental-creative-evaluator-drops-evaluator_id)). `seller_id` on event source and audience results is deprecated in favor of the new `platform_id` field. Natural-key account references after provisioning and condition (b) of `request_signature_required` are also deprecated (see [Deprecations](#deprecations)). A caller opts into 3.3 only after the peer advertises the exact release in `supported_versions`. Existing 3.2 integrations that need nothing else can stay pinned to `"3.2"`.
 
 Read these first:
 
