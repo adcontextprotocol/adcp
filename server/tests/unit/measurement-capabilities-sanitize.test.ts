@@ -73,6 +73,50 @@ describe('sanitizeMeasurementCapabilities', () => {
     })).toThrow(/scriptish/);
   });
 
+  it('accepts a name of exactly 100 chars', () => {
+    const out = sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: 'x'.repeat(100) }],
+    });
+    expect(out.metrics[0].name).toHaveLength(100);
+  });
+
+  it('checks length before trimming padding whitespace', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: `  ${'x'.repeat(99)}` }],
+    })).toThrow(/name: exceeds 100/);
+  });
+
+  it('rejects a null name', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: null }],
+    })).toThrow(/name: expected string/);
+  });
+
+  it('strips control, zero-width, and bidi-override characters from name', () => {
+    const out = sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: 'Atten\u0007tion\u200B \u202ESco\u0085re' }],
+    });
+    expect(out.metrics[0].name).toBe('Attention Score');
+  });
+
+  it('rejects a name made only of invisible characters', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: '\u200B\u202E\uFEFF' }],
+    })).toThrow(/name: empty/);
+  });
+
+  it('rejects fullwidth-obfuscated scriptish content in name after NFKC', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: 'x ｏｎｌｏａｄ＝y' }],
+    })).toThrow(/scriptish/);
+  });
+
+  it('rejects scriptish content split by zero-width characters', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: 'x on\u200Bload=y' }],
+    })).toThrow(/scriptish/);
+  });
+
   it('accepts duplicate names across distinct metric_ids', () => {
     const out = sanitizeMeasurementCapabilities({
       metrics: [

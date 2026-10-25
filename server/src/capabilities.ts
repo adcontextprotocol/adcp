@@ -358,6 +358,10 @@ function validateUri(value: string, field: string): string {
   return parsed.toString();
 }
 
+// C1 controls, zero-width and directional marks, bidi embeddings/overrides,
+// bidi isolates, and the BOM: invisible in a rendered label.
+const INVISIBLE_LABEL_CHARS = /[\u0080-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
+
 function clampString(value: unknown, max: number, field: string): string {
   if (typeof value !== 'string') {
     throw new Error(`measurement.${field}: expected string`);
@@ -407,10 +411,14 @@ export function sanitizeMeasurementCapabilities(raw: unknown): MeasurementCapabi
 
     const out: MeasurementMetric = { metric_id };
     if (metric.name !== undefined) {
-      // A display label: collapse whitespace runs (including newlines) to one
-      // space so a label renders on one line. An empty result is a schema
-      // violation (minLength 1), not an absent name.
-      const name = clampString(metric.name, MEASUREMENT_LIMITS.MAX_NAME_LEN, `metrics[${i}].name`)
+      // A display label: drop invisible and bidi-override characters (which
+      // could hide or reverse the rendered text) before the scriptish check,
+      // so removing them cannot assemble a pattern after it has run. Then
+      // collapse whitespace runs (including newlines) to one space so a label
+      // renders on one line. An empty result violates the schema's
+      // non-whitespace pattern.
+      const visible = typeof metric.name === 'string' ? metric.name.replace(INVISIBLE_LABEL_CHARS, '') : metric.name;
+      const name = clampString(visible, MEASUREMENT_LIMITS.MAX_NAME_LEN, `metrics[${i}].name`)
         .replace(/\s+/g, ' ')
         .trim();
       if (name.length === 0) {
