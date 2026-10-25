@@ -120,6 +120,7 @@ const PROOFS = {
   'account-operator-is-second-grantee-denied': { repair: (i) => { i.account_operator = AGENCY; } },
   'first-grant-narrowed-to-agency-agents-denied': { repair: (i) => { delete grant(i, PARENT).agents; } },
   'countries-and-window-intersect': { chain: 'nova-holdings > pinnacle-agency > orbit-platform' },
+  'window-intersect-first-grant-starts-later': { chain: 'nova-holdings > pinnacle-agency > orbit-platform' },
   'brand-country-outside-intersection-denied': { repair: (i) => { grant(i, AGENCY).countries.push('GB'); } },
   'brand-without-countries-needs-global-grant-denied': { repair: (i) => { delete grant(i, PARENT).countries; } },
   'check-time-outside-window-denied': { repair: (i) => { grant(i, PARENT).valid_until = '2027-12-31T00:00:00Z'; } },
@@ -148,10 +149,11 @@ const BREAKS = {
 
 const variant = (input, change) => { const copy = structuredClone(input); change(copy); return copy; };
 const chainPath = (chain) => [chain[0].domain, ...chain.map(({ grant: g }) => g.grantee)].map((d) => d.replace(/\.example$/, '')).join(' > ');
-/** JSON paths where two inputs differ; arrays of values compare whole. */
+/** JSON paths where two inputs differ. Arrays of values compare whole, and an added or removed object is one path. */
 function changedPaths(a, b, at = '$') {
-  const nested = (x) => x !== null && typeof x === 'object' && !(Array.isArray(x) && typeof x[0] !== 'object');
-  if (nested(a) && nested(b) && Array.isArray(a) === Array.isArray(b) && (!Array.isArray(a) || a.length === b.length)) {
+  const isObject = (x) => x !== null && typeof x === 'object';
+  const values = (x) => Array.isArray(x) && x.every((e) => !isObject(e));
+  if (isObject(a) && isObject(b) && Array.isArray(a) === Array.isArray(b) && !(values(a) && values(b))) {
     return [...new Set([...Object.keys(a), ...Object.keys(b)])].flatMap((k) => changedPaths(a[k], b[k], `${at}.${k}`));
   }
   return JSON.stringify(a) === JSON.stringify(b) ? [] : [at];

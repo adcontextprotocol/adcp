@@ -940,6 +940,84 @@
       }
     },
     {
+      "id": "window-intersect-first-grant-starts-later",
+      "description": "The window runs from the latest valid_from to the earliest valid_until along the chain, whichever grant sets each one. Here the first grant starts later and the second grant ends earlier.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_from": "2026-09-01T00:00:00Z",
+                "valid_until": "2027-12-31T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "pinnacle-agency.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_from": "2026-01-01T00:00:00Z",
+                "valid_until": "2027-06-30T00:00:00Z",
+                "agents": [
+                  {
+                    "url": "https://agents.orbit-platform.example/mcp"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": null,
+          "valid_from": "2026-09-01T00:00:00Z",
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
+      }
+    },
+    {
       "id": "brand-country-outside-intersection-denied",
       "description": "The account's brand covers GB, which the second grant does not include.",
       "input": {
