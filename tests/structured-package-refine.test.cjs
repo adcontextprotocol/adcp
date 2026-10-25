@@ -144,6 +144,9 @@ test('forecast fields and cross-field constraints stay aligned with create packa
 
   const cases = [
     [{}, true],
+    [{ start_requires_all_creatives_approved: false }, true],
+    [{ start_requires_all_creatives_approved: true }, true],
+    [{ start_requires_all_creatives_approved: 'true' }, false],
     [{ format_kind: 'image', params: { width: 300, height: 250 } }, true],
     [{ format_kind: 'image', params: { width: 300 } }, false],
     [{ params: { width: 300, height: 250 } }, false],

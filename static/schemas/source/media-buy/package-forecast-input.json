@@ -70,6 +70,9 @@
     "end_time": {
       "$ref": "/schemas/media-buy/package-request.json#/properties/end_time"
     },
+    "start_requires_all_creatives_approved": {
+      "$ref": "/schemas/media-buy/package-request.json#/properties/start_requires_all_creatives_approved"
+    },
     "paused": {
       "$ref": "/schemas/media-buy/package-request.json#/properties/paused"
     },

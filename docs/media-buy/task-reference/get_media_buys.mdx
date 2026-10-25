@@ -233,6 +233,7 @@ been deleted. `ext.streamhaus.ad_set_id` here is a seller-defined extension:
 | `start_time` | Flight start time (ISO 8601). Check this before interpreting delivery status. |
 | `end_time` | Flight end time (ISO 8601) |
 | `paused` | Whether buyer has paused this package |
+| `start_requires_all_creatives_approved` | Added in 3.3. Effective initial-start policy, including `false` when defaulted. When `true`, every current assignment must have package approval before first release for serving. See the [creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review). |
 | `canceled` | Whether this package has been canceled (irreversible) |
 | `cancellation` | Cancellation metadata (present only when `canceled` is true). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
 | `creative_deadline` | Per-package creative deadline (ISO 8601). When absent, the media buy's `creative_deadline` applies. |

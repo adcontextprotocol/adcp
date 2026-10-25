@@ -997,6 +997,7 @@ Optional media-buy features. Boolean declarations are commitments when true. Str
 
 | Feature | Description |
 |---------|-------------|
+| `creative_start_policy` | Added in 3.3. Honors the package `start_requires_all_creatives_approved` initial-serving gate through compact package controls and any advertised compatibility facades. Check before booking; `false` or absent means opt-in is unsupported. See the [creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review). |
 | `inline_creative_management` | Deprecated 3.x compatibility capability for inline creatives in `create_media_buy` and `update_media_buy`; compact lifecycle tools never accept them |
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
 | `catalog_management` | Supports [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) for catalog feed management |
