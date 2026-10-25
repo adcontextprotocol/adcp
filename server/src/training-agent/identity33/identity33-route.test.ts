@@ -124,11 +124,9 @@ describe('sandbox identity route: Web Bot Auth and demand-side grants', () => {
   });
 
   // Spec: implicit authority extends to the brand's house (L2, Grants in
-  // trust records). @adcp/sdk 16.3.0 checks implicit authority against the
-  // brand's domain only and returns grant_absent; fixed in
-  // adcontextprotocol/adcp-client#3388, unreleased at the time of writing.
-  // `it.fails` turns red once the SDK bump fixes it: switch it to `it` then.
-  it.fails("lets the house's own agent act for its child brand without a grant", async () => {
+  // trust records). Fixed in adcontextprotocol/adcp-client#3388 (SDK 16.5);
+  // @adcp/sdk 16.3.0 checked the brand's domain only and returned grant_absent.
+  it("lets the house's own agent act for its child brand without a grant", async () => {
     expect((await onboard('house')).body.result?.isError).not.toBe(true);
     const result = await syncAccount('house', { brand: novaMotors, operator: FIXTURE_DOMAINS.house });
     const accounts = result.body.result?.structuredContent?.accounts as Array<{ status?: string }> | undefined;

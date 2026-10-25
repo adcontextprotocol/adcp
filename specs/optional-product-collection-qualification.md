@@ -144,6 +144,13 @@ success-by-observing-a-defect:
 | `node specs/optional-product-collection-qualification/sdk3396-context-key.cjs`     | Widened subset correctly fails, but failed output omits authored `context_key`. [SDK #3396](https://github.com/adcontextprotocol/adcp-client/issues/3396). The merged output MUST remains in force; this metadata path is unqualified.                       |
 | `node specs/optional-product-collection-qualification/sdk3397-feed-restart.cjs`    | Feed changes v1→v2 between pages; resolver makes two page calls and resolves instead of restarting and making four after stabilization. [SDK #3397](https://github.com/adcontextprotocol/adcp-client/issues/3397). Mutable-feed restart remains unqualified. |
 
+**SDK 17.0.0-beta.0 re-run (2026-10-25).** `sdk3396-context-key.cjs` and
+`sdk3397-feed-restart.cjs` now pass, fixed in SDK 16.5. The echo regression
+asserts the authored `context_key`. `sdk3395-resource-status.cjs` still fails on
+16.5.0 and 17.0.0-beta.0. Before the invariant reads the create response, the
+SDK copies the task status `completed` into `media_buy_status`, and the buyer
+client does the same ([SDK #3432](https://github.com/adcontextprotocol/adcp-client/issues/3432)).
+
 The first split matrix was75pass/6fail: four assertions mistakenly classified a
 conforming feed-token change as seller failure, and two exposed the genuine
 context-key omission. Protocol review corrected the former using the existing

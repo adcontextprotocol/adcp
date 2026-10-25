@@ -206,8 +206,8 @@
     "eval:addie-matched-v4-authorized": "tsx --import dotenv/config server/tests/manual/matched-v4-authorized-execution.ts"
   },
   "dependencies": {
-    "@adcp/reporting-storage": "0.1.0",
-    "@adcp/sdk": "16.3.0",
+    "@adcp/reporting-storage": "0.2.1-beta.0",
+    "@adcp/sdk": "17.0.0-beta.0",
     "@anthropic-ai/sdk": "^0.127.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.7",

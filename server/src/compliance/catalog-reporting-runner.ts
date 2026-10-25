@@ -217,10 +217,14 @@ export async function withReportingInvocationGrant<T>(
   }
 }
 
-/** SDK 16.3 cannot authorize fresh preparation through its public API (#3389).
- * Refuse before contact rather than fabricate a binding or call the reuse hook
- * with invented scope. This private record describes only the actual refusal:
- * no preparation, seller exchange or resolved entity exists yet.
+/** Supplied host hooks cannot precede this adapter's seller contact.
+ * SDK 16.5+ consults `prepared_fixtures_preparation_authorizer` before contact
+ * inside prepareStoryboardFixtures (adcp-client#3389), but this adapter must
+ * first discover capabilities itself to apply the storyboard's root gates
+ * before any controller seeding, and the SDK's preparation does not apply them
+ * (adcp-client#3435). Refuse before contact rather than fabricate a binding or
+ * call a hook with invented scope. This private record describes only the
+ * actual refusal: no preparation, seller exchange or resolved entity exists yet.
  */
 async function refuseUncallablePreparationAuthorizer(
   agentUrl: AgentUrl,
@@ -233,7 +237,7 @@ async function refuseUncallablePreparationAuthorizer(
   );
   const authored = phase?.steps.find((s) => s.id === stepId);
   const detail =
-    "Fresh catalog fixture preparation cannot consult the supplied host authorizer before seller contact with SDK 16.3; see SDK #3389";
+    "Fresh catalog fixture preparation cannot consult the supplied host authorizer before this adapter's capability preflight contacts the seller; see adcp-client#3435";
   const step: StoryboardStepResult = {
     storyboard_id: storyboard.id,
     step_id: authored?.id ?? "prepared_fixtures_authorization",
@@ -506,9 +510,11 @@ async function withReportingPreparation<T extends object>(
     !storyboard.required_tools?.some((tool) => tools.has(tool))
   ) {
     if (scope.collections && executeRootGate) {
-      // SDK16.3 standalone execution bypasses root applicability gates. Keep
-      // the observed profile stable and return the actual native full-run
-      // gate. Never rename an authored skip or relax a hosted failure grade.
+      // Return the native full-run gate. SDK 16.5+ standalone execution also
+      // applies root capability gates, but through this adapter the readback
+      // read-history precondition would refuse first. Keep the observed
+      // profile stable. Never rename an authored skip or relax a hosted
+      // failure grade.
       return executeRootGate({
         ...options,
         agentTools: [...tools],
@@ -589,7 +595,7 @@ async function withReportingPreparation<T extends object>(
   }
   // The trusted caller authorized this invocation. The state is never shared
   // or serialized; close its local grant when the invocation ends. Supplied
-  // host hooks were refused before contact above until SDK #3389 is repaired.
+  // host hooks were refused before contact above until adcp-client#3435.
   const auditSink = options.prepared_fixtures_audit_sink;
   return withReportingInvocationGrant(async (authorize) => {
     const result = await execute({
@@ -602,18 +608,17 @@ async function withReportingPreparation<T extends object>(
       // The producer ran before consumer authorization. Link its real records
       // into the caller's PRIVATE audit scope, without changing any grade,
       // phase, count or request/response field emitted by the consumer.
+      // `fixture_preparation` is the SDK's native producer-evidence field
+      // (SDK 16.5+). The SDK stamps it itself only for failed preparations,
+      // so fill it from this invocation's preparation when absent. The
+      // private audit keeps the unredacted phase, as the SDK's own does.
       ...(auditSink && {
         prepared_fixtures_audit_sink: async (record) => {
+          const fixturePreparation = record.fixture_preparation ?? prepared.phase;
           const auditRecord = {
             ...record,
-            fixture_resolutions:
-              ("fixture_resolutions" in record
-                ? record.fixture_resolutions
-                : undefined) ?? prepared.resolutions,
-            fixture_preparation: {
-              disposition: prepared.disposition,
-              phase: prepared.phase,
-            },
+            fixture_resolutions: record.fixture_resolutions ?? prepared.resolutions,
+            ...(fixturePreparation && { fixture_preparation: fixturePreparation }),
           };
           await auditSink(auditRecord);
         },
