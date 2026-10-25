@@ -149,7 +149,8 @@ success-by-observing-a-defect:
 asserts the authored `context_key`. `sdk3395-resource-status.cjs` still fails on
 16.5.0 and 17.0.0-beta.0. Before the invariant reads the create response, the
 SDK copies the task status `completed` into `media_buy_status`, and the buyer
-client does the same ([SDK #3432](https://github.com/adcontextprotocol/adcp-client/issues/3432)).
+client does the same ([SDK #3432](https://github.com/adcontextprotocol/adcp-client/issues/3432); fixed on
+the SDK's main branch by #3439, not yet released).
 
 The first split matrix was75pass/6fail: four assertions mistakenly classified a
 conforming feed-token change as seller failure, and two exposed the genuine

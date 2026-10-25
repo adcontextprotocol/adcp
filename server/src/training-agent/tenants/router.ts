@@ -52,7 +52,7 @@ import {
 } from '../task-handlers.js';
 import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } from '../seller-optimized-budget.js';
 import { advertisesSalesFixedRateSpecialism, supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
-import { getAgentUrl } from '../config.js';
+import { getIdentityBaseUrl } from '../config.js';
 import { complianceScenariosForServedVersion } from '../compliance-scenarios.js';
 import { runWithReleaseLineEcho } from './release-line-echo.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
@@ -1359,8 +1359,8 @@ function projectWholesaleCapabilities(
 ): void {
   const addBrandIdentity = (): void => {
     const brandJsonUrl = storyboardCompat?.version === '3.0'
-      ? `${getAgentUrl()}/.well-known/brand.json?compat=3.0`
-      : `${getAgentUrl()}/.well-known/brand.json`;
+      ? `${getIdentityBaseUrl()}/.well-known/brand.json?compat=3.0`
+      : `${getIdentityBaseUrl()}/.well-known/brand.json`;
     structured.identity = {
       ...(structured.identity ?? {}),
       brand_json_url: brandJsonUrl,

@@ -158,7 +158,27 @@ type AgentUrl = Parameters<typeof runSdkStoryboard>[0];
 // StepResult does not currently declare fixture_resolutions.
 type PreparationEvidence = {
   fixture_resolutions?: PreparedStoryboardFixtures["resolutions"];
+  fixture_preparation?: PreparedStoryboardFixtures["phase"];
 };
+
+/** A producer phase for a caller-visible result: protected fixture captures
+ * stay out of step contexts, as in the SDK's own public output. */
+function publicPreparationPhase(
+  phase: PreparedStoryboardFixtures["phase"],
+): PreparedStoryboardFixtures["phase"] {
+  if (!phase) return undefined;
+  return {
+    ...phase,
+    steps: phase.steps.map((step) => ({
+      ...step,
+      context: Object.fromEntries(
+        Object.entries(step.context ?? {}).filter(
+          ([key]) => !isProtectedContextKey(key),
+        ),
+      ),
+    })),
+  };
+}
 
 function catalogScope(storyboard: Storyboard) {
   const collections = COLLECTION_IDS.has(storyboard.id);
@@ -625,26 +645,19 @@ async function withReportingPreparation<T extends object>(
       }),
     });
     // Only an authorized consumer reaches this point: access denials throw
-    // and remain confined to the private audit sink above. Some native SDK
-    // failure results omit the producer records, so retain the SAME detached
-    // preparation evidence without changing any grade, phase or wire field.
-    // An original producer phase is self-contained; its step ids alone would
-    // dangle because it need not appear among the consumer's phases.
-    if ((result as PreparationEvidence).fixture_resolutions === undefined) {
+    // and remain confined to the private audit sink above. SDK 16.5+ returns
+    // the producer records and phase natively (`fixture_resolutions`,
+    // `fixture_preparation`). Where a native result still omits them, retain
+    // the SAME detached preparation evidence in those native fields, without
+    // changing any grade, phase or wire field. The producer phase is
+    // self-contained: its step ids need not appear among the consumer's.
+    const evidence = result as PreparationEvidence;
+    if (evidence.fixture_resolutions === undefined) {
+      const phase = evidence.fixture_preparation ?? publicPreparationPhase(prepared.phase);
       return {
         ...result,
-        fixture_resolutions: prepared.resolutions.map((record) => ({
-          ...record,
-          ...(record.status === "failed" &&
-            !("failure" in record) && {
-              failure: {
-                ...(prepared.disposition.status !== "resolved" && {
-                  detail: prepared.disposition.detail,
-                }),
-                phase: prepared.phase,
-              },
-            }),
-        })),
+        fixture_resolutions: prepared.resolutions,
+        ...(phase && { fixture_preparation: phase }),
       };
     }
     return result;

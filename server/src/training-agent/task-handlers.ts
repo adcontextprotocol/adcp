@@ -3170,7 +3170,7 @@ import {
   getComplianceMediaBuys, getComplianceMediaBuy,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
-import { getAgentUrl } from './config.js';
+import { getAgentUrl, getIdentityBaseUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
   handleSyncPlans,
@@ -20492,7 +20492,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         delivery_retry_horizon_seconds: 86400,
       },
       identity: {
-        brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
+        brand_json_url: `${getIdentityBaseUrl()}/.well-known/brand.json`,
       },
     }),
     media_buy: {
