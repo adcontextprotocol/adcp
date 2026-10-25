@@ -342,10 +342,10 @@
         <ol class="trust-flow" aria-label="The seller’s verification chain">
           <li><span class="trust-step-number" aria-hidden="true">1</span><h3>Authenticate the agent</h3><p>Verify its signature or an established credential mapping. A name or URL in the request is a claim, not proof.</p></li>
           <li><span class="trust-step-number" aria-hidden="true">2</span><h3>Resolve the brand</h3><p>Read its domain-controlled brand.json. Verify a claimed parent against the parent’s portfolio entry.</p></li>
-          <li><span class="trust-step-number" aria-hidden="true">3</span><h3>Check the authority</h3><p>Read the parent’s or standalone brand’s trust.json. Follow grants through the account operator to the agent’s operator.</p></li>
+          <li><span class="trust-step-number" aria-hidden="true">3</span><h3>Check the authority</h3><p>Read the parent’s or standalone brand’s trust.json. Follow at most two grants to the agent’s operator.</p></li>
           <li><span class="trust-step-number" aria-hidden="true">4</span><h3>Apply the limits</h3><p>Check activity, brand, countries, dates and any agent restriction before provisioning or spend.</p></li>
         </ol>
-        <p>If an agency uses a hosted platform, a chain can run brand → agency → platform; every link must cover the request. Your own agents can act without a third-party grant when both the agent’s operator and the account operator match the brand or its verified parent. The seller still verifies the agent and its operator listing. <a href="https://docs.adcontextprotocol.org/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental">Read the grant evaluation rules →</a></p>
+        <p>If an agency uses a hosted platform, a chain can run brand → agency → platform. Every grant must cover the request, and the account operator must be the brand, its parent, or the agency. Your own agents can act without a third-party grant when both the agent’s operator and the account operator match the brand or its verified parent. The seller still verifies the agent and its operator listing. <a href="https://docs.adcontextprotocol.org/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental">Read the grant evaluation rules →</a></p>
       </section>
 
       <section id="missing-records" aria-labelledby="missing-heading">

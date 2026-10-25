@@ -8,7 +8,7 @@
 - the `identity.trust_url` back-pointer;
 - "Every discovery path is bound both ways" (§Agent resolution);
 - the acknowledgement "point back" rule (§Acknowledgements);
-- §Grants "Chain limit", "Freshness", and "Absence vs failure", and its AdCP profile's "Checking a claim" (one hop, exact matching) and "Re-verification". `L2/accounts-and-agents.mdx` §Grants in trust records replaces them with a chain through `account.operator`, registrable-domain matching, the R3a freshness schedule, and the outage rules of Web Bot Auth identities for a fetch failure. The rest of §Grants stands.
+- §Grants "Chain limit", "Freshness", and "Absence vs failure", and its AdCP profile's "Checking a claim" (one hop, exact matching) and "Re-verification". `L2/accounts-and-agents.mdx` §Grants in trust records replaces them with one delegation-chain rule, registrable-domain matching, the R3a freshness schedule, and the outage rules of Web Bot Auth identities for a fetch failure. The rest of §Grants stands.
 
 It also supersedes the client-only bootstrap in #7942 and option B (`adcp-agent-url`) in #7817.
 
@@ -166,12 +166,12 @@ These are the four binding rules from gate 2 of `specs/wba-profile-readiness.md`
 
 ### R6. Authority: grants (P5, `L2/accounts-and-agents.mdx`)
 
-- The house's trust record authorizes an acts-for claim: the record of the house that brand.json's mutual-assertion model resolves, or the brand's own when the model resolves none, as L2 says.
-- Authority is implicit when `account.operator` and the signer's operator (R3a) are the same registrable domain as the brand's domain or its house.
-- Otherwise a grant chain with `account.operator` on it must reach the signer's operator with a scope covering the operation.
-- Effective authority is the intersection along the chain.
+- The parent organization's trust record authorizes an acts-for claim: the record of the parent organization that brand.json's mutual-assertion model resolves, or the brand's own when the model resolves none, as L2 says.
+- Authority is implicit when `account.operator` and the signer's operator (R3a) are the same registrable domain as the brand's domain or its parent organization.
+- Otherwise a delegation chain of at most two grants must reach the signer's operator with a scope covering the operation. `account.operator` is the brand, the parent organization, or the grantee of the first grant.
+- Effective authority is the intersection along the delegation chain.
 
-The rules (which record, domain matching, the chain forms and their limit, `agents[]` narrowing, the intersection's operands, absence, fetch failure, freshness, and the error) are stated once, in `L2/accounts-and-agents.mdx` §Grants in trust records. The decision is [DR-0025](../governance/decisions/DR-0025-demand-side-grants-in-trust-json.md) (#6033). R7 relies on R6 for the `grant` requirement kind.
+The rules (which record, domain matching, the delegation-chain rule, `agents[]` narrowing, the intersection's operands, absence, fetch failure, freshness, and the error) are stated once, in `L2/accounts-and-agents.mdx` §Grants in trust records. The decision is [DR-0025](../governance/decisions/DR-0025-demand-side-grants-in-trust-json.md) (#6033). R7 relies on R6 for the `grant` requirement kind.
 
 ### R7. Onboarding posture (P6, `get_adcp_capabilities.mdx`)
 
@@ -306,7 +306,7 @@ The window of exposure is the time between compromise and the revocation reachin
 | **P4** | First contact and binding (R5); relationship status (R8), including the `get-principal-response.json` and `principal-changed-webhook.json` changes | minor |
 | **P5** | Grants (R6, #6033) | minor |
 | **P6** | Onboarding posture (R7, #8113), including the `profiles.adcp.onboarding` slot for the buyer posture (#8114). Lands independently; only `open` and `grant` wait for P2–P5. | minor |
-| **P7** | Conformance:<br>- dual-source storyboards;<br>- trust-record, grant-chain, downgrade, and WBA vectors;<br>- an end-to-end self-onboarding storyboard;<br>- the training agent verifies WBA, serves its own directory and trust record, and opens the sandbox mode. | minor |
+| **P7** | Conformance:<br>- dual-source storyboards;<br>- trust-record, delegation-chain, downgrade, and WBA vectors;<br>- an end-to-end self-onboarding storyboard;<br>- the training agent verifies WBA, serves its own directory and trust record, and opens the sandbox mode. | minor |
 | **P8** | Docs:<br>- an "A buyer agent onboards itself" walkthrough, which sets the TL;DR expectation for `open`;<br>- rewrites of `request-signing.mdx` and `brand-protocol/seller-setup.mdx`;<br>- updates to `brand-json.mdx`, `trust.mdx`, `security-model.mdx`, `L2/authentication.mdx`, operating guides, learning tracks, glossary, and `known-limitations.mdx` (D10);<br>- the OAuth/auth.md mapping (D11). | patch |
 | **P9** | Migration guide `docs/reference/migration/agent-identity-3-3.mdx`, by role (buyer signer, seller verifier, agency or operator, SaaS platform, governance agent), with an SDK version table, the 3.2 deprecation, and rollback; entries in `3-2-to-3-3.mdx`, `whats-new-in-3-3.mdx`, and release notes | patch |
 | R1 (follow-on) | Registry crawl of trust records and posture; requirement-match filter | — |

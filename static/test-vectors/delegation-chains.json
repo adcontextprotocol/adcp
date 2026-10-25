@@ -1,0 +1,1305 @@
+{
+  "version": 1,
+  "name": "Delegation chains for demand-side grants",
+  "specification": "https://adcontextprotocol.org/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental",
+  "description": "Cross-SDK vectors for the delegation-chain rule in L2 Grants in trust records, which is experimental in 3.3 (adcontextprotocol/adcp#8118, P7). Each vector gives an acts-for claim and the trust records that each registrable domain publishes, and the seller's expected outcome. `input.brand` is `account.brand`. `input.parent_organization` is the parent organization that brand.json resolves, or null for a standalone brand. `input.signer.operator` is the signer's operator, and `input.signer.origin` is the signer's canonical origin. `input.trust_records` maps each registrable domain to the `grants` and `exclusive_grants` of its trust.json; a domain that is absent publishes no grants. All domains are registrable domains already, so no Public Suffix List lookup is needed, and every record is fetched. `expected.outcome` is one of `implicit`, `authorized`, or `grant_absent` (no delegation chain covers the claim). Every record that a denial vector reads sets `exclusive_grants` for the requested scope, so `grant_absent` is the seller's answer. An `authorized` outcome lists the domains of the `delegation_chain` from the grantor of the first grant, and the `effective` scopes, countries (null is global), and window (null is unbounded). Each vector has one covering chain at most. Look up vectors by `id`; `description` prose may change.",
+  "vectors": [
+    {
+      "id": "parent-grants-signer-operator",
+      "description": "The parent organization grants the agency, and the agency operates the account and signs with its own agent.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "pinnacle-agency.example",
+          "origin": "https://buyer.pinnacle-agency.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "delegation_chain": [
+          "nova-holdings.example",
+          "pinnacle-agency.example"
+        ],
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": null,
+          "valid_from": null,
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "brand-operates-account-through-hosted-agent",
+      "description": "The brand operates its account through an agent that a platform hosts. The parent organization grants the platform.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "nova-motors.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "agents": [
+                  {
+                    "url": "https://agents.orbit-platform.example/mcp"
+                  }
+                ]
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "delegation_chain": [
+          "nova-holdings.example",
+          "orbit-platform.example"
+        ],
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": null,
+          "valid_from": null,
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "agency-works-through-platform",
+      "description": "The parent organization grants the agency, and the agency grants the platform that hosts the signing agent. The narrowing is on the second grant.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "pinnacle-agency.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "agents": [
+                  {
+                    "url": "https://agents.orbit-platform.example/mcp"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "delegation_chain": [
+          "nova-holdings.example",
+          "pinnacle-agency.example",
+          "orbit-platform.example"
+        ],
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": null,
+          "valid_from": null,
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "parent-operates-account-through-hosted-agent",
+      "description": "The parent organization operates the account through an agent that a platform hosts, and grants the platform directly. No grant to itself is needed.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "nova-holdings.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "agents": [
+                  {
+                    "url": "https://agents.orbit-platform.example/mcp"
+                  }
+                ]
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "delegation_chain": [
+          "nova-holdings.example",
+          "orbit-platform.example"
+        ],
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": null,
+          "valid_from": null,
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "parent-operates-account-on-two-grant-chain",
+      "description": "The parent organization operates the account, grants the agency, and the agency grants the platform. The rule admits this combination.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "nova-holdings.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "pinnacle-agency.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "agents": [
+                  {
+                    "url": "https://agents.orbit-platform.example/mcp"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "delegation_chain": [
+          "nova-holdings.example",
+          "pinnacle-agency.example",
+          "orbit-platform.example"
+        ],
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": null,
+          "valid_from": null,
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "brand-operates-account-on-two-grant-chain",
+      "description": "The brand operates the account, the parent organization grants the agency, and the agency grants the platform. The rule admits this combination.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "nova-motors.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "pinnacle-agency.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "agents": [
+                  {
+                    "url": "https://agents.orbit-platform.example/mcp"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "delegation_chain": [
+          "nova-holdings.example",
+          "pinnacle-agency.example",
+          "orbit-platform.example"
+        ],
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": null,
+          "valid_from": null,
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "implicit-authority-brand",
+      "description": "The brand operates the account and signs with its own agent. Authority is implicit, and the exclusive record without a grant to the brand does not matter.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "nova-motors.example",
+        "signer": {
+          "operator": "nova-motors.example",
+          "origin": "https://buyer.nova-motors.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "implicit"
+      }
+    },
+    {
+      "id": "implicit-authority-parent",
+      "description": "The parent organization operates the account and signs with its own agent. Authority is implicit.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "nova-holdings.example",
+        "signer": {
+          "operator": "nova-holdings.example",
+          "origin": "https://buyer.nova-holdings.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "implicit"
+      }
+    },
+    {
+      "id": "standalone-brand-record-authorizes",
+      "description": "A brand with no parent organization authorizes from its own record.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": null,
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "pinnacle-agency.example",
+          "origin": "https://buyer.pinnacle-agency.example"
+        },
+        "trust_records": {
+          "nova-motors.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "delegation_chain": [
+          "nova-motors.example",
+          "pinnacle-agency.example"
+        ],
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": null,
+          "valid_from": null,
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "three-grant-chain-denied",
+      "description": "The platform grants a relay a third time. A delegation chain has at most two grants, so the relay's agent is not covered.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "relay-exchange.example",
+          "origin": "https://buy.relay-exchange.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "pinnacle-agency.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ]
+          },
+          "orbit-platform.example": {
+            "grants": [
+              {
+                "grantee": "relay-exchange.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "account-operator-not-on-chain-denied",
+      "description": "The parent organization grants the platform, but the account names an agency that is neither the brand, the parent organization, nor the first grantee.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "account-operator-is-second-grantee-denied",
+      "description": "The account names the platform, which is the grantee of the second grant. account.operator must be the brand, the parent organization, or the grantee of the first grant.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "orbit-platform.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "pinnacle-agency.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "first-grant-narrowed-to-agency-agents-denied",
+      "description": "The first grant lists only the agency's own agents, so it never covers the platform's agent, even though the agency grants the platform.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "agents": [
+                  {
+                    "url": "https://buyer.pinnacle-agency.example/mcp"
+                  }
+                ]
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "pinnacle-agency.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "agents": [
+                  {
+                    "url": "https://agents.orbit-platform.example/mcp"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "countries-and-window-intersect",
+      "description": "Effective authority is the intersection along the chain: the common countries, the latest valid_from, and the earliest valid_until.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "countries": [
+                  "CA",
+                  "MX",
+                  "US"
+                ],
+                "valid_from": "2026-01-01T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "pinnacle-agency.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-12-31T00:00:00Z",
+                "countries": [
+                  "CA",
+                  "US"
+                ],
+                "valid_from": "2026-09-01T00:00:00Z"
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "delegation_chain": [
+          "nova-holdings.example",
+          "pinnacle-agency.example",
+          "orbit-platform.example"
+        ],
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": [
+            "CA",
+            "US"
+          ],
+          "valid_from": "2026-09-01T00:00:00Z",
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "brand-country-outside-intersection-denied",
+      "description": "The account's brand covers GB, which the second grant does not include.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "GB",
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "pinnacle-agency.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z",
+                "countries": [
+                  "CA",
+                  "US"
+                ]
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "check-time-outside-window-denied",
+      "description": "The second grant is still valid, but the check time is at or after the first grant's valid_until.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "pinnacle-agency.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-12-31T00:00:00Z"
+              }
+            ]
+          }
+        },
+        "check_time": "2027-07-15T00:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "brand-not-covered-denied",
+      "description": "The grant covers a different brand the parent organization owns.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "pinnacle-agency.example",
+        "signer": {
+          "operator": "pinnacle-agency.example",
+          "origin": "https://buyer.pinnacle-agency.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_trucks"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "scope-mismatch-denied",
+      "description": "The parent organization grants the platform governance only, and names media buying in a grant to another domain, so media buying is exclusive.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "orbit-platform.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:governance"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              },
+              {
+                "grantee": "acme-media.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "brand-record-ignored-when-parent-denies",
+      "description": "The brand's own record grants the platform, but only the parent organization's record authorizes, and it grants the agency only.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "orbit-platform.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "pinnacle-agency.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "nova-motors.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ]
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "grant_absent"
+      }
+    },
+    {
+      "id": "brand-record-ignored-when-parent-grants",
+      "description": "The brand's own record is exclusive and grants another domain, but the parent organization's record grants the platform.",
+      "input": {
+        "brand": {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors",
+          "countries": [
+            "US"
+          ]
+        },
+        "parent_organization": "nova-holdings.example",
+        "account_operator": "orbit-platform.example",
+        "signer": {
+          "operator": "orbit-platform.example",
+          "origin": "https://agents.orbit-platform.example"
+        },
+        "trust_records": {
+          "nova-holdings.example": {
+            "grants": [
+              {
+                "grantee": "orbit-platform.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          },
+          "nova-motors.example": {
+            "grants": [
+              {
+                "grantee": "acme-media.example",
+                "scopes": [
+                  "adcp:media_buying"
+                ],
+                "profiles": {
+                  "adcp": {
+                    "brands": [
+                      "nova_motors"
+                    ]
+                  }
+                },
+                "valid_until": "2027-06-30T00:00:00Z"
+              }
+            ],
+            "exclusive_grants": true
+          }
+        },
+        "check_time": "2026-10-24T12:00:00Z",
+        "scope": "adcp:media_buying"
+      },
+      "expected": {
+        "outcome": "authorized",
+        "delegation_chain": [
+          "nova-holdings.example",
+          "orbit-platform.example"
+        ],
+        "effective": {
+          "scopes": [
+            "adcp:media_buying"
+          ],
+          "countries": null,
+          "valid_from": null,
+          "valid_until": "2027-06-30T00:00:00Z"
+        }
+      }
+    }
+  ]
+}

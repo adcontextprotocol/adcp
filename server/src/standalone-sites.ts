@@ -89,7 +89,7 @@ function llmsTxt(site: StandaloneSite): string {
     '',
     'The seller authenticates the actual calling agent using a signature or established credential mapping. Agent and operator names asserted in a request are not proof of identity.',
     'Resolve the brand through domain-controlled brand.json. For a distributed brand, verify both the child house_domain and the parent brand_refs entry. A one-sided claim or inferred registry hierarchy does not establish parent authority.',
-    'Evaluate grants from the verified parent trust record, or the standalone brand record, through the account operator to the authenticated agent operator. The account operator must be on the chain. One intermediary link is permitted; every link must cover the request.',
+    'Evaluate grants from the verified parent trust record, or the standalone brand record, along a delegation chain of at most two grants to the authenticated agent operator. Each later grant comes from its grantor\'s own trust.json. The account operator must be the brand, the parent organization, or the grantee of the first grant. Every grant must cover the request.',
     'The protocol permits implicit authority when the signer operator and account operator both match the brand or its verified parent. No third-party grant is needed in that case; agent identity and operator listing checks still apply.',
     '',
     '## Agents and grants',
