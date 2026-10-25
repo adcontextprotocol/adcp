@@ -128,7 +128,7 @@
           },
           "then": {
             "properties": {
-              "to": { "enum": ["pending_review", "suspended", "rejected", "archived"] }
+              "to": { "enum": ["pending_review", "suspended", "rejected", "archived", "approved"] }
             }
           }
         },
@@ -144,6 +144,30 @@
               "to": { "enum": ["approved", "rejected"] }
             }
           }
+        }
+      ]
+    },
+    "staged_update": {
+      "type": "object",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Present when this fire reports the review outcome of a staged update to a live creative (see creative.live_updates). The top-level revision_id, when present, names the staged revision. promoted: the staged content now serves on every assignment; transition is approved → approved with reason_code review_passed. rejected: review rejected the staged content; under on_rejection keeps_prior the transition is approved → approved and the prior version keeps serving, and under stops it is approved → rejected with paired impairments; reason_code is review_failure. A staged update that the buyer supersedes or withdraws does not fire.",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["promoted", "rejected"]
+        },
+        "rejection_reason": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Human-readable reason. Present only when outcome is rejected. Sellers MUST NOT include third-party PII in this field."
+        }
+      },
+      "required": ["outcome"],
+      "allOf": [
+        {
+          "if": { "properties": { "outcome": { "const": "promoted" } }, "required": ["outcome"] },
+          "then": { "not": { "required": ["rejection_reason"] } }
         }
       ]
     },
@@ -181,6 +205,30 @@
     "initiator"
   ],
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "transition": {
+            "properties": { "from": { "const": "approved" }, "to": { "const": "approved" } },
+            "required": ["from", "to"]
+          }
+        },
+        "required": ["transition"]
+      },
+      "then": { "required": ["staged_update"] }
+    },
+    {
+      "if": { "required": ["staged_update"] },
+      "then": {
+        "properties": {
+          "transition": {
+            "properties": { "from": { "const": "approved" }, "to": { "enum": ["approved", "rejected"] } }
+          }
+        }
+      }
+    }
+  ],
   "examples": [
     {
       "description": "Approved → rejected post-approval revocation (paired with a media-buy impairment)",

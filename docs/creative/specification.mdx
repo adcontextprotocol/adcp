@@ -402,8 +402,12 @@ attribution remain intact.
 Approval never transfers across changed revision content. A revision-aware
 changed-content update uses a new `revision_id` and enters the seller's existing review/update
 lifecycle. Existing active-delivery and deadline rules still decide whether the
-update is accepted, paused, or rejected; revision support does not create a
-staged inactive revision beside the current one.
+update is accepted, paused, or rejected; revision support alone does not create a
+staged inactive revision beside the current one. A seller that declares
+`creative.live_updates` with `serving: "staged"` does: the changed revision is
+held as the creative's `staged_update` and becomes current only when the seller
+promotes it, while the prior approved revision keeps serving. See
+[live creative updates](/docs/creative/task-reference/sync_creatives#live-creative-updates).
 
 `revision_id` is correlation identity, not a compare-and-swap token or ordering
 counter. Buyers MUST serialize writes to one creative. Sellers apply ordinary
@@ -490,7 +494,8 @@ archived ── buyer unarchives ──▶ approved (or pending_review when re-r
 - `processing` → `rejected`: automatic when processing fails (corrupt file, unsupported codec, constraint violation)
 - `pending_review` → `approved`: seller approves after content policy review
 - `pending_review` → `rejected`: seller rejects with `rejection_reason`
-- `approved` → `processing` or `pending_review` (buyer-initiated revision update): accepted only under the seller's ordinary active-delivery and deadline rules; acknowledged on `sync_creatives`, never via `creative.status_changed`. Changed revision content cannot inherit the prior approval.
+- `approved` → `processing` or `pending_review` (buyer-initiated revision update): accepted only under the seller's ordinary active-delivery and deadline rules; acknowledged on `sync_creatives`, never via `creative.status_changed`. Changed revision content cannot inherit the prior approval. A seller that declares `creative.live_updates` applies a change to a live creative in its declared mode instead: `uninterrupted` re-approves the change inside the call (the status stays `approved`), `staged` keeps the creative `approved` with a `staged_update` under review, and `paused_for_review` is this transition. See [live creative updates](/docs/creative/task-reference/sync_creatives#live-creative-updates).
+- `approved` → `approved` (staged update outcome): the seller promotes an approved staged update, or rejects one under `on_rejection: "keeps_prior"`, while the prior version kept serving. Fires `creative.status_changed` with `staged_update.outcome`. A staged update rejected under `on_rejection: "stops"` is `approved` → `rejected` instead, with impairments on the creative's buys.
 - `approved` → `suspended`: seller detects a recoverable dependency/authorization loss, such as `identity_authorization_revoked`, `identity_authorization_expired`, or `source_private` for a `published_post` reference. Sellers MUST surface a corresponding `impairment` on affected active buys.
 - `suspended` → `approved`: seller observes that the dependency is restored and any required re-review passes.
 - `suspended` → `rejected`: seller determines that a previously recoverable dependency/authorization loss cannot be restored for this creative, or that replacement/resubmission is required. Example: a revoked identity/post authorization for a `published_post` reference cannot be reauthorized. Sellers MUST keep affected active buys impaired until the creative is replaced, reassigned, or the package/buy is otherwise remediated.
@@ -508,7 +513,7 @@ Creative agents MUST include `status` and `rejection_reason` (when rejected) in 
 
 Seller-initiated and system-initiated transitions fire push notifications against the account's [`notification_configs[]`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions) subscribers — each entry whose `event_types[]` includes the fired type receives an independent fire. Two event types cover the surface:
 
-- **`creative.status_changed`** — fires on every seller-initiated or system-initiated transition: `pending_review → approved`/`rejected`, `approved → pending_review` (re-review), `approved → suspended` (recoverable dependency/authorization loss), `suspended → approved` (recovery), `suspended → rejected` (terminal dependency/authorization loss), `approved → rejected` (post-approval revocation), `approved → archived` (seller-initiated). Payload: [`creative-status-changed-webhook.json`](https://adcontextprotocol.org/schemas/v3/creative/creative-status-changed-webhook.json).
+- **`creative.status_changed`** — fires on every seller-initiated or system-initiated transition: `pending_review → approved`/`rejected`, `approved → approved` (staged update promoted or rejected, carrying `staged_update.outcome`), `approved → pending_review` (re-review), `approved → suspended` (recoverable dependency/authorization loss), `suspended → approved` (recovery), `suspended → rejected` (terminal dependency/authorization loss), `approved → rejected` (post-approval revocation), `approved → archived` (seller-initiated). Payload: [`creative-status-changed-webhook.json`](https://adcontextprotocol.org/schemas/v3/creative/creative-status-changed-webhook.json).
 - **`creative.purged`** — fires when a creative is destroyed (retention sweep, takedown, legal erasure). `soft` purges retain a tombstone on `list_creatives` (with `include_purged: true`) for 30 days; `hard` purges retain no record — the webhook is the buyer's only signal. Payload: [`creative-purged-webhook.json`](https://adcontextprotocol.org/schemas/v3/creative/creative-purged-webhook.json).
 
 Buyer-initiated transitions (archive, unarchive, resubmit) do NOT fire — those are acknowledged on the `sync_creatives` response path. The push channel exists only for transitions the buyer did not initiate.

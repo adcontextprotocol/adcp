@@ -522,6 +522,14 @@
           "$ref": "/schemas/core/creative-revision-id.json",
           "description": "Buyer-assigned immutable input-content revision identity scoped to a creative"
         },
+        "live-update-policy": {
+          "$ref": "/schemas/core/live-update-policy.json",
+          "description": "Which kinds of change a seller applies in place to a live creative, and how the creative serves while each is decided"
+        },
+        "creative-staged-update": {
+          "$ref": "/schemas/core/creative-staged-update.json",
+          "description": "A change to a live creative accepted in staged mode: the prior version serves until the seller promotes it"
+        },
         "property": {
           "$ref": "/schemas/core/property.json",
           "description": "An advertising property that can be validated via adagents.json"
@@ -1386,6 +1394,14 @@
         "creative-merge-rejection-reason": {
           "$ref": "/schemas/enums/creative-merge-rejection-reason.json",
           "description": "Why a seller rejected a sync_creatives merge assignment operation"
+        },
+        "creative-change-kind": {
+          "$ref": "/schemas/enums/creative-change-kind.json",
+          "description": "Kind of change a sync_creatives item makes to a creative (click_through, trackers, asset_content, format)"
+        },
+        "live-update-serving-mode": {
+          "$ref": "/schemas/enums/live-update-serving-mode.json",
+          "description": "How a live creative serves while a seller decides an in-place change (uninterrupted, staged, paused_for_review)"
         },
         "audience-size-precision": {
           "$ref": "/schemas/enums/audience-size-precision.json",

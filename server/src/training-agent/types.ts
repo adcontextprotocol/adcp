@@ -2,6 +2,7 @@
  * Internal types for the training agent.
  * Schema-level types (Product, Format, etc.) come from @adcp/sdk.
  */
+import type { StagedCreativeUpdate } from './live-creative-updates.js';
 import type {
   LegacyProduct as Product,
   Proposal,
@@ -1116,6 +1117,9 @@ export interface CreativeState {
     reasonCode: string;
   };
   webhookActivity?: CreativeWebhookActivityRecord[];
+  /** Live creative update accepted in staged mode and not yet promoted. The
+   * fields above describe the version that serves until promotion. */
+  stagedUpdate?: StagedCreativeUpdate;
 }
 
 export interface CreativeWebhookActivityRecord {

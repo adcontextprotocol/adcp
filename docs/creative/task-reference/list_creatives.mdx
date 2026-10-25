@@ -263,6 +263,8 @@ not maintain it omits it and the buyer falls back to rereading.
 | `format_option_ref` | object | Optional exact publisher/product option reference |
 | `format_id` | object | Deprecated 3.x named-format compatibility field |
 | `status` | string | Approval status |
+| `live_updates` | object | Experimental. Present on every live creative when the seller declares `creative.live_updates`: the exact kinds of change it applies in place to this creative and the serving mode for each. See [Live update readback](#live-update-readback). |
+| `staged_update` | object | Experimental. A change accepted in `staged` mode and not yet promoted. While present, `assets`, `revision_id`, and `status` describe the version that serves. See [Live update readback](#live-update-readback). |
 | `status_as_of` | string | When the seller last refreshed `status` from its source of truth. Optional; omission makes no freshness assertion. A value earlier than your last accepted write for this creative means the seller has not yet confirmed that write. See [creative state freshness](/docs/media-buy/specification#creative-state-freshness). |
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
@@ -281,6 +283,39 @@ not maintain it omits it and the buyer falls back to rereading.
 | `snapshot_unavailable_reason` | string | Why snapshot is missing — `SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, or `SNAPSHOT_PERMISSION_DENIED` |
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
 | `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as [`get_signals`](/docs/signals/tasks/get_signals) and [`list_content_standards`](/docs/governance/content-standards/tasks/list_content_standards). |
+
+### Live update readback
+
+<Note>Experimental in 3.3, with [`creative.live_updates`](/docs/protocol/get_adcp_capabilities#creative).</Note>
+
+A seller that declares `creative.live_updates` returns `live_updates` on every live creative: an approved creative with at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state, paused or not. It omits the field on creatives that are not live, which take any change as an ordinary upsert. `live_updates.in_place` lists the kinds of change the seller applies in place to this creative and the serving mode for each, given the products and ad servers its assignments actually use. It is at least as permissive as the capability declaration, and a change it lists MUST NOT be refused with [`CREATIVE_LIVE_UPDATE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-creative-live-update-unsupported). A buyer reads it before changing a live creative and chooses between syncing in place and syncing a new `creative_id`; see [Live creative updates](/docs/creative/task-reference/sync_creatives#live-creative-updates).
+
+`staged_update` is present while a change accepted in `staged` mode awaits promotion. The rest of the row describes the version that serves: `assets`, `revision_id`, and `status` stay those of the prior approved version until the seller promotes the update. On promotion the row's content and `revision_id` become the staged ones and `staged_update` is removed. Under `on_rejection: "keeps_prior"`, a rejected update stays as `staged_update.status: "rejected"` with its `rejection_reason` until the buyer supersedes or withdraws it.
+
+```json
+{
+  "creative_id": "acme_hero_video",
+  "revision_id": "rev_2026_10_01",
+  "name": "Acme hero video",
+  "format_kind": "video",
+  "status": "approved",
+  "created_date": "2026-10-01T12:00:00Z",
+  "updated_date": "2026-11-02T15:04:00Z",
+  "live_updates": {
+    "in_place": [
+      { "change": "trackers", "serving": "uninterrupted" },
+      { "change": "click_through", "serving": "uninterrupted" },
+      { "change": "asset_content", "serving": "staged", "on_rejection": "keeps_prior" }
+    ]
+  },
+  "staged_update": {
+    "status": "pending_review",
+    "revision_id": "rev_2026_11_02",
+    "change_kinds": ["asset_content"],
+    "staged_at": "2026-11-02T15:04:00Z"
+  }
+}
+```
 
 ### Creatives created outside AdCP
 

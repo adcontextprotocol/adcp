@@ -6,6 +6,11 @@
       "target_version": "3.3",
       "note": "accept_proposal returns this when a pinned third-party definition no longer matches its definition pin. New 3.3 media-buy wire code \u2014 held for 3.3."
     },
+    "CREATIVE_LIVE_UPDATE_UNSUPPORTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.3",
+      "note": "sync_creatives refuses a change to a live creative that a seller declaring creative.live_updates does not apply in place. New 3.3 creative wire code \u2014 held for 3.3."
+    },
     "CREATIVE_MERGE_REJECTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.3",

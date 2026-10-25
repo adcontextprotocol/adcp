@@ -54,7 +54,8 @@ import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
-import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, supportsAccountChangeFeed, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -4717,6 +4718,7 @@ interface SyncCreativeResult {
   action: 'created' | 'updated' | 'failed';
   status?: string;
   localization?: Record<string, unknown>;
+  staged_update?: Record<string, unknown>;
   errors?: TaskError[];
 }
 
@@ -18331,6 +18333,48 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       continue;
     }
     if (candidateManifest) stagedCreativeManifests.set(creativeId, candidateManifest);
+
+    // Live creative updates: classify a change to a serving creative against
+    // the version that serves, then apply, stage, or refuse it.
+    const nextContent: StagedCreativeContent = {
+      ...(identity.kind === 'legacy' ? { formatId: identity.formatId } : { formatKind: identity.formatKind }),
+      ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
+      ...(candidateManifest && { assets: candidateManifest.assets }),
+      ...(candidateManifest?.component_assets && { componentAssets: candidateManifest.component_assets }),
+      ...(localization && { localization }),
+      ...(candidateManifest && { manifest: candidateManifest }),
+    };
+    let liveUpdateMode: LiveUpdateServingMode | null = null;
+    let liveChangeKinds: CreativeChangeKind[] = [];
+    // Only an approved creative is live; any other status takes an ordinary upsert.
+    if (existingCreative?.status === 'approved' && declaresLiveCreativeUpdates(ctx)) {
+      const livePackages = livePackageIds(session, creativeId);
+      if (livePackages.length > 0) {
+        const formatChanged = !isDeepStrictEqual(
+          storedCreativeFormatRecord(existingCreative),
+          storedCreativeFormatRecord({ ...existingCreative, ...EMPTY_FORMAT_IDENTITY, ...nextContent }),
+        );
+        liveChangeKinds = classifyCreativeChange(servingContent(existingCreative), nextContent, formatChanged);
+        const decision = decideLiveUpdate(liveChangeKinds);
+        if (decision.outcome === 'refuse') {
+          results.push({
+            creative_id: creativeId,
+            action: 'failed',
+            errors: [{
+              code: 'CREATIVE_LIVE_UPDATE_UNSUPPORTED',
+              message: `Creative ${creativeId} is live and this seller does not apply ${decision.refusedChanges.join(', ')} changes in place. Sync the change as a new creative_id and replace it on the live packages.`,
+              field: `creatives[${creativeId}]`,
+              recovery: 'correctable',
+              details: { refused_changes: decision.refusedChanges, live_package_ids: livePackages },
+            }] as TaskError[],
+          });
+          stagedCreativeManifests.delete(creativeId);
+          continue;
+        }
+        liveUpdateMode = decision.mode;
+      }
+    }
+
     if (candidateManifest) {
       if (requiresProductBoundManifestValidation || candidateManifest.component_assets !== undefined) {
         const schemaViolations = await validateManifestSchema(candidateManifest);
@@ -18385,9 +18429,29 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       }
     }
 
+    // Staged: the serving version stays put and the change waits for review.
+    // Re-syncing the content already staged leaves its review untouched;
+    // syncing the serving content (no change kinds) withdraws it.
+    const priorStaged = existingCreative?.stagedUpdate;
+    const stagedUpdate: StagedCreativeUpdate | undefined = liveUpdateMode === 'staged'
+      ? (priorStaged && priorStaged.status !== 'rejected' && isDeepStrictEqual(priorStaged.content, nextContent)
+        ? priorStaged
+        : { status: 'pending_review', changeKinds: liveChangeKinds, stagedAt: new Date().toISOString(), content: nextContent })
+      : undefined;
+    const servedStatus = liveUpdateMode === 'uninterrupted'
+      ? 'approved'
+      : existingCreative?.status ?? 'approved';
+
     if (!isDryRun) {
       const manifest = candidateManifest;
-      const storedCreative: CreativeState = {
+      const storedCreative: CreativeState = stagedUpdate && existingCreative ? {
+        ...existingCreative,
+        accountId: accountId ?? existingCreative.accountId,
+        accountRef: ctx.resolvedAccount ?? req.account ?? existingCreative.accountRef,
+        name: creative.name,
+        syncedAt: new Date().toISOString(),
+        stagedUpdate,
+      } : {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
         accountRef: ctx.resolvedAccount ?? req.account ?? existingCreative?.accountRef,
@@ -18404,7 +18468,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         ...(manifest?.component_assets && { componentAssets: manifest.component_assets }),
         ...(localization && { localization }),
         name: creative.name,
-        status: existingCreative?.status ?? 'approved',
+        status: servedStatus,
         syncedAt: new Date().toISOString(),
         // manifest is a training-agent extension, not in SDK CreativeAsset type.
         // Normalize its identity from the validated top-level union so a
@@ -18423,6 +18487,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
               ...(!isDeepStrictEqual(storedCreativeFormatRecord(existingCreative), storedCreativeFormatRecord(storedCreative))
                 ? ['/format'] : []),
               ...(!isDeepStrictEqual(existingCreative.manifest, storedCreative.manifest) ? ['/manifest'] : []),
+              ...(!isDeepStrictEqual(existingCreative.stagedUpdate, storedCreative.stagedUpdate) ? ['/staged_update'] : []),
             ]
           : [''];
         if (!existingCreative || changedPaths.length > 0) {
@@ -18454,8 +18519,9 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     results.push({
       creative_id: creativeId,
       action: existing ? 'updated' : 'created',
-      status: existingCreative?.status ?? 'approved',
+      status: servedStatus,
       ...(localization && { localization }),
+      ...(stagedUpdate && { staged_update: stagedUpdateWire(stagedUpdate) }),
     });
   }
 
@@ -18587,6 +18653,22 @@ const FROZEN_PAGINATION_CREATIVE_IDS = new Set([
   'pagination_integrity_creative_2',
   'pagination_integrity_creative_3',
 ]);
+
+const EMPTY_FORMAT_IDENTITY = { formatId: undefined, formatKind: undefined, formatOptionRef: undefined } as const;
+
+/** Live creative updates ship with the creative library surfaces (3.2+ wire,
+ * outside the frozen 3.0 facade). /sales declares has_creative_library only
+ * where the account change feed is advertised (tenants/router.ts), and
+ * live_updates requires the library, so the two share one gate. */
+function liveCreativeUpdatesEnabled(ctx: TrainingContext): boolean {
+  return !isThreeZeroStoryboardCompat(ctx)
+    && supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION);
+}
+
+/** Only sellers with media buys can have live creatives to declare for. */
+function declaresLiveCreativeUpdates(ctx: TrainingContext): boolean {
+  return liveCreativeUpdatesEnabled(ctx) && (ctx.tenantId === 'sales' || ctx.tenantId == null);
+}
 
 function storedCreativeFormatRecord(creative: CreativeState): Record<string, unknown> {
   if (creative.formatKind) {
@@ -18869,6 +18951,14 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       }
       if (req.include_snapshot) {
         base.snapshot_unavailable_reason = 'SNAPSHOT_UNSUPPORTED';
+      }
+      if (declaresLiveCreativeUpdates(ctx)) {
+        if ((!selectedFields || selectedFields.has('live_updates')) && c.status === 'approved' && livePackageIds(session, c.creativeId).length > 0) {
+          base.live_updates = { in_place: liveUpdatesCapability().in_place };
+        }
+        if (c.stagedUpdate && (!selectedFields || selectedFields.has('staged_update'))) {
+          base.staged_update = stagedUpdateWire(c.stagedUpdate);
+        }
       }
       if (c.purge) {
         base.purge = {
@@ -20459,6 +20549,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     ...(!isThreeZeroResponse && (ctx.tenantId === 'sales' || ctx.tenantId == null)
       ? ['media_buy.audience_activation', 'media_buy.product_identity', 'media_buy.daypart_granularity']
       : []),
+    ...(declaresLiveCreativeUpdates(ctx) ? ['creative.live_updates'] : []),
   ];
   const supportedCreativeFormats = includeThreeOneFields(ctx)
     ? supportedCanonicalFormatsCapability()
@@ -20642,6 +20733,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
+      ...(declaresLiveCreativeUpdates(ctx) && { live_updates: liveUpdatesCapability() }),
       ...(supportedCreativeFormats ? {
         bills_through_adcp: creativeBillsThroughAdcp(ctx),
         supported_formats: supportedCreativeFormats,
