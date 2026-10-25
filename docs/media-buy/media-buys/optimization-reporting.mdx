@@ -106,16 +106,16 @@ A seller wants to know whether it is making the buyer happy, and that means know
 
 | The buyer wants | Say it with |
 |---|---|
-| The seller to own the cost per result | A fixed price on an outcome pricing model: [CPC](/docs/media-buy/advanced-topics/pricing-models#cpc-cost-per-click), [CPCV](/docs/media-buy/advanced-topics/pricing-models#cpcv-cost-per-completed-view), or [CPA](/docs/media-buy/advanced-topics/pricing-models#cpa-cost-per-acquisition). The buyer pays only for results, at that price. This covers cost alone, not volume or quality. |
-| The seller to own the volume | `delivery_type: "guaranteed"`. |
-| The seller to own the quality | `performance_standards[]`: a floor or ceiling the seller owes, measured by the named vendor, with makegoods on breach. |
-| The seller to optimize toward it | `optimization_goals[]` with a `target`; `priority` says which goal is primary. `bidding.cost_per` with `strength` `cap` or `target` says how tightly to hold the cost. |
+| The seller to own the cost per result | A fixed price on an outcome pricing model: [CPC](/docs/media-buy/advanced-topics/pricing-models#cpc-cost-per-click), [CPCV](/docs/media-buy/advanced-topics/pricing-models#cpcv-cost-per-completed-view), or [CPA](/docs/media-buy/advanced-topics/pricing-models#cpa-cost-per-acquisition), where a CPA option's event definition sets what counts as a result. The buyer pays only for results, at that price. This covers cost alone, not volume or quality. |
+| The seller to own the volume | Buy a product with `delivery_type: "guaranteed"` (find them with `offer_filters.delivery_type`) and set the package's `impressions` goal. |
+| The seller to own the quality | `performance_standards[]`: a viewability, IVT, completion, brand-safety, or attention threshold the seller owes, measured by the named vendor. Remedies on breach come from `measurement_terms.makegood_policy`. |
+| The seller to optimize toward it | `optimization_goals[]` with a `target`; `priority` says which goal is primary. `bidding.cost_per` (`strength` `cap` or `target`) or `bidding.roas` (`strength` `floor` or `target`) says how tightly to hold cost or return. Neither is a guarantee. |
 | The metric reported, not optimized | `committed_metrics[]` with no matching optimization goal. |
-| A specific count to decide | The goal's or standard's `vendor`, a `vendor_metric` goal, or an `event` goal fed by the buyer's own event sources. |
-| To plan an outcome before buying | `criteria.outcome_target` on [`request_proposals`](/docs/media-buy/task-reference/request_proposals). Proposals answer with pricing and `commercial_terms.bidding` the buyer can compare. To see both guaranteed and optimized offers, leave `criteria.offer_filters.delivery_type` and `pricing_structures` unset and compare pricing models across proposals. |
-| To tell the seller how it is doing by the buyer's own measure | [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback): a `performance_index` against a named `baseline` for one metric. Use it when the buyer's view differs from the seller's count, for example when the buyer's measurement discounts invalid clicks. |
+| A specific count to decide | Billing: `measurement_terms.billing_measurement` names the vendor whose count is invoiced, with a `max_variance_percent` tolerance. Quality: each standard's `vendor`. Optimization: a `vendor_metric` goal, an `event` goal fed by the buyer's own event sources, or `vendor` on a viewability goal. |
+| To plan an outcome before buying | `criteria.outcome_target` on [`request_proposals`](/docs/media-buy/task-reference/request_proposals), for sellers that declare `media_buy.outcome_target`. Proposals answer with pricing and a forecast, plus `commercial_terms.bidding.cost_per` when the request sets `outcome_target.cost_per`. To see both guaranteed and optimized offers, leave `criteria.offer_filters.delivery_type` and `pricing_structures` unset and compare pricing models across proposals. |
+| To tell the seller how it is doing by the buyer's own measure | [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback): a `performance_index` against a named `baseline` for one metric. Use it when the buyer's view differs from the seller's count, for example when the buyer's measurement discounts invalid clicks. It steers optimization only; billing still follows `measurement_terms`. |
 
-Avoid stating goals the buyer will not judge on. Every extra goal dilutes the seller's objective; a metric the buyer only wants to see belongs in `committed_metrics[]`.
+Avoid stating goals the buyer will not judge on. Every extra goal competes with the primary one for the seller's attention; a metric the buyer only wants to see belongs in `committed_metrics[]`.
 
 ### Worked example: Adelaide attention end-to-end
 
