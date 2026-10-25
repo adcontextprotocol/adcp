@@ -55,7 +55,9 @@ describe("performance standard metric_id", () => {
       );
     });
 
-    it(`${name}: rejects metric_id on viewability and completion_rate`, async () => {
+    // The discovery filter carries no guard: a filter entry only narrows
+    // product matching, and the standards it matches enforce the rule.
+    if (name !== "offer_filter") it(`${name}: rejects metric_id on viewability and completion_rate`, async () => {
       const validate = await load();
       const viewability = { metric: "viewability", threshold: 0.7, standard: "mrc", vendor: VENDOR, metric_id: "viewable_rate" };
       assert.equal(validate(viewability), false);

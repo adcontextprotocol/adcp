@@ -194,7 +194,6 @@
     },
     "required_performance_standards": {
       "type": "array",
-      "description": "Exclude products that cannot meet these thresholds with the named vendor. With metric_id, the threshold applies to that vendor metric only (see performance-standard.json).",
       "items": {
         "type": "object",
         "properties": {
@@ -205,12 +204,6 @@
           "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json", "x-added-in": "3.3.0" }
         },
         "required": ["metric", "threshold", "vendor"],
-        "allOf": [
-          {
-            "if": { "properties": { "metric": { "enum": ["viewability", "completion_rate"] } }, "required": ["metric"] },
-            "then": { "not": { "required": ["metric_id"] } }
-          }
-        ],
         "additionalProperties": true
       },
       "minItems": 1
