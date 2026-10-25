@@ -204,6 +204,7 @@ schema_removals_not_checked:
       - "creative/list-creative-formats-request.json#/properties/format_ids"
       - "media-buy/list-creative-formats-request.json#/properties/format_ids"
       - "media-buy/package-request.json#/properties/format_ids"
+      - "media-buy/package-forecast-input.json#/properties/format_ids"
 
   - change: "Exact plural format_ids projections outside the product"
     issue: 7629

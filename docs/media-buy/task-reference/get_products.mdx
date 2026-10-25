@@ -648,6 +648,7 @@ Each entry is a discriminated union on `scope`:
 | `product_id` | string | Yes | Product ID from a previous `get_products` response |
 | `action` | string | No | `"include"` (default): return this product with updated pricing and data. `"omit"`: exclude from the response. `"more_like_this"`: find similar products (the original is also returned). When omitted, the seller treats the entry as `"include"`. |
 | `ask` | string | No | What the buyer is asking for. For `"include"`: specific changes (e.g., `"add 16:9 format"`). For `"more_like_this"`: what "similar" means (e.g., `"same audience but video format"`). Ignored when `action` is `"omit"`. |
+| `package` | PackageForecastInput | No | Added in 3.3. Exact proposed package for a read-only availability check. Valid only with `include` (including the default). Uses the create-package field types; `pricing_option_id` and numeric `budget` are required, and the enclosing entry supplies `product_id`. Optional `impressions`, flight boundaries, targeting, formats, and other package controls retain their create semantics. See [Exact package availability](/docs/media-buy/product-discovery/refinement#check-an-exact-package-before-booking) for input resolution and required seller outcomes. |
 
 #### scope: "proposal"
 
@@ -666,9 +667,23 @@ When the seller receives a `refine` array, the response includes `refinement_app
 |-------|------|----------|-------------|
 | `scope` | string | Yes | Echoes the scope (`"request"` / `"product"` / `"proposal"`) from the corresponding `refine` entry. |
 | `product_id` | string | Yes when `scope` is `"product"` | Echoes `product_id` from the corresponding refine entry. |
+| `result_product_id` | string | For an applied package forecast | Added in 3.3. Identifies exactly one returned Product, even when refinement mints a configured ID. The requested pricing option and terms remain unchanged. Buyers use this ID at create. |
+| `resolved_start_time`, `resolved_end_time` | date-time | With `result_product_id` | Added in 3.3. Exact forecast flight after resolving package timestamps or date-filter defaults. Buyers copy both timestamps onto the package at create. End must be after start. |
 | `proposal_id` | string | Yes when `scope` is `"proposal"` | Echoes `proposal_id` from the corresponding refine entry. |
 | `status` | string | Yes | `"applied"`: ask fulfilled. `"partial"`: partially fulfilled. `"unable"`: could not fulfill. |
-| `notes` | string | No | Seller explanation. Recommended when status is `"partial"` or `"unable"`. |
+| `notes` | string | Conditional | Seller explanation. Recommended when status is `"partial"` or `"unable"`; required and non-empty for a structured package entry with status `"unable"`. |
+
+If any request entry carries `package`, sellers MUST include the complete
+position-matched `refinement_applied` array. A package entry's `applied` outcome
+confirms an exact availability forecast on the returned product, even if
+`fields` omitted `forecast`, and includes `result_product_id` and both resolved
+timestamps so the buyer can reproduce the exact package at create. `unable`
+with `notes` explains why the seller
+could not compute it. A seller MUST NOT use a substitute forecast or a
+`partial` outcome for that package. Insufficient inventory is `applied` with
+`availability_status: "unavailable"`. Packages are forecast independently;
+the call books and reserves no inventory. Without structured packages, the
+existing optional-outcome behavior is unchanged.
 
 ### Catalog discovery
 

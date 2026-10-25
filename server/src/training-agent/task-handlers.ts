@@ -11682,7 +11682,7 @@ async function handleGetProductsUnlocked(
   // is intentionally not part of the deprecated get_products wire schema.
   type RefineEntry =
     | { scope: 'request'; ask?: string }
-    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
+    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string; package?: Record<string, unknown> }
     | {
         scope: 'proposal';
         proposal_id: string;
@@ -11714,6 +11714,7 @@ async function handleGetProductsUnlocked(
       : [],
   );
   const refinementApplied: RefinementAppliedEntry[] = [];
+  const unsupportedPackageForecastIds = new Set<string>();
   const proposalOmitIds = new Set<string>();
   const refinedProposalOverrides = new Map<string, Proposal>();
   const explicitlySelectedProposals = new Map<string, Proposal>();
@@ -11900,6 +11901,16 @@ async function handleGetProductsUnlocked(
           refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         } else if (action === 'include') {
           includeIds.add(op.product_id);
+          if (op.package !== undefined) {
+            unsupportedPackageForecastIds.add(op.product_id);
+            refinementApplied.push({
+              scope: 'product',
+              product_id: op.product_id,
+              status: 'unable',
+              notes: 'The training agent cannot compute an availability forecast for an exact proposed package.',
+            });
+            continue;
+          }
           if (!passesFilters) {
             refinementApplied.push({
               scope: 'product',
@@ -12764,10 +12775,20 @@ async function handleGetProductsUnlocked(
   }
 
   // Store context for refine
-  const responseProducts = products.map(product => productForServedAdcpVersion(
-    isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
-    ctx.servedAdcpVersion,
-  ));
+  const responseProducts = products.map(product => {
+    const servedProduct = productForServedAdcpVersion(
+      isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
+      ctx.servedAdcpVersion,
+    );
+    // Suppress ordinary/horizon forecasts after every generic forecast path;
+    // none is evidence that the unsupported exact package was evaluated.
+    const sourceProductId = discoverySourceProductIds.get(product.product_id) ?? product.product_id;
+    if (!unsupportedPackageForecastIds.has(sourceProductId)
+      && !unsupportedPackageForecastIds.has(product.product_id)) return servedProduct;
+    const withoutForecast = { ...servedProduct };
+    delete withoutForecast.forecast;
+    return withoutForecast;
+  });
   const retainedCommittedProposals = new Map(
     (session.lastGetProductsContext?.proposals ?? [])
       .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
@@ -24260,6 +24281,12 @@ function validateIdempotencyProtectedInput(
   if (toolName !== 'get_products') return undefined;
   if (args.brief !== undefined && typeof args.brief !== 'string') {
     return { message: 'brief must be a string when provided', field: 'brief' };
+  }
+  if (Array.isArray(args.refine) && args.refine.some(entry => isRecord(entry) && 'package' in entry)) {
+    // The pinned SDK preserves unknown entry fields. Validate structured
+    // packages against source before replay claims or downstream state changes.
+    const sourceError = validateProductDiscoverySourceInput('get-products-request', args);
+    if (sourceError) return sourceError;
   }
   const hasDecline = Array.isArray(args.refine) && args.refine.some(entry => (
     isRecord(entry) && entry.scope === 'proposal' && entry.action === 'decline'
