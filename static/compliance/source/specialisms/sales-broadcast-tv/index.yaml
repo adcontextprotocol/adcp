@@ -80,7 +80,7 @@ fixtures:
         operator: "broadcast-tv.pinnacle-agency.example"
         billing: "operator"
         status: "active"
-        sandbox: false
+        sandbox: true
   products:
     - product_id: "primetime_30s_mf"
       delivery_type: "guaranteed"
@@ -208,6 +208,7 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
 
           context:
             correlation_id: "sales_broadcast_tv--get_products_brief"
@@ -298,6 +299,7 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
           agency_estimate_number: "PNNL-NM-2026-Q4-0847"
           start_time: "asap"
           end_time: "2099-12-31T23:59:59Z"
@@ -377,6 +379,7 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
 
@@ -440,6 +443,7 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
           creatives:
             - creative_id: "volta_ev_launch_30s"
               name: "Nova Volta EV Launch - :30"
@@ -591,6 +595,7 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true
@@ -660,6 +665,7 @@ phases:
             brand:
               domain: "novamotors.example"
             operator: "broadcast-tv.pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true
