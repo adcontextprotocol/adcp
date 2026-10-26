@@ -20,9 +20,9 @@ import {
 // lookup is mocked; execution and hosted grading are the published runner and
 // the production adapters.
 const pinned = vi.hoisted(() => ({ storyboards: new Map<string, unknown>() }));
-vi.mock('@adcp/sdk/testing', async importOriginal => ({
-  ...await importOriginal<typeof import('@adcp/sdk/testing')>(),
-  getComplianceStoryboardById: (id: string) => pinned.storyboards.get(id),
+vi.mock('../../server/src/compliance/storyboard-cache.js', () => ({
+  getCachedComplianceStoryboardById: (id: string) => pinned.storyboards.get(id),
+  clearComplianceStoryboardCache: () => {},
 }));
 
 const require = createRequire(import.meta.url);
