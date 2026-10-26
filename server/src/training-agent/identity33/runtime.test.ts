@@ -77,3 +77,23 @@ describe('lab route paths', () => {
       .toEqual([...TRAINING_AGENT_LAB_MCP_PATHS].sort());
   });
 });
+
+describe('identity route principal tools in production', () => {
+  it('serves sync_principal and get_principal on the identity route even where production gates experimental tools', async () => {
+    const { buildSalesTenantConfig } = await import('../tenants/sales.js');
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const tools = (options: Parameters<typeof buildSalesTenantConfig>[1]) => Object.keys(
+        (buildSalesTenantConfig('https://test-agent.example', options).config.serverOptions as { customTools?: Record<string, unknown> })
+          .customTools ?? {},
+      );
+      expect(tools({ identity33: { authorize: async () => {} } })).toEqual(expect.arrayContaining(['sync_principal', 'get_principal']));
+      const publicSales = tools({});
+      expect(publicSales).not.toContain('sync_principal');
+      expect(publicSales).not.toContain('list_account_changes');
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+});
