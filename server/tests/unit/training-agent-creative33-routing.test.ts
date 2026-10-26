@@ -237,6 +237,33 @@ describe('creative 3.3 beta route security boundaries', () => {
     expect(rows(readback.body)).toEqual([]);
   });
 
+  it('redacts unexpected backend errors while preserving known failures and successful batch items', async () => {
+    const privateDetails = 'getaddrinfo ENOTFOUND db-internal.acme.example';
+    class UnavailableLibraryStore extends InMemoryStateStore {
+      override async get<T extends Record<string, unknown>>(collection: string, id: string): Promise<T | null> {
+        if (collection === 'creative33_domain_library') throw new Error(privateDetails);
+        return super.get<T>(collection, id);
+      }
+    }
+    const manifest = { format_kind: 'html5', assets: { html5_bundle: {
+      asset_type: 'zip', url: 'https://cdn.acme.example/banner.zip', width: 300, height: 250,
+    } } };
+    const response = await tool(boot({ store: new UnavailableLibraryStore() }), 'preview_creative', {
+      request_type: 'batch', output_format: 'html', requests: [
+        { creative_id: 'backend-unavailable' },
+        { creative_manifest: manifest, inputs: [{ name: 'Unsupported canvas', macros: { AD_WIDTH: '970', AD_HEIGHT: '250' } }] },
+        { creative_manifest: manifest },
+      ],
+    });
+    expect(errorCode(response.body)).toBeUndefined();
+    expect(payload(response.body)).toMatchObject({ response_type: 'batch', results: [
+      { success: false, errors: [{ code: 'SERVICE_UNAVAILABLE', recovery: 'transient', message: 'Creative preview is temporarily unavailable.' }] },
+      { success: false, errors: [{ code: 'INVALID_REQUEST', recovery: 'correctable' }] },
+      { success: true, quality_used: 'draft' },
+    ] });
+    expect(JSON.stringify(response.body)).not.toContain(privateDetails);
+  });
+
   it('advertises only the exact beta and defaults unversioned discovery to it', async () => {
     const app = boot();
     for (const args of [{}, { adcp_version: VERSION }, { adcp_major_version: 3 }]) {
