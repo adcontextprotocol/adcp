@@ -58,7 +58,7 @@ The response reveals only the authenticated caller's identity and state. It neve
 |---|---|
 | `status` | `enums/principal-relationship-status.json`: `pending_approval` (the seller is reviewing an application or approval, as in the [account status lifecycle](/docs/accounts/overview#account-status-lifecycle)), `active`, `suspended`, or `blocked`. While `suspended` or `blocked`, calls that need the relationship fail with [`AGENT_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-agent-suspended) or [`AGENT_BLOCKED`](/docs/building/verification/compliance-catalog#error-code-agent-blocked). |
 | `expires_at` | When the relationship lapses unless renewed. Absent means no scheduled expiry. |
-| `setup` | While `pending_approval`, the caller's next step: `{ url, message, expires_at }`, the same shape as [`sync_accounts`](/docs/accounts/tasks/sync_accounts) `setup`. Treat `url` as untrusted: surface it, never fetch it. |
+| `setup` | While `pending_approval`, the caller's next step: `{ url, message, expires_at }`, the same shape as [`sync_accounts`](/docs/accounts/tasks/sync_accounts) `setup`, plus the experimental `waiting_on` (`seller` or `buyer`) and `kind` from [account requests](/docs/accounts/tasks/request_account#lifecycle). Treat `url` as untrusted: surface it, never fetch it. |
 
 `relationship` is **omitted** when the seller has no relationship with the caller and no application in progress. That is the identity-established state ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). Because the field is returned only to the authenticated caller, it is not an onboarding oracle: it says nothing about any other agent.
 

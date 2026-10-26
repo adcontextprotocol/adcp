@@ -36,7 +36,8 @@
                   "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
                 },
                 "minItems": 1,
-                "uniqueItems": true
+                "uniqueItems": true,
+                "x-max-items-4.0": 512
               }
             },
             "required": ["values"],
@@ -44,12 +45,14 @@
           }
         ]
       },
-      "minProperties": 1
+      "minProperties": 1,
+      "x-max-properties-4.0": 256
     },
     "catalog_version": {
       "type": "string",
       "minLength": 1,
-      "description": "Optional opaque ISO subdivision catalog or seller-mapping version that identifies the support snapshot. It is provenance, not part of subdivision identity."
+      "description": "Optional opaque ISO subdivision catalog or seller-mapping version that identifies the support snapshot. It is provenance, not part of subdivision identity.",
+      "x-max-length-4.0": 32
     },
     "as_of": {
       "type": "string",

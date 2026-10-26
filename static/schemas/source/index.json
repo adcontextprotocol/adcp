@@ -898,6 +898,22 @@
           "$ref": "/schemas/core/account-status-changed-webhook.json",
           "description": "Account-level webhook payload that invalidates a list_accounts account status snapshot"
         },
+        "account-request-record": {
+          "$ref": "/schemas/core/account-request-record.json",
+          "description": "Experimental: a buyer agent's request for an advertiser account and its lifecycle (in_review, resolved, ambiguous, rejected)"
+        },
+        "account-candidate": {
+          "$ref": "/schemas/core/account-candidate.json",
+          "description": "Experimental: an account offered to a human to pick from an ambiguous request or reference"
+        },
+        "pending-action": {
+          "$ref": "/schemas/core/pending-action.json",
+          "description": "Experimental: what has to happen next, and on whose side, before a pending account request can move on"
+        },
+        "account-request-changed-webhook": {
+          "$ref": "/schemas/core/account-request-changed-webhook.json",
+          "description": "Experimental: caller-anchored invalidation payload fired when an account request changes state"
+        },
         "account-change": {
           "$ref": "/schemas/core/account-change.json",
           "description": "Immutable metadata for one material change to authoritative account-scoped state"
@@ -1274,6 +1290,22 @@
         "agent-onboarding-requirement-kind": {
           "$ref": "/schemas/enums/agent-onboarding-requirement-kind.json",
           "description": "Extensible onboarding requirement kinds, each scoped to a direction"
+        },
+        "account-request-state": {
+          "$ref": "/schemas/enums/account-request-state.json",
+          "description": "Experimental: lifecycle state of an account request"
+        },
+        "account-request-resolution": {
+          "$ref": "/schemas/enums/account-request-resolution.json",
+          "description": "Experimental: whether a resolved account request matched an existing account or created one"
+        },
+        "pending-action-party": {
+          "$ref": "/schemas/enums/pending-action-party.json",
+          "description": "Experimental: whose turn it is on a pending account request (seller or buyer)"
+        },
+        "pending-action-kind": {
+          "$ref": "/schemas/enums/pending-action-kind.json",
+          "description": "Experimental: what a pending account request needs next (extensible)"
         },
         "pricing-model": {
           "$ref": "/schemas/enums/pricing-model.json",
@@ -1842,6 +1874,16 @@
     "account": {
       "description": "Account management task request/response schemas",
       "tasks": {
+        "get-account-requests": {
+          "request": {
+            "$ref": "/schemas/account/get-account-requests-request.json",
+            "description": "Experimental: request parameters for reading the caller's account requests"
+          },
+          "response": {
+            "$ref": "/schemas/account/get-account-requests-response.json",
+            "description": "Experimental: the caller's account requests and their current state"
+          }
+        },
         "list-account-changes": {
           "request": {
             "$ref": "/schemas/account/list-account-changes-request.json",
@@ -1860,6 +1902,16 @@
           "response": {
             "$ref": "/schemas/account/list-accounts-response.json",
             "description": "Response payload for list_accounts task"
+          }
+        },
+        "request-account": {
+          "request": {
+            "$ref": "/schemas/account/request-account-request.json",
+            "description": "Experimental: request parameters for asking a seller to find or create an advertiser account"
+          },
+          "response": {
+            "$ref": "/schemas/account/request-account-response.json",
+            "description": "Experimental: the recorded account request and its current state"
           }
         },
         "sync-accounts": {

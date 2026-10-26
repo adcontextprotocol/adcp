@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { canonicalize } from '@adcp/sdk';
 import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 import { getAgentUrl } from '../config.js';
+import { createLogger } from '../../logger.js';
 import { AdcpError, TestControllerError, scopedStore, patchWithRetry, type Account, type AdcpStateStore, type DecisioningPlatform, type CreativeAdServerPlatform } from '@adcp/sdk/server';
 import type { ComplyControllerConfig, ComplyControllerContext } from '@adcp/sdk/testing';
 import {
@@ -10,6 +11,8 @@ import {
   CREATIVE33_HTML_SCHEMA_DIGEST,
   creative33Catalog, creative33FixtureManifest, creative33FixtureUrl,
 } from './catalog.js';
+
+const logger = createLogger('training-agent-creative33');
 
 type Json = Record<string, unknown>;
 type CallContext = { account?: { id: string; mode?: string }; authInfo?: { clientId?: string }; input?: unknown };
@@ -208,8 +211,11 @@ export function createCreative33Sandbox(store: AdcpStateStore) {
           const response = await preview({ ...req, ...raw, request_type: 'single', requests: undefined }, ctx);
           results.push({ success: true, creative_id: raw.creative_id ?? 'inline', quality_used: 'draft', response: { previews: response.previews } });
         } catch (error) {
-          const failure = error as { code?: string; message?: string };
-          results.push({ success: false, creative_id: raw.creative_id ?? 'inline', errors: [{ code: failure.code ?? 'INVALID_REQUEST', message: failure.message ?? 'Invalid preview' }] });
+          const failure = error instanceof AdcpError
+            ? { code: error.code, message: error.message, recovery: error.recovery }
+            : { code: 'SERVICE_UNAVAILABLE', message: 'Creative preview is temporarily unavailable.', recovery: 'transient' };
+          if (!(error instanceof AdcpError)) logger.error({ err: error }, 'Creative beta batch preview failed');
+          results.push({ success: false, creative_id: raw.creative_id ?? 'inline', errors: [failure] });
         }
       }
       return { response_type: 'batch', results };

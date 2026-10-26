@@ -75,5 +75,6 @@
   },
   "additionalProperties": {
     "type": "boolean"
-  }
+  },
+  "x-max-properties-4.0": 256
 }

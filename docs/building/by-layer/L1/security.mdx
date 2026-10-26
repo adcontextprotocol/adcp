@@ -1388,6 +1388,10 @@ The `identity.brand_json_url` field on `get_adcp_capabilities` (added in 3.x, se
 7. **`identity.key_origins` consistency check (mandatory when signing).** For every surface/purpose declared under `identity.key_origins` on the capabilities response, the host of the resolved `jwks_uri` MUST equal the declared origin for that surface/purpose. Mismatch on any surface/purpose → reject with `request_signature_key_origin_mismatch` carrying `{ purpose, expected_origin, actual_origin }`. A publisher pin does not skip this check, because the JWKS source is always the operator brand.json. If the agent declares signing without a corresponding `identity.key_origins.{purpose}` entry, reject with `request_signature_key_origin_missing` carrying `{ purpose, posture }`.
 8. Fetch JWKS, find the `kid`, verify per the existing RFC 9421 profile (steps 7+ of the [verifier checklist](#verifier-checklist-requests)).
 
+**The capabilities budget binds this path only.** The `MAX_CAPABILITIES_BYTES` budget (64 KiB) applies to step 1 of this chain, which is part of the RFC 9421 profile that 3.3 deprecates. The fetch has no narrowing lever: it reads the whole `get_adcp_capabilities` response, and the request carries no way to ask for less. A capabilities document above the budget fails with `request_signature_capabilities_unreachable` and the agent's signing keys stop resolving. The [Web Bot Auth profile](#web-bot-auth-identities) is unaffected. Its verifier fetches the key directory at the signer's origin and makes no `get_adcp_capabilities` call, so the size of the capabilities document does not gate signature verification there. An agent whose capabilities cannot stay under 64 KiB, such as a creative agent with a large `creative.supported_formats` catalog, adopts the Web Bot Auth profile or keeps the document under the budget. 3.x does not add a way around the limit to the RFC 9421 profile. See [Response Size Bounds](#response-size-bounds).
+
+**Key material and key pointers do not belong in capabilities.** The `identity.brand_json_url` pointer exists for this deprecated chain only, and the chain stays as written through 3.x. No new path reads keys, or a pointer to keys, from `get_adcp_capabilities`. A signing path added after 3.3 finds keys through the signer's key directory, as the [Web Bot Auth profile](#web-bot-auth-identities) does, and does not fetch capabilities to do it. A field that carries or points at key material MUST NOT be added to the capabilities response. This keeps the size of the capabilities document from ever gating signature verification on a path that is not already deprecated.
+
 **Trust roots.** brand.json is operator-attested ("this agent is mine, here are its keys"). `adagents.json` is publisher-attested ("this agent may sell my inventory; optionally, here is its pinned `signing_keys`"). The operator brand.json `jwks_uri` is the source of keys for every signature. For a sell-side signature about a publisher's inventory, a publisher pin can only narrow that set: both parties must agree on a key before it is accepted. The agent never self-attests its own keys — a `jwks_uri` field is deliberately NOT carried on the capabilities response; the operator publishes the keys out-of-band via brand.json.
 
 **`sponsored_intelligence.brand_url` is distinct.** SI agents may carry a `brand_url` field under `sponsored_intelligence` for rendering purposes (colors, fonts, logos, tone) — the field is named `brand_url` because, in the SI context, it really is "the brand being advertised." That field is a rendering pointer, not a trust-root pointer; an SI agent MAY set its `sponsored_intelligence.brand_url` to a different URL than its `identity.brand_json_url` (e.g., a sub-brand brand.json for rendering while still trusting the operator's brand.json for keys). **Verifiers MUST use `identity.brand_json_url` for key discovery; `sponsored_intelligence.brand_url` MUST NOT be used as a trust-root pointer even when `identity.brand_json_url` is absent.** A verifier consuming SI rendering metadata MAY read `sponsored_intelligence.brand_url`; the same verifier MUST switch to `identity.brand_json_url` for any signature-verification flow. The naming distinction is deliberate: `brand_url` for "the brand being advertised" contexts; `brand_json_url` for "the operator master record" contexts.
@@ -2521,6 +2525,81 @@ counterparty-asserted fields sit at 2 KiB and whose format catalog takes the
 document past 64 KiB has satisfied every MUST in this paragraph and still
 lost signature verification — self-inflicted rather than attacker-inflicted,
 and just as broken.
+
+**Capabilities are bounded by structure as well as by bytes.** From 3.3 the
+`get_adcp_capabilities` response schema, and every shared schema it references,
+bounds each array with a maximum item count, each string with a maximum
+length, and each keyed map with a maximum member count, so that the largest
+schema-valid document can be computed instead of discovered when a fetch fails.
+Three kinds of position need no keyword, because the schema already bounds
+them, and the calculation prices each from the schema:
+
+- a string constrained by `enum`, `const`, or `format` (a `format` is priced at
+  its ceiling, `uri` at 2,048 characters for example);
+- a string with an anchored `pattern` that admits only values of bounded
+  length, such as `^[A-Z]{2}$` or `^sha256:[a-f0-9]{64}$`. An anchored pattern
+  with an unbounded quantifier, such as `^[a-z][a-z0-9_]*$`, does not bound
+  length and still carries `maxLength`;
+- an array with `uniqueItems` whose items are a closed `enum` or a `const`,
+  whose length cannot exceed the number of values.
+
+The limits on every other position are sized to a real deployment with
+headroom, in classes:
+
+| Class | Limit | Applies to |
+|---|---|---|
+| Identifier or token | 64 to 128 characters | snake-case tokens, ids, profile tokens, labels and names (128), versions (32) |
+| Fixed-shape string | exact length of the pattern | ISO country (2), ISO subdivision (6), hex color (7), time of day (8), SHA-256 hex (64), digest (71) |
+| Domain | 253 characters | every domain-valued field |
+| Short free text | 256 to 1,024 characters | descriptions, messages, suggestions, alt text (512), pointers (256) |
+| Vocabulary list | at least twice the enum, at least 16 | arrays of enum values that are not `uniqueItems` |
+| Token or URI list | 16 to 32 items | claim types, proof formats, languages, industries |
+| Small object list | 4 to 32 items | SDK entries, onboarding requirements, jurisdictions, window constraints, macro capabilities |
+| Catalog | 128 to 256 items | `creative.supported_formats` (256), `measurement.metrics` and vendor metrics (128), governance features (128), preview routes (128) |
+| Offerings and issuers | 16 to 64 items | reporting offerings (64), accepted attestation issuers (32), verifiers (16) |
+| Geography | 8 to 1,024 items | countries (256), subdivisions per country (512), IANA timezones (1,024), place systems (8) |
+| Diagnostics | 10 to 20 items | `errors[]` (20), `issues[]` (10) |
+| Keyed map | 8 to 256 members | by the key vocabulary: ISO country keys (256), billing parties (8) |
+
+Where a field is new in 3.3 or experimental, the bound is an ordinary schema
+keyword (`maxItems`, `maxLength`, `maxProperties`) and the schema enforces it.
+A minor release may not tighten a field that was stable before it, so on those
+fields the schema enforces nothing new in 3.x. Each carries the bound as an
+annotation instead, `x-max-items-4.0`, `x-max-length-4.0`, or
+`x-max-properties-4.0`, which becomes the keyword in 4.0. Through 3.x a producer
+**SHOULD** stay within the annotated limit, and a document above it stays
+schema-valid. The annotations are registered as a 4.0 tightening in the
+[4.0 compatibility checks](/docs/reference/migration/v4-compatibility#capabilities-stay-within-their-structural-bounds).
+
+**Worst case.** With the 4.0 bounds applied, the largest schema-valid
+capabilities document is 91,262,197 bytes (about 87 MiB), counting only the
+members the schema declares. `scripts/capabilities-structural-bounds.cjs` computes it
+and `tests/capabilities-structural-bounds.test.cjs` pins it, so the figure moves
+only when a limit moves. The calculation assumes every declared member is
+present, every list and map is full, every string is at its maximum length, a
+union takes its widest branch, free text takes four bytes per character, and
+patterned or formatted strings one. The largest blocks are `creative` (27 MiB),
+`media_buy` (27 MiB), `adcp` (12 MiB), `governance` (6 MiB), `account` (5 MiB),
+and `measurement` (4 MiB). Objects that admit undeclared members, such as `ext`
+and context, are open: the schema cannot bound what a producer adds there, and
+105 positions in the response are open in this sense.
+
+The multipliers behind that figure are nested object lists inside shared
+schemas: a brand reference (`brand-ref`, up to 111 KiB each, most of it
+`brand_kit_override` and `provenance`), a creative format declaration
+(`creative-operation-format-declaration`, up to 107 KiB each, most of it
+`macro_resolution_capabilities`), an attestation issuer entry (322 KiB each),
+an audience activation method (144 KiB), and a geographic place system (534
+KiB). 3.3 accepts the ceiling because the byte limits are the operative cap.
+Tightening those nested limits is registered as a 4.0 follow-up in the
+[4.0 compatibility checks](/docs/reference/migration/v4-compatibility#capabilities-stay-within-their-structural-bounds).
+
+That figure bounds the shape of a document; it is not a size target and it is
+far above both the 4 MiB client default and `MAX_CAPABILITIES_BYTES`. The byte
+limits therefore stay. `MAX_CAPABILITIES_BYTES` (64 KiB) remains the safety net
+on the RFC 9421 key-discovery path, and the client default applies to every
+other read. Structural bounds make growth predictable and give a producer a
+per-field budget to design to. They do not make a document small.
 
 The structural bounds carried in `x-adcp-validation` — at most 100 unique
 entries, each at most 253 characters — are a coarse ceiling and are not

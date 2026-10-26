@@ -12,27 +12,32 @@
     },
     "role": {
       "type": "string",
-      "description": "aao_verified: the badge role required, such as media-buy."
+      "description": "aao_verified: the badge role required, such as media-buy.",
+      "maxLength": 128
     },
     "verification_modes": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": { "type": "string", "maxLength": 128 },
       "minItems": 1,
-      "description": "aao_verified: accepted verification modes, as the badge token names them."
+      "description": "aao_verified: accepted verification modes, as the badge token names them.",
+      "maxItems": 32
     },
     "verified_specialisms": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": { "type": "string", "maxLength": 128 },
       "minItems": 1,
-      "description": "aao_verified: specialisms the badge's verified_specialisms claim must include."
+      "description": "aao_verified: specialisms the badge's verified_specialisms claim must include.",
+      "maxItems": 32
     },
     "adcp_version": {
       "type": "string",
-      "description": "aao_verified: the AdCP release the badge must cover."
+      "description": "aao_verified: the AdCP release the badge must cover.",
+      "maxLength": 32
     },
     "id": {
       "type": "string",
-      "description": "storyboard: the storyboard id. experimental_feature: the feature id."
+      "description": "storyboard: the storyboard id. experimental_feature: the feature id.",
+      "maxLength": 128
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

@@ -188,6 +188,32 @@ checks:
     schema_sites:
       - "protocol/get-adcp-capabilities-response.json#/properties/webhook_signing/properties/legacy_hmac_fallback"
 
+  - id: capabilities_structural_bounds_required_in_4_0
+    issue: 8198
+    change: new_requirement
+    applies_to: [all_agents]
+    detection: "get_adcp_capabilities carries an array, string, or keyed map above the limit a stable field annotates with x-max-items-4.0, x-max-length-4.0, or x-max-properties-4.0."
+    fix: >-
+      Keep each annotated field within its limit. 4.0 turns the annotations
+      into maxItems, maxLength, and maxProperties on stable fields, so a
+      document above one becomes schema-invalid. Fields new in 3.3 and
+      experimental fields already enforce the same keywords.
+    follow_ups:
+      - >-
+        Tighten the nested object lists that multiply the worst case: the
+        brand-ref (brand_kit_override, provenance), creative format
+        declaration (macro_resolution_capabilities), attestation issuer,
+        audience activation method, and geo place system limits. 3.3
+        accepts an 87 MiB structural ceiling because MAX_CAPABILITIES_BYTES
+        is the operative cap; 4.0 can lower the ceiling before the
+        annotations become keywords.
+    observed_by:
+      none:
+        reason: >-
+          The limits are schema annotations on a response any agent serves
+          unprompted, and no storyboard step makes the call that would inspect
+          every annotated field. A 3.x agent measures itself with
+          scripts/capabilities-structural-bounds.cjs.
   - id: purchase_target_audiences_required_in_4_0
     issue: 8125
     change: new_requirement

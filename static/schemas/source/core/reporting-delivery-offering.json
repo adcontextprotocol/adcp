@@ -36,7 +36,7 @@
         "schema_dialect": { "type": "string", "const": "https://json-schema.org/draft/2020-12/schema", "description": "Closed SDK-bundled dialect. The SDK never resolves a metaschema over the network, and the fetched document's $schema MUST equal this value." },
         "schema_ref_policy": { "type": "string", "const": "local_fragment_only", "description": "The fetched schema is a self-contained bundle. Every $ref is a local # fragment; remote and relative-document dependencies are forbidden." },
         "grain": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Stable description of what one logical row represents." },
-        "primary_keys": { "type": "array", "items": { "$ref": "/schemas/core/reporting-canonicalization-contract.json#/definitions/ReportingPrimaryKey" }, "minItems": 1, "uniqueItems": true },
+        "primary_keys": { "type": "array", "items": { "$ref": "/schemas/core/reporting-canonicalization-contract.json#/definitions/ReportingPrimaryKey" }, "minItems": 1, "uniqueItems": true, "maxItems": 32 },
         "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Rules for stable logical row ordering, value encoding, nulls, and schema used by canonical_content_digest." },
         "canonicalization_contract_version": { "type": "string", "const": "1.0" },
         "canonicalization_media_type": { "type": "string", "const": "application/vnd.adcp.reporting-canonicalization+json" },
@@ -57,14 +57,14 @@
         "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
         "orchestration": { "$ref": "/schemas/core/reporting-delivery-method.json#/definitions/ReportingOrchestration" },
         "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },
-        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
         "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"] },
         "access_mode": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
         "producer_identity": {
           "type": "object",
           "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering.",
           "properties": {
-            "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+            "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
             "identity": { "type": "string", "minLength": 1, "maxLength": 512 },
             "cloud": { "$ref": "/schemas/core/reporting-dataset-share-destination.json#/definitions/ReportingCloud" },
             "region": { "type": "string", "minLength": 1, "maxLength": 128 }
@@ -73,7 +73,7 @@
           "dependencies": { "cloud": ["region"], "region": ["cloud"] },
           "additionalProperties": false
         },
-        "reader_compatibility": { "type": "array", "items": { "$ref": "/schemas/core/reporting-resource.json#/definitions/ReportingReaderCompatibilityItem" }, "uniqueItems": true }
+        "reader_compatibility": { "type": "array", "items": { "$ref": "/schemas/core/reporting-resource.json#/definitions/ReportingReaderCompatibilityItem" }, "uniqueItems": true, "maxItems": 32 }
       },
       "required": ["pattern", "transport", "orchestration", "destination_modes"],
       "allOf": [
