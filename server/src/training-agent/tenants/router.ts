@@ -17,7 +17,7 @@ import type { AdcpCredential } from '@adcp/sdk/server';
 import { createLogger } from '../../logger.js';
 import { runWithAccountIdAliasScope, runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, pickStateStore, resolveTenantHost, type RegistryHolder } from './registry.js';
-import { createIdentity33Runtime } from '../identity33/runtime.js';
+import { createIdentity33Runtime, type Identity33Runtime } from '../identity33/runtime.js';
 import { getReplayStore } from '../request-signing.js';
 import { advertiseIdentity33Capabilities, requireIdentity33, signedRequestUrl } from '../identity33/route.js';
 import { getTrainingGovernanceIssuer } from '../canonical-base.js';
@@ -1601,11 +1601,19 @@ export function mountTenantRoutes(
   }
 
   if (tenantIds.includes('sales') && middleware.storyboardCompat?.version !== '3.0' && identity33RouteEnabled()) {
-    const runtime = createIdentity33Runtime({
+    // Built on first use: routes mount before the database is initialized,
+    // and the shared replay store needs the pool (a boot-time call throws in
+    // production, as lazySigningAuth avoids for the RFC 9421 routes).
+    let built: Identity33Runtime | undefined;
+    const build = () => (built ??= createIdentity33Runtime({
       stateStore: pickStateStore(),
       replayStore: getReplayStore(),
       getUrl: signedRequestUrl,
-    });
+    }));
+    const runtime: Identity33Runtime = {
+      authenticate: req => build().authenticate(req),
+      authorize: (ctx, tool, params) => build().authorize(ctx, tool, params),
+    };
     const identityHolder = createRegistryHolder({ identity33: { authorize: runtime.authorize }, tenantIds: ['sales'] });
     parent.options(IDENTITY33_ROUTE, (_req, res) => {
       setCORSHeaders(res);
