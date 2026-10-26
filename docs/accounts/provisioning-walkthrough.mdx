@@ -164,7 +164,7 @@ Sam sends a fresh `idempotency_key`, the Nova Motors brand, Pinnacle Agency as o
 
 Priya's seller validates the authenticated agent identity and its authority to represent the operator and brand. It either accepts the billing model and payment terms exactly as requested or rejects the account entry; it must not silently substitute a different payer or terms.
 
-The seller also validates the durable endpoint and completes its proof-of-control challenge before marking the subscriber active. It assigns an `account_id` before activation so later account lifecycle events can always identify an authoritative repair target, even while approval remains pending. StreamHaus creates every account it approves, so a placeholder account is safe here. A seller that may instead link the request to an existing account keeps it as an [account request](/docs/accounts/tasks/request_account) with no `account_id` until it resolves (experimental in 3.3).
+The seller also validates the durable endpoint and completes its proof-of-control challenge before marking the subscriber active. It assigns an `account_id` before activation so later account lifecycle events can always identify an authoritative repair target, even while approval remains pending. StreamHaus creates every account it approves, so the placeholder's `account_id` is the one the account keeps, and issuing it early is safe. A seller that might instead link the request to an existing account never issues an `account_id` it might later change; it keeps the request as an [account request](/docs/accounts/tasks/request_account) with no `account_id` until it resolves (experimental in 3.3).
 
 The account needs a human credit and legal review, so StreamHaus returns `pending_approval`:
 

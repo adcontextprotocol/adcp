@@ -44,13 +44,13 @@ Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities
 
 | Field | Required | Description |
 | --- | --- | --- |
-| `idempotency_key` | Yes | Makes retries of this call safe. Separate from deduplication, which is keyed on the account (below). |
+| `idempotency_key` | Yes | Makes retries of this call safe. A replayed key returns the original request; see [deduplication](#deduplication). |
 | `brand` | Unless `account_id` | BrandKey: `domain`, optional `brand_id`, optional `countries[]`. |
 | `operator` | Unless `account_id` | Domain of the entity operating for the brand; the brand's own domain when it buys direct. |
-| `operator_unit` | No | Operator-owned unit or seat. `id` is part of the key; `name` is not. |
-| `currency` | No | Immutable ISO 4217 currency for a currency-bound advertiser object. Part of the key. |
-| `timezone` | Conditional | Buyer-selected immutable timezone, as in [`sync_accounts`](/docs/accounts/tasks/sync_accounts). Part of the key. |
-| `sandbox` | No | Request a sandbox account. Part of the key. |
+| `operator_unit` | No | Operator-owned unit or seat. `id` is an account attribute; `name` is display metadata. |
+| `currency` | No | Immutable ISO 4217 currency for a currency-bound advertiser object. An account attribute. |
+| `timezone` | Conditional | Buyer-selected immutable timezone, as in [`sync_accounts`](/docs/accounts/tasks/sync_accounts). An account attribute. |
+| `sandbox` | No | Request a sandbox account. An account attribute. |
 | `billing` | No | Requested invoiced party: `operator`, `agent`, or `advertiser`. Accepted exactly or rejected. |
 | `billing_entity` | No | Requested business entity for the invoiced party. Bank details are write-only. |
 | `payment_terms` | No | Requested terms. Accepted or rejected, never silently remapped. |
@@ -126,13 +126,15 @@ Once the human registers, the request resolves:
 
 ## Deduplication
 
-A request is identified by who asked and which account they asked for:
+The protocol requires only that retries are safe. Replaying an `idempotency_key` returns the original request, and replaying it with a different body returns [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict), as on every AdCP mutation. A new key is a new request.
 
-1. **Per calling agent.** Requests are scoped to the authenticated caller. Two agents asking for the same advertiser get two requests, and both may resolve to the same account (`matched`), each with its own grant.
-2. **On the account's natural key.** The key is exactly the [`sync_accounts`](/docs/accounts/tasks/sync_accounts) natural key: `brand.domain`, `brand.brand_id`, canonical `brand.countries[]`, `operator`, `operator_unit.id`, `currency`, `timezone`, `sandbox`. A request naming `account_id` is keyed on that ID.
-3. **Terms are not identity.** `billing`, `billing_entity`, and `payment_terms` are requested terms. One advertiser identity maps to one account whoever is invoiced.
+What a seller does with separate requests for the same advertiser is its choice. This guidance is non-normative:
 
-When the same key arrives again:
+- **Per calling agent.** Requests are scoped to the authenticated caller. Two agents asking for the same advertiser get two requests, and both may resolve to the same account (`matched`), each with its own grant.
+- **Match on brand and operator.** Treat a request for the same brand (`domain` and `brand_id`) and `operator` as the same advertiser. `brand.countries`, `currency`, `timezone`, `sandbox`, and `operator_unit` are attributes of the account: use them as filters that narrow which account fits, not as identity.
+- **Terms are not identity.** `billing`, `billing_entity`, and `payment_terms` are requested terms. One advertiser maps to one account whoever is invoiced.
+
+A seller that does deduplicate typically answers a repeat as follows:
 
 | Existing request | Result |
 | --- | --- |
@@ -141,11 +143,9 @@ When the same key arrives again:
 | `rejected` | A new request. The seller MAY reject it again at once, for example during a cool-down. |
 | `resolved`, account since closed | A new request, which may create a new account. |
 
-`idempotency_key` only makes retries of one call safe. Replaying a key with a different body returns [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict), as on every AdCP mutation.
-
 ## Seller rules
 
-- **No placeholder accounts.** Issue an `account_id` only when the request resolves. Open requests are visible through [`get_account_requests`](/docs/accounts/tasks/get_account_requests), not [`list_accounts`](/docs/accounts/tasks/list_accounts).
+- **No provisional account IDs.** Never issue an `account_id` that might later change; while a request might match an existing account, issue none until it resolves. Open requests are visible through [`get_account_requests`](/docs/accounts/tasks/get_account_requests), not [`list_accounts`](/docs/accounts/tasks/list_accounts).
 - **No existence oracle.** `matched` and `candidates[]` disclose only accounts the calling agent is, or is now, granted. When the only match is an account another operator or agent holds, every state, pending-action kind, and error the caller sees MUST be one the seller could also return when nothing matches: for example, `review` followed by `sign_up`, a new account, or a rejection with a generic reason.
 - **Unreachable `account_id`s look like unknown ones.** For an `account_id` the caller can't reach, answer the same way whether or not the account exists: always `rejected` with [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found), or, for sellers that support access requests, always `in_review` with `waiting_on: buyer` and `kind: grant`.
 - **Action URLs aren't bearer links.** Possession of `pending_action.url`, or of a `request_id` in it, MUST NOT by itself be enough to complete the action; the human authenticates with the seller first.
@@ -161,7 +161,7 @@ Sellers keep one internal request record, and [`sync_accounts`](/docs/accounts/t
 
 | Request state | `sync_accounts` row |
 | --- | --- |
-| `in_review` | `status: pending_approval`, `setup` with `waiting_on` and `kind`, `request_id`. A seller that may match omits `account_id`. |
+| `in_review` | `status: pending_approval`, `setup` with `waiting_on` and `kind`, `request_id`. `account_id` only when it can never change. |
 | `resolved` / `created` | `action: created` (then `unchanged` on repeats), `account_id`, `resolution: created` |
 | `resolved` / `matched` | `action: unchanged`, `account_id`, `resolution: matched` |
 | `ambiguous` | `action: failed`, [`ACCOUNT_AMBIGUOUS`](/docs/building/verification/compliance-catalog#error-code-account-ambiguous) with `error.details.candidates[]` |
@@ -169,7 +169,7 @@ Sellers keep one internal request record, and [`sync_accounts`](/docs/accounts/t
 
 **Buyers that predate account requests.** They ignore `request_id`, `resolution`, and the new `setup` fields, and learn the outcome the way they do today: by replaying `sync_accounts` with the same natural key, from the one-shot `push_notification_config`, or from `account.status_changed`. When a request resolves, the seller activates the row's account-level `notification_configs` first and then fires `account.status_changed` from `pending_approval` with the resolved `account_id`. The one visible difference is that a request-mode seller's pending rows don't appear in [`list_accounts`](/docs/accounts/tasks/list_accounts) until they resolve.
 
-**Placeholder accounts or request mode.** A seller declaring `account.stable_account_id: true` that may resolve a request to an existing account MUST NOT issue `account_id` while the account is pending; in practice, that is request mode. A seller that only ever creates accounts MAY keep placeholder accounts in `pending_approval`. New implementations SHOULD use request mode.
+**Placeholder accounts.** A seller never issues an `account_id` it might later change. While a request is pending, the buyer tracks `request_id`. A seller that creates the account at approval and keeps the placeholder's ID, so it never changes, MAY issue it early; any seller that might match the request to an existing account does not.
 
 ## Buyer handling
 

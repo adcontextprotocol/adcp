@@ -4,11 +4,10 @@
   "title": "Pending Action Party",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "Whose turn it is on a pending account request, account, or relationship (experimental).",
+  "description": "Whose turn it is on a pending account request or relationship (experimental): the seller, or a buyer-side human at url.",
   "type": "string",
-  "enum": ["seller", "buyer"],
-  "enumDescriptions": {
-    "seller": "The seller is reviewing.",
-    "buyer": "A buyer-side human must act at url."
-  }
+  "enum": [
+    "seller",
+    "buyer"
+  ]
 }

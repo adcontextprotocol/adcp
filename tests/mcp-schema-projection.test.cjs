@@ -129,9 +129,10 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // caller-level notification enum (473,582 → 476,029 bytes / 464.9 KiB
 // measured against main); bound it at 465 KiB. Rebased onto installments on
 // the canonical product (#8246), the merged inputs measure 477,312 bytes /
-// 466.1 KiB; bound it at 467 KiB.
+// 466.1 KiB; bound it at 467 KiB. With purchase rights merged as well, the
+// media-buy context measures 478,620 bytes / 467.4 KiB; bound it at 468 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 467,
+  'media-buy': 468,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -189,6 +190,10 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // and scoped control action to the controller closure. After condensing shared
 // field prose, it measures 1_318_217 bytes; bound it at 1_320_000. The 4 MiB
 // schema and 22 MiB projection caps and all fixture parity checks remain.
+// Experimental account requests (#8280) reach it through the
+// account_request.changed notification type and the pending-action enums on
+// sync_accounts setup (1_318_217 -> 1_320_450 bytes measured against main).
+// Shortened descriptions bring it to 1_319_964 bytes; the limit is unchanged.
 const PARITY_COMPILE_LIMIT = 1_320_000;
 
 function readJson(filename) {

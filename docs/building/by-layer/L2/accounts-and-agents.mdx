@@ -677,7 +677,7 @@ When an agent declares `(brand: {domain: "acme-corp.com"}, operator: "pinnacle-m
 
 - Map the natural key to an existing account and return `status: "active"`
 - Create a new record and return it immediately (`status: "active"`)
-- Create a placeholder pending human review (`status: "pending_approval"`). A seller that declares `stable_account_id` and may match the request to an existing account MUST NOT issue an `account_id` for it; it returns a `request_id` instead (experimental, see [`request_account`](/docs/accounts/tasks/request_account)). Create-only sellers MAY keep placeholders, and new implementations SHOULD use request mode.
+- Create a placeholder pending human review (`status: "pending_approval"`). A seller never issues an `account_id` it might later change, so one that may match the request to an existing account returns a `request_id` instead (experimental, see [`request_account`](/docs/accounts/tasks/request_account)).
 - Decline the request entirely (`status: "rejected"`)
 
 `list_accounts` returns all records the seller has mapped for this agent — including pending and rejected entries. The agent uses `list_accounts` to see the full state of its portfolio with this seller, not just active accounts.
