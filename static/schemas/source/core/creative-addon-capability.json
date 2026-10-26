@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-addon-capability.json",
+  "title": "Creative Addon Capability",
+  "description": "Seller-adjacent fragment support. Omission means unsupported. All advertised routes require a seller-controlled adjacent container and the mandatory signing profile.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "supported_format_kinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "image",
+          "html5",
+          "display_tag"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "positions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "prepend",
+          "append"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "signed_chain": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "const": true
+        },
+        "profile": {
+          "type": "string",
+          "const": "adcp/addon-chain/v1"
+        }
+      },
+      "required": [
+        "required",
+        "profile"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "supported_format_kinds",
+    "positions",
+    "signed_chain"
+  ],
+  "additionalProperties": false
+}

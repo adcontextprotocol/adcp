@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "creative-addon-chain.schema.json",
+  "title": "Creative addon chain conformance vectors",
+  "type": "object",
+  "required": ["profile", "test_private_key", "valid", "invalid", "behavior"],
+  "properties": {
+    "profile": { "const": "adcp/addon-chain/v1" },
+    "test_private_key": { "type": "object", "description": "Public RFC 8032 fixture secret. Never use operationally." },
+    "valid": {
+      "type": "array", "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["id", "creative_hash_input", "fragment", "fragment_hash", "chain", "trust"],
+        "properties": {
+          "id": { "type": "string" },
+          "chain": { "$ref": "/schemas/core/creative-addon-chain.json" },
+          "trust": {
+            "type": "object", "required": ["key", "publisher_pin", "expected", "now"],
+            "properties": {
+              "key": { "$ref": "/schemas/core/creative-addon-signing-key.json" },
+              "publisher_pin": { "$ref": "/schemas/core/creative-addon-signing-key.json" }
+            }
+          }
+        }
+      }
+    },
+    "invalid": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "required": ["id", "base", "edits", "expected"],
+        "properties": {
+          "base": { "type": "integer", "minimum": 0 },
+          "edits": { "type": "array", "minItems": 1 },
+          "expected": { "type": "string" }
+        }
+      }
+    },
+    "behavior": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["id", "input", "expected"] } }
+  }
+}

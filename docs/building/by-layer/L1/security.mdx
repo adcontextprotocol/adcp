@@ -1044,7 +1044,9 @@ A task is admitted to the designated list only when its response payload is the 
 
 - **`verify_brand_claim`** and its bulk variant **`verify_brand_claims`** (Brand Protocol). The responding brand-agent signs its response payload as a JWS envelope under the brand's `adcp_use: "response-signing"` key. The signature is load-bearing for the direction-asymmetric trust model — see [`verify_brand_claim` trust model](/docs/brand-protocol/tasks/verify_brand_claim#trust-model) and [Building a brand agent — Signing setup](/docs/brand-protocol/building-a-brand-agent#signing-setup).
 
-Any task not on this list MUST NOT sign its response under any signing primitive. General-purpose response-signing helpers applying RFC 9421 §2.2.9 to arbitrary tools (regardless of which `tag` or `adcp_use` string they coin) are operating outside this profile and are not 3.x-conformant; the only response-signing primitive the spec authorizes in 3.x is payload-envelope JWS on the designated-tasks list.
+The proposed creative addon support for 3.3 lets `get_creative_delivery` carry a signed `variants[].addon_chain` artifact under the dedicated [`adcp/addon-chain/v1` profile](/docs/creative/addon-chain-signing). Explicit human approval of this bounded artifact signature remains pending. Its proposed scope excludes signing the whole task response and using `response-signing` keys for addon evidence.
+
+Apart from that scoped addon artifact, any task not on the designated list MUST NOT sign its response under any signing primitive. General-purpose response-signing helpers applying RFC 9421 §2.2.9 to arbitrary tools (regardless of which `tag` or `adcp_use` string they coin) are operating outside this profile and are not 3.x-conformant; whole-response signing remains limited to payload-envelope JWS on the designated-tasks list.
 
 The `adcp_use: "response-signing"` value is therefore reserved at the JWK layer for the payload-envelope primitive. **Keys published with `adcp_use: "response-signing"` MUST sign only payload-envelope JWS as defined in this section; using such a key to produce RFC 9421 §2.2.9 transport signatures is a profile violation regardless of the task being signed.** If a future major version scopes RFC 9421 transport response signing for any task, it MUST use a distinct `adcp_use` value (e.g., `"response-transport-signing"`) so verifiers can disambiguate the primitive from the JWK alone — the brand-protocol value cannot be retconned to cover both. List growth and additional primitives are normative decisions deferred to future spec versions.
 
@@ -2719,3 +2721,7 @@ function logSecurityEvent(eventType, details) {
 - **Webhooks**: See [Webhooks](/docs/building/by-layer/L3/webhooks) for webhook security patterns
 - **Error Handling**: See [Error Handling](/docs/building/by-layer/L3/error-handling) for authentication errors
 - **Orchestrator Design**: See [Orchestrator Design](/docs/building/operating/orchestrator-design) for multi-tenant security
+
+## Creative addon object signatures (proposed 3.3)
+
+The proposed [addon-chain signing profile](/docs/creative/addon-chain-signing) uses dedicated Ed25519 keys resolved through the supported 3.x identity/JWKS infrastructure. Its use in 3.3 requires explicit human approval of the relationship to DR-0023. It changes no Web Bot Auth transport behavior. Do not treat an addon signature as verified without the profile’s key-authority, context, and retained-history checks.

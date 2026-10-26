@@ -1,0 +1,449 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-addon-chain.json",
+  "title": "Creative Addon Chain",
+  "description": "Signed seller assembly claim for one immutable served variant. Exposes hashes and metadata, never fragment code. A new effective configuration or chain requires a distinct variant_id.",
+  "x-added-in": "3.3.0",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative"
+    },
+    "creative_hash": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "configuration": {
+      "$ref": "/schemas/core/creative-addon-disclosure.json",
+      "description": "Complete effective configuration actually used for this execution, retained immutably. All fields are covered by configuration_hash in signed claims."
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "order": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "registration_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "agent_name": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^\\S(?:.*\\S)?$",
+                "description": "Canonical agent_name, normalized by trimming surrounding whitespace and converting to lowercase. Identity is checked against the selected vendor, never inferred from this label alone."
+              },
+              "agent_url": {
+                "type": "string",
+                "minLength": 1,
+                "format": "uri",
+                "pattern": "^https://"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "live",
+                  "static_reference"
+                ]
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "status": {
+                "type": "string",
+                "const": "applied"
+              },
+              "position": {
+                "type": "string",
+                "enum": [
+                  "prepend",
+                  "append"
+                ]
+              },
+              "fragment_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "content_hash": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "vendor_ref": {
+                "type": "string",
+                "minLength": 1
+              },
+              "detail_url": {
+                "type": "string",
+                "minLength": 1,
+                "format": "uri",
+                "pattern": "^https://"
+              }
+            },
+            "required": [
+              "order",
+              "registration_index",
+              "agent_name",
+              "source",
+              "timestamp",
+              "status",
+              "position",
+              "fragment_index",
+              "content_hash",
+              "bytes"
+            ],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "source": {
+                      "const": "live"
+                    }
+                  },
+                  "required": [
+                    "source"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "agent_url"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "required": [
+                      "agent_url"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "order": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "registration_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "agent_name": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^\\S(?:.*\\S)?$",
+                "description": "Canonical agent_name, normalized by trimming surrounding whitespace and converting to lowercase. Identity is checked against the selected vendor, never inferred from this label alone."
+              },
+              "agent_url": {
+                "type": "string",
+                "minLength": 1,
+                "format": "uri",
+                "pattern": "^https://"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "live",
+                  "static_reference"
+                ]
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "status": {
+                "type": "string",
+                "const": "omitted"
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "vendor_omission",
+                  "failure"
+                ]
+              },
+              "error_code": {
+                "type": "string",
+                "enum": [
+                  "ADDON_UNREACHABLE",
+                  "ADDON_AUTH_FAILED",
+                  "ADDON_HASH_MISMATCH",
+                  "ADDON_INVALID_POSITION",
+                  "ADDON_UNDECLARED_FORMAT",
+                  "ADDON_MALFORMED_FRAGMENT",
+                  "ADDON_REQUIRED_UNAVAILABLE"
+                ]
+              }
+            },
+            "required": [
+              "order",
+              "registration_index",
+              "agent_name",
+              "source",
+              "timestamp",
+              "status",
+              "reason"
+            ],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "source": {
+                      "const": "live"
+                    }
+                  },
+                  "required": [
+                    "source"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "agent_url"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "required": [
+                      "agent_url"
+                    ]
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "reason": {
+                      "const": "failure"
+                    }
+                  },
+                  "required": [
+                    "reason"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "error_code"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "required": [
+                      "error_code"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "discriminator": {
+          "propertyName": "status"
+        }
+      },
+      "minItems": 0
+    },
+    "chain_hash": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "signed_attestation": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "string",
+          "const": "adcp/addon-chain/v1"
+        },
+        "protected": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "payload": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "signature": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        }
+      },
+      "required": [
+        "profile",
+        "protected",
+        "payload",
+        "signature"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "creative_id",
+    "creative_hash",
+    "configuration",
+    "entries",
+    "chain_hash",
+    "signed_attestation"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "properties": {
+        "configuration": {
+          "properties": {
+            "complete": {
+              "const": true
+            },
+            "scope": {
+              "const": "product"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "Claims": {
+      "type": "object",
+      "properties": {
+        "typ": {
+          "type": "string",
+          "const": "adcp-addon-chain+jws"
+        },
+        "agent_url": {
+          "type": "string",
+          "minLength": 1,
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "publisher_domain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "creative_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "creative"
+        },
+        "creative_hash": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "chain_hash": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "configuration_hash": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "format_kind": {
+          "type": "string",
+          "enum": [
+            "image",
+            "html5",
+            "display_tag"
+          ]
+        },
+        "variant_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "served_variant"
+        },
+        "media_buy_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "media_buy"
+        },
+        "package_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "package"
+        },
+        "placement_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision_id": {
+          "$ref": "/schemas/core/creative-revision-id.json"
+        },
+        "locale_variant_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "creative_locale_variant"
+        },
+        "iat": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "typ",
+        "agent_url",
+        "publisher_domain",
+        "creative_id",
+        "creative_hash",
+        "chain_hash",
+        "configuration_hash",
+        "format_kind",
+        "variant_id",
+        "media_buy_id",
+        "iat"
+      ],
+      "additionalProperties": false
+    },
+    "ProtectedHeader": {
+      "type": "object",
+      "properties": {
+        "alg": {
+          "type": "string",
+          "const": "EdDSA"
+        },
+        "kid": {
+          "type": "string",
+          "minLength": 1
+        },
+        "typ": {
+          "type": "string",
+          "const": "adcp-addon-chain+jws"
+        }
+      },
+      "required": [
+        "alg",
+        "kid",
+        "typ"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "cryptographic_validation": "Verify JWS, chain/configuration hashes, dedicated key purpose, publisher authority, and every delivery identity using the addon-chain-signing specification. Shape validation is insufficient.",
+      "entry_coverage": "Every configured applicable registration has one omission or at least one applied entry; required registrations MUST have applied entries only. Entries MUST match their registration identity and source.",
+      "ordering": "Applied entries are prepend then append, ordered by registration_index then fragment_index; omissions follow in registration order. order is the zero-based position in entries."
+    },
+    "spec": "docs/creative/addon-chain-signing.mdx"
+  }
+}

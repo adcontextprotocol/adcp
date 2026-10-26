@@ -46,6 +46,8 @@ describe('specialism status', () => {
   it('respects preview status from the compliance catalog', () => {
     expect(getSpecialismStatus('sponsored-intelligence')).toBe('preview');
     expect(isStableSpecialism('sponsored-intelligence')).toBe(false);
+    expect(getSpecialismStatus('creative-addon')).toBe('preview');
+    expect(isStableSpecialism('creative-addon')).toBe(false);
   });
 
   it('treats unknown specialisms as stable (safe default)', () => {

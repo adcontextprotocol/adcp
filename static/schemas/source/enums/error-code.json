@@ -5,6 +5,13 @@
   "description": "Standard error code vocabulary for AdCP. Codes are machine-readable so agents can apply autonomous recovery strategies based on the recovery classification. Sellers MAY return codes not listed here for platform-specific errors — the error.json code field accepts any string. Agents MUST handle unknown codes by falling back to the recovery classification.",
   "type": "string",
   "enum": [
+    "ADDON_UNREACHABLE",
+    "ADDON_AUTH_FAILED",
+    "ADDON_HASH_MISMATCH",
+    "ADDON_INVALID_POSITION",
+    "ADDON_UNDECLARED_FORMAT",
+    "ADDON_MALFORMED_FRAGMENT",
+    "ADDON_REQUIRED_UNAVAILABLE",
     "INVALID_REQUEST",
     "AUTH_REQUIRED",
     "AUTH_MISSING",
@@ -130,6 +137,13 @@
     "RIGHTS_CHANNEL_VIOLATION"
   ],
   "enumDescriptions": {
+    "ADDON_UNREACHABLE": "The addon vendor could not be reached before the call timeout. Recovery: transient (seller follows the finite required hold or records best-effort omission).",
+    "ADDON_AUTH_FAILED": "Addon vendor rejected operator credentials. Recovery: terminal (operator repairs vendor credentials; buyer credentials are unchanged).",
+    "ADDON_HASH_MISMATCH": "Fragment content_hash differs from SHA-256 of the exact UTF-8 content. Discard all this vendor's fragments for the affected creative. Recovery: terminal (vendor must correct the fragment).",
+    "ADDON_INVALID_POSITION": "Fragment position is unsupported by the contract or the vendor declaration. Recovery: terminal (vendor must correct the response).",
+    "ADDON_UNDECLARED_FORMAT": "Fragment targets an undeclared format or unknown creative context. Recovery: terminal (vendor must correct the response).",
+    "ADDON_MALFORMED_FRAGMENT": "Fragment cannot be safely assembled in the declared seller container, or a required vendor supplied no valid fragment. Recovery: terminal (operator or vendor repairs the integration).",
+    "ADDON_REQUIRED_UNAVAILABLE": "Seller-required addon could not be applied within the finite original hold deadline, or the invoking task cannot hold asynchronously. The affected execution MUST NOT deliver; buyer creative lifecycle is unchanged. Use the invoking task's normal terminal error arm. Recovery: terminal (surface seller infrastructure failure; a later user-directed retry follows the original task's idempotency contract).",
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
     "AUTH_REQUIRED": "**Deprecated** — use `AUTH_MISSING` (no credentials presented) or `AUTH_INVALID` (credentials presented and rejected). Retained as a backward-compatible alias during the 3.x deprecation window. Recovery: correctable.",
     "AUTH_MISSING": "No credentials were presented. Sellers MUST return this code when no `Authorization` header was included in the request. Recovery: correctable (provide credentials via the auth header and retry).",
@@ -255,6 +269,13 @@
     "RIGHTS_CHANNEL_VIOLATION": "Advisory. A creative's rights[] channels / excluded_channels restriction (core/rights-constraint.json) does not permit the media channel of the requested output, so building it would produce a derivative the rights grant does not allow to run there. Creative agents SHOULD check rights[].channels against the channel each requested target capability serves (for example its applies_to_channels, where declared) before generating, and SHOULD surface this code rather than silently building; the restriction is advisory in 3.3, so a creative agent MAY proceed and attach this code as a non-terminal entry in errors[] on an otherwise-successful build, or MAY decline the affected output with a terminal error. error.field SHOULD point at the offending rights entry (e.g. creative_manifest.rights[0].excluded_channels, or creative_manifests[N].rights[i].channels for a multi-capability build) and error.details SHOULD include rights_id, the requested channel, and capability_id when the build named one. Distinct from CREATIVE_REJECTED (content-policy or brand-safety review) and from the governance plan channel check, which is a hard check by the governance agent. Recovery: correctable (target a capability whose channel the grant permits, confirm the rights entry applies to this output, or have the holder grant the channel; the last is a human or holder action, not an autonomous retry). Advisory in 3.3 and may tighten while the surface is experimental."
   },
   "enumMetadata": {
+    "ADDON_UNREACHABLE": {"recovery": "transient", "suggestion": "seller retries within the original finite hold or records best-effort omission"},
+    "ADDON_AUTH_FAILED": {"recovery": "terminal", "suggestion": "operator repairs vendor credentials; buyer credentials are unchanged"},
+    "ADDON_HASH_MISMATCH": {"recovery": "terminal", "suggestion": "discard affected fragments and have the vendor correct the content hash"},
+    "ADDON_INVALID_POSITION": {"recovery": "terminal", "suggestion": "vendor corrects the position to one declared for this route"},
+    "ADDON_UNDECLARED_FORMAT": {"recovery": "terminal", "suggestion": "vendor corrects the format or creative identity in the response"},
+    "ADDON_MALFORMED_FRAGMENT": {"recovery": "terminal", "suggestion": "operator or vendor repairs the required fragment integration"},
+    "ADDON_REQUIRED_UNAVAILABLE": {"recovery": "terminal", "suggestion": "surface the seller infrastructure failure; a later user-directed retry follows the invoking task idempotency contract"},
     "$comment": "Structured recovery classification and remediation hints for each error code. SDKs MUST consume this block instead of parsing 'Recovery: X' from enumDescriptions prose. Each entry is { recovery, suggestion }. recovery is one of: correctable (caller can fix and retry), transient (retry with backoff), terminal (no autonomous recovery - operator intervention required). enumDescriptions is retained for human readability and will continue to carry the canonical narrative; the recovery classification embedded in that prose is normative and MUST match the value here.",
     "INVALID_REQUEST": {
       "recovery": "correctable",

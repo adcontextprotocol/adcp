@@ -209,12 +209,16 @@ describe('request-only targeting null-clear semantics', () => {
   test('codegen-safe product purchase input copies remain in strict-schema parity', () => {
     const strict = readSchema('/schemas/media-buy/product-purchase.json');
     const input = readSchema('/schemas/media-buy/product-purchase-input.json');
+    // creative_addons is seller-resolved evidence in the accepted snapshot.
+    // Direct buyers bind it through feed_version, without echoing the disclosure.
+    assert.ok(Object.hasOwn(strict.properties, 'creative_addons'));
+    assert.equal(Object.hasOwn(input.properties, 'creative_addons'), false);
     assert.deepEqual(
       Object.keys(input.properties).sort(),
-      Object.keys(strict.properties).filter(name => !PROPOSAL_ONLY_PURCHASE_FIELDS.has(name)).sort()
+      Object.keys(strict.properties).filter(name => name !== 'creative_addons' && !PROPOSAL_ONLY_PURCHASE_FIELDS.has(name)).sort()
     );
     for (const property of Object.keys(strict.properties)) {
-      if (property === 'targeting_overlay') continue;
+      if (property === 'targeting_overlay' || property === 'creative_addons') continue;
       if (PROPOSAL_ONLY_PURCHASE_FIELDS.has(property)) {
         assert.equal(
           input.properties[property],

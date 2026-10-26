@@ -1675,11 +1675,18 @@ for (const [relativePath, expectedDefinition] of [
   });
 }
 
-test('generated production profile exposes the active 3.2 surface without compliance annotations', () => {
+test('creative addon discovery is gated to the 3.3 role catalog', () => {
+  assert.equal(mcpRoleProfileTools('creative', '3.2.6').includes('get_creative_addons'), false);
+  assert.equal(mcpRoleProfileTools('creative', '3.3.0').includes('get_creative_addons'), true);
+});
+
+test('generated production profile exposes the active surface without compliance annotations', () => {
   assert.ok(fs.existsSync(PRODUCTION_PROFILE_DIR), 'production profile is missing');
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
   const profile = readJson(path.join(PRODUCTION_PROFILE_DIR, 'manifest.json'));
 
+  assert.equal(canonicalManifest.tools.get_creative_addons.added_in, '3.3.0');
+  assert.equal(Boolean(profile.tools.get_creative_addons), semver.gte(ACTIVE_SURFACE_VERSION, '3.3.0'));
   assert.equal(profile.profile, 'production');
   assert.equal(profile.surface_version, ACTIVE_SURFACE_VERSION);
   assert.equal(profile.annotation_mode, 'structural');
@@ -1850,6 +1857,8 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
 
     assert.equal(modelContext.profile, profileName);
     assert.equal(modelContext.view, 'client-prompt-inputs');
+    assert.equal(modelContext.surface_version, ACTIVE_SURFACE_VERSION);
+    assert.equal(modelContext.compatibility_scope, mcpRoleProfileCompatibilityScope(ACTIVE_SURFACE_VERSION));
     assert.equal(modelContext.annotation_mode, 'model-context');
     assert.equal(modelContext.discovery_profile, '../manifest.json');
     assert.equal(
@@ -1931,7 +1940,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
     assert.ok(canonicalManifest.tools[compatibilityFacade].deprecated_in);
   }
 
-  const creativeTools = new Set(MCP_ROLE_PROFILE_TOOLS.creative);
+  const creativeTools = new Set(mcpRoleProfileTools('creative', ACTIVE_SURFACE_VERSION));
   const activeCreativeTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'creative')
     .filter(([, tool]) => !tool.deprecated_in || semver.gt(tool.deprecated_in, ACTIVE_SURFACE_VERSION))

@@ -124,7 +124,9 @@ const MCP_ROLE_PROFILE_LINE_TOOLS = {
   'media-buy': {
     '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue'],
   },
-  creative: {},
+  creative: {
+    '3.3.0': ['get_creative_addons'],
+  },
 };
 
 /** The role profile's tools for an active surface version, in catalog order. */

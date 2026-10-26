@@ -81,3 +81,7 @@ Before mutating any state, the seller re-resolves every entry in the proposal's 
 ```
 
 The buyer calls [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) to obtain fresh pins, reviews the changed definition, and finalizes again. A definition withdrawn from a successfully fetched document is changed and omits `current_content_digest`; a document that cannot be fetched or parsed is transient, so the seller returns [`SERVICE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-service-unavailable) without mutating state. An idempotent replay of an acceptance that already completed returns the stored result without re-verifying pins.
+
+## Creative addon commitments (proposed 3.3)
+
+For negotiated addon support, `commercial_terms.purchases[].creative_addons` contains the complete resolved configuration and is covered by `terms_digest`. Finalization and acceptance must reject stale configuration before commitment. See [the complete binding rules](/docs/creative/task-reference/get_creative_addons#disclosure-before-commitment).
