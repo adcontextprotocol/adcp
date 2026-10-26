@@ -191,7 +191,7 @@
     "assignments": {
       "type": "array",
       "deprecated": true,
-      "description": "Deprecated additive assignment shorthand. Each entry upserts one creative-to-package assignment. Use assignment_operations for explicit assign, unassign, and replace semantics. Standalone creative agents that do not manage media buys ignore this field.",
+      "description": "Deprecated additive assignment shorthand. Each entry upserts one creative-to-package assignment. Use assignment_operations for explicit assign, unassign, and replace semantics. Standalone creative agents that do not manage media buys ignore this field. A pending_review or rejected library creative MAY be assigned if the reference and other assignment constraints are valid; sellers MUST NOT reject or remove an assignment solely for its review status. Only package-approved eligible creatives may serve. See the package start_requires_all_creatives_approved policy and docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review.",
       "items": {
         "type": "object",
         "properties": {
@@ -256,7 +256,7 @@
     },
     "assignment_operations": {
       "type": "array",
-      "description": "Explicit, ordered assignment mutations. These operations may be sent without creatives to traffic existing creative IDs independently from MediaBuy commercial control. The entire request is atomic under idempotency_key and therefore requires strict validation; lenient partial processing is not permitted.",
+      "description": "Explicit, ordered assignment mutations. These operations may be sent without creatives to traffic existing creative IDs independently from MediaBuy commercial control. The entire request is atomic under idempotency_key and therefore requires strict validation; lenient partial processing is not permitted. A pending_review or rejected library creative MAY be assigned if the reference and other assignment constraints are valid; sellers MUST NOT reject or remove an assignment solely for its review status. Only package-approved eligible creatives may serve. See the package start_requires_all_creatives_approved policy and docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review.",
       "minItems": 1,
       "maxItems": 500,
       "items": {

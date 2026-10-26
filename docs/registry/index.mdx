@@ -289,7 +289,7 @@ curl "https://agenticadvertising.org/api/registry/agents?type=measurement"
 
 This returns every measurement agent enrolled in the registry by an AgenticAdvertising.org member organization.
 
-**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AgenticAdvertising.org crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`.
+**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AgenticAdvertising.org crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`. Each cached metric carries the vendor's optional display `name` when published; show it as the label and fall back to `metric_id`, but filter and key on `metric_id` only.
 
 ##### Trust and external links
 

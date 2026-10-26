@@ -65,9 +65,33 @@
           "$ref": "/schemas/core/canonical-placement.json",
           "description": "Compact canonical product placement"
         },
+        "canonical-installment": {
+          "$ref": "/schemas/core/canonical-installment.json",
+          "description": "Compact closed installment on a canonical product, identified by (collection_ref, installment_id)"
+        },
+        "canonical-installment-ref": {
+          "$ref": "/schemas/core/canonical-installment-ref.json",
+          "description": "Closed canonical installment identity for digest-covered terms and request paths"
+        },
         "canonical-product-action": {
           "$ref": "/schemas/core/canonical-product-action.json",
           "description": "Fine-grained action template for compact products"
+        },
+        "business-calendar": {
+          "$ref": "/schemas/core/business-calendar.json",
+          "description": "Immutable working-time declaration for business-clock service commitments"
+        },
+        "creative-review-sla": {
+          "$ref": "/schemas/core/creative-review-sla.json",
+          "description": "Product-scoped commitment to an approved or rejected creative review decision"
+        },
+        "escalation-sla": {
+          "$ref": "/schemas/core/escalation-sla.json",
+          "description": "Elapsed-time commitment to human acknowledgement of a critical report"
+        },
+        "media-buy-issue": {
+          "$ref": "/schemas/core/media-buy-issue.json",
+          "description": "Durable seller acknowledgement and resolution of an operational report"
         },
         "canonical-proposal": {
           "$ref": "/schemas/core/canonical-proposal.json",
@@ -345,6 +369,10 @@
         "installment-deadlines": {
           "$ref": "/schemas/core/installment-deadlines.json",
           "description": "Booking, cancellation, and material submission deadlines for an installment"
+        },
+        "installment-change-set": {
+          "$ref": "/schemas/core/installment-change-set.json",
+          "description": "Installment-level include and omit actions for a proposal refinement"
         },
         "material-deadline": {
           "$ref": "/schemas/core/material-deadline.json",
@@ -2141,6 +2169,22 @@
             "description": "Per-receipt durable recording results"
           }
         },
+        "report-media-buy-issue": {
+          "request": {
+            "$ref": "/schemas/media-buy/report-media-buy-issue-request.json"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/report-media-buy-issue-response.json"
+          }
+        },
+        "get-media-buy-issue": {
+          "request": {
+            "$ref": "/schemas/media-buy/get-media-buy-issue-request.json"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/get-media-buy-issue-response.json"
+          }
+        },
         "provide-performance-feedback": {
           "request": {
             "$ref": "/schemas/media-buy/provide-performance-feedback-request.json",
@@ -2863,6 +2907,10 @@
         "rights-pricing-option": {
           "$ref": "/schemas/brand/rights-pricing-option.json",
           "description": "Pricing option for licensable rights"
+        },
+        "rights-scope": {
+          "$ref": "/schemas/brand/rights-scope.json",
+          "description": "What a rights grant covers — uses, grant window, and exclusivity — shared by rights-terms and media-buy purchases"
         },
         "rights-terms": {
           "$ref": "/schemas/brand/rights-terms.json",

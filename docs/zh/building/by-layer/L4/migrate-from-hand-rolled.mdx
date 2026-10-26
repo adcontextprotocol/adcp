@@ -6,12 +6,12 @@ description: "生产环境里已有手写 AdCP 代理时，如何按层换到官
 ---
 
 <Info>
-译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[Migrate from a hand-rolled agent](/docs/building/by-layer/L4/migrate-from-hand-rolled)。本页是迁移路径的阅读译本。任务参考、状态机和安全剖面的规范文本仍是英文。
+译名与[术语表](/zh/dist/docs/3.2.6/glossary)一致。英文原文：[Migrate from a hand-rolled agent](/docs/building/by-layer/L4/migrate-from-hand-rolled)。本页是迁移路径的阅读译本。任务参考、状态机和安全剖面的规范文本仍是英文。
 </Info>
 
 本指南面向**已经在生产环境运行 AdCP 代理**、又想迁到官方 SDK、但不能做一次切换日重写的采用者。你的代理在服务真实流量；现有技术栈是工程师自己建的，他们会维护它；你承受不起长达数周的冻结。路径是增量的：一次换一层，每一步之后都发布，并在过程中重新认证。
 
-如果你是从零开始，这份文档不适合你——见[搭建代理](/zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent)。如果你还在决定要不要迁移，见构建总览上的[手写实现再评估检查](/zh/dist/docs/3.2.3/building#two-checks-before-you-start)。
+如果你是从零开始，这份文档不适合你——见[搭建代理](/zh/dist/docs/3.2.6/building/by-layer/L4/build-an-agent)。如果你还在决定要不要迁移，见构建总览上的[手写实现再评估检查](/zh/dist/docs/3.2.6/building#two-checks-before-you-start)。
 
 ## 0. 盘点你今天拥有什么
 
@@ -228,7 +228,7 @@ createAdcpServer({
 ## 另见
 
 - [AdCP 栈](/docs/building/cross-cutting/sdk-stack)（英文）— 分层架构参考
-- [从哪里开始](/zh/dist/docs/3.2.3/building) — 决策页
+- [从哪里开始](/zh/dist/docs/3.2.6/building) — 决策页
 - [版本适配](/docs/building/cross-cutting/version-adaptation)（英文）— 三种机制的参考
 - [一致性](/docs/building/verification/conformance)（英文）— 故事板套件如何给代理打分
-- [搭建代理](/zh/dist/docs/3.2.3/building/by-layer/L4/build-an-agent) — 从零路径；用来对照建在 SDK 上的 L4 终态长什么样
+- [搭建代理](/zh/dist/docs/3.2.6/building/by-layer/L4/build-an-agent) — 从零路径；用来对照建在 SDK 上的 L4 终态长什么样

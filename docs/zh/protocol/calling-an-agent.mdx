@@ -8,14 +8,14 @@ description: "买方每次变更调用都要遵守的线路约定：幂等重放
 # 调用 AdCP 代理
 
 <Info>
-这是阅读辅助。英文原文 [Calling an AdCP agent](/docs/protocol/calling-an-agent) 是这条线路契约的规范文本。本页与英文不一致时，以英文为准。任务参考和 JSON 模式没有中文译本。译名见[术语表](/zh/dist/docs/3.2.3/glossary)。
+这是阅读辅助。英文原文 [Calling an AdCP agent](/docs/protocol/calling-an-agent) 是这条线路契约的规范文本。本页与英文不一致时，以英文为准。任务参考和 JSON 模式没有中文译本。译名见[术语表](/zh/dist/docs/3.2.6/glossary)。
 </Info>
 
 本页是买方一侧的线路契约：这些规则并不干净地落在任何一个任务模式里，但适用于你发出的每笔会改变状态的调用。如果你在建买方（DSP、规划工具、代理式客户端），并调用 AdCP 的销售、创意、信号、治理、赞助智能或品牌代理，读一遍。
 
 面向代理实现者的同一内容在 [`skills/call-adcp-agent/SKILL.md`](https://github.com/adcontextprotocol/adcp/blob/main/skills/call-adcp-agent/SKILL.md)，并打进[协议包](/docs/building/by-layer/L0/schemas#one-shot-protocol-bundle)（英文），以便 SDK 把它交给编程代理。
 
-按构建顺序走一遍的指南是[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)。
+按构建顺序走一遍的指南是[编写调用方](/zh/dist/docs/3.2.6/building/by-layer/L4/build-a-caller)。
 
 <a id="discovery-chain"></a>
 
@@ -192,8 +192,8 @@ AdCP 任务状态是**应用层**契约。MCP 和 A2A 可以包装、流式传�
 ## 相关
 
 - 各任务的请求/响应形状：见对应协议的参考（`/docs/media-buy/`、`/docs/creative/`、`/docs/signals/` 等，英文）。
-- [协议架构](/zh/dist/docs/3.2.3/protocol/architecture)：各协议领域如何拼在一起。
+- [协议架构](/zh/dist/docs/3.2.6/protocol/architecture)：各协议领域如何拼在一起。
 - [必需任务](/docs/protocol/required-tasks)（英文）：代理要声明某个专业方向必须实现哪些任务。
 - [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)（英文）：对任何新代理的第一次调用。
 - [模式](/docs/building/by-layer/L0/schemas)（英文）：SDK 如何消费现在也打包了 `skills/` 的协议包。
-- [编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)：调用方的构建指南，包括安装、调用、处理响应和读入报告。
+- [编写调用方](/zh/dist/docs/3.2.6/building/by-layer/L4/build-a-caller)：调用方的构建指南，包括安装、调用、处理响应和读入报告。

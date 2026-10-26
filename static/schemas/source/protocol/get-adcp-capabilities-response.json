@@ -20,6 +20,30 @@
   },
   "allOf": [
     {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": { "issue_reporting": { "const": true } },
+            "required": ["issue_reporting"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "idempotency": {
+                "properties": { "supported": { "const": true } },
+                "required": ["supported", "replay_ttl_seconds"]
+              }
+            },
+            "required": ["idempotency"]
+          }
+        }
+      }
+    },
+    {
       "$ref": "/schemas/core/version-envelope.json"
     },
     {
@@ -335,6 +359,32 @@
         "properties": {
           "media_buy": {
             "properties": {
+              "proposal_refinement": {
+                "properties": {
+                  "supported_dimensions": { "contains": { "const": "installment_changes" } }
+                },
+                "required": ["supported_dimensions"]
+              }
+            },
+            "required": ["proposal_refinement"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.installment_selection" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
               "audience_targeting": {
                 "required": ["supported_activation_methods"]
               }
@@ -629,6 +679,14 @@
     }
   ],
   "properties": {
+    "business_calendars": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/business-calendar.json" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-added-in": "3.3.0",
+      "description": "Seller working-time calendars, uniquely keyed by immutable calendar_id. Every published business-clock SLA MUST resolve to one declaration here. Retain earlier declarations while requests referencing them remain pending. Presence declares calendar support, not any product-level timing commitment."
+    },
     "adcp": {
       "type": "object",
       "description": "Core AdCP protocol information",
@@ -1451,6 +1509,12 @@
       "type": "object",
       "description": "Media-buy protocol capabilities. Expected when media_buy is in supported_protocols. Sellers declaring media_buy should also include account with supported_billing.",
       "properties": {
+        "issue_reporting": {
+          "type": "boolean",
+          "default": false,
+          "x-added-in": "3.3.0",
+          "description": "Supports report_media_buy_issue and get_media_buy_issue, including durable human acknowledgement and resolution polling. Products advertise the report_media_buy_issue action and any critical-report SLA through allowed_actions; each buy resolves current support and commitment in available_actions. Absence or false means unsupported. Reporting is separate from controls and does not pause delivery."
+        },
         "anonymous_discovery": {
           "type": "boolean",
           "description": "Whether this seller accepts product discovery without caller credentials. This applies to list_products and to get_products in brief or wholesale mode; it does not apply to proposal refinement or finalization, purchasing, account-scoped reads, or mutations. true means an anonymous discovery request can produce a successful response, but the response may be a public subset and may differ from results for an authenticated principal or selected account. false means these discovery calls require an authenticated principal. Absence means unspecified legacy behavior, so callers probe and handle AUTH_MISSING. A valid authenticated request is never rejected merely because credentials were supplied. true is inconsistent with account.required_for_products=true because an anonymous caller cannot select protected account context.",
@@ -1530,10 +1594,10 @@
           "properties": {
             "supported_dimensions": {
               "type": "array",
-              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
+              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; installment_changes (experimental, media_buy.installment_selection) covers installment_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
               "items": {
                 "type": "string",
-                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "alternatives", "criteria"]
+                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "installment_changes", "alternatives", "criteria"]
               },
               "uniqueItems": true
             },
@@ -3459,7 +3523,7 @@
           "type": "boolean",
           "deprecated": true,
           "x-removed-in": "4.0.0",
-          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_principal.configuration.notification_configs[].authentication, sync_agent_notification_configs.notification_configs[].authentication, reporting_webhook.authentication, or create_media_buy.artifact_webhook.authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
+          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_principal.configuration.notification_configs[].authentication, sync_agent_notification_configs.notification_configs[].authentication, reporting_webhook.authentication, or create_media_buy.artifact_webhook.authentication paths for receivers that have not adopted RFC 9421. With the seller's onboarding record, the sole selector of webhook-signing mode; when false, a registration carrying `authentication` is rejected with `webhook_hmac_not_supported`. Deprecated; removed in AdCP 4.0.",
           "default": false
         },
         "delivery_retry_horizon_seconds": {
@@ -3651,6 +3715,14 @@
               "metric_id": {
                 "$ref": "/schemas/core/vendor-metric-id.json",
                 "description": "Identifier for the metric within the vendor's vocabulary. Combined with the agent's BrandRef, forms the canonical tuple `(vendor.domain, vendor.brand_id, metric_id)`. Each metric_id MUST be unique within a single agent's catalog."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "\\S",
+                "x-added-in": "3.3.0",
+                "description": "Human-readable display name of this metric as the vendor names it (e.g., `Attention Score`, `Invalid Traffic Rate (GIVT)`). For titles, table cells, and labels where `description` is too long. Buyer agents and UIs SHOULD show `name` in place of `metric_id` when present and fall back to `metric_id` when absent. Not an identifier: consumers MUST NOT use `name` to join, key, or deduplicate metrics (text search over it is fine); `metric_id` remains the canonical reference. Must contain a non-whitespace character. SHOULD be unique within a single agent's catalog so labels stay distinguishable. A single unlocalized string."
               },
               "standard_reference": {
                 "type": "string",

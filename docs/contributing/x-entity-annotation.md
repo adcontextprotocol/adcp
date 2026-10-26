@@ -105,7 +105,7 @@ High-level groupings (see the registry for full descriptions). *Categories below
 |---|---|
 | Brand & rights | `advertiser_brand`, `rights_holder_brand`, `rights_grant` |
 | Account & party | `account`, `operator` |
-| Media buy | `media_buy`, `package`, `product`, `proposal`, `product_pricing_option`, `spot_airing` |
+| Media buy | `media_buy`, `media_buy_issue`, `business_calendar`, `package`, `product`, `proposal`, `product_pricing_option`, `spot_airing` |
 | Creative | `creative`, `creative_revision`, `creative_seller_revision`, `creative_representation`, `macro_declaration`, `tracker_execution_selector`, `creative_locale_variant`, `creative_format`, `creative_evaluation`, `build_variant`, `served_variant` |
 | Data & targeting | `audience`, `audience_evidence`, `audience_evidence_snapshot`, `signal`, `signal_activation_id`, `demographic_interval_id`, `event_source` |
 | Lists & catalogs | `collection_list`, `property_list`, `catalog`, `catalog_generation`, `catalog_item`, `property`, `collection`, `installment` |

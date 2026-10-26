@@ -486,6 +486,141 @@
   
   Directory scenarios in `scenarios.json` can carry `requests`, which a harness signs with a named key and verifies against that directory. D03 and D11 use them: a request signed with a key that has no valid directory signature gets `403`. D15 adds malformed extra Ed25519 keys, one with no `x` and one with a 31-byte `x`, which a verifier ignores.
 
+## 3.2.7
+
+### Patch Changes
+
+- 12bc375: Make both off-list evaluator rejection phases mandatory for agents that advertise evaluator support. Preserve unsupported-feature applicability, prevent later discovery from skipping the security boundary, and check all outbound methods and paths on the off-list evaluator origin.
+  
+  Bind each required rejection probe to an advertised build operation and a valid
+  source input. Handle non-build-first and legacy catalogs without relying on
+  catalog ordering or ranking features. Add an owned, integrity-checked temporary
+  SDK bridge for shared full/standalone runner preparation; unavailable fixtures
+  remain explicit coverage gaps with no passing security credit.
+  
+  Forward authored probe recipes through the manual runner, including recipe-only
+  kits. Malformed understood catalog declarations retain their catalog cause as
+  prerequisite failures (actionable dependency failures in hosted classification),
+  instead of being mislabeled controller setup failures.
+  
+  Resolve capability catalogs against the validated served release while preserving
+  the pinned build request and source-input contract, including provisioned legacy
+  formats when the catalog uses newer canonical vocabulary.
+  
+  Backport the merged main fix with a separately qualified, all-target guarded
+  SDK14.0.0-rc.53 adapter and the existing upstream served-catalog authority
+  prerequisite. Preserve this branch's exact dependency and lockfile.
+
+## 3.2.6
+
+### Patch Changes
+
+- 71d877e: Correct optional-tool applicability in media-buy storyboards. Keep independent discovery and creation checks applicable, skip unsupported compact lifecycle branches with their state-dependent consumers, and allow DOOH discovery through a brief without requiring the optional wholesale listing tool. Advertised but broken tools and missing mandatory paths still fail.
+- 89e30a8: Test product filtering in wholesale and refine modes only when the seller advertises those modes. Preserve universal brief filtering coverage and refine products captured from brief discovery so refinement does not depend on wholesale support or success.
+- b7c6030: Let canonical-format, CTV-experience, premium-display validation, and rejected product-discovery storyboards use the runner-selected protocol release instead of stale prerelease pins. Stable sellers no longer need to advertise historical betas to run these checks; intentional version-negotiation probes remain unchanged.
+- 3c0f425: Integrate the immutable signed 3.1.29 compliance, schema and protocol release records into the 3.2 maintenance line, register the released bundle for hosted grading, and refresh schema discovery. Registration advances the hosted 3.1 line alias from 3.1.24 to 3.1.29 while preserving existing explicit version pins.
+- 2bab865: Make the `provenance_truth_of_claim` and `provenance_audit_observation` storyboards passable by a seller that runs independent AI detection. The seeded `accepted_verifiers` entry now names a real public conformance verifier, `https://test-agent.adcontextprotocol.org/governance/creative-features/mcp`, which serves only `get_creative_features` with no bearer and returns deterministic fixture-keyed results. The fixture images now exist at the served path `https://adcontextprotocol.org/test-assets/acme-outdoor/ai-generated-true.jpg` and `ai-generated-false.jpg`, replacing the unresolvable `test-assets.adcontextprotocol.org` host. The "sentinel" wording is removed, and the prerequisite now states that sellers allowlist this verifier once in sandbox configuration and MUST NOT call a verifier URL that is not on their own allowlist. `accept_consistent_claim` now declares `depends_on: [discover_verifier]`, so a failed contradicted step no longer skips the consistent-claim step. Closes #8199.
+- 9dbfad0: compliance: fix two storyboard assertions that compared against an unresolved `$context` token, and gate assertion comparands at build time.
+  
+  The runner substitutes `validations[].value`, `validations[].allowed_values[]`
+  and a webhook step's `filter` against the context as it stood *before* the
+  step, and resolves `validations[].context_key` from the same snapshot. A
+  step's own `context_outputs` land after its validations run, so a step cannot
+  assert against a key it captures itself — and unlike requests, nothing guards
+  this surface. An unresolved `value` silently becomes the comparand (the check
+  grades the response against the literal string `"$context.<key>"`), an absent
+  `context_key` makes the check *pass* with a `context_key_absent` observation,
+  and a token left in a `filter` yields a selector no delivery can match.
+  
+  Two storyboards did exactly that, so the assertion graded something other than
+  what it claimed:
+  
+  - `geo_place_targeting` asserted "current_version is included in
+    supported_versions" against `$context.place_system_version`, which the same
+    `get_adcp_capabilities` step captures, so no seller could pass the capability
+    step. The storyboard now captures `supported_versions` as well and settles
+    the `geo-place-catalog-capability.json` `x-adcp-validation.member_of`
+    invariant on a second, stateless capabilities read — unconditionally, before
+    any product or buy state exists to make it conditional.
+  - `vendor_metric_accountability` asserted the day-1
+    `committed_metrics[].committed_at` equals `confirmed_at` against
+    `$context.confirmed_at`, captured by the same `create_media_buy` step, so no
+    seller could satisfy it. Every day-1 `committed_at` on both packages is now
+    captured on create and settled against the persisted `confirmed_at` on a
+    `get_media_buys` read-back that pins the buy under test — "each such entry's
+    `committed_at` MUST equal `confirmed_at`", not just the first entry.
+  
+  `scripts/lint-storyboard-context-resolution.cjs` gains a
+  `context_assertion_unresolved` rule covering all four comparand surfaces with
+  the same before-own-capture ordering the request rule uses, so the class is
+  rejected by `npm run build:compliance` from here on. Released bundles are
+  immutable, so 3.2.0-beta.6 through 3.2.5 keep both defects and are quarantined
+  by the frozen table in
+  `tests/lint-storyboard-context-resolution.test.cjs`.
+- 9dbfad0: compliance: seed `media_buy_id` in the `buyer_monitoring` storyboard and reject unresolvable `$context` tokens at build time.
+  
+  `buyer_monitoring` polls delivery for the buy declared in
+  `fixtures.fixture_publisher.active_buy`, but no step in the storyboard creates
+  one, so `$context.media_buy_id` had no writer and both delivery reads could
+  only ever skip with `prerequisite_failed`. The root `context:` block now seeds
+  it from the same fixture id.
+  
+  A new `scripts/lint-storyboard-context-resolution.cjs` runs as a hard gate in
+  `npm run build:compliance`. It replays the runner's `injectContext()`
+  substitution in step order over every `sample_request` and fails when a
+  `$context.<key>` has nothing to resolve it — the defect class that shipped in
+  every 3.0 bundle up to 3.0.26 (#7797, fixed for 3.0.27 by #7801) and in the
+  3.2 bundles through 3.2.5. It also rejects a `context_outputs` capture of
+  `governance_agent_url` (which hosted grading pins) or the governed-agent
+  `*_agent_url` keys the multi-agent runner seeds from config, which would let
+  the agent under test redirect the agent it is told to trust.
+- acfa19d: Compliance storyboards that seed a `sandbox: true` fixture account now carry `sandbox: true` explicitly on every `sample_request.account` that names that fixture's natural key, starting with `media_buy_seller/invalid_transitions`. Previously those requests relied on the runner to inject the selector, and the injection was not uniform across steps. A seller that correctly treats `(brand, operator, sandbox: true)` as a distinct account from `(brand, operator)` could not resolve the buy created on `create_media_buy` from the follow-up `update_media_buy`, so `update_unknown_package` returned `MEDIA_BUY_NOT_FOUND` and the two `double_cancel` steps were skipped. This is a conformance artifact only: no schema or wire-contract change. Wholesale `get_products` requests keep their omitted-selector semantics.
+- 01ba7ed: `media_buy_seller/total_budget_redistribution` now sends the currency the buy
+  was actually committed in instead of a hardcoded `USD`.
+  
+  The scenario grades `total_budget` redistribution, not currency selection
+  (that is `media_buy_seller/pricing_currency_filter`). Both of its
+  `update_media_buy` requests wrote `total_budget.currency: "USD"`, so a seller
+  whose buy is denominated in another currency was failed for correctly
+  rejecting an update that would have redenominated it, and the read-back then
+  graded the consequentially unchanged total as wrong too.
+  
+  A new `read_committed_currency` step captures `media_buys[0].currency` and
+  both updates send `$context.media_buy_currency`; the post-update read-back
+  asserts the redistribution did not redenominate the buy. `get_media_buys` is
+  the source because `media_buys[].currency` is the only required carrier of a
+  committed buy's currency — `create_media_buy` and `update_media_buy` both
+  leave `currency` optional, so capturing from the create response would have
+  traded a `VALIDATION_ERROR` for a `capture_path_not_resolvable` against a
+  seller that omits it.
+  
+  Two supporting corrections. `create_fixed_buy` now captures its revision as
+  `created_revision`: `get_media_buys` writes `revision` by convention and
+  convention extraction runs before explicit captures, so the new read would
+  otherwise have overwritten the revision `create_media_buy` returned.
+  `reject_total_with_packages` becomes `stateful: true` and its phase declares
+  `depends_on: [setup]`: `expect_error` steps are not skipped on unresolved
+  `$context` substitution, so a failed capture would otherwise put the raw token
+  on the wire and let the step pass on the seller's rejection of that rather
+  than on the inconsistent package sum it exists to grade. `depends_on` keeps
+  the probe graded when only the redistribute phase trips.
+  
+  The seeded USD rate card is unchanged; the scenario simply no longer assumes
+  it was the rate card that priced the buy. No currency capability gate is added.
+- 319b5c4: compliance: add advisory AdCP 4.0 compatibility checks so 3.x agents learn what 4.0 removes or tightens before it ships (#8332).
+  
+  - New registry `universal/v4-compatibility.yaml` lists each 4.0 check with a stable id, tracking issue, detection rule, fix, and the validation or runner notice that observes it. A report joins run output against it to show each check as passed, failing, or not observable.
+  - New authored check kind `all_fields_present`: every item of an array carries a field. An absent or empty array grades not_applicable instead of passing vacuously.
+  - `media_buy_seller` product discovery adds the advisory check `format_ids_removed_in_4_0` (every product declares `format_options`). `version_negotiation` tags its existing `supported_versions` and `adcp_version` echo validations as `major_versions_removed_in_4_0` and `adcp_version_echo_required_in_4_0`.
+  - The three canonical 4.0 notice codes are registered as checks under the same ids. `request_signing_required_in_4_0` and `legacy_hmac_fallback_removed_in_4_0` are also graded as advisory validations on the `media_buy_seller` and `capability_discovery` capability steps, so a report does not depend on notice emission. `signed_requests_specialism_deprecated` now declares `effective_version: "4.0"`.
+  - New migration page `reference/migration/v4-compatibility` and a build lint keep the registry, storyboards, notice codes, and page anchors in step.
+  
+  None of these checks fails a 3.x conformance run.
+- e3fe7ae: compliance: every AdCP 4.0 schema removal in `universal/v4-compatibility.yaml` now names its 4.0 tracking issue. Ten removal groups had none; they are now tracked as #8377–#8386, and the registry lint requires `issue` on every `schema_removals_not_checked` group.
+- e3fe7ae: schema: mark the 43 deprecated fields scheduled for removal in AdCP 4.0 with `"x-removed-in": "4.0.0"`, matching the 3 fields that already carried it (#8332).
+  
+  The 4.0 compatibility registry (`universal/v4-compatibility.yaml`) now lists all 46 marked nodes once each: in a check's `schema_sites`, or in `schema_removals_not_checked` with the reason no check covers it yet. The registry lint fails the build when a marked node is unlisted or a listed site is not marked. A schema test requires the marker on every deprecated node whose description says it is removed in 4.0. Annotations only: no field, type, or requirement changes.
+
 ## 3.2.5
 
 ### Patch Changes

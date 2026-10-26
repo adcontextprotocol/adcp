@@ -8,11 +8,11 @@ description: "把编程代理指向 AdCP SDK 的技能文件，在几分钟内�
 搭建 AdCP 代理最快的办法，是把编程代理（Claude Code、Codex、Cursor、Windsurf）指向 AdCP SDK 里的一份技能文件。每份技能在 2–8 分钟内产出一个符合协议、并经故事板校验的代理。
 
 <Info>
-译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。这里的「编程代理」是写代码的工具，「代理」是它生成的 AdCP 服务。英文原文：[Build an Agent](/docs/building/by-layer/L4/build-an-agent)。
+译名与[术语表](/zh/dist/docs/3.2.6/glossary)一致。这里的「编程代理」是写代码的工具，「代理」是它生成的 AdCP 服务。英文原文：[Build an Agent](/docs/building/by-layer/L4/build-an-agent)。
 </Info>
 
 <Note>
-**没有工程团队的媒体方？** 协议符合只是上线的一块。产品管理、接入广告服务器和托管是另外的工作。三条路径（与托管平台合作、自托管现成代理、自己搭建）见**[运营代理](/zh/dist/docs/3.2.3/building/operating/operating-an-agent)**。
+**没有工程团队的媒体方？** 协议符合只是上线的一块。产品管理、接入广告服务器和托管是另外的工作。三条路径（与托管平台合作、自托管现成代理、自己搭建）见**[运营代理](/zh/dist/docs/3.2.6/building/operating/operating-an-agent)**。
 </Note>
 
 ## 安装 SDK
@@ -25,7 +25,7 @@ description: "把编程代理指向 AdCP SDK 的技能文件，在几分钟内�
 npm install @adcp/sdk
 ```
 
-JS/TS SDK 提供类型化的工具注册、响应构建器和内置的故事板运行器。生产环境里的大多数代理使用这个 SDK。应安装的版本见[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)。
+JS/TS SDK 提供类型化的工具注册、响应构建器和内置的故事板运行器。生产环境里的大多数代理使用这个 SDK。应安装的版本见[选择 SDK](/zh/dist/docs/3.2.6/building/by-layer/L4/choose-your-sdk)。
 
 - [NPM 包](https://www.npmjs.com/package/@adcp/sdk)
 - [GitHub 仓库](https://github.com/adcontextprotocol/adcp-client)
@@ -60,7 +60,7 @@ serve(MySeller(), name="my-seller")
 go get github.com/adcontextprotocol/adcp-go/adcp
 ```
 
-Go SDK 提供类型化的工具注册、响应构建器和合规测试控制器。类型从规范的 AdCP 模式生成。模块版本见[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)。
+Go SDK 提供类型化的工具注册、响应构建器和合规测试控制器。类型从规范的 AdCP 模式生成。模块版本见[选择 SDK](/zh/dist/docs/3.2.6/building/by-layer/L4/choose-your-sdk)。
 
 | 组件 | 导入 |
 | --- | --- |
@@ -196,7 +196,7 @@ media_buy_seller (9 steps)
 ```
 
 <Warning>
-**符合协议不等于可以上生产。** 一次通过只说明代理把 AdCP 说对了。上线还需要每个工具调用背后的业务基础设施：产品和定价、接入广告服务器、订单管理、托管，以及通过 `adagents.json` 做的发现注册。完整清单，以及应该合作、自托管还是自己搭建，见**[运营代理](/zh/dist/docs/3.2.3/building/operating/operating-an-agent)**。
+**符合协议不等于可以上生产。** 一次通过只说明代理把 AdCP 说对了。上线还需要每个工具调用背后的业务基础设施：产品和定价、接入广告服务器、订单管理、托管，以及通过 `adagents.json` 做的发现注册。完整清单，以及应该合作、自托管还是自己搭建，见**[运营代理](/zh/dist/docs/3.2.6/building/operating/operating-an-agent)**。
 </Warning>
 
 <Tip>
@@ -220,13 +220,13 @@ Python 和 Go 的对应材料在各自 SDK 的 GitHub 仓库：[adcp-client-pyth
 
 中文页面：
 
-- **[选择 SDK](/zh/dist/docs/3.2.3/building/by-layer/L4/choose-your-sdk)**：模式访问、命令行工具和包导出。
-- **[编写调用方](/zh/dist/docs/3.2.3/building/by-layer/L4/build-a-caller)**：如果你同时还要写买方客户端。
+- **[选择 SDK](/zh/dist/docs/3.2.6/building/by-layer/L4/choose-your-sdk)**：模式访问、命令行工具和包导出。
+- **[编写调用方](/zh/dist/docs/3.2.6/building/by-layer/L4/build-a-caller)**：如果你同时还要写买方客户端。
 
 仍为英文的规范页面：
 
 - **[验证你的代理](/docs/building/verification/validate-your-agent)**：故事板、合规检查，以及构建—校验—修复循环。
-- **[运营代理](/zh/dist/docs/3.2.3/building/operating/operating-an-agent)**：协议层背后是什么，以及合作、自托管还是自己搭建。
+- **[运营代理](/zh/dist/docs/3.2.6/building/operating/operating-an-agent)**：协议层背后是什么，以及合作、自托管还是自己搭建。
 - **[MCP 集成指南](/docs/building/by-layer/L0/mcp-guide)**：传输、会话和认证细节。
 - **[任务生命周期](/docs/building/by-layer/L3/task-lifecycle)**：状态值、转移和轮询。
 - **[错误处理](/docs/building/by-layer/L3/error-handling)**：错误类别、代码和恢复。

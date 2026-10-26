@@ -6,7 +6,7 @@ description: "代理式广告为什么把安全风险抬高，AdCP 设计要防�
 ---
 
 <Info>
-译名与[术语表](/zh/dist/docs/3.2.3/glossary)一致。英文原文：[Security Model](/docs/building/concepts/security-model) 是这份模型的规范文本。实现规则在[安全参考](/docs/building/by-layer/L1/security)（英文）。本页解释模型，不替代那些规则。
+译名与[术语表](/zh/dist/docs/3.2.6/glossary)一致。英文原文：[Security Model](/docs/building/concepts/security-model) 是这份模型的规范文本。实现规则在[安全参考](/docs/building/by-layer/L1/security)（英文）。本页解释模型，不替代那些规则。
 </Info>
 
 给评估 AdCP 部署的 CISO、安全架构师和第三方风险审查者。交易的两边都适用：品牌、代理商、媒体方、平台、数据提供方。[实现参考](/docs/building/by-layer/L1/security)（英文）有规范规则；本页解释规则背后的模型。
@@ -101,7 +101,7 @@ flowchart TB
 
 实现通常在数据库层强制这一点（Postgres 行级安全是规范模式），这样某个处理程序里的缺陷不能打穿这堵墙。
 
-在租户边界之内，不是每个调用方都得到同样的授权。卖方可以给一个代理完整的媒体购买范围，给另一个代理窄的读取加 webhook 附加范围（例如给 AgenticAdvertising.org Verified 合规引擎的 [`attestation_verifier`](/zh/dist/docs/3.2.3/accounts/overview#standard-named-scope-attestation_verifier) 范围。英文里写作 AAO Verified）。调用方通过 [`sync_accounts`](/docs/accounts/tasks/sync_accounts) 和 [`list_accounts`](/docs/accounts/tasks/list_accounts) 响应里、挂在每个账户条目上的 `authorization` 对象发现自己的授权。卖方在本地强制，并用 `SCOPE_INSUFFICIENT`、`READ_ONLY_SCOPE` 或 `FIELD_NOT_PERMITTED` 拒绝超出范围的请求。
+在租户边界之内，不是每个调用方都得到同样的授权。卖方可以给一个代理完整的媒体购买范围，给另一个代理窄的读取加 webhook 附加范围（例如给 AgenticAdvertising.org Verified 合规引擎的 [`attestation_verifier`](/zh/dist/docs/3.2.6/accounts/overview#standard-named-scope-attestation_verifier) 范围。英文里写作 AAO Verified）。调用方通过 [`sync_accounts`](/docs/accounts/tasks/sync_accounts) 和 [`list_accounts`](/docs/accounts/tasks/list_accounts) 响应里、挂在每个账户条目上的 `authorization` 对象发现自己的授权。卖方在本地强制，并用 `SCOPE_INSUFFICIENT`、`READ_ONLY_SCOPE` 或 `FIELD_NOT_PERMITTED` 拒绝超出范围的请求。
 
 **这防什么。** 竞争情报泄漏。以代理 A 身份认证的攻击者不能探测代理 B 的媒体购买、创意或幂等键：不能靠猜 ID，不能靠时序侧信道，不能靠错误信息的差异。合法认证、但范围很窄的代理不能升级到它未被授予的任务或字段。
 
@@ -314,5 +314,5 @@ AdCP 规定线路。它不规定、也不能代替下列任何一项：
 - **[可信匹配协议](/docs/trusted-match)** — 两次调用的分解（Context Match / Identity Match），在投放时提供结构上的隐私隔离。英文。
 - **[Webhook](/docs/building/by-layer/L3/webhooks)** — 签名格式、重放窗口、轮换。英文。
 - **[签名的治理上下文](/docs/building/by-layer/L1/security#signed-governance-context)** — 15 步核验清单。英文。
-- **[运行代理](/zh/dist/docs/3.2.3/building/operating/operating-an-agent)** — 凭据管理、监视和事件响应，作为运营问题。
-- **[代理如何通信](/zh/dist/docs/3.2.3/building/concepts/how-agents-communicate)** — `adagents.json`、`brand.json`，以及发现的信任链。
+- **[运行代理](/zh/dist/docs/3.2.6/building/operating/operating-an-agent)** — 凭据管理、监视和事件响应，作为运营问题。
+- **[代理如何通信](/zh/dist/docs/3.2.6/building/concepts/how-agents-communicate)** — `adagents.json`、`brand.json`，以及发现的信任链。

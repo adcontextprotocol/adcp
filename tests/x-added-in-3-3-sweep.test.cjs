@@ -91,6 +91,9 @@ const PROPERTIES_3_3 = [
   ['core/targeting-overlay-requirements.json', ['properties', 'collection_lists_exclude']],
   ['core/targeting-overlay-support.json', ['properties', 'collection_lists']],
   ['core/targeting-overlay-support.json', ['properties', 'collection_lists_exclude']],
+  ['core/performance-standard.json', ['properties', 'metric_id']],
+  ['core/canonical-performance-standard.json', ['properties', 'metric_id']],
+  ['core/product-offer-filters.json', ['properties', 'required_performance_standards', 'items', 'properties', 'metric_id']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the

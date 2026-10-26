@@ -555,6 +555,28 @@ for (const kind of [
     stopped(f.install());
     assert.deepEqual(f.calls(), []);
   });
+test("the Changesets path keeps the strict fence even for an unrelated main advance", (t) => {
+  // A regenerated Version Packages PR must be based on exact current main;
+  // publication-scoped freshness applies only to publishing committed releases.
+  assert.match(
+    step("Fence Changesets mutations").run,
+    /printf '#!\/bin\/sh\\nnode "\$RUNNER_TEMP\/release-hooks\/check\.cjs" current\\n'/,
+  );
+  const helper = fs.readFileSync(path.join(root, "scripts/fence-changesets.cjs"), "utf8");
+  assert.doesNotMatch(helper, /publication-current|publicationCurrent/);
+  const f = fixture(t);
+  ok(f.install());
+  f.git("--git-dir", f.bare, "update-ref", "refs/heads/main", f.advanced);
+  const fence = (mode) =>
+    f.run("node", ["scripts/check-release-state.cjs", mode], { ENFORCE_GIT_AUTH: "" });
+  // `advanced` only adds an unrelated file: publication would accept it...
+  ok(fence("publication-current"));
+  // ...but generation still refuses it.
+  stopped(fence("current"));
+  stopped(f.push());
+  assert.deepEqual(f.calls(), []);
+  assert.equal(f.observed(), f.prior);
+});
 test("main advances during long generation: no push, existing PR remains Draft", (t) => {
   const f = fixture(t);
   ok(f.install());

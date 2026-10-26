@@ -234,9 +234,14 @@ fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fence_script="$script_dir/check-release-state.cjs"
+# --version publishes one already-committed release, so an unrelated later
+# branch commit does not invalidate it. Mutable latest publication (deploy)
+# keeps the strict exact-head fence.
+fence_mode=current
+if [[ -n "$release_version" ]]; then fence_mode=publication-current; fi
 pointer_builder="$script_dir/build-schema-discovery-pointers.cjs"
 if [[ "$dry_run" -eq 0 ]]; then
-  node "$fence_script" current
+  node "$fence_script" "$fence_mode"
   if [[ -n "$release_version" ]]; then
     node "$fence_script" committed "$release_version"
     node "$fence_script" approval
@@ -276,7 +281,7 @@ apply_bucket_cors() {
   ]
 }
 JSON
-  node "$fence_script" current
+  node "$fence_script" "$fence_mode"
   wrangler r2 bucket cors set "$bucket" --file "$cors_file" --force
   rm -f "$cors_file"
 }
@@ -288,9 +293,9 @@ run_cmd() {
   if [[ "$dry_run" -eq 1 && "$aws_dry_run" -eq 0 ]]; then
     return 0
   fi
-  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" current; fi
+  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" "$fence_mode"; fi
   "$@"
-  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" current; fi
+  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" "$fence_mode"; fi
 }
 
 # R2 writes are atomic per object, not per bundle. Compare every existing
@@ -327,7 +332,7 @@ put_immutable() {
   source="$immutable_tmpdir/body"
   body_digest="$(sha256sum "$source" | cut -d ' ' -f1)"
   verify_immutable_body "$source" "$body_digest"
-  node "$fence_script" current
+  node "$fence_script" "$fence_mode"
   if aws s3api head-object --bucket "$bucket" --key "$key" \
       --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" --no-cli-pager >/dev/null 2>"$head_error"; then
     aws s3 cp "s3://${bucket}/${key}" "$existing" "${common_aws_args[@]}"
@@ -343,7 +348,7 @@ put_immutable() {
       rm -f "$existing" "$head_error"
       exit 1
     fi
-    node "$fence_script" current
+    node "$fence_script" "$fence_mode"
     verify_immutable_body "$source" "$body_digest"
     aws s3api put-object --bucket "$bucket" --key "$key" --body "$source" \
       --if-none-match '*' --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" \
@@ -351,7 +356,7 @@ put_immutable() {
   fi
   cleanup_immutable_body
   immutable_tmpdir=""
-  node "$fence_script" current
+  node "$fence_script" "$fence_mode"
 }
 
 publish_filtered() {
@@ -561,7 +566,7 @@ publish_root_pointers() {
     echo "Would rebuild and upload schemas/index.json and schemas/latest.json from the published version set"
     return 0
   fi
-  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" current; fi
+  if [[ "$dry_run" -eq 0 ]]; then node "$fence_script" "$fence_mode"; fi
   # One delimited listing names every published schemas/<version>/ prefix.
   aws s3api list-objects-v2 --bucket "$bucket" --prefix 'schemas/' --delimiter '/' \
     --endpoint-url "$endpoint" --region "$AWS_DEFAULT_REGION" --no-cli-pager --output json > "$listing"

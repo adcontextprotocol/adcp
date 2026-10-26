@@ -24,11 +24,11 @@ import {
   listAllComplianceStoryboards,
   loadComplianceIndex,
   resolveStoryboardsForCapabilities,
-  runStoryboard,
   testCapabilityDiscovery,
   getComplianceCacheDir,
   withExternalSchemaRoot,
 } from '@adcp/sdk/testing';
+import { runCatalogReportingStoryboard as runStoryboard } from '../../src/compliance/catalog-reporting-runner.js';
 import type { AgentProfile, StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/sdk/testing';
 import {
   StaticJwksResolver,
@@ -142,6 +142,7 @@ const { clearSeededCreativeFormats, clearForcedTaskCompletions } = await import(
 const { clearCatalogEventStores } = await import('../../src/training-agent/catalog-event-handlers.js');
 const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
 const { getCanonicalBase } = await import('../../src/training-agent/canonical-base.js');
+const { TRAINING_AGENT_URL: TRAINING_AGENT_PUBLIC_URL } = await import('../../src/training-agent/config.js');
 // Released compliance artifacts carry a patch version, while the frozen 3.0
 // wire contract negotiates the stable `3.0` selector. Keep the exact artifact
 // version for schema selection and override only the request envelope. Source
@@ -1008,6 +1009,16 @@ async function main() {
     if (swapsCanonicalBase) {
       process.env.TRAINING_AGENT_URL = localAgentBaseUrl;
     }
+    // Multi-agent runs never fetch brand.json, but the http loopback would
+    // make the advertised identity.brand_json_url schema-invalid (3.2+ needs
+    // https), and SDK 16.5+ fails discovery for capability-gated storyboards on
+    // invalid capabilities. Advertise the public https identity, as runs
+    // without the swap already do. webhook_emission keeps the loopback identity
+    // because it resolves the agent's webhook keys through it.
+    const previousIdentityUrl = process.env.TRAINING_AGENT_IDENTITY_URL;
+    if (routesMultiAgent) {
+      process.env.TRAINING_AGENT_IDENTITY_URL = TRAINING_AGENT_PUBLIC_URL;
+    }
 
     if (storyboard.id === 'signed_requests') {
       // Run the signed_requests storyboard once per strict route variant.
@@ -1104,6 +1115,10 @@ async function main() {
             ...(brand && { brand }),
             ...(testKit && { test_kit: testKit }),
           }));
+          for (const gap of result.coverage_gaps ?? []) {
+            // Keep unexercised native support visible without changing floor counts.
+            console.log(`    [coverage gap] ${storyboard.id}: ${gap.reason}: ${gap.detail}`);
+          }
           applyStepSkipList(storyboard.id, result);
           const summary = { ...summarize(storyboard, result), id: variantLabel };
           results.push(summary);
@@ -1159,6 +1174,11 @@ async function main() {
             context: routing.context,
           }),
         }));
+        for (const gap of result.coverage_gaps ?? []) {
+          // Keep unexercised native support visible even when prepared-state
+          // reuse produces no authored step rows. Do not change floor counts.
+          console.log(`    [coverage gap] ${storyboard.id}: ${gap.reason}: ${gap.detail}`);
+        }
         applyStepSkipList(storyboard.id, result);
         const summary = summarize(storyboard, result);
         results.push(summary);
@@ -1179,6 +1199,13 @@ async function main() {
         delete process.env.TRAINING_AGENT_URL;
       } else {
         process.env.TRAINING_AGENT_URL = previousTrainingAgentUrl;
+      }
+    }
+    if (routesMultiAgent) {
+      if (previousIdentityUrl === undefined) {
+        delete process.env.TRAINING_AGENT_IDENTITY_URL;
+      } else {
+        process.env.TRAINING_AGENT_IDENTITY_URL = previousIdentityUrl;
       }
     }
   }

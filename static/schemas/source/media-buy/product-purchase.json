@@ -34,6 +34,25 @@
       "minItems": 1,
       "description": "Canonical format options selected from the published product offer. Legacy named-format identifiers are not accepted."
     },
+    "installments": {
+      "title": "Product Purchase Installments",
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (media_buy.installment_selection). Sellers MUST NOT emit it to a caller negotiating below AdCP 3.3, and a buyer that does not implement the feature MUST reject a proposal carrying it rather than ignore it, because presence and absence mean opposite things. Exact installments this purchase buys, as closed canonical (collection_ref, installment_id) references into the allocated product's installments. Present, it is the complete bought set for this purchase, and the seller reserves exactly those installments when the proposal's effective hold policy places a hold at all (a terms-only finalize reserves nothing, here as everywhere). Dropping or swapping a slot through refine_proposals changes this array and therefore the terms_digest over commercial_terms, so accept_proposal's proposal_terms_digest check binds the exact slot identifiers bought — it does not bind what the seller later publishes under those identifiers, which installment valid_until and re-reads govern. Absent, the purchase buys the product as offered — run-of-collection when the product names no installments, and the product's complete installment set when it does; absence never means 'no installments'. Every entry MUST name an installment the allocated product's installments carry, and sellers MUST NOT add the field to a purchase whose product declares none. Entries are ordered by the JCS bytes of the reference, so equal bought sets always serialize to equal digests.",
+      "items": { "$ref": "/schemas/core/canonical-installment-ref.json" },
+      "minItems": 1,
+      "maxItems": 500,
+      "uniqueItems": true,
+      "x-adcp-validation": {
+        "unique_by": ["collection_ref", "installment_id"],
+        "ordered_by": "jcs_bytes_of_entry",
+        "verifier_constraints": {
+          "installment_membership": "every_entry_is_declared_by_the_allocated_products_installments",
+          "on_violation": "reject_before_commitment"
+        }
+      }
+    },
     "catalog_ids": {
       "type": "array",
       "items": {
@@ -125,6 +144,14 @@
       "items": { "$ref": "/schemas/core/canonical-performance-standard.json" },
       "minItems": 1,
       "description": "Published or negotiated metric thresholds and measurement vendors. Direct buyers may omit this to inherit the product defaults; accepted proposal snapshots preserve every applicable standard."
+    },
+    "rights": {
+      "type": "array",
+      "items": { "$ref": "/schemas/brand/rights-scope.json" },
+      "minItems": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (`media_buy.purchase_rights`). Usage and amplification rights granted with this purchase, priced inside it; the media seller grants or warrants them. Bound by terms_digest. Exclusivity is per purchase. Sellers MUST list media_buy.purchase_rights in experimental_features."
     }
   },
   "required": ["product_id", "pricing_option_id"],
