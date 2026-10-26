@@ -165,6 +165,28 @@
                 "type": "string",
                 "format": "date",
                 "description": "Date payment was received. Present when status is 'paid'."
+              },
+              "invoice_kind": {
+                "$ref": "/schemas/enums/invoice-kind.json",
+                "x-status": "experimental",
+                "x-added-in": "3.3.0",
+                "description": "Whether this record is an invoice or a credit note. Absent means invoice. Amounts are never negative, so a credit_note carries a non-negative amount that reduces what the buyer owes. Sellers MUST NOT send credit_note records to callers pinned below AdCP 3.3. Experimental in AdCP 3.3 (account.invoice_lines)."
+              },
+              "adjusts_invoice_id": {
+                "type": "string",
+                "minLength": 1,
+                "x-status": "experimental",
+                "x-added-in": "3.3.0",
+                "description": "For a credit note or a rebill, the invoice_id of the invoice this record changes. Reference only: the field does not itself alter, void, or settle the referenced invoice; that invoice's status is reported on its own record. Experimental in AdCP 3.3 (account.invoice_lines)."
+              },
+              "lines": {
+                "type": "array",
+                "x-status": "experimental",
+                "x-added-in": "3.3.0",
+                "description": "Itemised lines tying this invoice's amount to the media buys, packages, official reporting revisions, and reporting adjustments it bills. Reference only, never settles: lines let a buyer reconcile an invoice against delivery and do not create, approve, or settle invoices. Optional; sellers that do not itemise return invoices without lines. Buyers MUST NOT assume lines are exhaustive: the sum of line amounts SHOULD NOT exceed amount, and the remainder is unitemised. Experimental in AdCP 3.3 (account.invoice_lines): a seller that returns lines MUST list account.invoice_lines in experimental_features on get_adcp_capabilities.",
+                "items": {
+                  "$ref": "/schemas/core/invoice-line.json"
+                }
               }
             },
             "required": [
@@ -280,6 +302,76 @@
             "status": "paid",
             "due_date": "2026-02-28",
             "paid_date": "2026-02-15"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Itemised invoice and credit note (experimental, account.invoice_lines)",
+      "data": {
+        "status": "completed",
+        "account": {
+          "account_id": "acc_acme_001"
+        },
+        "currency": "USD",
+        "period": {
+          "start": "2026-03-01",
+          "end": "2026-03-31"
+        },
+        "timezone": "America/New_York",
+        "invoices": [
+          {
+            "invoice_id": "inv_2026_02",
+            "period": {
+              "start": "2026-02-01",
+              "end": "2026-02-28"
+            },
+            "amount": 45230,
+            "status": "issued",
+            "due_date": "2026-03-30",
+            "lines": [
+              {
+                "media_buy_id": "mb_spring_launch",
+                "package_id": "pkg_ctv_prime",
+                "reporting_revision_ids": [
+                  "rev_mb_spring_launch_2026_02_official"
+                ],
+                "billed_quantity": {
+                  "name": "impressions",
+                  "value": "1808000",
+                  "value_type": "integer",
+                  "unit": "impressions"
+                },
+                "amount": 45230
+              }
+            ]
+          },
+          {
+            "invoice_id": "cn_2026_03_001",
+            "invoice_kind": "credit_note",
+            "adjusts_invoice_id": "inv_2026_02",
+            "period": {
+              "start": "2026-03-01",
+              "end": "2026-03-31"
+            },
+            "amount": 1200,
+            "status": "issued",
+            "lines": [
+              {
+                "media_buy_id": "mb_spring_launch",
+                "package_id": "pkg_ctv_prime",
+                "reporting_adjustment_ids": [
+                  "adj_mb_spring_launch_2026_02_ivt"
+                ],
+                "billed_quantity": {
+                  "name": "impressions",
+                  "value": "48000",
+                  "value_type": "integer",
+                  "unit": "impressions"
+                },
+                "amount": 1200
+              }
+            ]
           }
         ]
       }
