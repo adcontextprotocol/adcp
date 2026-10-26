@@ -4,9 +4,10 @@
  *
  * A buyer or seller that validates against the published schemas of its
  * release must keep accepting what a later release in the same major line
- * sends. This script compares two schema trees, a base and a candidate, and
- * reports every change that a validator pinned to the base would see as a
- * break.
+ * sends. This script compares two schema trees, a base and a candidate. It
+ * reports a property added to an object the base closes, and any change that
+ * narrows what the base accepts. It does not flag other widening changes,
+ * such as a new enum value, which clients must tolerate.
  *
  * Trees
  *   - A released tree is dist/schemas/<version>/ without the derived
@@ -515,14 +516,20 @@ function compositionDeclares(node, docKey, tree, name) {
   return false;
 }
 
-/** Property names declared by a node and its `allOf` entries, one level deep. */
-function declaredProperties(node, docKey, tree) {
-  const names = new Set(isObject(node.properties) ? Object.keys(node.properties) : []);
+function namesIn(node, keyword) {
+  if (keyword === 'required') return Array.isArray(node.required) ? node.required : [];
+  return isObject(node.properties) ? Object.keys(node.properties) : [];
+}
+
+/**
+ * Property names that a node and its `allOf` entries, one level deep, list
+ * under `keyword` (`properties` or `required`).
+ */
+function declaredNames(node, docKey, tree, keyword) {
+  const names = new Set(namesIn(node, keyword));
   for (const entry of Array.isArray(node.allOf) ? node.allOf : []) {
     const resolved = resolveNode(entry, docKey, tree);
-    if (resolved && isObject(resolved.node) && isObject(resolved.node.properties)) {
-      Object.keys(resolved.node.properties).forEach((name) => names.add(name));
-    }
+    if (resolved && isObject(resolved.node)) namesIn(resolved.node, keyword).forEach((name) => names.add(name));
   }
   return names;
 }
@@ -813,7 +820,7 @@ function compareTrees(baseTree, candTree) {
     for (const name of Object.keys(pb)) {
       if (Object.prototype.hasOwnProperty.call(pc, name)) {
         compareNode(file, child(pointer, 'properties', name), pb[name], bDoc, pc[name], cDoc, stack);
-      } else if (!isClosed(c) && (compositionDeclares(c, cDoc, candTree, name) || (scope && scope.has(name)))) {
+      } else if (!isClosed(c) && (compositionDeclares(c, cDoc, candTree, name) || (scope && scope.declared.has(name)))) {
         report(file, pointer, 'property-moved', `property ${name} still declared elsewhere in the composition`);
       } else {
         report(file, pointer, 'property-removed', `property ${name} removed`);
@@ -834,7 +841,9 @@ function compareTrees(baseTree, candTree) {
       }
     }
 
-    const rb = new Set(Array.isArray(b.required) ? b.required : []);
+    // A name the base already required, here, through an allOf entry, or on
+    // an enclosing schema of this composition branch, is not newly required.
+    const rb = new Set([...declaredNames(b, bDoc, baseTree, 'required'), ...(scope ? scope.required : [])]);
     for (const name of Array.isArray(c.required) ? c.required : []) {
       if (!rb.has(name)) report(file, pointer, 'required-added', `property ${name} newly required`);
     }
@@ -868,9 +877,12 @@ function compareTrees(baseTree, candTree) {
   }
 
   function compareCompositions(file, pointer, b, bDoc, c, cDoc, stack, outerScope) {
-    // Names declared by this node and its allOf entries stay declared for
-    // every branch below it.
-    const scope = new Set([...(outerScope || []), ...declaredProperties(c, cDoc, candTree)]);
+    // Names that this node and its allOf entries declare (in the candidate)
+    // or require (in the base) hold for every branch below it.
+    const scope = {
+      declared: new Set([...(outerScope ? outerScope.declared : []), ...declaredNames(c, cDoc, candTree, 'properties')]),
+      required: new Set([...(outerScope ? outerScope.required : []), ...declaredNames(b, bDoc, baseTree, 'required')]),
+    };
     for (const keyword of ['oneOf', 'anyOf', 'allOf']) {
       const bb = Array.isArray(b[keyword]) ? b[keyword] : null;
       const cb = Array.isArray(c[keyword]) ? c[keyword] : null;

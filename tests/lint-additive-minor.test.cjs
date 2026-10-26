@@ -89,6 +89,27 @@ function fixture() {
         { type: 'boolean' },
       ],
     },
+    'core/composed.json': {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/core/composed.json',
+      type: 'object',
+      definitions: {
+        keyed: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
+      },
+      allOf: [{ $ref: '#/definitions/keyed' }],
+      properties: { key: { type: 'string' } },
+    },
+    'core/branched.json': {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/core/branched.json',
+      type: 'object',
+      properties: { mode: { type: 'string' } },
+      required: ['mode'],
+      oneOf: [
+        { properties: { mode: { const: 'x' } } },
+        { properties: { mode: { const: 'y' } } },
+      ],
+    },
     'enums/status.json': {
       $schema: 'http://json-schema.org/draft-07/schema#',
       $id: '/schemas/enums/status.json',
@@ -219,6 +240,14 @@ test('counts a property added to a closed object at that object’s pointer', ()
   }]);
 });
 
+test('reads closure from the base, so opening an object while adding a property still fails', () => {
+  const findings = findingsAfter((t) => {
+    t['core/closed.json'].additionalProperties = true;
+    t['core/closed.json'].properties.extra = { type: 'string' };
+  });
+  assert.deepEqual(findings.map((f) => [f.kind, f.detail]), [['property-added-to-closed', 'property extra added']]);
+});
+
 test('flags additionalProperties changed from true to false', () => {
   const findings = findingsAfter((t) => { t['core/explicit-open.json'].additionalProperties = false; });
   assert.deepEqual(findings.map((f) => [f.kind, f.detail]), [['additional-properties-closed', 'additionalProperties true → false']]);
@@ -262,6 +291,14 @@ test('passes widening changes', () => {
     (t) => { t['core/closed.json'].additionalProperties = true; },
   ];
   widenings.forEach((change, index) => assert.deepEqual(findingsAfter(change), [], `widening #${index}`));
+});
+
+test('passes a name the base already required through an allOf entry', () => {
+  assert.deepEqual(findingsAfter((t) => { t['core/composed.json'].required = ['key']; }), []);
+});
+
+test('passes a branch requiring a name its enclosing schema already required', () => {
+  assert.deepEqual(findingsAfter((t) => { t['core/branched.json'].oneOf[0].required = ['mode']; }), []);
 });
 
 test('passes a new discriminated oneOf branch', () => {
