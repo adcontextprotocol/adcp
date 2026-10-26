@@ -405,6 +405,24 @@
     },
     {
       "if": {
+        "properties": {
+          "signals": {
+            "required": ["delivery_methods"]
+          }
+        },
+        "required": ["signals"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "signals.delivery_methods" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "allOf": [
           {
             "properties": {
@@ -2705,6 +2723,16 @@
           "default": true,
           "x-added-in": "3.3.0",
           "description": "Whether `data_provider_domains` enumerates every data provider this agent resells. Absent or `true` means the list is complete as served. `false` means the agent resells more providers than it published — because the real set exceeds the advisory item bound or the per-field byte budget — and the list is a sample. This flag is advisory and affects prefetch planning only, never an authorization decision: buyers MUST NOT treat `data_provider_domains` as an allowlist whether it is marked complete or not, and MUST resolve each signal's provider through that provider's own adagents.json. Meaningless without `data_provider_domains`, which the sibling `dependencies` rule requires."
+        },
+        "delivery_methods": {
+          "type": "array",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Rails this signals agent can use to deliver licensed membership to type 'agent' destinations on activate_signal. Activation intersects it with the destination's audience_activation.methods on pattern and vendor; no intersection fails that destination with UNSUPPORTED_FEATURE. Optional; not required for platform destinations. Experimental: agents declaring it MUST list signals.delivery_methods in experimental_features.",
+          "items": {
+            "$ref": "/schemas/core/signal-delivery-method.json"
+          },
+          "minItems": 1
         },
         "discovery_modes": {
           "type": "array",
