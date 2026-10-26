@@ -331,6 +331,21 @@
       "variants": 2,
       "note": "shared-required=[∅]; 0:number | 1:req=[duration_seconds]"
     },
+    "pricing-options/price-adjustments.json##/items/oneOf/0/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[rate] | 1:[amount]"
+    },
+    "pricing-options/price-adjustments.json##/items/oneOf/1/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[rate] | 1:[amount]"
+    },
+    "pricing-options/price-adjustments.json##/items/oneOf/2/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[rate] | 1:[amount]"
+    },
     "pricing-options/price-breakdown.json##/properties/adjustments/items/oneOf": {
       "kind": "narrowable",
       "variants": 2,
