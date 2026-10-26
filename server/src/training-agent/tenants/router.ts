@@ -52,9 +52,10 @@ import {
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
 import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } from '../seller-optimized-budget.js';
-import { advertisesSalesFixedRateSpecialism, supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { supportsAccountChangeFeed, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getIdentityBaseUrl } from '../config.js';
 import { complianceScenariosForServedVersion } from '../compliance-scenarios.js';
+import { omitFieldsAddedAfterRelease, servedReleaseEnum } from '../served-release-fields.js';
 import { runWithReleaseLineEcho } from './release-line-echo.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -1017,11 +1018,16 @@ function projectTenantCapabilities(
         ? structured.adcp_version
         : TRAINING_AGENT_DEFAULT_ADCP_VERSION);
     structured.adcp_version = servedVersion;
-    // `sales-fixed-rate` is a 3.3 enum value. Consumers served 3.2 or below
-    // validate `specialisms` against a closed enum that predates it, so the
-    // id is withdrawn from their capability response (DR-0024).
-    if (Array.isArray(structured.specialisms) && !advertisesSalesFixedRateSpecialism(servedVersion)) {
-      structured.specialisms = structured.specialisms.filter(id => id !== 'sales-fixed-rate');
+    // `specialisms` is a closed enum in every release, so a consumer served an
+    // older release never sees an id added after it (DR-0024): the 3.3
+    // `sales-fixed-rate` below 3.3, the 3.2 `sales-dooh` below 3.2.
+    const allowedSpecialisms = Array.isArray(structured.specialisms)
+      ? servedReleaseEnum('enums/specialism.json', storyboardCompat?.version === '3.0' ? '3.0' : servedVersion)
+      : null;
+    if (allowedSpecialisms && Array.isArray(structured.specialisms)) {
+      structured.specialisms = structured.specialisms.filter(
+        (id): id is string => typeof id === 'string' && allowedSpecialisms.has(id),
+      );
     }
     const adcp = structured.adcp && typeof structured.adcp === 'object'
       ? structured.adcp
@@ -1336,6 +1342,15 @@ function projectTenantCapabilities(
       }
     }
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
+    // Every tenant, last: withhold fields added after the served release
+    // (3.3 account.stable_account_id, governance.supports_budget_periods,
+    // the property-breakdown feature flags, ...), whichever projection above
+    // or SDK derivation contributed them.
+    parsed.result!.structuredContent = omitFieldsAddedAfterRelease(
+      structured,
+      'protocol/get-adcp-capabilities-response.json',
+      storyboardCompat?.version === '3.0' ? '3.0' : servedVersion,
+    );
     const firstText = parsed.result?.content?.[0];
     if (firstText?.type === 'text') {
       firstText.text = 'Capabilities retrieved successfully.';

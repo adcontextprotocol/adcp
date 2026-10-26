@@ -75,6 +75,7 @@ import {
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
+import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease } from './served-release-fields.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -7767,6 +7768,8 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
 // installments project onto the closed core/canonical-installment.json, which
 // carries no deprecated collection_id shorthand and names a derivative source
 // by installment_ref rather than a response-local installment_id.
+const CANONICAL_PRODUCT_SCHEMA = 'core/canonical-product.json';
+
 const COMPACT_PRODUCT_FIELDS = new Set([
   'product_id', 'name', 'description', 'publisher_properties', 'channels',
   'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
@@ -7899,15 +7902,21 @@ function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<
 }
 
 /** Project the additive 3.x get_products representation into the closed
- * canonical offer shape used by list_products. */
+ * canonical offer shape used by list_products. With a served release, fields
+ * the source schema adds after it (for 3.2, the 3.3 `installments`) are
+ * withheld; without one the projection follows the source schema. */
 export function compactLifecycleProduct(
   product: Record<string, unknown>,
   requestedFields?: ReadonlySet<string>,
   requiredFields: ReadonlySet<string> = new Set(),
+  servedAdcpVersion?: string,
 ): Record<string, unknown> {
-  const selectedFields = requestedFields
-    ? new Set(['product_id', 'name', ...requestedFields, ...requiredFields])
-    : COMPACT_PRODUCT_FIELDS;
+  const withheldFields = servedAdcpVersion === undefined
+    ? new Set<string>()
+    : propertiesAddedAfterRelease(CANONICAL_PRODUCT_SCHEMA, servedAdcpVersion);
+  const selectedFields = new Set([...(requestedFields
+    ? ['product_id', 'name', ...requestedFields, ...requiredFields]
+    : COMPACT_PRODUCT_FIELDS)].filter(field => !withheldFields.has(field)));
   const projected = pickCompactFields(product, selectedFields);
   // A returned overlay_support.collection_list is only schema-valid alongside
   // collection_targeting_allowed: true, so it overrides a narrower projection.
@@ -7958,7 +7967,9 @@ export function compactLifecycleProduct(
       compactReportingCapabilityFields(),
     );
   }
-  return projected;
+  return servedAdcpVersion === undefined
+    ? projected
+    : omitFieldsAddedAfterRelease(projected, CANONICAL_PRODUCT_SCHEMA, servedAdcpVersion);
 }
 
 /** Match a buyer's future targeting requirement against a Product's binding
@@ -10030,6 +10041,7 @@ export function projectProductDiscoveryResult(
   toolName: string,
   result: Record<string, unknown>,
   originalArgs: Record<string, unknown>,
+  servedAdcpVersion: string,
 ): Record<string, unknown> {
   if (!isProductDiscoveryTool(toolName) || toolName === 'get_products') return result;
   if (Array.isArray(result.errors) && result.errors.length > 0 && !Array.isArray(result.products)) return result;
@@ -10110,7 +10122,12 @@ export function projectProductDiscoveryResult(
     }
     return {
       outcome: 'listed',
-      products: products.map(product => compactLifecycleProduct(product, requestedFields, requiredProductFields)),
+      products: products.map(product => compactLifecycleProduct(
+        product,
+        requestedFields,
+        requiredProductFields,
+        servedAdcpVersion,
+      )),
       ...(pagination && typeof pagination.cursor === 'string' && { next_cursor: pagination.cursor }),
       ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
       ...(typeof result.pricing_version === 'string' && { pricing_version: result.pricing_version }),
@@ -20446,7 +20463,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
   const supportedCreativeFormats = includeThreeOneFields(ctx)
     ? supportedCanonicalFormatsCapability()
     : undefined;
-  return {
+  const capabilities = {
     adcp_version: DEFAULT_ADCP_VERSION,
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
@@ -20673,6 +20690,13 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       description: 'Training agent for AdCP protocol testing and certification',
     },
   };
+  // Withhold fields added after the served release, such as the 3.3
+  // property-breakdown feature flags on a 3.2 response.
+  return omitFieldsAddedAfterRelease(
+    capabilities,
+    'protocol/get-adcp-capabilities-response.json',
+    isThreeZeroResponse ? '3.0' : servedAdcpVersion,
+  );
 }
 
 // ── Signal task handlers ──────────────────────────────────────────
@@ -23096,13 +23120,14 @@ export async function executeProductDiscoveryPlatformTool(
         return proposalArgs;
       })()
     : normalizeProductDiscoveryArgs(toolName, args);
+  const servedAdcpVersion = ctx.servedAdcpVersion ?? CURRENT_ADCP_VERSION;
   const result = await Promise.resolve(handler(normalized as ToolArgs, {
     ...ctx,
-    servedAdcpVersion: ctx.servedAdcpVersion ?? CURRENT_ADCP_VERSION,
+    servedAdcpVersion,
   }));
   await flushDirtySessions();
   if (typedRefinement) return result as Record<string, unknown>;
-  return projectProductDiscoveryResult(toolName, result as Record<string, unknown>, args);
+  return projectProductDiscoveryResult(toolName, result as Record<string, unknown>, args, servedAdcpVersion);
 }
 
 function legacyPackagesFromPurchases(
@@ -24627,6 +24652,7 @@ async function executeTrainingAgentToolInContext(
         toolName,
         outcome.response as Record<string, unknown>,
         initialHandlerArgs,
+        versionResolution.servedVersion,
       );
       return {
         success: true,
@@ -24664,6 +24690,7 @@ async function executeTrainingAgentToolInContext(
       toolName,
       result as Record<string, unknown>,
       initialHandlerArgs,
+      versionResolution.servedVersion,
     );
     const response = addServedAdcpVersion(projectedResponse, versionResolution.servedVersion, callerContext) as Record<string, unknown>;
     if (claim && typeof idempotencyKey === 'string') {
@@ -25011,6 +25038,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           name,
           outcome.response as Record<string, unknown>,
           initialHandlerArgs,
+          servedAdcpVersion,
         );
         const body: Record<string, unknown> = { ...replayBody, replayed: true };
         if (!isTaskRequest && body.status === undefined) body.status = 'completed';
@@ -25211,7 +25239,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // `completed` on synchronous success — handlers that emit a different
         // TaskStatus (e.g., `submitted` for async-task envelopes) set it on
         // `inner` and we honor that value.
-        const outwardInner = projectProductDiscoveryResult(name, inner, initialHandlerArgs);
+        const outwardInner = projectProductDiscoveryResult(name, inner, initialHandlerArgs, servedAdcpVersion);
         const response: Record<string, unknown> = { ...outwardInner };
         if (response.status === undefined) response.status = 'completed';
         response.adcp_version = servedAdcpVersion;
@@ -25300,6 +25328,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         name,
         cachableResponse,
         initialHandlerArgs,
+        servedAdcpVersion,
       );
       maybeEmitCompletionWebhook({
         toolName: name,
