@@ -12,8 +12,7 @@
           "type": "array",
           "items": { "$ref": "/schemas/enums/media-buy-frequency-cap-control-mode.json" },
           "minItems": 1,
-          "uniqueItems": true,
-          "x-max-items-4.0": 16
+          "uniqueItems": true
         }
       },
       "required": [

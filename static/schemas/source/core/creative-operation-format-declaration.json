@@ -35,8 +35,7 @@
     "applies_to_channels": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/channels.json" },
-      "uniqueItems": true,
-      "x-max-items-4.0": 64
+      "uniqueItems": true
     },
     "seller_preference": { "type": "string", "enum": ["preferred", "accepted", "discouraged"] },
     "locale_policy": { "$ref": "/schemas/core/creative-locale-policy.json" },

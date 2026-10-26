@@ -10,24 +10,21 @@
       "type": "array",
       "description": "Logical cap fields that can change after creation. An empty array means create-only. For example, [max_impressions] permits changing the count while keeping per and window fixed. Omission means update support is undeclared and the legacy broad meaning applies.",
       "items": { "$ref": "/schemas/enums/frequency-cap-mutable-field.json" },
-      "uniqueItems": true,
-      "x-max-items-4.0": 16
+      "uniqueItems": true
     },
     "supported_control_modes": {
       "type": "array",
       "description": "FrequencyCap shapes accepted by the product. max_impressions_and_suppress means both controls may appear together and are enforced with AND semantics.",
       "items": { "$ref": "/schemas/enums/frequency-cap-control-mode.json" },
       "minItems": 1,
-      "uniqueItems": true,
-      "x-max-items-4.0": 16
+      "uniqueItems": true
     },
     "supported_per_units": {
       "type": "array",
       "description": "Entity granularities accepted by max_impressions caps.",
       "items": { "$ref": "/schemas/enums/reach-unit.json" },
       "minItems": 1,
-      "uniqueItems": true,
-      "x-max-items-4.0": 16
+      "uniqueItems": true
     },
     "max_impressions_constraints": {
       "$ref": "/schemas/core/frequency-cap-impression-constraints.json",

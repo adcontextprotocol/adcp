@@ -19,8 +19,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^[A-Z]{2}$",
-        "x-max-length-4.0": 2
+        "pattern": "^[A-Z]{2}$"
       },
       "minItems": 1,
       "uniqueItems": true,
@@ -59,9 +58,9 @@
           "type": "object",
           "description": "Override brand colors (hex strings).",
           "properties": {
-            "primary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "x-max-length-4.0": 7 },
-            "secondary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "x-max-length-4.0": 7 },
-            "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "x-max-length-4.0": 7 }
+            "primary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "secondary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
           },
           "additionalProperties": true
         },

@@ -16,8 +16,15 @@
  *     Adding a bound there is a tightening, which a minor release may not
  *     make, so 3.x states it as a SHOULD and 4.0 enforces it.
  *
- * `strings` exempt from `maxLength`: `enum`, `const`, and `format` (the
- * worst-case calculation prices a format with the table below).
+ * Exempt from a keyword, because the schema already bounds them:
+ *   - a string with `enum`, `const`, or `format` (a format is priced with the
+ *     table below);
+ *   - a string whose anchored `pattern` admits only values of bounded length
+ *     (a fixed-length pattern such as `^[A-Z]{2}$`; an anchored pattern with an
+ *     unbounded quantifier is not exempt);
+ *   - an array with `uniqueItems` whose items are a closed `enum` or a `const`
+ *     (its length cannot exceed the number of values).
+ * The worst-case calculation prices each exempt position from the schema.
  *
  * Usage: node scripts/capabilities-structural-bounds.cjs [--json]
  */
@@ -56,6 +63,89 @@ const FORMAT_MAX_LENGTH = {
 };
 const DEFAULT_KEY_BYTES = 64; // map keys with no propertyNames bound
 
+
+/**
+ * Longest string an anchored regular expression can match, or Infinity.
+ * Handles the subset AdCP patterns use: anchors, literals, escapes, classes,
+ * groups (including non-capturing and lookahead), alternation, and the
+ * quantifiers `?`, `*`, `+`, `{n}`, `{n,}`, `{n,m}`. Anything else is
+ * Infinity, so an unrecognized pattern never counts as a bound.
+ */
+function patternMaxLength(pattern) {
+  if (typeof pattern !== 'string' || !pattern.startsWith('^') || !pattern.endsWith('$')) return Infinity;
+  const src = pattern.slice(1, -1);
+  let i = 0;
+  function parseAlt() {
+    let best = parseSeq();
+    while (src[i] === '|') {
+      i++;
+      best = Math.max(best, parseSeq());
+    }
+    return best;
+  }
+  function parseSeq() {
+    let total = 0;
+    while (i < src.length && src[i] !== '|' && src[i] !== ')') total += parseQuantified();
+    return total;
+  }
+  function parseQuantified() {
+    let width;
+    const c = src[i];
+    if (c === '(') {
+      i++;
+      let zeroWidth = false;
+      if (src[i] === '?') {
+        if (src[i + 1] === ':') i += 2;
+        else if (src[i + 1] === '=' || src[i + 1] === '!') {
+          zeroWidth = true;
+          i += 2;
+        } else return Infinity;
+      }
+      const inner = parseAlt();
+      if (src[i] !== ')') return Infinity;
+      i++;
+      width = zeroWidth ? 0 : inner;
+    } else if (c === '[') {
+      i++;
+      if (src[i] === '^') i++;
+      if (src[i] === ']') i++;
+      while (i < src.length && src[i] !== ']') i += src[i] === '\\' ? 2 : 1;
+      i++;
+      width = 1;
+    } else if (c === '\\') {
+      i += 2;
+      width = 1;
+    } else if (c === '^' || c === '$') {
+      i++;
+      width = 0;
+    } else if (c === '*' || c === '+' || c === '?' || c === '{') {
+      return Infinity;
+    } else {
+      i++;
+      width = 1;
+    }
+    const q = src[i];
+    if (q === '*' || q === '+') {
+      i++;
+      return width === 0 ? 0 : Infinity;
+    }
+    if (q === '?') {
+      i++;
+      return width;
+    }
+    if (q === '{') {
+      const m = /^\{(\d+)(,(\d*))?\}/.exec(src.slice(i));
+      if (!m) return Infinity;
+      i += m[0].length;
+      if (m[2] !== undefined && m[3] === '') return width === 0 ? 0 : Infinity;
+      return width * Number(m[3] !== undefined ? m[3] : m[1]);
+    }
+    return width;
+  }
+  const max = parseAlt();
+  return i === src.length ? max : Infinity;
+}
+
 const docCache = new Map();
 function load(file) {
   if (!docCache.has(file)) docCache.set(file, JSON.parse(fs.readFileSync(path.join(SOURCE, file), 'utf8')));
@@ -85,6 +175,19 @@ const isArraySchema = (node) => typesOf(node).includes('array') || node.items !=
 const isStringSchema = (node) => typesOf(node).includes('string') && !typesOf(node).includes('object');
 const isMapSchema = (node) =>
   (node.additionalProperties && typeof node.additionalProperties === 'object') || node.patternProperties !== undefined;
+
+/** Why a position needs no keyword, or null when it does. */
+function exemption(node, file) {
+  if (isStringSchema(node)) {
+    if (node.enum !== undefined || node.const !== undefined || node.format !== undefined) return 'closed';
+    if (Number.isFinite(patternMaxLength(node.pattern))) return 'pattern';
+  }
+  if (isArraySchema(node) && node.uniqueItems && node.items && typeof node.items === 'object') {
+    const items = node.items.$ref ? resolveRef(node.items.$ref, file).node : node.items;
+    if (items && (items.enum !== undefined || items.const !== undefined)) return 'closed-enum';
+  }
+  return null;
+}
 
 /**
  * Visit every data position reachable from the response schema. Conditional
@@ -127,26 +230,27 @@ function coverage() {
   const rows = [];
   walk(({ file, pointer, node, key, trail }) => {
     if (node.$ref) return; // the target carries the bound
+    const exempt = exemption(node, file);
     if (isArraySchema(node)) {
-      rows.push({ kind: 'array', keyword: 'maxItems', file, pointer, key, trail, ...describe(node, 'maxItems') });
+      rows.push({ kind: 'array', keyword: 'maxItems', file, pointer, key, trail, exempt, ...describe(node, 'maxItems', exempt) });
     }
-    if (isStringSchema(node) && node.enum === undefined && node.const === undefined && node.format === undefined) {
-      rows.push({ kind: 'string', keyword: 'maxLength', file, pointer, key, trail, ...describe(node, 'maxLength') });
+    if (isStringSchema(node) && !(node.enum !== undefined || node.const !== undefined || node.format !== undefined)) {
+      rows.push({ kind: 'string', keyword: 'maxLength', file, pointer, key, trail, exempt, ...describe(node, 'maxLength', exempt) });
     }
     if (isMapSchema(node)) {
-      rows.push({ kind: 'map', keyword: 'maxProperties', file, pointer, key, trail, ...describe(node, 'maxProperties') });
+      rows.push({ kind: 'map', keyword: 'maxProperties', file, pointer, key, trail, exempt: null, ...describe(node, 'maxProperties', null) });
     }
   });
   return rows;
 }
 
-function describe(node, keyword) {
+function describe(node, keyword, exempt) {
   const enforced = node[keyword];
   const annotated = node[ANNOTATION[keyword]];
   return {
     enforced,
     annotated,
-    bounded: enforced !== undefined || annotated !== undefined,
+    bounded: exempt !== null || enforced !== undefined || annotated !== undefined,
   };
 }
 
@@ -180,6 +284,7 @@ function worstCase(mode, rootFile = ROOT_FILE) {
     if (node.enum) return Math.max(...node.enum.map((v) => JSON.stringify(v).length));
     let max = bound(node, 'maxLength');
     if (max === undefined && node.format !== undefined) max = FORMAT_MAX_LENGTH[node.format];
+    if (max === undefined && Number.isFinite(patternMaxLength(node.pattern))) max = patternMaxLength(node.pattern);
     if (max === undefined) {
       unbounded.add(key);
       return Infinity;
@@ -235,7 +340,10 @@ function worstCase(mode, rootFile = ROOT_FILE) {
 
     if (isArraySchema(node)) {
       let max = bound(node, 'maxItems');
-      if (max === undefined && node.uniqueItems && node.items?.enum) max = node.items.enum.length;
+      if (max === undefined && exemption(node, file) === 'closed-enum') {
+        const items = node.items.$ref ? resolveRef(node.items.$ref, file).node : node.items;
+        max = items.enum ? items.enum.length : 1;
+      }
       if (max === undefined) {
         unbounded.add(key);
         return Infinity;
@@ -337,7 +445,9 @@ module.exports = {
   MAX_CAPABILITIES_BYTES,
   ROOT_FILE,
   coverage,
+  exemption,
   load,
+  patternMaxLength,
   resolveRef,
   walk,
   worstCase,

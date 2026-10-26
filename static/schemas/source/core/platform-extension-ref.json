@@ -15,8 +15,7 @@
     "digest": {
       "type": "string",
       "pattern": "^sha256:[a-f0-9]{64}$",
-      "description": "SHA-256 content digest of the extension definition (sha256:<hex>). Used to detect drift — if the agent revises the extension, the digest changes and cached definitions become invalid.",
-      "x-max-length-4.0": 71
+      "description": "SHA-256 content digest of the extension definition (sha256:<hex>). Used to detect drift — if the agent revises the extension, the digest changes and cached definitions become invalid."
     }
   },
   "additionalProperties": true,

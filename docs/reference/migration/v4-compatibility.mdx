@@ -122,6 +122,8 @@ From 3.3 every array, string, and keyed map in the capabilities response has a l
 
 No storyboard step inspects every annotated field, so the suite reports this check as not observable.
 
+**4.0 follow-up:** 3.3 accepts an 85 MiB structural ceiling for the whole document because `MAX_CAPABILITIES_BYTES` (64 KiB) is the operative cap. The nested object lists that multiply it are worth tightening before the annotations become keywords: the brand reference (`brand_kit_override`, `provenance`), the creative format declaration (`macro_resolution_capabilities`), the attestation issuer entry, the audience activation method, and the geographic place system.
+
 ## Changes not checked yet
 
 A check is added once its 4.0 change is decided. These changes are still proposals or under working group review, so the suite does not grade them yet:

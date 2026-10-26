@@ -56,8 +56,7 @@
             "enum": ["buyer_to_seller", "seller_to_buyer"]
           },
           "minItems": 1,
-          "uniqueItems": true,
-          "maxItems": 16
+          "uniqueItems": true
         },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",

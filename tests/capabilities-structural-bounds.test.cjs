@@ -26,7 +26,7 @@ const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
 const security = read('docs/building/by-layer/L1/security.mdx');
 
 // The documented worst case. Update security.mdx with this number.
-const DOCUMENTED_WORST_CASE_BYTES = 89_611_443;
+const DOCUMENTED_WORST_CASE_BYTES = 88_992_454;
 const DOCUMENTED_OPEN_POSITIONS = 103;
 
 const rows = bounds.coverage();
@@ -49,7 +49,7 @@ describe('capabilities structural bounds (#8198)', () => {
       const chain = ancestors(r.file, r.pointer);
       const isNew = chain.some((n) => n && n['x-added-in'] === '3.3.0');
       const isExperimental = chain.some((n) => n && n['x-status'] === 'experimental');
-      if ((isNew || isExperimental) && r.enforced === undefined) lax.push(`${r.kind} ${r.key}`);
+      if ((isNew || isExperimental) && !r.exempt && r.enforced === undefined) lax.push(`${r.kind} ${r.key}`);
     }
     assert.deepEqual(lax, [], 'a new or experimental field must carry the keyword, not only the annotation');
   });
@@ -76,6 +76,34 @@ describe('capabilities structural bounds (#8198)', () => {
     assert.deepEqual(tight, []);
   });
 
+  it('never gives union branches that share a property name different enforced bounds', () => {
+    // The TypeScript SDK generator merges a oneOf/anyOf/allOf group into one
+    // property and fails on "Conflicting @maxItems values" (#8505 CI).
+    const conflicts = [];
+    bounds.walk(({ file, node, key }) => {
+      const groups = {};
+      const collect = (sub, f) => {
+        if (sub.$ref) {
+          const target = bounds.resolveRef(sub.$ref, f);
+          collect(target.node, target.file);
+        }
+        for (const [name, prop] of Object.entries(sub.properties || {})) {
+          const resolved = prop.$ref ? bounds.resolveRef(prop.$ref, f).node : prop;
+          for (const keyword of Object.values(KEYWORD_BY_KIND)) {
+            if (resolved[keyword] !== undefined) (groups[`${name}:${keyword}`] ||= new Set()).add(resolved[keyword]);
+          }
+        }
+        for (const inner of sub.allOf || []) collect(inner, f);
+      };
+      for (const k of ['oneOf', 'anyOf', 'allOf']) for (const branch of node[k] || []) collect(branch, file);
+      collect({ properties: node.properties || {} }, file);
+      for (const [group, values] of Object.entries(groups)) {
+        if (values.size > 1) conflicts.push(`${key} ${group} ${[...values]}`);
+      }
+    });
+    assert.deepEqual(conflicts, []);
+  });
+
   it('uses only the three annotation names the docs define', () => {
     const allowed = new Set(Object.values(bounds.ANNOTATION));
     const stray = [];
@@ -97,6 +125,41 @@ describe('capabilities structural bounds (#8198)', () => {
       assert.equal(node['x-max-items-4.0'], advisory.max_items);
       assert.equal(node.items['x-max-length-4.0'], advisory.item_max_length);
     }
+  });
+});
+
+describe('exemptions', () => {
+  it('measures the longest value an anchored pattern admits', () => {
+    const cases = {
+      '^[A-Z]{2}$': 2,
+      '^sha256:[a-f0-9]{64}$': 71,
+      '^[a-z0-9][a-z0-9.-]{2,63}$': 64,
+      '^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$': 8,
+      '^(?=.{1,5}$)[a-z]{1,5}$': 5,
+    };
+    for (const [pattern, max] of Object.entries(cases)) assert.equal(bounds.patternMaxLength(pattern), max, pattern);
+  });
+
+  it('does not treat an unbounded or unanchored pattern as a bound', () => {
+    for (const pattern of ['^[a-z][a-z0-9_]*$', '^[0-9]+\\.[0-9]+$', '^a{2,}$', '[A-Z]{2}', '^[A-Z]{2}', undefined]) {
+      assert.equal(bounds.patternMaxLength(pattern), Infinity, String(pattern));
+    }
+  });
+
+  it('exempts only closed-enum uniqueItems arrays and fully bounded strings', () => {
+    const reasons = new Set(rows.filter((r) => r.exempt).map((r) => r.exempt));
+    assert.deepEqual([...reasons].sort(), ['closed-enum', 'pattern']);
+    for (const r of rows.filter((x) => x.exempt)) {
+      const node = nodeAt(r.file, r.pointer);
+      if (r.exempt === 'closed-enum') assert.equal(node.uniqueItems, true, r.key);
+      if (r.exempt === 'pattern') assert.ok(Number.isFinite(bounds.patternMaxLength(node.pattern)), r.key);
+    }
+  });
+
+  it('states the exemptions in the docs', () => {
+    assert.match(security, /Three kinds of position need no keyword/);
+    assert.match(security, /anchored `pattern` that admits only values of bounded\s+length/);
+    assert.match(security, /`uniqueItems` whose items are a closed `enum` or a `const`/);
   });
 });
 
@@ -146,6 +209,13 @@ describe('what the decision changes in the docs', () => {
     assert.match(security, /\*\*The capabilities budget binds this path only\.\*\*/);
     assert.match(security, /adopts the Web Bot Auth profile or keeps the document under the budget/);
     assert.match(security, /3\.x does not add a way around the limit to the RFC 9421 profile/);
+  });
+
+  it('lists the nested multipliers as 4.0 follow-ups', () => {
+    const registry = yaml.load(read('static/compliance/source/universal/v4-compatibility.yaml'));
+    const entry = registry.checks.find((c) => c.id === 'capabilities_structural_bounds_required_in_4_0');
+    assert.match(entry.follow_ups.join(' '), /brand-ref[^]*provenance[^]*format\s+declaration[^]*macro_resolution_capabilities/);
+    assert.match(security, /Tightening those nested limits is registered as a 4\.0 follow-up/);
   });
 
   it('registers the stable-field annotations as a 4.0 tightening', () => {

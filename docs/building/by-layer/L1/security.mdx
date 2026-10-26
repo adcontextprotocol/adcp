@@ -2531,9 +2531,19 @@ and just as broken.
 bounds each array with a maximum item count, each string with a maximum
 length, and each keyed map with a maximum member count, so that the largest
 schema-valid document can be computed instead of discovered when a fetch fails.
-Strings constrained by `enum`, `const`, or `format` are exempt from a length
-limit; the calculation prices a `format` at its ceiling (`uri` at 2,048
-characters, for example). The limits are sized to a real deployment with
+Three kinds of position need no keyword, because the schema already bounds
+them, and the calculation prices each from the schema:
+
+- a string constrained by `enum`, `const`, or `format` (a `format` is priced at
+  its ceiling, `uri` at 2,048 characters for example);
+- a string with an anchored `pattern` that admits only values of bounded
+  length, such as `^[A-Z]{2}$` or `^sha256:[a-f0-9]{64}$`. An anchored pattern
+  with an unbounded quantifier, such as `^[a-z][a-z0-9_]*$`, does not bound
+  length and still carries `maxLength`;
+- an array with `uniqueItems` whose items are a closed `enum` or a `const`,
+  whose length cannot exceed the number of values.
+
+The limits on every other position are sized to a real deployment with
 headroom, in classes:
 
 | Class | Limit | Applies to |
@@ -2542,7 +2552,7 @@ headroom, in classes:
 | Fixed-shape string | exact length of the pattern | ISO country (2), ISO subdivision (6), hex color (7), time of day (8), SHA-256 hex (64), digest (71) |
 | Domain | 253 characters | every domain-valued field |
 | Short free text | 256 to 1,024 characters | descriptions, messages, suggestions, alt text (512), pointers (256) |
-| Vocabulary list | at least twice the enum, at least 16 | arrays of enum values |
+| Vocabulary list | at least twice the enum, at least 16 | arrays of enum values that are not `uniqueItems` |
 | Token or URI list | 16 to 32 items | claim types, proof formats, languages, industries |
 | Small object list | 4 to 32 items | SDK entries, onboarding requirements, jurisdictions, window constraints, macro capabilities |
 | Catalog | 128 to 256 items | `creative.supported_formats` (256), `measurement.metrics` and vendor metrics (128), governance features (128), preview routes (128) |
@@ -2562,7 +2572,7 @@ schema-valid. The annotations are registered as a 4.0 tightening in the
 [4.0 compatibility checks](/docs/reference/migration/v4-compatibility#capabilities-stay-within-their-structural-bounds).
 
 **Worst case.** With the 4.0 bounds applied, the largest schema-valid
-capabilities document is 89,611,443 bytes (about 85 MiB), counting only the
+capabilities document is 88,992,454 bytes (about 85 MiB), counting only the
 members the schema declares. `scripts/capabilities-structural-bounds.cjs` computes it
 and `tests/capabilities-structural-bounds.test.cjs` pins it, so the figure moves
 only when a limit moves. The calculation assumes every declared member is
@@ -2573,6 +2583,16 @@ patterned or formatted strings one. The largest blocks are `creative` (27 MiB),
 and `measurement` (4 MiB). Objects that admit undeclared members, such as `ext`
 and context, are open: the schema cannot bound what a producer adds there, and
 103 positions in the response are open in this sense.
+
+The multipliers behind that figure are nested object lists inside shared
+schemas: a brand reference (`brand-ref`, up to 111 KiB each, most of it
+`brand_kit_override` and `provenance`), a creative format declaration
+(`creative-operation-format-declaration`, up to 107 KiB each, most of it
+`macro_resolution_capabilities`), an attestation issuer entry (322 KiB each),
+an audience activation method (144 KiB), and a geographic place system (534
+KiB). 3.3 accepts the ceiling because the byte limits are the operative cap.
+Tightening those nested limits is registered as a 4.0 follow-up in the
+[4.0 compatibility checks](/docs/reference/migration/v4-compatibility#capabilities-stay-within-their-structural-bounds).
 
 That figure bounds the shape of a document; it is not a size target and it is
 far above both the 4 MiB client default and `MAX_CAPABILITIES_BYTES`. The byte

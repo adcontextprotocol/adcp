@@ -772,8 +772,7 @@
                         "webhooks"
                       ]
                     },
-                    "uniqueItems": true,
-                    "maxItems": 16
+                    "uniqueItems": true
                   }
                 },
                 "required": ["name", "version", "components"],
@@ -867,8 +866,7 @@
               },
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Connection configuration sections this seller accepts. Unsupported sections are rejected rather than silently ignored.",
-              "maxItems": 16
+              "description": "Connection configuration sections this seller accepts. Unsupported sections are rejected rather than silently ignored."
             },
             "max_reporting_destinations": {
               "type": "integer",
@@ -909,8 +907,7 @@
                     },
                     "minItems": 1,
                     "uniqueItems": true,
-                    "description": "Physical file formats the seller can produce. Only meaningful for file_transfer.",
-                    "maxItems": 16
+                    "description": "Physical file formats the seller can produce. Only meaningful for file_transfer."
                   },
                   "access_modes": {
                     "type": "array",
@@ -1040,8 +1037,7 @@
                         "enum": ["capabilities.changed"]
                       },
                       "minItems": 1,
-                      "uniqueItems": true,
-                      "x-max-items-4.0": 16
+                      "uniqueItems": true
                     },
                     "coalescence_window_seconds": {
                       "type": "integer",
@@ -1120,8 +1116,7 @@
                         "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
-                        "uniqueItems": true,
-                        "maxItems": 16
+                        "uniqueItems": true
                       }
                     },
                     "required": ["task", "modes"],
@@ -1135,8 +1130,7 @@
                         "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
-                        "uniqueItems": true,
-                        "maxItems": 16
+                        "uniqueItems": true
                       }
                     },
                     "required": ["task", "modes"],
@@ -1150,8 +1144,7 @@
                         "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
-                        "uniqueItems": true,
-                        "maxItems": 16
+                        "uniqueItems": true
                       }
                     },
                     "required": ["task", "modes"],
@@ -1165,8 +1158,7 @@
                         "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
-                        "uniqueItems": true,
-                        "maxItems": 16
+                        "uniqueItems": true
                       }
                     },
                     "required": ["task", "modes"],
@@ -1180,8 +1172,7 @@
                         "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
-                        "uniqueItems": true,
-                        "maxItems": 16
+                        "uniqueItems": true
                       }
                     },
                     "required": ["task", "modes"],
@@ -1319,8 +1310,7 @@
             "$ref": "/schemas/enums/account-currency-mode.json"
           },
           "minItems": 1,
-          "uniqueItems": true,
-          "x-max-items-4.0": 16
+          "uniqueItems": true
         },
         "timezone": {
           "$ref": "/schemas/core/account-timezone-capability.json",
@@ -1366,8 +1356,7 @@
                     "enum": ["account.status_changed"]
                   },
                   "minItems": 1,
-                  "uniqueItems": true,
-                  "x-max-items-4.0": 16
+                  "uniqueItems": true
                 },
                 "supports_webhook_activity": {
                   "type": "boolean",
@@ -1487,8 +1476,7 @@
                     ]
                   },
                   "minItems": 1,
-                  "uniqueItems": true,
-                  "x-max-items-4.0": 16
+                  "uniqueItems": true
                 }
               },
               "required": [
@@ -1560,8 +1548,7 @@
             "catalog_digest": {
               "type": "string",
               "pattern": "^sha256:[a-f0-9]{64}$",
-              "description": "SHA-256 digest of the exact catalog representation fetched from catalog_url.",
-              "x-max-length-4.0": 71
+              "description": "SHA-256 digest of the exact catalog representation fetched from catalog_url."
             },
             "default_profile_ids": {
               "type": "array",
@@ -1582,8 +1569,7 @@
             "$ref": "/schemas/enums/pricing-model.json"
           },
           "minItems": 1,
-          "uniqueItems": true,
-          "x-max-items-4.0": 32
+          "uniqueItems": true
         },
         "buying_modes": {
           "type": "array",
@@ -1594,8 +1580,7 @@
           },
           "minItems": 1,
           "uniqueItems": true,
-          "default": ["brief"],
-          "x-max-items-4.0": 16
+          "default": ["brief"]
         },
         "measurement_terms_acceptance": {
           "type": "boolean",
@@ -1617,8 +1602,7 @@
             "enum": ["list_products", "request_proposals", "refine_proposals", "decline_proposals", "buy_products", "accept_proposal", "control_media_buy", "list_proposals"]
           },
           "minItems": 1,
-          "uniqueItems": true,
-          "x-max-items-4.0": 16
+          "uniqueItems": true
         },
         "proposal_refinement": {
           "type": "object",
@@ -1631,8 +1615,7 @@
                 "type": "string",
                 "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "installment_changes", "alternatives", "criteria"]
               },
-              "uniqueItems": true,
-              "x-max-items-4.0": 16
+              "uniqueItems": true
             },
             "hold_semantics": {
               "type": "string",
@@ -1725,8 +1708,7 @@
             "$ref": "#/definitions/CapabilityReportingDeliveryMethod"
           },
           "minItems": 1,
-          "uniqueItems": true,
-          "x-max-items-4.0": 32
+          "uniqueItems": true
         },
         "performance_feedback": {
           "type": "object",
@@ -1749,8 +1731,7 @@
             "$ref": "/schemas/enums/cloud-storage-protocol.json"
           },
           "minItems": 1,
-          "uniqueItems": true,
-          "x-max-items-4.0": 16
+          "uniqueItems": true
         },
         "reporting_delivery": {
           "$ref": "/schemas/core/reporting-delivery-capabilities.json",
@@ -1789,8 +1770,7 @@
           },
           "uniqueItems": true,
           "minItems": 1,
-          "default": ["snapshot"],
-          "x-max-items-4.0": 16
+          "default": ["snapshot"]
         },
         "creative_approval_mode": {
           "type": "string",
@@ -1804,8 +1784,7 @@
             "$ref": "/schemas/enums/indicator-type.json"
           },
           "minItems": 1,
-          "uniqueItems": true,
-          "x-max-items-4.0": 32
+          "uniqueItems": true
         },
         "relationship_notifications": {
           "type": "object",
@@ -1971,8 +1950,7 @@
                   "description": "Seller-wide VAST execution ceiling. Each product format option declares its binding accepted subset in `params.vast_versions`.",
                   "items": { "$ref": "/schemas/enums/vast-version.json" },
                   "minItems": 1,
-                  "uniqueItems": true,
-                  "x-max-items-4.0": 16
+                  "uniqueItems": true
                 },
                 "macro_resolution_capabilities": {
                   "type": "array",
@@ -2237,8 +2215,7 @@
                 "enum": ["required", "preferred"]
               },
               "minItems": 1,
-              "uniqueItems": true,
-              "x-max-items-4.0": 16
+              "uniqueItems": true
             },
             "supported_presence_modes": {
               "type": "array",
@@ -2248,8 +2225,7 @@
                 "enum": ["required", "when_available"]
               },
               "minItems": 1,
-              "uniqueItems": true,
-              "x-max-items-4.0": 16
+              "uniqueItems": true
             },
             "supports_attestation_evaluation": {
               "type": "boolean",
@@ -2354,8 +2330,7 @@
             ]
           },
           "minItems": 1,
-          "uniqueItems": true,
-          "x-max-items-4.0": 32
+          "uniqueItems": true
         },
         "vendor_metric_optimization": {
           "type": "object",
@@ -2380,8 +2355,7 @@
                 "enum": ["cost_per", "threshold_rate"]
               },
               "minItems": 1,
-              "uniqueItems": true,
-              "x-max-items-4.0": 16
+              "uniqueItems": true
             }
           },
           "additionalProperties": true
@@ -2420,8 +2394,7 @@
                 "enum": ["cost_per", "per_ad_spend", "maximize_value"]
               },
               "minItems": 1,
-              "uniqueItems": true,
-              "x-max-items-4.0": 16
+              "uniqueItems": true
             },
             "supported_uid_types": {
               "type": "array",
@@ -2499,8 +2472,7 @@
                 "$ref": "/schemas/enums/reach-unit.json"
               },
               "minItems": 1,
-              "uniqueItems": true,
-              "x-max-items-4.0": 16
+              "uniqueItems": true
             },
             "supported_window_units": {
               "type": "array",
@@ -2532,8 +2504,7 @@
                 "enum": ["media_buy", "package"]
               },
               "minItems": 1,
-              "uniqueItems": true,
-              "x-max-items-4.0": 16
+              "uniqueItems": true
             },
             "supported_periods": {
               "type": "array",
@@ -2543,8 +2514,7 @@
                 "enum": ["day"]
               },
               "minItems": 1,
-              "uniqueItems": true,
-              "x-max-items-4.0": 16
+              "uniqueItems": true
             },
             "timezone_basis": {
               "$ref": "#/definitions/BudgetCappingTimezoneBasis",
@@ -2650,8 +2620,7 @@
               "description": "Complete list of ISO 3166-1 alpha-2 countries for which this sales agent accepts and can meaningfully answer product-discovery briefs. When present, this is an exhaustive brief-routing allowlist: buyers MAY skip the agent when a brief's requested countries do not intersect it. Omission means country scope is unknown and MUST NOT be interpreted as global coverage. This is a routing pre-filter, not a promise of current product availability and not an executable geo-targeting declaration; media_buy.execution.targeting geo capabilities and each product's overlay_support remain authoritative for targeting execution.",
               "items": {
                 "type": "string",
-                "pattern": "^[A-Z]{2}$",
-                "x-max-length-4.0": 2
+                "pattern": "^[A-Z]{2}$"
               },
               "x-max-items-4.0": 256
             },
@@ -2746,8 +2715,7 @@
           },
           "minItems": 1,
           "uniqueItems": true,
-          "default": ["brief"],
-          "x-max-items-4.0": 16
+          "default": ["brief"]
         },
         "features": {
           "type": "object",
@@ -3094,8 +3062,7 @@
               "minItems": 1,
               "uniqueItems": true,
               "items": { "$ref": "/schemas/enums/representation-selection-strategy.json" },
-              "description": "Deterministic selection strategies the seller implements after compatibility filtering. `representation_order` selects the first compatible source entry. `highest_compatible_vast` selects the highest exact VAST version from the already-intersected candidate set, with equal-version ties resolved by source array order.",
-              "x-max-items-4.0": 16
+              "description": "Deterministic selection strategies the seller implements after compatibility filtering. `representation_order` selects the first compatible source entry. `highest_compatible_vast` selects the highest exact VAST version from the already-intersected candidate set, with equal-version ties resolved by source array order."
             }
           },
           "required": ["supported", "strategies"],
@@ -3183,8 +3150,7 @@
                   "custom"
                 ]
               },
-              "uniqueItems": true,
-              "x-max-items-4.0": 16
+              "uniqueItems": true
             },
             "selection_strategies": {
               "type": "array",
@@ -3193,8 +3159,7 @@
               "items": {
                 "$ref": "/schemas/enums/creative-selection-strategy.json"
               },
-              "uniqueItems": true,
-              "maxItems": 16
+              "uniqueItems": true
             }
           },
           "additionalProperties": true
@@ -3224,8 +3189,7 @@
                 },
                 "minItems": 1,
                 "uniqueItems": true,
-                "default": ["build"],
-                "x-max-items-4.0": 16
+                "default": ["build"]
               }
             },
             "required": ["format"],
@@ -3556,8 +3520,7 @@
           "uniqueItems": true,
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a"
-          },
-          "maxItems": 16
+          }
         },
         "profiles": {
           "x-status": "experimental",
@@ -3573,8 +3536,7 @@
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/wba-profile.mdx#capability"
           },
-          "x-added-in": "3.3.0",
-          "maxItems": 16
+          "x-added-in": "3.3.0"
         }
       },
       "required": ["supported"]
@@ -3634,8 +3596,7 @@
             "enum": ["ed25519", "ecdsa-p256-sha256"]
           },
           "minItems": 1,
-          "uniqueItems": true,
-          "x-max-items-4.0": 16
+          "uniqueItems": true
         },
         "legacy_hmac_fallback": {
           "type": "boolean",
@@ -3663,8 +3624,7 @@
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/wba-profile.mdx#webhooks"
           },
-          "x-added-in": "3.3.0",
-          "maxItems": 16
+          "x-added-in": "3.3.0"
         }
       },
       "required": ["supported"]
@@ -3791,8 +3751,7 @@
       "items": {
         "type": "string",
         "pattern": "^[a-z0-9][a-z0-9.-]{2,63}$",
-        "examples": ["adcp-prod-security-3.3"],
-        "maxLength": 64
+        "examples": ["adcp-prod-security-3.3"]
       },
       "uniqueItems": true,
       "x-added-in": "3.3.0",
@@ -3959,8 +3918,7 @@
       "items": {
         "$ref": "/schemas/enums/specialism.json"
       },
-      "uniqueItems": true,
-      "x-max-items-4.0": 128
+      "uniqueItems": true
     },
     "extensions_supported": {
       "type": "array",
@@ -4080,8 +4038,7 @@
               }
             },
             "spec": "specs/wholesale-feed-webhooks.md#capability-declaration"
-          },
-          "x-max-items-4.0": 32
+          }
         }
       },
       "required": ["supported"],

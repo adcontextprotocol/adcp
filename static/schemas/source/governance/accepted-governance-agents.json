@@ -30,8 +30,7 @@
                 "type": "array",
                 "items": { "type": "string", "enum": ["spec", "live"] },
                 "minItems": 1,
-                "uniqueItems": true,
-                "x-max-items-4.0": 16
+                "uniqueItems": true
               },
               "max_age_seconds": { "type": "integer", "minimum": 0, "description": "Maximum age of the registry evidence at binding time. Zero requires a fresh result. Evidence is pinned to the accepted binding; later registry drift does not silently revoke an existing binding." }
             },

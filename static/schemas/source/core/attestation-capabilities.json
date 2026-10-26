@@ -35,8 +35,7 @@
         "enum": ["credential_uri", "issuer_credential_id", "embedded"]
       },
       "minItems": 1,
-      "uniqueItems": true,
-      "x-max-items-4.0": 16
+      "uniqueItems": true
     },
     "accepted_issuers": {
       "type": "array",

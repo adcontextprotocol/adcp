@@ -253,8 +253,7 @@
                       "$ref": "/schemas/enums/disclosure-position.json"
                     },
                     "minItems": 1,
-                    "uniqueItems": true,
-                    "x-max-items-4.0": 16
+                    "uniqueItems": true
                   },
                   "ext": {
                     "$ref": "/schemas/core/ext.json"
