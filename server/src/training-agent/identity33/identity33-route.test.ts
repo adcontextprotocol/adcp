@@ -152,6 +152,21 @@ describe('sandbox identity route: Web Bot Auth and demand-side grants', () => {
     expect(errorCode(result), JSON.stringify(result.body)).toBe('SERVICE_UNAVAILABLE');
   });
 
+  it('refuses a replayed signed request', async () => {
+    const host = `127.0.0.1:${server.port}`;
+    const body = JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method: 'tools/call', params: { name: 'get_adcp_capabilities', arguments: {} } });
+    const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json', host, 'x-forwarded-proto': 'https' };
+    Object.assign(headers, await signWebBotAuth(
+      { method: 'POST', url: `https://${host}${ROUTE}`, headers: { ...headers }, body },
+      fixtureSigningKey('agency'),
+      { origin: FIXTURE_AGENTS.agency.origin },
+    ));
+    const first = await fetch(`http://${host}${ROUTE}`, { method: 'POST', headers, body });
+    expect(first.status).toBe(200);
+    const replay = await fetch(`http://${host}${ROUTE}`, { method: 'POST', headers, body });
+    expect(replay.status).toBe(429);
+  });
+
   it('rejects a request whose signature does not match its body', async () => {
     const host = `127.0.0.1:${server.port}`;
     const signedBody = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_products', arguments: {} } });
