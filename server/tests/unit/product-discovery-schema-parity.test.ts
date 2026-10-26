@@ -152,12 +152,7 @@ describe('product discovery MCP schema parity', () => {
     // and one revise-field-forbidding arm per no-terms-change action
     // (+1,128 bytes measured against main: 165,140 -> 166,268 bytes /
     // 162.37 KiB), bounded at 163 KiB.
-    // Experimental audience evidence targets (#8125) make the audience
-    // characteristic shape reachable from the discovery filters, so its
-    // bundled closure plus the target item and relationship enum land in each
-    // tool that carries filters (+6,777 bytes measured against main:
-    // 166,268 -> 173,045 bytes / 168.99 KiB), bounded at 169 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(169 * 1024);
+    expect(totalBytes).toBeLessThanOrEqual(163 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

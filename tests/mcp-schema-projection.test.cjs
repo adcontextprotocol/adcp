@@ -124,8 +124,12 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // Experimental purchase rights add rights-scope and two right-use values to the
 // purchase graph reached through buy_products (+941 bytes measured, 473,582 ->
 // 474,523 bytes / 463.4 KiB), bounded at 464 KiB.
+// 3.3.0-beta.1 window: the queued account, pricing, seller-terms and creative
+// PRs each add a few hundred bytes to a few KiB (measured 465-467 KiB each on
+// top of main). Bound at 476 KiB once for the window; resume per-PR bounding
+// after the beta.1 cut.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 464,
+  'media-buy': 476,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -183,7 +187,14 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // and scoped control action to the controller closure. After condensing shared
 // field prose, it measures 1_318_217 bytes; bound it at 1_320_000. The 4 MiB
 // schema and 22 MiB projection caps and all fixture parity checks remain.
-const PARITY_COMPILE_LIMIT = 1_320_000;
+// 3.3.0-beta.1 window: set the bound once for the decided beta.1 queue
+// instead of per PR. Queued work measured on top of 1_318_217: price
+// adjustments (#7955) 1_326_489, provider-initiated signals (#8044) 1_324_027,
+// signal pricing groups (#8058) 1_321_133, capabilities bounds (#8505) about
+// +2.2 KB, plus the account and creative PRs. Bound at 1_375_000 for the
+// window; resume per-PR bounding after the beta.1 cut, and track shrinking
+// the controller closure separately.
+const PARITY_COMPILE_LIMIT = 1_375_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
