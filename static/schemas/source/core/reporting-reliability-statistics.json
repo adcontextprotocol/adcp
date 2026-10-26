@@ -43,13 +43,14 @@
           "control_total_name": { "type": "string", "minLength": 1, "maxLength": 128 },
           "unit": { "type": "string", "minLength": 1, "maxLength": 32 },
           "sample_count": { "type": "integer", "minimum": 1 },
-          "p50_absolute_delta": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$" },
-          "p95_absolute_delta": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$" }
+          "p50_absolute_delta": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$", "maxLength": 32 },
+          "p95_absolute_delta": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$", "maxLength": 32 }
         },
         "required": ["control_total_name", "unit", "sample_count", "p50_absolute_delta", "p95_absolute_delta"],
         "additionalProperties": false
       },
-      "uniqueItems": true
+      "uniqueItems": true,
+      "maxItems": 16
     },
     "evidence": {
       "type": "object",
@@ -57,7 +58,7 @@
         "basis": { "type": "string", "enum": ["reporting_ledger", "third_party_attestation"] },
         "generated_at": { "type": "string", "format": "date-time" },
         "attestation_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)" },
-        "attestation_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+        "attestation_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "maxLength": 64 }
       },
       "required": ["basis", "generated_at"],
       "allOf": [

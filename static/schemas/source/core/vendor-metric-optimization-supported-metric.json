@@ -20,7 +20,8 @@
       "items": {
         "type": "string",
         "enum": ["cost_per", "threshold_rate"]
-      }
+      },
+      "x-max-items-4.0": 16
     }
   },
   "required": ["vendor", "metric_id"],

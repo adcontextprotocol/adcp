@@ -6,7 +6,7 @@
   "x-added-in": "3.3.0",
   "type": "object",
   "properties": {
-    "calendar_id": { "type": "string", "minLength": 1, "x-entity": "business_calendar" },
+    "calendar_id": { "type": "string", "minLength": 1, "x-entity": "business_calendar", "maxLength": 128 },
     "timezone": { "$ref": "/schemas/core/iana-timezone.json" },
     "valid_from": { "type": "string", "format": "date" },
     "valid_through": { "type": "string", "format": "date" },
@@ -20,15 +20,16 @@
       "items": {
         "type": "object",
         "properties": {
-          "days": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] } },
-          "start_time": { "type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$" },
-          "end_time": { "type": "string", "pattern": "^(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]|24:00)$" }
+          "days": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] }, "maxItems": 7 },
+          "start_time": { "type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$", "maxLength": 8 },
+          "end_time": { "type": "string", "pattern": "^(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]|24:00)$", "maxLength": 8 }
         },
         "required": ["days", "start_time", "end_time"],
         "additionalProperties": false
-      }
+      },
+      "maxItems": 14
     },
-    "non_working_dates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "format": "date" }, "description": "Complete list of local non-working dates within coverage, overriding weekly periods. An empty list explicitly means no additional closures in that interval." }
+    "non_working_dates": { "type": "array", "uniqueItems": true, "items": { "type": "string", "format": "date" }, "description": "Complete list of local non-working dates within coverage, overriding weekly periods. An empty list explicitly means no additional closures in that interval.", "maxItems": 1024 }
   },
   "required": ["calendar_id", "timezone", "valid_from", "valid_through", "business_day_minutes", "working_periods", "non_working_dates"],
   "additionalProperties": false,

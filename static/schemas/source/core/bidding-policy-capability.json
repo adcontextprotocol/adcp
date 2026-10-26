@@ -45,7 +45,8 @@
             "enum": ["automatic", "bid_amount", "max_bid", "cost_per", "roas"]
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 16
         },
         "cost_per_strengths": {
           "type": "array",
@@ -55,7 +56,8 @@
             "enum": ["cap", "target"]
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 16
         },
         "roas_strengths": {
           "type": "array",
@@ -65,7 +67,8 @@
             "enum": ["floor", "target"]
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 16
         },
         "supported_combinations": {
           "type": "array",
@@ -76,7 +79,8 @@
               { "$ref": "#/definitions/max_bid_with_roas" }
             ]
           },
-          "minItems": 1
+          "minItems": 1,
+          "x-max-items-4.0": 32
         }
       },
       "anyOf": [
@@ -112,7 +116,8 @@
           "description": "cost_per strengths supported when combined with max_bid.",
           "items": { "type": "string", "enum": ["cap", "target"] },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 16
         }
       },
       "required": ["kind", "cost_per_strengths"],
@@ -127,7 +132,8 @@
           "description": "roas strengths supported when combined with max_bid.",
           "items": { "type": "string", "enum": ["floor", "target"] },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 16
         }
       },
       "required": ["kind", "roas_strengths"],

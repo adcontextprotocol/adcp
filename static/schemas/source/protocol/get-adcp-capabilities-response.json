@@ -685,7 +685,8 @@
       "minItems": 1,
       "uniqueItems": true,
       "x-added-in": "3.3.0",
-      "description": "Seller working-time calendars, uniquely keyed by immutable calendar_id. Every published business-clock SLA MUST resolve to one declaration here. Retain earlier declarations while requests referencing them remain pending. Presence declares calendar support, not any product-level timing commitment."
+      "description": "Seller working-time calendars, uniquely keyed by immutable calendar_id. Every published business-clock SLA MUST resolve to one declaration here. Retain earlier declarations while requests referencing them remain pending. Presence declares calendar support, not any product-level timing commitment.",
+      "maxItems": 32
     },
     "adcp": {
       "type": "object",
@@ -700,17 +701,20 @@
             "type": "integer",
             "minimum": 1
           },
-          "minItems": 1
+          "minItems": 1,
+          "x-max-items-4.0": 8
         },
         "supported_versions": {
           "type": "array",
           "description": "Release-precision (VERSION.RELEASE) AdCP versions this seller speaks. Authoritative for buyer-side release pinning — buyers SHOULD declare `adcp_version` (release-precision string) on each request. Sellers downshift to the highest supported release ≤ the buyer's pin within the same major; cross-major mismatch returns VERSION_UNSUPPORTED. Pre-release tags (e.g. `\"3.1-beta\"`) hang off release.",
           "items": {
             "type": "string",
-            "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+            "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+            "x-max-length-4.0": 32
           },
           "minItems": 1,
-          "examples": [["3.0"], ["3.0", "3.1"], ["3.0", "3.1-beta"]]
+          "examples": [["3.0"], ["3.0", "3.1"], ["3.0", "3.1-beta"]],
+          "x-max-items-4.0": 32
         },
         "build_version": {
           "type": "string",
@@ -722,7 +726,8 @@
             "3.1.0-beta.3",
             "3.1.2+scope3.deploy.4821",
             "3.1.0-beta.3+sha.a1b2c3d"
-          ]
+          ],
+          "x-max-length-4.0": 64
         },
         "implementation": {
           "x-added-in": "3.3.0",
@@ -740,14 +745,16 @@
                     "minLength": 1,
                     "pattern": "^\\S+$",
                     "description": "SDK package identifier in its package ecosystem, including publisher or module scope where applicable. Approval is determined by the buyer's trusted catalog, not by the seller.",
-                    "examples": ["@adcp/sdk", "adcp", "github.com/adcontextprotocol/adcp-go"]
+                    "examples": ["@adcp/sdk", "adcp", "github.com/adcontextprotocol/adcp-go"],
+                    "maxLength": 128
                   },
                   "version": {
                     "type": "string",
                     "minLength": 1,
                     "pattern": "^\\S+$",
                     "description": "Exact resolved SDK package version, including any prerelease or build identifier. Use the package ecosystem's version syntax, not a version range or moving registry tag. Independent of the AdCP wire version and the seller's build_version.",
-                    "examples": ["15.3.0", "15.3.0-beta.1", "4.0.0rc1", "v1.2.0"]
+                    "examples": ["15.3.0", "15.3.0-beta.1", "4.0.0rc1", "v1.2.0"],
+                    "maxLength": 32
                   },
                   "components": {
                     "type": "array",
@@ -765,13 +772,15 @@
                         "webhooks"
                       ]
                     },
-                    "uniqueItems": true
+                    "uniqueItems": true,
+                    "maxItems": 16
                   }
                 },
                 "required": ["name", "version", "components"],
                 "additionalProperties": false
               },
-              "uniqueItems": true
+              "uniqueItems": true,
+              "maxItems": 16
             }
           },
           "required": ["sdks"],
@@ -858,7 +867,8 @@
               },
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Connection configuration sections this seller accepts. Unsupported sections are rejected rather than silently ignored."
+              "description": "Connection configuration sections this seller accepts. Unsupported sections are rejected rather than silently ignored.",
+              "maxItems": 16
             },
             "max_reporting_destinations": {
               "type": "integer",
@@ -888,7 +898,8 @@
                     },
                     "minItems": 1,
                     "uniqueItems": true,
-                    "description": "Provider transports the seller can deliver through for this pattern."
+                    "description": "Provider transports the seller can deliver through for this pattern.",
+                    "maxItems": 8
                   },
                   "formats": {
                     "type": "array",
@@ -898,7 +909,8 @@
                     },
                     "minItems": 1,
                     "uniqueItems": true,
-                    "description": "Physical file formats the seller can produce. Only meaningful for file_transfer."
+                    "description": "Physical file formats the seller can produce. Only meaningful for file_transfer.",
+                    "maxItems": 16
                   },
                   "access_modes": {
                     "type": "array",
@@ -910,7 +922,8 @@
                     },
                     "minItems": 1,
                     "uniqueItems": true,
-                    "description": "Dataset-share access families the seller can provision. Only meaningful for dataset_share."
+                    "description": "Dataset-share access families the seller can provision. Only meaningful for dataset_share.",
+                    "maxItems": 32
                   },
                   "verification_profiles": {
                     "$ref": "/schemas/core/reporting-verification-profile-set.json",
@@ -950,7 +963,8 @@
               },
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Notification types this seller can emit against caller-level subscribers, so buyers select from the offering instead of probing by rejection. Account-anchored entries fire with fire-time authorization scoping. When absent, only capabilities.changed is assumed. A caller-level subscriber requesting a type outside this set fails the sync request with UNSUPPORTED_FEATURE."
+              "description": "Notification types this seller can emit against caller-level subscribers, so buyers select from the offering instead of probing by rejection. Account-anchored entries fire with fire-time authorization scoping. When absent, only capabilities.changed is assumed. A caller-level subscriber requesting a type outside this set fails the sync request with UNSUPPORTED_FEATURE.",
+              "maxItems": 64
             },
             "optimistic_concurrency": {
               "type": "boolean",
@@ -1026,7 +1040,8 @@
                         "enum": ["capabilities.changed"]
                       },
                       "minItems": 1,
-                      "uniqueItems": true
+                      "uniqueItems": true,
+                      "x-max-items-4.0": 16
                     },
                     "coalescence_window_seconds": {
                       "type": "integer",
@@ -1105,7 +1120,8 @@
                         "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
-                        "uniqueItems": true
+                        "uniqueItems": true,
+                        "maxItems": 16
                       }
                     },
                     "required": ["task", "modes"],
@@ -1119,7 +1135,8 @@
                         "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
-                        "uniqueItems": true
+                        "uniqueItems": true,
+                        "maxItems": 16
                       }
                     },
                     "required": ["task", "modes"],
@@ -1133,7 +1150,8 @@
                         "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
-                        "uniqueItems": true
+                        "uniqueItems": true,
+                        "maxItems": 16
                       }
                     },
                     "required": ["task", "modes"],
@@ -1147,7 +1165,8 @@
                         "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
-                        "uniqueItems": true
+                        "uniqueItems": true,
+                        "maxItems": 16
                       }
                     },
                     "required": ["task", "modes"],
@@ -1161,7 +1180,8 @@
                         "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
                         "contains": { "const": "signed_context" },
                         "minItems": 1,
-                        "uniqueItems": true
+                        "uniqueItems": true,
+                        "maxItems": 16
                       }
                     },
                     "required": ["task", "modes"],
@@ -1226,7 +1246,8 @@
                 ]
               },
               "minItems": 1,
-              "uniqueItems": true
+              "uniqueItems": true,
+              "maxItems": 64
             },
             "accepted_governance_agents": {
               "$ref": "/schemas/governance/accepted-governance-agents.json",
@@ -1259,7 +1280,8 @@
           "measurement"
         ]
       },
-      "minItems": 1
+      "minItems": 1,
+      "x-max-items-4.0": 16
     },
     "account": {
       "type": "object",
@@ -1287,7 +1309,8 @@
           "items": {
             "$ref": "/schemas/enums/billing-party.json"
           },
-          "minItems": 1
+          "minItems": 1,
+          "x-max-items-4.0": 16
         },
         "supported_account_currency_modes": {
           "type": "array",
@@ -1296,7 +1319,8 @@
             "$ref": "/schemas/enums/account-currency-mode.json"
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 16
         },
         "timezone": {
           "$ref": "/schemas/core/account-timezone-capability.json",
@@ -1342,7 +1366,8 @@
                     "enum": ["account.status_changed"]
                   },
                   "minItems": 1,
-                  "uniqueItems": true
+                  "uniqueItems": true,
+                  "x-max-items-4.0": 16
                 },
                 "supports_webhook_activity": {
                   "type": "boolean",
@@ -1412,7 +1437,8 @@
                     "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
                   },
                   "minItems": 1,
-                  "uniqueItems": true
+                  "uniqueItems": true,
+                  "maxItems": 32
                 }
               },
               "required": ["supported", "read_task", "registration_task", "event_type", "retention_days", "resource_types"],
@@ -1461,7 +1487,8 @@
                     ]
                   },
                   "minItems": 1,
-                  "uniqueItems": true
+                  "uniqueItems": true,
+                  "x-max-items-4.0": 16
                 }
               },
               "required": [
@@ -1533,14 +1560,16 @@
             "catalog_digest": {
               "type": "string",
               "pattern": "^sha256:[a-f0-9]{64}$",
-              "description": "SHA-256 digest of the exact catalog representation fetched from catalog_url."
+              "description": "SHA-256 digest of the exact catalog representation fetched from catalog_url.",
+              "x-max-length-4.0": 71
             },
             "default_profile_ids": {
               "type": "array",
-              "items": { "type": "string", "minLength": 1, "x-entity": "acceptance_policy_profile" },
+              "items": { "type": "string", "minLength": 1, "x-entity": "acceptance_policy_profile", "x-max-length-4.0": 128 },
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Local or registry-referenced catalog profiles that apply seller-wide unless a product adds further profiles. IDs MUST resolve uniquely across profiles and registry_profiles; all referenced profiles compose restrictively."
+              "description": "Local or registry-referenced catalog profiles that apply seller-wide unless a product adds further profiles. IDs MUST resolve uniquely across profiles and registry_profiles; all referenced profiles compose restrictively.",
+              "x-max-items-4.0": 32
             }
           },
           "required": ["catalog_url", "catalog_digest"],
@@ -1553,7 +1582,8 @@
             "$ref": "/schemas/enums/pricing-model.json"
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 32
         },
         "buying_modes": {
           "type": "array",
@@ -1564,7 +1594,8 @@
           },
           "minItems": 1,
           "uniqueItems": true,
-          "default": ["brief"]
+          "default": ["brief"],
+          "x-max-items-4.0": 16
         },
         "measurement_terms_acceptance": {
           "type": "boolean",
@@ -1586,7 +1617,8 @@
             "enum": ["list_products", "request_proposals", "refine_proposals", "decline_proposals", "buy_products", "accept_proposal", "control_media_buy", "list_proposals"]
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 16
         },
         "proposal_refinement": {
           "type": "object",
@@ -1599,7 +1631,8 @@
                 "type": "string",
                 "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "installment_changes", "alternatives", "criteria"]
               },
-              "uniqueItems": true
+              "uniqueItems": true,
+              "x-max-items-4.0": 16
             },
             "hold_semantics": {
               "type": "string",
@@ -1692,7 +1725,8 @@
             "$ref": "#/definitions/CapabilityReportingDeliveryMethod"
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 32
         },
         "performance_feedback": {
           "type": "object",
@@ -1715,7 +1749,8 @@
             "$ref": "/schemas/enums/cloud-storage-protocol.json"
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 16
         },
         "reporting_delivery": {
           "$ref": "/schemas/core/reporting-delivery-capabilities.json",
@@ -1754,7 +1789,8 @@
           },
           "uniqueItems": true,
           "minItems": 1,
-          "default": ["snapshot"]
+          "default": ["snapshot"],
+          "x-max-items-4.0": 16
         },
         "creative_approval_mode": {
           "type": "string",
@@ -1768,7 +1804,8 @@
             "$ref": "/schemas/enums/indicator-type.json"
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 32
         },
         "relationship_notifications": {
           "type": "object",
@@ -1910,7 +1947,8 @@
                   "description": "Surface types this seller supports via TMP.",
                   "items": {
                     "$ref": "/schemas/enums/property-type.json"
-                  }
+                  },
+                  "maxItems": 32
                 }
               }
             },
@@ -1921,7 +1959,8 @@
               "items": {
                 "type": "string",
                 "format": "uri"
-              }
+              },
+              "x-max-items-4.0": 32
             },
             "creative_specs": {
               "type": "object",
@@ -1932,7 +1971,8 @@
                   "description": "Seller-wide VAST execution ceiling. Each product format option declares its binding accepted subset in `params.vast_versions`.",
                   "items": { "$ref": "/schemas/enums/vast-version.json" },
                   "minItems": 1,
-                  "uniqueItems": true
+                  "uniqueItems": true,
+                  "x-max-items-4.0": 16
                 },
                 "macro_resolution_capabilities": {
                   "type": "array",
@@ -1943,15 +1983,18 @@
                     "verifier_constraints": {
                       "translation_chain_closure": "every translate_to_native entry must have an exact matching resolve_value entry for its translation_target in this same array"
                     }
-                  }
+                  },
+                  "x-max-items-4.0": 8
                 },
                 "mraid_versions": {
                   "type": "array",
                   "description": "MRAID versions supported for rich media mobile creatives",
                   "items": {
                     "type": "string",
-                    "pattern": "^[0-9]+\\.[0-9]+$"
-                  }
+                    "pattern": "^[0-9]+\\.[0-9]+$",
+                    "x-max-length-4.0": 32
+                  },
+                  "x-max-items-4.0": 32
                 },
                 "vpaid": {
                   "type": "boolean",
@@ -2023,7 +2066,8 @@
                   "additionalProperties": {
                     "$ref": "/schemas/core/geo-place-support.json"
                   },
-                  "minProperties": 1
+                  "minProperties": 1,
+                  "x-max-properties-4.0": 8
                 },
                 "age_restriction": {
                   "type": "object",
@@ -2038,7 +2082,8 @@
                       "description": "Age verification methods this seller supports",
                       "items": {
                         "$ref": "/schemas/enums/age-verification-method.json"
-                      }
+                      },
+                      "x-max-items-4.0": 16
                     }
                   }
                 },
@@ -2090,7 +2135,8 @@
                           "description": "Exact canonical BCP 47 language ranges accepted in targeting.language. Omission means the seller makes no exhaustive language-list declaration.",
                           "items": {
                             "$ref": "/schemas/core/locale-tag.json"
-                          }
+                          },
+                          "x-max-items-4.0": 256
                         }
                       }
                     }
@@ -2106,7 +2152,8 @@
                       "items": {
                         "$ref": "/schemas/enums/match-type.json"
                       },
-                      "minItems": 1
+                      "minItems": 1,
+                      "x-max-items-4.0": 16
                     }
                   },
                   "required": ["supported_match_types"]
@@ -2121,7 +2168,8 @@
                       "items": {
                         "$ref": "/schemas/enums/match-type.json"
                       },
-                      "minItems": 1
+                      "minItems": 1,
+                      "x-max-items-4.0": 16
                     }
                   },
                   "required": ["supported_match_types"]
@@ -2168,7 +2216,8 @@
                       "items": {
                         "$ref": "/schemas/enums/transport-mode.json"
                       },
-                      "minItems": 1
+                      "minItems": 1,
+                      "x-max-items-4.0": 16
                     }
                   }
                 }
@@ -2188,7 +2237,8 @@
                 "enum": ["required", "preferred"]
               },
               "minItems": 1,
-              "uniqueItems": true
+              "uniqueItems": true,
+              "x-max-items-4.0": 16
             },
             "supported_presence_modes": {
               "type": "array",
@@ -2198,7 +2248,8 @@
                 "enum": ["required", "when_available"]
               },
               "minItems": 1,
-              "uniqueItems": true
+              "uniqueItems": true,
+              "x-max-items-4.0": 16
             },
             "supports_attestation_evaluation": {
               "type": "boolean",
@@ -2232,7 +2283,8 @@
                 "type": "string",
                 "enum": ["hashed_email", "hashed_phone"]
               },
-              "minItems": 1
+              "minItems": 1,
+              "x-max-items-4.0": 16
             },
             "supports_platform_customer_id": {
               "type": "boolean",
@@ -2244,7 +2296,8 @@
               "items": {
                 "$ref": "/schemas/enums/uid-type.json"
               },
-              "minItems": 1
+              "minItems": 1,
+              "x-max-items-4.0": 32
             },
             "minimum_audience_size": {
               "type": "integer",
@@ -2258,7 +2311,8 @@
               "items": {
                 "$ref": "/schemas/core/audience-activation-method.json"
               },
-              "minItems": 1
+              "minItems": 1,
+              "maxItems": 16
             },
             "matching_latency_hours": {
               "type": "object",
@@ -2300,7 +2354,8 @@
             ]
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 32
         },
         "vendor_metric_optimization": {
           "type": "object",
@@ -2314,7 +2369,8 @@
                 "$ref": "/schemas/core/vendor-metric-optimization-supported-metric.json"
               },
               "minItems": 1,
-              "uniqueItems": true
+              "uniqueItems": true,
+              "maxItems": 128
             },
             "supported_targets": {
               "type": "array",
@@ -2324,7 +2380,8 @@
                 "enum": ["cost_per", "threshold_rate"]
               },
               "minItems": 1,
-              "uniqueItems": true
+              "uniqueItems": true,
+              "x-max-items-4.0": 16
             }
           },
           "additionalProperties": true
@@ -2352,7 +2409,8 @@
               "items": {
                 "$ref": "/schemas/enums/event-type.json"
               },
-              "minItems": 1
+              "minItems": 1,
+              "x-max-items-4.0": 64
             },
             "supported_targets": {
               "type": "array",
@@ -2362,7 +2420,8 @@
                 "enum": ["cost_per", "per_ad_spend", "maximize_value"]
               },
               "minItems": 1,
-              "uniqueItems": true
+              "uniqueItems": true,
+              "x-max-items-4.0": 16
             },
             "supported_uid_types": {
               "type": "array",
@@ -2370,7 +2429,8 @@
               "items": {
                 "$ref": "/schemas/enums/uid-type.json"
               },
-              "minItems": 1
+              "minItems": 1,
+              "x-max-items-4.0": 32
             },
             "supported_hashed_identifiers": {
               "type": "array",
@@ -2379,7 +2439,8 @@
                 "type": "string",
                 "enum": ["hashed_email", "hashed_phone"]
               },
-              "minItems": 1
+              "minItems": 1,
+              "x-max-items-4.0": 16
             },
             "supported_action_sources": {
               "type": "array",
@@ -2387,7 +2448,8 @@
               "items": {
                 "$ref": "/schemas/enums/action-source.json"
               },
-              "minItems": 1
+              "minItems": 1,
+              "x-max-items-4.0": 32
             },
             "attribution_windows": {
               "type": "array",
@@ -2405,7 +2467,8 @@
                     "items": {
                       "$ref": "/schemas/core/duration.json"
                     },
-                    "minItems": 1
+                    "minItems": 1,
+                    "x-max-items-4.0": 16
                   },
                   "post_view": {
                     "type": "array",
@@ -2413,12 +2476,14 @@
                     "items": {
                       "$ref": "/schemas/core/duration.json"
                     },
-                    "minItems": 1
+                    "minItems": 1,
+                    "x-max-items-4.0": 16
                   }
                 },
                 "required": ["post_click"],
                 "additionalProperties": true
-              }
+              },
+              "x-max-items-4.0": 16
             }
           },
           "additionalProperties": true
@@ -2434,16 +2499,19 @@
                 "$ref": "/schemas/enums/reach-unit.json"
               },
               "minItems": 1,
-              "uniqueItems": true
+              "uniqueItems": true,
+              "x-max-items-4.0": 16
             },
             "supported_window_units": {
               "type": "array",
               "description": "Duration units the seller supports for frequency cap windows. Values must match the duration.json unit enum (e.g., 'hours', 'days', 'campaign'). Omit to indicate all duration units are supported.",
               "items": {
-                "type": "string"
+                "type": "string",
+                "x-max-length-4.0": 128
               },
               "minItems": 1,
-              "uniqueItems": true
+              "uniqueItems": true,
+              "x-max-items-4.0": 32
             }
           },
           "additionalProperties": true
@@ -2464,7 +2532,8 @@
                 "enum": ["media_buy", "package"]
               },
               "minItems": 1,
-              "uniqueItems": true
+              "uniqueItems": true,
+              "x-max-items-4.0": 16
             },
             "supported_periods": {
               "type": "array",
@@ -2474,7 +2543,8 @@
                 "enum": ["day"]
               },
               "minItems": 1,
-              "uniqueItems": true
+              "uniqueItems": true,
+              "x-max-items-4.0": 16
             },
             "timezone_basis": {
               "$ref": "#/definitions/BudgetCappingTimezoneBasis",
@@ -2483,7 +2553,8 @@
             "fixed_timezone": {
               "type": "string",
               "minLength": 1,
-              "description": "Feature-specific default cap-day timezone used when timezone_basis is fixed. Use UTC or an IANA timezone identifier."
+              "description": "Feature-specific default cap-day timezone used when timezone_basis is fixed. Use UTC or an IANA timezone identifier.",
+              "x-max-length-4.0": 64
             },
             "buyer_timezone_override": {
               "type": "boolean",
@@ -2523,7 +2594,8 @@
               "items": {
                 "$ref": "/schemas/enums/channels.json"
               },
-              "minItems": 1
+              "minItems": 1,
+              "x-max-items-4.0": 64
             },
             "supports_webhook_delivery": {
               "type": "boolean",
@@ -2540,7 +2612,8 @@
               "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.\n\n**Non-exhaustive routing hint.** Unlike the sibling `primary_channels` and `primary_countries` allowlists, this list is NOT exhaustive and a buyer MUST NOT treat a publisher's absence from it as evidence that the seller is unauthorized for that publisher, whether or not it is marked complete. Each publisher's own adagents.json remains the authority; resolve it for the publisher named on a product rather than denying anything this list omits. When the list is truncated, the seller MUST set `publisher_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each publisher's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent. A seller that mirrors \"every publisher whose adagents.json names me\" is reflecting third-party-controlled content into a document whose size gates signing-key discovery. Sellers MUST NOT mirror this list unbounded: select the publishers you actually represent, keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
               "items": {
                 "type": "string",
-                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+                "x-max-length-4.0": 253
               },
               "minItems": 1,
               "x-adcp-validation": {
@@ -2555,7 +2628,8 @@
                 "enforced_in_3_x": "storyboard",
                 "schema_enforced_in": "4.0",
                 "spec": "docs/building/by-layer/L1/security.mdx#response-size-bounds"
-              }
+              },
+              "x-max-items-4.0": 100
             },
             "publisher_domains_complete": {
               "type": "boolean",
@@ -2568,15 +2642,18 @@
               "description": "Complete list of AdCP media channels for which this sales agent accepts and can meaningfully answer product-discovery briefs. When present, this is an exhaustive brief-routing allowlist: buyers MAY skip the agent when a brief's requested channels do not intersect it. Omission means channel scope is unknown and MUST NOT be interpreted as support for every channel. This is a routing pre-filter, not a promise of current product availability.",
               "items": {
                 "$ref": "/schemas/enums/channels.json"
-              }
+              },
+              "x-max-items-4.0": 64
             },
             "primary_countries": {
               "type": "array",
               "description": "Complete list of ISO 3166-1 alpha-2 countries for which this sales agent accepts and can meaningfully answer product-discovery briefs. When present, this is an exhaustive brief-routing allowlist: buyers MAY skip the agent when a brief's requested countries do not intersect it. Omission means country scope is unknown and MUST NOT be interpreted as global coverage. This is a routing pre-filter, not a promise of current product availability and not an executable geo-targeting declaration; media_buy.execution.targeting geo capabilities and each product's overlay_support remain authoritative for targeting execution.",
               "items": {
                 "type": "string",
-                "pattern": "^[A-Z]{2}$"
-              }
+                "pattern": "^[A-Z]{2}$",
+                "x-max-length-4.0": 2
+              },
+              "x-max-items-4.0": 256
             },
             "description": {
               "type": "string",
@@ -2635,7 +2712,8 @@
           "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for published signal definitions and to verify authorization.\n\n**Non-exhaustive routing hint.** This list is NOT exhaustive and a buyer MUST NOT treat a provider's absence from it as evidence that the agent may not resell that provider, whether or not it is marked complete. Each provider's own adagents.json remains the authority. When the list is truncated, the agent MUST set `data_provider_domains_complete: false`.\n\n**Counterparty-asserted, therefore bounded.** Authorization flows from each data provider's `/.well-known/adagents.json`, which any domain owner publishes unilaterally and without the named agent's consent — the same trust direction as `media_buy.portfolio.publisher_domains`, and the same inflation vector into a document whose size gates signing-key discovery. Agents MUST NOT mirror this list unbounded: keep the served array within the per-field byte budget in security.mdx §Response Size Bounds, truncate rather than exceed it, and never serve a truncated list as complete. The structural bounds (at most 100 unique entries, each at most 253 characters) are graded by the conformance storyboard in 3.x and become schema constraints in 4.0, so a 3.2 document already above them stays schema-valid and is reported rather than rejected. They are a coarse ceiling, deliberately looser than the byte budget: the count binds a legitimate list, the byte budget binds an adversarial one, and 100 maximum-length entries exceed the budget.",
           "items": {
             "type": "string",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+            "x-max-length-4.0": 253
           },
           "minItems": 1,
             "x-adcp-validation": {
@@ -2650,7 +2728,8 @@
               "enforced_in_3_x": "storyboard",
               "schema_enforced_in": "4.0",
               "spec": "docs/building/by-layer/L1/security.mdx#response-size-bounds"
-            }
+            },
+            "x-max-items-4.0": 100
         },
         "data_provider_domains_complete": {
           "type": "boolean",
@@ -2667,7 +2746,8 @@
           },
           "minItems": 1,
           "uniqueItems": true,
-          "default": ["brief"]
+          "default": ["brief"],
+          "x-max-items-4.0": 16
         },
         "features": {
           "type": "object",
@@ -2687,7 +2767,8 @@
           },
           "additionalProperties": {
             "type": "boolean"
-          }
+          },
+          "x-max-properties-4.0": 256
         }
       }
     },
@@ -2715,7 +2796,8 @@
                     "format": "uri"
                   },
                   "minItems": 1,
-                  "uniqueItems": true
+                  "uniqueItems": true,
+                  "x-max-items-4.0": 32
                 }
               },
               "required": ["requirement", "claim_types"],
@@ -2744,7 +2826,8 @@
             "properties": {
               "feature_id": {
                 "type": "string",
-                "description": "Unique identifier for this feature (e.g., 'consent_quality', 'coppa_certified', 'carbon_score')"
+                "description": "Unique identifier for this feature (e.g., 'consent_quality', 'coppa_certified', 'carbon_score')",
+                "x-max-length-4.0": 128
               },
               "type": {
                 "type": "string",
@@ -2770,12 +2853,15 @@
                 "type": "array",
                 "description": "For categorical features, the valid values",
                 "items": {
-                  "type": "string"
-                }
+                  "type": "string",
+                  "x-max-length-4.0": 128
+                },
+                "x-max-items-4.0": 32
               },
               "description": {
                 "type": "string",
-                "description": "Human-readable description of what this feature measures"
+                "description": "Human-readable description of what this feature measures",
+                "x-max-length-4.0": 1024
               },
               "methodology_url": {
                 "type": "string",
@@ -2784,7 +2870,8 @@
               }
             },
             "required": ["feature_id", "type"]
-          }
+          },
+          "x-max-items-4.0": 128
         },
         "creative_features": {
           "type": "array",
@@ -2794,7 +2881,8 @@
             "properties": {
               "feature_id": {
                 "type": "string",
-                "description": "Unique identifier for this feature (e.g., 'auto_redirect', 'brand_consistency', 'iab_casinos_gambling')"
+                "description": "Unique identifier for this feature (e.g., 'auto_redirect', 'brand_consistency', 'iab_casinos_gambling')",
+                "x-max-length-4.0": 128
               },
               "type": {
                 "type": "string",
@@ -2820,12 +2908,15 @@
                 "type": "array",
                 "description": "For categorical features, the valid values",
                 "items": {
-                  "type": "string"
-                }
+                  "type": "string",
+                  "x-max-length-4.0": 128
+                },
+                "x-max-items-4.0": 32
               },
               "description": {
                 "type": "string",
-                "description": "Human-readable description of what this feature measures"
+                "description": "Human-readable description of what this feature measures",
+                "x-max-length-4.0": 1024
               },
               "methodology_url": {
                 "type": "string",
@@ -2834,7 +2925,8 @@
               }
             },
             "required": ["feature_id", "type"]
-          }
+          },
+          "x-max-items-4.0": 128
         }
       }
     },
@@ -2867,7 +2959,8 @@
                 "required": ["type", "url"],
                 "additionalProperties": true
               },
-              "minItems": 1
+              "minItems": 1,
+              "maxItems": 8
             },
             "preferred": {
               "type": "string",
@@ -2905,7 +2998,8 @@
           "x-status": "experimental",
           "items": {
             "$ref": "/schemas/enums/right-type.json"
-          }
+          },
+          "maxItems": 16
         },
         "available_uses": {
           "type": "array",
@@ -2913,15 +3007,18 @@
           "x-status": "experimental",
           "items": {
             "$ref": "/schemas/enums/right-use.json"
-          }
+          },
+          "maxItems": 32
         },
         "generation_providers": {
           "type": "array",
           "description": "LLM/generation providers this agent can issue credentials for",
           "x-status": "experimental",
           "items": {
-            "type": "string"
-          }
+            "type": "string",
+            "maxLength": 128
+          },
+          "maxItems": 32
         },
         "description": {
           "type": "string",
@@ -2997,7 +3094,8 @@
               "minItems": 1,
               "uniqueItems": true,
               "items": { "$ref": "/schemas/enums/representation-selection-strategy.json" },
-              "description": "Deterministic selection strategies the seller implements after compatibility filtering. `representation_order` selects the first compatible source entry. `highest_compatible_vast` selects the highest exact VAST version from the already-intersected candidate set, with equal-version ties resolved by source array order."
+              "description": "Deterministic selection strategies the seller implements after compatibility filtering. `representation_order` selects the first compatible source entry. `highest_compatible_vast` selects the highest exact VAST version from the already-intersected candidate set, with equal-version ties resolved by source array order.",
+              "x-max-items-4.0": 16
             }
           },
           "required": ["supported", "strategies"],
@@ -3085,7 +3183,8 @@
                   "custom"
                 ]
               },
-              "uniqueItems": true
+              "uniqueItems": true,
+              "x-max-items-4.0": 16
             },
             "selection_strategies": {
               "type": "array",
@@ -3094,7 +3193,8 @@
               "items": {
                 "$ref": "/schemas/enums/creative-selection-strategy.json"
               },
-              "uniqueItems": true
+              "uniqueItems": true,
+              "maxItems": 16
             }
           },
           "additionalProperties": true
@@ -3108,7 +3208,8 @@
               "capability_id": {
                 "type": "string",
                 "pattern": "^[a-zA-Z0-9_-]+$",
-                "description": "Stable identifier for this format capability within the creative agent (e.g., 'audio_narration_30s'). The value MUST be unique across this agent's supported_formats catalog. Route the advertised operation with this ID: build_creative.target_capability_id(s) for build, preview_creative.target_capability_id for preview, or validate_input targets[] kind capability for validate. Capability IDs are agent-local routes and do not appear on portable manifests or products."
+                "description": "Stable identifier for this format capability within the creative agent (e.g., 'audio_narration_30s'). The value MUST be unique across this agent's supported_formats catalog. Route the advertised operation with this ID: build_creative.target_capability_id(s) for build, preview_creative.target_capability_id for preview, or validate_input targets[] kind capability for validate. Capability IDs are agent-local routes and do not appear on portable manifests or products.",
+                "x-max-length-4.0": 128
               },
               "format": {
                 "description": "Format declaration on which this agent can perform the listed operations. Creative-agent capability self-description has no seller production authority, so tracker_execution_contract and tracker_execution_contract_digest are forbidden.",
@@ -3123,12 +3224,14 @@
                 },
                 "minItems": 1,
                 "uniqueItems": true,
-                "default": ["build"]
+                "default": ["build"],
+                "x-max-items-4.0": 16
               }
             },
             "required": ["format"],
             "additionalProperties": true
-          }
+          },
+          "x-max-items-4.0": 256
         },
         "preview": {
           "type": "object",
@@ -3145,7 +3248,8 @@
                   "capability_id": {
                     "type": "string",
                     "pattern": "^[a-zA-Z0-9_-]+$",
-                    "description": "Agent-local creative.supported_formats[].capability_id accepted by preview_creative."
+                    "description": "Agent-local creative.supported_formats[].capability_id accepted by preview_creative.",
+                    "x-max-length-4.0": 128
                   },
                   "rendering_origin": {
                     "type": "string",
@@ -3158,7 +3262,8 @@
               "minItems": 1,
               "x-adcp-validation": {
                 "unique_item_properties": ["capability_id"]
-              }
+              },
+              "x-max-items-4.0": 128
             }
           },
           "additionalProperties": false,
@@ -3203,7 +3308,8 @@
         "canonical_catalog_version": {
           "type": "string",
           "pattern": "^\\d+\\.\\d+(\\.\\d+)?$",
-          "description": "Optional. The AdCP canonical-formats catalog version this agent's runtime is built against (e.g., `3.1`, `3.2.0`). Lets buyer SDKs detect canonical-catalog skew between their generated types and the seller's actual support. SDKs MAY declare the version they were generated against (typically the AdCP version they ship for); when seller and SDK versions disagree, SDKs SHOULD soft-warn rather than fail (the open-enum semantics on `canonical-format-kind.json` make unknown canonicals safe to retain, so skew is not a hard error — it just means the older side might not understand newer canonical values). Omitted by sellers who haven't yet generated against a versioned catalog; absence is interpreted as the AdCP version advertised by the broader capabilities response."
+          "description": "Optional. The AdCP canonical-formats catalog version this agent's runtime is built against (e.g., `3.1`, `3.2.0`). Lets buyer SDKs detect canonical-catalog skew between their generated types and the seller's actual support. SDKs MAY declare the version they were generated against (typically the AdCP version they ship for); when seller and SDK versions disagree, SDKs SHOULD soft-warn rather than fail (the open-enum semantics on `canonical-format-kind.json` make unknown canonicals safe to retain, so skew is not a hard error — it just means the older side might not understand newer canonical values). Omitted by sellers who haven't yet generated against a versioned catalog; absence is interpreted as the AdCP version advertised by the broader capabilities response.",
+          "x-max-length-4.0": 32
         }
       },
       "additionalProperties": true,
@@ -3354,35 +3460,41 @@
           "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. A transport-specific rename of an operation is not a valid entry (MCP tools and the AdCP A2A profile use the operation name verbatim, so those names coincide with it) — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Over MCP the verifier matches the tools/call params.name; over A2A it matches the skill of the sole DataPart of the message (SendMessage, SendStreamingMessage, message/send, message/stream, and the HTTP+JSON and gRPC equivalents). The A2A profile uses the AdCP operation name verbatim as skill, so that is the same name space. A request that does not resolve to exactly one operation is rejected with request_body_malformed; see docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Every operation listed MUST also appear in `supported_for`; see `x-adcp-validation`.",
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "x-max-length-4.0": 64
           },
           "default": [],
           "x-adcp-validation": {
             "subset_of": "request_signing.supported_for",
             "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
-          }
+          },
+          "x-max-items-4.0": 32
         },
         "warn_for": {
           "type": "array",
           "description": "AdCP protocol operation names for shadow-mode verification. The verifier records missing signatures and well-formed signatures that fail verification or body binding, but MUST NOT establish verified-signer identity from a failed signature; processing continues only when an independent bearer, API-key, or mTLS authenticator succeeds. A partial or malformed Signature / Signature-Input pair always hard-rejects. Used as a bridge between supported_for and required_for. Precedence: required_for > warn_for > supported_for. An operation MUST NOT appear in both warn_for and required_for; see x-adcp-validation.",
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "x-max-length-4.0": 64
           },
           "default": [],
           "x-adcp-validation": {
             "disjoint_with": "request_signing.required_for",
             "subset_of": "request_signing.supported_for",
             "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
-          }
+          },
+          "x-max-items-4.0": 32
         },
         "supported_for": {
           "type": "array",
           "description": "AdCP protocol operation names for which this agent verifies signatures when present but does not require them. Under the 3.2 profile, a presented signature on a body-bearing request without content-digest coverage rejects even though an unsigned request may use configured fallback authentication. Typically a superset of required_for and warn_for.",
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$"
-          }
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "x-max-length-4.0": 64
+          },
+          "x-max-items-4.0": 32
         },
         "protocol_methods_supported_for": {
           "type": "array",
@@ -3396,7 +3508,8 @@
           "default": [],
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
-          }
+          },
+          "x-max-items-4.0": 32
         },
         "protocol_methods_warn_for": {
           "type": "array",
@@ -3412,7 +3525,8 @@
             "disjoint_with": "request_signing.protocol_methods_required_for",
             "subset_of": "request_signing.protocol_methods_supported_for",
             "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
-          }
+          },
+          "x-max-items-4.0": 32
         },
         "protocol_methods_required_for": {
           "type": "array",
@@ -3427,7 +3541,8 @@
           "x-adcp-validation": {
             "subset_of": "request_signing.protocol_methods_supported_for",
             "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
-          }
+          },
+          "x-max-items-4.0": 32
         },
         "operation_sources": {
           "x-added-in": "3.3.0",
@@ -3441,7 +3556,8 @@
           "uniqueItems": true,
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/security.mdx#operation-resolution-over-a2a"
-          }
+          },
+          "maxItems": 16
         },
         "profiles": {
           "x-status": "experimental",
@@ -3457,7 +3573,8 @@
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/wba-profile.mdx#capability"
           },
-          "x-added-in": "3.3.0"
+          "x-added-in": "3.3.0",
+          "maxItems": 16
         }
       },
       "required": ["supported"]
@@ -3517,7 +3634,8 @@
             "enum": ["ed25519", "ecdsa-p256-sha256"]
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "x-max-items-4.0": 16
         },
         "legacy_hmac_fallback": {
           "type": "boolean",
@@ -3545,7 +3663,8 @@
           "x-adcp-validation": {
             "spec": "docs/building/by-layer/L1/wba-profile.mdx#webhooks"
           },
-          "x-added-in": "3.3.0"
+          "x-added-in": "3.3.0",
+          "maxItems": 16
         }
       },
       "required": ["supported"]
@@ -3558,7 +3677,7 @@
           "type": "string",
           "format": "uri",
           "pattern": "^https://",
-          "description": "HTTPS URL of the operator's brand.json (typically `https://{operator-domain}/.well-known/brand.json`). Trust-root pointer for this agent's signing keys. See [security.mdx §Discovering an agent's signing keys via `brand_json_url`](https://adcontextprotocol.org/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url) for the verifier algorithm and `x-adcp-validation` for structured constraints. Distinct from `sponsored_intelligence.brand_url`, which is a rendering pointer for SI agent visuals — verifiers MUST use this field for key discovery and MUST NOT fall back to `sponsored_intelligence.brand_url` as a trust-root pointer.",
+          "description": "HTTPS URL of the operator's brand.json (typically `https://{operator-domain}/.well-known/brand.json`). Trust-root pointer for this agent's signing keys. See [security.mdx §Discovering an agent's signing keys via `brand_json_url`](https://adcontextprotocol.org/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url) for the verifier algorithm and `x-adcp-validation` for structured constraints. Distinct from `sponsored_intelligence.brand_url`, which is a rendering pointer for SI agent visuals — verifiers MUST use this field for key discovery and MUST NOT fall back to `sponsored_intelligence.brand_url` as a trust-root pointer. This pointer belongs to the deprecated RFC 9421 discovery chain, which stays as written through 3.x and fetches capabilities under MAX_CAPABILITIES_BYTES. No new path reads key material or a key pointer from capabilities: the Web Bot Auth profile finds keys through the origin's key directory and never fetches capabilities for keys.",
           "x-adcp-validation": {
             "trust_root": true,
             "required_when": {
@@ -3672,10 +3791,12 @@
       "items": {
         "type": "string",
         "pattern": "^[a-z0-9][a-z0-9.-]{2,63}$",
-        "examples": ["adcp-prod-security-3.3"]
+        "examples": ["adcp-prod-security-3.3"],
+        "maxLength": 64
       },
       "uniqueItems": true,
-      "x-added-in": "3.3.0"
+      "x-added-in": "3.3.0",
+      "maxItems": 32
     },
     "measurement_gateway": {
       "type": "object",
@@ -3745,11 +3866,13 @@
                         "BARB",
                         "JICWEBS",
                         "AGOF"
-                      ]
+                      ],
+                      "maxLength": 128
                     },
                     "certification_id": {
                       "type": "string",
-                      "description": "Optional identifier for the certification in the accrediting body's records (when one exists; many bodies do not issue stable IDs)."
+                      "description": "Optional identifier for the certification in the accrediting body's records (when one exists; many bodies do not issue stable IDs).",
+                      "maxLength": 128
                     },
                     "valid_until": {
                       "type": "string",
@@ -3765,7 +3888,8 @@
                   "required": ["accrediting_body"],
                   "additionalProperties": false
                 },
-                "uniqueItems": true
+                "uniqueItems": true,
+                "maxItems": 8
               },
               "unit": {
                 "type": "string",
@@ -3778,11 +3902,13 @@
                   "lift_percent",
                   "index",
                   "USD"
-                ]
+                ],
+                "maxLength": 128
               },
               "description": {
                 "type": "string",
-                "description": "Human-readable description of what this metric measures and any relevant methodology notes. Surfaced in buyer-agent UX when explaining the metric to humans."
+                "description": "Human-readable description of what this metric measures and any relevant methodology notes. Surfaced in buyer-agent UX when explaining the metric to humans.",
+                "maxLength": 1024
               },
               "methodology_url": {
                 "type": "string",
@@ -3792,7 +3918,8 @@
               "methodology_version": {
                 "type": "string",
                 "description": "Optional version identifier (semver, ISO date, or vendor-defined version string) for the methodology this metric currently implements. When present, buyer agents pin the contracted version via `committed_metrics[].methodology_version` (vendor scope) so silent vendor methodology changes are detectable; absence means the vendor does not version their methodology and buyers MUST treat any change as untracked.",
-                "examples": ["v2.1", "2026-Q1", "1.0"]
+                "examples": ["v2.1", "2026-Q1", "1.0"],
+                "maxLength": 32
               },
               "ext": {
                 "$ref": "/schemas/core/ext.json"
@@ -3802,7 +3929,8 @@
             "additionalProperties": false
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "maxItems": 128
         }
       },
       "required": ["metrics"]
@@ -3815,9 +3943,11 @@
           "type": "array",
           "description": "Compliance testing scenarios this agent supports. Must be non-empty — at least one scenario. Values SHOULD include every canonical controller scenario the agent implements, excluding list_scenarios because that value is a discovery operation rather than a test capability. Values MAY also include implementation-specific scenarios. Callers can use comply_test_controller with scenario: 'list_scenarios' to discover supported scenarios at runtime.",
           "items": {
-            "type": "string"
+            "type": "string",
+            "x-max-length-4.0": 128
           },
-          "minItems": 1
+          "minItems": 1,
+          "x-max-items-4.0": 128
         }
       },
       "required": ["scenarios"],
@@ -3829,7 +3959,8 @@
       "items": {
         "$ref": "/schemas/enums/specialism.json"
       },
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 128
     },
     "extensions_supported": {
       "type": "array",
@@ -3837,9 +3968,11 @@
       "items": {
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]*$",
-        "description": "Extension namespace (lowercase alphanumeric with underscores, e.g., 'iab_tcf', 'iab_gpp')"
+        "description": "Extension namespace (lowercase alphanumeric with underscores, e.g., 'iab_tcf', 'iab_gpp')",
+        "x-max-length-4.0": 64
       },
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 32
     },
     "experimental_features": {
       "type": "array",
@@ -3847,7 +3980,8 @@
       "items": {
         "$ref": "/schemas/core/experimental-feature-id.json"
       },
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 32
     },
     "wholesale_feed_versioning": {
       "type": "object",
@@ -3878,7 +4012,8 @@
       "description": "Task-specific errors and warnings",
       "items": {
         "$ref": "/schemas/core/error.json"
-      }
+      },
+      "x-max-items-4.0": 20
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -3945,7 +4080,8 @@
               }
             },
             "spec": "specs/wholesale-feed-webhooks.md#capability-declaration"
-          }
+          },
+          "x-max-items-4.0": 32
         }
       },
       "required": ["supported"],

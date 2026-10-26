@@ -96,6 +96,12 @@ Version Negotiation Flow:
 | `adcp_major_version` | integer | Optional. The AdCP major version the buyer's payloads conform to. When provided, the seller validates against its `major_versions` and returns [`VERSION_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-version-unsupported) if not in range. When omitted, the seller assumes the highest major version it supports. |
 | `protocols` | string[] | Optional. Filter to specific protocols (`media_buy`, `signals`, `governance`, `sponsored_intelligence`, `creative`, `brand`). If omitted, returns all supported protocols. |
 
+## Size bounds
+
+The response is bounded by structure. From 3.3 every array has a maximum item count, every string a maximum length (unless an `enum`, `const`, or `format` already constrains it), and every keyed map a maximum member count. A field that is new in 3.3 or experimental enforces its limit with `maxItems`, `maxLength`, or `maxProperties`. A field that was stable before 3.3 carries the limit as `x-max-items-4.0`, `x-max-length-4.0`, or `x-max-properties-4.0`: producers SHOULD stay within it now, and 4.0 enforces it. [Response Size Bounds](/docs/building/by-layer/L1/security#response-size-bounds) lists the limits and the worst-case document they allow.
+
+The byte limits still apply on top of the structural ones. Keep the document under 64 KiB (`MAX_CAPABILITIES_BYTES`) if the agent signs under the deprecated RFC 9421 profile, because that profile's key discovery fetches capabilities and a larger document makes the agent's signing keys unresolvable. The [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) finds keys through the origin's key directory and never fetches capabilities for keys. No signing path added after 3.3 reads keys, or a pointer to keys, from this response.
+
 ## Response Structure
 
 ### adcp

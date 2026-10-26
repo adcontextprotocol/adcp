@@ -8,12 +8,14 @@
   "properties": {
     "format_option_id": {
       "type": "string",
-      "description": "Stable publisher- or product-declaration identity that this creative operation can satisfy. When publisher_domain is present, this field is required."
+      "description": "Stable publisher- or product-declaration identity that this creative operation can satisfy. When publisher_domain is present, this field is required.",
+      "x-max-length-4.0": 128
     },
     "publisher_domain": {
       "type": "string",
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
-      "description": "Publisher namespace for format_option_id when this operation claims compatibility with a publisher declaration."
+      "description": "Publisher namespace for format_option_id when this operation claims compatibility with a publisher declaration.",
+      "x-max-length-4.0": 253
     },
     "macro_resolution_capabilities": {
       "type": "array",
@@ -24,25 +26,28 @@
         "verifier_constraints": {
           "translation_chain_closure": "every translate_to_native entry must have an exact matching resolve_value entry for its translation_target in this same array"
         }
-      }
+      },
+      "x-max-items-4.0": 8
     },
     "technical_requirements_complete": { "type": "boolean" },
-    "display_name": { "type": "string" },
+    "display_name": { "type": "string", "x-max-length-4.0": 128 },
     "sample_render_url": { "type": "string", "format": "uri", "pattern": "^https://" },
     "applies_to_channels": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/channels.json" },
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 64
     },
     "seller_preference": { "type": "string", "enum": ["preferred", "accepted", "discouraged"] },
     "locale_policy": { "$ref": "/schemas/core/creative-locale-policy.json" },
     "canonical_formats_only": { "type": "boolean", "default": false },
     "experimental": { "type": "boolean", "default": false },
-    "format_shape": { "type": "string" },
+    "format_shape": { "type": "string", "x-max-length-4.0": 128 },
     "v1_format_ref": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "/schemas/core/format-id.json" }
+      "items": { "$ref": "/schemas/core/format-id.json" },
+      "x-max-items-4.0": 8
     },
     "format_schema": { "$ref": "/schemas/core/platform-extension-ref.json" },
     "format_kind": {

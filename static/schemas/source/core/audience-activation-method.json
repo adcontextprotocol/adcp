@@ -56,7 +56,8 @@
             "enum": ["buyer_to_seller", "seller_to_buyer"]
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "maxItems": 16
         },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
@@ -89,12 +90,14 @@
               },
               "region": {
                 "type": "string",
-                "description": "Vendor/cloud region identifier. Format follows the cloud family's region naming; not constrained by this schema."
+                "description": "Vendor/cloud region identifier. Format follows the cloud family's region naming; not constrained by this schema.",
+                "maxLength": 128
               },
               "identity": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Principal to grant, interpreted relative to the enclosing entry's vendor.domain. Format is vendor-specific and opaque — Snowflake: orgname.accountname; Databricks: sharing recipient identifier; BigQuery: IAM principal."
+                "description": "Principal to grant, interpreted relative to the enclosing entry's vendor.domain. Format is vendor-specific and opaque — Snowflake: orgname.accountname; Databricks: sharing recipient identifier; BigQuery: IAM principal.",
+                "maxLength": 128
               }
             },
             "required": ["identity"],
@@ -104,7 +107,8 @@
             },
             "additionalProperties": false
           },
-          "minItems": 1
+          "minItems": 1,
+          "maxItems": 32
         }
       },
       "required": ["pattern", "vendor"],

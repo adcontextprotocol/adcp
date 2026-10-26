@@ -9,5 +9,6 @@
     "enum": ["native_commit", "manifest_checksums", "canonical_digest"]
   },
   "minItems": 1,
-  "uniqueItems": true
+  "uniqueItems": true,
+  "x-max-items-4.0": 16
 }

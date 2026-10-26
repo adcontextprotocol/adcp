@@ -24,7 +24,7 @@
     "feed_purpose": { "$ref": "#/definitions/ReportingFeedPurpose" },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition", "description": "Immutable semantic definition for metric, grain, attribution, action-report-time, timezone/calendar, source/API mapping, and restatement/finality policy. Configurations and revisions MUST echo this exact value." },
     "report_definition_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Retrievable immutable reporting-report-definition.json document on the authenticated seller/provider or AdCP-registry origin." },
-    "report_definition_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest." },
+    "report_definition_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest.", "maxLength": 64 },
     "reporting_profile": {
       "type": "object",
       "description": "Machine-readable semantic and validation contract for delivered rows. The canonicalization_* fields describe the external-materialization canonical-digest contract and are required only for offerings under the reconciled_billing tier; Core and managed-delivery offerings omit those fields but every Core revision still carries the fixed RFC 8785/JCS revision-binding digest.",
@@ -32,22 +32,22 @@
         "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
         "version": { "type": "string", "minLength": 1, "maxLength": 64 },
         "schema_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Authenticated seller/provider or AdCP-registry HTTPS origin only; never an IP literal, userinfo URL, redirect target, or mutable validation authority." },
-        "schema_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact schema bytes. SDKs verify this before parsing and cache by digest." },
+        "schema_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact schema bytes. SDKs verify this before parsing and cache by digest.", "maxLength": 64 },
         "schema_dialect": { "type": "string", "const": "https://json-schema.org/draft/2020-12/schema", "description": "Closed SDK-bundled dialect. The SDK never resolves a metaschema over the network, and the fetched document's $schema MUST equal this value." },
         "schema_ref_policy": { "type": "string", "const": "local_fragment_only", "description": "The fetched schema is a self-contained bundle. Every $ref is a local # fragment; remote and relative-document dependencies are forbidden." },
         "grain": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Stable description of what one logical row represents." },
-        "primary_keys": { "type": "array", "items": { "$ref": "/schemas/core/reporting-canonicalization-contract.json#/definitions/ReportingPrimaryKey" }, "minItems": 1, "uniqueItems": true },
+        "primary_keys": { "type": "array", "items": { "$ref": "/schemas/core/reporting-canonicalization-contract.json#/definitions/ReportingPrimaryKey" }, "minItems": 1, "uniqueItems": true, "maxItems": 32 },
         "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Rules for stable logical row ordering, value encoding, nulls, and schema used by canonical_content_digest." },
         "canonicalization_contract_version": { "type": "string", "const": "1.0" },
         "canonicalization_media_type": { "type": "string", "const": "application/vnd.adcp.reporting-canonicalization+json" },
         "canonicalization_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Retrievable exact canonicalization contract on the authenticated seller/provider or AdCP-registry origin. SDKs apply the same bounded, redirect-free SSRF controls as schema_uri and verify canonicalization_sha256 before use." },
-        "canonicalization_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact canonicalization contract identified by canonicalization_id." }
+        "canonicalization_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact canonicalization contract identified by canonicalization_id.", "maxLength": 64 }
       },
       "required": ["id", "version", "schema_uri", "schema_sha256", "schema_dialect", "schema_ref_policy", "grain", "primary_keys"],
       "additionalProperties": false
     },
     "schedule": { "$ref": "/schemas/core/reporting-schedule-offering.json", "description": "Period and availability SLA this offering can honor. For example, PT1H with snapshot finality explicitly advertises hourly provisional snapshots; a separate P1D official offering advertises daily finalized reporting." },
-    "supported_finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true, "description": "Finality classes available under this exact report definition, schedule, and delivery method. snapshot is an explicit provisional capability, not inferred from poll frequency. Use separate atomic offerings when snapshot and official schedules or methods differ." },
+    "supported_finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true, "description": "Finality classes available under this exact report definition, schedule, and delivery method. snapshot is an explicit provisional capability, not inferred from poll frequency. Use separate atomic offerings when snapshot and official schedules or methods differ.", "maxItems": 16 },
     "reconciliation_mode": { "$ref": "/schemas/core/reporting-reconciliation-mode.json", "description": "Receipt contract included in this atomic offering. Billing offerings MUST require consumer_receipt." },
     "method": {
       "type": "object",
@@ -56,15 +56,15 @@
         "pattern": { "$ref": "#/definitions/ReportingDeliveryPattern" },
         "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
         "orchestration": { "$ref": "/schemas/core/reporting-delivery-method.json#/definitions/ReportingOrchestration" },
-        "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },
-        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+        "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true, "maxItems": 16 },
+        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
         "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"] },
         "access_mode": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
         "producer_identity": {
           "type": "object",
           "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering.",
           "properties": {
-            "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+            "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "maxLength": 253 } }, "required": ["domain"], "additionalProperties": false },
             "identity": { "type": "string", "minLength": 1, "maxLength": 512 },
             "cloud": { "$ref": "/schemas/core/reporting-dataset-share-destination.json#/definitions/ReportingCloud" },
             "region": { "type": "string", "minLength": 1, "maxLength": 128 }
@@ -73,7 +73,7 @@
           "dependencies": { "cloud": ["region"], "region": ["cloud"] },
           "additionalProperties": false
         },
-        "reader_compatibility": { "type": "array", "items": { "$ref": "/schemas/core/reporting-resource.json#/definitions/ReportingReaderCompatibilityItem" }, "uniqueItems": true }
+        "reader_compatibility": { "type": "array", "items": { "$ref": "/schemas/core/reporting-resource.json#/definitions/ReportingReaderCompatibilityItem" }, "uniqueItems": true, "maxItems": 32 }
       },
       "required": ["pattern", "transport", "orchestration", "destination_modes"],
       "allOf": [

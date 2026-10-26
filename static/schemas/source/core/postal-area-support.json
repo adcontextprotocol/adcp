@@ -9,67 +9,78 @@
       "type": "array",
       "items": { "enum": ["zip", "zip_plus_four"] },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 16
     },
     "GB": {
       "type": "array",
       "items": { "enum": ["outward", "full"] },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 16
     },
     "CA": {
       "type": "array",
       "items": { "enum": ["fsa", "full"] },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 16
     },
     "DE": {
       "type": "array",
       "items": { "const": "plz" },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 16
     },
     "CH": {
       "type": "array",
       "items": { "const": "plz" },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 16
     },
     "AT": {
       "type": "array",
       "items": { "const": "plz" },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 16
     },
     "FR": {
       "type": "array",
       "items": { "const": "code_postal" },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 16
     },
     "AU": {
       "type": "array",
       "items": { "const": "postcode" },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 16
     },
     "BR": {
       "type": "array",
       "items": { "const": "cep" },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 16
     },
     "IN": {
       "type": "array",
       "items": { "const": "pin" },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 16
     },
     "ZA": {
       "type": "array",
       "items": { "const": "postal_code" },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 16
     },
     "us_zip": { "type": "boolean", "deprecated": true },
     "us_zip_plus_four": { "type": "boolean", "deprecated": true },
@@ -93,6 +104,8 @@
     "type": "array",
     "items": { "enum": ["postal_code", "custom"] },
     "minItems": 1,
-    "uniqueItems": true
-  }
+    "uniqueItems": true,
+    "x-max-items-4.0": 16
+  },
+  "x-max-properties-4.0": 256
 }
