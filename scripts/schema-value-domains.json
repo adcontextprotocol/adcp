@@ -1,5 +1,5 @@
 {
-  "$comment": "Value-domain inventory read by scripts/lint-schema-value-domains.cjs. Each concept states its meaning, its value domain, and exactly one kernel type: the schema $id every use of the concept should reference, or \"unnamed\" while the type is still to be named. A concept with a match rule lists its sources: every place in the source schemas that declares the concept inline today. The lint fails on a stale source and on an inline declaration the concept does not list. Identity concepts are validation classes; match.x-entity lists the registered entities whose IDs belong to each class, and the entity registry (core/x-entity-types.json) holds what each entity means. homonyms lists property names that carry more than one meaning, with the reason. distinct_structures lists named schemas that share one structure but are distinct concepts, with the reason a receiver treats them differently. Refresh sources only with ADCP_UPDATE_SCHEMA_VALUE_DOMAINS=1 node scripts/lint-schema-value-domains.cjs --update-sources, and review the diff: a source may only disappear because its site now references the kernel type.",
+  "$comment": "Value-domain inventory read by scripts/lint-schema-value-domains.cjs. Each concept states its meaning, its value domain, and exactly one kernel type: the one schema that every use of the concept references, or \"to be named\" until a later change names it. A match rule is the test that finds a schema declaring the concept inline instead of referencing its kernel type. A properties rule matches a schema that declares every listed name, whatever else it declares; exact limits it to the listed names. A concept with a match rule lists its sources: every inline copy in the tree today. The lint fails on a copy that sources doesn't list, and on a listed copy that is gone. Regenerate sources with node scripts/lint-schema-value-domains.cjs --update-sources, and review the diff: a source should only disappear because its site now references the kernel type. homonyms lists property names that carry more than one meaning, with the reason. distinct_structures lists named schemas that share one structure but are distinct concepts, with the reason a receiver treats them differently.",
   "value_domains": {
     "identity": "What names a record, compared by exact equality and never parsed or shown as prose.",
     "reference": "An object that points at a record another party holds, such as an account, a brand, a format, or a list.",
@@ -13,8 +13,9 @@
       "id": "money",
       "value_domain": "money",
       "meaning": "An amount of money in one currency, such as a budget, a fee, a credit limit, or a spend cap. The amount and its ISO 4217 currency code travel together in one object.",
-      "kernel_type": "unnamed",
+      "kernel_type": "to be named",
       "issue": 8471,
+      "$comment": "A schema that declares amount and currency next to other fields, such as a price with a billing period or a pricing option, counts: its amount and currency are one money value declared inline.",
       "match": {
         "properties": [
           "amount",
@@ -23,9 +24,13 @@
       },
       "sources": [
         "account/sync-accounts-response.json#/oneOf/0/properties/accounts/items/properties/credit_limit",
+        "brand/rights-terms.json#/allOf/1",
         "compliance/comply-test-controller-request.json#/properties/params/properties/reported_spend",
         "core/account.json#/properties/credit_limit",
         "core/insertion-order.json#/properties/terms/properties/total_budget",
+        "core/outcome-target-cost-per.json#",
+        "core/price.json#",
+        "core/signal-pricing.json#/oneOf/2",
         "governance/check-governance-request.json#/properties/execution_commitment",
         "governance/check-governance-request.json#/properties/proposed_commitment",
         "governance/get-plan-audit-logs-response.json#/properties/plans/items/properties/entries/items/properties/amount",
@@ -42,14 +47,15 @@
         "media-buy/control-media-buy-request.json#/properties/total_budget",
         "media-buy/create-media-buy-request.json#/properties/total_budget",
         "media-buy/update-media-buy-request.json#/properties/total_budget",
-        "sponsored-intelligence/si-send-message-response.json#/properties/handoff/properties/intent/properties/price"
+        "sponsored-intelligence/si-send-message-response.json#/properties/handoff/properties/intent/properties/price",
+        "trusted-match/offer-price.json#"
       ]
     },
     {
       "id": "currency-code",
       "value_domain": "code",
       "meaning": "An ISO 4217 alphabetic currency code, three uppercase letters, such as USD or EUR.",
-      "kernel_type": "unnamed",
+      "kernel_type": "to be named",
       "match": {
         "property": "currency"
       },
@@ -150,6 +156,7 @@
       "meaning": "The response that tells a caller its task was accepted to run asynchronously, and carries the task_id the caller polls or receives a webhook for.",
       "kernel_type": "/schemas/core/compact-task-submitted.json",
       "issue": 8470,
+      "$comment": "A copy that adds fields, such as replayed or expected_confirmation_at, counts. Three acknowledgements without errors don't: the two get_creative_features copies forbid errors and carry evaluation_id, and preview_creative's submitted branch adds the response_type discriminator. Each defines its own acknowledgement, so the rule lists errors.",
       "match": {
         "properties": [
           "status",
@@ -168,11 +175,18 @@
         "creative/sync-creatives-response.json#/oneOf/2",
         "media-buy/build-creative-async-response-submitted.json#",
         "media-buy/build-creative-response.json#/oneOf/5",
+        "media-buy/control-media-buy-response.json#/oneOf/2",
+        "media-buy/create-media-buy-async-response-submitted.json#",
+        "media-buy/create-media-buy-response.json#/oneOf/2",
+        "media-buy/decline-proposals-response.json#",
+        "media-buy/get-products-async-response-submitted.json#",
+        "media-buy/media-buy-commitment-response.json#/oneOf/2",
         "media-buy/sync-audiences-response.json#/oneOf/2",
         "media-buy/sync-catalogs-async-response-submitted.json#",
         "media-buy/sync-catalogs-response.json#/oneOf/2",
         "media-buy/update-media-buy-async-response-submitted.json#",
-        "media-buy/update-media-buy-response.json#/oneOf/2"
+        "media-buy/update-media-buy-response.json#/oneOf/2",
+        "signals/get-signals-async-response-submitted.json#"
       ]
     },
     {
@@ -180,21 +194,24 @@
       "value_domain": "envelope",
       "meaning": "The progress payload of a task that is still running.",
       "kernel_type": "/schemas/core/compact-task-working.json",
+      "$comment": "The rule leaves out context and ext. The progress objects of the task status responses carry the same four fields without them, and they are the progress of a running task.",
       "match": {
         "properties": [
           "percentage",
           "current_step",
           "total_steps",
-          "step_number",
-          "context",
-          "ext"
+          "step_number"
         ]
       },
       "sources": [
+        "core/tasks-get-response.json#/properties/progress",
+        "creative/sync-creatives-async-response-working.json#",
         "media-buy/build-creative-async-response-working.json#",
         "media-buy/create-media-buy-async-response-working.json#",
         "media-buy/get-products-async-response-working.json#",
+        "media-buy/sync-catalogs-async-response-working.json#",
         "media-buy/update-media-buy-async-response-working.json#",
+        "protocol/get-task-status-response.json#/properties/progress",
         "signals/get-signals-async-response-working.json#"
       ]
     },
@@ -203,6 +220,7 @@
       "value_domain": "envelope",
       "meaning": "The payload of a task that paused for buyer input or approval.",
       "kernel_type": "/schemas/core/compact-task-input-required.json",
+      "$comment": "This rule matches the exact set of names. The root of media-buy/request-proposals-response.json declares all five names among many others, and it is a final response, not a paused task.",
       "match": {
         "properties": [
           "reason",
@@ -210,7 +228,8 @@
           "errors",
           "context",
           "ext"
-        ]
+        ],
+        "exact": true
       },
       "sources": []
     },
@@ -272,7 +291,7 @@
       "id": "timestamp",
       "value_domain": "time",
       "meaning": "An instant, written as an RFC 3339 date-time with a time zone offset.",
-      "kernel_type": "unnamed",
+      "kernel_type": "to be named",
       "match": {
         "format": "date-time"
       },
@@ -674,6 +693,8 @@
         "media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/status_as_of",
         "media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/updated_at",
         "media-buy/get-products-async-response-submitted.json#/properties/estimated_completion",
+        "media-buy/get-products-response.json#/properties/refinement_applied/items/oneOf/1/properties/resolved_end_time",
+        "media-buy/get-products-response.json#/properties/refinement_applied/items/oneOf/1/properties/resolved_start_time",
         "media-buy/get-reporting-status-request.json#/properties/period/properties/end",
         "media-buy/get-reporting-status-request.json#/properties/period/properties/start",
         "media-buy/get-reporting-status-response.json#/oneOf/1/oneOf/0/properties/timestamp",
@@ -759,7 +780,7 @@
       "id": "calendar-date",
       "value_domain": "time",
       "meaning": "A calendar day, written as an RFC 3339 full-date, with no time of day or time zone.",
-      "kernel_type": "unnamed",
+      "kernel_type": "to be named",
       "match": {
         "format": "date"
       },
@@ -825,7 +846,7 @@
     {
       "id": "language-tag",
       "value_domain": "code",
-      "meaning": "A language, written as a BCP 47 tag. DR-0004 names the type, and scripts/lint-language-tag-refs.cjs holds its uses to it.",
+      "meaning": "A language, written as a BCP 47 tag. Decision record DR-0004 names the type, and scripts/lint-language-tag-refs.cjs holds its uses to it.",
       "kernel_type": "/schemas/core/locale-tag.json"
     },
     {
@@ -846,9 +867,7 @@
       "meaning": "A reference to a creative format, by the agent that defines it and the format ID there.",
       "kernel_type": "/schemas/core/format-id.json",
       "match": {
-        "x-entity": [
-          "creative_format"
-        ]
+        "x-entity": "creative_format"
       },
       "sources": [
         "compliance/comply-test-controller-request.json#/properties/params/properties/format_id"
@@ -860,9 +879,7 @@
       "meaning": "A reference to a signal, by the agent that publishes it and the signal ID there.",
       "kernel_type": "/schemas/core/signal-ref.json",
       "match": {
-        "x-entity": [
-          "signal"
-        ]
+        "x-entity": "signal"
       },
       "sources": [
         "core/forecast-dimension-signal.json#/properties/signal_id",
@@ -876,9 +893,7 @@
       "meaning": "A business unit, agency seat, or platform account beneath one operator domain, identified in the operator's namespace.",
       "kernel_type": "/schemas/core/operator-unit.json",
       "match": {
-        "x-entity": [
-          "operator_unit"
-        ]
+        "x-entity": "operator_unit"
       },
       "sources": []
     },
@@ -898,65 +913,10 @@
       "id": "opaque-id",
       "value_domain": "identity",
       "meaning": "The ID of a record, minted by the party that holds the record and carried back unchanged by every other party. Receivers compare it by exact equality and never parse it.",
-      "kernel_type": "unnamed",
+      "kernel_type": "to be named",
+      "$comment": "The four ID concepts share one rule: any inline x-entity string that no reference concept names. Each copy is listed under one of them. The ID classes, and the rule that assigns each entity to one class, come in a later PR.",
       "match": {
-        "x-entity": [
-          "account",
-          "attestation_credential",
-          "audience",
-          "audience_evidence",
-          "audience_evidence_snapshot",
-          "build_variant",
-          "business_calendar",
-          "catalog",
-          "catalog_generation",
-          "catalog_item",
-          "collection",
-          "collection_list",
-          "content_standards",
-          "creative",
-          "creative_evaluation",
-          "creative_locale_variant",
-          "creative_representation",
-          "creative_revision",
-          "creative_seller_revision",
-          "demographic_interval_id",
-          "event_source",
-          "governance_adjustment",
-          "governance_adjustment_evidence",
-          "governance_check",
-          "governance_delivery_observation",
-          "governance_delivery_statement",
-          "governance_inline_policy",
-          "governance_outcome",
-          "governance_plan",
-          "governance_registry_policy",
-          "identity_relying_party",
-          "impairment",
-          "installment",
-          "macro_declaration",
-          "media_buy",
-          "media_buy_issue",
-          "offering",
-          "package",
-          "placement",
-          "product",
-          "product_pricing_option",
-          "property_list",
-          "proposal",
-          "reporting_destination",
-          "rights_grant",
-          "rights_holder_brand",
-          "seller_adjustment",
-          "served_variant",
-          "si_session",
-          "signal_activation_id",
-          "spot_airing",
-          "task",
-          "tracker_execution_selector",
-          "transformer",
-          "vendor_pricing_option"
-        ]
+        "x-entity": "*"
       },
       "sources": [
         "account/report-usage-request.json#/properties/usage/items/properties/build_variant_id",
@@ -1336,6 +1296,7 @@
         "media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/product_id",
         "media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/predecessor_media_buy_id",
         "media-buy/get-products-async-response-submitted.json#/properties/task_id",
+        "media-buy/get-products-response.json#/properties/refinement_applied/items/oneOf/1/properties/result_product_id",
         "media-buy/get-reporting-status-response.json#/properties/account_id",
         "media-buy/legacy-purchase-continuation-input.json#/properties/selected_product_ids/items",
         "media-buy/list-proposals-request.json#/properties/media_buy_ids/items",
@@ -1417,26 +1378,11 @@
     {
       "id": "token-id",
       "value_domain": "identity",
-      "meaning": "The ID of a record, restricted to letters, digits, and _ . : - and bounded in length, so it is safe in URLs, file names, and logs.",
-      "kernel_type": "unnamed",
+      "meaning": "The ID of a record, restricted to letters, digits, and _ . : -, so it is safe in URLs, file names, and logs. It may be bounded in length.",
+      "kernel_type": "to be named",
+      "$comment": "The four ID concepts share one rule: any inline x-entity string that no reference concept names. Each copy is listed under one of them. The ID classes, and the rule that assigns each entity to one class, come in a later PR.",
       "match": {
-        "x-entity": [
-          "acceptance_policy_profile",
-          "acceptance_policy_rule",
-          "governance_budget_period",
-          "media_buy_change_term",
-          "opportunity",
-          "reporting_adjustment",
-          "reporting_consumer_status",
-          "reporting_definition",
-          "reporting_delivery_config",
-          "reporting_materialization",
-          "reporting_obligation",
-          "reporting_offering",
-          "reporting_receipt",
-          "reporting_resource",
-          "reporting_revision"
-        ]
+        "x-entity": "*"
       },
       "sources": [
         "compliance/comply-test-controller-request.json#/properties/params/properties/opportunity_id",
@@ -1520,15 +1466,10 @@
       "id": "slug-id",
       "value_domain": "identity",
       "meaning": "The ID of a record, written as a lowercase slug of letters, digits, and underscores.",
-      "kernel_type": "unnamed",
+      "kernel_type": "to be named",
+      "$comment": "The four ID concepts share one rule: any inline x-entity string that no reference concept names. Each copy is listed under one of them. The ID classes, and the rule that assigns each entity to one class, come in a later PR.",
       "match": {
-        "x-entity": [
-          "advertiser_brand",
-          "governance_policy_category",
-          "governance_policy_category_facet",
-          "property",
-          "vendor_metric"
-        ]
+        "x-entity": "*"
       },
       "sources": [
         "brand/get-brand-identity-request.json#/properties/brand_id",
@@ -1554,11 +1495,10 @@
       "id": "domain-id",
       "value_domain": "identity",
       "meaning": "A party identified by the DNS domain name it controls.",
-      "kernel_type": "unnamed",
+      "kernel_type": "to be named",
+      "$comment": "The four ID concepts share one rule: any inline x-entity string that no reference concept names. Each copy is listed under one of them. The ID classes, and the rule that assigns each entity to one class, come in a later PR.",
       "match": {
-        "x-entity": [
-          "operator"
-        ]
+        "x-entity": "*"
       },
       "sources": [
         "core/account-ref.json#/oneOf/1/properties/operator",
@@ -1576,7 +1516,7 @@
     },
     {
       "name": "brand_id",
-      "reason": "An advertiser brand ID names a brand in an advertiser's house portfolio; a rights-holder brand ID names a brand in a rights agent's roster. The entity registry keeps them apart even where the strings look alike."
+      "reason": "An advertiser brand ID names a brand in an advertiser's parent organization's portfolio; a rights-holder brand ID names a brand in a rights agent's roster. The entity registry keeps them apart even where the strings look alike."
     },
     {
       "name": "end",
@@ -1592,7 +1532,7 @@
     },
     {
       "name": "list_id",
-      "reason": "A property list and a collection list are separate records on a governance agent, and list_id names one or the other by the reference that holds it."
+      "reason": "A property list and a collection list are separate records on a governance agent. list_id names one or the other, by the reference that holds it."
     },
     {
       "name": "occurred_at",
@@ -1604,7 +1544,7 @@
     },
     {
       "name": "policy_id",
-      "reason": "A registry policy ID names a policy a governance registry publishes; an inline policy ID names a policy a plan declares inline."
+      "reason": "A policy entry can describe a registry policy or an inline policy. Task payloads embed only inline entries, so a policy entry's policy_id names an inline policy. Everywhere else, policy_id names a policy the shared registry publishes."
     },
     {
       "name": "pricing_option_id",
@@ -1616,11 +1556,11 @@
     },
     {
       "name": "valid_from",
-      "reason": "A calendar date where a business calendar or a hotel stay is a whole day, and a timestamp everywhere else."
+      "reason": "A calendar date where a business calendar's validity or a seasonal availability or rate window starts on a whole day, and a timestamp everywhere else."
     },
     {
       "name": "valid_to",
-      "reason": "A calendar date where a hotel stay is a whole day, and a timestamp everywhere else."
+      "reason": "A calendar date where a seasonal availability or rate window ends on a whole day, and a timestamp everywhere else."
     },
     {
       "name": "valid_until",

@@ -5,33 +5,31 @@
  * scripts/schema-value-domains.json is the inventory of AdCP's value concepts:
  * money, the task envelopes, identifiers, timestamps, and the other values
  * every domain uses. Each concept states its meaning, its value domain, and
- * exactly one kernel type: the schema every use of the concept should
- * reference, or "unnamed" until a later change names it. A concept with a
- * `match` rule also lists its sources: every place in static/schemas/source
- * that declares the concept inline today instead of referencing its kernel
- * type. Identity concepts are validation classes: each lists the registered
- * entities (`x-entity`, core/x-entity-types.json) whose IDs belong to it.
+ * exactly one kernel type, or "to be named" until a later change names it. A
+ * kernel type is the one schema that every use of the concept references, and
+ * it references no domain schema.
+ *
+ * A concept may carry a match rule: the test that finds a schema declaring the
+ * concept inline instead of referencing its kernel type. Such a concept lists
+ * its sources: every inline copy in the tree today. ID concepts share one rule,
+ * any inline `x-entity` string, and each copy is listed under one of them.
  *
  * The lint fails when:
  *   - the inventory is malformed: an unknown value domain, a concept with no
- *     single kernel type, a kernel type that is no schema file, two concepts
- *     that share one kernel type, or an entity that two concepts list;
+ *     meaning or no single kernel type, a kernel type that is no schema file,
+ *     two concepts that share one kernel type, or a homonym with no reason;
  *   - a kernel type references a domain schema, directly or through other
  *     files (owners come from scripts/schema-ownership.json);
- *   - a listed source no longer declares the concept inline (stale), the tree
- *     declares the concept inline somewhere the inventory doesn't list, or an
- *     inline `x-entity` belongs to no concept;
- *   - a property name carries two meanings (two concepts, or IDs of two
- *     entities) and the inventory doesn't list it as a homonym, or a listed
- *     homonym carries only one meaning (stale);
- *   - an inline schema or a named schema is a structural twin of a kernel
- *     type, or two named schemas are structural twins, unless the inventory
- *     declares them distinct concepts with a reason.
+ *   - a listed source no longer declares its concept inline (stale), or the
+ *     tree declares a concept inline at a site the inventory doesn't list;
+ *   - an inline or named schema is a structural twin of a kernel type, or two
+ *     named schemas are structural twins, unless the baseline records the twin
+ *     or the inventory declares the schemas distinct concepts with a reason.
  *
  * Twins that existed when the lint landed are recorded in
  * scripts/lint-schema-value-domains-baseline.json, each with a verdict from a
- * closed set and a reason. The lint fails on a twin that isn't recorded and
- * on a recorded twin that no longer occurs, so the baseline only shrinks.
+ * closed set and a reason. A recorded twin or a distinct declaration that no
+ * longer occurs fails the lint, so both lists only shrink.
  *
  * Structural fingerprints drop annotations (titles, descriptions, examples,
  * `x-*` keys), sort set-valued keywords, treat `additionalProperties: true`
@@ -40,6 +38,10 @@
  * alias, not a re-declaration, so it is no twin. A schema that constrains
  * nothing beyond its `type` (such as core/ext.json) has no structural twins:
  * every free-form object would match it.
+ *
+ * `--update-sources` rewrites every concept's sources from its match rule.
+ * Review the diff: a source should only disappear because its site now
+ * references the kernel type.
  */
 
 'use strict';
@@ -63,14 +65,17 @@ const DEFAULT_BASELINE_PATH = path.join(
   'scripts',
   'lint-schema-value-domains-baseline.json',
 );
-const ENTITY_REGISTRY = 'core/x-entity-types.json';
-const UNNAMED = 'unnamed';
+const TO_BE_NAMED = 'to be named';
+// An x-entity rule that matches any entity no other concept names: the ID concepts' shared rule.
+const ANY_ENTITY = '*';
 const VERDICTS = new Map([
   ['replace', 'a later change replaces the copy with a $ref to the kernel type'],
   ['merge', 'the schemas mean one thing; a later change keeps one and makes the others reference it'],
   ['alias', 'a deliberate compatibility name, kept until the next major version'],
 ]);
 const MATCH_KINDS = ['properties', 'x-entity', 'format', 'property'];
+// Modifiers that refine a match kind rather than name one.
+const MATCH_MODIFIERS = new Set(['const', 'exact']);
 
 // Fingerprint vocabulary, ported from the structural duplication check.
 const ANNOTATION_KEYS = new Set([
@@ -221,26 +226,26 @@ function siteKey(site) {
   return `${site.file}#${site.pointer}`;
 }
 
-function sameNames(a, b) {
-  const sortedB = [...b].sort(byString);
-  return a.length === b.length && [...a].sort(byString).every((name, i) => name === sortedB[i]);
-}
-
 /**
  * True when the site declares the concept inline: it matches the concept's
- * rule and doesn't merely reference another schema.
+ * rule and doesn't merely reference another schema. A `properties` rule
+ * matches a site that declares every listed name, whatever else it declares,
+ * and whose `const` values agree. With `exact`, the site must declare the
+ * listed names and no others.
  */
 function matchesConcept(site, match) {
   const { node } = site;
   if (typeof node.$ref === 'string') return false;
   if (match.properties) {
-    if (!isObject(node.properties) || !sameNames(Object.keys(node.properties), match.properties)) {
-      return false;
-    }
+    if (!isObject(node.properties)) return false;
+    const names = Object.keys(node.properties);
+    if (!match.properties.every((name) => names.includes(name))) return false;
+    if (match.exact && names.length !== match.properties.length) return false;
     return Object.entries(match.const || {}).every(([name, value]) =>
       isObject(node.properties[name]) && node.properties[name].const === value);
   }
-  if (match['x-entity']) return match['x-entity'].includes(node['x-entity']);
+  if (match['x-entity'] === ANY_ENTITY) return typeof node['x-entity'] === 'string';
+  if (match['x-entity']) return node['x-entity'] === match['x-entity'];
   if (match.format) return node.format === match.format;
   if (match.property) return site.pointer.endsWith(`/properties/${escapePointer(match.property)}`);
   return false;
@@ -248,6 +253,10 @@ function matchesConcept(site, match) {
 
 function schemaPathOf(id) {
   return typeof id === 'string' ? id.replace(/^\/schemas\//, '') : null;
+}
+
+function isNamed(concept) {
+  return typeof concept.kernel_type === 'string' && concept.kernel_type !== TO_BE_NAMED;
 }
 
 function readJson(file, label) {
@@ -259,27 +268,15 @@ function readJson(file, label) {
   }
 }
 
-function loadEntityRegistry(registry) {
-  const document = registry.byKey.get(ENTITY_REGISTRY);
-  const definitions = document && isObject(document.schema['x-entity-definitions'])
-    ? document.schema['x-entity-definitions']
-    : {};
-  return new Set(Object.keys(definitions));
-}
-
 /** Validates the inventory's own structure. Returns the problems and the usable concepts. */
 function checkInventory(inventory, registry) {
   const errors = [];
-  if (!isObject(inventory)) {
-    return { errors: ['inventory must be an object'], concepts: [], kernelOwners: new Map(), entityOwners: new Map() };
-  }
+  if (!isObject(inventory)) return { errors: ['inventory must be an object'], concepts: [], kernelOwners: new Map() };
   const valueDomains = isObject(inventory.value_domains) ? inventory.value_domains : {};
   if (Object.keys(valueDomains).length === 0) errors.push('value_domains must name at least one value domain');
-  const entities = loadEntityRegistry(registry);
   const concepts = [];
   const ids = new Set();
   const kernelOwners = new Map();
-  const entityOwners = new Map();
   const list = Array.isArray(inventory.concepts) ? inventory.concepts : [];
   if (!Array.isArray(inventory.concepts)) errors.push('concepts must be an array');
   list.forEach((concept, index) => {
@@ -293,23 +290,10 @@ function checkInventory(inventory, registry) {
     if (!Object.prototype.hasOwnProperty.call(valueDomains, concept.value_domain)) {
       errors.push(`${label}: value_domain ${concept.value_domain} is not one of: ${Object.keys(valueDomains).join(', ')}`);
     }
-    const match = concept.match;
     if (typeof concept.meaning !== 'string' || !concept.meaning.trim()) errors.push(`${label}: state its meaning`);
-    const conceptEntities = isObject(match) ? match['x-entity'] : undefined;
-    if (conceptEntities !== undefined) {
-      if (!Array.isArray(conceptEntities) || conceptEntities.length === 0) {
-        errors.push(`${label}: match.x-entity must list one or more registered entities`);
-      } else {
-        for (const entity of conceptEntities) {
-          if (!entities.has(entity)) errors.push(`${label}: x-entity ${entity} is not registered in ${ENTITY_REGISTRY}`);
-          else if (entityOwners.has(entity)) errors.push(`${label}: x-entity ${entity} already belongs to ${entityOwners.get(entity)}; each entity has one identity concept`);
-          else entityOwners.set(entity, concept.id);
-        }
-      }
-    }
     if (typeof concept.kernel_type !== 'string') {
-      errors.push(`${label}: kernel_type must be exactly one schema $id, or "${UNNAMED}"`);
-    } else if (concept.kernel_type !== UNNAMED) {
+      errors.push(`${label}: kernel_type must be exactly one schema $id, or "${TO_BE_NAMED}"`);
+    } else if (isNamed(concept)) {
       const target = schemaPathOf(concept.kernel_type);
       if (!registry.byKey.has(target)) {
         errors.push(`${label}: kernel_type ${concept.kernel_type} is no schema file`);
@@ -319,18 +303,149 @@ function checkInventory(inventory, registry) {
         kernelOwners.set(target, concept.id);
       }
     }
+    const { match } = concept;
     if (match !== undefined) {
-      const kinds = isObject(match) ? Object.keys(match).filter((key) => key !== 'const') : [];
+      const kinds = isObject(match) ? Object.keys(match).filter((key) => !MATCH_MODIFIERS.has(key)) : [];
       if (kinds.length !== 1 || !MATCH_KINDS.includes(kinds[0])) {
         errors.push(`${label}: match must use exactly one of: ${MATCH_KINDS.join(', ')}`);
       }
-      if (!Array.isArray(concept.sources)) errors.push(`${label}: a concept with a match rule lists its sources`);
-    } else if (concept.sources !== undefined) {
+    }
+    if (match !== undefined && !Array.isArray(concept.sources)) {
+      errors.push(`${label}: a concept with a match rule lists its sources`);
+    } else if (match === undefined && concept.sources !== undefined) {
       errors.push(`${label}: sources need a match rule that finds them`);
     }
     concepts.push(concept);
   });
-  return { errors, concepts, kernelOwners, entityOwners };
+  const homonyms = Array.isArray(inventory.homonyms) ? inventory.homonyms : [];
+  const names = new Set();
+  homonyms.forEach((entry, index) => {
+    const label = `homonyms[${index}]`;
+    if (!isObject(entry) || typeof entry.name !== 'string') {
+      errors.push(`${label} must name a property`);
+      return;
+    }
+    if (typeof entry.reason !== 'string' || !entry.reason.trim()) {
+      errors.push(`${label} (${entry.name}): state the reason the name carries more than one meaning`);
+    }
+    if (names.has(entry.name)) errors.push(`${label}: homonym ${entry.name} is listed twice`);
+    names.add(entry.name);
+  });
+  return { errors, concepts, kernelOwners };
+}
+
+function claimedEntities(concepts) {
+  return new Set(concepts
+    .map((concept) => isObject(concept.match) && concept.match['x-entity'])
+    .filter((entity) => typeof entity === 'string' && entity !== ANY_ENTITY));
+}
+
+/**
+ * Groups concepts by match rule. Concepts that share one rule, such as the
+ * ID concepts, share its inline copies: each copy is listed under exactly one.
+ */
+function groupByMatch(concepts) {
+  const groups = new Map();
+  for (const concept of concepts) {
+    if (!isObject(concept.match)) continue;
+    const key = canonicalJson(concept.match);
+    if (!groups.has(key)) groups.set(key, { match: concept.match, concepts: [] });
+    groups.get(key).concepts.push(concept);
+  }
+  return [...groups.values()];
+}
+
+/** The inline copies a group's match rule finds, by site key. */
+function findCopies(group, sites, claimed) {
+  const kernelFiles = new Set(group.concepts.map((concept) => schemaPathOf(concept.kernel_type)));
+  const found = new Map();
+  for (const site of sites) {
+    if (site.root && kernelFiles.has(site.file)) continue;
+    if (!matchesConcept(site, group.match)) continue;
+    // An entity that a reference concept names is that concept's, not an ID concept's.
+    if (group.match['x-entity'] === ANY_ENTITY && claimed.has(site.node['x-entity'])) continue;
+    found.set(siteKey(site), site);
+  }
+  return found;
+}
+
+function fixFor(group) {
+  const [first] = group.concepts;
+  if (group.concepts.length === 1 && isNamed(first)) return `reference ${first.kernel_type} instead`;
+  const where = group.concepts.length === 1
+    ? 'the concept\'s sources'
+    : `the sources of one of ${group.concepts.map((concept) => concept.id).join(', ')}`;
+  return `reference an existing schema, or list the copy under ${where} (--update-sources)`;
+}
+
+/** Holds every concept's listed sources to the inline copies its match rule finds. */
+function checkSources(concepts, sites) {
+  const errors = [];
+  const sourceOf = new Map();
+  const claimed = claimedEntities(concepts);
+  for (const group of groupByMatch(concepts)) {
+    const found = findCopies(group, sites, claimed);
+    const listedBy = new Map();
+    for (const concept of group.concepts) {
+      for (const source of Array.isArray(concept.sources) ? concept.sources : []) {
+        if (listedBy.has(source)) {
+          errors.push(`source ${source} is listed twice, under ${listedBy.get(source)} and ${concept.id}`);
+          continue;
+        }
+        listedBy.set(source, concept.id);
+        if (!found.has(source)) {
+          errors.push(`stale source: ${source} no longer declares ${concept.id} inline; remove it from the concept`);
+        }
+      }
+    }
+    for (const key of found.keys()) {
+      const owner = listedBy.get(key);
+      if (!sourceOf.has(key)) sourceOf.set(key, new Set());
+      for (const concept of group.concepts) {
+        if (!owner || owner === concept.id) sourceOf.get(key).add(concept.id);
+      }
+      if (owner) continue;
+      const label = group.concepts.map((concept) => concept.id).join(' or ');
+      errors.push(`new inline ${label}: ${key} declares the concept inline; ${fixFor(group)}`);
+    }
+  }
+  return { errors, sourceOf };
+}
+
+/**
+ * The sources each match rule finds in the tree today. A listed copy keeps
+ * its concept. In a shared group, a new copy joins the concept that lists
+ * another copy of the same entity; any other new copy is unplaced.
+ */
+function detectSources(inventory, registry) {
+  const concepts = (Array.isArray(inventory.concepts) ? inventory.concepts : []).filter(isObject);
+  const sites = collectSites(registry);
+  const claimed = claimedEntities(concepts);
+  const sources = new Map();
+  const unplaced = [];
+  for (const group of groupByMatch(concepts)) {
+    const found = findCopies(group, sites, claimed);
+    const ownerOf = new Map();
+    const entityOwner = new Map();
+    for (const concept of group.concepts) {
+      sources.set(concept.id, []);
+      for (const source of Array.isArray(concept.sources) ? concept.sources : []) {
+        if (!found.has(source)) continue;
+        ownerOf.set(source, concept.id);
+        const entity = found.get(source).node['x-entity'];
+        if (typeof entity === 'string') entityOwner.set(entity, concept.id);
+      }
+    }
+    for (const [key, site] of found) {
+      const owner = group.concepts.length === 1
+        ? group.concepts[0].id
+        : ownerOf.get(key) || entityOwner.get(site.node['x-entity']);
+      if (owner) sources.get(owner).push(key);
+      else unplaced.push(key);
+    }
+  }
+  for (const list of sources.values()) list.sort(byString);
+  return { sources, unplaced: unplaced.sort(byString) };
 }
 
 /** Files a schema reaches through `$ref`, transitively, excluding itself. */
@@ -372,90 +487,6 @@ function checkKernelClosure(kernelOwners, refsOf, ownership) {
   return errors;
 }
 
-function checkSources(concepts, sites, entityOwners) {
-  const errors = [];
-  const sourceOf = new Map();
-  const unmapped = new Set();
-  for (const site of sites) {
-    const entity = site.node['x-entity'];
-    if (typeof entity === 'string' && typeof site.node.$ref !== 'string' && !entityOwners.has(entity)) unmapped.add(entity);
-  }
-  for (const entity of [...unmapped].sort(byString)) {
-    errors.push(`unmapped entity: x-entity ${entity} is declared inline, but no concept's match lists it; add it to one identity concept`);
-  }
-  for (const concept of concepts) {
-    if (!isObject(concept.match) || !Array.isArray(concept.sources)) continue;
-    const kernelFile = schemaPathOf(concept.kernel_type);
-    const found = new Map();
-    for (const site of sites) {
-      if (site.root && site.file === kernelFile) continue;
-      if (!matchesConcept(site, concept.match)) continue;
-      // An entity two concepts list is reported once, by the inventory check; its sites stay with the first.
-      const entity = site.node['x-entity'];
-      if (concept.match['x-entity'] && entityOwners.get(entity) !== concept.id) continue;
-      found.set(siteKey(site), site);
-    }
-    const listed = new Set();
-    for (const source of concept.sources) {
-      if (listed.has(source)) errors.push(`concept ${concept.id}: source ${source} is listed twice`);
-      listed.add(source);
-      if (!found.has(source)) {
-        errors.push(`stale source: ${source} no longer declares ${concept.id} inline; remove it from the concept`);
-      }
-    }
-    for (const [key, site] of found) {
-      if (sourceOf.has(key)) {
-        errors.push(`${key} declares both ${sourceOf.get(key).concept} and ${concept.id}; one site carries one concept`);
-      } else {
-        const meaning = typeof site.node['x-entity'] === 'string' ? `${concept.id}:${site.node['x-entity']}` : concept.id;
-        sourceOf.set(key, { concept: concept.id, meaning, property: site.property });
-      }
-      if (listed.has(key)) continue;
-      const fix = concept.kernel_type === UNNAMED
-        ? 'list it under the concept\'s sources until the kernel type is named'
-        : `reference ${concept.kernel_type} instead`;
-      errors.push(`new inline ${concept.id}: ${key} declares the concept inline; ${fix}`);
-    }
-  }
-  return { errors, sourceOf };
-}
-
-function checkHomonyms(inventory, sourceOf) {
-  const errors = [];
-  const conceptsByName = new Map();
-  // A meaning is a concept, or for identity concepts the entity an ID names.
-  for (const { meaning, property } of sourceOf.values()) {
-    if (!property) continue;
-    if (!conceptsByName.has(property)) conceptsByName.set(property, new Set());
-    conceptsByName.get(property).add(meaning);
-  }
-  const homonyms = Array.isArray(inventory.homonyms) ? inventory.homonyms : [];
-  const listed = new Map();
-  homonyms.forEach((entry, index) => {
-    const label = `homonyms[${index}]`;
-    if (!isObject(entry) || typeof entry.name !== 'string') {
-      errors.push(`${label} must name a property`);
-      return;
-    }
-    if (typeof entry.reason !== 'string' || !entry.reason.trim()) {
-      errors.push(`${label} (${entry.name}): state the reason the name carries more than one concept`);
-    }
-    if (listed.has(entry.name)) errors.push(`${label}: homonym ${entry.name} is listed twice`);
-    listed.set(entry.name, entry);
-  });
-  for (const [name, concepts] of [...conceptsByName].sort(([a], [b]) => byString(a, b))) {
-    if (concepts.size > 1 && !listed.has(name)) {
-      errors.push(`homonym: the property name ${name} carries ${concepts.size} meanings (${[...concepts].sort(byString).join(', ')}); list it under homonyms with the reason`);
-    }
-  }
-  for (const name of listed.keys()) {
-    if ((conceptsByName.get(name) || new Set()).size < 2) {
-      errors.push(`stale homonym: the property name ${name} carries at most one meaning; remove it from homonyms`);
-    }
-  }
-  return errors;
-}
-
 /**
  * Finds every structural twin: kernel-type twins and named-schema twins. A
  * site its concept's match rule already finds is a source, not a twin. A
@@ -481,8 +512,7 @@ function findTwins(sites, registry, kernelOwners, inventory, sourceOf) {
   const namedGroups = new Map();
   for (const [site, print] of prints) {
     const kernelFile = kernelPrints.get(print);
-    const source = sourceOf.get(siteKey(site));
-    const isSource = source && source.concept === kernelOwners.get(kernelFile);
+    const isSource = (sourceOf.get(siteKey(site)) || new Set()).has(kernelOwners.get(kernelFile));
     if (kernelFile && !isSource && !(site.root && kernelOwners.has(site.file))) {
       twins.push({
         check: 'kernel-twin',
@@ -593,18 +623,14 @@ function lintSchemaValueDomains({
 
   const ownership = buildOwnership(ownershipConfig);
   errors.push(...ownership.errors);
-  const inventoryCheck = checkInventory(inventory, registry);
-  errors.push(...inventoryCheck.errors);
-  const { concepts, kernelOwners, entityOwners } = inventoryCheck;
-
+  const { errors: inventoryErrors, concepts, kernelOwners } = checkInventory(inventory, registry);
+  errors.push(...inventoryErrors);
   const sites = collectSites(registry);
-  const refsOf = buildRefIndex(registry, sites);
   if (ownership.errors.length === 0) {
-    errors.push(...checkKernelClosure(kernelOwners, refsOf, ownership));
+    errors.push(...checkKernelClosure(kernelOwners, buildRefIndex(registry, sites), ownership));
   }
-  const sources = checkSources(concepts, sites, entityOwners);
+  const sources = checkSources(concepts, sites);
   errors.push(...sources.errors);
-  errors.push(...checkHomonyms(inventory, sources.sourceOf));
 
   const { twins, namedGroups } = findTwins(sites, registry, kernelOwners, inventory, sources.sourceOf);
   errors.push(...checkDistinct(inventory, registry, namedGroups));
@@ -628,57 +654,27 @@ function lintSchemaValueDomains({
     concepts,
     twins,
     added,
-    baseline: [...baseline.entries.values()],
-    sourceCount: sources.sourceOf.size,
-    registry,
-    sites,
+    sourceCount: concepts.reduce((sum, concept) => sum + (Array.isArray(concept.sources) ? concept.sources.length : 0), 0),
   };
 }
 
-/** The sources each concept's match rule finds in the tree today. */
-function detectSources(inventory, registry, sites = collectSites(registry)) {
-  const result = new Map();
-  for (const concept of Array.isArray(inventory.concepts) ? inventory.concepts : []) {
-    if (!isObject(concept.match)) continue;
-    const kernelFile = schemaPathOf(concept.kernel_type);
-    result.set(concept.id, sites
-      .filter((site) => !(site.root && site.file === kernelFile) && matchesConcept(site, concept.match))
-      .map(siteKey)
-      .sort(byString));
-  }
-  return result;
-}
-
-function readArg(args, name, fallback) {
-  const index = args.indexOf(name);
-  return index !== -1 && index + 1 < args.length ? args[index + 1] : fallback;
-}
-
 function main() {
-  const args = process.argv.slice(2);
-  const schemasDir = path.resolve(readArg(args, '--schemas', DEFAULT_SCHEMAS_DIR));
-  const inventoryPath = path.resolve(readArg(args, '--inventory', DEFAULT_INVENTORY_PATH));
-  const ownershipPath = path.resolve(readArg(args, '--ownership', DEFAULT_OWNERSHIP_PATH));
-  const baselinePath = path.resolve(readArg(args, '--baseline', DEFAULT_BASELINE_PATH));
-
-  if (args.includes('--update-sources')) {
-    if (process.env.ADCP_UPDATE_SCHEMA_VALUE_DOMAINS !== '1') {
-      console.error('Refusing to rewrite inventory sources without ADCP_UPDATE_SCHEMA_VALUE_DOMAINS=1.');
-      process.exitCode = 2;
-      return;
-    }
-    const inventory = JSON.parse(fs.readFileSync(inventoryPath, 'utf8'));
-    const detected = detectSources(inventory, loadSchemaRegistry(schemasDir));
+  if (process.argv.includes('--update-sources')) {
+    const inventory = JSON.parse(fs.readFileSync(DEFAULT_INVENTORY_PATH, 'utf8'));
+    const { sources, unplaced } = detectSources(inventory, loadSchemaRegistry(DEFAULT_SCHEMAS_DIR));
     for (const concept of inventory.concepts) {
-      if (detected.has(concept.id)) concept.sources = detected.get(concept.id);
+      if (sources.has(concept.id)) concept.sources = sources.get(concept.id);
     }
-    fs.writeFileSync(inventoryPath, `${JSON.stringify(inventory, null, 2)}\n`);
-    const total = [...detected.values()].reduce((sum, list) => sum + list.length, 0);
-    console.log(`Wrote ${total} sources for ${detected.size} concepts to ${path.relative(REPO_ROOT, inventoryPath)}.`);
+    fs.writeFileSync(DEFAULT_INVENTORY_PATH, `${JSON.stringify(inventory, null, 2)}\n`);
+    const total = [...sources.values()].reduce((sum, list) => sum + list.length, 0);
+    console.log(`Wrote ${total} sources for ${sources.size} concepts. Review the diff before you commit it.`);
+    if (unplaced.length > 0) {
+      console.error(`These copies carry an entity no ID concept lists yet; add each to one ID concept by hand:\n${unplaced.map((key) => `  - ${key}`).join('\n')}`);
+      process.exitCode = 1;
+    }
     return;
   }
-
-  const result = lintSchemaValueDomains({ schemasDir, inventoryPath, ownershipPath, baselinePath });
+  const result = lintSchemaValueDomains();
   if (result.ok) {
     const byCheck = (check) => result.twins.filter((twin) => twin.check === check).length;
     console.log(
@@ -694,16 +690,14 @@ function main() {
 }
 
 module.exports = {
-  UNNAMED,
+  ANY_ENTITY,
+  TO_BE_NAMED,
   VERDICTS,
   collectSites,
   detectSources,
   fingerprint,
-  isAlias,
-  isBare,
   lintSchemaValueDomains,
   matchesConcept,
-  normalize,
 };
 
 if (require.main === module) main();

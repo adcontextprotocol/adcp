@@ -3,7 +3,6 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -15,9 +14,8 @@ const {
   detectSources,
   fingerprint,
   lintSchemaValueDomains,
+  matchesConcept,
 } = require('../scripts/lint-schema-value-domains.cjs');
-
-const SCRIPT = path.join(__dirname, '..', 'scripts', 'lint-schema-value-domains.cjs');
 
 function ref(target) {
   return { $ref: `/schemas/${target}` };
@@ -51,15 +49,12 @@ const TASK_SUBMITTED = {
 };
 
 /**
- * A tree that passes: one money copy, one kernel task envelope, two ID
- * entities, and one timestamp, each listed where the inventory needs it.
+ * A tree that passes: one money copy, two IDs, and one timestamp, each listed
+ * as a source, and one named task envelope with no inline copies.
  */
 function baseFixture() {
   return {
     files: {
-      'core/x-entity-types.json': {
-        'x-entity-definitions': { creative: 'A creative.', media_buy: 'A media buy.' },
-      },
       'core/task-submitted.json': TASK_SUBMITTED,
       'core/date-range.json': DATE_RANGE,
       'core/context.json': { type: 'object', additionalProperties: true },
@@ -90,7 +85,7 @@ function baseFixture() {
           id: 'money',
           value_domain: 'money',
           meaning: 'An amount in one currency.',
-          kernel_type: 'unnamed',
+          kernel_type: 'to be named',
           match: { properties: ['amount', 'currency'] },
           sources: ['media-buy/create.json#/properties/budget'],
         },
@@ -106,8 +101,8 @@ function baseFixture() {
           id: 'record-id',
           value_domain: 'identity',
           meaning: 'The ID of a record.',
-          kernel_type: 'unnamed',
-          match: { 'x-entity': ['creative', 'media_buy'] },
+          kernel_type: 'to be named',
+          match: { 'x-entity': '*' },
           sources: [
             'creative/creative.json#/properties/creative_id',
             'media-buy/create.json#/properties/media_buy_id',
@@ -117,7 +112,7 @@ function baseFixture() {
           id: 'timestamp',
           value_domain: 'time',
           meaning: 'An instant.',
-          kernel_type: 'unnamed',
+          kernel_type: 'to be named',
           match: { format: 'date-time' },
           sources: ['media-buy/create.json#/properties/created_at'],
         },
@@ -203,13 +198,20 @@ const TWIN_FILES = {
 
 const TWIN_TYPES = ['/schemas/enums/catalog-action.json', '/schemas/enums/creative-action.json'];
 
+const INLINE_TASK = {
+  type: 'object',
+  properties: { status: { type: 'string', const: 'submitted' }, task_id: { type: 'string' } },
+};
+
+const INLINE_TASK_SITE = 'creative/creative.json#/properties/task';
+
 // Known-bad fixtures. Each one introduces exactly one fault, and the lint
 // must report exactly that fault.
 const KNOWN_BAD = [
   {
     name: 'a concept with two kernel types',
-    change: (f) => { concept(f, 'money').kernel_type = ['/schemas/core/context.json', 'unnamed']; },
-    error: /money\): kernel_type must be exactly one schema \$id/,
+    change: (f) => { concept(f, 'money').kernel_type = ['/schemas/core/context.json', 'to be named']; },
+    error: /money\): kernel_type must be exactly one schema \$id, or "to be named"/,
   },
   {
     name: 'two concepts that share one kernel type',
@@ -232,6 +234,16 @@ const KNOWN_BAD = [
     error: /money\): state its meaning/,
   },
   {
+    name: 'a match rule with two kinds',
+    change: (f) => { concept(f, 'timestamp').match.property = 'created_at'; },
+    error: /timestamp\): match must use exactly one of/,
+  },
+  {
+    name: 'sources without a match rule',
+    change: (f) => { concept(f, 'date-range').sources = []; },
+    error: /date-range\): sources need a match rule that finds them/,
+  },
+  {
     name: 'a kernel type that reaches a domain schema through a shared file',
     change: (f) => {
       f.files['core/task-submitted.json'] = {
@@ -243,67 +255,47 @@ const KNOWN_BAD = [
     error: /kernel type core\/task-submitted\.json \(task-submitted\) references media-buy\/create\.json, a media_buy schema/,
   },
   {
+    name: 'a homonym without a reason',
+    change: (f) => { f.inventory.homonyms.push({ name: 'creative_id', reason: ' ' }); },
+    error: /homonyms\[0\] \(creative_id\): state the reason/,
+  },
+  {
     name: 'a source whose site was removed',
-    change: (f) => { delete f.files['media-buy/create.json'].properties.created_at; },
-    error: /stale source: media-buy\/create\.json#\/properties\/created_at no longer declares timestamp inline/,
+    change: (f) => { concept(f, 'task-submitted').sources.push(INLINE_TASK_SITE); },
+    error: /stale source: creative\/creative\.json#\/properties\/task no longer declares task-submitted inline/,
   },
   {
     name: 'a source whose site now references a schema',
-    change: (f) => { f.files['media-buy/create.json'].properties.budget = ref('core/context.json'); },
-    error: /stale source: media-buy\/create\.json#\/properties\/budget no longer declares money inline/,
+    change: (f) => {
+      f.files['creative/creative.json'].properties.task = ref('core/task-submitted.json');
+      concept(f, 'task-submitted').sources.push(INLINE_TASK_SITE);
+    },
+    error: /stale source: creative\/creative\.json#\/properties\/task no longer declares task-submitted inline/,
   },
   {
-    name: 'an inline copy the concept does not list',
+    name: 'an inline copy of a named kernel type with a weaker constraint',
+    change: (f) => { f.files['creative/creative.json'].properties.task = INLINE_TASK; },
+    error: /new inline task-submitted: creative\/creative\.json#\/properties\/task declares the concept inline; reference \/schemas\/core\/task-submitted\.json instead/,
+  },
+  {
+    name: 'an inline copy of a named kernel type that adds a field',
+    change: (f) => {
+      f.files['creative/creative.json'].properties.task = {
+        ...INLINE_TASK,
+        properties: { ...INLINE_TASK.properties, replayed: { type: 'boolean' } },
+      };
+    },
+    error: /new inline task-submitted: creative\/creative\.json#\/properties\/task declares the concept inline/,
+  },
+  {
+    name: 'an inline copy of a concept whose kernel type is to be named',
     change: (f) => { f.files['creative/creative.json'].properties.updated_at = { type: 'string', format: 'date-time' }; },
     error: /new inline timestamp: creative\/creative\.json#\/properties\/updated_at declares the concept inline/,
   },
   {
-    name: 'an inline copy of a named kernel type with a weaker constraint',
-    change: (f) => {
-      f.files['creative/creative.json'].properties.task = {
-        type: 'object',
-        properties: { status: { type: 'string', const: 'submitted' }, task_id: { type: 'string' } },
-      };
-    },
-    error: /new inline task-submitted: creative\/creative\.json#\/properties\/task declares the concept inline; reference \/schemas\/core\/task-submitted\.json instead/,
-  },
-  {
-    name: 'an x-entity no concept lists',
-    change: (f) => { concept(f, 'record-id').match['x-entity'] = ['creative']; concept(f, 'record-id').sources.pop(); },
-    error: /unmapped entity: x-entity media_buy is declared inline/,
-  },
-  {
-    name: 'an x-entity two concepts list',
-    change: (f) => {
-      f.inventory.concepts.push({
-        id: 'other-id',
-        value_domain: 'identity',
-        meaning: 'Another ID class.',
-        kernel_type: 'unnamed',
-        match: { 'x-entity': ['creative'] },
-        sources: [],
-      });
-    },
-    error: /x-entity creative already belongs to record-id/,
-  },
-  {
-    name: 'an x-entity the registry does not define',
-    change: (f) => { concept(f, 'record-id').match['x-entity'].push('ghost'); },
-    error: /x-entity ghost is not registered in core\/x-entity-types\.json/,
-  },
-  {
-    name: 'a property name that carries two meanings and is not a homonym',
-    change: (f) => {
-      f.files['creative/creative.json'].properties.creative_id = { type: 'string', 'x-entity': 'creative' };
-      f.files['media-buy/create.json'].properties.creative_id = { type: 'string', 'x-entity': 'media_buy' };
-      concept(f, 'record-id').sources.push('media-buy/create.json#/properties/creative_id');
-    },
-    error: /homonym: the property name creative_id carries 2 meanings/,
-  },
-  {
-    name: 'a homonym whose name carries one meaning',
-    change: (f) => { f.inventory.homonyms.push({ name: 'created_at', reason: 'Listed by mistake.' }); },
-    error: /stale homonym: the property name created_at carries at most one meaning/,
+    name: 'an inline ID the inventory does not list',
+    change: (f) => { f.files['creative/creative.json'].properties.media_buy_id = { type: 'string', 'x-entity': 'media_buy' }; },
+    error: /new inline record-id: creative\/creative\.json#\/properties\/media_buy_id declares the concept inline/,
   },
   {
     name: 'an inline structural twin of a kernel type',
@@ -322,15 +314,6 @@ const KNOWN_BAD = [
       f.files['enums/creative-action.json'] = { type: 'string', enum: ['deleted', 'created'] };
     },
     error: /new named-twin: enums\/catalog-action\.json = enums\/creative-action\.json/,
-  },
-  {
-    name: 'a homonym without a reason',
-    change: (f) => {
-      f.files['media-buy/create.json'].properties.creative_id = { type: 'string', 'x-entity': 'media_buy' };
-      concept(f, 'record-id').sources.push('media-buy/create.json#/properties/creative_id');
-      f.inventory.homonyms.push({ name: 'creative_id', reason: ' ' });
-    },
-    error: /homonyms\[0\] \(creative_id\): state the reason/,
   },
   {
     name: 'a distinct declaration without a reason',
@@ -426,11 +409,58 @@ test('a distinct declaration with a reason suppresses a named twin', () => {
   assert.equal(result.ok, true, result.errors.join('\n'));
 });
 
-test('a listed homonym with a reason passes', () => {
+test('a listed inline copy of a named kernel type passes', () => {
   const result = run(withChange((f) => {
-    f.files['media-buy/create.json'].properties.creative_id = { type: 'string', 'x-entity': 'media_buy' };
-    concept(f, 'record-id').sources.push('media-buy/create.json#/properties/creative_id');
-    f.inventory.homonyms.push({ name: 'creative_id', reason: 'Two records share the name.' });
+    f.files['creative/creative.json'].properties.task = INLINE_TASK;
+    concept(f, 'task-submitted').sources.push(INLINE_TASK_SITE);
+  }));
+  assert.equal(result.ok, true, result.errors.join('\n'));
+});
+
+test('a kernel type may reference shared schemas', () => {
+  const result = run(withChange((f) => {
+    f.files['core/task-submitted.json'] = {
+      ...TASK_SUBMITTED,
+      properties: { ...TASK_SUBMITTED.properties, context: ref('core/context.json') },
+    };
+  }));
+  assert.equal(result.ok, true, result.errors.join('\n'));
+});
+
+test('detectSources keeps listed copies, places a new ID by its entity, and reports an unknown entity', () => {
+  const fixture = baseFixture();
+  fixture.inventory.concepts.push({
+    id: 'other-id', value_domain: 'identity', meaning: 'Another ID.', kernel_type: 'to be named',
+    match: { 'x-entity': '*' }, sources: [],
+  });
+  fixture.files['creative/creative.json'].properties.parent_id = { type: 'string', 'x-entity': 'creative' };
+  fixture.files['creative/creative.json'].properties.audience_id = { type: 'string', 'x-entity': 'audience' };
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-value-domains-detect-'));
+  try {
+    for (const [relativePath, body] of Object.entries(fixture.files)) {
+      const file = path.join(tmp, relativePath);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(body));
+    }
+    const { sources, unplaced } = detectSources(fixture.inventory, loadSchemaRegistry(tmp));
+    assert.deepEqual(sources.get('record-id'), [
+      'creative/creative.json#/properties/creative_id',
+      'creative/creative.json#/properties/parent_id',
+      'media-buy/create.json#/properties/media_buy_id',
+    ]);
+    assert.deepEqual(sources.get('other-id'), []);
+    assert.deepEqual(unplaced, ['creative/creative.json#/properties/audience_id']);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('a site that lacks one of the listed names is not the concept', () => {
+  const result = run(withChange((f) => {
+    f.files['creative/creative.json'].properties.task = {
+      type: 'object',
+      properties: { status: { type: 'string', const: 'submitted' } },
+    };
   }));
   assert.equal(result.ok, true, result.errors.join('\n'));
 });
@@ -438,11 +468,39 @@ test('a listed homonym with a reason passes', () => {
 test('a site whose const differs from the match rule is not the concept', () => {
   const result = run(withChange((f) => {
     f.files['creative/creative.json'].properties.task = {
-      type: 'object',
-      properties: { status: { type: 'string', const: 'working' }, task_id: { type: 'string' } },
+      ...INLINE_TASK,
+      properties: { ...INLINE_TASK.properties, status: { type: 'string', const: 'working' } },
     };
   }));
   assert.equal(result.ok, true, result.errors.join('\n'));
+});
+
+test('an exact rule matches only a copy that declares exactly the listed names', () => {
+  const exactRule = (f) => { concept(f, 'task-submitted').match.exact = true; };
+  const sameNames = run(withChange((f) => {
+    exactRule(f);
+    f.files['creative/creative.json'].properties.task = INLINE_TASK;
+  }));
+  assert.match(sameNames.errors.join('\n'), /new inline task-submitted: creative\/creative\.json#\/properties\/task/);
+  const moreNames = run(withChange((f) => {
+    exactRule(f);
+    f.files['creative/creative.json'].properties.task = {
+      ...INLINE_TASK,
+      properties: { ...INLINE_TASK.properties, proposals: { type: 'array' } },
+    };
+  }));
+  assert.equal(moreNames.ok, true, moreNames.errors.join('\n'));
+});
+
+test('the task-input-required rule does not match the request-proposals response root', () => {
+  const inventory = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'schema-value-domains.json'), 'utf8'));
+  const { match } = inventory.concepts.find((entry) => entry.id === 'task-input-required');
+  const registry = loadSchemaRegistry(path.join(__dirname, '..', 'static', 'schemas', 'source'));
+  const root = collectSites(registry)
+    .find((site) => site.root && site.file === 'media-buy/request-proposals-response.json');
+  assert.ok(root, 'expected the request-proposals response schema');
+  assert.equal(matchesConcept(root, match), false);
+  assert.equal(matchesConcept(root, { ...match, exact: false }), true, 'a presence rule would match it');
 });
 
 test('schemas that only reference another schema are aliases, not twins', () => {
@@ -457,16 +515,6 @@ test('a schema that constrains only its type has no structural twins', () => {
   const result = run(withChange((f) => {
     f.files['creative/creative.json'].properties.notes = { type: 'object' };
     f.files['core/free-form.json'] = { type: 'object', additionalProperties: true };
-  }));
-  assert.equal(result.ok, true, result.errors.join('\n'));
-});
-
-test('a kernel type may reference shared schemas', () => {
-  const result = run(withChange((f) => {
-    f.files['core/task-submitted.json'] = {
-      ...TASK_SUBMITTED,
-      properties: { ...TASK_SUBMITTED.properties, context: ref('core/context.json') },
-    };
   }));
   assert.equal(result.ok, true, result.errors.join('\n'));
 });
@@ -532,29 +580,4 @@ test('collectSites visits subschemas but not instance data', () => {
     collectSites(registry).map((site) => site.pointer),
     ['', '/properties/a', '/properties/a/items'],
   );
-});
-
-test('detectSources lists what each match rule finds, without the kernel type', () => {
-  const fixture = baseFixture();
-  fixture.files['enums/task-copy.json'] = { type: 'object', properties: TASK_SUBMITTED.properties };
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-value-domains-detect-'));
-  try {
-    for (const [relativePath, body] of Object.entries(fixture.files)) {
-      const file = path.join(tmp, relativePath);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(body));
-    }
-    const detected = detectSources(fixture.inventory, loadSchemaRegistry(tmp));
-    assert.deepEqual(detected.get('task-submitted'), ['enums/task-copy.json#']);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
-test('--update-sources refuses to run without its environment variable', () => {
-  const env = { ...process.env };
-  delete env.ADCP_UPDATE_SCHEMA_VALUE_DOMAINS;
-  const result = spawnSync(process.execPath, [SCRIPT, '--update-sources'], { env, encoding: 'utf8' });
-  assert.equal(result.status, 2);
-  assert.match(result.stderr, /Refusing to rewrite inventory sources/);
 });
