@@ -204,7 +204,7 @@ checks:
         brand-ref (brand_kit_override, provenance), creative format
         declaration (macro_resolution_capabilities), attestation issuer,
         audience activation method, and geo place system limits. 3.3
-        accepts an 85 MiB structural ceiling because MAX_CAPABILITIES_BYTES
+        accepts an 87 MiB structural ceiling because MAX_CAPABILITIES_BYTES
         is the operative cap; 4.0 can lower the ceiling before the
         annotations become keywords.
     observed_by:

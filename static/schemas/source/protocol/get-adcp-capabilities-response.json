@@ -2732,7 +2732,8 @@
           "items": {
             "$ref": "/schemas/core/signal-delivery-method.json"
           },
-          "minItems": 1
+          "minItems": 1,
+          "maxItems": 20
         },
         "discovery_modes": {
           "type": "array",
