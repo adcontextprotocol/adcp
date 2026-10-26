@@ -1774,15 +1774,10 @@ describe('createTrainingAgentServer', () => {
     // Removed seller-level reporting (product-level is source of truth)
     expect(mediaBuy).not.toHaveProperty('reporting');
 
+    // The supported_metrics rollup is a 3.3 field (#8070), withheld from this
+    // unpinned (3.0) response (#8487).
     expect(mediaBuy.vendor_metric_optimization).toEqual({
       supported_targets: ['threshold_rate'],
-      supported_metrics: [
-        {
-          vendor: { domain: 'attentionvendor.example' },
-          metric_id: 'attention_score',
-          supported_targets: ['threshold_rate'],
-        },
-      ],
     });
     expect(mediaBuy.performance_feedback).toEqual({
       reports_application_status: true,
@@ -1837,8 +1832,8 @@ describe('createTrainingAgentServer', () => {
   });
 
   it('keeps the seller-level vendor_metric_optimization.supported_metrics rollup consistent with the catalog', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+    // The rollup is a 3.3 field (#8070), served only on a 3.3 response (#8487).
+    const result = await handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, servedAdcpVersion: '3.3-beta.0' });
     const rollup = ((result as Record<string, any>).media_buy.vendor_metric_optimization.supported_metrics) as Array<{
       vendor: { domain: string; brand_id?: string };
       metric_id: string;
@@ -8213,7 +8208,10 @@ describe('create_media_buy handler', () => {
     expect(typeof result.media_buy_id).toBe('string');
   });
 
-  it('returns stable audience platform IDs and matching legacy aliases on sync and discovery', async () => {
+  // platform_id is the 3.3 name for the seller-assigned id; a 3.2 caller gets
+  // the seller_id it defines alone (#8487). The 3.3 side is covered in
+  // training-agent-candidate-version.test.ts.
+  it('returns stable audience seller IDs, without the 3.3 platform_id, on 3.2 sync and discovery', async () => {
     const account = { brand: { domain: 'nova-platform-ids.example' }, operator: 'pinnacle-agency.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const audience = {
@@ -8228,8 +8226,8 @@ describe('create_media_buy handler', () => {
     });
     const created = (synced.audiences as Array<Record<string, unknown>>)[0]!;
     expect(created.action).toBe('created');
-    expect(typeof created.platform_id).toBe('string');
-    expect(created.seller_id).toBe(created.platform_id);
+    expect(typeof created.seller_id).toBe('string');
+    expect(created).not.toHaveProperty('platform_id');
 
     const { result: updated } = await simulateCallTool(server, 'sync_audiences', {
       account,
@@ -8240,9 +8238,9 @@ describe('create_media_buy handler', () => {
       expect(result.audiences).toEqual([expect.objectContaining({
         audience_id: 'nova_loyalty',
         action,
-        platform_id: created.platform_id,
-        seller_id: created.platform_id,
+        seller_id: created.seller_id,
       })]);
+      expect((result.audiences as Array<Record<string, unknown>>)[0]).not.toHaveProperty('platform_id');
     }
   });
 
@@ -17924,11 +17922,14 @@ describe('get_adcp_capabilities handler', () => {
   });
 
   it('advertises anonymous product and signal discovery without claiming catalog completeness', async () => {
-    const [sales, signals] = await Promise.all([
-      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'sales' }),
-      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'signals' }),
+    // anonymous_discovery is a 3.2 field, withheld from a 3.0 response (#8487).
+    const [sales, signals, threeZero] = await Promise.all([
+      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'sales', servedAdcpVersion: CURRENT_ADCP_VERSION }),
+      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'signals', servedAdcpVersion: CURRENT_ADCP_VERSION }),
+      handleGetAdcpCapabilities({}, { ...DEFAULT_CTX, tenantId: 'sales', servedAdcpVersion: '3.0' }),
     ]);
 
+    expect(threeZero.media_buy).not.toHaveProperty('anonymous_discovery');
     expect(sales.media_buy).toMatchObject({ anonymous_discovery: true });
     expect(signals.signals).toMatchObject({ anonymous_discovery: true });
   });
@@ -21336,7 +21337,7 @@ describe('proposal lifecycle', () => {
     const projected = projectProductDiscoveryResult('request_proposals', {
       products: [{ product_id: 'brief-only-native', name: 'Brief-only native product' }],
       proposals: [],
-    }, {});
+    }, {}, TRAINING_AGENT_CURRENT_ADCP_VERSION);
 
     expect(projected).toEqual({
       outcome: 'rejected',

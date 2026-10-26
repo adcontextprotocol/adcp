@@ -108,6 +108,20 @@ describe('local candidate wire contract', () => {
     await preview.close();
   });
 
+  it('keeps account.stable_account_id off the v5 monolith even for the candidate', async () => {
+    // The v5 route neither aliases nor rehydrates account_id (#8487 gates the
+    // declaration to 3.3; this keeps it off the route that cannot honor it).
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer candidate-version-test-token' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_adcp_capabilities', arguments: { adcp_version: '3.3-beta.0' } } }),
+    });
+    const result = (await response.json()).result?.structuredContent;
+    expect(result?.adcp_version, JSON.stringify(result).slice(0, 300)).toBe('3.3-beta.0');
+    expect(result.account).toBeDefined();
+    expect(result.account).not.toHaveProperty('stable_account_id');
+  });
+
   it('keeps legacy signing routes from advertising or accepting the candidate contract', async () => {
     const legacy = createTrainingAgentServer({ mode: 'open', strict: true, legacySigningProfile: true });
     const handler = (legacy as unknown as { _requestHandlers: Map<string, Function> })._requestHandlers.get('tools/call')!;
@@ -140,5 +154,74 @@ describe('local candidate wire contract', () => {
     const blocking = await runStoryboardStep(`${baseUrl}/sales/mcp`, requiredFixture, 'get_capabilities', options);
     expect(blocking.passed).toBe(false);
     expect(storyboardStepStatus(blocking)).toBe('failed');
+  }, 60_000);
+
+  // #8487: the agent withholds 3.3 fields from a 3.2 caller
+  // (tenants/served-release-shape.test.ts); a 3.3 caller still gets them.
+  it('serves 3.3 fields to the candidate and withholds them from an explicit 3.2 pin', async () => {
+    let id = 100;
+    const call = async (tenant: string, name: string, args: Record<string, unknown>) => {
+      id += 1;
+      const response = await fetch(`${baseUrl}/${tenant}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer candidate-version-test-token' },
+        body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }),
+      });
+      const envelope = await response.json();
+      const result = envelope.result?.structuredContent;
+      expect(result?.adcp_error, JSON.stringify(envelope).slice(0, 500)).toBeUndefined();
+      return result;
+    };
+    const account = { brand: { domain: 'candidate-three-three.example' }, operator: 'candidate-three-three.example', sandbox: true };
+    for (const adcp_version of ['3.3-beta.0', '3.2']) {
+      const current = adcp_version === '3.3-beta.0';
+      const sales = await call('sales', 'get_adcp_capabilities', { adcp_version });
+      expect(sales.account.stable_account_id).toBe(current ? true : undefined);
+      expect(sales.media_buy.features.supports_property_breakdown).toBe(current ? true : undefined);
+      expect(sales.media_buy.features.supports_installment_property_breakdown).toBe(current ? true : undefined);
+      if (current) {
+        expect(sales.media_buy.vendor_metric_optimization.supported_metrics).toContainEqual(
+          expect.objectContaining({ vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_score' }),
+        );
+      } else {
+        expect(sales.media_buy.vendor_metric_optimization).not.toHaveProperty('supported_metrics');
+      }
+      const governance = await call('governance', 'get_adcp_capabilities', { adcp_version });
+      expect(governance.governance.supports_budget_periods).toBe(current ? true : undefined);
+      for (const tenant of ['signals', 'creative']) {
+        const caps = await call(tenant, 'get_adcp_capabilities', { adcp_version });
+        expect(caps.account.stable_account_id, tenant).toBe(current ? true : undefined);
+      }
+
+      await call('sales', 'sync_accounts', {
+        adcp_version,
+        accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
+        idempotency_key: `candidate-three-three-provision-${adcp_version}`,
+      });
+      const listed = await call('sales', 'list_products', { adcp_version, account, max_results: 50 });
+      expect(listed.adcp_version).toBe(adcp_version);
+      const withInstallments = (listed.products as Array<Record<string, unknown>>)
+        .filter(product => Array.isArray(product.installments));
+      if (current) expect(withInstallments.length).toBeGreaterThan(0);
+      else expect(withInstallments).toEqual([]);
+
+      const audiences = await call('sales', 'sync_audiences', {
+        adcp_version, account,
+        idempotency_key: `candidate-three-three-audiences-${adcp_version}`,
+        audiences: [{
+          audience_id: 'candidate_loyalty', name: 'Candidate loyalty', audience_type: 'crm',
+          add: [{ external_id: 'member_1', hashed_email: 'a'.repeat(64) }],
+        }],
+      });
+      const sources = await call('sales', 'sync_event_sources', {
+        adcp_version, account,
+        idempotency_key: `candidate-three-three-sources-${adcp_version}`,
+        event_sources: [{ event_source_id: 'candidate_pixel', name: 'Candidate pixel', event_types: ['purchase'] }],
+      });
+      for (const row of [...audiences.audiences, ...sources.event_sources] as Array<Record<string, unknown>>) {
+        expect(typeof row.seller_id).toBe('string');
+        expect(row.platform_id).toBe(current ? row.seller_id : undefined);
+      }
+    }
   }, 60_000);
 });

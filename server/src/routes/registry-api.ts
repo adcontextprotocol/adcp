@@ -40,7 +40,7 @@ import {
   UnsupportedBuyingModeError,
   AccountRequiredError,
 } from "@adcp/sdk";
-import { getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
+import { getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -70,7 +70,7 @@ import {
   redactForDiagnostics,
   isNonExecutableCoverageGapScenario,
   classifyCapabilityResolutionError,
-  complianceDirToleratingUnknownSpecialism,
+  resolveHostedStoryboardsForCapabilities,
   presentCapabilityResolutionError,
   computeSpecialismStatus,
   derivePublicComplianceEligibility,
@@ -10031,25 +10031,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         runTarget.version,
         specialisms,
       );
-      let resolved: ReturnType<typeof resolveStoryboardsForCapabilities> | undefined;
+      let resolved: Awaited<ReturnType<typeof resolveHostedStoryboardsForCapabilities>> | undefined;
       let resolveErr: unknown;
       try {
-        resolved = resolveStoryboardsForCapabilities(caps, runOptions);
+        resolved = await resolveHostedStoryboardsForCapabilities(caps, runTarget);
       } catch (initialErr) {
         resolveErr = initialErr;
-        // A specialism AdCP introduced after this target's release has nothing
-        // to list, but it must not 422 the whole listing (#8269). Re-resolve
-        // against the overlay that treats it as not applicable; any other
-        // resolution fault still falls through to the fail-closed response.
-        const overlayDir = await complianceDirToleratingUnknownSpecialism(initialErr, runTarget);
-        if (overlayDir) {
-          try {
-            resolved = resolveStoryboardsForCapabilities(caps, { ...runOptions, complianceDir: overlayDir });
-            resolveErr = undefined;
-          } catch (overlayErr) {
-            resolveErr = overlayErr;
-          }
-        }
       }
 
       if (!resolved) {

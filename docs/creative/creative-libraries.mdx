@@ -156,6 +156,12 @@ The response tells you what happened to each creative:
 
 After upload, the creative enters the library's review process. Check `list_creatives` to see when it transitions from `pending_review` to `approved`.
 
+In AdCP 3.3, a buyer can book first and assign a library creative while it is
+`pending_review` or `rejected`. The assignment persists through correction and
+review under the same ID. Eligible approved assignments serve by default;
+`start_requires_all_creatives_approved: true` on a package holds its first
+delivery until every assignment has package approval. See the [creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review).
+
 ### Prepare creatives before a time-sensitive launch
 
 For a seller that advertises `creative.has_creative_library: true`, sync a finished creative before booking the campaign. This lets the seller review the library asset while the buyer finalizes the media buy. Use the same account when syncing, checking status, and assigning the creative.

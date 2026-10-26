@@ -61,6 +61,10 @@ import {
   deriveVerificationStatus,
 } from '../../src/addie/services/compliance-testing.js';
 import { hostedComplianceTarget } from '../../src/services/hosted-compliance-version.js';
+import {
+  complianceDirWith3_0GovernanceScoping,
+  HOSTED_3_0_GOVERNANCE_POLICY,
+} from '../../src/compliance/hosted-3-0-governance.js';
 
 const AGENT_URL = 'https://agent.example/mcp';
 const target = hostedComplianceTarget('3.0');
@@ -118,9 +122,18 @@ describe('hosted comply() with a specialism the graded release predates', () => 
 
     expect(mocks.sdkComply).toHaveBeenCalledTimes(2);
     const [firstDir, retryDir] = complianceDirsUsed();
-    expect(firstDir).toBe(target.complianceDir);
+    expect(firstDir).toBe(await complianceDirWith3_0GovernanceScoping(target));
     expect(retryDir).toBeTruthy();
     expect(retryDir).not.toBe(target.complianceDir);
+    expect(retryDir).not.toBe(firstDir);
+
+    const { resolveStoryboardsForCapabilities } = await vi.importActual<typeof import('@adcp/sdk/testing')>('@adcp/sdk/testing');
+    const retriedSelection = resolveStoryboardsForCapabilities({
+      supported_protocols: ['media_buy'],
+      specialisms: ['sales-guaranteed', 'sponsored-intelligence'],
+    }, { complianceDir: retryDir });
+    expect(retriedSelection.storyboards.some(storyboard => storyboard.id.startsWith('media_buy_seller/governance_')))
+      .toBe(false);
 
     expect(result.overall_status).toBe('passing');
     expect(result.completeness).toBe('complete');
@@ -130,6 +143,7 @@ describe('hosted comply() with a specialism the graded release predates', () => 
     const provenance = (result as ComplianceResult & { hosted_provenance?: { tolerated_undefined_specialisms?: string[] } })
       .hosted_provenance;
     expect(provenance?.tolerated_undefined_specialisms).toEqual(['sponsored-intelligence']);
+    expect(result).toHaveProperty('hosted_provenance.grading_policy_version', HOSTED_3_0_GOVERNANCE_POLICY);
 
     const specialismBundle = result.bundle_results
       ?.find(bundle => bundle.kind === 'specialism' && bundle.id === 'sponsored-intelligence');
@@ -161,6 +175,7 @@ describe('hosted comply() with a specialism the graded release predates', () => 
 
     expect(result.failures?.[0].fix_command).toContain(target.complianceDir);
     expect(result.failures?.[0].fix_command).not.toContain('adcp-compliance-overlay-');
+    expect(result.failures?.[0].fix_command).not.toContain('adcp-3-0-governance-');
   });
 
   it('hands the retry what is left of the run budget', async () => {
@@ -203,13 +218,13 @@ describe('hosted comply() with a specialism the graded release predates', () => 
     expect(mocks.sdkComply).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves a run that declares only known specialisms untouched', async () => {
+  it('applies governance scoping without tolerating any unknown specialisms on a normal run', async () => {
     mocks.sdkComply.mockResolvedValueOnce(resultFor(['sales-guaranteed']));
 
     const result = await comply(AGENT_URL, {}, target);
 
     expect(mocks.sdkComply).toHaveBeenCalledTimes(1);
-    expect(complianceDirsUsed()).toEqual([target.complianceDir]);
+    expect(complianceDirsUsed()).toEqual([await complianceDirWith3_0GovernanceScoping(target)]);
     expect(
       (result as ComplianceResult & { hosted_provenance?: { tolerated_undefined_specialisms?: string[] } })
         .hosted_provenance?.tolerated_undefined_specialisms,
