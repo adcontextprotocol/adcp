@@ -10,6 +10,7 @@
     "outcome": { "type": "string", "const": "listed" },
     "proposals": {
       "type": "array",
+      "maxItems": 100,
       "items": {
         "type": "object",
         "properties": {
@@ -80,6 +81,7 @@
     },
     "opportunities": {
       "type": "array",
+      "maxItems": 100,
       "description": "Current state of each opportunity referenced by a returned proposal or named in opportunity_ids. One entry per opportunity_id; unknown or inaccessible opportunity IDs are omitted, not errors.",
       "items": {
         "type": "object",
@@ -116,7 +118,7 @@
         "additionalProperties": false
       }
     },
-    "next_cursor": { "type": "string", "minLength": 1 },
+    "next_cursor": { "type": "string", "maxLength": 4096, "minLength": 1 },
     "replayed": { "type": "boolean", "const": true },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }

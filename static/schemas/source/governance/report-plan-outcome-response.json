@@ -13,6 +13,7 @@
   "properties": {
     "outcome_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Unique identifier for this outcome record.",
       "x-entity": "governance_outcome"
     },
@@ -46,12 +47,14 @@
     },
     "findings": {
       "type": "array",
+      "maxItems": 100,
       "description": "Issues detected. Present only when outcome_state is 'findings'.",
       "items": {
         "type": "object",
         "properties": {
           "category_id": {
             "type": "string",
+            "maxLength": 255,
             "description": "Which validation category flagged the issue."
           },
           "severity": {
@@ -60,6 +63,7 @@
           },
           "explanation": {
             "type": "string",
+            "maxLength": 2000,
             "description": "Human-readable description of the issue."
           },
           "details": {

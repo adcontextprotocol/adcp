@@ -12,7 +12,8 @@
     {
       "properties": {
         "pricing_option_id": {
-          "type": "string"
+          "type": "string",
+          "maxLength": 255
         },
         "amount": {
           "type": "number",

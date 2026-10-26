@@ -13,6 +13,7 @@
     },
     "adcp_version": {
       "type": "string",
+      "maxLength": 64,
       "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin. Inlined here (rather than via core/version-envelope.json allOf) so this schema can keep `additionalProperties: false` — the privacy boundary on this endpoint is contract-bearing.",
       "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
     },
@@ -31,11 +32,13 @@
     },
     "protocol_version": {
       "type": "string",
+      "maxLength": 64,
       "description": "TMP protocol version. Allows receivers to handle semantic differences across versions.",
       "default": "1.0"
     },
     "request_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Unique request identifier. MUST NOT correlate with any identity match request_id."
     },
     "property_rid": {
@@ -53,6 +56,7 @@
     },
     "placement_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Placement identifier from the publisher's placement registry in adagents.json. Identifies where on the property this ad opportunity exists. One placement per request."
     },
     "seller_agent_url": {
@@ -87,6 +91,7 @@
           },
           "value": {
             "type": "string",
+            "maxLength": 255,
             "description": "The identifier value. For 'url': the canonical content URL — MUST NOT contain user-specific path segments, query parameters, or fragments; use 'url_hash' when the publisher prefers not to reveal the URL. For 'url_hash': Blake3 hash of the canonicalized URL, base64-encoded (canonicalization: strip scheme, strip www./m./amp. prefixes, lowercase, strip trailing slash, strip query params and fragments). For 'eidr': the EIDR DOI (e.g., '10.5240/xxxx'). For 'gracenote': the Gracenote TMS ID (e.g., 'SH032541890000'). For 'isrc': the ISRC code (e.g., 'USRC17607839'). For 'gtin': the GTIN (e.g., '00012345678905'). For 'rss_guid': the episode GUID from the RSS feed. For 'isbn': the ISBN (e.g., '978-0-123456-78-9'). For 'custom': a publisher-defined identifier."
           }
         },
@@ -123,6 +128,7 @@
             },
             "value": {
               "type": "string",
+              "maxLength": 255,
               "description": "Metro code within the system (e.g., '501' for New York DMA)."
             }
           },
@@ -143,12 +149,14 @@
           "type": "array",
           "description": "Content topic identifiers. Use IAB Content Taxonomy 3.0 IDs (e.g., '632' for Food & Drink) when taxonomy_id is 7, or bounded human-readable category labels (e.g., 'cooking.pasta') for custom taxonomies. For non-public content attributable to a single user or session, publishers MUST use standardized taxonomy identifiers or bounded custom category labels; custom topic strings MUST NOT reproduce distinctive verbatim phrasing and MUST NOT include PII or uniquely identifying details.",
           "items": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           },
           "maxItems": 50
         },
         "taxonomy_source": {
           "type": "string",
+          "maxLength": 255,
           "description": "Organization that defines the topic taxonomy. Use 'iab' for IAB Content Taxonomy. Publishers may use other values for custom taxonomies.",
           "default": "iab"
         },
@@ -185,7 +193,8 @@
           "type": "array",
           "description": "Policy IDs from the AdCP policy registry that this content satisfies (e.g., 'csbs' for Common Sense Brand Standards). Buyers filter on policies they require. An empty array means no policies have been evaluated.",
           "items": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           },
           "maxItems": 20
         },
@@ -196,10 +205,12 @@
         },
         "embedding": {
           "type": "string",
+          "maxLength": 65536,
           "description": "Content embedding as base64-encoded int8 vector. Captures semantic content beyond what topics and keywords express. MUST NOT be computed directly or indirectly from non-public content authored by or attributable to a single user or session, including conversation turns, prompts, and individual search queries. MAY represent public content or a shared content environment that is not attributable to one user's activity. Publishers declare the model used. For standardized matching, use the protocol-recommended model (nomic-embed-text-v1.5, 256 dims, int8 quantized = 256 bytes)."
         },
         "embedding_model": {
           "type": "string",
+          "maxLength": 500,
           "description": "Embedding model identifier (e.g., 'nomic-embed-text-v1.5'). Required when embedding is present."
         },
         "embedding_dims": {
@@ -215,7 +226,8 @@
       "type": "array",
       "description": "Restrict evaluation to specific packages. When omitted, the provider evaluates all eligible packages for this placement (the common case). MUST NOT vary by user — the same package_ids must be sent for every user on a given placement. User-dependent filtering leaks identity into the context path.",
       "items": {
-        "type": "string"
+        "type": "string",
+        "maxLength": 255
       },
       "minItems": 1,
       "maxItems": 500

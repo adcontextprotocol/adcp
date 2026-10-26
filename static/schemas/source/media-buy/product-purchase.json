@@ -148,6 +148,7 @@
     },
     "rights": {
       "type": "array",
+      "maxItems": 100,
       "items": { "$ref": "/schemas/brand/rights-scope.json" },
       "minItems": 1,
       "x-status": "experimental",

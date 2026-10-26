@@ -19,6 +19,7 @@
       "properties": {
         "rights_id": {
           "type": "string",
+          "maxLength": 255,
           "description": "Rights grant identifier",
           "x-entity": "rights_grant"
         },
@@ -29,6 +30,7 @@
         },
         "brand_id": {
           "type": "string",
+          "maxLength": 255,
           "description": "Brand identifier of the rights subject",
           "x-entity": "rights_holder_brand"
         },
@@ -38,6 +40,7 @@
         },
         "generation_credentials": {
           "type": "array",
+          "maxItems": 100,
           "description": "Scoped credentials for generating rights-cleared content",
           "items": {
             "$ref": "/schemas/core/generation-credential.json"
@@ -45,9 +48,11 @@
         },
         "restrictions": {
           "type": "array",
+          "maxItems": 100,
           "description": "Usage restrictions and requirements",
           "items": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           }
         },
         "disclosure": {
@@ -60,6 +65,7 @@
             },
             "text": {
               "type": "string",
+              "maxLength": 2000,
               "description": "Disclosure text to include with the creative"
             }
           },
@@ -119,6 +125,7 @@
       "properties": {
         "rights_id": {
           "type": "string",
+          "maxLength": 255,
           "x-entity": "rights_grant"
         },
         "rights_status": {
@@ -128,14 +135,17 @@
         },
         "brand_id": {
           "type": "string",
+          "maxLength": 255,
           "x-entity": "rights_holder_brand"
         },
         "detail": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Explanation of what requires approval"
         },
         "estimated_response_time": {
           "type": "string",
+          "maxLength": 500,
           "description": "Expected time for approval decision (e.g., '48h', '3 business days')"
         },
         "context": {
@@ -162,6 +172,7 @@
       "properties": {
         "rights_id": {
           "type": "string",
+          "maxLength": 255,
           "x-entity": "rights_grant"
         },
         "rights_status": {
@@ -171,17 +182,21 @@
         },
         "brand_id": {
           "type": "string",
+          "maxLength": 255,
           "x-entity": "rights_holder_brand"
         },
         "reason": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Why the rights request was rejected. May be sanitized to protect confidential brand rules — e.g., 'This violates our public figures brand guidelines' rather than naming the specific rule."
         },
         "suggestions": {
           "type": "array",
+          "maxItems": 100,
           "description": "Actionable alternatives the buyer can try. If present, the rejection is fixable — the buyer can adjust their request. If absent, the rejection is final for this talent/rights combination.",
           "items": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           }
         },
         "context": {
@@ -209,6 +224,7 @@
       "properties": {
         "errors": {
           "type": "array",
+          "maxItems": 100,
           "items": {
             "$ref": "/schemas/core/error.json"
           },

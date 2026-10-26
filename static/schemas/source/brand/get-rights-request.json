@@ -18,6 +18,7 @@
     },
     "uses": {
       "type": "array",
+      "maxItems": 32,
       "description": "Rights uses being requested. The agent returns options covering these uses, potentially bundled into composite pricing.",
       "items": {
         "$ref": "/schemas/enums/right-use.json"
@@ -30,6 +31,7 @@
     },
     "countries": {
       "type": "array",
+      "maxItems": 32,
       "description": "Countries where rights are needed (ISO 3166-1 alpha-2). Filters to rights available in these markets.",
       "items": {
         "type": "string",
@@ -38,6 +40,7 @@
     },
     "brand_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Search within a specific brand's rights. If omitted, searches across the agent's full roster.",
       "x-entity": "rights_holder_brand"
     },

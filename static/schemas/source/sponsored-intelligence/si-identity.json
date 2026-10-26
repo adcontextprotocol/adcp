@@ -17,6 +17,7 @@
     },
     "consent_scope": {
       "type": "array",
+      "maxItems": 32,
       "items": {
         "type": "string",
         "enum": ["name", "email", "shipping_address", "phone", "locale"]
@@ -34,6 +35,7 @@
         },
         "brand_policy_version": {
           "type": "string",
+          "maxLength": 64,
           "description": "Version of policy acknowledged"
         }
       },
@@ -50,25 +52,28 @@
         },
         "name": {
           "type": "string",
+          "maxLength": 255,
           "description": "User's display name"
         },
         "locale": {
           "type": "string",
+          "maxLength": 64,
           "description": "User's locale (e.g., en-US)"
         },
         "phone": {
           "type": "string",
+          "maxLength": 30,
           "description": "User's phone number"
         },
         "shipping_address": {
           "type": "object",
           "description": "User's shipping address for accurate pricing",
           "properties": {
-            "street": { "type": "string" },
-            "city": { "type": "string" },
-            "state": { "type": "string" },
-            "postal_code": { "type": "string" },
-            "country": { "type": "string" }
+            "street": { "type": "string", "maxLength": 200 },
+            "city": { "type": "string", "maxLength": 100 },
+            "state": { "type": "string", "maxLength": 100 },
+            "postal_code": { "type": "string", "maxLength": 64 },
+            "country": { "type": "string", "maxLength": 64 }
           },
           "additionalProperties": true
         }
@@ -77,6 +82,7 @@
     },
     "anonymous_session_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Session ID for anonymous users (when consent_granted is false)",
       "x-entity": "si_session"
     }

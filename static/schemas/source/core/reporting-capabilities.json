@@ -145,6 +145,7 @@
     },
     "available_installment_statuses": {
       "type": "array",
+      "maxItems": 32,
       "x-status": "experimental",
       "x-added-in": "3.3.0",
       "items": { "$ref": "/schemas/enums/installment-status.json" },

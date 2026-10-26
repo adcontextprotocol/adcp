@@ -7,6 +7,7 @@
   "properties": {
     "rejections": {
       "type": "array",
+      "maxItems": 100,
       "minItems": 1,
       "items": {
         "type": "object",
@@ -18,16 +19,19 @@
           },
           "creative_id": {
             "type": "string",
+            "maxLength": 255,
             "minLength": 1,
             "x-entity": "creative"
           },
           "package_id": {
             "type": "string",
+            "maxLength": 255,
             "minLength": 1,
             "x-entity": "package"
           },
           "merged_creative_id": {
             "type": "string",
+            "maxLength": 255,
             "minLength": 1,
             "x-entity": "creative"
           },

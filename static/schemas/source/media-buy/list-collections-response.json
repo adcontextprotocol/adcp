@@ -22,6 +22,7 @@
     "pagination": { "$ref": "/schemas/core/pagination-response.json" },
     "collections_version": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Opaque version of the selected catalog, scoped to the canonicalized collections selectors and filters (arrays compared as sets, pagination.cursor excluded), plus account identity when cache_scope is account. It changes whenever any copy the selection would return, or the set of collections it selects, changes. A follower refresh that leaves a count's bounds and precision unchanged is not a change. Independent of feed_version and wholesale_feed_version: a change to one says nothing about the others. The unfiltered read (no collections selectors, no filters) carries the same version token as collection_card.* and collection_catalog.bulk_change webhooks for that cache_scope."
     },

@@ -36,6 +36,7 @@
               "platform_id": {
                 "x-added-in": "3.3.0",
                 "type": "string",
+                "maxLength": 255,
                 "description": "Platform-specific ID assigned to the audience by the seller's ad platform. Introduced in AdCP 3.3. When reporting a platform identifier in 3.3 and later 3.x responses, sellers MUST emit both platform_id and the deprecated seller_id alias with identical values. Buyers MUST prefer platform_id and fall back to seller_id only when platform_id is absent. This identifies the object on the platform, not the seller.",
                 "$comment": "x-entity deliberately omitted: seller-opaque platform identifier; AdCP requests reference audience_id instead."
               },
@@ -153,16 +154,19 @@
                   },
                   "locator": {
                     "type": "string",
+                    "maxLength": 2048,
                     "description": "Dataset locator, echoed from the request (kind: dataset)."
                   },
                   "segment_ref": {
                     "type": "string",
+                    "maxLength": 255,
                     "description": "Segment reference, echoed from the request (kind: platform_segment)."
                   },
                   "columns_read": {
                     "type": "array",
+                    "maxItems": 100,
                     "description": "Canonical identifier columns the seller actually read from the shared object on the most recent ingest (kind: dataset). Lets a buyer distinguish bad identifier data from a column the seller never read — match_breakdown reveals what resolved, not what was offered.",
-                    "items": { "type": "string" },
+                    "items": { "type": "string", "maxLength": 500 },
                     "minItems": 1
                   },
                   "access_status": {

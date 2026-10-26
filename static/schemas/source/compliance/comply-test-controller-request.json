@@ -1261,6 +1261,7 @@
         },
         "installment_delivery": {
           "type": "array",
+          "maxItems": 100,
           "minItems": 1,
           "x-status": "experimental",
           "x-added-in": "3.3.0",

@@ -12,6 +12,7 @@
     "properties": {
       "product_id": {
         "type": "string",
+        "maxLength": 255,
         "minLength": 1,
         "x-entity": "product",
         "description": "Product whose purchase in commercial_terms.purchases carries the installment."

@@ -72,6 +72,7 @@
   "definitions": {
     "positive_duration": {
       "type": "string",
+      "maxLength": 64,
       "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$",
       "description": "Strictly positive ISO 8601 duration using only days, hours, minutes, and seconds, such as P2D or PT36H. A day is exactly 24 hours of elapsed time on the UTC instant. Year, month, and week parts are excluded so a duration never depends on calendar length."
     }

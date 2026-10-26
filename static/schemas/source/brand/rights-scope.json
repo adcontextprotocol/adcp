@@ -9,6 +9,7 @@
   "properties": {
     "uses": {
       "type": "array",
+      "maxItems": 32,
       "items": { "$ref": "/schemas/enums/right-use.json" },
       "minItems": 1
     },
@@ -24,9 +25,10 @@
       "type": "object",
       "description": "Exclusivity terms if applicable",
       "properties": {
-        "scope": { "type": "string" },
+        "scope": { "type": "string", "maxLength": 500 },
         "countries": {
           "type": "array",
+          "maxItems": 32,
           "items": {
             "type": "string",
             "pattern": "^[A-Z]{2}$"

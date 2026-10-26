@@ -13,11 +13,13 @@
   "properties": {
     "offering_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Offering identifier from the catalog to get details for",
       "x-entity": "offering"
     },
     "intent": {
       "type": "string",
+      "maxLength": 255,
       "description": "Optional natural language description of user intent for personalized results (e.g., 'mens size 14 near Cincinnati'). Must be anonymous - no PII."
     },
     "context": {

@@ -21,12 +21,14 @@
     },
     "plans": {
       "type": "array",
+      "maxItems": 100,
       "description": "One or more campaign plans to sync.",
       "items": {
         "type": "object",
         "properties": {
           "plan_id": {
             "type": "string",
+            "maxLength": 255,
             "description": "Unique identifier for this plan.",
             "x-entity": "governance_plan"
           },
@@ -49,6 +51,7 @@
               },
               "currency": {
                 "type": "string",
+                "maxLength": 64,
                 "description": "ISO 4217 currency code."
               },
               "accounting_mode": {
@@ -179,6 +182,7 @@
             "properties": {
               "required": {
                 "type": "array",
+                "maxItems": 32,
                 "items": {
                   "$ref": "/schemas/enums/channels.json"
                 },
@@ -186,6 +190,7 @@
               },
               "allowed": {
                 "type": "array",
+                "maxItems": 32,
                 "items": {
                   "$ref": "/schemas/enums/channels.json"
                 },
@@ -233,33 +238,41 @@
           },
           "countries": {
             "type": "array",
+            "maxItems": 32,
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 64
             },
             "minItems": 1,
             "description": "ISO 3166-1 alpha-2 country codes for authorized markets (e.g., ['US', 'GB']). The governance agent rejects governed actions targeting outside these countries and resolves applicable policies by matching against policy jurisdictions."
           },
           "regions": {
             "type": "array",
+            "maxItems": 32,
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 64
             },
             "minItems": 1,
             "description": "ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., ['US-MA', 'US-CA']). When present, the governance agent restricts governed actions to these specific regions rather than the full country. Use for plans limited to specific states or provinces (e.g., cannabis in legal states). Policy resolution matches against both the subdivision and its parent country."
           },
           "policy_ids": {
             "type": "array",
+            "maxItems": 100,
             "items": {
               "type": "string",
+              "maxLength": 255,
               "x-entity": "governance_registry_policy"
             },
             "description": "Registry policy IDs to enforce for this plan. The governance agent resolves full policy definitions from the registry and evaluates actions against them. Intersected with the plan's countries/regions to activate only geographically relevant policies."
           },
           "policy_categories": {
             "type": "array",
+            "maxItems": 32,
             "description": "Regulatory categories that apply to this campaign. Determines which policy regimes the governance agent enforces (e.g., 'children_directed' activates COPPA/AADC, 'political_advertising' activates disclosure requirements). The governance agent resolves categories to specific policies based on the plan's jurisdictions. When omitted, governance agents MAY infer categories from the brand's industries and the plan's objectives. Values are registry-defined category IDs (intentionally freeform strings, not an enum — new categories are added as regulations evolve).",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 500
             },
             "minItems": 1
           },
@@ -269,6 +282,7 @@
           },
           "restricted_attributes": {
             "type": "array",
+            "maxItems": 32,
             "description": "Personal data categories that must not be used for targeting in this campaign. Applies horizontally across all audience criteria. Used for EU DSA Article 26 compliance (prohibits targeting on GDPR Article 9 special categories) and similar regulations. The governance agent flags any audience targeting that references these attributes.",
             "items": {
               "$ref": "/schemas/enums/restricted-attribute.json"
@@ -277,9 +291,11 @@
           },
           "restricted_attributes_custom": {
             "type": "array",
+            "maxItems": 100,
             "description": "Additional restricted attributes not covered by the restricted-attribute enum. Freeform strings for jurisdiction-specific or brand-specific restrictions beyond GDPR Article 9 categories (e.g., 'financial_status', 'immigration_status'). Governance agents use semantic matching for these.",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 500
             },
             "minItems": 1
           },
@@ -295,6 +311,7 @@
           },
           "custom_policies": {
             "type": "array",
+            "maxItems": 100,
             "items": {
               "$ref": "/schemas/governance/policy-entry.json"
             },
@@ -305,6 +322,7 @@
               "array",
               "null"
             ],
+            "maxItems": 100,
             "items": {
               "type": "string",
               "format": "uri"
@@ -313,6 +331,7 @@
           },
           "delegations": {
             "type": "array",
+            "maxItems": 100,
             "description": "Agents authorized to execute against this plan. Each delegation scopes an agent's authority by budget, markets, and expiration. The governance agent validates that the requesting agent matches a delegation before approving actions.",
             "items": {
               "type": "object",
@@ -334,7 +353,8 @@
                       "type": "number"
                     },
                     "currency": {
-                      "type": "string"
+                      "type": "string",
+                      "maxLength": 64
                     }
                   },
                   "required": [
@@ -345,8 +365,10 @@
                 },
                 "markets": {
                   "type": "array",
+                  "maxItems": 100,
                   "items": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 500
                   },
                   "description": "ISO 3166-1/3166-2 codes this agent is authorized for. When omitted, the agent can operate in all plan markets."
                 },
@@ -369,8 +391,10 @@
             "properties": {
               "member_plan_ids": {
                 "type": "array",
+                "maxItems": 100,
                 "items": {
                   "type": "string",
+                  "maxLength": 255,
                   "x-entity": "governance_plan"
                 },
                 "description": "Plan IDs governed by this portfolio plan. The governance agent validates member plan actions against portfolio constraints."
@@ -383,7 +407,8 @@
                     "type": "number"
                   },
                   "currency": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 64
                   }
                 },
                 "required": [
@@ -394,14 +419,17 @@
               },
               "shared_policy_ids": {
                 "type": "array",
+                "maxItems": 100,
                 "items": {
                   "type": "string",
+                  "maxLength": 255,
                   "x-entity": "governance_registry_policy"
                 },
                 "description": "Registry policy IDs enforced across all member plans, regardless of individual brand configuration."
               },
               "shared_exclusions": {
                 "type": "array",
+                "maxItems": 100,
                 "items": {
                   "$ref": "/schemas/governance/policy-entry.json"
                 },
@@ -430,6 +458,7 @@
               "properties": {
                 "policy_categories": {
                   "type": "array",
+                  "maxItems": 32,
                   "contains": {
                     "enum": [
                       "fair_housing",
@@ -460,6 +489,7 @@
               "properties": {
                 "policy_ids": {
                   "type": "array",
+                  "maxItems": 100,
                   "contains": {
                     "const": "eu_ai_act_annex_iii"
                   }

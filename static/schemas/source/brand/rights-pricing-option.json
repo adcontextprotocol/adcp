@@ -8,6 +8,7 @@
   "properties": {
     "pricing_option_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Unique identifier for this pricing option. Referenced in acquire_rights and report_usage."
     },
     "model": {
@@ -26,6 +27,7 @@
     },
     "uses": {
       "type": "array",
+      "maxItems": 32,
       "description": "Which rights uses this pricing option covers. A single option can bundle multiple uses (e.g., likeness + voice).",
       "items": {
         "$ref": "/schemas/enums/right-use.json"
@@ -48,6 +50,7 @@
     },
     "description": {
       "type": "string",
+      "maxLength": 2000,
       "description": "Human-readable description of this pricing option"
     },
     "ext": {

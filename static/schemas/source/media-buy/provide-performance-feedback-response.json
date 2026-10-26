@@ -25,6 +25,7 @@
         },
         "feedback_id": {
           "type": "string",
+          "maxLength": 255,
           "minLength": 1,
           "x-status": "experimental",
           "description": "Receiver-issued identifier for this immutable assertion. Orchestrator gateways and sellers declaring media_buy.performance_feedback MUST return it; legacy sellers may omit it. The identifier is local to the receiving hop. Use it in supersedes_feedback_id when revising that hop's assertion."

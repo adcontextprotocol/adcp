@@ -8,6 +8,7 @@
   "properties": {
     "installment_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Installment ID within the referenced collection. Collection-scoped, not globally unique.",
       "x-entity": "installment"
@@ -18,14 +19,17 @@
     },
     "name": {
       "type": "string",
+      "maxLength": 255,
       "description": "Installment title"
     },
     "season": {
       "type": "string",
+      "maxLength": 64,
       "description": "Season identifier (e.g., '1', '2024', 'spring_2026')"
     },
     "installment_number": {
       "type": "string",
+      "maxLength": 64,
       "description": "Installment number within the season (e.g., '3', '47')"
     },
     "scheduled_at": {
@@ -57,8 +61,9 @@
     },
     "topics": {
       "type": "array",
+      "maxItems": 32,
       "description": "Content topics for this installment. Uses the same taxonomy as the collection's genre_taxonomy when present. Enables installment-level brand safety evaluation beyond content_rating.",
-      "items": { "type": "string" },
+      "items": { "type": "string", "maxLength": 500 },
       "minItems": 1
     },
     "special": {
@@ -67,6 +72,7 @@
     },
     "guest_talent": {
       "type": "array",
+      "maxItems": 100,
       "description": "Installment-specific guests and talent. Additive to the collection's recurring talent.",
       "items": { "$ref": "/schemas/core/talent.json" },
       "minItems": 1

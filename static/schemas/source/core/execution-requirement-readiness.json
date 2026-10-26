@@ -15,6 +15,7 @@
     },
     "binding_field": {
       "type": "string",
+      "maxLength": 500,
       "minLength": 1,
       "description": "Where the buyer binds the resource, in the form of `error.field`. Omitted for `downstream_connection`. For `event_source` and `catalog`, SHOULD be present when `ready` or `selection_required`."
     },
@@ -24,11 +25,13 @@
       "properties": {
         "resource_id": {
           "type": "string",
+          "maxLength": 255,
           "minLength": 1,
           "description": "Directly usable in `binding_field`: the `event_source_id` from `sync_event_sources` (including a seller-managed source) or a `catalog_id`. Never a raw platform ID unless that is what the field accepts."
         },
         "name": {
           "type": "string",
+          "maxLength": 255,
           "description": "Human-readable name of the resource on the seller's platform."
         },
         "ext": {
@@ -40,17 +43,20 @@
     },
     "candidates": {
       "type": "array",
+      "maxItems": 100,
       "description": "Resources the account has, when `selection_required`, for `event_source` and `catalog`. Account-scoped, never disclosed across accounts. Lists resources the seller has no evidence would fail the requirement; MAY include one whose event types or catalog type it cannot verify.",
       "items": {
         "type": "object",
         "properties": {
           "resource_id": {
             "type": "string",
+            "maxLength": 255,
             "minLength": 1,
             "description": "Directly usable in `binding_field`, as for `resolved.resource_id`."
           },
           "name": {
             "type": "string",
+            "maxLength": 255,
             "description": "Human-readable name of the resource on the seller's platform."
           },
           "ext": {
@@ -74,6 +80,7 @@
     },
     "issues": {
       "type": "array",
+      "maxItems": 100,
       "description": "Actionable detail for a non-`ready` status. SHOULD be limited to the 3-5 most actionable items.",
       "items": {
         "$ref": "/schemas/core/diagnostic-issue.json"

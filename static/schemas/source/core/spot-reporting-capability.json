@@ -16,6 +16,7 @@
     "available_statuses": {
       "x-added-in": "3.3.0",
       "type": "array",
+      "maxItems": 32,
       "x-status": "experimental",
       "description": "Spot lifecycle statuses this product reports in by_spot. Absent, or an empty array, means the seller reports only aired rows without a spot_status, the AdCP 3.2 behavior. When present, a status that is not listed is not reported: the absence of scheduled, preempted, or makegood rows then proves nothing about whether any such spots exist, and a buyer MUST NOT read it as nothing scheduled, nothing preempted, or no makegoods. 'aired' is always reported and need not be listed. Sellers MUST NOT emit this field to callers pinned below AdCP 3.3, or to callers with no declared pin.",
       "items": {

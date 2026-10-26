@@ -21,11 +21,13 @@
     },
     "session_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Active session identifier",
       "x-entity": "si_session"
     },
     "message": {
       "type": "string",
+      "maxLength": 2000,
       "description": "User's message to the brand agent"
     },
     "action_response": {
@@ -34,6 +36,7 @@
       "properties": {
         "action": {
           "type": "string",
+          "maxLength": 255,
           "description": "The action that was triggered"
         },
         "payload": {

@@ -20,6 +20,7 @@
     },
     "offering_token": {
       "type": "string",
+      "maxLength": 4096,
       "description": "Token to pass to si_initiate_session for session continuity. Brand stores the full query context server-side (products shown, order, context) so they can resolve references like 'the second one' when the session starts."
     },
     "ttl_seconds": {
@@ -38,19 +39,23 @@
       "properties": {
         "offering_id": {
           "type": "string",
+          "maxLength": 255,
           "description": "Offering identifier",
           "x-entity": "offering"
         },
         "title": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Offering title"
         },
         "summary": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Brief summary of the offering"
         },
         "tagline": {
           "type": "string",
+          "maxLength": 255,
           "description": "Short promotional tagline"
         },
         "expires_at": {
@@ -64,6 +69,7 @@
         },
         "price_hint": {
           "type": "string",
+          "maxLength": 64,
           "description": "Price indication (e.g., 'from $199', '50% off')"
         },
         "image_url": {
@@ -81,25 +87,30 @@
     },
     "matching_products": {
       "type": "array",
+      "maxItems": 100,
       "description": "Products matching the request context. Only included if include_products was true.",
       "items": {
         "type": "object",
         "properties": {
           "product_id": {
             "type": "string",
+            "maxLength": 255,
             "description": "Product identifier",
             "x-entity": "product"
           },
           "name": {
             "type": "string",
+            "maxLength": 255,
             "description": "Product name"
           },
           "price": {
             "type": "string",
+            "maxLength": 64,
             "description": "Display price (e.g., '$129', '$89.99')"
           },
           "original_price": {
             "type": "string",
+            "maxLength": 64,
             "description": "Original price if on sale"
           },
           "image_url": {
@@ -109,6 +120,7 @@
           },
           "availability_summary": {
             "type": "string",
+            "maxLength": 2000,
             "description": "Brief availability info (e.g., 'In stock', 'Size 14 available', '3 left')"
           },
           "availability_status": {
@@ -139,18 +151,22 @@
     },
     "unavailable_reason": {
       "type": "string",
+      "maxLength": 2000,
       "description": "If not available, why (e.g., 'expired', 'sold_out', 'region_restricted')"
     },
     "alternative_offering_ids": {
       "type": "array",
+      "maxItems": 1000,
       "items": {
         "type": "string",
+        "maxLength": 255,
         "x-entity": "offering"
       },
       "description": "Alternative offerings to consider if this one is unavailable"
     },
     "errors": {
       "type": "array",
+      "maxItems": 100,
       "items": {
         "$ref": "/schemas/core/error.json"
       },

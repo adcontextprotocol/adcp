@@ -16,6 +16,7 @@
     "observed_row_count": { "type": "integer", "minimum": 0 },
     "observed_control_totals": {
       "type": "array",
+      "maxItems": 100,
       "items": { "$ref": "/schemas/core/reporting-control-total.json" },
       "uniqueItems": true
     },
@@ -25,6 +26,7 @@
     "consumer_commit_ref": { "type": "string", "minLength": 1, "maxLength": 512, "description": "Optional non-secret consumer checkpoint, transaction, or load identifier. It is evidence for operations, not authorization or a credential." },
     "rejection_codes": {
       "type": "array",
+      "maxItems": 100,
       "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z][A-Z0-9_]*$" },
       "minItems": 1,
       "uniqueItems": true

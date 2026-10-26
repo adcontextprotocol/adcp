@@ -41,11 +41,13 @@
     },
     "account_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "x-entity": "account"
     },
     "media_buy_ids": {
       "type": "array",
+      "maxItems": 1000,
       "items": {
         "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId"
       },
@@ -74,6 +76,7 @@
         },
         "source_timezone": {
           "type": "string",
+          "maxLength": 64,
           "minLength": 1
         }
       },
@@ -176,6 +179,7 @@
     "pending_adjustment_count": { "type": "integer", "minimum": 0, "description": "Number of applicable adjustments without an accepted receipt. Reconciled Billing complete/healthy requires zero." },
     "issues": {
       "type": "array",
+      "maxItems": 100,
       "items": {
         "$ref": "/schemas/core/reporting-status-issue.json"
       }

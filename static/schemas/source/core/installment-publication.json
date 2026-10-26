@@ -15,6 +15,7 @@
     },
     "posts": {
       "type": "array",
+      "maxItems": 100,
       "minItems": 1,
       "x-added-in": "3.3.0",
       "items": { "$ref": "/schemas/core/assets/published-post-asset.json" },

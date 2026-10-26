@@ -69,6 +69,7 @@
           },
           "platform_id": {
             "type": "string",
+            "maxLength": 255,
             "description": "The seller's identifier for this creative in its source of truth. Same meaning as platform_id in the sync_creatives response, readable after that response is gone. May equal creative_id for seller-assigned creatives.",
             "$comment": "x-entity deliberately omitted: seller-opaque identifier in the seller's own namespace; buyers echo creative_id, never platform_id, on AdCP requests.",
             "x-added-in": "3.3.0"
@@ -303,6 +304,7 @@
                     },
                     "trackers": {
                       "type": "array",
+                      "maxItems": 100,
                       "items": { "$ref": "/schemas/core/assignment-tracker.json" },
                       "description": "The complete assignment-scoped tracker list for this creative on this package, retaining the accepted URL templates, events, multiplicity, and order. Sellers supporting creative.supports_assignment_trackers MUST return this array, using [] when no assignment trackers exist. Excludes the creative's own trackers, which remain in its assets and also fire for this placement; this is not a combined effective tracker list.",
                       "x-added-in": "3.3.0"

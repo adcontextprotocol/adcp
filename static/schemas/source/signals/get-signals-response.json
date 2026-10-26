@@ -106,6 +106,7 @@
           },
           "source_audience_id": {
             "type": "string",
+            "maxLength": 255,
             "x-status": "experimental",
             "x-added-in": "3.3.0",
             "description": "Seed audience this signal was derived from, for example a lookalike or custom segment built from a first-party seed. When present, this is the audience_id the buyer synced with sync_audiences (typically audience_type 'lookalike_seed') on the same account, at the agent that holds the seed. Lineage only: AdCP does not transport seed membership through get_signals, and the audience remains governed by its sync_audiences consent and residency terms. Agents MUST NOT return it to a caller that did not supply an account, or in a response with cache_scope 'public', because the value is buyer-scoped. Experimental (x-status: experimental): part of the signals.signal_lifecycle surface. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice.",
@@ -143,6 +144,7 @@
     },
     "signal_pricing_group_rules": {
       "type": "array",
+      "maxItems": 1000,
       "description": "Experimental (signals.pricing_groups). Signal-agent default rules for how fees of signals sharing a pricing_group combine. Product-scoped signal_targeting_rules.signal_pricing_group_rules override these for the same pricing_group. A group with no rule is charged 'each'.",
       "items": {
         "$ref": "/schemas/core/signal-pricing-group-rule.json"

@@ -27,7 +27,7 @@
           "data": {
             "type": "object",
             "properties": {
-              "message": { "type": "string", "description": "Text message content" }
+              "message": { "type": "string", "maxLength": 2000, "description": "Text message content" }
             },
             "required": ["message"]
           }
@@ -42,7 +42,7 @@
             "type": "object",
             "properties": {
               "url": { "type": "string", "format": "uri", "description": "Link URL" },
-              "label": { "type": "string", "description": "Link text" },
+              "label": { "type": "string", "maxLength": 255, "description": "Link text" },
               "preview": { "type": "boolean", "description": "Show link preview" }
             },
             "required": ["url", "label"]
@@ -58,8 +58,8 @@
             "type": "object",
             "properties": {
               "url": { "type": "string", "format": "uri", "description": "Image URL" },
-              "alt": { "type": "string", "description": "Alt text" },
-              "caption": { "type": "string", "description": "Image caption" }
+              "alt": { "type": "string", "maxLength": 2000, "description": "Alt text" },
+              "caption": { "type": "string", "maxLength": 2000, "description": "Image caption" }
             },
             "required": ["url", "alt"]
           }
@@ -73,17 +73,17 @@
           "data": {
             "type": "object",
             "properties": {
-              "title": { "type": "string", "description": "Product title" },
-              "subtitle": { "type": "string", "description": "Product subtitle" },
-              "price": { "type": "string", "description": "Price display string" },
+              "title": { "type": "string", "maxLength": 2000, "description": "Product title" },
+              "subtitle": { "type": "string", "maxLength": 255, "description": "Product subtitle" },
+              "price": { "type": "string", "maxLength": 64, "description": "Price display string" },
               "image_url": { "type": "string", "format": "uri", "description": "Product image" },
-              "description": { "type": "string", "description": "Product description" },
-              "badge": { "type": "string", "description": "Badge text (e.g., 'Free Upgrade')" },
+              "description": { "type": "string", "maxLength": 2000, "description": "Product description" },
+              "badge": { "type": "string", "maxLength": 255, "description": "Badge text (e.g., 'Free Upgrade')" },
               "cta": {
                 "type": "object",
                 "properties": {
-                  "label": { "type": "string" },
-                  "action": { "type": "string" }
+                  "label": { "type": "string", "maxLength": 255 },
+                  "action": { "type": "string", "maxLength": 255 }
                 }
               }
             },
@@ -99,9 +99,10 @@
           "data": {
             "type": "object",
             "properties": {
-              "title": { "type": "string", "description": "Carousel title" },
+              "title": { "type": "string", "maxLength": 2000, "description": "Carousel title" },
               "items": {
                 "type": "array",
+                "maxItems": 100,
                 "description": "Carousel items (product cards or images)",
                 "items": { "type": "object" }
               }
@@ -118,8 +119,8 @@
           "data": {
             "type": "object",
             "properties": {
-              "label": { "type": "string", "description": "Button label" },
-              "action": { "type": "string", "description": "Action identifier (e.g., 'acp_checkout')" },
+              "label": { "type": "string", "maxLength": 255, "description": "Button label" },
+              "action": { "type": "string", "maxLength": 255, "description": "Action identifier (e.g., 'acp_checkout')" },
               "payload": { "type": "object", "description": "Action payload" }
             },
             "required": ["label", "action"]
@@ -137,8 +138,8 @@
             "additionalProperties": {
               "type": "object",
               "properties": {
-                "app_id": { "type": "string" },
-                "deep_link": { "type": "string" },
+                "app_id": { "type": "string", "maxLength": 255 },
+                "deep_link": { "type": "string", "maxLength": 2048 },
                 "url": { "type": "string", "format": "uri" }
               }
             }
@@ -155,6 +156,7 @@
             "properties": {
               "actions": {
                 "type": "array",
+                "maxItems": 100,
                 "description": "Available integration actions",
                 "items": {
                   "type": "object",
@@ -166,6 +168,7 @@
                     },
                     "label": {
                       "type": "string",
+                      "maxLength": 255,
                       "description": "User-facing button label"
                     },
                     "highlighted": {

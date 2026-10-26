@@ -16,12 +16,14 @@
   "properties": {
     "plans": {
       "type": "array",
+      "maxItems": 100,
       "description": "Status for each synced plan.",
       "items": {
         "type": "object",
         "properties": {
           "plan_id": {
             "type": "string",
+            "maxLength": 255,
             "description": "Plan identifier.",
             "x-entity": "governance_plan"
           },
@@ -39,12 +41,14 @@
           },
           "categories": {
             "type": "array",
+            "maxItems": 32,
             "description": "Validation categories active for this plan.",
             "items": {
               "type": "object",
               "properties": {
                 "category_id": {
                   "type": "string",
+                  "maxLength": 255,
                   "description": "Validation category identifier."
                 },
                 "status": {
@@ -65,12 +69,14 @@
           },
           "resolved_policies": {
             "type": "array",
+            "maxItems": 100,
             "description": "Policies the governance agent will enforce for this plan. Includes explicitly referenced policies from the brand compliance configuration and auto-applied policies matched by jurisdiction or policy category. Present when the governance agent supports policy resolution.",
             "items": {
               "type": "object",
               "properties": {
                 "policy_id": {
                   "type": "string",
+                  "maxLength": 255,
                   "description": "Registry policy ID.",
                   "x-entity": "governance_registry_policy"
                 },
@@ -88,6 +94,7 @@
                 },
                 "reason": {
                   "type": "string",
+                  "maxLength": 2000,
                   "description": "Why this policy was included (e.g., 'Matched jurisdiction US and policy category pharmaceutical_advertising')."
                 }
               },

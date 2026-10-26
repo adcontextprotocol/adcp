@@ -35,6 +35,7 @@
     },
     "errors": {
       "type": "array",
+      "maxItems": 100,
       "items": { "$ref": "/schemas/core/error.json" }
     },
     "context": { "$ref": "/schemas/core/context.json" },

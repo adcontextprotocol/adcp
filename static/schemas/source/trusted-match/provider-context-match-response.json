@@ -16,16 +16,19 @@
   "definitions": {
     "targeting_kvs": {
       "type": "array",
+      "maxItems": 100,
       "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged under the emitting provider's registered provider_id.",
       "items": {
         "type": "object",
         "properties": {
           "key": {
             "type": "string",
+            "maxLength": 255,
             "description": "Provider-local targeting key. It is not a globally unique or publisher-owned ad-server destination."
           },
           "value": {
             "type": "string",
+            "maxLength": 255,
             "description": "Targeting value that the router preserves unchanged."
           }
         },
@@ -45,10 +48,12 @@
     },
     "request_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Echoed request identifier from the context match request."
     },
     "offers": {
       "type": "array",
+      "maxItems": 100,
       "description": "Offers from this provider, one per activated package. An empty array means no packages matched. For simple activation, each offer has just package_id. For richer responses, offers include brand, price, summary, and creative manifest.",
       "items": {
         "$ref": "/schemas/trusted-match/offer.json"
@@ -66,9 +71,11 @@
       "properties": {
         "segments": {
           "type": "array",
+          "maxItems": 100,
           "description": "Contextual segment identifiers.",
           "items": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 255
           }
         },
         "targeting_kvs": {

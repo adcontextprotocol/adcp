@@ -33,6 +33,7 @@
         },
         "host_surface": {
           "type": "string",
+          "maxLength": 500,
           "description": "Host-defined surface or placement where the context was accepted, such as an assistant session, search result page, or comparison module."
         },
         "disclosure_commitment": {
@@ -49,10 +50,12 @@
             },
             "label_text": {
               "type": "string",
+              "maxLength": 2000,
               "description": "Disclosure label text the host committed to render, if different from or copied from the declaration."
             },
             "notes": {
               "type": "string",
+              "maxLength": 2000,
               "description": "Optional host explanation for the disclosure commitment."
             }
           },
@@ -63,6 +66,7 @@
         },
         "rejection_reason": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Optional explanation when status is rejected, for example unsupported context_use or inability to satisfy the disclosure obligation."
         }
       },

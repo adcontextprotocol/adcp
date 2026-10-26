@@ -96,6 +96,7 @@
     },
     "issues": {
       "type": "array",
+      "maxItems": 100,
       "items": {
         "$ref": "/schemas/core/reporting-status-issue.json"
       },

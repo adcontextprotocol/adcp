@@ -21,6 +21,7 @@
     },
     "states": {
       "type": "array",
+      "maxItems": 32,
       "description": "Return only requests in these states.",
       "items": { "$ref": "/schemas/enums/account-request-state.json" },
       "minItems": 1,

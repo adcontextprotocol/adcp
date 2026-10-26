@@ -198,6 +198,7 @@
               },
               "result_product_id": {
                 "type": "string",
+                "maxLength": 255,
                 "minLength": 1,
                 "x-entity": "product",
                 "x-added-in": "3.3.0",
@@ -438,6 +439,7 @@
       "properties": {
         "version": {
           "type": "string",
+          "maxLength": 64,
           "minLength": 1,
           "description": "Opaque token for the account's readiness state, independent of `wholesale_feed_version` and `pricing_version`. Compare for equality only. Equal versions MUST imply identical entries for any product present in both responses."
         },

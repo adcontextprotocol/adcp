@@ -21,13 +21,16 @@
     },
     "request_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Echoed request identifier from the identity match request."
     },
     "eligible_package_ids": {
       "type": "array",
+      "maxItems": 1000,
       "description": "Package IDs the user is eligible for. Packages not listed are ineligible.",
       "items": {
-        "type": "string"
+        "type": "string",
+        "maxLength": 255
       }
     },
     "serve_window_sec": {

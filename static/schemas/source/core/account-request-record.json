@@ -22,12 +22,12 @@
       "type": "object",
       "description": "Echo of what was requested: the account's natural-key fields (or account_id) and the requested terms currently on file. When a repeat request for an open key changed the terms, this shows the replacement terms.",
       "properties": {
-        "account_id": { "type": "string", "description": "Present when the request named an existing account." },
+        "account_id": { "type": "string", "maxLength": 255, "description": "Present when the request named an existing account." },
         "brand": { "$ref": "/schemas/core/brand-key.json" },
-        "operator": { "type": "string" },
+        "operator": { "type": "string", "maxLength": 255 },
         "operator_unit": { "$ref": "/schemas/core/operator-unit.json" },
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
-        "timezone": { "type": "string", "minLength": 1 },
+        "timezone": { "type": "string", "maxLength": 64, "minLength": 1 },
         "sandbox": { "type": "boolean" },
         "billing": { "$ref": "/schemas/enums/billing-party.json" },
         "payment_terms": { "$ref": "/schemas/enums/payment-terms.json" }
@@ -40,6 +40,7 @@
     },
     "account_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Present when state is resolved. The account to use on every account-scoped task. Never changes for the life of the account.",
       "x-entity": "account"
     },
@@ -56,6 +57,7 @@
     },
     "errors": {
       "type": "array",
+      "maxItems": 100,
       "description": "Present when state is rejected. Why the seller declined, or that a buyer action expired.",
       "items": { "$ref": "/schemas/core/error.json" },
       "minItems": 1
