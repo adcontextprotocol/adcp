@@ -351,7 +351,54 @@ A `brand.json` listing is sufficient, not necessary. Finding the operator lets t
 
 **Self-authorization is implicit.** When the `operator` domain matches the brand's domain, the brand is operating directly — no listing in `authorized_operators` is needed.
 
-`authorized_operators` models the interface between the brand and whoever operates on its behalf. It does not model internal agency hierarchies.
+`authorized_operators` models the interface between the brand and whoever operates on its behalf. Grants in trust.json model one agency hop; see below.
+
+### Grants in trust records (experimental)
+
+From 3.3, a brand's house can publish demand-side grants in its `/.well-known/trust.json` ([trust.json](/docs/reference/trust-json), [DR-0025](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0025-demand-side-grants-in-trust-json.md), [#6033](https://github.com/adcontextprotocol/adcp/issues/6033)). A grant says "this organization, optionally only these of its agents, may act for us, for these scopes, in these countries, during this window". It is the trust.json successor to `authorized_operators`.
+
+```json
+{
+  "grants": [
+    {
+      "grantee": "pinnacle-agency.example",
+      "scopes": ["adcp:media_buying"],
+      "agents": [{ "url": "https://buyer.pinnacle-agency.example/mcp" }],
+      "profiles": { "adcp": { "brands": ["nova_motors"] } },
+      "valid_until": "2027-06-30T00:00:00Z"
+    }
+  ],
+  "exclusive_grants": true
+}
+```
+
+This section is the normative home for evaluating grants. Spec R6 and DR-0025 record the design and point here.
+
+**How a seller evaluates acts-for authority:**
+- **`grantee` is a registrable domain.** A grant's `grantee` MUST be a registrable domain under the pinned Public Suffix List snapshot from step 1 of [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) (spec R3a step 1). A grant whose `grantee` is not one covers no claim, and its `scopes` still count for `exclusive_grants`. To limit a grant to some of the grantee's agents, list them in `agents[]`.
+- **Domains compare as registrable domains.** `account.operator` and the brand's domain are compared with `grantee`, with the signer's operator, and with each other, as registrable domains under the same snapshot.
+- **One record authorizes: the house's.** The house is the one the brand's brand.json names, as the [mutual-assertion trust model](/docs/brand-protocol/brand-json#mutual-assertion-trust-model) resolves it, and otherwise the brand's domain itself. The seller reads the house's record at its registrable domain, `https://{eTLD+1(house)}/.well-known/trust.json`, as step 1 of [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) derives the operator's record. Grants in any other record are not consulted, including a record at the brand's own domain when the model resolves a house, so the two never compete. The buyer's operator record never authorizes a brand outside the operator's registrable domain.
+- **Implicit authority.** When `account.operator` and the signer's operator are the same registrable domain as the brand's domain or its house, authority is implicit and no grant is needed. This extends self-authorization above, which compares the `operator` domain with the brand's domain exactly, to the registrable domain, because the signer's operator is a registrable domain, and to the house, because the house's record is the one that authorizes and an organization's own agents act for it without a grant.
+- **Otherwise a grant chain must reach the signer's operator** with a scope covering the operation (`adcp:media_buying` for buys). Any of these satisfies it:
+  - the house grants the signer's operator, and `account.operator` is the signer's operator;
+  - the brand is `account.operator` and its house grants the signer's operator (a brand that runs its own account through an agent a platform hosts);
+  - the house grants `account.operator`, and `account.operator`'s own trust.json, read at its registrable domain, grants the signer's operator (an agency using an intermediary, or a platform hosting the agency's agent).
+
+  `account.operator` MUST be on the chain. A grantee never extends a grant it received: the second link is its own grant, and the intermediary cannot grant further.
+- **`agents[]` narrows the link that reaches the signer.** On any link that carries `agents[]`, the signer's [canonical origin](/docs/reference/url-canonicalization#canonical-origin) MUST be listed, or the chain ends at that link. A grant's `agents[]` names agents its grantee runs, so a house grant to `account.operator` that is narrowed to the agency's own agents never covers an intermediary's agent: a two-link chain needs an unnarrowed first link, and the narrowing goes on `account.operator`'s grant to the intermediary.
+- **Every link must cover the account, and effective authority is the intersection along the chain:**
+  - `profiles.adcp.brands` covers `account.brand.brand_id` (`["*"]` or an omitted list covers every brand the grantor owns). A brand reference with no `brand_id` is covered only by `["*"]` or an omitted list;
+  - `countries` covers every value in `account.brand.countries`. A grant with no `countries` is global; a brand reference with no `countries` is covered only by a global grant;
+  - `scopes` covers the operation;
+  - the window runs from the latest `valid_from` to the earliest `valid_until` along the chain, and the check time falls inside it.
+- **Absence.** `exclusive_grants: true` makes `grants[]` exhaustive for the scopes it names. Without it, an acts-for claim no grant covers stays at the seller's discretion: its own onboarding records, never the house's brand.json.
+- **Fetch failure.** A grantor's trust record that can't be fetched is never absence and never `grant_absent`; the outage rules in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) apply to a grantor's record as to the operator's.
+- **No downgrade.** A 200 from the house's trust.json makes it the only source of grants, as the Coexistence rules in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) set out. Through 3.x, `authorized_operators` in brand.json stays a valid source only for a house that has never published a trust.json.
+- **Freshness.** Grants are checked at `sync_accounts` and on the freshness schedule in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities).
+
+**When no grant covers the claim,** the request fails with `PERMISSION_DENIED` and `error.details` `{ "scope": "agent", "reason": "grant_absent" }`. It is emitted only once the signer's identity is established, under the cross-tenant oracle clamp in [Per-Agent Authorization Gate](/docs/building/by-layer/L3/error-handling#per-agent-authorization-gate). It is a request-level authorization failure: no account is created, and no account changes status. Grants are public, so the reason discloses nothing the buyer can't already read. Like every authorization outcome for a signer whose identity is established, it uses the AdCP error envelope, never a Web Bot Auth status ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)).
+
+**When a grant is withdrawn,** the agent loses access, not the account. Later calls from that agent fail with `grant_absent`. The account keeps its status and its live buys, and the operator can authorize a different agent for it. `suspended` stays a seller-initiated pause of the account itself.
 
 ## Buyer-agent identity
 
@@ -374,6 +421,23 @@ The brand-operator check runs against the seller's cached `brand.json` per [Oper
 
 1. **Runtime billing gate.** A passthrough-only agent that submits `billing: "agent"` or `billing: "advertiser"` is rejected with `BILLING_NOT_PERMITTED_FOR_AGENT` and an `error.details.suggested_billing` of `operator`. See [Billing and Account Setup](/docs/building/by-layer/L3/error-handling#billing-and-account-setup) for the recovery contract.
 2. **Per-agent defaults.** Sellers MAY pre-fill `payment_terms`, `billing_entity`, rate-card linkage, and credit limit from the buyer agent's onboarding record when provisioning new accounts under that agent. Per-account values on the `sync_accounts` request always take precedence over per-agent defaults — the buyer can override per row. The per-agent layer is a recommended implementation pattern (it mirrors how SSPs maintain `buyer_id` / `seat_id` rows for OpenRTB DSPs); smaller publishers MAY collapse to seller-wide defaults until they have receivables ops that distinguish per-agent terms.
+
+### First contact and binding
+
+<Note>
+**Experimental (Web Bot Auth profile, 3.3).** Under the Web Bot Auth signing profile, a seller can identify a buyer agent it has never onboarded: the signed request names the signer's origin, and the seller verifies it against that origin's key directory ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)). These rules govern what happens next. This is rule R5 in `specs/agent-identity-3-3.md` ([#8118](https://github.com/adcontextprotocol/adcp/issues/8118)); relationship status (R8) is on [`get_principal`](/docs/protocol/get_principal#relationship-status).
+</Note>
+
+1. **Verification alone never creates a principal.** A verified origin with no binding is *identity-established*. It gets what an anonymous caller gets, reads included, plus [`get_principal`](/docs/protocol/get_principal), which returns `unconfigured`. A principal comes only from a binding under rule 2, including the binding a seller creates when it approves a new identity.
+2. **A binding is an explicit, audited seller record** from origin to principal. The seller makes it only after the operator's trust record lists the origin with the required role.
+3. **An origin maps to at most one principal.**
+4. **Binding onto an existing RFC 9421 principal needs explicit approval.** A seller binds a Web Bot Auth origin onto an existing `agents[].url` principal only when the origin is unambiguous, and only with explicit out-of-band approval. In the RFC 9421 profile, controlling the agent's host was not enough to obtain its keys, and this rule keeps origin control alone from inheriting an existing principal. This binding is never automatic.
+
+**Automatic binding.** Where the seller declares an `open` onboarding mode, `sync_principal` from an identity-established caller MAY create a **new** principal, limited to the open modes. Anything else waits for the seller's approval. `get_principal` never creates a principal.
+
+**What the buyer sees while it waits.** Until the seller binds it, the caller stays identity-established. An operation that needs a binding fails with `PERMISSION_DENIED` with no `details`, the code [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) names for a failed trust-record evaluation. Once the seller has an application in progress, `get_principal` carries `relationship` with `status: "pending_approval"` and, when the seller has one, an applicant-specific `setup` step. When the relationship becomes active, is suspended or blocked, or approaches its `expires_at`, `principal.changed` fires (`relationship_changed`, `relationship_expiring`) and the buyer re-reads `get_principal`. See [Relationship status](/docs/protocol/get_principal#relationship-status).
+
+**After binding**, the two layers above still apply on every `sync_accounts`: agent identity through the binding, and brand-operator authorization. A binding is a cache of the trust-record evaluation. Its freshness, the outage rules, and what a delisted origin keeps are in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities).
 
 ## Account references
 
@@ -561,7 +625,7 @@ Authentication resolves first. Signature failures are transport errors, returned
 | `Signature` or `Signature-Input` present without the other, or malformed | `request_signature_header_malformed`. The seller doesn't fall back to other credentials. |
 | Signed, and fails the verifier checklist (unknown `keyid`, bad window, bad digest, and so on) | The checklist's code, such as `request_signature_key_unknown` (also `request_target_uri_malformed` or `request_body_malformed`). The seller doesn't fall back to other credentials. Exception: for an operation in `warn_for` (or a method in `protocol_methods_warn_for`), a well-formed signature that fails is logged, establishes no signer identity, and the request continues only if another credential authenticates it. |
 | Unsigned. No credential the seller accepts for this operation. The resolved operation (the MCP tool name, or the A2A invocation `skill`; see [Operation resolution over A2A](/docs/building/by-layer/L1/security#operation-resolution-over-a2a)) is in `required_for`, or its JSON-RPC method is in `protocol_methods_required_for` | `request_signature_required`. This applies even if an unrecognized bearer token was sent. |
-| Unsigned, the seller supports request signing, and the payload carries a webhook `authentication` block (`accounts[].notification_configs[].authentication`, `push_notification_config.authentication`) | `request_signature_required`, even with a valid credential ([webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks)) |
+| Unsigned, the seller supports request signing, and the payload carries a webhook `authentication` block (`accounts[].notification_configs[].authentication`, `push_notification_config.authentication`) | `request_signature_required`, even with a valid credential, while the seller's `legacy_hmac_fallback` is `true` (deprecated in 3.x); `webhook_hmac_not_supported` when it is `false` ([webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks)) |
 | Unsigned, with a credential the seller accepts for this operation | Authenticated through that credential. This holds for `required_for` operations too, unless the payload carries a webhook `authentication` block (previous row), or the seller configured that authenticator to reject the operation ([composition with fallback authenticators](/docs/building/by-layer/L1/security#composition-with-fallback-authenticators)). |
 | Unsigned, the operation needs authentication and doesn't require a signature, and no credentials | `AUTH_MISSING` |
 | Unsigned, the operation doesn't require a signature, and the credential was presented but rejected | `AUTH_INVALID` |

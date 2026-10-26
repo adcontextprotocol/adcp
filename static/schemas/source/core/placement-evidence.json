@@ -4,6 +4,7 @@
   "title": "Placement Evidence",
   "x-status": "experimental",
   "description": "Seller-attested evidence artifact proving a physical placement ran — a posting photograph for an OOH face, a tearsheet page for a print insertion. Channel-neutral: this record carries the artifact facts; what the artifact proves (posting, rotation, insertion) is declared by the containing record's event semantics. Third-party audit convention: the artifact should be geotagged and timestamped within the placement period, with the creative legible.",
+  "x-added-in": "3.2.0",
   "type": "object",
   "properties": {
     "url": {

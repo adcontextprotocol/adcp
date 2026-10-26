@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
 import { githubIssueReceiptFromHandlerResult } from '../../server/src/addie/github-issue-receipt.js';
+import { execute as executeCollectionFixture } from '../optional-product-collections.test.cjs';
 
 const memberToolMocks = vi.hoisted(() => ({
   checkToolRateLimit: vi.fn(),
@@ -19,6 +20,8 @@ const memberToolMocks = vi.hoisted(() => ({
   getComplianceStoryboardById: vi.fn(),
   runStoryboard: vi.fn(),
   runStoryboardStep: vi.fn(),
+  realRunStoryboardStep: null as unknown as typeof import("@adcp/sdk/testing").runStoryboardStep,
+  transportOptions: {} as Record<string, unknown>,
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
@@ -60,8 +63,14 @@ vi.mock('../../server/src/services/badge-issuance.js', async (importOriginal) =>
   };
 });
 
+vi.mock('../../server/src/utils/sdk-safe-fetch.js', async (importOriginal) => ({
+  ...await importOriginal() as Record<string, unknown>,
+  withSdkSafeTransport: (options: Record<string, unknown>) => ({ ...options, ...memberToolMocks.transportOptions }),
+}));
+
 vi.mock('@adcp/sdk/testing', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
+  memberToolMocks.realRunStoryboardStep = actual.runStoryboardStep as typeof memberToolMocks.realRunStoryboardStep;
   return {
     ...actual,
     getComplianceStoryboardById: memberToolMocks.getComplianceStoryboardById,
@@ -83,6 +92,7 @@ import * as complianceTesting from '../../server/src/addie/services/compliance-t
 import * as wgService from '../../server/src/services/working-group-membership-service.js';
 
 beforeEach(() => {
+  memberToolMocks.transportOptions = {};
   memberToolMocks.getComplianceStoryboardById.mockReset();
   memberToolMocks.runStoryboard.mockReset();
   memberToolMocks.runStoryboardStep.mockReset();
@@ -234,6 +244,47 @@ describe('createMemberToolHandlers', () => {
     for (const tool of MEMBER_TOOLS) {
       expect(handlers.has(tool.name)).toBe(true);
       expect(typeof handlers.get(tool.name)).toBe('function');
+    }
+  });
+
+  describe('collection continuation integrity through the actual opaque handoff', () => {
+    for (const name of ['collection_selection_readback', 'collection_default_materialization_readback']) {
+      for (const failedCreate of [false, true]) {
+        it(`${name}: ${failedCreate ? 'failed' : 'successful'} public create round-trips through the handler`, async () => {
+          // Only the controlled seller transport and authored file lookup are
+          // injected. Handler sealing/resolution, adapter preparation/history
+          // checks and public SDK execution all run normally.
+          const scenario = await executeCollectionFixture(name, { scenarioOnly: true, ...(failedCreate && { broken: 'domain' }) });
+          memberToolMocks.getComplianceStoryboardById.mockReturnValue(scenario.doc);
+          memberToolMocks.transportOptions = {
+            ...scenario.options,
+            // The current source schema is the artifact under test; hosted
+            // target selection and envelope caller/run binding remain actual.
+            schemaRoot: undefined, servedReleaseSchemaRoots: undefined,
+          };
+          memberToolMocks.runStoryboardStep.mockImplementation(memberToolMocks.realRunStoryboardStep);
+          const handler = createMemberToolHandlers(null).get('run_storyboard_step')!;
+          const input = { agent_url: scenario.url, storyboard_id: scenario.doc.id, compliance_target: '3.0' };
+          const created = await handler({ ...input, step_id: 'create_selection' });
+          expect(created).toContain(failedCreate ? '[FAIL]' : '[PASS]');
+          if (failedCreate) expect(created).toContain('wrong-namespace.example');
+          const match = created.match(/<context>\n([\s\S]*?)\n<\/context>/);
+          expect(match).not.toBeNull();
+          const context = JSON.parse(match![1]);
+          expect(Object.keys(context)).toEqual(['context_ref']);
+          expect(context.context_ref).toMatch(/^sctx1\./);
+          const before = scenario.calls.length;
+          if (failedCreate) {
+            await expect(handler({ ...input, step_id: 'read_selection', context }))
+              .rejects.toThrow(/requires trusted prior/);
+            expect(scenario.calls.slice(before).some((call: { task: string }) => call.task === 'get_media_buys')).toBe(false);
+          } else {
+            const read = await handler({ ...input, step_id: 'read_selection', context });
+            expect(read).toContain('[PASS]');
+            expect(scenario.calls.slice(before).some((call: { task: string }) => call.task === 'get_media_buys')).toBe(true);
+          }
+        }, 30000);
+      }
     }
   });
 

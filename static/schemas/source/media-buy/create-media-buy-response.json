@@ -46,7 +46,7 @@
         },
         "media_buy_status": {
           "$ref": "/schemas/enums/media-buy-status.json",
-          "description": "Initial media buy status. Either 'pending_creatives' (awaiting creative assets), 'pending_start' (ready to serve, waiting for flight date), 'active' (immediate activation), or 'paused' (created with delivery held after all activation prerequisites are satisfied). This field carries the media buy lifecycle state; top-level `status` is reserved for the protocol-envelope TaskStatus (`completed` on synchronous success)."
+          "description": "Initial media buy status. Either 'pending_creatives' (buyer must supply creative coverage or correct a blocking rejection), 'pending_start' (waiting for the flight date, seller creative review, or seller confirmation with confirmed_at null), 'active' (immediate activation), or 'paused' (created with delivery held after all activation prerequisites are satisfied). This field carries the media buy lifecycle state; top-level `status` is reserved for the protocol-envelope TaskStatus (`completed` on synchronous success)."
         },
         "confirmed_at": {
           "type": ["string", "null"],
@@ -107,6 +107,7 @@
         "valid_actions": {
           "type": "array",
           "deprecated": true,
+          "x-removed-in": "4.0.0",
           "description": "Flat-vocabulary actions the buyer can perform on this media buy after creation. Saves a round-trip to get_media_buys. Deprecated in favor of `available_actions[]`, which carries mode, optional SLA, and in 3.2 an optional change_term_id. Sellers SHOULD populate both during the 3.x deprecation window; consumers MUST prefer `available_actions[]` when both are present. Removed in 4.0.",
           "items": {
             "$ref": "/schemas/enums/media-buy-valid-action.json"

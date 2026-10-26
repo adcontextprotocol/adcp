@@ -325,6 +325,7 @@ const DEFINITIONS = [
     from: 'negative/027-webhook-registration-authentication-unsigned.json',
     name: 'AdCP 3.2 webhook registration with push_notification_config.authentication over bearer (unsigned); operation NOT in required_for (Content-Digest sent)',
     kind: 'unsigned',
+    comment: 'Transitional vector for deprecated condition (b) of request_signature_required (adcp#7563), removed in 4.0. Graded only when applies_when holds (webhook_signing.legacy_hmac_fallback is true); a runner skips it, not a failure, otherwise, because a legacy_hmac_fallback:false seller answers an authenticated registration carrying authentication with webhook_hmac_not_supported (HTTP 400) instead of request_signature_required.',
   },
   {
     from: 'negative/028-unsigned-protocol-method-required.json',
@@ -567,6 +568,7 @@ function buildVector(def) {
     name: def.name,
     spec_reference: `${legacy.spec_reference}; AdCP 3.2 profile per #content-digest-and-proxy-compatibility and #adcp-rfc-9421-profile binary value encoding`,
     signing_profile_version: '3.2',
+    ...(legacy.applies_when ? { applies_when: legacy.applies_when } : {}),
     reference_now: legacy.reference_now,
     request,
     verifier_capability: capability,

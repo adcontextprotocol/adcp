@@ -18,6 +18,8 @@ const {
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 const {
   MCP_ROLE_PROFILE_TOOLS,
+  mcpRoleProfileTools,
+  mcpRoleProfileCompatibilityScope,
   MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES,
   buildTaskResultResolution,
   validateManifestToolRelationships,
@@ -49,15 +51,15 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
-// The active source surface includes get_creative_addons in 3.3 even while
-// package.json still names the previous stable release. Preserve newer package
-// versions once that release line ships; prereleases describe their GA surface.
+// The generated profiles describe the active surface of the package's release
+// line. Before the line's GA (x.y.0-rc.N) that is the x.y.0 surface the tool
+// manifest declares via added_in; once the line has a stable release it is the
+// released package version itself (3.2 GA ships as 3.2.1 because 3.2.0 is
+// permanently withdrawn; see RELEASING.md).
 const PACKAGE_VERSION = require('../package.json').version;
-const PACKAGE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
+const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
   ? `${semver.major(PACKAGE_VERSION)}.${semver.minor(PACKAGE_VERSION)}.0`
   : PACKAGE_VERSION;
-const ACTIVE_SURFACE_VERSION = semver.rsort([PACKAGE_SURFACE_VERSION, '3.3.0'])[0];
-const ACTIVE_RELEASE_LINE = `${semver.major(ACTIVE_SURFACE_VERSION)}.${semver.minor(ACTIVE_SURFACE_VERSION)}`;
 // Macro occurrence contracts and representation-set resolution add shared,
 // structurally enforced graphs to media-buy tasks. The 3.2 tracker contract
 // adds one seller-bound destination contract to build_creative; keep that
@@ -102,9 +104,28 @@ const ACTIVE_RELEASE_LINE = `${semver.major(ACTIVE_SURFACE_VERSION)}.${semver.mi
 // media-buy role profile (3,159 bytes of model-context input), and the
 // collection card event types widen the notification enums on sync_accounts
 // and sync_principal (458,185 → 461,599 bytes / 450.8 KiB measured against
-// main), bounded at 451 KiB.
+// main), bounded at 451 KiB. Experimental collection_lists /
+// collection_lists_exclude targeting (#7834) adds ~0.5 KiB to the targeting
+// input reached by create/update_media_buy (461,599 → 462,288 bytes measured
+// on top of main), bounded at 452 KiB.
+// The 3.3.0-beta.0 merge window then landed several small additions to the same
+// create/update/get inputs (multi-qualifier totals wording, rights channel
+// restrictions, hold and lineage fields): main measured 462,963 bytes at
+// 2b9df1bae, past the 452 KiB bound. Media-buy lineage (#8038) adds 763 bytes
+// on top of that (462,963 -> 463,726 bytes / 452.9 KiB measured against main),
+// bounded at 454 KiB to leave about 1 KiB for the x-added-in sweep (#8077).
+// At 3.3.0-beta.0 the package enters the 3.3 line and `list_proposals` (#8103)
+// joins the media-buy catalog (466,530 bytes / 455.6 KiB measured with the
+// version bumped), bounded at 462 KiB for the beta.1 window.
+// Core gender adds its shared predicate and support rules; the merged inputs
+// measure 468,555 bytes / 457.57 KiB, within the existing 462 KiB ceiling.
+// Product service commitments (#8408) add report/poll request shapes. The
+// media-buy context measures 473,582 bytes / 462.48 KiB; bound it at 463 KiB.
+// Experimental purchase rights add rights-scope and two right-use values to the
+// purchase graph reached through buy_products (+941 bytes measured, 473,582 ->
+// 474,523 bytes / 463.4 KiB), bounded at 464 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 451,
+  'media-buy': 464,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -138,14 +159,31 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // against main), bounded at 1_272_000. Explicit creative acceptance constraints
 // and verifier guidance add 5,486 bytes (1_270_981 -> 1_276_467 measured),
 // bounded at 1_280_000 to retain compilation of every storyboard fixture.
+// The experimental proposal.created notification type in the account
+// notification-config enums and the simulate_later_proposal scenario reach it
+// (1_281_908 bytes measured), within the beta.0 merge-window bound below.
 // Pre-beta.0 headroom: about 20 approved 3.3 PRs (consent rounds 1 and 2,
 // WG Session B items) each add a few KB through the seeded Product, proposal
 // and capability closures, and would otherwise conflict on this one line.
 // Bounded at 1_300_000 for the 3.3.0-beta.0 merge window (measured in-flight
 // peaks 1_280_490 to 1_283_645). Resume measured per-PR bounding after the cut.
-// This is the parity-test compiler allowance; the independent 4 MiB schema,
-// 22 MiB projection, and role model-context budgets are unchanged.
-const PARITY_COMPILE_LIMIT = 1_300_000;
+// collection_lists / collection_lists_exclude (#7834) measured +1,756 bytes
+// (1_280_033 → 1_281_789 against its base); fits the merge-window bound.
+// Core gender's predicate, capability, and complete readback closure reaches
+// the seeded Product. The merged controller input measures 1_309_147 bytes;
+// bound it at 1_310_000 so every storyboard fixture still compiles.
+// Product service commitments (#8408) reach the seeded Product and seller
+// capabilities. After shortening repeated SLA prose, the controller measures
+// 1_313_240 bytes; bound compilation at 1_315_000. Every fixture still compiles;
+// the independent 4 MiB schema and 22 MiB projection budgets are unchanged.
+// performance_standard.metric_id (#8394) reaches the controller through the
+// seeded Product's canonical performance standards; the controller measures
+// 1_315_463 bytes, bound at 1_316_000.
+// Creative approval startup policy (#8479) adds the package gate, capability
+// and scoped control action to the controller closure. After condensing shared
+// field prose, it measures 1_318_217 bytes; bound it at 1_320_000. The 4 MiB
+// schema and 22 MiB projection caps and all fixture parity checks remain.
+const PARITY_COMPILE_LIMIT = 1_320_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1565,71 +1603,81 @@ test('rewriteEmbeddedResourceRefs unit: root-$id collision causes projection to 
   }
 });
 
-test('comply-test-controller projected schema uses embedded-resource refs, not root-anchored pointers', () => {
-  // Regression for #8041: cross-definition refs within bundled sub-schemas must
-  // use each embedded resource's own canonical $id URL, not the long
-  // rootId#/$defs/key form. This ensures additive Product growth (new fields on
-  // product.json) adds bytes only to the single shared definition and does not
-  // balloon ref strings throughout the schema.
-  const schemaPath = path.join(PROJECTION_DIR, 'compliance/comply-test-controller-request.json');
-  assert.ok(fs.existsSync(schemaPath), 'comply-test-controller projected schema must exist');
-  const projected = readJson(schemaPath);
+for (const [relativePath, expectedDefinition] of [
+  ['compliance/comply-test-controller-request.json', 'external:core/product.json'],
+  ['media-buy/get-products-request.json', 'external:media-buy/package-forecast-input.json'],
+  ['media-buy/get-products-response.json', 'external:core/product.json'],
+]) {
+  test(`${relativePath} uses embedded-resource refs without long root-anchored pointers`, () => {
+    // Regression for #8041: cross-definition refs within bundled sub-schemas must
+    // use each embedded resource's own canonical $id URL, not the long
+    // rootId#/$defs/key form. This ensures additive Product growth (new fields on
+    // product.json) adds bytes only to the single shared definition and does not
+    // balloon ref strings throughout the schema.
+    const schemaPath = path.join(PROJECTION_DIR, relativePath);
+    assert.ok(fs.existsSync(schemaPath), `${relativePath} projected schema must exist`);
+    const projected = readJson(schemaPath);
 
-  const rootId = projected.$id;
-  assert.ok(typeof rootId === 'string' && rootId.startsWith('https://'), 'projected schema has absolute $id');
+    const rootId = projected.$id;
+    assert.ok(typeof rootId === 'string' && rootId.startsWith('https://'), 'projected schema has absolute $id');
 
-  // No cross-def ref should use the root schema URL as a base (long-pointer form)
-  const rootRefPrefix = `${rootId}#/$defs/`;
-  function walkAllRefs2(value, visit) {
-    if (!value || typeof value !== 'object') return;
-    if (typeof value.$ref === 'string') visit(value.$ref);
-    for (const child of Object.values(value)) walkAllRefs2(child, visit);
-  }
-  const longRefs = [];
-  walkAllRefs2(projected, ref => { if (ref.startsWith(rootRefPrefix)) longRefs.push(ref); });
-  assert.deepEqual(longRefs, [], `${longRefs.length} root-anchored cross-def refs remain; expected 0`);
+    // No cross-def ref should use the root schema URL as a base (long-pointer form)
+    const rootRefPrefix = `${rootId}#/$defs/`;
+    function walkAllRefs2(value, visit) {
+      if (!value || typeof value !== 'object') return;
+      if (typeof value.$ref === 'string') visit(value.$ref);
+      for (const child of Object.values(value)) walkAllRefs2(child, visit);
+    }
+    const longRefs = [];
+    walkAllRefs2(projected, ref => { if (ref.startsWith(rootRefPrefix)) longRefs.push(ref); });
+    assert.deepEqual(longRefs, [], `${longRefs.length} root-anchored cross-def refs remain; expected 0`);
 
-  const defs = projected.$defs || {};
+    const defs = projected.$defs || {};
 
-  // Product.json is present as a shared def with its canonical $id intact.
-  // compactDraft07Schema deduplicates by resolved file path, so each external
-  // schema appears at most once; the meaningful invariant is that the product
-  // graph is present and its $id is preserved (no stripping by the rewrite).
-  const productKey = 'external:core/product.json';
-  assert.ok(Object.hasOwn(defs, productKey), 'product.json is a shared def in $defs');
-  const productDef = defs[productKey];
-  assert.ok(
-    typeof productDef.$id === 'string' && productDef.$id.startsWith('https://'),
-    'product.json def retains its canonical $id',
-  );
-  assert.ok(
-    typeof productDef.properties === 'object' || typeof productDef.allOf !== 'undefined',
-    'product.json def contains its full schema (not a stub)',
-  );
-
-  // Cross-def refs must now be embedded-resource canonical $id URLs
-  const embeddedIds = new Set(
-    Object.values(defs)
-      .filter(d => d && typeof d.$id === 'string')
-      .map(d => d.$id.split('#')[0])
-  );
-  const allEmbeddedRefs = [];
-  walkAllRefs2(projected, ref => {
-    const base = ref.split('#')[0];
-    if (base.startsWith('https://') && embeddedIds.has(base)) allEmbeddedRefs.push(ref);
-  });
-  assert.ok(
-    allEmbeddedRefs.length > 100,
-    `expected >100 embedded-resource refs, saw ${allEmbeddedRefs.length}`,
-  );
-
-  // All $id values are preserved on every def (no stripping)
-  for (const [key, def] of Object.entries(defs)) {
+    // The shared product/package graph retains its canonical $id.
+    // compactDraft07Schema deduplicates by resolved file path, so each external
+    // schema appears at most once; the meaningful invariant is that the product
+    // graph is present and its $id is preserved (no stripping by the rewrite).
+    assert.ok(Object.hasOwn(defs, expectedDefinition), `${expectedDefinition} is a shared def in $defs`);
+    const productDef = defs[expectedDefinition];
     assert.ok(
-      !key.startsWith('external:') || (def && typeof def.$id === 'string'),
-      `external def ${key} must retain its $id`,
+      typeof productDef.$id === 'string' && productDef.$id.startsWith('https://'),
+      `${expectedDefinition} retains its canonical $id`,
     );
-  }
+    assert.ok(
+      typeof productDef.properties === 'object' || typeof productDef.allOf !== 'undefined',
+      `${expectedDefinition} contains its full schema (not a stub)`,
+    );
+
+    // Cross-def refs must now be embedded-resource canonical $id URLs
+    const embeddedIds = new Set(
+      Object.values(defs)
+        .filter(d => d && typeof d.$id === 'string')
+        .map(d => d.$id.split('#')[0])
+    );
+    const allEmbeddedRefs = [];
+    walkAllRefs2(projected, ref => {
+      const base = ref.split('#')[0];
+      if (base.startsWith('https://') && embeddedIds.has(base)) allEmbeddedRefs.push(ref);
+    });
+    assert.ok(
+      allEmbeddedRefs.length > 100,
+      `expected >100 embedded-resource refs, saw ${allEmbeddedRefs.length}`,
+    );
+
+    // All $id values are preserved on every def (no stripping)
+    for (const [key, def] of Object.entries(defs)) {
+      assert.ok(
+        !key.startsWith('external:') || (def && typeof def.$id === 'string'),
+        `external def ${key} must retain its $id`,
+      );
+    }
+  });
+}
+
+test('creative addon discovery is gated to the 3.3 role catalog', () => {
+  assert.equal(mcpRoleProfileTools('creative', '3.2.6').includes('get_creative_addons'), false);
+  assert.equal(mcpRoleProfileTools('creative', '3.3.0').includes('get_creative_addons'), true);
 });
 
 test('generated production profile exposes the active surface without compliance annotations', () => {
@@ -1638,7 +1686,7 @@ test('generated production profile exposes the active surface without compliance
   const profile = readJson(path.join(PRODUCTION_PROFILE_DIR, 'manifest.json'));
 
   assert.equal(canonicalManifest.tools.get_creative_addons.added_in, '3.3.0');
-  assert.ok(profile.tools.get_creative_addons);
+  assert.equal(Boolean(profile.tools.get_creative_addons), semver.gte(ACTIVE_SURFACE_VERSION, '3.3.0'));
   assert.equal(profile.profile, 'production');
   assert.equal(profile.surface_version, ACTIVE_SURFACE_VERSION);
   assert.equal(profile.annotation_mode, 'structural');
@@ -1786,7 +1834,8 @@ test('representative capability-selected media-buy runtime exposes only selected
 test('generated role profiles are host-compatible discovery catalogs with bounded model-context views', () => {
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
 
-  for (const [profileName, expectedTools] of Object.entries(MCP_ROLE_PROFILE_TOOLS)) {
+  for (const profileName of Object.keys(MCP_ROLE_PROFILE_TOOLS)) {
+    const expectedTools = mcpRoleProfileTools(profileName, ACTIVE_SURFACE_VERSION);
     const profileDir = path.join(PROJECTION_DIR, 'profiles', profileName);
     const modelContextDir = path.join(profileDir, 'model-context');
     const profile = readJson(path.join(profileDir, 'manifest.json'));
@@ -1795,7 +1844,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
     assert.equal(profile.profile, profileName);
     assert.equal(profile.profile_kind, 'active-role-catalog');
     assert.equal(profile.surface_version, ACTIVE_SURFACE_VERSION);
-    assert.equal(profile.compatibility_scope, `active-${ACTIVE_RELEASE_LINE}-only`);
+    assert.equal(profile.compatibility_scope, mcpRoleProfileCompatibilityScope(ACTIVE_SURFACE_VERSION));
     assert.equal(profile.annotation_mode, 'structural');
     assert.deepEqual(profile.schema_fields, ['inputSchema', 'outputSchema']);
     assert.deepEqual(profile.filters, {
@@ -1809,7 +1858,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
     assert.equal(modelContext.profile, profileName);
     assert.equal(modelContext.view, 'client-prompt-inputs');
     assert.equal(modelContext.surface_version, ACTIVE_SURFACE_VERSION);
-    assert.equal(modelContext.compatibility_scope, `active-${ACTIVE_RELEASE_LINE}-only`);
+    assert.equal(modelContext.compatibility_scope, mcpRoleProfileCompatibilityScope(ACTIVE_SURFACE_VERSION));
     assert.equal(modelContext.annotation_mode, 'model-context');
     assert.equal(modelContext.discovery_profile, '../manifest.json');
     assert.equal(
@@ -1870,9 +1919,12 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
     );
   }
 
-  const mediaBuyTools = new Set(MCP_ROLE_PROFILE_TOOLS['media-buy']);
+  const mediaBuyTools = new Set(mcpRoleProfileTools('media-buy', ACTIVE_SURFACE_VERSION));
   const activeMediaBuyTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'media-buy')
+    // Tools added for the next minor join the role catalog when the package
+    // enters that line; the build rejects inactive tools in role profiles.
+    .filter(([, tool]) => !tool.added_in || semver.lte(tool.added_in, ACTIVE_SURFACE_VERSION))
     .filter(([, tool]) => !tool.deprecated_in || semver.gt(tool.deprecated_in, ACTIVE_SURFACE_VERSION))
     .map(([toolName]) => toolName)
     .filter(toolName => toolName !== 'build_creative');
@@ -1888,7 +1940,7 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
     assert.ok(canonicalManifest.tools[compatibilityFacade].deprecated_in);
   }
 
-  const creativeTools = new Set(MCP_ROLE_PROFILE_TOOLS.creative);
+  const creativeTools = new Set(mcpRoleProfileTools('creative', ACTIVE_SURFACE_VERSION));
   const activeCreativeTools = Object.entries(canonicalManifest.tools)
     .filter(([, tool]) => tool.protocol === 'creative')
     .filter(([, tool]) => !tool.deprecated_in || semver.gt(tool.deprecated_in, ACTIVE_SURFACE_VERSION))

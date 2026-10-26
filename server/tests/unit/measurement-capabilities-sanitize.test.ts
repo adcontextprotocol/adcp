@@ -35,6 +35,103 @@ describe('sanitizeMeasurementCapabilities', () => {
     expect(m.accreditations?.[0].accrediting_body).toBe('MRC');
   });
 
+  it('preserves a display name and collapses whitespace in it', () => {
+    const out = sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'givt_rate', name: '  Invalid Traffic\nRate (GIVT) ' }],
+    });
+    expect(out.metrics[0].name).toBe('Invalid Traffic Rate (GIVT)');
+  });
+
+  it('omits name when the vendor does not send one', () => {
+    const out = sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'attention_units' }],
+    });
+    expect(out.metrics[0]).not.toHaveProperty('name');
+  });
+
+  it('rejects a name longer than 100 chars', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: 'x'.repeat(101) }],
+    })).toThrow(/name: exceeds 100/);
+  });
+
+  it('rejects an empty or whitespace-only name', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: ' \t ' }],
+    })).toThrow(/name: empty/);
+  });
+
+  it('rejects a non-string name', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: 42 }],
+    })).toThrow(/name: expected string/);
+  });
+
+  it('rejects scriptish content in name', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: '<script>alert(1)</script>' }],
+    })).toThrow(/scriptish/);
+  });
+
+  it('accepts a name of exactly 100 chars', () => {
+    const out = sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: 'x'.repeat(100) }],
+    });
+    expect(out.metrics[0].name).toHaveLength(100);
+  });
+
+  it('checks length before trimming padding whitespace', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: `  ${'x'.repeat(99)}` }],
+    })).toThrow(/name: exceeds 100/);
+  });
+
+  it('rejects a null name', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: null }],
+    })).toThrow(/name: expected string/);
+  });
+
+  it('strips control, zero-width, and bidi-override characters from name', () => {
+    const out = sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: 'Atten\u0007tion\u200B \u202ESco\u0085re' }],
+    });
+    expect(out.metrics[0].name).toBe('Attention Score');
+  });
+
+  it('rejects a name made only of invisible characters', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: '\u200B\u202E\uFEFF' }],
+    })).toThrow(/name: empty/);
+  });
+
+  it('rejects fullwidth-obfuscated scriptish content in name after NFKC', () => {
+    expect(() => sanitizeMeasurementCapabilities({
+      metrics: [{ metric_id: 'm', name: 'x ｏｎｌｏａｄ＝y' }],
+    })).toThrow(/scriptish/);
+  });
+
+  it('rejects scriptish content split by any invisible format character', () => {
+    for (const sep of ['\u200B', '\u2060', '\u00AD', '\u2063', '\u206A', '\u180E']) {
+      expect(() => sanitizeMeasurementCapabilities({
+        metrics: [{ metric_id: 'm', name: `x on${sep}load=y` }],
+      })).toThrow(/scriptish/);
+      expect(() => sanitizeMeasurementCapabilities({
+        metrics: [{ metric_id: 'm', name: `<scr${sep}ipt>` }],
+      })).toThrow(/scriptish/);
+    }
+  });
+
+  it('accepts duplicate names across distinct metric_ids', () => {
+    const out = sanitizeMeasurementCapabilities({
+      metrics: [
+        { metric_id: 'attention_units', name: 'Attention' },
+        { metric_id: 'attention_seconds', name: 'Attention' },
+      ],
+    });
+    expect(out.metrics.map(m => m.name)).toEqual(['Attention', 'Attention']);
+  });
+
   it('always sets verified_by_aao=false on accreditations even if vendor passes true', () => {
     const out = sanitizeMeasurementCapabilities({
       metrics: [{

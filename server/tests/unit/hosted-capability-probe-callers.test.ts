@@ -112,4 +112,47 @@ describe('hosted capability discovery callers', () => {
     expect(mocks.discovery.mock.calls[0][1].versionEnvelope).toBe('major-only');
     expect(mocks.discovery.mock.calls[0][1].adcpVersion).toBeUndefined();
   });
+
+  it.each([
+    { specialisms: [], governance: false },
+    { specialisms: ['sales-guaranteed', 'sponsored-intelligence'], governance: false },
+    { specialisms: ['governance-aware-seller'], governance: true },
+    { specialisms: ['governance-aware-seller', 'sponsored-intelligence'], governance: true },
+  ])('uses the hosted 3.0 selection in the picker and recommendations for $specialisms', async ({ specialisms, governance }) => {
+    mocks.discovery.mockResolvedValue({
+      profile: { adcp_supported_versions: ['3.0'], supported_protocols: ['media_buy'], specialisms },
+      steps: [],
+    });
+    vi.spyOn(AgentContextDatabase.prototype, 'getAuthInfoByOrgAndUrl').mockResolvedValue(null);
+    vi.spyOn(AgentContextDatabase.prototype, 'getByOrgAndUrl').mockResolvedValue(null);
+    const app = express();
+    const requireAuth: import('express').RequestHandler = (req, _res, next) => {
+      req.user = { id: 'user_owner', email: 'owner@example.com' } as typeof req.user;
+      next();
+    };
+    app.use('/api', createRegistryApiRouter({
+      brandManager: {} as RegistryApiConfig['brandManager'], brandDb: {} as RegistryApiConfig['brandDb'],
+      propertyDb: {} as RegistryApiConfig['propertyDb'], adagentsManager: {} as RegistryApiConfig['adagentsManager'],
+      healthChecker: {} as RegistryApiConfig['healthChecker'], crawler: {} as RegistryApiConfig['crawler'],
+      capabilityDiscovery: {} as RegistryApiConfig['capabilityDiscovery'],
+      registryRequestsDb: { trackRequest: async () => {}, markResolved: async () => true },
+      requireAuth, optionalAuth: requireAuth,
+    }));
+    const response = await request(app)
+      .get('/api/registry/agents/' + encodeURIComponent('https://agent.example/mcp') + '/applicable-storyboards')
+      .query({ compliance_target: '3.0.28' });
+    expect(response.status).toBe(200);
+    const ids = response.body.bundles.flatMap((bundle: { storyboards: Array<{ id: string }> }) => bundle.storyboards.map(storyboard => storyboard.id));
+    const governanceIds = ['approved', 'conditions', 'denied', 'denied_recovery']
+      .map(name => `media_buy_seller/governance_${name}`);
+    for (const id of governanceIds) expect(ids.includes(id)).toBe(governance);
+
+    const recommendations = await createMemberToolHandlers(null).get('recommend_storyboards')!({
+      agent_url: 'https://test-agent.adcontextprotocol.org/sales/mcp',
+      compliance_target: '3.0.28',
+    });
+    expect(typeof recommendations).toBe('string');
+    expect(String(recommendations)).toContain('media_buy_seller');
+    for (const id of governanceIds) expect(String(recommendations).includes(id)).toBe(governance);
+  });
 });

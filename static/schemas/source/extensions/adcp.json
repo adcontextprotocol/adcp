@@ -13,5 +13,6 @@
       "description": "Planning-cycle association on get_products, using the unchanged 3.2.1 OpportunityContext shape and seller/account scope. Lifecycle fields are discovery snapshots, not independent transitions. See the documented task binding for account resolution, proposal inheritance, and migration."
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "x-added-in": "3.3.0"
 }

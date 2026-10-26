@@ -101,7 +101,6 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'get_account_financials',
     'get_adcp_capabilities',
     'get_creative_delivery',
-    'get_creative_addons',
     'get_creative_features',
     'get_task_status',
     'list_accounts',
@@ -118,6 +117,31 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'validate_input',
   ],
 };
+// Role-profile tools introduced by a later minor. Each joins its role catalog
+// once the package enters that line (the build rejects inactive tools), so a
+// version bump never needs a hand edit to the base lists above.
+const MCP_ROLE_PROFILE_LINE_TOOLS = {
+  'media-buy': {
+    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue'],
+  },
+  creative: {
+    '3.3.0': ['get_creative_addons'],
+  },
+};
+
+/** The role profile's tools for an active surface version, in catalog order. */
+function mcpRoleProfileTools(profileName, surfaceVersion) {
+  const lineTools = Object.entries(MCP_ROLE_PROFILE_LINE_TOOLS[profileName] || {})
+    .filter(([addedIn]) => semver.lte(addedIn, surfaceVersion))
+    .flatMap(([, toolNames]) => toolNames);
+  return [...MCP_ROLE_PROFILE_TOOLS[profileName], ...lineTools];
+}
+
+/** Compatibility scope label for a role profile, e.g. `active-3.3-only`. */
+function mcpRoleProfileCompatibilityScope(surfaceVersion) {
+  return `active-${semver.major(surfaceVersion)}.${semver.minor(surfaceVersion)}-only`;
+}
+
 const MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES = {
   'media-buy': ['media_buy_delivery'],
   creative: [],
@@ -2427,10 +2451,10 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
     manifestMetadata: {
       canonical_wire_manifest: '../../manifest.json',
     },
-    // Compliance schemas carry the full product-graph via task-completion-data.
+    // Compliance and media-buy schemas carry the full product/package graph.
     // Rewrite root-anchored cross-def refs to embedded-resource canonical $id
     // URIs to avoid ~100-byte URL-prefix overhead per cross-def pointer (#8041).
-    schemaRewriteEmbeddedRefs: (_toolName, tool) => tool.protocol === 'compliance',
+    schemaRewriteEmbeddedRefs: (_toolName, tool) => tool.protocol === 'compliance' || tool.protocol === 'media-buy',
   });
   console.log(
     `   ✓ MCP ${MCP_PROTOCOL_VERSION} projection: ${stats.toolCount} tools, ${stats.schemaCount} schemas, `
@@ -2439,11 +2463,21 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
   );
 
   const canonicalManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  const surfaceVersion = [
+  const declaredSurfaceVersion = [
     canonicalManifest.adcp_version,
     ...Object.values(canonicalManifest.tools || {}).map(tool => tool.added_in).filter(Boolean),
   ].filter(version => semver.valid(version)).sort(semver.rcompare)[0];
-  const surfaceReleaseLine = `${semver.major(surfaceVersion)}.${semver.minor(surfaceVersion)}`;
+  // A tool added for the next minor (for example added_in 3.3.0 while the
+  // package is still 3.2.x) is not part of the active surface until the
+  // package enters that line, so cap the surface at the package's active
+  // version: x.y.0 for an x.y prerelease, otherwise the released version.
+  const packageVersion = JSON.parse(fs.readFileSync(PACKAGE_JSON, 'utf8')).version;
+  const packageSurfaceVersion = semver.prerelease(packageVersion)
+    ? `${semver.major(packageVersion)}.${semver.minor(packageVersion)}.0`
+    : packageVersion;
+  const surfaceVersion = semver.lte(declaredSurfaceVersion, packageSurfaceVersion)
+    ? declaredSurfaceVersion
+    : packageSurfaceVersion;
   const isActiveProductionTool = tool => (
     tool.protocol !== 'compliance'
     && (!tool.added_in || semver.lte(tool.added_in, surfaceVersion))
@@ -2475,7 +2509,8 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
       + `${(productionStats.totalBytes / (1024 * 1024)).toFixed(2)} MiB structural projection`
   );
 
-  for (const [profileName, toolNames] of Object.entries(MCP_ROLE_PROFILE_TOOLS)) {
+  for (const profileName of Object.keys(MCP_ROLE_PROFILE_TOOLS)) {
+    const toolNames = mcpRoleProfileTools(profileName, surfaceVersion);
     const missingTools = toolNames.filter(toolName => !canonicalManifest.tools?.[toolName]);
     if (missingTools.length > 0) {
       throw new Error(`${profileName} MCP profile names unknown tools: ${missingTools.join(', ')}`);
@@ -2505,12 +2540,12 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
         profile: profileName,
         profile_kind: 'active-role-catalog',
         surface_version: surfaceVersion,
-        compatibility_scope: `active-${surfaceReleaseLine}-only`,
+        compatibility_scope: mcpRoleProfileCompatibilityScope(surfaceVersion),
         filters: {
           include_tools: toolNames,
           exclude_deprecated: true,
         },
-        delivery: `active ${surfaceReleaseLine} role-filtered discovery inputs and response schemas; canonical wire schemas remain the call-validation authority`,
+        delivery: `active ${semver.major(surfaceVersion)}.${semver.minor(surfaceVersion)} role-filtered discovery inputs and response schemas; canonical wire schemas remain the call-validation authority`,
         complete_discovery_projection: '../../manifest.json',
         canonical_wire_manifest: '../../../../manifest.json',
       },
@@ -2536,7 +2571,7 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
         profile_kind: 'active-role-catalog',
         view: 'client-prompt-inputs',
         surface_version: surfaceVersion,
-        compatibility_scope: `active-${surfaceReleaseLine}-only`,
+        compatibility_scope: mcpRoleProfileCompatibilityScope(surfaceVersion),
         filters: {
           include_tools: toolNames,
           exclude_deprecated: true,
@@ -2842,6 +2877,8 @@ async function main() {
 
 module.exports = {
   MCP_ROLE_PROFILE_TOOLS,
+  mcpRoleProfileTools,
+  mcpRoleProfileCompatibilityScope,
   MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES,
   canonicalPublishedSchemaUri,
   canonicalizePublishedSchemaUris,
@@ -2860,6 +2897,7 @@ module.exports = {
   copyAsyncResponseRefsToCore,
   getReleaseMetadata,
   buildRootSchemaDiscovery,
+  writeRootSchemaDiscovery,
   isSelectableRelease,
   RELEASE_STATUS_OVERRIDES,
   supersedingStableVersion,

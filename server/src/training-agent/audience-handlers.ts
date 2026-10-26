@@ -12,7 +12,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { atLeastAdcpVersion, type TrainingContext, type ToolArgs } from './types.js';
+import { atLeastAdcpVersion, TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext, type ToolArgs } from './types.js';
+import { omitFieldsAddedAfterRelease } from './served-release-fields.js';
 import { sessionKeyFromArgs } from './state.js';
 import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from './product-factory.js';
 
@@ -471,7 +472,17 @@ function sourceResponse(
 
 // ── Handler implementation ──────────────────────────────────────
 
+/** sync_audiences shaped to the served release: the 3.3 `platform_id` (and
+ * any other field added after it) stays off a response served below 3.3. */
 export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) {
+  return omitFieldsAddedAfterRelease(
+    await syncAudiences(args, ctx),
+    'media-buy/sync-audiences-response.json',
+    ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
+}
+
+async function syncAudiences(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncAudiencesInput;
 
   if (!req.account) {

@@ -168,7 +168,7 @@
     },
     "demographics": {
       "$ref": "/schemas/core/demographic-targeting-intent.json",
-      "description": "Canonical demographic audience targeting intent with optional constraints on how age may be determined. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Fresh create/update targeting MUST compile exactly or be rejected. During get_products, a seller may offer a different configured predicate only through sparse targeting_resolution modifications on a distinguishable product_id; selecting that product accepts the alternative. Sellers never silently broaden, narrow, default, drop, or substitute the basis."
+      "description": "Canonical age and gender audience targeting, distinct from age_restriction legal eligibility. Named dimensions compose with AND and have independent explicit unknown handling. Age determination constraints remain age-specific. Fresh create/update requests MUST compile exactly or be rejected; get_products may offer a configured alternative only with sparse targeting_resolution modifications and a distinguishable product_id. A non-null request-side demographics value replaces the entire demographics dimension, including both age and gender; retain age when changing only gender. Sellers MUST NOT silently drop, broaden, narrow, or substitute a predicate."
     },
     "frequency_cap": {
       "title": "Targeting Frequency Cap",
@@ -191,6 +191,32 @@
     "collection_list_exclude": {
       "$ref": "/schemas/core/collection-list-ref.json",
       "description": "Reference to a collection list for excluding specific collections (programs, publications, channels) from this product. Matched collections must not carry the buyer's ads. Use for brand safety do-not-air lists. Seller must declare support in get_adcp_capabilities."
+    },
+    "collection_lists": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "x-adcp-validation": {
+        "unique_by": ["agent_url", "list_id"],
+        "spec": "docs/governance/collection/index.mdx#combining-several-collection-lists-experimental"
+      },
+      "description": "Experimental. Several collection_list refs: intersection. Not with collection_list. Over max_references is rejected, never truncated.",
+      "items": { "$ref": "/schemas/core/collection-list-ref.json" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "collection_lists_exclude": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "x-adcp-validation": {
+        "unique_by": ["agent_url", "list_id"],
+        "spec": "docs/governance/collection/index.mdx#combining-several-collection-lists-experimental"
+      },
+      "description": "Experimental. Several collection_list_exclude refs: union. Not with collection_list_exclude. Over max_references is rejected, never truncated.",
+      "items": { "$ref": "/schemas/core/collection-list-ref.json" },
+      "minItems": 1,
+      "uniqueItems": true
     },
     "placement_selection": {
       "$ref": "/schemas/core/placement-selection.json",
@@ -465,6 +491,12 @@
       "items": { "$ref": "/schemas/core/negative-keyword.json" },
       "minItems": 1
     }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["collection_list", "collection_lists"] },
+      { "required": ["collection_list_exclude", "collection_lists_exclude"] }
+    ]
   },
   "allOf": [
     { "$ref": "/schemas/core/targeting-unknown-age-eligibility-constraint.json" },

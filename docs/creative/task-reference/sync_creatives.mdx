@@ -128,6 +128,14 @@ asyncio.run(main())
 
 **Note:** Per-creative async review is surfaced via `creatives[].status` (e.g., `pending_review`) on the synchronous success response. When the *whole* operation is queued (batch ingestion, governance review gating the sync), the response is a submitted envelope with top-level `status: "submitted"` and a `task_id`. See [Async approval workflow](#async-approval-workflow).
 
+In AdCP 3.3, `assignments` and `assignment_operations` may assign an existing
+`pending_review` or `rejected` library creative. Otherwise valid assignments
+remain in place through review, rejection, and correction under the same
+`creative_id`; assignment is not authorization to serve. By default eligible
+approved assignments start independently. A package may instead set
+`start_requires_all_creatives_approved: true` to hold its first release for serving. See the
+[creative start policy](/docs/media-buy/specification#starting-with-assigned-creatives-under-review) for package approval, status, and resubmission rules.
+
 For campaigns with a short launch window, [sync the creative into a seller library before booking, wait for review, then assign it to a package](/docs/creative/creative-libraries#prepare-creatives-before-a-time-sensitive-launch). Library approval and package assignment eligibility are separate checks.
 
 ## Read-after-write visibility
@@ -135,6 +143,8 @@ For campaigns with a short launch window, [sync the creative into a seller libra
 Creatives accepted via a synchronous `sync_creatives` success response MUST be committed to the creative library before the response is returned. They MUST be immediately visible to subsequent [`list_creatives`](/docs/creative/task-reference/list_creatives) calls from the same account and authorized caller, including creatives whose review lifecycle status is `processing` or `pending_review`.
 
 Implementations that acknowledge a creative on the synchronous success branch but buffer the library write until a later background commit are not conformant. If the whole sync operation cannot commit before returning, use the submitted task envelope instead; the visibility requirement then applies when the task completes with accepted creatives.
+
+A product can declare a separate `creative_policy.review_sla` for time to an approved or rejected decision. The applicable creative entry in the buy's `available_actions[]` resolves `review_sla` independently of ingestion timing. See [Service commitments](/docs/media-buy/service-commitments) for product scope, business calendars, and the rule that an ingestion acknowledgement does not complete review.
 
 ## Request parameters
 
@@ -563,6 +573,8 @@ For published-post reference products, the asset role is usually `published_post
 ### Assignments structure
 
 Assignments are at the request level, mapping creative IDs to package IDs. Standalone creative agents that do not manage media buys ignore this field.
+
+**Revisions.** Each applied assignment change (`assignments` and `assign`, `unassign` or `replace` in `assignment_operations`) advances the `revision` of every media buy whose package assignments it changed, once per buy per committed request, in the same atomic write as that buy's assignment change, and appends a `history` entry to that buy. This is new in 3.3; 3.2 sellers did not advance it. `sync_creatives` accepts no media-buy `revision` precondition, so a buyer that holds a media-buy `revision` read before the sync and then sends `update_media_buy` or [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) receives [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) and re-reads. A dry run, a rejected assignment, a no-op assignment and an exact idempotency replay advance nothing. Each created or changed creative also advances its own [`seller_revision`](/docs/creative/task-reference/list_creatives#seller-revision) when the seller maintains one.
 
 ```json test=false
 {

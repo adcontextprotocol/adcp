@@ -93,6 +93,32 @@ describe('request-only targeting null-clear semantics', () => {
     );
   });
 
+  test('collection_lists plural fields are exclusive with the singular fields', () => {
+    const ref = id => ({ agent_url: 'https://lists.acme.example', list_id: id });
+    assert.equal(validateState({ collection_lists: [ref('a'), ref('b')] }), true, JSON.stringify(validateState.errors));
+    assert.equal(validateState({ collection_lists_exclude: [ref('a'), ref('b')] }), true);
+    assert.equal(validateState({ collection_lists: [] }), false, 'empty plural array is invalid');
+    assert.equal(validateState({ collection_lists: [ref('a'), ref('a')] }), false, 'duplicate refs are invalid');
+    assert.equal(validateState({ collection_list: ref('a'), collection_lists: [ref('b')] }), false);
+    assert.equal(
+      validateState({ collection_list_exclude: ref('a'), collection_lists_exclude: [ref('b')] }),
+      false
+    );
+    assert.equal(validateState({ collection_list: ref('a'), collection_lists_exclude: [ref('b')] }), true);
+    // Switching singular to plural in one request needs null on the old field.
+    assert.equal(validateInput({ collection_list_exclude: null, collection_lists_exclude: [ref('b')] }), true);
+    assert.equal(validateInput({ collection_lists_exclude: null }), true);
+    for (const field of ['collection_lists', 'collection_lists_exclude']) {
+      assert.deepEqual(
+        readSchema('/schemas/core/targeting.json').properties[field]['x-adcp-validation'].unique_by,
+        ['agent_url', 'list_id'],
+        `${field} must declare identity uniqueness by (agent_url, list_id)`
+      );
+    }
+    // Input cannot see stored state, so the exclusivity rule binds the merged strict state.
+    assert.equal(validateInput({ collection_list: ref('a'), collection_lists: [ref('b')] }), true);
+  });
+
   test('accepts null commands but keeps arrays non-empty when non-null', () => {
     for (const dimension of ['geo_regions', 'audience_include', 'audience_exclude']) {
       assert.equal(validateInput({ [dimension]: null }), true, JSON.stringify(validateInput.errors));
@@ -167,6 +193,19 @@ describe('request-only targeting null-clear semantics', () => {
     );
   });
 
+  // Deliberate asymmetries between the accepted snapshot and the buy_products
+  // request shape. Each entry is a scope decision, not drift: adding a
+  // property to one side without listing it here still fails loudly.
+  const PROPOSAL_ONLY_PURCHASE_FIELDS = new Set([
+    // Installment selection (#8230) is a negotiation surface. Direct purchase
+    // would need its own acceptance-time reservation contract for a slot sold
+    // between discovery and buy, which 3.3 does not define.
+    'installments',
+    // Purchase rights (#8090) are seller-authored. A published offer carries no
+    // rights, so a buyer has no typed way to request or counter them in 3.3.
+    'rights',
+  ]);
+
   test('codegen-safe product purchase input copies remain in strict-schema parity', () => {
     const strict = readSchema('/schemas/media-buy/product-purchase.json');
     const input = readSchema('/schemas/media-buy/product-purchase-input.json');
@@ -176,10 +215,18 @@ describe('request-only targeting null-clear semantics', () => {
     assert.equal(Object.hasOwn(input.properties, 'creative_addons'), false);
     assert.deepEqual(
       Object.keys(input.properties).sort(),
-      Object.keys(strict.properties).filter(property => property !== 'creative_addons').sort()
+      Object.keys(strict.properties).filter(name => name !== 'creative_addons' && !PROPOSAL_ONLY_PURCHASE_FIELDS.has(name)).sort()
     );
     for (const property of Object.keys(strict.properties)) {
       if (property === 'targeting_overlay' || property === 'creative_addons') continue;
+      if (PROPOSAL_ONLY_PURCHASE_FIELDS.has(property)) {
+        assert.equal(
+          input.properties[property],
+          undefined,
+          `${property} is proposal-only and must not appear on buy_products input`
+        );
+        continue;
+      }
       const strictPropertyRef = `/schemas/media-buy/product-purchase.json#/properties/${property}`;
       if (input.properties[property].$ref === strictPropertyRef) continue;
       assert.deepEqual(

@@ -5,9 +5,16 @@
   "description": "Optional media-buy protocol features. Used in capability declarations (seller declares support) and product filters (buyer requires support). If a seller declares a feature as true, they MUST honor requests using that feature.",
   "type": "object",
   "properties": {
+    "creative_start_policy": {
+      "type": "boolean",
+      "default": false,
+      "x-added-in": "3.3.0",
+      "description": "Supports the package start_requires_all_creatives_approved initial-serving gate through control_media_buy package controls and any advertised create_media_buy/update_media_buy compatibility facades. When true, the seller MUST honor and echo the policy, retain pending-review and rejected assignments, and expose the package-scoped update_creative_start_policy action before first enablement so the buyer can set or clear it outside commercial proposal negotiation. Buyers MUST NOT send true without this capability. Sellers that do not declare true MUST reject an opted-in request atomically with UNSUPPORTED_FEATURE; explicit false is the ordinary default. This capability can be checked before booking; it does not alter inventory guarantees or create a reservation on non-guaranteed inventory."
+    },
     "inline_creative_management": {
       "type": "boolean",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Deprecated 3.x compatibility capability for creatives provided inline in create_media_buy and update_media_buy package payloads. buy_products, accept_proposal, and control_media_buy never accept inline creatives. New integrations use the dedicated creative lifecycle. Removed in 4.0."
     },
     "property_list_filtering": {
@@ -19,6 +26,7 @@
       "description": "Supports sync_catalogs task for catalog feed management with platform review and approval"
     },
     "catalog_ingestion": {
+      "x-added-in": "3.3.0",
       "allOf": [
         { "$ref": "/schemas/core/catalog-ingestion-capability.json" }
       ],
@@ -33,10 +41,12 @@
       "description": "Seller has per-package snapshot infrastructure for the reporting contract. When true, the seller MUST populate `package.committed_metrics` on committed `create_media_buy` responses where `confirmed_at` is non-null, MUST omit `package.committed_metrics` while `confirmed_at` is null for a provisional buy, and MUST honor append-only mid-flight metric additions via `update_media_buy`. The unified `committed_metrics` array (per the metric-accountability design) covers both standard and vendor-defined metric entries, so a single flag is load-bearing. Buyers filtering on this flag are detecting 'this seller can stamp the reporting contract,' which closes the audit gap from PR #3510 where absence of `committed_metrics` was indistinguishable between 'didn't snapshot' and 'snapshot infrastructure not implemented.'"
     },
     "supports_property_breakdown": {
+      "x-added-in": "3.3.0",
       "type": "boolean",
       "description": "Seller-wide rollup for property-grain delivery reporting. When true, the seller supports property-grain reporting and MUST return `by_property` (with `by_property_truncated`, `by_property_suppressed`, `by_property_sorted_by`, and `by_property_sort_direction`) from `get_media_buy_delivery` on every product whose `reporting_capabilities.supports_property_breakdown` is `true` (on sandbox accounts this includes products seeded by a test controller) when `reporting_dimensions.property` is requested. The per-product flag remains authoritative and binds on its own: a product declaring it is bound even when this rollup is false or absent, and a buyer MUST NOT infer support on a product from the rollup. The rollup lets a buyer or conformance runner detect support before discovering products and is the grading gate: when false or absent the seller makes no seller-wide claim and gated conformance scenarios grade `not_applicable`."
     },
     "supports_installment_property_breakdown": {
+      "x-added-in": "3.3.0",
       "type": "boolean",
       "description": "Seller-wide rollup for installment × property delivery reporting. When true, the seller supports installment × property reporting and MUST return `by_installment_property` (with `by_installment_property_truncated`, `by_installment_property_suppressed`, `by_installment_property_sorted_by`, and `by_installment_property_sort_direction`) from `get_media_buy_delivery` on every product whose `reporting_capabilities.supports_installment_property_breakdown` is `true` (on sandbox accounts this includes products seeded by a test controller) when `reporting_dimensions.installment_property` is requested. The per-product flag remains authoritative and binds on its own, even when this rollup is false or absent. When false or absent the seller makes no seller-wide claim and gated conformance scenarios grade `not_applicable`."
     },

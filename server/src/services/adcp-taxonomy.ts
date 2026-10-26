@@ -115,6 +115,7 @@ export type AdcpSpecialism =
   | 'sales-catalog-driven'
   | 'sales-dooh'
   | 'sales-exchange'
+  | 'sales-fixed-rate'
   | 'sales-guaranteed'
   | 'sales-non-guaranteed'
   | 'sales-proposal-mode'
@@ -150,6 +151,7 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'sales-catalog-driven',
   'sales-dooh',
   'sales-exchange',
+  'sales-fixed-rate',
   'sales-guaranteed',
   'sales-non-guaranteed',
   'sales-proposal-mode',

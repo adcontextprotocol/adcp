@@ -70,11 +70,20 @@ Specific capability claims. Each specialism lives under exactly one protocol. An
 
 Specialisms carry a `status`:
 
-- **`stable`** — fully specified storyboard. Compliance runner executes every phase; `AAO Verified` means the agent demonstrably passed.
-- **`preview`** — ID and scope are reserved; the storyboard is a placeholder while the underlying protocol surface stabilizes. Agents may claim these; the runner emits a result of `{ status: "preview", passed: null, reason: "storyboard not yet defined" }` instead of a verified pass/fail. AAO badges render preview specialisms with a distinct indicator.
+- **`stable`** — fully specified storyboard. The runner grades every phase, and a passing claim counts toward the `AAO Verified` badge for its role. Removing a stable specialism is a breaking change (see [conformance-suite versioning](/docs/reference/versioning#spec-registry-conformance-and-experimental-changes)).
+- **`preview`** — the ID and scope are published but not yet committed. Most preview storyboards are fully authored and the runner grades them exactly like stable ones, reporting pass or fail; a few are placeholders with no steps of their own while the underlying protocol surface stabilizes (`sponsored-intelligence` grades through its protocol baseline). Agents may claim preview specialisms, but a preview claim does not count toward `AAO Verified` badge issuance or eligibility: an agent whose only declared specialisms are preview is reported with the `no_declared_specialisms` blocker. A preview specialism can be renamed, reshaped, reclassified, or removed in a patch release of the conformance suite.
 - **`deprecated`** — retained for backward compatibility but scheduled for removal in a future major. Runner emits `{ status: "deprecated", passed: <boolean>, reason: "..." }` — still executes the storyboard if one exists, but warns the claim should be migrated.
 
 Status is declared per-specialism in the YAML frontmatter and surfaced in `/compliance/{version}/index.json`.
+
+A preview specialism is promoted to `stable` when all of the following hold:
+
+1. **The storyboard grades the mechanics.** It is not a placeholder, and its phases assert the behavior that distinguishes the specialism, not only schema validity.
+2. **A reference implementation passes it in CI.** The training agent declares the specialism and the storyboard runs in the storyboard matrix.
+3. **An independent agent has passed it.** At least one implementation other than the training agent has run the storyboard and reported the result on the specialism's issue.
+4. **The working group has ratified it.** The decision record that introduced the specialism is accepted, including its name and any optional-phase gating.
+
+A promotion is called out in the release notes of the release that carries it. Promotion is additive for agents already claiming the specialism: their claim starts counting toward badges, and the storyboard they were graded against does not change.
 
 Specialisms are grouped below by parent protocol.
 
@@ -88,6 +97,7 @@ Specialisms are grouped below by parent protocol.
 |-----------|--------|---------|
 | `sales-guaranteed` | stable | Guaranteed media buys with human IO approval |
 | `sales-non-guaranteed` | stable | Non-guaranteed auction-based media buys |
+| `sales-fixed-rate` | preview | Non-guaranteed, fixed-price sales in any medium, digital or linear TV: no reserved inventory, no delivery commitment, no auction or bid (CPM and CPP are pricing units, not bids); the seller MAY hold a buy for review before committing. Requested by two adopters: a fixed-price digital seller ([#6303](https://github.com/adcontextprotocol/adcp/issues/6303), sell.nofluffadvisory.com) and O-N-X (broadcast TV). |
 | `sales-proposal-mode` | deprecated | **Deprecated in 3.1.** Drop this claim and replace with `sales-guaranteed` + `media_buy.supports_proposals: true`. See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823). |
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV: guaranteed (CPM- or CPP-on-demo) or fixed-price, non-guaranteed :15/:30 spots under agreed measurement terms, reconciled on the agreed window; one path is enough |
@@ -190,9 +200,28 @@ Both paths share discovery and the authorized buy:
 
 | If you sell… | Claim |
 |---|---|
-| Guaranteed media (IO approval, fixed pricing) | `sales-guaranteed` → see Step 3 |
+| Fixed price, and you commit to delivery (IO approval, reserved inventory) | `sales-guaranteed` → see Step 3 |
+| Fixed price, and you make no delivery commitment (non-guaranteed; the seller MAY hold buys for review), including seller-approved linear TV spot packages priced per CPM or per rating point | `sales-fixed-rate` |
 | Auction / PMP non-guaranteed | `sales-non-guaranteed` |
-| Both guaranteed and non-guaranteed | `sales-guaranteed` + `sales-non-guaranteed` |
+| More than one of the above | One claim per model, for example `sales-guaranteed` + `sales-fixed-rate` + `sales-non-guaranteed` |
+
+The question that separates `sales-guaranteed` from `sales-fixed-rate` is whether the seller commits to delivery, not whether a human reviews the buy. A fixed-rate seller publishes a price and sells at it without reserving inventory or promising delivery; a seller that reviews or approves buys but commits to delivery claims `sales-guaranteed`. "Fixed rate" means the pricing option carries `fixed_price` and the buyer never sends a bid. CPM and CPP are pricing and evaluation units, not bids. Specialisms are independent claims: each is graded by its own storyboard, a broadcast seller may claim both `sales-broadcast-tv` and `sales-fixed-rate`, and a mixed seller that sells at a fixed rate on some products and by auction on others claims both `sales-fixed-rate` and `sales-non-guaranteed`.
+
+<a id="which-hold-path"></a>
+
+#### Which hold path does your seller use?
+
+Both `sales-guaranteed` and `sales-fixed-rate` can involve a human decision before the seller commits. They surface it differently on the wire:
+
+| | `sales-guaranteed` | `sales-fixed-rate` |
+|---|---|---|
+| What the seller commits to | Delivery against an IO | A published price; no delivery commitment |
+| Hold mechanism | Submitted task arm: [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) returns `status: "submitted"` with a `task_id` | Synchronous success: `create_media_buy` returns a `media_buy_id` with `confirmed_at: null` |
+| `media_buy_id` exists while held | No. It is issued when the task completes (for example, when the IO is signed). | Yes, immediately. The buy is retrievable through [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). |
+| How the buyer observes the outcome | Poll the task or receive the task webhook | Poll `get_media_buys` and watch `confirmed_at`, `status`, and `revision` |
+| Grading | Required for `sales-guaranteed` | Optional hold phase, graded only when the seller advertises the `force_media_buy_confirmation` controller scenario |
+
+Commitment is keyed off `confirmed_at`, never off `status`. A buy with `confirmed_at: null` is not committed, whatever its `status` says, and it is never `active`.
 
 </Step>
 
@@ -299,7 +328,7 @@ The storyboard runner:
 1. Runs every storyboard in `/compliance/{version}/universal/`
 2. For each protocol in `supported_protocols`, runs the baseline at `/compliance/{version}/protocols/{protocol}/` (snake_case → kebab-case)
 3. Runs each claimed specialism's storyboard at `/compliance/{version}/specialisms/{id}/`
-4. For `preview` specialisms, emits a warning instead of a pass/fail verdict — AAO Verified badges render preview specialisms with a distinct indicator
+4. Grades `preview` specialisms the same way, but leaves them out of AAO Verified badge issuance
 
 <Warning>
 **Implement the tools AND claim the specialism.** An agent that wires all of a specialism's required tools but omits the kebab-case ID from `capabilities.specialisms[]` will be graded **"No applicable tracks found"** by the runner — `tracks_passed = 0, tracks_failed = 0, tracks_skipped = 1`. This is a silent pass at the step level and a silent fail at the track level. The fix is to add the specialism ID (e.g., `"creative-generative"`) to your `get_adcp_capabilities` response.
@@ -322,6 +351,7 @@ The kebab↔snake swap between wire specialism IDs and storyboard categories is 
 
 | Specialism ID (wire) | Channel / tool family | Storyboard category | Variant scenarios |
 |----------------------|-----------------------|---------------------|-------------------|
+| `sales-fixed-rate` | Pricing mechanic, any channel: `fixed_price` options (cpm, cpp, flat_rate, and so on) on `non_guaranteed` products | [`sales_fixed_rate`](/compliance/latest/specialisms/sales-fixed-rate/index.yaml) | — |
 | `sales-broadcast-tv` | `channels: ['linear_tv']` | [`sales_broadcast_tv`](/compliance/latest/specialisms/sales-broadcast-tv/index.yaml) | — |
 | `sales-dooh` | `channels: ['dooh']` | [`sales_dooh`](/compliance/latest/specialisms/sales-dooh/index.yaml) | — |
 | `sales-social` | `channels: ['social']` | [`sales_social`](/compliance/latest/specialisms/sales-social/index.yaml) | — |

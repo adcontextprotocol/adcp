@@ -146,6 +146,16 @@ vi.mock('../../src/addie/index.js', async (importOriginal) => {
   };
 });
 
+// Native auth and health checks do not use chat. Keep this fixture from
+// scheduling chat's deferred filesystem indexing and repository sync.
+vi.mock('../../src/routes/addie-chat.js', async () => {
+  const { Router } = await import('express');
+  return {
+    createAddieChatRouter: () => ({ pageRouter: Router(), apiRouter: Router() }),
+    isWebChatReady: () => false,
+  };
+});
+
 const { HTTPServer } = await import('../../src/http.js');
 const { SlackDatabase } = await import('../../src/db/slack-db.js');
 const {

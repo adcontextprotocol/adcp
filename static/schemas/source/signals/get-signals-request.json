@@ -93,7 +93,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific signal fields to include in the response, aligned with get_products.fields. Required identity and activation fields such as signal_ref or signal_id, signal_agent_segment_id, name, description, signal_type, coverage_percentage, and deployments are always included when required by the response schema. Use for progressive disclosure of rich signal-definition metadata: request fields such as demographic_predicate, age_determination_bases, taxonomy, data_sources, methodology, segmentation_criteria, criteria_url, refresh_cadence, lookback_window, onboarder, modeling, audience_expansion, device_expansion, countries, consent_basis, restricted_attributes, policy_categories, art9_basis, data_subject_rights, and last_updated when the buyer needs them inline. Omit for the agent's default discovery projection. Agents SHOULD honor requested fields for exact lookup, refinement, small custom-signal result sets, and private/source-native signals when available. fields is a projection request, not an entitlement grant; agents MAY redact requested definition fields unless the caller is authorized for the underlying lineage, methodology, and rights-routing metadata. When demographic_predicate, age_determination_bases, consent_basis, or art9_basis is projected for another provider's signal, the value remains provider-declared signal-definition posture; sellers and federating agents MUST NOT substitute their own semantics or processing basis. For broad discovery and wholesale pages, agents MAY return compact pointers instead of inlining large resources, especially when provider-published definitions can be resolved from signal_ref, taxonomy.ref, criteria_url, disclosure_url, and validators such as resolved URL plus catalog_etag, HTTP ETag/Last-Modified, or taxonomy.etag.",
+      "description": "Specific signal fields to include in the response, aligned with get_products.fields. Required identity and activation fields such as signal_ref or signal_id, signal_agent_segment_id, name, description, signal_type, coverage_percentage, and deployments are always included when required by the response schema. Use for progressive disclosure of rich signal-definition metadata: request fields such as demographic_predicate, age_determination_bases, taxonomy, data_sources, methodology, segmentation_criteria, criteria_url, refresh_cadence, lookback_window, onboarder, modeling, audience_expansion, device_expansion, countries, consent_basis, restricted_attributes, policy_categories, art9_basis, data_subject_rights, and last_updated when the buyer needs them inline. Omit for the agent's default discovery projection. Agents SHOULD honor requested fields for exact lookup, refinement, small custom-signal result sets, and private/source-native signals when available. fields is a projection request, not an entitlement grant; agents MAY redact requested definition fields unless the caller is authorized for the underlying lineage, methodology, and rights-routing metadata. When demographic_predicate, age_determination_bases, consent_basis, or art9_basis is projected for another provider's signal, the value remains provider-declared signal-definition posture; sellers and federating agents MUST NOT substitute their own semantics or processing basis. For broad discovery and wholesale pages, agents MAY return compact pointers instead of inlining large resources, especially when provider-published definitions can be resolved from signal_ref, taxonomy.ref, criteria_url, disclosure_url, and validators such as resolved URL plus catalog_etag, HTTP ETag/Last-Modified, or taxonomy.etag. signal_status is always included whenever its value is 'processing' or 'failed', so a projection can never hide an unready signal behind the absent-means-ready default.",
       "items": {
         "type": "string",
         "enum": [
@@ -108,6 +108,8 @@
           "demographic_predicate",
           "age_determination_bases",
           "signal_type",
+          "signal_status",
+          "source_audience_id",
           "data_provider",
           "coverage_percentage",
           "deployments",
@@ -139,6 +141,7 @@
       "type": "integer",
       "description": "DEPRECATED: Use pagination.max_results instead. When both fields are present, agents MUST honor pagination.max_results. When only this field is present without a pagination envelope, agents SHOULD treat it as the page size subject to a maximum of 100 results. This field will be removed in AdCP 4.0.",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "minimum": 1
     },
     "pagination": {

@@ -100,6 +100,7 @@ export const MUTATING_TOOLS: ReadonlySet<string> = new Set([
   'provide_performance_feedback',
   'request_proposals',
   'refine_proposals',
+  'report_media_buy_issue',
   'report_plan_adjustment',
   'report_plan_outcome',
   'report_usage',

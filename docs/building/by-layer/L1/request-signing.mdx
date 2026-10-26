@@ -8,6 +8,10 @@ AdCP supports [HTTP Message Signatures (RFC 9421)](https://www.rfc-editor.org/rf
 
 Signing remains **optional through AdCP 3.2** and becomes **mandatory in AdCP 4.0** for all spend-committing operations. Starting in 3.2, however, every accepted signature on a request with a body must cover `Content-Digest`. Agents that don't support signing may continue using their existing authentication path.
 
+<Warning>
+**Two signing profiles in AdCP 3.3.** This guide's steps cover the **AdCP RFC 9421 profile** (`adcp/request-signing/v1`, keys published through brand.json). That profile is **deprecated in 3.3**: it keeps working through 3.x and is removed in 4.0. The experimental **Web Bot Auth profile** (`web-bot-auth`) replaces it. New implementations should plan for Web Bot Auth; see [Web Bot Auth profile](#web-bot-auth-profile-33-experimental) below. Its SDK helpers are in progress.
+</Warning>
+
 <Note>
 This is the practical implementation guide. For the normative specification — covered components, canonicalization rules, the full verifier checklist, replay dedup sizing, and the complete error taxonomy — see [Security: Signed Requests](/docs/building/by-layer/L1/security#signed-requests-transport-layer).
 </Note>
@@ -527,7 +531,7 @@ async def mcp(request: Request):
 
 `authenticate_fallback`, `auth_error`, and `handle_mcp` stand for your own code, which is why the block is marked `test=false`. Some points the example depends on:
 
-- **Unsigned requests.** `authenticate_fallback` returns `None` for a credential you don't accept. It also has to refuse an operation where signing must be unconditional (the strict posture), and a payload that carries a webhook `authentication` block when you support signing. Those cases get `request_signature_required` too ([Composition with fallback authenticators](/docs/building/by-layer/L1/security#composition-with-fallback-authenticators)).
+- **Unsigned requests.** `authenticate_fallback` returns `None` for a credential you don't accept. It also has to refuse an operation where signing must be unconditional (the strict posture), and, while `legacy_hmac_fallback` is `true` (deprecated in 3.x), a payload that carries a webhook `authentication` block when you support signing. Those cases get `request_signature_required` too; a seller with `legacy_hmac_fallback: false` answers that block with `webhook_hmac_not_supported` ([Composition with fallback authenticators](/docs/building/by-layer/L1/security#composition-with-fallback-authenticators)).
 - **One strict parse.** The SDK verifier doesn't run the step-14 duplicate-key check, so the example parses the body once with duplicate keys rejected and hands `envelope` to `handle_mcp`. Business logic never parses the body again.
 - **Key rotation.** A `kid` published between rebuilds fails with `request_signature_key_unknown` until the next rebuild, so rebuild at least as often as your JWKS cache TTL. Never fall back to trying every agent's keys.
 - **Blocking fetches.** `StaticJwksResolver` never fetches, which keeps the request path off the network. `CachingJwksResolver(jwks_uri=...)` refetches on a `kid` miss, but it fetches synchronously. If you use it in an async handler, prime it at startup or call `verify_request_signature` through `run_in_threadpool`.
@@ -830,6 +834,28 @@ return adcp.CapabilitiesResponse(adcp.CapabilitiesData{
 </Tabs>
 
 Buyers call `get_adcp_capabilities` and read `request_signing.required_for` and `supported_for` to know which operations you expect them to sign.
+
+## Web Bot Auth profile (3.3, experimental)
+
+The Web Bot Auth profile follows the IETF Web Bot Auth draft as written, so any conforming Web Bot Auth library can sign for AdCP. Its wire rules (signature parameters and algorithms, the key directory, nonce and replay, and failure responses) are on the [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) page ([#7894](https://github.com/adcontextprotocol/adcp/pull/7894)), which also compares it with the RFC 9421 profile above. Identity, trust records, binding, and authorization are in [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities). This section lists the setup steps only.
+
+**Signer setup.** These steps let a seller verify which origin is calling:
+1. Give each agent its own origin. An agency hosting several agents on one host moves each to a subdomain.
+2. Serve the key directory at that origin, as [Key directories](/docs/building/by-layer/L1/wba-profile#key-directories) specifies. Regenerate it before its signatures expire.
+3. Sign each request and webhook as [Profile rules](/docs/building/by-layer/L1/wba-profile#profile-rules) specifies, for sellers that advertise `web-bot-auth` in `request_signing.profiles` (added by [#7894](https://github.com/adcontextprotocol/adcp/pull/7894)).
+
+**To be bound by a seller:**
+
+4. Serve a signed revocation list at the origin, `/.well-known/governance-revocations.json` ([Transport revocation](/docs/building/by-layer/L1/security#transport-revocation)), even while it revokes nothing. Without it, a seller can verify you but cannot bind you for spend.
+5. List the origin in `https://{registrable domain}/.well-known/trust.json` with its role (`adcp:buying` for a buyer). The record carries no keys.
+
+**Verifier setup:**
+1. Verify signatures with the profile's [Verification](/docs/building/by-layer/L1/wba-profile#verification) procedure, and answer failures as its [Error responses](/docs/building/by-layer/L1/wba-profile#error-responses) section says.
+2. Treat a verified origin you have not bound as identity-established: no account access. Evaluate the operator's trust record only when you bind a principal, check a grant, or apply an `open` onboarding mode.
+3. Once you have bound an origin, refuse RFC 9421 signatures for it.
+4. Advertise `web-bot-auth` in `request_signing.profiles` (added by [#7894](https://github.com/adcontextprotocol/adcp/pull/7894)).
+
+For the end-to-end buyer flow, see [A buyer agent onboards itself](/docs/accounts/buyer-agent-self-onboarding). For moving from the RFC 9421 profile, see the [agent identity migration guide](/docs/reference/migration/agent-identity-3-3).
 
 ## Key rotation
 

@@ -54,9 +54,10 @@ import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
 import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
-import { BrandDatabase, HostedBrandConflictError, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
+import { BrandDatabase, HostedBrandConflictError, canSurfaceBrandForMember, resolveBrandFromJson, sanitizeBrandSnapshot } from "./db/brand-db.js";
 import { isDomainControlVerified, publicBrandJsonManifest } from "./services/brand-trust-fields.js";
 import { getStandaloneSite, resolveStandaloneRequest, type StandaloneSite } from "./standalone-sites.js";
+import { createTrustLookupRouter } from './routes/trust-lookup.js';
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -122,6 +123,8 @@ import { invalidateMembershipCache, findClaimableProspectOrgForDomain } from "./
 import * as relationshipDb from "./db/relationship-db.js";
 import * as personEvents from "./db/person-events-db.js";
 import { isAuthenticatedUserAAOAdmin } from "./addie/admin-status-lookup.js";
+import { resolveRegistryRevisionAccess, toPublicRegistryRevision } from "./routes/registry-revision-access.js";
+import { sanitizePropertySnapshot } from "./db/registry-revision-snapshot.js";
 import { resolveWebUserAAOAdminAccess } from "./addie/admin-status-lookup.js";
 import { isBreakGlassAdminEmail } from "./auth/admin-access.js";
 import { createSlackRouter } from "./routes/slack.js";
@@ -1930,6 +1933,7 @@ export class HTTPServer {
     });
     this.complianceRefreshQueue = complianceRefreshQueue;
     this.app.use('/api', registryApiRouter);
+    this.app.use('/api/trust', createTrustLookupRouter({ brandManager: this.brandManager }));
     // adcp#4924: spec defines the AAO directory inverse-lookup path as
     // /v1/agents/{url}/publishers (docs/aao/directory-api.mdx). Mount the
     // v1AgentsRouter at /v1 so spec-conformant clients work without the /api
@@ -3772,7 +3776,10 @@ export class HTTPServer {
           }).catch((err) => logger.error({ err }, 'New brand review failed'));
         }).catch((err) => logger.error({ err }, 'New brand notification failed'));
 
-        return res.json({ brand, review_status: 'pending' });
+        // Same bound as a revision snapshot: an editor may read back what
+        // they wrote, not the row's ownership, contact or verification
+        // columns. The edit gate is AAO membership, not record ownership.
+        return res.json({ brand: sanitizeBrandSnapshot(brand as unknown as Record<string, unknown>), review_status: 'pending' });
       } catch (error: any) {
         if (error?.constraint) {
           return res.status(409).json({ error: 'Brand already exists for this domain' });
@@ -3984,7 +3991,7 @@ export class HTTPServer {
           }).catch((err) => logger.error({ err }, 'Registry review failed'));
         }).catch((err) => logger.error({ err }, 'Registry edit notification failed'));
 
-        return res.json({ brand, revision_number });
+        return res.json({ brand: sanitizeBrandSnapshot(brand as unknown as Record<string, unknown>), revision_number });
       } catch (error: any) {
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Brand not found during edit');
@@ -3999,7 +4006,9 @@ export class HTTPServer {
       }
     });
 
-    // GET /api/brands/discovered/:domain/revisions - Brand revision history
+    // GET /api/brands/discovered/:domain/revisions - Brand revision changelog.
+    // Public, and limited to the changelog projection the public brand viewer
+    // renders — see routes/registry-revision-access.ts.
     this.app.get('/api/brands/discovered/:domain/revisions', async (req, res) => {
       try {
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
@@ -4007,27 +4016,44 @@ export class HTTPServer {
         const offset = parseInt(req.query.offset as string) || 0;
         const revisions = await this.brandDb.getBrandRevisions(domain, { limit, offset });
         const total = await this.brandDb.getBrandRevisionCount(domain);
-        return res.json({ revisions, total });
+        return res.json({ revisions: revisions.map(toPublicRegistryRevision), total });
       } catch (error) {
         logger.error({ error }, 'Failed to get brand revisions');
         return res.status(500).json({ error: 'Failed to get revisions' });
       }
     });
 
-    // GET /api/brands/discovered/:domain/revisions/:num - Single revision
-    this.app.get('/api/brands/discovered/:domain/revisions/:num', async (req, res) => {
+    // GET /api/brands/discovered/:domain/revisions/:num - Single revision,
+    // including its stored snapshot. Owner org or admin only.
+    this.app.get('/api/brands/discovered/:domain/revisions/:num', requireAuth, async (req, res) => {
       try {
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
         const num = parseInt(req.params.num);
         if (isNaN(num)) {
           return res.status(400).json({ error: 'Invalid revision number' });
         }
+
+        // Revisions are keyed by domain, and a legacy domain can still
+        // resolve to more than one brand row; the resolver picks the same
+        // one every read, so authorization and history stay consistent.
+        const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
+        if (!await isAuthenticatedUserAAOAdmin(req.user!)) {
+          const access = await resolveRegistryRevisionAccess(req.user, brand);
+          if (access === 'unavailable') {
+            return res.status(503).json({ error: 'Authorization temporarily unavailable' });
+          }
+          if (access !== 'authorized') {
+            return res.status(403).json({ error: 'Not authorized to view this revision' });
+          }
+        }
+
         const revision = await this.brandDb.getBrandRevision(domain, num);
         if (!revision) {
           return res.status(404).json({ error: 'Revision not found' });
         }
         return res.json(revision);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to get brand revision');
         return res.status(500).json({ error: 'Failed to get revision' });
       }
@@ -4089,7 +4115,7 @@ export class HTTPServer {
           revision_number,
         }).catch((err) => logger.error({ err }, 'Registry rollback notification failed'));
 
-        return res.json({ brand, revision_number });
+        return res.json({ brand: sanitizeBrandSnapshot(brand as unknown as Record<string, unknown>), revision_number });
       } catch (error: any) {
         if (respondToAdminAuthorizationError(error, res)) return;
         if (error.message?.includes('not found')) {
@@ -4374,7 +4400,9 @@ export class HTTPServer {
           }).catch((err) => logger.error({ err }, 'New property review failed'));
         }).catch((err) => logger.error({ err }, 'New property notification failed'));
 
-        return res.json({ property, review_status: 'pending' });
+        // See the brand create route: an editor reads back their own edit,
+        // not the row's ownership, contact or verification columns.
+        return res.json({ property: sanitizePropertySnapshot(property as unknown as Record<string, unknown>), review_status: 'pending' });
       } catch (error: any) {
         if (error?.constraint) {
           return res.status(409).json({ error: 'Property already exists for this domain' });
@@ -4477,7 +4505,7 @@ export class HTTPServer {
           }).catch((err) => logger.error({ err }, 'Registry review failed'));
         }).catch((err) => logger.error({ err }, 'Registry edit notification failed'));
 
-        return res.json({ property, revision_number });
+        return res.json({ property: sanitizePropertySnapshot(property as unknown as Record<string, unknown>), revision_number });
       } catch (error: any) {
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Property not found during edit');
@@ -4492,7 +4520,9 @@ export class HTTPServer {
       }
     });
 
-    // GET /api/properties/hosted/:domain/revisions - Property revision history
+    // GET /api/properties/hosted/:domain/revisions - Property revision
+    // changelog. Public, and limited to the changelog projection the public
+    // property viewer renders — see routes/registry-revision-access.ts.
     this.app.get('/api/properties/hosted/:domain/revisions', async (req, res) => {
       try {
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
@@ -4500,27 +4530,44 @@ export class HTTPServer {
         const offset = parseInt(req.query.offset as string) || 0;
         const revisions = await this.propertyDb.getPropertyRevisions(domain, { limit, offset });
         const total = await this.propertyDb.getPropertyRevisionCount(domain);
-        return res.json({ revisions, total });
+        return res.json({ revisions: revisions.map(toPublicRegistryRevision), total });
       } catch (error) {
         logger.error({ error }, 'Failed to get property revisions');
         return res.status(500).json({ error: 'Failed to get revisions' });
       }
     });
 
-    // GET /api/properties/hosted/:domain/revisions/:num - Single revision
-    this.app.get('/api/properties/hosted/:domain/revisions/:num', async (req, res) => {
+    // GET /api/properties/hosted/:domain/revisions/:num - Single revision,
+    // including its stored snapshot. Owner org or admin only.
+    this.app.get('/api/properties/hosted/:domain/revisions/:num', requireAuth, async (req, res) => {
       try {
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
         const num = parseInt(req.params.num);
         if (isNaN(num)) {
           return res.status(400).json({ error: 'Invalid revision number' });
         }
+
+        // A record that no longer exists has no owner, so only an admin can
+        // read what its history kept. Fail closed rather than fall back to
+        // the revision row's own editor fields.
+        const property = await this.propertyDb.getHostedPropertyByDomain(domain);
+        if (!await isAuthenticatedUserAAOAdmin(req.user!)) {
+          const access = await resolveRegistryRevisionAccess(req.user, property);
+          if (access === 'unavailable') {
+            return res.status(503).json({ error: 'Authorization temporarily unavailable' });
+          }
+          if (access !== 'authorized') {
+            return res.status(403).json({ error: 'Not authorized to view this revision' });
+          }
+        }
+
         const revision = await this.propertyDb.getPropertyRevision(domain, num);
         if (!revision) {
           return res.status(404).json({ error: 'Revision not found' });
         }
         return res.json(revision);
       } catch (error) {
+        if (respondToAdminAuthorizationError(error, res)) return;
         logger.error({ error }, 'Failed to get property revision');
         return res.status(500).json({ error: 'Failed to get revision' });
       }
@@ -4554,12 +4601,19 @@ export class HTTPServer {
           revision_number,
         }).catch((err) => logger.error({ err }, 'Registry rollback notification failed'));
 
-        return res.json({ property, revision_number });
+        return res.json({ property: sanitizePropertySnapshot(property as unknown as Record<string, unknown>), revision_number });
       } catch (error: any) {
         if (respondToAdminAuthorizationError(error, res)) return;
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Property not found during rollback');
           return res.status(404).json({ error: 'Resource not found' });
+        }
+        // `rollbackProperty` refuses authoritative and pending records,
+        // as the brand route checks for up front. Report the refusal
+        // rather than a server error.
+        if (error.message?.includes('Cannot roll back')) {
+          logger.warn({ err: error, path: req.path }, 'Access denied rolling back property');
+          return res.status(403).json({ error: 'Access denied' });
         }
         logger.error({ error }, 'Failed to rollback property');
         return res.status(500).json({ error: 'Failed to rollback property' });

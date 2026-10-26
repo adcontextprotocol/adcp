@@ -74,6 +74,7 @@ describe('idempotency facade', () => {
       for (const name of [
         'create_media_buy', 'update_media_buy', 'sync_audiences',
         'request_proposals', 'refine_proposals', 'decline_proposals',
+        'report_media_buy_issue',
         'si_initiate_session', 'si_send_message',
         'acquire_rights', 'update_rights', 'creative_approval',
         'get_creative_addons',
@@ -85,6 +86,7 @@ describe('idempotency facade', () => {
     it('excludes read-only and discovery tools', () => {
       for (const name of [
         'get_media_buys',
+        'get_media_buy_issue',
         'get_products', 'list_products',
         'get_adcp_capabilities',
         'check_governance',

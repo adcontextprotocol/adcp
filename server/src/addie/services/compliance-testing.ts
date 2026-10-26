@@ -14,6 +14,7 @@ import {
   comply as sdkComply,
   loadComplianceIndex as sdkLoadComplianceIndex,
   getComplianceStoryboardById,
+  resolveStoryboardsForCapabilities,
   testCapabilityDiscovery,
   CapabilityResolutionError,
   type ComplyOptions,
@@ -23,6 +24,7 @@ import {
   type AdvisoryObservation,
   type SampleBrief,
   type TestOptions,
+  type AgentCapabilities,
 } from '@adcp/sdk/testing';
 import {
   hostedComplianceTarget,
@@ -44,6 +46,11 @@ import {
   isForwardIntroducedSpecialism,
 } from '../../compliance/forward-introduced-specialisms.js';
 import { classifyComplianceStep } from '../../compliance/step-disposition.js';
+import {
+  complianceDirWith3_0GovernanceScoping,
+  HOSTED_3_0_GOVERNANCE_POLICY,
+} from '../../compliance/hosted-3-0-governance.js';
+import { v4ReadinessReportForComplianceResult } from '../../compliance/v4-readiness.js';
 import { createLogger } from '../../logger.js';
 import { withSdkSafeTransport, type SdkTransportOptions } from '../../utils/sdk-safe-fetch.js';
 import { createHostedRouteStoryboard } from '../../compliance/hosted-route-storyboard.js';
@@ -313,18 +320,27 @@ export async function comply(
       logger.warn({ err: error, agentUrl }, 'Hosted webhook receiver unavailable; webhook storyboards may be not applicable');
     }
   }
-  const runComply = (complianceDir?: string, timeoutMs?: number) => sdkComply(
-    agentUrl,
-    withHostedComplianceTransport(
-      withHostedComplianceRunOptions({
-        ...safeOptions,
-        routeStoryboard,
-        ...(receiverLease ? { webhook_receiver: receiverLease.options } : {}),
-        ...(complianceDir ? { complianceDir } : {}),
-        ...(timeoutMs !== undefined ? { timeout_ms: timeoutMs } : {}),
-      }, target, authDefaults.probeTask, authDefaults.apiKey),
-    ),
-  );
+  let governanceOverlayComplianceDir: string | undefined;
+  const runComply = async (complianceDir?: string, timeoutMs?: number) => {
+    // Compose with the forward-specialism retry's cache as well, so a retry
+    // cannot restore the unclaimed 3.0 governance scenarios (#8363).
+    governanceOverlayComplianceDir = await complianceDirWith3_0GovernanceScoping(
+      target, complianceDir ?? safeOptions.complianceDir ?? target.complianceDir,
+    );
+    const effectiveComplianceDir = governanceOverlayComplianceDir ?? complianceDir;
+    return sdkComply(
+      agentUrl,
+      withHostedComplianceTransport(
+        withHostedComplianceRunOptions({
+          ...safeOptions,
+          routeStoryboard,
+          ...(receiverLease ? { webhook_receiver: receiverLease.options } : {}),
+          ...(effectiveComplianceDir ? { complianceDir: effectiveComplianceDir } : {}),
+          ...(timeoutMs !== undefined ? { timeout_ms: timeoutMs } : {}),
+        }, target, authDefaults.probeTask, authDefaults.apiKey),
+      ),
+    );
+  };
   const runStartedAt = Date.now();
   let overlayComplianceDir: string | undefined;
   let rawResult: ComplianceResult;
@@ -366,10 +382,37 @@ export async function comply(
   result.adcp_version ??= target.version;
   const notApplicableSpecialisms = markSpecialismsNotApplicableForTarget(result, target);
   if (overlayComplianceDir) restoreReleasedComplianceDirInFixCommands(result, overlayComplianceDir, target);
+  if (governanceOverlayComplianceDir) {
+    restoreReleasedComplianceDirInFixCommands(result, governanceOverlayComplianceDir, target);
+  }
+  const provenance = complianceRunProvenance(result, options, overlayComplianceDir ? notApplicableSpecialisms : undefined);
+  if (governanceOverlayComplianceDir) provenance.grading_policy_version = HOSTED_3_0_GOVERNANCE_POLICY;
   (result as ComplianceResult & { hosted_provenance: ComplianceRunProvenance }).hosted_provenance =
-    complianceRunProvenance(result, options, overlayComplianceDir ? notApplicableSpecialisms : undefined);
+    provenance;
   (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
   return result;
+}
+
+/** Keep hosted pickers and recommendations on the same selection as grading. */
+export async function resolveHostedStoryboardsForCapabilities(
+  capabilities: AgentCapabilities,
+  target: HostedComplianceTarget,
+) {
+  const options = hostedComplianceOptions(target);
+  const resolveAgainst = async (complianceDir = target.complianceDir) => {
+    const scopedDir = await complianceDirWith3_0GovernanceScoping(target, complianceDir);
+    return resolveStoryboardsForCapabilities(capabilities, {
+      ...options,
+      complianceDir: scopedDir ?? complianceDir,
+    });
+  };
+  try {
+    return await resolveAgainst();
+  } catch (error) {
+    const overlayDir = await complianceDirToleratingUnknownSpecialism(error, target);
+    if (!overlayDir) throw error;
+    return resolveAgainst(overlayDir);
+  }
 }
 
 /** Notice code for a declared specialism the graded release does not define. */
@@ -1404,6 +1447,7 @@ const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
   'sales-broadcast-tv': { protocol: 'media-buy', storyboard_id: 'sales_broadcast_tv' },
   'sales-catalog-driven': { protocol: 'media-buy', storyboard_id: 'sales_catalog_driven' },
   'sales-dooh': { protocol: 'media-buy', storyboard_id: 'sales_dooh' },
+  'sales-fixed-rate': { protocol: 'media-buy', storyboard_id: 'sales_fixed_rate' },
   'sales-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_guaranteed' },
   'sales-non-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_non_guaranteed' },
   'sales-proposal-mode': { protocol: 'media-buy', storyboard_id: 'sales_proposal_mode' },
@@ -1750,6 +1794,9 @@ export function complianceResultToDbInput(
     // Unknown fields, codes, and severities are stored verbatim for forward
     // compatibility with newer runner contracts.
     notices_json: notices,
+    // Advisory AdCP 4.0 readiness (adcp#8332). Derived here because passed
+    // validations are not persisted anywhere else.
+    v4_readiness_json: v4ReadinessReportForComplianceResult(result),
   };
 }
 

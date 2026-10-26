@@ -90,13 +90,21 @@
       "required": ["kind"],
       "additionalProperties": true
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "The idempotency_key of the AdCP request that produced this change, echoed only when origin.kind is adcp and only on records served to the principal that sent that request. Lets a buyer recognize its own changes. Sellers MUST omit it for every other reader of the account and MUST NOT include it in account.change_recorded notifications. Apart from this field, readers see the same record, subject to the redaction of actor and origin.connection_id described on those fields.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "x-added-in": "3.3.0"
+    },
     "resource_revision": {
       "type": ["integer", "string"],
-      "description": "Post-change revision exposed by the repair read, when that resource family defines one."
+      "description": "Post-change seller revision from the repair read (`revision` or `seller_revision`), when that family defines one."
     },
     "changed_paths": {
       "type": "array",
-      "description": "Bounded set of RFC 6901 JSON Pointers naming material fields that changed. Values are intentionally omitted.",
+      "description": "Bounded set of RFC 6901 JSON Pointers naming material fields that changed. Values are intentionally omitted. Required, and non-empty, when origin.kind is adcp or seller_operator, because the seller processed the mutation and knows what it changed; use the root pointer \"\" when the whole resource was created, deleted, or purged. Best-effort for seller_system and connected_platform.",
       "items": {
         "type": "string",
         "pattern": "^(|/.*)$",
@@ -111,7 +119,7 @@
       "properties": {
         "task": {
           "type": "string",
-          "description": "Allowlisted authoritative read task. This is a repair hint, never an instruction to dispatch dynamically. The buyer constructs and validates the request locally from the authenticated feed account and resource identity.",
+          "description": "Allowlisted authoritative read task. This is a repair hint, never an instruction to dispatch dynamically. The buyer constructs and validates the request locally from the authenticated feed account and resource identity. list_proposals repairs resource.type proposal records (actions created and status_changed, with parent_ids.opportunity_id when the proposal has one); sellers MUST NOT emit proposal records to callers whose negotiated AdCP version is below 3.3. A proposal record older than the 30-day terminal retention repairs with available false and unavailable_reason deleted.",
           "enum": [
             "list_accounts",
             "get_media_buys",
@@ -122,7 +130,8 @@
             "sync_catalogs",
             "get_account_financials",
             "list_products",
-            "get_signals"
+            "get_signals",
+            "list_proposals"
           ]
         },
         "available": {
@@ -173,6 +182,27 @@
     }
   },
   "required": ["change_id", "recorded_at", "resource", "action", "origin", "repair"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {"origin": {"properties": {"kind": {"enum": ["adcp", "seller_operator"]}}, "required": ["kind"]}},
+        "required": ["origin"]
+      },
+      "then": {
+        "required": ["changed_paths"],
+        "properties": {"changed_paths": {"minItems": 1}}
+      }
+    },
+    {
+      "if": {
+        "properties": {"origin": {"properties": {"kind": {"const": "adcp"}}, "required": ["kind"]}},
+        "required": ["origin"]
+      },
+      "else": {
+        "not": {"required": ["idempotency_key"]}
+      }
+    }
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -195,6 +225,28 @@
         "changed_paths": ["/name", "/assets/0"],
         "repair": {
           "task": "list_creatives"
+        }
+      }
+    },
+    {
+      "description": "Budget changed through update_media_buy, as served to the principal that sent the request",
+      "data": {
+        "change_id": "chg_01K38H2R5D7B0V9N3C4S8E6J1P",
+        "recorded_at": "2026-08-24T12:04:19Z",
+        "resource": {
+          "type": "media_buy",
+          "account_id": "acc_luma_shared",
+          "resource_id": "mb_5512"
+        },
+        "action": "updated",
+        "origin": {
+          "kind": "adcp"
+        },
+        "idempotency_key": "9f2c1d7e-3b5a-4c68-8e10-a7d4b2f6c901",
+        "resource_revision": 7,
+        "changed_paths": ["/packages/0/budget"],
+        "repair": {
+          "task": "get_media_buys"
         }
       }
     }

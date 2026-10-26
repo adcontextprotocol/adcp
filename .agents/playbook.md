@@ -119,15 +119,59 @@ When running expert agents against documentation changes, test both:
 Conceptual reviews miss workflow gaps. Workflow reviews miss framing errors. Run both.
 
 ### Discriminated Union Error Handling
-Always check for errors before accessing success fields:
+Dispatch on the presence of the success payload, not on `errors`. Some
+success branches (for example `build_creative`) carry non-terminal advisory
+`errors[]` beside the payload, so `if (result.errors)` misreads them as failure:
 ```javascript
 const result = await agent.syncCreatives({...});
-if (result.errors) {
-  console.error('Failed:', result.errors);
-} else {
+if (result.creatives) {
   console.log(`Success: ${result.creatives.length} items`);
+  if (result.errors) console.warn('Advisories:', result.errors);
+} else {
+  console.error('Failed:', result.errors);
 }
 ```
+
+### Slack and notification text: fixed templates, sanitized fields
+
+Slack renders a DM's `text` and every `mrkdwn` block as markup, so
+`<!channel>`, `<@U…>` and `<url|label>` in interpolated text ping or
+phish the reader, and a newline forges a line that reads as ours.
+Recipients treat these surfaces — an owner's DM, a moderator channel —
+as platform-authored, which is exactly what makes a planted string
+effective.
+
+The rule (#8320, #4754, #2726):
+
+- **Titles are fixed templates plus short sanitized identifiers.** Never
+  interpolate free text an agent, member, or model produced into a
+  notification title or a channel message's `text` fallback.
+- **Free text we did not author goes in the body**, flattened to one
+  line, capped, and escaped.
+- **A link target is not text.** `<url|label>` can't be escaped — a `>`
+  closes the link and a `|` adds a field — so check the target and drop
+  the link when it fails, rather than rendering a broken one.
+- Use the shared helpers in `server/src/utils/slack-escape.ts`. Don't
+  write another local escaper:
+  - `flattenToSingleLine(raw, max)` — collapse control characters and
+    whitespace runs, then truncate. For values a later stage escapes for
+    its own surface (a stored notification `title`/`body`, a stored
+    compliance `headline`).
+  - `sanitizeSlackLine(raw, max)` — flatten, escape, and zero-width-space
+    the `!channel` / `!here` / `!everyone` tokens. For text you are
+    writing straight into a Slack message.
+  - `sanitizeSlackLinkLabel(raw, max)` — also drops `|`, which otherwise
+    restructures a `<url|label>` link even after escaping.
+  - `isSafeSlackLinkTarget(url)` — for the target half of a link.
+  - `isSafeNotificationPath(url)` (`server/src/db/notification-db.ts`) —
+    for a stored notification link, which is rendered both as an HTML
+    `href` and as a Slack link target.
+- `notifyUser` (`server/src/notifications/notification-service.ts`) takes
+  `title` and `body` and escapes both on the Slack hop;
+  `NotificationDatabase.createNotification` flattens, caps, and drops
+  non-site-relative links at the write seam, so direct callers get the
+  same bound. Pass plain text — escaping at the call site double-encodes
+  the stored row, which the web list then renders literally.
 
 ### Design System
 All HTML files in `server/public/` MUST use CSS variables from `/server/public/design-system.css`:
@@ -465,8 +509,12 @@ Default flow when a fix is needed in both lines:
    - `package.json` / `package-lock.json` → preserve main's (main may carry structural changes and 3.2 prerelease metadata)
    - `.changeset/*.md` / `.changeset/pre.json` → preserve main's (independent pre-mode pool)
    - `static/schemas/source/index.json` / `static/schemas/source/registry/index.yaml` → preserve main's (branch-local package/version metadata must stay aligned with main)
-   - `CHANGELOG.md` → take 3.1.x's (main's next Version Packages cut prepends its own entries)
+   - `CHANGELOG.md` → main's file plus each 3.1.x release block it lacks, in semver order (taking 3.1.x's copy would delete main's own prerelease sections)
+   - `static/compliance/published-versions.json` → union of both lines' registered versions; each new one must have its compliance bundle in the merged tree
    - `dist/{schemas,compliance,protocol,docs}/*` → take 3.1.x's (immutable release artifacts; main only adds versions)
+   - `dist/schemas/index.json` / `latest.json` → regenerated from the merged release directories after every merge, clean or conflicted
+
+   `scripts/forward-merge-release-records.cjs` implements the CHANGELOG, manifest, and schema-discovery rules for the 3.0, 3.1 and 3.2 workflows.
 
    **Fails loud (everything else):** every other conflict is a real decision
    about whether the stable patch belongs on the 3.2 line. Never resolve a

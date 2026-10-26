@@ -124,9 +124,19 @@ function gitStub() {
       "\t",
     )[0];
     const prs = JSON.parse(fs.readFileSync("prs.json", "utf8"));
-    for (const pr of prs) {
-      if (value) pr.head.sha = value;
-      else pr.state = "closed";
+    const lag = {
+      "pr-head-lag": 3,
+      "pr-head-lag-forever": 1000,
+      "pr-head-lag-ready": 1000,
+    }[env.FAULT];
+    if (!rollback && lag && value)
+      fs.writeFileSync("pr-lag.json", JSON.stringify({ sha: value, reads: lag }));
+    else {
+      fs.rmSync("pr-lag.json", { force: true });
+      for (const pr of prs) {
+        if (value) pr.head.sha = value;
+        else pr.state = "closed";
+      }
     }
     fs.writeFileSync("prs.json", JSON.stringify(prs));
     if (
@@ -171,6 +181,24 @@ function ghStub() {
   if (env.FAULT === "api-timeout")
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000);
   const prs = JSON.parse(fs.readFileSync("prs.json", "utf8"));
+  let lag = null;
+  try {
+    lag = JSON.parse(fs.readFileSync("pr-lag.json", "utf8"));
+  } catch {}
+  if (lag && !args.includes("graphql")) {
+    // The pulls API serves the pre-push head for a few reads after a push.
+    if (env.FAULT === "pr-head-lag-ready") {
+      // Someone marks the PR Ready while the API still lags the push.
+      for (const pr of prs) pr.draft = false;
+    }
+    if (--lag.reads <= 0) for (const pr of prs) pr.head.sha = lag.sha;
+    fs.writeFileSync("prs.next.json", JSON.stringify(prs), { flag: "wx" });
+    fs.renameSync("prs.next.json", "prs.json");
+    if (lag.reads > 0) {
+      fs.writeFileSync("pr-lag.next.json", JSON.stringify(lag), { flag: "wx" });
+      fs.renameSync("pr-lag.next.json", "pr-lag.json");
+    } else fs.rmSync("pr-lag.json", { force: true });
+  }
   const url = args.find((arg) => arg.startsWith("/repos/"));
   let result;
   if (args.includes("graphql")) {
@@ -399,6 +427,38 @@ test("ready existing PR is verified Draft before a leased push and stays Draft o
     "always",
   );
 });
+test("a pulls API that briefly lags the acknowledged push converges instead of quarantining", (t) => {
+  const f = fixture(t);
+  ok(f.install());
+  const result = f.push({ FAULT: "pr-head-lag" });
+  ok(result);
+  assert.match(result.stdout, /"event":"pr-head-lag"/);
+  assert.equal(f.observed(), f.candidate);
+  assert.equal(f.prs()[0].head.sha, f.candidate);
+  ok(f.finalize());
+  assert.equal(f.state().status, "complete");
+  assert.equal(f.prs()[0].draft, true);
+});
+test("a pulls API lag that outlasts the bound still quarantines and restores the prior ref", (t) => {
+  const f = fixture(t);
+  ok(f.install());
+  stopped(f.push({ FAULT: "pr-head-lag-forever" }));
+  assert.equal(f.state().status, "quarantined");
+  assert.equal(f.observed(), f.prior);
+  assert.equal(f.prs()[0].draft, true);
+});
+test("a Ready transition during the pulls API lag quarantines without waiting out the bound", (t) => {
+  const f = fixture(t);
+  ok(f.install());
+  stopped(f.push({ FAULT: "pr-head-lag-ready" }));
+  assert.equal(f.state().status, "quarantined");
+  assert.equal(f.observed(), f.prior);
+  assert.equal(f.prs()[0].draft, true);
+  assert.equal(
+    f.state().events.filter((event) => event.event === "pr-head-lag").length,
+    0,
+  );
+});
 test("no PR/ref creates with an empty lease; action-created PR must be Draft", (t) => {
   const f = fixture(t, false);
   ok(f.install());
@@ -495,6 +555,28 @@ for (const kind of [
     stopped(f.install());
     assert.deepEqual(f.calls(), []);
   });
+test("the Changesets path keeps the strict fence even for an unrelated main advance", (t) => {
+  // A regenerated Version Packages PR must be based on exact current main;
+  // publication-scoped freshness applies only to publishing committed releases.
+  assert.match(
+    step("Fence Changesets mutations").run,
+    /printf '#!\/bin\/sh\\nnode "\$RUNNER_TEMP\/release-hooks\/check\.cjs" current\\n'/,
+  );
+  const helper = fs.readFileSync(path.join(root, "scripts/fence-changesets.cjs"), "utf8");
+  assert.doesNotMatch(helper, /publication-current|publicationCurrent/);
+  const f = fixture(t);
+  ok(f.install());
+  f.git("--git-dir", f.bare, "update-ref", "refs/heads/main", f.advanced);
+  const fence = (mode) =>
+    f.run("node", ["scripts/check-release-state.cjs", mode], { ENFORCE_GIT_AUTH: "" });
+  // `advanced` only adds an unrelated file: publication would accept it...
+  ok(fence("publication-current"));
+  // ...but generation still refuses it.
+  stopped(fence("current"));
+  stopped(f.push());
+  assert.deepEqual(f.calls(), []);
+  assert.equal(f.observed(), f.prior);
+});
 test("main advances during long generation: no push, existing PR remains Draft", (t) => {
   const f = fixture(t);
   ok(f.install());

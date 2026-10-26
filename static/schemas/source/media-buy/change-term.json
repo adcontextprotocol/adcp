@@ -20,7 +20,7 @@
   "type": "object",
   "properties": {
     "term_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "media_buy_change_term" },
-    "action": { "$ref": "/schemas/enums/canonical-media-buy-action.json" },
+    "action": { "allOf": [{ "$ref": "/schemas/enums/canonical-media-buy-action.json" }], "not": { "const": "report_media_buy_issue" }, "description": "A buyer change right. Operational issue reporting is not a commercial amendment and cannot be negotiated here." },
     "service_mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
     "allowed_statuses": {
       "type": "array",
@@ -34,7 +34,7 @@
     },
     "processing_sla": {
       "$ref": "/schemas/core/sla-window.json",
-      "description": "Binding elapsed-time acknowledgement and completion commitment. Sellers account for weekends and non-working periods when declaring the maximum."
+      "description": "Binding acknowledgement and completion commitment. The default elapsed clock includes weekends and non-working periods; an explicit business clock references an immutable seller calendar."
     },
     "conditions": {
       "type": "array",

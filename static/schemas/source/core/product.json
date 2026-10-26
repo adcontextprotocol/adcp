@@ -40,6 +40,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
+      "x-removed-in": "4.0.0",
       "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format compatibility path. Products MUST carry `format_ids`, `format_options`, or both during the 3.x migration window. New products MUST author canonical `format_options[]`; sellers MAY additionally project those declarations to `format_ids` for legacy buyers. When both fields are present they MUST describe the same underlying formats, and buyers MUST prefer `format_options`. Do not author a new product from `format_ids` alone.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
@@ -195,6 +196,7 @@
       "$ref": "/schemas/core/reporting-capabilities.json"
     },
     "dooh_inventory_summary": {
+      "x-added-in": "3.3.0",
       "$ref": "/schemas/core/dooh-inventory-summary.json",
       "description": "Aggregate DOOH/OOH geographic footprint for network/regional products where per-placement dooh_placement_attributes.location is not practical. See dooh-inventory-summary.json for the full description."
     },
@@ -541,7 +543,7 @@
     "collection_targeting_allowed": {
       "type": "boolean",
       "default": false,
-      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list or targeting_overlay.collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match); when true, collection selection is a product-scoped overlay capability."
+      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list, collection_lists, or collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match); when true, collection selection is a product-scoped overlay capability."
     },
     "list_applications": {
       "type": "array",
@@ -863,10 +865,15 @@
       }
     },
     {
-      "description": "Collection inclusion support requires selectable product collections.",
+      "description": "Collection inclusion support (singular or plural) requires selectable product collections.",
       "if": {
         "properties": {
-          "overlay_support": { "required": ["collection_list"] }
+          "overlay_support": {
+            "anyOf": [
+              { "required": ["collection_list"] },
+              { "required": ["collection_lists"] }
+            ]
+          }
         },
         "required": ["overlay_support"]
       },
