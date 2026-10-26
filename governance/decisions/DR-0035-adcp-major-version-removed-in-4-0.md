@@ -6,7 +6,7 @@ status: recorded
 date: 2026-10-22
 decided: ~2026-04
 decided_by: maintainer practice (release-precision negotiation, #3493; v4 compatibility checks, #3572)
-refs: ["#3493", "#3572", "#8373"]
+refs: ["#3493", "#3572", "#8373", "DR-0024", "DR-0034"]
 dissent: none
 ---
 
@@ -20,13 +20,13 @@ The integer request field `adcp_major_version` and the capability field `adcp.ma
 
 ## Rationale
 
-Release-precision negotiation is what lets SDKs pick a common release and translate between minors ([DR-0032]). An integer major cannot say which minor a payload is shaped for, so it cannot drive translation. It stays through 3.x only so that 3.0 peers keep working.
+Release-precision negotiation is what lets a buyer and a seller agree on the exact minor release a payload is shaped for. An integer major cannot say which minor that is, so it cannot drive negotiation, validation against the served release ([DR-0024]), or translation between minors. It stays through 3.x only so that 3.0 peers keep working.
 
 ## Implications
 
 - This records a decision already stated in the schema (`core/version-envelope.json` marks the field `deprecated` and says "Removed in 4.0"), in `specs/version-negotiation.md` §6, in `docs/reference/versioning.mdx`, and in the `major_versions_removed_in_4_0` check of the v4 compatibility guide.
-- The major-only serving rule ([DR-0034], proposed) applies to 3.x only.
+- The major-only serving rule ([DR-0034]) applies to 3.x only.
 - In-house clients that still send only `adcp_major_version` should move to `adcp_version` before 4.0. Under DR-0034 they would otherwise be served the oldest 3.x release.
 
-[DR-0032]: ./DR-0032-sdks-translate-between-releases.md
+[DR-0024]: ./DR-0024-responses-conform-to-served-release.md
 [DR-0034]: ./DR-0034-major-only-requests-are-served-the-oldest-release.md
