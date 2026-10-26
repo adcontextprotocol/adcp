@@ -135,6 +135,7 @@ export interface AgentCapabilities {
   measurement_capabilities?: {
     metrics: Array<{
       metric_id: string;
+      name?: string;
       standard_reference?: string;
       accreditations?: Array<{
         accrediting_body: string;

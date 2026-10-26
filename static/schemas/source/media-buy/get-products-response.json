@@ -151,7 +151,7 @@
     },
     "refinement_applied": {
       "type": "array",
-      "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'. Each entry MUST echo the request entry's scope and — for product and proposal scopes — the matching id field (product_id or proposal_id), so orchestrators can cross-validate alignment.",
+      "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'. Each entry MUST echo the request entry's scope and — for product and proposal scopes — the matching id field (product_id or proposal_id), so orchestrators can cross-validate alignment. In AdCP 3.3, when any refine entry carries package, this array is REQUIRED for the entire request. For each package entry, applied requires result_product_id, resolved_start_time, and resolved_end_time and confirms that the mapped returned product forecast uses exactly the resolved package inputs, including its goal; unable requires non-empty notes explaining why those exact inputs could not be forecast, and the product MUST NOT carry a substitute forecast. partial MUST NOT be used to imply exact package forecast support. Insufficient inventory is an applied forecast with availability_status unavailable, not an unable outcome.",
       "items": {
         "type": "object",
         "discriminator": {
@@ -196,6 +196,26 @@
                 "type": "string",
                 "description": "Echoes product_id from the corresponding refine entry."
               },
+              "result_product_id": {
+                "type": "string",
+                "minLength": 1,
+                "x-entity": "product",
+                "x-added-in": "3.3.0",
+                "description": "Required for an applied structured package forecast. Identifies exactly one returned Product carrying this entry's exact forecast, even when its configured ID differs from the request product_id. The requested pricing_option_id and pricing terms MUST remain unchanged. Buyers use this ID at create."
+              },
+              "resolved_start_time": {
+                "type": "string",
+                "format": "date-time",
+                "not": { "const": "asap" },
+                "x-added-in": "3.3.0",
+                "description": "Required with result_product_id. Exact forecast flight start after resolving explicit package timestamps or date-filter defaults. Buyers materialize this timestamp on the package at create."
+              },
+              "resolved_end_time": {
+                "type": "string",
+                "format": "date-time",
+                "x-added-in": "3.3.0",
+                "description": "Required with result_product_id. Exact forecast flight end after resolving explicit package timestamps or date-filter defaults. Buyers materialize this timestamp on the package at create. MUST be after resolved_start_time."
+              },
               "status": {
                 "type": "string",
                 "enum": [
@@ -214,6 +234,21 @@
               "scope",
               "product_id",
               "status"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "anyOf": [
+                    { "required": ["result_product_id"] },
+                    { "required": ["resolved_start_time"] },
+                    { "required": ["resolved_end_time"] }
+                  ]
+                },
+                "then": {
+                  "properties": { "status": { "const": "applied" } },
+                  "required": ["result_product_id", "resolved_start_time", "resolved_end_time"]
+                }
+              }
             ],
             "additionalProperties": false
           },

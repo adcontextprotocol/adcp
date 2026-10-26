@@ -75,6 +75,7 @@ import {
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
+import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease } from './served-release-fields.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -2006,6 +2007,33 @@ function packageReadinessFields(pkg: PackageState, session: SessionState): Recor
   };
 }
 
+/** The reference seller serves approved assignments independently and does not
+ * implement an initial all-creatives gate. Never acknowledge a requested hold
+ * that delivery simulation would ignore. */
+function unsupportedCreativeStartPolicyError(request: unknown): TaskError | undefined {
+  if (!isRecord(request)) return undefined;
+  for (const field of ['packages', 'new_packages'] as const) {
+    const packages = request[field];
+    if (!Array.isArray(packages)) continue;
+    const index = packages.findIndex(pkg => isRecord(pkg) && pkg.start_requires_all_creatives_approved === true);
+    if (index < 0) continue;
+    return {
+      code: 'UNSUPPORTED_FEATURE',
+      message: 'This seller does not support holding package startup until every assigned creative is approved.',
+      field: `${field}[${index}].start_requires_all_creatives_approved`,
+      recovery: 'correctable',
+    };
+  }
+  return undefined;
+}
+
+function creativeStartPolicyForWire(ctx: TrainingContext): Record<string, boolean> {
+  const version = parseAdcpReleaseVersion(lifecycleSplitVersionForContext(ctx) ?? DEFAULT_ADCP_VERSION);
+  return version && (version.major > 3 || (version.major === 3 && version.minor >= 3))
+    ? { start_requires_all_creatives_approved: false }
+    : {};
+}
+
 const MAX_URL_LEN = 2048;
 const MAX_ID_LEN = 256;
 const MAX_TOKEN_LEN = 4096;
@@ -3143,7 +3171,7 @@ import {
   getComplianceMediaBuys, getComplianceMediaBuy,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
-import { getAgentUrl } from './config.js';
+import { getAgentUrl, getIdentityBaseUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
   handleSyncPlans,
@@ -5363,7 +5391,7 @@ function legacyUpdateChangesCommercialEnvelope(req: UpdateMediaBuyArgs): boolean
   ].some(field => Object.hasOwn(root, field))) return true;
   if (req.new_packages?.length) return true;
   return Boolean(req.packages?.some(update => Object.keys(update as unknown as Record<string, unknown>)
-    .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives'].includes(field))));
+    .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives', 'start_requires_all_creatives_approved'].includes(field))));
 }
 
 const UNTYPED_ACCEPTED_CHANGE_ROOT_FIELDS = [
@@ -7735,10 +7763,13 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
 // Default list_products projection onto the closed core/canonical-product.json.
 // Legacy-only Product keys stay on get_products: audience_activation (the
 // experimental per-product declaration has no canonical counterpart yet; the
-// seller-wide union remains on get_adcp_capabilities), installments (deferred
-// until installment.json drops the deprecated collection_id shorthand), and
-// is_custom (canonical products mark request-specific configured offers with
-// expires_at alone).
+// seller-wide union remains on get_adcp_capabilities) and is_custom (canonical
+// products mark request-specific configured offers with expires_at alone).
+// installments project onto the closed core/canonical-installment.json, which
+// carries no deprecated collection_id shorthand and names a derivative source
+// by installment_ref rather than a response-local installment_id.
+const CANONICAL_PRODUCT_SCHEMA = 'core/canonical-product.json';
+
 const COMPACT_PRODUCT_FIELDS = new Set([
   'product_id', 'name', 'description', 'publisher_properties', 'channels',
   'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
@@ -7750,8 +7781,96 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'demographic_targeting', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
   'sponsored_placement_types', 'overlay_support', 'media_buy_support', 'identity',
-  'targeting_resolution', 'collections', 'collection_targeting_allowed', 'ext',
+  'targeting_resolution', 'collections', 'collection_targeting_allowed',
+  'installments', 'ext',
 ]);
+
+// core/canonical-installment.json is closed and drops the legacy deprecated
+// collection_id shorthand; identity is the (collection_ref, installment_id)
+// tuple alone.
+const COMPACT_INSTALLMENT_FIELDS = new Set([
+  'installment_id', 'collection_ref', 'name', 'season', 'installment_number',
+  'scheduled_at', 'status', 'duration_seconds', 'flexible_end', 'valid_until',
+  'content_rating', 'topics', 'special', 'guest_talent', 'ad_inventory',
+  'deadlines', 'ext',
+]);
+
+/** Canonical identity is the (collection_ref, installment_id) tuple, so a
+ * legacy installment carrying only the deprecated shorthand is unprojectable.
+ * Resolve it against the product's collections when that is unambiguous —
+ * which is exactly the condition the shorthand is documented to be valid
+ * under — and give up otherwise. */
+function canonicalCollectionRef(
+  installment: Record<string, unknown>,
+  productCollectionIds: ReadonlyMap<string, string>,
+): Record<string, unknown> | undefined {
+  if (isRecord(installment.collection_ref)) return structuredClone(installment.collection_ref);
+  const shorthand = installment.collection_id;
+  if (typeof shorthand !== 'string') return undefined;
+  const publisherDomain = productCollectionIds.get(shorthand);
+  return publisherDomain === undefined
+    ? undefined
+    : { publisher_domain: publisherDomain, collection_id: shorthand };
+}
+
+/** Project one legacy Product installment onto the closed canonical shape.
+ * Returns undefined when the installment cannot be represented there, which
+ * the caller treats as "this product has no canonical installments" rather
+ * than silently shortening the set — an omitted installments array reads as
+ * run-of-collection, so a partial set would be a different claim. */
+function compactInstallment(
+  installment: Record<string, unknown>,
+  productCollectionIds: ReadonlyMap<string, string>,
+  siblings: readonly Record<string, unknown>[],
+): Record<string, unknown> | undefined {
+  const collectionRef = canonicalCollectionRef(installment, productCollectionIds);
+  if (collectionRef === undefined) return undefined;
+  if (typeof installment.installment_id !== 'string' || installment.installment_id.length === 0) return undefined;
+  const projected = pickCompactFields(installment, COMPACT_INSTALLMENT_FIELDS);
+  projected.collection_ref = collectionRef;
+  // The canonical shape requires at least one entry where the legacy shape
+  // allows an empty array, so an empty one is dropped rather than emitted.
+  for (const field of ['topics', 'guest_talent'] as const) {
+    if (Array.isArray(projected[field]) && (projected[field] as unknown[]).length === 0) delete projected[field];
+  }
+  // derivative_of names a response-local installment_id in the legacy shape and
+  // a canonical installment_ref here. The source may sit in another collection
+  // of a multi-collection product, so resolve it against the sibling that
+  // actually declares that ID rather than assuming the enclosing collection.
+  const derivative = installment.derivative_of;
+  if (isRecord(derivative) && typeof derivative.installment_id === 'string' && typeof derivative.type === 'string') {
+    const source = siblings.find(entry => entry.installment_id === derivative.installment_id);
+    const sourceRef = source && canonicalCollectionRef(source, productCollectionIds);
+    if (sourceRef !== undefined) {
+      projected.derivative_of = {
+        installment_ref: { collection_ref: sourceRef, installment_id: derivative.installment_id },
+        type: derivative.type,
+      };
+    }
+  }
+  return projected;
+}
+
+/** Collection IDs a product's selectors name, mapped to their publisher
+ * domain. An ID claimed by two domains is ambiguous and is left out, so an
+ * installment can never be attributed to the wrong publisher namespace. */
+function productCollectionIndex(collections: unknown): ReadonlyMap<string, string> {
+  const index = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  if (!Array.isArray(collections)) return index;
+  for (const selector of collections) {
+    if (!isRecord(selector) || typeof selector.publisher_domain !== 'string') continue;
+    if (!Array.isArray(selector.collection_ids)) continue;
+    for (const collectionId of selector.collection_ids) {
+      if (typeof collectionId !== 'string') continue;
+      const seen = index.get(collectionId);
+      if (seen !== undefined && seen !== selector.publisher_domain) ambiguous.add(collectionId);
+      else index.set(collectionId, selector.publisher_domain);
+    }
+  }
+  for (const collectionId of ambiguous) index.delete(collectionId);
+  return index;
+}
 
 let canonicalReportingCapabilityFields: ReadonlySet<string> | undefined;
 
@@ -7783,15 +7902,21 @@ function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<
 }
 
 /** Project the additive 3.x get_products representation into the closed
- * canonical offer shape used by list_products. */
-function compactLifecycleProduct(
+ * canonical offer shape used by list_products. With a served release, fields
+ * the source schema adds after it (for 3.2, the 3.3 `installments`) are
+ * withheld; without one the projection follows the source schema. */
+export function compactLifecycleProduct(
   product: Record<string, unknown>,
   requestedFields?: ReadonlySet<string>,
   requiredFields: ReadonlySet<string> = new Set(),
+  servedAdcpVersion?: string,
 ): Record<string, unknown> {
-  const selectedFields = requestedFields
-    ? new Set(['product_id', 'name', ...requestedFields, ...requiredFields])
-    : COMPACT_PRODUCT_FIELDS;
+  const withheldFields = servedAdcpVersion === undefined
+    ? new Set<string>()
+    : propertiesAddedAfterRelease(CANONICAL_PRODUCT_SCHEMA, servedAdcpVersion);
+  const selectedFields = new Set([...(requestedFields
+    ? ['product_id', 'name', ...requestedFields, ...requiredFields]
+    : COMPACT_PRODUCT_FIELDS)].filter(field => !withheldFields.has(field)));
   const projected = pickCompactFields(product, selectedFields);
   // A returned overlay_support.collection_list is only schema-valid alongside
   // collection_targeting_allowed: true, so it overrides a narrower projection.
@@ -7812,13 +7937,39 @@ function compactLifecycleProduct(
       .filter(isRecord)
       .map(option => canonicalPricingSnapshot(option, String(option.pricing_option_id ?? '')));
   }
+  // pickCompactFields copies installments verbatim, so clear it before the
+  // guard: a non-array value must never reach the closed canonical shape.
+  delete projected.installments;
+  if (selectedFields.has('installments') && Array.isArray(product.installments)) {
+    // canonical-product.json requires the collections that scope installment
+    // IDs, so without them the field cannot be returned at all.
+    const collectionIds = productCollectionIndex(product.collections);
+    const source = product.installments.filter(isRecord);
+    const installments = collectionIds.size === 0
+      ? []
+      : source.map(entry => compactInstallment(entry, collectionIds, source));
+    // All or nothing: a shortened set would claim the buyer can only buy the
+    // slots that happened to project. Omitting instead is the lesser of two
+    // wrong answers, not a neutral one — inside a projection that asked for
+    // installments, absence reads as run-of-collection. A seller whose
+    // catalog can reach this must add collection_ref rather than ship either
+    // claim; see the migration note for 3.3.
+    if (installments.length > 0 && installments.every(entry => entry !== undefined)) {
+      projected.installments = installments as Record<string, unknown>[];
+      if (projected.collections === undefined && product.collections !== undefined) {
+        projected.collections = structuredClone(product.collections);
+      }
+    }
+  }
   if (selectedFields.has('reporting_capabilities') && isRecord(product.reporting_capabilities)) {
     projected.reporting_capabilities = pickCompactFields(
       product.reporting_capabilities,
       compactReportingCapabilityFields(),
     );
   }
-  return projected;
+  return servedAdcpVersion === undefined
+    ? projected
+    : omitFieldsAddedAfterRelease(projected, CANONICAL_PRODUCT_SCHEMA, servedAdcpVersion);
 }
 
 /** Match a buyer's future targeting requirement against a Product's binding
@@ -9890,6 +10041,7 @@ export function projectProductDiscoveryResult(
   toolName: string,
   result: Record<string, unknown>,
   originalArgs: Record<string, unknown>,
+  servedAdcpVersion: string,
 ): Record<string, unknown> {
   if (!isProductDiscoveryTool(toolName) || toolName === 'get_products') return result;
   if (Array.isArray(result.errors) && result.errors.length > 0 && !Array.isArray(result.products)) return result;
@@ -9970,7 +10122,12 @@ export function projectProductDiscoveryResult(
     }
     return {
       outcome: 'listed',
-      products: products.map(product => compactLifecycleProduct(product, requestedFields, requiredProductFields)),
+      products: products.map(product => compactLifecycleProduct(
+        product,
+        requestedFields,
+        requiredProductFields,
+        servedAdcpVersion,
+      )),
       ...(pagination && typeof pagination.cursor === 'string' && { next_cursor: pagination.cursor }),
       ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
       ...(typeof result.pricing_version === 'string' && { pricing_version: result.pricing_version }),
@@ -11569,7 +11726,7 @@ async function handleGetProductsUnlocked(
   // is intentionally not part of the deprecated get_products wire schema.
   type RefineEntry =
     | { scope: 'request'; ask?: string }
-    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
+    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string; package?: Record<string, unknown> }
     | {
         scope: 'proposal';
         proposal_id: string;
@@ -11601,6 +11758,7 @@ async function handleGetProductsUnlocked(
       : [],
   );
   const refinementApplied: RefinementAppliedEntry[] = [];
+  const unsupportedPackageForecastIds = new Set<string>();
   const proposalOmitIds = new Set<string>();
   const refinedProposalOverrides = new Map<string, Proposal>();
   const explicitlySelectedProposals = new Map<string, Proposal>();
@@ -11787,6 +11945,16 @@ async function handleGetProductsUnlocked(
           refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         } else if (action === 'include') {
           includeIds.add(op.product_id);
+          if (op.package !== undefined) {
+            unsupportedPackageForecastIds.add(op.product_id);
+            refinementApplied.push({
+              scope: 'product',
+              product_id: op.product_id,
+              status: 'unable',
+              notes: 'The training agent cannot compute an availability forecast for an exact proposed package.',
+            });
+            continue;
+          }
           if (!passesFilters) {
             refinementApplied.push({
               scope: 'product',
@@ -12651,10 +12819,20 @@ async function handleGetProductsUnlocked(
   }
 
   // Store context for refine
-  const responseProducts = products.map(product => productForServedAdcpVersion(
-    isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
-    ctx.servedAdcpVersion,
-  ));
+  const responseProducts = products.map(product => {
+    const servedProduct = productForServedAdcpVersion(
+      isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
+      ctx.servedAdcpVersion,
+    );
+    // Suppress ordinary/horizon forecasts after every generic forecast path;
+    // none is evidence that the unsupported exact package was evaluated.
+    const sourceProductId = discoverySourceProductIds.get(product.product_id) ?? product.product_id;
+    if (!unsupportedPackageForecastIds.has(sourceProductId)
+      && !unsupportedPackageForecastIds.has(product.product_id)) return servedProduct;
+    const withoutForecast = { ...servedProduct };
+    delete withoutForecast.forecast;
+    return withoutForecast;
+  });
   const retainedCommittedProposals = new Map(
     (session.lastGetProductsContext?.proposals ?? [])
       .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
@@ -15187,6 +15365,8 @@ export async function handleCreateMediaBuy(
 ) {
   const invalidCollectionSelector = invalidSelectedCollectionSelector(args, ['packages']);
   if (invalidCollectionSelector) return { errors: invalidCollectionSelector };
+  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
+  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
 
   const proposalId = (args as unknown as Record<string, unknown>).proposal_id;
   if (typeof proposalId !== 'string') return handleCreateMediaBuyUnlocked(args, ctx, options);
@@ -16830,6 +17010,7 @@ async function handleCreateMediaBuyUnlocked(
       end_time: pkg.endTime,
       ...packageFormatSelectorForWire(pkg, ctx),
       ...packageReadinessFields(pkg, session),
+      ...creativeStartPolicyForWire(ctx),
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
       ...(pkg.context && { context: pkg.context }),
@@ -17001,6 +17182,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             end_time: pkg.endTime,
             ...packageFormatSelectorForWire(pkg, ctx),
             ...packageReadinessFields(pkg, session),
+            ...creativeStartPolicyForWire(ctx),
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
               approval_status: 'approved' as const,
@@ -19044,6 +19226,9 @@ async function handleUpdateMediaBuyUnlocked(
     };
   }
 
+  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(req);
+  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
+
   if (
     !options.acceptedProposalExecution
     && Object.hasOwn(req as unknown as Record<string, unknown>, 'invoice_recipient')
@@ -20082,6 +20267,7 @@ async function handleUpdateMediaBuyUnlocked(
     end_time: pkg.endTime,
     ...packageFormatSelectorForWire(pkg, ctx),
     ...packageReadinessFields(pkg, session),
+    ...creativeStartPolicyForWire(ctx),
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
     ...(pkg.context && { context: pkg.context }),
@@ -20277,7 +20463,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
   const supportedCreativeFormats = includeThreeOneFields(ctx)
     ? supportedCanonicalFormatsCapability()
     : undefined;
-  return {
+  const capabilities = {
     adcp_version: DEFAULT_ADCP_VERSION,
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
@@ -20323,7 +20509,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         delivery_retry_horizon_seconds: 86400,
       },
       identity: {
-        brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
+        brand_json_url: `${getIdentityBaseUrl()}/.well-known/brand.json`,
       },
     }),
     media_buy: {
@@ -20504,6 +20690,13 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       description: 'Training agent for AdCP protocol testing and certification',
     },
   };
+  // Withhold fields added after the served release, such as the 3.3
+  // property-breakdown feature flags on a 3.2 response.
+  return omitFieldsAddedAfterRelease(
+    capabilities,
+    'protocol/get-adcp-capabilities-response.json',
+    isThreeZeroResponse ? '3.0' : servedAdcpVersion,
+  );
 }
 
 // ── Signal task handlers ──────────────────────────────────────────
@@ -22927,13 +23120,14 @@ export async function executeProductDiscoveryPlatformTool(
         return proposalArgs;
       })()
     : normalizeProductDiscoveryArgs(toolName, args);
+  const servedAdcpVersion = ctx.servedAdcpVersion ?? CURRENT_ADCP_VERSION;
   const result = await Promise.resolve(handler(normalized as ToolArgs, {
     ...ctx,
-    servedAdcpVersion: ctx.servedAdcpVersion ?? CURRENT_ADCP_VERSION,
+    servedAdcpVersion,
   }));
   await flushDirtySessions();
   if (typedRefinement) return result as Record<string, unknown>;
-  return projectProductDiscoveryResult(toolName, result as Record<string, unknown>, args);
+  return projectProductDiscoveryResult(toolName, result as Record<string, unknown>, args, servedAdcpVersion);
 }
 
 function legacyPackagesFromPurchases(
@@ -23796,6 +23990,8 @@ async function handleControlMediaBuyUnlocked(
     if (args.revision !== mediaBuy.revision) {
       return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mediaBuy.revision}, got ${args.revision}` }] };
     }
+    const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
+    if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
     const currentStatus = deriveStatus(mediaBuy, session);
     const productMap = new Map(getCatalog(ctx).map(cp => [cp.product.product_id, cp.product]));
     if (requestSession !== session) overlaySeededProducts(requestSession, productMap);
@@ -24148,6 +24344,12 @@ function validateIdempotencyProtectedInput(
   if (args.brief !== undefined && typeof args.brief !== 'string') {
     return { message: 'brief must be a string when provided', field: 'brief' };
   }
+  if (Array.isArray(args.refine) && args.refine.some(entry => isRecord(entry) && 'package' in entry)) {
+    // The pinned SDK preserves unknown entry fields. Validate structured
+    // packages against source before replay claims or downstream state changes.
+    const sourceError = validateProductDiscoverySourceInput('get-products-request', args);
+    if (sourceError) return sourceError;
+  }
   const hasDecline = Array.isArray(args.refine) && args.refine.some(entry => (
     isRecord(entry) && entry.scope === 'proposal' && entry.action === 'decline'
   ));
@@ -24450,6 +24652,7 @@ async function executeTrainingAgentToolInContext(
         toolName,
         outcome.response as Record<string, unknown>,
         initialHandlerArgs,
+        versionResolution.servedVersion,
       );
       return {
         success: true,
@@ -24487,6 +24690,7 @@ async function executeTrainingAgentToolInContext(
       toolName,
       result as Record<string, unknown>,
       initialHandlerArgs,
+      versionResolution.servedVersion,
     );
     const response = addServedAdcpVersion(projectedResponse, versionResolution.servedVersion, callerContext) as Record<string, unknown>;
     if (claim && typeof idempotencyKey === 'string') {
@@ -24834,6 +25038,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           name,
           outcome.response as Record<string, unknown>,
           initialHandlerArgs,
+          servedAdcpVersion,
         );
         const body: Record<string, unknown> = { ...replayBody, replayed: true };
         if (!isTaskRequest && body.status === undefined) body.status = 'completed';
@@ -25034,7 +25239,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // `completed` on synchronous success — handlers that emit a different
         // TaskStatus (e.g., `submitted` for async-task envelopes) set it on
         // `inner` and we honor that value.
-        const outwardInner = projectProductDiscoveryResult(name, inner, initialHandlerArgs);
+        const outwardInner = projectProductDiscoveryResult(name, inner, initialHandlerArgs, servedAdcpVersion);
         const response: Record<string, unknown> = { ...outwardInner };
         if (response.status === undefined) response.status = 'completed';
         response.adcp_version = servedAdcpVersion;
@@ -25123,6 +25328,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         name,
         cachableResponse,
         initialHandlerArgs,
+        servedAdcpVersion,
       );
       maybeEmitCompletionWebhook({
         toolName: name,

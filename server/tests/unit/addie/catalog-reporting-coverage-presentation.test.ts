@@ -3,10 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ result: {} as Record<string, unknown>, options: {} as Record<string, unknown> }));
 vi.mock('@adcp/sdk/testing', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@adcp/sdk/testing')>()),
-  getComplianceStoryboardById: (id: string) => ({ id, phases: [] }),
   testCapabilityDiscovery: async () => ({
     profile: { adcp_supported_versions: ['3.2.5'], supported_protocols: ['media_buy'] }, steps: [],
   }),
+}));
+vi.mock('../../../src/compliance/storyboard-cache.js', () => ({
+  getCachedComplianceStoryboardById: (id: string) => ({ id, phases: [] }),
+  clearComplianceStoryboardCache: () => {},
 }));
 vi.mock('../../../src/compliance/catalog-reporting-runner.js', async importOriginal => ({
   ...(await importOriginal<typeof import('../../../src/compliance/catalog-reporting-runner.js')>()),

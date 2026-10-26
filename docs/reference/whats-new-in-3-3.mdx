@@ -70,6 +70,12 @@ The `pixel_tracker` `event` enum adds `start`, `first_quartile`, `midpoint`, `th
 
 `sync_event_sources` and `sync_audiences` results now use optional `platform_id` for the object's ID in the seller's ad platform, matching creatives and catalogs. A seller reporting this ID in 3.3 and later 3.x responses MUST emit both `platform_id` and the deprecated `seller_id` alias with identical values, including discovery responses. Buyers MUST prefer `platform_id` and fall back to `seller_id` only when the new field is absent. Continue using `event_source_id` and `audience_id` in AdCP requests. The aliases keep working throughout 3.x; removal is no earlier than 4.0 under the six-month notice policy. Seller identity in `adagents.json` and publisher identifiers is unchanged. See [Deprecations](/docs/reference/migration/3-2-to-3-3#deprecations).
 
+## Installments on the compact product lifecycle
+
+For scheduled media the installment *is* the thing being sold — a slot in a creator's upcoming video, a podcast episode, a sponsored newsletter issue. The canonical Product that `list_products` and the proposal lifecycle read had no `installments`, so a proposal could name the creator but not which slot, when it publishes, or its material deadlines. 3.3 adds `installments[]` of the new `core/canonical-installment.json`, whose identity is the `(collection_ref, installment_id)` tuple alone. Request it in `fields`; omitting it on a product that declares `collections` still means run-of-collection.
+
+Buying *named* slots is experimental under `media_buy.installment_selection`: a purchase lists the exact installments it bought inside `commercial_terms`, so `terms_digest` and the `accept_proposal` digest check bind them, and `refine_proposals` gains `installment_changes` to drop or swap one. See [Installments in the compact lifecycle](/docs/media-buy/product-discovery/collections-and-installments#installments-in-the-compact-lifecycle).
+
 ## Tightened rules
 
 These narrow what a conformant implementation may do. Each is detailed in the [migration guide](/docs/reference/migration/3-2-to-3-3#required-to-claim-3-3-behavior) and recorded in [Versioning and governance](/docs/reference/versioning#3-3-exceptions-to-3-x-compatibility-beta).

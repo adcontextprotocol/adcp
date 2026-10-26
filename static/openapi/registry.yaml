@@ -703,6 +703,9 @@ components:
                 properties:
                   metric_id:
                     type: string
+                  name:
+                    type: string
+                    description: Vendor-authored display name of the metric. Show it in place of `metric_id` when present; never join, key, or deduplicate on it — `metric_id` is the identifier.
                   standard_reference:
                     type: string
                   accreditations:

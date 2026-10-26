@@ -1,0 +1,412 @@
+{
+  "$comment": "Non-additive schema changes recorded by scripts/lint-additive-minor.cjs, relative to the release named in base. This list only shrinks: CI rejects an entry that the target branch does not have. Remove an entry when its change is reverted or released; record a WG decision in reason.",
+  "base": "3.2.7",
+  "entries": [
+    {
+      "file": "compliance/comply-test-controller-response.json",
+      "pointer": "/oneOf/3/properties/forced",
+      "kind": "property-added-to-closed",
+      "detail": "property proposal_id added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/agent-notification-config.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property signing_profile added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/canonical-media-buy-action-fields.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property review_sla added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/canonical-performance-standard.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property metric_id added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property creative_policy added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property dooh_inventory_summary added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property hold_policy added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property installments added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/canonical-proposal.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property hold_placed_at added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/canonical-proposal.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property hold_policy added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/canonical-proposal.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property hold_rank added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/canonical-proposal.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property holds added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/canonical-proposal.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property proposal_initiator added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/daypart-target.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property end_time added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/daypart-target.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property start_time added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/media-buy-available-action.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property review_sla added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/notification-config.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property signing_profile added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/opportunity-context.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property later_proposals added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/sla-window.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property business_calendar_id added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/sla-window.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property clock added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/spot-reporting-capability.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property available_statuses added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/spot-reporting-capability.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property supports_break_position added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/targeting-overlay-requirements.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property collection_lists added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/targeting-overlay-requirements.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property collection_lists_exclude added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/targeting-overlay-requirements.json",
+      "pointer": "/definitions/daypartRequirement/anyOf/1",
+      "kind": "property-added-to-closed",
+      "detail": "property time_granularity added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/targeting-overlay-requirements.json",
+      "pointer": "/properties/demographics/anyOf/1",
+      "kind": "property-added-to-closed",
+      "detail": "property gender added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/targeting-overlay-support.json",
+      "pointer": "/definitions/daypartSupport/anyOf/1",
+      "kind": "property-added-to-closed",
+      "detail": "property time_granularity added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "core/x-entity-types.json",
+      "pointer": "",
+      "kind": "enum-value-removed",
+      "detail": "value \"evaluator\" removed",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "creative/sync-creatives-request.json",
+      "pointer": "/properties/assignment_operations/items/oneOf/0",
+      "kind": "property-added-to-closed",
+      "detail": "property landing_page_url added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "creative/sync-creatives-request.json",
+      "pointer": "/properties/assignment_operations/items/oneOf/0",
+      "kind": "property-added-to-closed",
+      "detail": "property trackers added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "creative/sync-creatives-request.json",
+      "pointer": "/properties/assignments/items",
+      "kind": "property-added-to-closed",
+      "detail": "property landing_page_url added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "creative/sync-creatives-request.json",
+      "pointer": "/properties/assignments/items",
+      "kind": "property-added-to-closed",
+      "detail": "property trackers added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/accept-proposal-request.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property lineage_reason added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/accept-proposal-request.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property predecessor_media_buy_id added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/buy-products-request.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property lineage_reason added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/buy-products-request.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property predecessor_media_buy_id added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/commercial-terms.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property definition_pins added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/get-products-request.json",
+      "pointer": "/properties/refine/items/oneOf/1",
+      "kind": "property-added-to-closed",
+      "detail": "property package added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/get-products-response.json",
+      "pointer": "/properties/refinement_applied/items/oneOf/1",
+      "kind": "property-added-to-closed",
+      "detail": "property resolved_end_time added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/get-products-response.json",
+      "pointer": "/properties/refinement_applied/items/oneOf/1",
+      "kind": "property-added-to-closed",
+      "detail": "property resolved_start_time added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/get-products-response.json",
+      "pointer": "/properties/refinement_applied/items/oneOf/1",
+      "kind": "property-added-to-closed",
+      "detail": "property result_product_id added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/list-products-request.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property include_collections added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/list-products-response.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property adcp_version added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/list-products-response.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property collections added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/media-buy-commitment-response.json",
+      "pointer": "/oneOf/2",
+      "kind": "property-added-to-closed",
+      "detail": "property expected_confirmation_at added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/package-control.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property start_requires_all_creatives_approved added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/product-discovery-criteria.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property product_ids_exclusive added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/product-purchase.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property installments added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/product-purchase.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property rights added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/proposal-refinement.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property installment_changes added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/refine-proposals-request.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property include_collections added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/refine-proposals-response.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property collections added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/refine-proposals-response.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property expected_confirmation_at added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/refine-proposals-response.json",
+      "pointer": "/properties/results/items",
+      "kind": "property-added-to-closed",
+      "detail": "property drifted_pins added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/refine-proposals-response.json",
+      "pointer": "/properties/results/items",
+      "kind": "property-added-to-closed",
+      "detail": "property unsatisfied_installment_changes added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/request-proposals-request.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property include_collections added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/request-proposals-response.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property collections added",
+      "reason": "pending WG decision"
+    },
+    {
+      "file": "media-buy/request-proposals-response.json",
+      "pointer": "",
+      "kind": "property-added-to-closed",
+      "detail": "property later_proposals added",
+      "reason": "pending WG decision"
+    }
+  ]
+}

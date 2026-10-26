@@ -319,10 +319,6 @@ phases:
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             operation_id: "op_creative_generative_create"
-            authentication:
-              schemes:
-                - "HMAC-SHA256"
-              credentials: "creative-generative-seller-webhook-secret-token"
 
           idempotency_key: "$generate:uuid_v4#creative_generative_seller_create_buy_create_media_buy"
           context:

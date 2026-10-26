@@ -44,6 +44,7 @@ requires_scenarios:
   - media_buy_seller/governance_agent_binding_acceptance
   - media_buy_seller/invalid_transitions
   - media_buy_seller/creative_fate_after_cancellation
+  - media_buy_seller/terminal_package_retention
   - media_buy_seller/inline_creatives_without_sync
   - media_buy_seller/create_media_buy_async
   - media_buy_seller/create_media_buy_async_lifecycle
@@ -535,10 +536,6 @@ phases:
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             operation_id: "op_media_buy_seller_create"
-            authentication:
-              schemes:
-                - "HMAC-SHA256"
-              credentials: "media-buy-seller-webhook-secret-token"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_create_buy_create_media_buy"
           context:
             correlation_id: "media_buy_seller--create_media_buy"
@@ -795,10 +792,6 @@ phases:
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             operation_id: "op_media_buy_seller_timezone"
-            authentication:
-              schemes:
-                - "HMAC-SHA256"
-              credentials: "media-buy-seller-webhook-secret-token"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_buyer_timezone_create_media_buy"
           context:
             correlation_id: "media_buy_seller--create_media_buy"

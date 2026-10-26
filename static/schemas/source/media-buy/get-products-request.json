@@ -9,6 +9,29 @@
       "$ref": "/schemas/core/version-envelope.json"
     },
     {
+      "description": "Structured package forecasts are read-only refinement and cannot be mixed with proposal finalization.",
+      "if": {
+        "properties": {
+          "refine": { "contains": { "required": ["package"] } }
+        },
+        "required": ["refine"]
+      },
+      "then": {
+        "properties": {
+          "buying_mode": { "const": "refine" },
+          "refine": {
+            "items": {
+              "not": {
+                "properties": { "action": { "const": "finalize" } },
+                "required": ["action"]
+              }
+            }
+          }
+        },
+        "required": ["buying_mode"]
+      }
+    },
+    {
       "description": "Conditional wholesale feed version requests are only valid for wholesale product feed reads.",
       "if": {
         "anyOf": [
@@ -100,9 +123,20 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "What the buyer is asking for on this product. For 'include': specific changes to request (e.g., 'add 16:9 format'). For 'more_like_this': what 'similar' means (e.g., 'same audience but video format'). Ignored when action is 'omit'."
+              },
+              "package": {
+                "$ref": "/schemas/media-buy/package-forecast-input.json",
+                "x-added-in": "3.3.0",
+                "description": "Optional exact package to forecast without booking, holding, or reserving inventory. Valid only with action include (including the omitted default). The seller MUST return refinement_applied for the whole request. For this entry, applied confirms an availability forecast for exactly these inputs; unable with non-empty notes reports unsupported or unresolvable inputs, without a substitute forecast. Entries are forecast independently, without subtracting other proposed packages in this call. See the refinement guide for flight, targeting, and goal resolution."
               }
             },
             "required": ["scope", "product_id"],
+            "allOf": [
+              {
+                "if": { "required": ["package"] },
+                "then": { "properties": { "action": { "const": "include" } } }
+              }
+            ],
             "additionalProperties": false
           },
           {
@@ -194,7 +228,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed. product_id and name are always included. `format_ids` is a deprecated 3.x compatibility projection; new integrations request canonical `format_options`. Safety-critical request-specific fields override projection: Product.targeting_resolution and expires_at MUST be included whenever the seller returns modifications, overlay_support MUST be included when required_overlay_support was requested, media_buy_support MUST be included when required_media_buy_support or media_buy_frequency_cap was requested, list_applications MUST be included when a property or collection list is in the effective targeting, and audience_evidence_selections MUST be included when filters.audience_evidence_requirements affects eligibility or ranking. fields controls the optional audience_evidence payload, not either decision receipt. Response-level brief targeting confirmation is not a projected product field. A projection that omits collections also omits the response-level collections array.",
+      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed. product_id and name are always included. `format_ids` is a deprecated 3.x compatibility projection; new integrations request canonical `format_options`. Safety-critical request-specific fields override projection: Product.targeting_resolution and expires_at MUST be included whenever the seller returns modifications, overlay_support MUST be included when required_overlay_support was requested, media_buy_support MUST be included when required_media_buy_support or media_buy_frequency_cap was requested, list_applications MUST be included when a property or collection list is in the effective targeting, and audience_evidence_selections MUST be included when filters.audience_evidence_requirements affects eligibility or ranking. A structured refine package entry with an applied outcome MUST include forecast even when projection omitted it. fields controls the optional audience_evidence payload, not either decision receipt. Response-level brief targeting confirmation is not a projected product field. A projection that omits collections also omits the response-level collections array.",
       "minItems": 1,
       "items": {
         "anyOf": [

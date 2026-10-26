@@ -1,7 +1,8 @@
 {
   "name": "Webhook registration with push_notification_config.authentication over bearer (unsigned); seller supports request signing but operation is NOT in required_for",
-  "spec_reference": "#webhook-security Downgrade and injection resistance — MUST require 9421 when authentication is present",
+  "spec_reference": "#webhook-callbacks Downgrade and injection resistance — deprecated condition (b): MUST require 9421 when authentication is present and the seller honors the per-request trigger (legacy_hmac_fallback true, no onboarding record). Transitional in 3.x, removed in 4.0; a seller with legacy_hmac_fallback false returns webhook_hmac_not_supported instead.",
   "signing_profile_version": "3.1",
+  "applies_when": "webhook_signing.legacy_hmac_fallback == true",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",
@@ -22,5 +23,6 @@
     "success": false,
     "error_code": "request_signature_required",
     "failed_step": 0
-  }
+  },
+  "$comment": "Transitional vector for deprecated condition (b) of request_signature_required (adcp#7563), removed in 4.0. Grade it only for agents that advertise webhook_signing.legacy_hmac_fallback: true; a runner skips it (not a failure) when the flag is false or the webhook_signing block is absent, because condition (b) applies only while legacy HMAC is available and such a seller answers an authenticated registration carrying authentication with webhook_hmac_not_supported (HTTP 400), not request_signature_required. Functional storyboards MUST NOT send push_notification_config.authentication on spend-committing steps, so a seller is not forced onto one side of this vector by an unrelated create step."
 }

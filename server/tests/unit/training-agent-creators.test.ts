@@ -1,6 +1,14 @@
 import { createHash } from 'node:crypto';
 import canonicalize from 'canonicalize';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Installments are a 3.3 canonical-product field, so the compact lifecycle
+// cases below list products as a 3.3 caller, through the trusted local
+// candidate wire contract.
+vi.hoisted(() => {
+  process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
+  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.0';
+});
 import type { CanonicalProposal } from '@adcp/sdk';
 import { CREATOR_PUBLISHER } from '../../src/training-agent/creators.js';
 import { PUBLISHERS } from '../../src/training-agent/publishers.js';
@@ -166,6 +174,68 @@ describe('CreatorLoop brief discovery', () => {
   it('returns creator products for a creator brief', async () => {
     const ids = await productIdsFor('Sponsored creator videos for a lifestyle audience');
     expect(ids.filter(id => id.startsWith('creatorloop_creator_')).length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('CreatorLoop compact lifecycle', () => {
+  beforeEach(() => {
+    clearSessions();
+    invalidateCache();
+    clearIdempotencyCache();
+  });
+
+  const context: TrainingContext = { mode: 'open', tenantId: 'sales', principal: 'creator-compact-lifecycle' };
+
+  // Before #8230 the compact lifecycle had no installments, so a creator
+  // product reached a compact-lifecycle buyer with no slot dates and no
+  // material deadlines at all — the slot only existed on get_products.
+  it('surfaces slot dates and material deadlines on the canonical product, not only on get_products', async () => {
+    const result = await executeTrainingAgentTool('list_products', {
+      adcp_version: '3.3-beta.0',
+      account: { brand: { domain: 'buyer.example' }, operator: 'buyer.example' },
+      criteria: { product_ids: creatorProducts().map(product => product.product_id as string) },
+    }, context);
+    expect(result.success, result.error).toBe(true);
+    const products = result.data?.products as Row[];
+    expect(products.length).toBeGreaterThanOrEqual(10);
+
+    for (const product of products) {
+      expectValid('core/canonical-product.json', product, product.product_id);
+      const installments = product.installments as Row[];
+      expect(installments?.length, product.product_id).toBeGreaterThanOrEqual(3);
+      const scopedCollections = new Set((product.collections as Row[])
+        .flatMap(selector => selector.collection_ids as string[]));
+      for (const installment of installments) {
+        expectValid('core/canonical-installment.json', installment, installment.installment_id);
+        // Identity is the tuple; the deprecated shorthand stays on get_products.
+        expect(installment).not.toHaveProperty('collection_id');
+        expect(installment.collection_ref.publisher_domain).toBe(CREATOR_PUBLISHER.domain);
+        expect(scopedCollections.has(installment.collection_ref.collection_id)).toBe(true);
+        expect(Date.parse(installment.scheduled_at)).toBeGreaterThan(Date.now());
+        expect(installment.deadlines.material_deadlines.map((m: Row) => m.stage))
+          .toEqual(['talking_points', 'script', 'draft']);
+      }
+    }
+  });
+
+  it('keeps the legacy and canonical slot sets identical apart from the dropped shorthand', async () => {
+    const legacy = creatorProducts();
+    const result = await executeTrainingAgentTool('list_products', {
+      adcp_version: '3.3-beta.0',
+      account: { brand: { domain: 'buyer.example' }, operator: 'buyer.example' },
+      criteria: { product_ids: legacy.map(product => product.product_id as string) },
+    }, context);
+    expect(result.success, result.error).toBe(true);
+    const compact = new Map((result.data?.products as Row[]).map(product => [product.product_id, product]));
+
+    for (const product of legacy) {
+      const listed = compact.get(product.product_id)!;
+      expect(listed, product.product_id).toBeDefined();
+      expect((listed.installments as Row[]).map(entry => entry.installment_id))
+        .toEqual((product.installments as Row[]).map(entry => entry.installment_id));
+      expect((product.installments as Row[]).every(entry => entry.collection_id !== undefined), product.product_id)
+        .toBe(true);
+    }
   });
 });
 

@@ -57,6 +57,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # The release-record resolver (scripts/forward-merge-release-records.cjs)
+      # regenerates schema discovery through scripts/build-schemas.cjs.
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
       - name: Fetch 3.1.x
         run: git fetch origin 3.1.x
 
@@ -80,6 +91,7 @@ jobs:
             echo "$CONFLICTS"
 
             UNEXPECTED=""
+            DEFERRED=""
             while IFS= read -r f; do
               [ -z "$f" ] && continue
               case "$f" in
@@ -113,11 +125,16 @@ jobs:
                   git checkout --ours -- "$f"
                   git add -- "$f"
                   ;;
-                # CHANGELOG.md: take 3.1.x's (canonical patch-line history);
-                # main's next Version Packages cut prepends its own entries.
+                # CHANGELOG.md: keep main's file and insert each 3.1.x release
+                # block main lacks, in semver order. Taking 3.1.x's copy would
+                # delete main's own (pre)release sections (#8429).
                 CHANGELOG.md)
-                  git checkout --theirs -- "$f"
-                  git add -- "$f"
+                  DEFERRED="$DEFERRED changelog:$f"
+                  ;;
+                # Hosted-grading manifest: union of both lines' registered
+                # versions; each new one must have its compliance bundle here.
+                static/compliance/published-versions.json)
+                  DEFERRED="$DEFERRED published-versions:$f"
                   ;;
                 # dist/ release artifacts: always take 3.1.x's. These are
                 # immutable per release; main only ever ADDS to its dist tree.
@@ -143,6 +160,14 @@ jobs:
               exit 1
             fi
 
+            # The release-record resolver loads repository modules, so it needs
+            # a parseable package.json: run it only after the loop above has
+            # resolved package.json / package-lock.json to main's copies.
+            for entry in $DEFERRED; do
+              node scripts/forward-merge-release-records.cjs "${entry%%:*}"
+              git add -- "${entry#*:}"
+            done
+
             REMAINING=$(git diff --name-only --diff-filter=U)
             if [ -n "$REMAINING" ]; then
               echo "::error::After auto-resolution, files still conflicted: $REMAINING"
@@ -161,6 +186,15 @@ jobs:
             echo "::group::package.json diff vs origin/main"
             git diff origin/main HEAD -- package.json package-lock.json || true
             echo "::endgroup::"
+          fi
+
+          # dist/schemas/index.json and latest.json describe every release in
+          # the merged tree. Regenerate them after every merge (clean or
+          # resolved): neither side's copy is right once both lines release.
+          node scripts/forward-merge-release-records.cjs schema-discovery
+          if ! git diff --quiet -- dist/schemas/index.json dist/schemas/latest.json; then
+            git add dist/schemas/index.json dist/schemas/latest.json
+            git commit -m "Regenerate schema discovery pointers after forward-merge"
           fi
 
           if git diff --quiet origin/main HEAD; then
@@ -210,7 +244,12 @@ jobs:
           - `.changeset/*.md` / `.changeset/pre.json` → preserve main's state
           - `static/schemas/source/index.json`,
             `static/schemas/source/registry/index.yaml` → preserve main's
-          - `CHANGELOG.md` → take 3.1.x's
+          - `CHANGELOG.md` → main's file plus each 3.1.x release block it lacks,
+            in semver order
+          - `static/compliance/published-versions.json` → union of both lines'
+            registered versions
+          - `dist/schemas/index.json`, `dist/schemas/latest.json` → regenerated
+            from the merged release directories
           - `dist/*` → take 3.1.x's (versioned release artifacts)
 
           Any conflict outside this list fails the workflow loud.

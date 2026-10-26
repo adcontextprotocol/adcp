@@ -3,62 +3,438 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>trust.json: which agents act for your organization (draft)</title>
-  <meta name="description" content="trust.json is a draft open standard for publishing which agents an organization runs, their keys, and who may act on its behalf, at /.well-known/trust.json.">
+  <title>trust.json | Who gets to spend in your name?</title>
+  <meta name="description" content="AI agents are starting to buy media, make creative and do business in companies' names. trust.json is a short file on your own domain that names the agents you've hired and the agents you operate, so anyone can tell the real ones from impostors.">
+  <meta property="og:title" content="trust.json | Who gets to spend in your name?">
+  <meta property="og:description" content="Name the agents you've hired and the agents you operate, from your own domain. One file can cover every brand you own, starting with advertising.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://trustjson.org/">
   <link rel="canonical" href="https://trustjson.org/">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="Guide for AI agents">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <link rel="stylesheet" href="/sites/standard-site.css">
+  <link rel="stylesheet" href="/sites/trustjson/trustjson.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "trust.json: who gets to spend in your name?",
+    "description": "How organizations publish the agents they operate and the agents they have hired, protect a whole brand portfolio from the parent domain, and check what sellers can verify. Advertising is the first protocol profile.",
+    "url": "https://trustjson.org/",
+    "inLanguage": "en",
+    "isAccessibleForFree": true,
+    "publisher": { "@type": "Organization", "name": "AgenticAdvertising.org", "url": "https://agenticadvertising.org" }
+  }
+  </script>
 </head>
-<body>
+<body class="trust-site">
+  <a class="trust-skip-link" href="#main">Skip to content</a>
   <div id="adcp-nav"></div>
   <script src="/nav.js"></script>
 
-  <header class="std-hero">
-    <span class="std-badge">Draft</span>
-    <h1>trust.json</h1>
-    <p>One file at <code>/.well-known/trust.json</code> that says which agents your organization runs, which keys they sign with, and who may act on your behalf.</p>
-    <div class="std-actions">
-      <a class="btn btn-primary" href="https://github.com/adcontextprotocol/adcp/pull/7819">Read the draft</a>
-      <a class="btn btn-secondary-on-dark" href="https://github.com/adcontextprotocol/adcp/issues/7809">Join the discussion</a>
+  <header class="tj-hero" id="lookup">
+    <div class="tj-wrap tj-hero-grid">
+      <div class="tj-hero-copy">
+        <p class="tj-eyebrow"><span class="tj-wordmark">trust.json</span><span class="tj-pill">Early access · AdCP 3.3</span></p>
+        <h1>Who gets to spend in <span class="tj-hl">your name?</span></h1>
+        <p class="tj-lede">AI agents are starting to buy media, make creative and do business in your company’s name. trust.json is a short file on your own website that names the agents you’ve hired and the agents you operate, so sellers can tell the real ones from impostors.</p>
+        <form id="trust-lookup-form" class="trust-lookup-form" role="search">
+          <label for="trust-domain">See who’s authorized for any brand</label>
+          <div class="trust-lookup-inputs">
+            <input id="trust-domain" name="domain" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" maxlength="512" placeholder="yourbrand.com" required aria-describedby="trust-lookup-hint">
+            <button class="btn btn-primary" type="submit">Check</button>
+          </div>
+          <p id="trust-lookup-hint">Try your own domain. If there’s no list yet, we’ll show you how to start one.</p>
+          <p id="trust-lookup-status" class="trust-lookup-status" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+
+      <figure class="tj-demo" aria-labelledby="tj-demo-caption">
+        <div class="tj-demo-card">
+          <div class="tj-demo-head">
+            <span class="tj-demo-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span>Seller inbox · requests for <strong>Nova Motors</strong></span>
+          </div>
+          <ul class="tj-demo-list">
+            <li class="tj-demo-row" data-verdict="yes">
+              <span class="tj-demo-icon" aria-hidden="true">✓</span>
+              <div>
+                <p class="tj-demo-who">Nova Brands in-house buyer</p>
+                <p class="tj-demo-origin">buyer.nova-brands.example</p>
+                <p class="tj-demo-verdict">Operated by Nova Brands · its own agent</p>
+              </div>
+              <span class="tj-demo-tag">Accepted</span>
+            </li>
+            <li class="tj-demo-row" data-verdict="yes">
+              <span class="tj-demo-icon" aria-hidden="true">✓</span>
+              <div>
+                <p class="tj-demo-who">Pinnacle Agency</p>
+                <p class="tj-demo-origin">buyer.pinnacle-agency.example</p>
+                <p class="tj-demo-verdict">Hired by Nova Brands · media buying · US &amp; UK · through June 2027</p>
+              </div>
+              <span class="tj-demo-tag">Accepted</span>
+            </li>
+            <li class="tj-demo-row" data-verdict="no">
+              <span class="tj-demo-icon" aria-hidden="true">✕</span>
+              <div>
+                <p class="tj-demo-who">“Nova Motors buying team”</p>
+                <p class="tj-demo-origin">deals.quickmedia.example</p>
+                <p class="tj-demo-verdict">Not on Nova Brands’ list</p>
+              </div>
+              <span class="tj-demo-tag">Declined</span>
+            </li>
+          </ul>
+          <p class="tj-demo-foot">Checked against <code>nova-brands.example/.well-known/trust.json</code></p>
+        </div>
+        <figcaption id="tj-demo-caption">How a seller that checks trust.json sees three requests. Fictional companies.</figcaption>
+      </figure>
     </div>
   </header>
 
-  <main class="std-main">
-    <h2>What it answers</h2>
-    <div class="std-cards">
-      <div class="std-card">
-        <h3>Which agents are ours?</h3>
-        <p><code>agents[]</code>: each agent's URL, roles, and signing keys, published from your own domain.</p>
-      </div>
-      <div class="std-card">
-        <h3>Who may act for us?</h3>
-        <p><code>grants[]</code>: authority you delegate to other organizations, scoped and time-boxed. Grants never carry keys.</p>
-      </div>
-      <div class="std-card">
-        <h3>Whose grants do we accept?</h3>
-        <p><code>acknowledgements[]</code>: a pointer to a grant someone else published. The terms stay in their file.</p>
-      </div>
-    </div>
+  <main id="main" class="trust-main">
+    <section id="trust-lookup-result" class="trust-lookup-result" hidden tabindex="-1" aria-labelledby="trust-result-heading"></section>
 
-    <h2>Not just for advertising</h2>
-    <p>The core is protocol-neutral. Roles and scopes are namespaced, for example <code>adcp:sales</code> for the Ad Context Protocol, so any agent protocol can define its own profile.</p>
+    <section class="tj-band tj-problem" aria-labelledby="problem-heading">
+      <div class="tj-wrap">
+        <p class="tj-kicker">The problem</p>
+        <h2 id="problem-heading" class="tj-display">Anyone can say they work for you.</h2>
+        <p class="tj-intro">When an agent asks a publisher for inventory, it names the brand it’s buying for. That’s one line in a request. Without a public source of truth, sellers fall back on paperwork, email threads and good faith. That’s slow for your real partners and an open door for everyone else.</p>
+        <ul class="tj-risks">
+          <li><span class="tj-risk-label">Spend you never approved</span><p>A reseller books a deal in your name, and you find out when the invoice arrives.</p></li>
+          <li><span class="tj-risk-label">Work you’d never sign off on</span><p>Ads generated for your brand by a team nobody briefed.</p></li>
+          <li><span class="tj-risk-label">Partners stuck at the door</span><p>Your actual agency waits on letters of authorization while the flight date gets closer.</p></li>
+        </ul>
+      </div>
+    </section>
 
-    <h2>A minimal example</h2>
-<pre>{
-  "agents": [
+    <section class="tj-band tj-roles" aria-labelledby="roles-heading">
+      <div class="tj-wrap">
+        <p class="tj-kicker">Who it’s for</p>
+        <h2 id="roles-heading" class="tj-display">Built for the people who own the brand.</h2>
+        <div class="tj-role-grid">
+          <article class="tj-role">
+            <p class="tj-role-title">CMO</p>
+            <h3>One answer to “who speaks for us?”</h3>
+            <p>The agents you operate and the partners you’ve hired, published from your own domain and owned by your team. Change agencies, and sellers that check see it on their next refresh.</p>
+          </article>
+          <article class="tj-role">
+            <p class="tj-role-title">Global head of media</p>
+            <h3>Your agencies, verified without the paperwork.</h3>
+            <p>Give each agency exactly the reach it needs: which brands, which markets, until which date. Sellers confirm the relationship from your file instead of waiting on a letter.</p>
+          </article>
+          <article class="tj-role">
+            <p class="tj-role-title">Global head of creative</p>
+            <h3>Your brand, in the right hands.</h3>
+            <p>Creative generation is its own permission, separate from buying. The studio you hired can make work for the brand. A stranger’s claim won’t check out.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="how" class="tj-band tj-how" aria-labelledby="how-heading">
+      <div class="tj-wrap">
+        <p class="tj-kicker">How it works</p>
+        <h2 id="how-heading" class="tj-display">Three steps. One file.</h2>
+        <ol class="tj-steps">
+          <li>
+            <span class="tj-step-num" aria-hidden="true">1</span>
+            <h3>Make the list</h3>
+            <p>Name the agents you operate yourself, then the agencies and platforms you’ve hired. For each partner, choose what it can do (buy media, generate creative, measure), for which brands, in which countries, and for how long.</p>
+          </li>
+          <li>
+            <span class="tj-step-num" aria-hidden="true">2</span>
+            <h3>Post it on your domain</h3>
+            <p>The file lives at <code>yourbrand.com/.well-known/trust.json</code>, next to your brand.json. Your domain is the proof: only whoever controls your website can put it there.</p>
+          </li>
+          <li>
+            <span class="tj-step-num" aria-hidden="true">3</span>
+            <h3>Sellers check before they spend</h3>
+            <p>When an agent shows up buying for you, the seller confirms who it really is, reads your list, and checks that it’s one of yours, or hired for this brand, market and date.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="portfolio" class="tj-band tj-portfolio" aria-labelledby="portfolio-heading">
+      <div class="tj-wrap tj-portfolio-grid">
+        <div>
+          <p class="tj-kicker">Brand portfolios</p>
+          <h2 id="portfolio-heading" class="tj-display">One list covers every brand you own.</h2>
+          <p>Publish once at your company’s domain. Each brand’s site names the parent company, and the parent lists the brand back. When both sides match, sellers use the parent’s list for every brand in the family.</p>
+          <p class="tj-portfolio-punch"><strong>A sub-brand without its own file isn’t a loophole.</strong> If nova-snacks.example never publishes a trust.json, sellers still check Nova Brands’ list. Skipping a brand in your rollout doesn’t leave it exposed.</p>
+        </div>
+        <div class="tj-tree" role="img" aria-label="Nova Brands publishes one trust.json. Nova Motors, Nova Snacks and Nova Home are all covered by it.">
+          <div class="tj-tree-root">
+            <span class="tj-tree-domain">nova-brands.example</span>
+            <span class="tj-tree-file">trust.json ✓</span>
+          </div>
+          <div class="tj-tree-branches">
+            <div class="tj-tree-leaf"><span>Nova Motors</span><em>Covered</em></div>
+            <div class="tj-tree-leaf"><span>Nova Snacks</span><em>Covered</em><small>No file of its own</small></div>
+            <div class="tj-tree-leaf"><span>Nova Home</span><em>Covered</em></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="beyond" class="tj-band tj-beyond" aria-labelledby="beyond-heading">
+      <div class="tj-wrap">
+        <p class="tj-kicker">Beyond advertising</p>
+        <h2 id="beyond-heading" class="tj-display">Advertising is first. It won’t be the last.</h2>
+        <p class="tj-intro">Agents will soon book, buy, negotiate and answer customers in your company’s name. Every time, the other side needs to know the same thing: is this agent really yours, or really working for you? trust.json was built to answer that for any protocol, not just ads.</p>
+        <div class="tj-beyond-grid">
+          <div><p class="tj-beyond-label">Commerce</p><h3>Orders on your account</h3><p>A procurement agent places orders with a supplier. The supplier checks that it runs for your company before it ships.</p></div>
+          <div><p class="tj-beyond-label">Customer care</p><h3>Your voice, on other platforms</h3><p>A support agent answers your customers inside a marketplace or messaging app. The platform checks it’s yours, or hired by you.</p></div>
+          <div><p class="tj-beyond-label">Travel and expenses</p><h3>Bookings in the company name</h3><p>A booking agent reserves flights at your corporate rate. The airline checks your list instead of trusting the claim.</p></div>
+          <div><p class="tj-beyond-label">Data and partners</p><h3>Access to your APIs</h3><p>A partner’s agent asks for your data. You check its company against the grants you published.</p></div>
+        </div>
+        <p class="tj-beyond-note"><strong>How it stretches:</strong> the file’s core (agents you operate, partners you’ve hired, the limits on each) is protocol-neutral. Each protocol adds its own permissions under its own name, and verifiers ignore the ones they don’t understand. Advertising’s profile is the only one defined today; the examples above show where other protocols can take it.</p>
+      </div>
+    </section>
+
+    <section class="tj-band tj-control" aria-labelledby="control-heading">
+      <div class="tj-wrap">
+        <p class="tj-kicker">Stay in control</p>
+        <h2 id="control-heading" class="tj-display">Change partners as fast as you change your mind.</h2>
+        <div class="tj-control-grid">
+          <div><h3>Add an agency</h3><p>Add one entry. Limit it to a single brand, a few markets or a fixed end date.</p></div>
+          <div><h3>Pull access</h3><p>Delete a partner’s entry, or retire one of your own agents. Sellers that check pick up the change on their next refresh. No calls, no letters.</p></div>
+          <div><h3>Lock it down</h3><p>Make your list exclusive, and an agency that isn’t on it gets turned away for that activity, whatever it claims.</p></div>
+          <div><h3>Hand off the hosting</h3><p>Your agency or platform can host the file. Your domain still points to it, so the authority stays yours.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tj-band tj-honest" aria-labelledby="honest-heading">
+      <div class="tj-wrap tj-honest-grid">
+        <div>
+          <p class="tj-kicker">Where it works today</p>
+          <h2 id="honest-heading" class="tj-display">New, and worth getting ahead of.</h2>
+          <p>trust.json is experimental, and advertising (AdCP 3.3) is the first protocol to use it. It protects you with sellers that check it, and support varies by seller today. Publishing now gives your team one current answer to “who’s authorized?”, and you’re covered as each seller turns checking on.</p>
+        </div>
+        <blockquote class="tj-ask">
+          <p class="tj-ask-label">Ask every seller you work with</p>
+          <p class="tj-ask-quote">“Do you check trust.json before you accept a buy for our brand?”</p>
+          <p class="tj-ask-follow">Then ask them to show you one request they approved and one they turned down.</p>
+        </blockquote>
+      </div>
+    </section>
+
+    <section class="tj-band tj-cta" aria-labelledby="cta-heading">
+      <div class="tj-wrap">
+        <h2 id="cta-heading" class="tj-display">Get your brand on the list.</h2>
+        <ol class="tj-cta-steps">
+          <li><strong>Check your domain.</strong> <a href="#lookup">Use the lookup</a> to see what sellers can find today.</li>
+          <li><strong>Claim your brand.</strong> Verify your domain on AgenticAdvertising.org.</li>
+          <li><strong>Brief your team.</strong> Send the technical guide below to ad ops or whoever runs your website.</li>
+        </ol>
+        <div class="tj-cta-actions">
+          <a class="btn tj-btn-light" href="https://agenticadvertising.org/brand/builder">Claim your brand</a>
+          <a class="btn tj-btn-ghost" href="#publish">Read the technical guide</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="tj-tech std-main">
+      <header class="tj-tech-head">
+        <p class="tj-kicker">For ad ops and engineering</p>
+        <h2 class="tj-tech-title">Technical guide</h2>
+        <p>What your team needs to publish the file and test it with sellers. Examples use fictional companies on <code>.example</code> domains; replace them with your own domains and real agent origins.</p>
+        <p>The core is protocol-neutral: <code>agents</code> lists the agents you operate, <code>grants</code> lists the organizations you’ve authorized, and <code>acknowledgements</code> accepts grants made to you. Roles and scopes are namespaced tokens. AdCP defines the <code>adcp:</code> tokens and <code>adcp</code> profile used below; other protocols can define their own, and verifiers ignore namespaces they don’t implement.</p>
+        <nav class="trust-contents" aria-label="Technical guide">
+          <a href="#publish">Publish</a>
+          <a href="#portfolio-setup">Parent and child brands</a>
+          <a href="#verification">How sellers verify</a>
+          <a href="#missing-records">Missing records</a>
+          <a href="#check">Check your setup</a>
+          <a href="#questions">Questions</a>
+        </nav>
+      </header>
+
+      <section id="publish" aria-labelledby="publish-heading">
+        <h2 id="publish-heading">Publish your authority in four steps</h2>
+        <ol class="trust-publish-steps">
+          <li>
+            <h3>Establish control of your domain</h3>
+            <p>Publish <code>/.well-known/brand.json</code> over HTTPS on a domain you control, or publish an <code>authoritative_location</code> pointer to a provider you control. Self-publishing needs no registry signup.</p>
+            <p>If you use the AgenticAdvertising.org registry, <a href="https://agenticadvertising.org/brand/builder">claim your brand</a> with its DNS TXT check. The claim controls your hosted registry entry; your domain’s own publication is what other parties use to find your authoritative record.</p>
+          </li>
+          <li>
+            <h3>List the organizations allowed to represent you</h3>
+            <p>Publish grants at <code>https://{your-registrable-domain}/.well-known/trust.json</code>. For a portfolio, publish them at the verified parent’s domain. Each <code>grantee</code> is an organization’s registrable domain.</p>
+            <p>Here, Nova Brands lets one Pinnacle agent buy media for Nova Motors in the US and UK until mid-2027. This authorizes the agency. It doesn’t say Nova Brands runs the agency’s agent.</p>
+            <figure class="trust-example">
+              <figcaption>At <code>https://nova-brands.example/.well-known/trust.json</code></figcaption>
+              <pre data-schema="/schemas/trust/v1/trust.json"><code>{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/trust/v1/trust.json",
+  "exclusive_grants": true,
+  "grants": [
     {
-      "url": "https://agents.acme.example/sales",
-      "roles": ["adcp:sales"],
-      "jwks_uri": "https://agents.acme.example/.well-known/jwks.json"
+      "grantee": "pinnacle-agency.example",
+      "scopes": ["adcp:media_buying"],
+      "agents": [{ "url": "https://buyer.pinnacle-agency.example" }],
+      "profiles": { "adcp": { "brands": ["nova_motors"] } },
+      "countries": ["US", "GB"],
+      "valid_until": "2027-06-30T00:00:00Z"
     }
   ]
-}</pre>
+}</code></pre>
+            </figure>
+            <p>Leave out <code>agents</code> to allow any of the grantee’s agents. Leave out <code>countries</code> and the grant is global; leave out <code>valid_until</code> and it has no published expiry. Set each limit on purpose.</p>
+          </li>
+          <li>
+            <h3>Have the agent’s operator list it</h3>
+            <p>Pinnacle lists the agent origin it runs in its own trust record, with the buying role. That origin serves its Web Bot Auth key directory at <code>/.well-known/http-message-signatures-directory</code>. trust.json carries no signing keys. A hosted platform lists the agents it runs in its own record.</p>
+            <figure class="trust-example">
+              <figcaption>At <code>https://pinnacle-agency.example/.well-known/trust.json</code></figcaption>
+              <pre data-schema="/schemas/trust/v1/trust.json"><code>{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/trust/v1/trust.json",
+  "agents": [
+    {
+      "url": "https://buyer.pinnacle-agency.example",
+      "roles": ["adcp:buying"]
+    }
+  ]
+}</code></pre>
+            </figure>
+            <p>One agent per origin; different paths on the same origin are not separate agents. A brand that only delegates can publish grants without running an agent.</p>
+          </li>
+          <li>
+            <h3>Choose exclusivity, then test with each seller</h3>
+            <p>With <code>exclusive_grants: true</code>, grants are exhaustive for the scopes they name: an enforcing seller rejects an uncovered third-party claim in those scopes. Other activities aren’t made exclusive, and your own agents keep their first-party authority.</p>
+            <p>Without exclusivity, a seller may still authorize an uncovered claim from its own verified onboarding records. Once your trust record is published, legacy <code>brand.json</code> operator grants stop being a fallback, so move the complete list before you publish.</p>
+            <p>Ask each seller to demonstrate an authorized request and a rejected one, checking agent, brand, account operator, scope, country and expiry. Account approval, billing and credit checks still apply.</p>
+          </li>
+        </ol>
+      </section>
 
-    <h2>Status</h2>
-    <p>trust.json is a draft under discussion in <a href="https://github.com/adcontextprotocol/adcp/issues/7809">RFC #7809</a>. Field names may change before v1. Identity stays in <a href="https://brandjson.org">brand.json</a>.</p>
+      <section id="portfolio-setup" aria-labelledby="portfolio-setup-heading">
+        <h2 id="portfolio-setup-heading">Parent and child brands</h2>
+        <p>Nova Motors names Nova Brands as its parent, and Nova Brands lists Nova Motors in its portfolio. The seller verifies both, then evaluates grants in Nova Brands’ trust record. With a verified parent, that record is the only source of grants; a child’s own trust record does not override it.</p>
+        <details class="trust-details">
+          <summary>The two brand.json records that establish the relationship</summary>
+          <figure class="trust-example">
+            <figcaption>Child: <code>https://nova-motors.example/.well-known/brand.json</code></figcaption>
+            <pre data-schema="/schemas/brand.json"><code>{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "id": "nova_motors",
+  "names": [{ "en": "Nova Motors" }],
+  "house_domain": "nova-brands.example"
+}</code></pre>
+          </figure>
+          <figure class="trust-example">
+            <figcaption>Parent: <code>https://nova-brands.example/.well-known/brand.json</code></figcaption>
+            <pre data-schema="/schemas/brand.json"><code>{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "house": { "domain": "nova-brands.example", "name": "Nova Brands" },
+  "brand_refs": [
+    { "domain": "nova-motors.example", "brand_id": "nova_motors" }
+  ]
+}</code></pre>
+          </figure>
+        </details>
+        <p>A one-sided parent claim establishes nothing, and neither does a website redirect or a registry’s inferred corporate hierarchy. A standalone brand omits <code>house_domain</code> and publishes its own trust record. <a href="https://docs.adcontextprotocol.org/docs/brand-protocol/brand-json#mutual-assertion-trust-model">Read the parent/child trust model →</a></p>
+      </section>
+
+      <section id="verification" aria-labelledby="verification-heading">
+        <h2 id="verification-heading">How a seller verifies “we represent this brand”</h2>
+        <ol class="trust-flow" aria-label="The seller’s verification chain">
+          <li><span class="trust-step-number" aria-hidden="true">1</span><h3>Authenticate the agent</h3><p>Verify its signature or an established credential mapping. A name or URL in the request is a claim, not proof.</p></li>
+          <li><span class="trust-step-number" aria-hidden="true">2</span><h3>Resolve the brand</h3><p>Read its domain-controlled brand.json. Verify a claimed parent against the parent’s portfolio entry.</p></li>
+          <li><span class="trust-step-number" aria-hidden="true">3</span><h3>Check the authority</h3><p>Read the parent’s or standalone brand’s trust.json. Follow grants through the account operator to the agent’s operator.</p></li>
+          <li><span class="trust-step-number" aria-hidden="true">4</span><h3>Apply the limits</h3><p>Check activity, brand, countries, dates and any agent restriction before provisioning or spend.</p></li>
+        </ol>
+        <p>If an agency uses a hosted platform, a chain can run brand → agency → platform; every link must cover the request. Your own agents can act without a third-party grant when both the agent’s operator and the account operator match the brand or its verified parent. The seller still verifies the agent and its operator listing. <a href="https://docs.adcontextprotocol.org/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental">Read the grant evaluation rules →</a></p>
+      </section>
+
+      <section id="missing-records" aria-labelledby="missing-heading">
+        <h2 id="missing-heading">Missing, unavailable and unauthorized are different</h2>
+        <p>First work out which organization holds authority, then read its record. A missing file on a child domain says nothing about its verified parent’s rules.</p>
+        <div class="trust-table-wrap" role="region" aria-label="How sellers handle trust records" tabindex="0">
+          <table class="trust-table">
+            <thead><tr><th scope="col">What the seller finds</th><th scope="col">What it means</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">The authority has never published a record</th><td>In AdCP 3.x, a first 404 permits the legacy brand.json path, and verified seller onboarding can also establish authority. Absence never authorizes a caller on its own.</td></tr>
+              <tr><th scope="row">A valid record with a matching, active grant</th><td>The grant covers the claim, subject to the agent’s authenticated identity, every grant limit, and the seller’s commercial checks.</td></tr>
+              <tr><th scope="row">No matching grant in an exclusive scope</th><td>Reject a third-party request that needs a grant. Naming an approved operator in the request isn’t enough.</td></tr>
+              <tr><th scope="row">An uncovered claim, no exclusivity</th><td>The seller may rely on its own verified onboarding records, but not on that authority’s legacy brand.json grants.</td></tr>
+              <tr><th scope="row">Timeout, server error or malformed record</th><td>Authorization is unavailable. Spend fails closed with a retryable error. An outage doesn’t make the brand unprotected.</td></tr>
+              <tr><th scope="row">A record that was read before and is now gone</th><td>No downgrade to legacy authorization. Deleting the file doesn’t undo adoption, so keep it published and complete. Sellers keep authority history across restarts.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="check" aria-labelledby="check-heading">
+        <h2 id="check-heading">What’s authorized for my domain?</h2>
+        <p><a href="#lookup">The lookup at the top of this page</a> reads current public records, follows a verified parent, and shows published agents, grants and limits. It doesn’t authenticate a request, test a seller’s enforcement, or see a seller’s private onboarding approvals. Review these with your agency and sellers:</p>
+        <ul class="trust-checklist">
+          <li><strong>Authority:</strong> your domain or its verified parent, with matching brand.json records on both sides.</li>
+          <li><strong>Agents:</strong> each origin listed by the operator that actually runs it, with the right role.</li>
+          <li><strong>Grants:</strong> every organization you’ve authorized, and any restriction to named agents.</li>
+          <li><strong>Coverage:</strong> brands, countries, activities, start dates and expiries for each grant.</li>
+          <li><strong>Enforcement:</strong> which scopes are exclusive, and which sellers have shown you a rejected request.</li>
+        </ul>
+        <div class="std-cards trust-tool-cards">
+          <div class="std-card">
+            <h3>Check brand identity</h3>
+            <p>The builder validates brand.json. The registry viewer shows identity and parent-relationship evidence.</p>
+            <a href="https://brandjson.org/builder">Open the brand.json builder →</a>
+          </div>
+          <div class="std-card">
+            <h3>Validate trust records</h3>
+            <p>Check the JSON against the experimental schema, then confirm its meaning with your seller. A valid file isn’t proof of a valid permission chain.</p>
+            <a href="https://adcontextprotocol.org/schemas/latest/trust/v1/trust.json">Open the experimental schema →</a>
+          </div>
+        </div>
+        <p class="tj-small">Publisher inventory permissions shown in the brand viewer come from <code>adagents.json</code>, a separate, sell-side relationship.</p>
+      </section>
+
+      <section id="questions" aria-labelledby="questions-heading">
+        <h2 id="questions-heading">Common questions</h2>
+        <details class="trust-details">
+          <summary>Does claiming my brand stop impersonation?</summary>
+          <p>Claiming protects control of your registry entry. Stopping impersonation at the point of sale also needs a file on your domain, accurate grants, authenticated agents and a seller that checks. A registry badge or a brand name in a request is not permission to buy.</p>
+        </details>
+        <details class="trust-details">
+          <summary>Does every brand and agent need its own file?</summary>
+          <p>No. A verified parent publishes grants for all its brands in one record. The organization that runs an agent lists it in its own record. A brand that only delegates doesn’t need to run an agent or publish signing keys.</p>
+        </details>
+        <details class="trust-details">
+          <summary>How do I revoke an agency or agent?</summary>
+          <p>Remove or narrow the grant in your record. To retire an agent you run, remove its origin from your agents list. Keep the file published. Sellers recheck on their freshness schedule, so revocation lands within their cache lifetime rather than instantly. It doesn’t by itself cancel live buys or suspend an account.</p>
+        </details>
+        <details class="trust-details">
+          <summary>Can my agency or platform host the record?</summary>
+          <p>Yes. Publish an <code>authoritative_location</code> pointer at your own domain’s well-known trust.json location. Verifiers follow one pointer and no HTTP redirects. You stay the authority, so keep control of the domain and the hosted contents.</p>
+        </details>
+        <details class="trust-details">
+          <summary>What are acknowledgements for?</summary>
+          <p>An acknowledgement references a grant another organization published: its grantor, agent and source. The terms stay in the grantor’s record. An acknowledgement can’t authorize its author and doesn’t replace the seller’s grant checks.</p>
+        </details>
+        <details class="trust-details">
+          <summary>Is trust.json ready for production enforcement?</summary>
+          <p>It’s an experimental AdCP 3.3 surface, and SDK and seller support vary. The document name, path and schema may change. Confirm support and test the checks with each seller before relying on them. Existing 3.x integrations continue under their documented legacy rules until they adopt the trust record.</p>
+        </details>
+      </section>
+
+      <section class="trust-resources" aria-labelledby="resources-heading">
+        <h2 id="resources-heading">Build from the specification</h2>
+        <p>Stewarded by <a href="https://agenticadvertising.org">AgenticAdvertising.org</a>.</p>
+        <ul>
+          <li><a href="https://docs.adcontextprotocol.org/docs/reference/trust-json">trust.json reference and schemas</a></li>
+          <li><a href="https://docs.adcontextprotocol.org/docs/reference/migration/agent-identity-3-3">Agent identity and grant migration guide</a></li>
+          <li><a href="https://docs.adcontextprotocol.org/docs/building/by-layer/L1/security#web-bot-auth-identities">Agent identity, freshness and no-downgrade rules</a></li>
+          <li><a href="https://docs.adcontextprotocol.org/docs/reference/experimental-status">Experimental status contract</a></li>
+          <li><a href="/llms.txt">Guide for AI agents (plain text)</a></li>
+          <li><a href="https://github.com/adcontextprotocol/adcp/issues/7809">Background and discussion</a></li>
+        </ul>
+      </section>
+    </div>
   </main>
 
   <div id="adcp-footer"></div>
+  <script src="/sites/trustjson/lookup.js" defer></script>
 </body>
 </html>
