@@ -1,3 +1,9 @@
+---
+title: Creative 3.3 beta sandbox
+description: "Exercise AdCP 3.3 beta creative workflows with the published SDK, isolated sandbox accounts, draft previews, and explicit delivery simulations."
+"og:title": "AdCP — creative 3.3 beta sandbox"
+---
+
 # Creative 3.3 beta sandbox
 
 This development lab serves the frozen AdCP `3.3.0-beta.0` contract using the
