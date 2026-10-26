@@ -18,6 +18,7 @@ import { createLogger } from '../../logger.js';
 import { runWithAccountIdAliasScope, runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, pickStateStore, resolveTenantHost, type RegistryHolder } from './registry.js';
 import { createIdentity33Runtime, type Identity33Runtime } from '../identity33/runtime.js';
+import { IDENTITY33_ROUTE, PROPOSAL_NEGOTIATION_PROFILE_PATHS } from '../lab-route-paths.js';
 import { getReplayStore } from '../request-signing.js';
 import { advertiseIdentity33Capabilities, requireIdentity33, signedRequestUrl } from '../identity33/route.js';
 import { getTrainingGovernanceIssuer } from '../canonical-base.js';
@@ -1468,16 +1469,15 @@ export interface TenantRouteMiddleware {
 }
 
 export const PROPOSAL_NEGOTIATION_PROFILE_ROUTES = [
-  { path: '/sales/profiles/typed-negotiation/mcp', profile: 'typed-negotiation' },
-  { path: '/sales/profiles/constrained-seller/mcp', profile: 'constrained-seller' },
-  { path: '/sales/profiles/finalization-failure/mcp', profile: 'finalization-failure' },
+  { path: PROPOSAL_NEGOTIATION_PROFILE_PATHS[0], profile: 'typed-negotiation' },
+  { path: PROPOSAL_NEGOTIATION_PROFILE_PATHS[1], profile: 'constrained-seller' },
+  { path: PROPOSAL_NEGOTIATION_PROFILE_PATHS[2], profile: 'finalization-failure' },
 ] as const satisfies ReadonlyArray<{
   path: string;
   profile: Exclude<NonNullable<TrainingContext['proposalNegotiationProfile']>, 'ask-only'>;
 }>;
 
-/** Experimental AdCP 3.3 identity route: Web Bot Auth and demand-side grants. */
-export const IDENTITY33_ROUTE = '/sales/identity/mcp';
+export { IDENTITY33_ROUTE };
 
 /** Production deployments opt in, as for the proposal-profile lab routes. */
 export function identity33RouteEnabled(env: Record<string, string | undefined> = process.env): boolean {
