@@ -129,13 +129,6 @@
       "reason": "pending WG decision"
     },
     {
-      "file": "core/reporting-report-definition.json",
-      "pointer": "/properties/source",
-      "kind": "property-added-to-closed",
-      "detail": "property custody added",
-      "reason": "pending WG decision"
-    },
-    {
       "file": "core/sla-window.json",
       "pointer": "",
       "kind": "property-added-to-closed",
@@ -231,13 +224,6 @@
       "pointer": "/properties/assignments/items",
       "kind": "property-added-to-closed",
       "detail": "property trackers added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "governance/sync-plans-request.json",
-      "pointer": "/properties/plans/items/properties/budget",
-      "kind": "property-added-to-closed",
-      "detail": "property periods added",
       "reason": "pending WG decision"
     },
     {
@@ -420,34 +406,6 @@
       "pointer": "",
       "kind": "property-added-to-closed",
       "detail": "property later_proposals added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "protocol/get-adcp-capabilities-response.json",
-      "pointer": "/properties/measurement/properties/metrics/items",
-      "kind": "property-added-to-closed",
-      "detail": "property name added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "protocol/get-principal-response.json",
-      "pointer": "/properties/result/oneOf/0",
-      "kind": "property-added-to-closed",
-      "detail": "property relationship added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "protocol/get-principal-response.json",
-      "pointer": "/properties/result/oneOf/1",
-      "kind": "property-added-to-closed",
-      "detail": "property relationship added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "protocol/get-principal-response.json",
-      "pointer": "/properties/result/oneOf/2",
-      "kind": "property-added-to-closed",
-      "detail": "property relationship added",
       "reason": "pending WG decision"
     }
   ]

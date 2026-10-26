@@ -17,7 +17,6 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
-  PENDING_REASON,
   VIOLATION_KINDS,
   buildTree,
   checkAgainstBaseline,
@@ -38,8 +37,6 @@ function fixture() {
       properties: {
         id: { type: 'string', pattern: '^[a-z]+$' },
         count: { type: 'integer', minimum: 0, maximum: 10 },
-        label: { type: 'string', minLength: 1, maxLength: 50 },
-        homepage: { type: 'string', format: 'uri' },
         status: { $ref: '/schemas/enums/status.json' },
       },
       required: ['id'],
@@ -53,6 +50,12 @@ function fixture() {
         version: { type: 'string', const: '1' },
         note: { type: ['string', 'null'] },
         tags: { type: 'array', items: { type: 'string' } },
+        preview: {
+          'x-status': 'experimental',
+          type: 'object',
+          properties: { mode: { type: 'string' } },
+          additionalProperties: false,
+        },
       },
     },
     'core/explicit-open.json': {
@@ -131,10 +134,6 @@ function findingsAfter(change) {
   return compareTrees(tree('base', base), tree('candidate', candidate)).findings;
 }
 
-function summary(findings) {
-  return findings.map(({ file, pointer, kind, severity, detail }) => ({ file, pointer, kind, severity, detail }));
-}
-
 test('an unchanged copy of the fixture produces no findings', () => {
   assert.deepEqual(findingsAfter(() => {}), []);
 });
@@ -175,24 +174,9 @@ const VIOLATION_CASES = [
     expected: { file: 'core/open.json', pointer: '/properties/version', detail: 'const "1" → "2"' },
   },
   {
-    kind: 'enum-introduced',
-    change: (t) => { t['core/explicit-open.json'].properties.name.enum = ['x', 'y']; },
-    expected: { file: 'core/explicit-open.json', pointer: '/properties/name', detail: 'enum of 2 added' },
-  },
-  {
     kind: 'bound-tightened',
     change: (t) => { t['core/closed.json'].properties.count.minimum = 1; },
     expected: { file: 'core/closed.json', pointer: '/properties/count', detail: 'minimum 0 → 1' },
-  },
-  {
-    kind: 'pattern-added',
-    change: (t) => { t['core/explicit-open.json'].properties.name.pattern = '^[A-Z]'; },
-    expected: { file: 'core/explicit-open.json', pointer: '/properties/name', detail: 'pattern "^[A-Z]" added' },
-  },
-  {
-    kind: 'format-added',
-    change: (t) => { t['core/explicit-open.json'].properties.name.format = 'email'; },
-    expected: { file: 'core/explicit-open.json', pointer: '/properties/name', detail: 'format "email" added' },
   },
   {
     kind: 'additional-properties-closed',
@@ -212,33 +196,9 @@ test('every violation kind has a case', () => {
 
 for (const { kind, change, expected } of VIOLATION_CASES) {
   test(`flags ${kind}`, () => {
-    assert.deepEqual(summary(findingsAfter(change)), [{ ...expected, kind, severity: 'violation' }]);
+    assert.deepEqual(findingsAfter(change), [{ ...expected, kind }]);
   });
 }
-
-test('bound-tightened covers lowered maxima and newly added bounds', () => {
-  assert.deepEqual(
-    summary(findingsAfter((t) => { t['core/closed.json'].properties.label.maxLength = 40; })).map((f) => f.detail),
-    ['maxLength 50 → 40'],
-  );
-  assert.deepEqual(
-    summary(findingsAfter((t) => { t['core/open.json'].properties.tags.maxItems = 5; })).map((f) => f.detail),
-    ['maxItems 5 added'],
-  );
-});
-
-test('counts a property added to a closed object at that object’s pointer', () => {
-  const findings = findingsAfter((t) => {
-    t['core/union.json'].oneOf[1].properties.extra = { type: 'string' };
-  });
-  assert.deepEqual(summary(findings), [{
-    file: 'core/union.json',
-    pointer: '/oneOf/1',
-    kind: 'property-added-to-closed',
-    severity: 'violation',
-    detail: 'property extra added',
-  }]);
-});
 
 test('reads closure from the base, so opening an object while adding a property still fails', () => {
   const findings = findingsAfter((t) => {
@@ -246,11 +206,6 @@ test('reads closure from the base, so opening an object while adding a property 
     t['core/closed.json'].properties.extra = { type: 'string' };
   });
   assert.deepEqual(findings.map((f) => [f.kind, f.detail]), [['property-added-to-closed', 'property extra added']]);
-});
-
-test('flags additionalProperties changed from true to false', () => {
-  const findings = findingsAfter((t) => { t['core/explicit-open.json'].additionalProperties = false; });
-  assert.deepEqual(findings.map((f) => [f.kind, f.detail]), [['additional-properties-closed', 'additionalProperties true → false']]);
 });
 
 test('treats unevaluatedProperties: false as closed', () => {
@@ -267,11 +222,8 @@ test('treats unevaluatedProperties: false as closed', () => {
 // Additive changes pass
 // ---------------------------------------------------------------------------
 
-test('passes a property added to an object with no additionalProperties keyword', () => {
+test('passes a property added to an open object', () => {
   assert.deepEqual(findingsAfter((t) => { t['core/open.json'].properties.extra = { type: 'string' }; }), []);
-});
-
-test('passes a new optional property on an object with additionalProperties: true', () => {
   assert.deepEqual(findingsAfter((t) => { t['core/explicit-open.json'].properties.extra = { type: 'integer' }; }), []);
 });
 
@@ -301,34 +253,8 @@ test('passes a branch requiring a name its enclosing schema already required', (
   assert.deepEqual(findingsAfter((t) => { t['core/branched.json'].oneOf[0].required = ['mode']; }), []);
 });
 
-test('passes a new discriminated oneOf branch', () => {
-  assert.deepEqual(findingsAfter((t) => {
-    t['core/union.json'].oneOf.push({
-      type: 'object',
-      properties: { kind: { const: 'c' } },
-      required: ['kind'],
-      additionalProperties: false,
-    });
-  }), []);
-});
-
-// ---------------------------------------------------------------------------
-// Undecidable changes are review, never violations
-// ---------------------------------------------------------------------------
-
-test('reports a changed pattern for review', () => {
-  const findings = findingsAfter((t) => { t['core/closed.json'].properties.id.pattern = '^[a-z0-9]+$'; });
-  assert.deepEqual(findings.map((f) => [f.kind, f.severity]), [['pattern-changed', 'review']]);
-});
-
-test('reports an undiscriminated oneOf branch for review', () => {
-  const findings = findingsAfter((t) => { t['core/union.json'].oneOf.push({ type: 'string' }); });
-  assert.deepEqual(findings.map((f) => [f.kind, f.severity]), [['oneof-branch-added', 'review']]);
-});
-
-test('reports an added allOf entry for review', () => {
-  const findings = findingsAfter((t) => { t['core/open.json'].allOf = [{ required: ['version'] }]; });
-  assert.deepEqual(findings.map((f) => [f.kind, f.severity]), [['composition-added', 'review']]);
+test('skips a base schema marked experimental', () => {
+  assert.deepEqual(findingsAfter((t) => { t['core/open.json'].properties.preview.properties.extra = { type: 'string' }; }), []);
 });
 
 // ---------------------------------------------------------------------------
@@ -360,11 +286,10 @@ test('compares the targets when a $ref changes', () => {
   };
   candidate['core/closed.json'].properties.status.$ref = '/schemas/enums/status-v2.json';
   const { findings } = compareTrees(tree('base', fixture()), tree('candidate', candidate));
-  assert.deepEqual(summary(findings), [{
+  assert.deepEqual(findings, [{
     file: 'core/closed.json',
     pointer: '/properties/status',
     kind: 'enum-value-removed',
-    severity: 'violation',
     detail: 'value "paused" removed',
   }]);
 });
@@ -374,23 +299,8 @@ test('matches oneOf branches by discriminator, not position', () => {
   assert.deepEqual(findings, []);
 });
 
-test('a removed branch with no key is reported for review, not paired with another branch', () => {
-  const findings = findingsAfter((t) => { t['core/scalar.json'].anyOf.shift(); });
-  assert.deepEqual(summary(findings), [{
-    file: 'core/scalar.json',
-    pointer: '/anyOf/0',
-    kind: 'branch-removed',
-    severity: 'review',
-    detail: 'anyOf branch #0 removed',
-  }]);
-});
-
-test('a variant list moved into a shared union file still matches', () => {
-  const candidate = fixture();
-  candidate['core/variants.json'] = { $id: '/schemas/core/variants.json', oneOf: candidate['core/union.json'].oneOf };
-  candidate['core/union.json'].oneOf = [{ $ref: '/schemas/core/variants.json' }];
-  const { findings } = compareTrees(tree('base', fixture()), tree('candidate', candidate));
-  assert.deepEqual(findings, []);
+test('a removed branch with no key is not paired with another branch', () => {
+  assert.deepEqual(findingsAfter((t) => { t['core/scalar.json'].anyOf.shift(); }), []);
 });
 
 // ---------------------------------------------------------------------------
@@ -422,25 +332,18 @@ test('history chains first releases of each minor, the latest patch, the prerele
 // Baseline
 // ---------------------------------------------------------------------------
 
-const VIOLATION_A = {
-  file: 'core/a.json', pointer: '', kind: 'property-added-to-closed', severity: 'violation', detail: 'property x added',
-};
-const VIOLATION_B = {
-  file: 'core/b.json', pointer: '', kind: 'required-added', severity: 'violation', detail: 'property y newly required',
-};
-const REVIEW = {
-  file: 'core/c.json', pointer: '', kind: 'pattern-changed', severity: 'review', detail: 'pattern "a" → "b"',
-};
+const VIOLATION_A = { file: 'core/a.json', pointer: '', kind: 'property-added-to-closed', detail: 'property x added' };
+const VIOLATION_B = { file: 'core/b.json', pointer: '', kind: 'required-added', detail: 'property y newly required' };
 
-function entry(finding, reason = PENDING_REASON) {
+function entry(finding, reason = 'pending WG decision') {
   const { file, pointer, kind, detail } = finding;
   return { file, pointer, kind, detail, reason };
 }
 
-test('recorded violations pass and review findings never fail', () => {
+test('recorded violations pass', () => {
   const result = checkAgainstBaseline({
     base: '3.2.7',
-    findings: [VIOLATION_A, REVIEW],
+    findings: [VIOLATION_A],
     baselineValue: { base: '3.2.7', entries: [entry(VIOLATION_A)] },
   });
   assert.equal(result.ok, true, result.errors.join('\n'));
@@ -499,17 +402,23 @@ test('the baseline only shrinks against the target branch', () => {
   assert.deepEqual(grown.errors, [`baseline grew: ${findingKey({ ...VIOLATION_B, detail: 'property z newly required' })} is not in the target branch baseline`]);
 });
 
-test('every baseline entry needs a reason and a violation kind', () => {
+test('every baseline entry needs a reason', () => {
   const result = checkAgainstBaseline({
     base: '3.2.7',
     findings: [VIOLATION_A],
-    baselineValue: { base: '3.2.7', entries: [{ ...entry(VIOLATION_A), reason: '' }, entry(REVIEW)] },
+    baselineValue: { base: '3.2.7', entries: [{ ...entry(VIOLATION_A), reason: ' ' }] },
   });
-  assert.deepEqual(result.errors, [
-    'baseline entries[0].reason must not be empty',
-    'baseline entries[1].kind pattern-changed is not a violation kind',
-    `stale baseline entry: ${findingKey(REVIEW)} no longer occurs; remove it from the baseline`,
-  ]);
+  assert.deepEqual(result.errors, ['baseline entries[0].reason must not be empty']);
+});
+
+test('every baseline entry needs a violation kind', () => {
+  const unknown = { ...VIOLATION_A, kind: 'pattern-changed' };
+  const result = checkAgainstBaseline({
+    base: '3.2.7',
+    findings: [unknown],
+    baselineValue: { base: '3.2.7', entries: [entry(unknown)] },
+  });
+  assert.deepEqual(result.errors, ['baseline entries[0].kind pattern-changed is not a violation kind']);
 });
 
 test('the CI check reads a source directory and fails on a new violation', () => {

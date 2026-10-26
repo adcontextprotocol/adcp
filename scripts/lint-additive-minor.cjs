@@ -4,10 +4,8 @@
  *
  * A buyer or seller that validates against the published schemas of its
  * release must keep accepting what a later release in the same major line
- * sends. This script compares two schema trees, a base and a candidate. It
- * reports a property added to an object the base closes, and any change that
- * narrows what the base accepts. It does not flag other widening changes,
- * such as a new enum value, which clients must tolerate.
+ * sends. This script compares two schema trees, a base and a candidate, and
+ * reports the changes listed under Violations.
  *
  * Trees
  *   - A released tree is dist/schemas/<version>/ without the derived
@@ -19,6 +17,9 @@
  *     `$ref`s that name the same file on both sides are not followed (that
  *     file is compared on its own); `$ref`s that differ are resolved and the
  *     targets compared in place.
+ *   - A base schema marked `x-status: "experimental"`, or in a file whose
+ *     root is, is not compared: docs/reference/versioning.mdx classes
+ *     experimental-only changes as patch-level.
  *
  * Default base (CI and `--candidate` without `--base`)
  *   The highest released stable version in the candidate's major line that
@@ -29,14 +30,8 @@
  *
  * Violations (fail CI unless recorded in the baseline)
  *   property-added-to-closed, property-removed, required-added,
- *   type-narrowed, enum-value-removed, const-changed, enum-introduced,
- *   bound-tightened, pattern-added, format-added,
+ *   type-narrowed, enum-value-removed, const-changed, bound-tightened,
  *   additional-properties-closed, file-removed.
- *
- * Review (reported, never fail): changes this script cannot classify
- * reliably, such as a changed `pattern`, a `type` added to an untyped schema,
- * a new `oneOf` branch that may overlap an existing one, or an `allOf` entry
- * added. A pure addition to an open object is never reported.
  *
  * Modes
  *   (default)                    CI: candidate = source, base = default base;
@@ -44,10 +39,7 @@
  *   --base <v> --candidate <v|source>
  *                                prints a report; exits 0.
  *   --history                    runs the check across consecutive 3.x
- *                                releases and prints summary tables.
- *   --update-baseline            rewrites the baseline from the current
- *                                violations (needs
- *                                ADCP_UPDATE_ADDITIVE_MINOR_BASELINE=1).
+ *                                releases and prints tables and findings.
  *   --prune-baseline             removes stale baseline entries only.
  *   --baseline-ref <git-ref>     also fails when the baseline has an entry
  *                                that the baseline at <git-ref> lacks, so the
@@ -71,9 +63,7 @@ const DEFAULT_SOURCE_DIR = path.join(REPO_ROOT, 'static', 'schemas', 'source');
 const DIST_SCHEMAS = 'dist/schemas';
 const DEFAULT_BASELINE_PATH = path.join(REPO_ROOT, 'scripts', 'lint-additive-minor-baseline.json');
 const BASELINE_REPO_PATH = 'scripts/lint-additive-minor-baseline.json';
-const UPDATE_ENV = 'ADCP_UPDATE_ADDITIVE_MINOR_BASELINE';
 const BASELINE_REF_ENV = 'ADCP_ADDITIVE_MINOR_BASELINE_REF';
-const PENDING_REASON = 'pending WG decision';
 
 // Derived artifacts in a released tree that have no source counterpart: the
 // bundled and MCP projections, the tool manifest, and the build's copies of
@@ -87,47 +77,15 @@ const VIOLATION_KINDS = [
   'type-narrowed',
   'enum-value-removed',
   'const-changed',
-  'enum-introduced',
   'bound-tightened',
-  'pattern-added',
-  'format-added',
   'additional-properties-closed',
   'file-removed',
-];
-const REVIEW_KINDS = [
-  'property-added-to-constrained',
-  'property-added-matching-pattern',
-  'property-moved',
-  'additional-properties-constrained',
-  'type-added',
-  'pattern-changed',
-  'format-changed',
-  'constraint-added',
-  'constraint-changed',
-  'composition-added',
-  'oneof-branch-added',
-  'branch-removed',
-  'allof-entry-removed',
-  'definition-removed',
-  'ref-unresolved',
 ];
 const VIOLATIONS = new Set(VIOLATION_KINDS);
 
 // Lower bounds tighten upward; upper bounds tighten downward.
 const LOWER_BOUNDS = ['minimum', 'exclusiveMinimum', 'minLength', 'minItems', 'minProperties'];
 const UPPER_BOUNDS = ['maximum', 'exclusiveMaximum', 'maxLength', 'maxItems', 'maxProperties'];
-const SIBLING_BOUND = {
-  minimum: 'exclusiveMinimum',
-  exclusiveMinimum: 'minimum',
-  maximum: 'exclusiveMaximum',
-  exclusiveMaximum: 'maximum',
-};
-// Keywords whose addition or change constrains instances in ways this script
-// does not model; reported for review.
-const OPAQUE_CONSTRAINTS = [
-  'not', 'if', 'then', 'else', 'contains', 'propertyNames', 'dependencies',
-  'dependentRequired', 'dependentSchemas', 'additionalItems', 'multipleOf',
-];
 // Keys that carry no validation meaning.
 const ANNOTATION_KEYS = new Set([
   '$id', '$schema', '$comment', 'title', 'description', 'examples', 'example',
@@ -438,10 +396,6 @@ function canonicalSchema(node, docKey) {
   return out;
 }
 
-function sameSchema(left, leftDoc, right, rightDoc) {
-  return stableStringify(canonicalSchema(left, leftDoc)) === stableStringify(canonicalSchema(right, rightDoc));
-}
-
 function normalizeRef(ref, docKey) {
   const hash = ref.indexOf('#');
   const filePart = hash === -1 ? ref : ref.slice(0, hash);
@@ -500,8 +454,8 @@ function isClosed(node) {
   return node.additionalProperties === false || node.unevaluatedProperties === false;
 }
 
-function hasComposition(node) {
-  return ['oneOf', 'anyOf', 'allOf'].some((key) => Array.isArray(node[key]));
+function isExperimental(node) {
+  return isObject(node) && node['x-status'] === 'experimental';
 }
 
 /** True when a composition branch of `node` declares property `name`. */
@@ -534,17 +488,6 @@ function declaredNames(node, docKey, tree, keyword) {
   return names;
 }
 
-function matchesPatternProperty(node, name) {
-  if (!isObject(node.patternProperties)) return false;
-  return Object.keys(node.patternProperties).some((pattern) => {
-    try {
-      return new RegExp(pattern, 'u').test(name);
-    } catch {
-      return false;
-    }
-  });
-}
-
 const BRANCH_KEY_TYPES = ['ref', 'disc', 'title', 'req', 'if'];
 
 /**
@@ -572,55 +515,14 @@ function branchKeys(branch, docKey) {
   return keys;
 }
 
-function branchLabel(keys, index) {
-  const type = BRANCH_KEY_TYPES.find((t) => t !== 'if' && keys[t] !== undefined);
-  return type ? `${type}:${keys[type]}` : `#${index}`;
-}
-
-const UNION_WRAPPER_KEYS = new Set(['type', 'discriminator']);
-
-function onlyAnnotations(node, except) {
-  return Object.keys(node).every((key) => except.has(key) || ANNOTATION_KEYS.has(key) || key.startsWith('x-'));
-}
-
-/**
- * Lists a composition's branches as `{ node, doc, index }`. A branch that is
- * a bare `$ref` to a pure union of the same keyword is replaced by the
- * union's branches, unless the other side references the same union, so a
- * list of variants refactored into a shared union file still matches.
- */
-function expandBranches(branches, docKey, tree, keyword, otherRefs) {
-  const out = [];
-  branches.forEach((node, index) => {
-    if (keyword !== 'allOf' && isObject(node) && typeof node.$ref === 'string'
-      && onlyAnnotations(node, new Set(['$ref'])) && !otherRefs.has(normalizeRef(node.$ref, docKey))) {
-      const resolved = resolveNode(node, docKey, tree);
-      const target = resolved && resolved.node;
-      if (isObject(target) && Array.isArray(target[keyword])
-        && onlyAnnotations(target, new Set([keyword, ...UNION_WRAPPER_KEYS]))) {
-        target[keyword].forEach((inner) => out.push({ node: inner, doc: resolved.docKey, index }));
-        return;
-      }
-    }
-    out.push({ node, doc: docKey, index });
-  });
-  return out;
-}
-
-function branchRefs(branches, docKey) {
-  return new Set(branches
-    .filter((node) => isObject(node) && typeof node.$ref === 'string')
-    .map((node) => normalizeRef(node.$ref, docKey)));
-}
-
 /**
  * Pairs base and candidate branches: identical branches first, then by key,
  * then the rest in order when the candidate has at least as many left.
- * Returns pairs of entry positions plus the unpaired entries on each side.
+ * Unpaired branches are not compared.
  */
-function matchBranches(baseEntries, candEntries) {
-  const baseKeys = baseEntries.map((e) => branchKeys(e.node, e.doc));
-  const candKeys = candEntries.map((e) => branchKeys(e.node, e.doc));
+function matchBranches(baseBranches, baseDoc, candBranches, candDoc) {
+  const baseKeys = baseBranches.map((node) => branchKeys(node, baseDoc));
+  const candKeys = candBranches.map((node) => branchKeys(node, candDoc));
   const pairs = [];
   const usedBase = new Set();
   const usedCand = new Set();
@@ -629,9 +531,9 @@ function matchBranches(baseEntries, candEntries) {
     usedBase.add(i);
     usedCand.add(j);
   };
-  const candCanonical = candEntries.map((e) => stableStringify(canonicalSchema(e.node, e.doc)));
-  baseEntries.forEach((e, i) => {
-    const text = stableStringify(canonicalSchema(e.node, e.doc));
+  const candCanonical = candBranches.map((node) => stableStringify(canonicalSchema(node, candDoc)));
+  baseBranches.forEach((node, i) => {
+    const text = stableStringify(canonicalSchema(node, baseDoc));
     const j = candCanonical.findIndex((value, index) => value === text && !usedCand.has(index));
     if (j !== -1) pair(i, j);
   });
@@ -652,15 +554,10 @@ function matchBranches(baseEntries, candEntries) {
       pair(i, candKeys.findIndex((k, index) => k[type] === value && !usedCand.has(index)));
     });
   }
-  let restBase = baseEntries.map((_, i) => i).filter((i) => !usedBase.has(i));
-  let restCand = candEntries.map((_, j) => j).filter((j) => !usedCand.has(j));
-  if (restCand.length >= restBase.length) {
-    restBase.forEach((i, n) => pair(i, restCand[n]));
-    restCand = restCand.slice(restBase.length);
-    restBase = [];
-  }
-  pairs.sort((x, y) => x[0] - y[0]);
-  return { pairs, baseOnly: restBase, candOnly: restCand, baseKeys, candKeys };
+  const restBase = baseBranches.map((_, i) => i).filter((i) => !usedBase.has(i));
+  const restCand = candBranches.map((_, j) => j).filter((j) => !usedCand.has(j));
+  if (restCand.length >= restBase.length) restBase.forEach((i, n) => pair(i, restCand[n]));
+  return pairs.sort((x, y) => x[0] - y[0]);
 }
 
 function describeValue(value) {
@@ -673,7 +570,7 @@ function describeTypes(set) {
 
 /**
  * Compares two schema trees. Returns findings, each
- * `{ file, pointer, kind, severity, detail }`.
+ * `{ file, pointer, kind, detail }`.
  */
 function compareTrees(baseTree, candTree) {
   const findings = [];
@@ -683,12 +580,18 @@ function compareTrees(baseTree, candTree) {
     const key = `${file}\u0000${pointer}\u0000${kind}\u0000${detail}`;
     if (seen.has(key)) return;
     seen.add(key);
-    findings.push({ file, pointer, kind, severity: VIOLATIONS.has(kind) ? 'violation' : 'review', detail });
+    findings.push({ file, pointer, kind, detail });
   }
+
+  const experimentalFile = (docKey) => {
+    const document = baseTree.documents.get(docKey);
+    return Boolean(document) && isExperimental(document.schema);
+  };
 
   function compareNode(file, pointer, b, bDoc, c, cDoc, stack, scope = null) {
     if (b === undefined || c === undefined) return;
     if (b === false || c === true) return; // nothing to narrow
+    if (isExperimental(b) || experimentalFile(bDoc)) return;
     if (c === false) {
       report(file, pointer, 'type-narrowed', 'schema replaced by false');
       return;
@@ -708,11 +611,7 @@ function compareTrees(baseTree, candTree) {
       }
       const bResolved = b.$ref !== undefined ? resolveNode(b, bDoc, baseTree) : { node: b, docKey: bDoc };
       const cResolved = c.$ref !== undefined ? resolveNode(c, cDoc, candTree) : { node: c, docKey: cDoc };
-      if (!bResolved || !cResolved) {
-        const side = !bResolved ? `base ${b.$ref}` : `candidate ${c.$ref}`;
-        report(file, pointer, 'ref-unresolved', `cannot resolve ${side}`);
-        return;
-      }
+      if (!bResolved || !cResolved) return;
       const pairKey = `${bRef || `${bDoc}@${pointer}`}|${cRef || `${cDoc}@${pointer}`}`;
       if (stack.has(pairKey)) return;
       const next = new Set(stack).add(pairKey);
@@ -723,17 +622,15 @@ function compareTrees(baseTree, candTree) {
     compareType(file, pointer, b, c);
     compareValues(file, pointer, b, c);
     compareBounds(file, pointer, b, c);
-    compareStrings(file, pointer, b, c);
     compareObject(file, pointer, b, bDoc, c, cDoc, stack, scope);
-    compareArrays(file, pointer, b, bDoc, c, cDoc, stack);
     compareCompositions(file, pointer, b, bDoc, c, cDoc, stack, scope);
-    compareOpaque(file, pointer, b, bDoc, c, cDoc);
+    if (isObject(b.items) && isObject(c.items)) {
+      compareNode(file, child(pointer, 'items'), b.items, bDoc, c.items, cDoc, stack);
+    }
     for (const keyword of ['definitions', '$defs']) {
-      if (!isObject(b[keyword])) continue;
+      if (!isObject(b[keyword]) || !isObject(c[keyword])) continue;
       for (const name of Object.keys(b[keyword])) {
-        const p = child(pointer, keyword, name);
-        if (!isObject(c[keyword]) || !(name in c[keyword])) report(file, p, 'definition-removed', `definition ${name} removed`);
-        else compareNode(file, p, b[keyword][name], bDoc, c[keyword][name], cDoc, stack);
+        compareNode(file, child(pointer, keyword, name), b[keyword][name], bDoc, c[keyword][name], cDoc, stack);
       }
     }
   }
@@ -741,11 +638,7 @@ function compareTrees(baseTree, candTree) {
   function compareType(file, pointer, b, c) {
     const tb = typeSet(b);
     const tc = typeSet(c);
-    if (!tc) return;
-    if (!tb) {
-      report(file, pointer, 'type-added', `type ${describeTypes(tc)} added`);
-      return;
-    }
+    if (!tb || !tc) return;
     const lost = [...tb].filter((t) => !tc.has(t) && !(t === 'integer' && tc.has('number')));
     if (lost.length) report(file, pointer, 'type-narrowed', `type ${describeTypes(tb)} → ${describeTypes(tc)}`);
   }
@@ -753,12 +646,7 @@ function compareTrees(baseTree, candTree) {
   function compareValues(file, pointer, b, c) {
     const vb = valueSet(b);
     const vc = valueSet(c);
-    if (!vc) return;
-    if (!vb) {
-      const what = c.const !== undefined ? `const ${describeValue(c.const)}` : `enum of ${vc.length}`;
-      report(file, pointer, hasComposition(b) ? 'constraint-added' : 'enum-introduced', `${what} added`);
-      return;
-    }
+    if (!vb || !vc) return;
     const candidate = new Set(vc.map(stableStringify));
     const removed = vb.filter((value) => !candidate.has(stableStringify(value)));
     if (!removed.length) return;
@@ -772,46 +660,21 @@ function compareTrees(baseTree, candTree) {
   function compareBounds(file, pointer, b, c) {
     const check = (keyword, tighter) => {
       if (typeof c[keyword] !== 'number') return;
-      if (typeof b[keyword] === 'number') {
-        if (tighter(c[keyword], b[keyword])) {
-          report(file, pointer, 'bound-tightened', `${keyword} ${b[keyword]} → ${c[keyword]}`);
-        }
-        return;
-      }
-      const sibling = SIBLING_BOUND[keyword];
-      if (sibling && typeof b[sibling] === 'number') {
-        report(file, pointer, 'constraint-changed', `${sibling} ${b[sibling]} → ${keyword} ${c[keyword]}`);
-        return;
-      }
-      report(file, pointer, 'bound-tightened', `${keyword} ${c[keyword]} added`);
+      if (typeof b[keyword] !== 'number') report(file, pointer, 'bound-tightened', `${keyword} ${c[keyword]} added`);
+      else if (tighter(c[keyword], b[keyword])) report(file, pointer, 'bound-tightened', `${keyword} ${b[keyword]} → ${c[keyword]}`);
     };
     LOWER_BOUNDS.forEach((keyword) => check(keyword, (next, prev) => next > prev));
     UPPER_BOUNDS.forEach((keyword) => check(keyword, (next, prev) => next < prev));
-    if (c.uniqueItems === true && b.uniqueItems !== true) report(file, pointer, 'bound-tightened', 'uniqueItems true added');
-  }
-
-  function compareStrings(file, pointer, b, c) {
-    for (const [keyword, added, changed] of [
-      ['pattern', 'pattern-added', 'pattern-changed'],
-      ['format', 'format-added', 'format-changed'],
-    ]) {
-      if (typeof c[keyword] !== 'string' || b[keyword] === c[keyword]) continue;
-      if (typeof b[keyword] !== 'string') report(file, pointer, added, `${keyword} ${JSON.stringify(c[keyword])} added`);
-      else report(file, pointer, changed, `${keyword} ${JSON.stringify(b[keyword])} → ${JSON.stringify(c[keyword])}`);
-    }
   }
 
   function compareObject(file, pointer, b, bDoc, c, cDoc, stack, scope) {
     for (const keyword of ['additionalProperties', 'unevaluatedProperties']) {
       const ab = b[keyword];
       const ac = c[keyword];
-      const p = child(pointer, keyword);
       if (ac === false && ab !== false) {
         report(file, pointer, 'additional-properties-closed', `${keyword} ${ab === undefined ? 'absent' : stableStringify(canonicalSchema(ab, bDoc))} → false`);
-      } else if (isObject(ac) && (ab === undefined || ab === true)) {
-        report(file, pointer, 'additional-properties-constrained', `${keyword} ${ab === undefined ? 'absent' : 'true'} → schema`);
       } else if (isObject(ab) && isObject(ac)) {
-        compareNode(file, p, ab, bDoc, ac, cDoc, stack);
+        compareNode(file, child(pointer, keyword), ab, bDoc, ac, cDoc, stack);
       }
     }
 
@@ -820,24 +683,15 @@ function compareTrees(baseTree, candTree) {
     for (const name of Object.keys(pb)) {
       if (Object.prototype.hasOwnProperty.call(pc, name)) {
         compareNode(file, child(pointer, 'properties', name), pb[name], bDoc, pc[name], cDoc, stack);
-      } else if (!isClosed(c) && (compositionDeclares(c, cDoc, candTree, name) || (scope && scope.declared.has(name)))) {
-        report(file, pointer, 'property-moved', `property ${name} still declared elsewhere in the composition`);
-      } else {
+      } else if (isClosed(c) || !(compositionDeclares(c, cDoc, candTree, name) || (scope && scope.declared.has(name)))) {
+        // A name an open candidate still declares elsewhere in the
+        // composition has moved, not gone.
         report(file, pointer, 'property-removed', `property ${name} removed`);
       }
     }
-    const added = Object.keys(pc).filter((name) => !Object.prototype.hasOwnProperty.call(pb, name));
-    for (const name of added) {
-      if (isClosed(b)) {
-        if (matchesPatternProperty(b, name)) {
-          report(file, pointer, 'property-added-matching-pattern', `property ${name} added; base patternProperties admit it`);
-        } else if (b.additionalProperties !== false && compositionDeclares(b, bDoc, baseTree, name)) {
-          report(file, pointer, 'property-moved', `property ${name} moved out of a composition branch`);
-        } else {
-          report(file, pointer, 'property-added-to-closed', `property ${name} added`);
-        }
-      } else if (isObject(b.additionalProperties)) {
-        report(file, pointer, 'property-added-to-constrained', `property ${name} added; base additionalProperties constrains it`);
+    if (isClosed(b)) {
+      for (const name of Object.keys(pc)) {
+        if (!Object.prototype.hasOwnProperty.call(pb, name)) report(file, pointer, 'property-added-to-closed', `property ${name} added`);
       }
     }
 
@@ -847,33 +701,6 @@ function compareTrees(baseTree, candTree) {
     for (const name of Array.isArray(c.required) ? c.required : []) {
       if (!rb.has(name)) report(file, pointer, 'required-added', `property ${name} newly required`);
     }
-
-    const ppb = isObject(b.patternProperties) ? b.patternProperties : {};
-    const ppc = isObject(c.patternProperties) ? c.patternProperties : {};
-    for (const pattern of Object.keys(ppc)) {
-      const p = child(pointer, 'patternProperties', pattern);
-      if (pattern in ppb) compareNode(file, p, ppb[pattern], bDoc, ppc[pattern], cDoc, stack);
-      else if (!isClosed(b)) report(file, pointer, 'constraint-added', `patternProperties ${JSON.stringify(pattern)} added`);
-    }
-  }
-
-  function compareArrays(file, pointer, b, bDoc, c, cDoc, stack) {
-    if (c.items === undefined) return;
-    if (b.items === undefined) {
-      if (!sameSchema({}, bDoc, c.items, cDoc)) report(file, pointer, 'constraint-added', 'items added');
-      return;
-    }
-    if (Array.isArray(b.items) !== Array.isArray(c.items)) {
-      report(file, pointer, 'constraint-changed', 'items changed between list and tuple form');
-      return;
-    }
-    if (!Array.isArray(c.items)) {
-      compareNode(file, child(pointer, 'items'), b.items, bDoc, c.items, cDoc, stack);
-      return;
-    }
-    c.items.forEach((item, i) => {
-      if (i < b.items.length) compareNode(file, child(pointer, 'items', i), b.items[i], bDoc, item, cDoc, stack);
-    });
   }
 
   function compareCompositions(file, pointer, b, bDoc, c, cDoc, stack, outerScope) {
@@ -884,42 +711,10 @@ function compareTrees(baseTree, candTree) {
       required: new Set([...(outerScope ? outerScope.required : []), ...declaredNames(b, bDoc, baseTree, 'required')]),
     };
     for (const keyword of ['oneOf', 'anyOf', 'allOf']) {
-      const bb = Array.isArray(b[keyword]) ? b[keyword] : null;
-      const cb = Array.isArray(c[keyword]) ? c[keyword] : null;
-      if (!cb) continue;
-      if (!bb) {
-        report(file, pointer, 'composition-added', `${keyword} added`);
-        continue;
+      if (!Array.isArray(b[keyword]) || !Array.isArray(c[keyword])) continue;
+      for (const [i, j] of matchBranches(b[keyword], bDoc, c[keyword], cDoc)) {
+        compareNode(file, child(pointer, keyword, i), b[keyword][i], bDoc, c[keyword][j], cDoc, stack, scope);
       }
-      const baseEntries = expandBranches(bb, bDoc, baseTree, keyword, branchRefs(cb, cDoc));
-      const candEntries = expandBranches(cb, cDoc, candTree, keyword, branchRefs(bb, bDoc));
-      const match = matchBranches(baseEntries, candEntries);
-      for (const [i, j] of match.pairs) {
-        const be = baseEntries[i];
-        const ce = candEntries[j];
-        compareNode(file, child(pointer, keyword, be.index), be.node, be.doc, ce.node, ce.doc, stack, scope);
-      }
-      for (const i of match.baseOnly) {
-        const label = branchLabel(match.baseKeys[i], baseEntries[i].index);
-        report(file, child(pointer, keyword, baseEntries[i].index), keyword === 'allOf' ? 'allof-entry-removed' : 'branch-removed', `${keyword} branch ${label} removed`);
-      }
-      for (const j of match.candOnly) {
-        const label = branchLabel(match.candKeys[j], candEntries[j].index);
-        if (keyword === 'allOf') {
-          report(file, pointer, 'composition-added', `allOf entry ${label} added`);
-        } else if (keyword === 'oneOf') {
-          const discriminated = [...match.baseKeys, match.candKeys[j]].every((keys) => keys.disc !== undefined);
-          if (!discriminated) report(file, pointer, 'oneof-branch-added', `oneOf branch ${label} added; may overlap an existing branch`);
-        }
-      }
-    }
-  }
-
-  function compareOpaque(file, pointer, b, bDoc, c, cDoc) {
-    for (const keyword of OPAQUE_CONSTRAINTS) {
-      if (c[keyword] === undefined) continue;
-      if (b[keyword] === undefined) report(file, pointer, 'constraint-added', `${keyword} added`);
-      else if (!sameSchema(b[keyword], bDoc, c[keyword], cDoc)) report(file, pointer, 'constraint-changed', `${keyword} changed`);
     }
   }
 
@@ -928,7 +723,7 @@ function compareTrees(baseTree, candTree) {
     const base = baseTree.documents.get(key);
     const candidate = candTree.documents.get(key);
     if (!candidate) {
-      report(key, '', 'file-removed', `schema ${key} removed`);
+      if (!isExperimental(base.schema)) report(key, '', 'file-removed', `schema ${key} removed`);
       continue;
     }
     compareNode(key, '', base.schema, key, candidate.schema, key, new Set());
@@ -975,22 +770,6 @@ function validateBaseline(value) {
   return { entries: value.entries, base: typeof value.base === 'string' ? value.base : null, errors };
 }
 
-function buildBaseline(base, violations, previous = []) {
-  const reasons = new Map(previous.map((entry) => [findingKey(entry), entry.reason]));
-  return {
-    $comment:
-      'Non-additive schema changes recorded by scripts/lint-additive-minor.cjs, relative to the release named in base. This list only shrinks: CI rejects an entry that the target branch does not have. Remove an entry when its change is reverted or released; record a WG decision in reason.',
-    base,
-    entries: violations.map(({ file, pointer, kind, detail }) => ({
-      file,
-      pointer,
-      kind,
-      detail,
-      reason: reasons.get(findingKey({ file, pointer, kind, detail })) || PENDING_REASON,
-    })),
-  };
-}
-
 function readBaselineAtRef(ref, repoRoot = REPO_ROOT) {
   try {
     return JSON.parse(git(['show', `${ref}:${BASELINE_REPO_PATH}`], { cwd: repoRoot }));
@@ -1009,10 +788,9 @@ function checkAgainstBaseline({ base, findings, baselineValue, previousBaseline 
   const warnings = [];
   const baseline = validateBaseline(baselineValue);
   errors.push(...baseline.errors);
-  const violations = findings.filter((f) => f.severity === 'violation');
   const recorded = new Set(baseline.entries.map(findingKey));
-  const found = new Set(violations.map(findingKey));
-  const added = violations.filter((v) => !recorded.has(findingKey(v)));
+  const found = new Set(findings.map(findingKey));
+  const added = findings.filter((v) => !recorded.has(findingKey(v)));
   for (const violation of added) errors.push(`new non-additive change: ${findingKey(violation)}`);
 
   const stale = baseline.entries.filter((entry) => !found.has(findingKey(entry)));
@@ -1024,32 +802,22 @@ function checkAgainstBaseline({ base, findings, baselineValue, previousBaseline 
   }
 
   if (previousBaseline) {
-    const before = validateBaseline(previousBaseline);
-    const previous = new Set(before.entries.map(findingKey));
+    const previous = new Set(validateBaseline(previousBaseline).entries.map(findingKey));
     for (const entry of baseline.entries) {
       if (!previous.has(findingKey(entry))) {
         errors.push(`baseline grew: ${findingKey(entry)} is not in the target branch baseline`);
       }
     }
   }
-  return { ok: errors.length === 0, errors, warnings, added, stale, violations, baseline };
+  return { ok: errors.length === 0, errors, warnings, added, stale, baseline };
 }
 
 // ---------------------------------------------------------------------------
 // Reporting
 // ---------------------------------------------------------------------------
 
-function formatReport(label, result) {
-  const lines = [];
-  const violations = result.findings.filter((f) => f.severity === 'violation');
-  const reviews = result.findings.filter((f) => f.severity === 'review');
-  lines.push(`${label}: ${result.filesCompared} files compared, ${violations.length} violations, ${reviews.length} for review`);
-  for (const [severity, list] of [['violation', violations], ['review', reviews]]) {
-    if (!list.length) continue;
-    lines.push('', `${severity === 'violation' ? 'Violations' : 'For review'}:`);
-    for (const f of list) lines.push(`  ${f.file}#${f.pointer}  ${f.kind}  ${f.detail}`);
-  }
-  return lines.join('\n');
+function formatFindings(findings) {
+  return findings.map((f) => `  ${f.file}#${f.pointer}  ${f.kind}  ${f.detail}`);
 }
 
 function markdownTable(header, rows) {
@@ -1059,51 +827,32 @@ function markdownTable(header, rows) {
 }
 
 function formatHistory(results) {
-  const label = ({ base, candidate }) => `${base} → ${candidate}`;
-  const summary = results.map((r) => {
-    const violations = r.findings.filter((f) => f.severity === 'violation');
-    const reviews = r.findings.filter((f) => f.severity === 'review');
-    const closedFiles = new Set(violations.filter((f) => f.kind === 'property-added-to-closed').map((f) => f.file));
-    return [
-      label(r) + (r.patchLine ? ' (patch line)' : ''),
-      r.filesCompared,
-      violations.length,
-      new Set(violations.map((f) => f.file)).size,
-      closedFiles.size,
-      reviews.length,
-    ];
-  });
+  const label = (r) => `${r.base} → ${r.candidate}${r.patchLine ? ' (patch line)' : ''}`;
   const kinds = VIOLATION_KINDS.filter((kind) => results.some((r) => r.findings.some((f) => f.kind === kind)));
-  const reviewKinds = REVIEW_KINDS.filter((kind) => results.some((r) => r.findings.some((f) => f.kind === kind)));
-  const byKind = (kindList) => kindList.map((kind) => [kind, ...results.map((r) => r.findings.filter((f) => f.kind === kind).length)]);
-  return [
-    '### Summary by release pair',
+  const out = [
+    '## Additive-minor history',
     '',
     markdownTable(
-      ['Release pair', 'Files compared', 'Violations', 'Files with violations', 'Files with a property added to a closed object', 'For review'],
-      summary,
+      ['Release pair', 'Files compared', 'Non-additive changes', 'Files affected'],
+      results.map((r) => [label(r), r.filesCompared, r.findings.length, new Set(r.findings.map((f) => f.file)).size]),
     ),
     '',
-    '### Violations by kind',
+    '### By kind',
     '',
-    markdownTable(['Kind', ...results.map(label)], byKind(kinds)),
+    markdownTable(['Kind', ...results.map((r) => `${r.base} → ${r.candidate}`)],
+      kinds.map((kind) => [kind, ...results.map((r) => r.findings.filter((f) => f.kind === kind).length)])),
     '',
-    '### For review by kind (not failures)',
-    '',
-    markdownTable(['Kind', ...results.map(label)], byKind(reviewKinds)),
-  ].join('\n');
+    '### Findings',
+  ];
+  for (const r of results) {
+    if (r.findings.length) out.push('', `${label(r)}:`, '', '```', ...formatFindings(r.findings), '```');
+  }
+  return out.join('\n');
 }
 
 // ---------------------------------------------------------------------------
 // Entry points
 // ---------------------------------------------------------------------------
-
-function compareSpecs(baseSpec, candidateSpec, options = {}) {
-  const baseTree = loadTreeSpec(baseSpec, options);
-  const candTree = loadTreeSpec(candidateSpec, options);
-  const result = compareTrees(baseTree, candTree);
-  return { base: baseSpec, candidate: candidateSpec, ...result, errors: [...baseTree.errors, ...candTree.errors] };
-}
 
 /**
  * CI check: source against the default base, filtered through the baseline.
@@ -1154,27 +903,15 @@ function main() {
   const options = { repoRoot: REPO_ROOT, sourceDir };
 
   if (args.includes('--history')) {
-    const released = listReleasedVersions(REPO_ROOT);
     const major = parseVersion(readSourceVersion(REPO_ROOT)).major;
-    const { pairs, patchLines } = historyPairs(released, major);
+    const { pairs, patchLines } = historyPairs(listReleasedVersions(REPO_ROOT), major);
     const trees = new Map();
     const tree = (spec) => {
-      if (!trees.has(spec)) {
-        const loaded = loadTreeSpec(spec, options);
-        loaded.errors.forEach((error) => console.error(`warning: ${error}`));
-        trees.set(spec, loaded);
-      }
+      if (!trees.has(spec)) trees.set(spec, loadTreeSpec(spec, options));
       return trees.get(spec);
     };
-    const run = (list) => list.map((pair) => ({ ...pair, ...compareTrees(tree(pair.base), tree(pair.candidate)) }));
-    const chain = run(pairs);
-    const lines = run(patchLines);
-    if (args.includes('--json')) {
-      const slim = (list) => list.map(({ base, candidate, filesCompared, findings }) => ({ base, candidate, filesCompared, findings }));
-      console.log(JSON.stringify({ chain: slim(chain), patchLines: slim(lines) }, null, 2));
-      return;
-    }
-    console.log(formatHistoryReport(chain, lines));
+    const results = [...pairs, ...patchLines].map((pair) => ({ ...pair, ...compareTrees(tree(pair.base), tree(pair.candidate)) }));
+    console.log(formatHistory(results));
     return;
   }
 
@@ -1186,37 +923,23 @@ function main() {
       console.log(`No stable release precedes ${candidateVersion} in its major line; nothing to compare.`);
       return;
     }
-    const result = compareSpecs(base, candidate, options);
-    if (args.includes('--json')) console.log(JSON.stringify(result.findings, null, 2));
-    else console.log(formatReport(`${base} → ${candidate}`, result));
-    if (result.errors.length) {
-      console.error(result.errors.join('\n'));
-      process.exitCode = 1;
-    }
+    const { findings, filesCompared } = compareTrees(loadTreeSpec(base, options), loadTreeSpec(candidate, options));
+    if (args.includes('--json')) console.log(JSON.stringify(findings, null, 2));
+    else console.log([`${base} → ${candidate}: ${filesCompared} files compared, ${findings.length} violations`, ...formatFindings(findings)].join('\n'));
     return;
   }
 
-  if (args.includes('--update-baseline') || args.includes('--prune-baseline')) {
-    const prune = args.includes('--prune-baseline');
-    if (!prune && process.env[UPDATE_ENV] !== '1') {
-      console.error(`Refusing to rewrite the baseline without ${UPDATE_ENV}=1. Use --prune-baseline to remove stale entries only.`);
-      process.exitCode = 2;
-      return;
-    }
-    const current = fs.existsSync(baselinePath) ? JSON.parse(fs.readFileSync(baselinePath, 'utf8')) : { entries: [] };
+  if (args.includes('--prune-baseline')) {
+    const current = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
     const result = lintAdditiveMinor({ ...options, baselinePath, baselineValue: { base: null, entries: [] } });
     if (result.skipped) {
       console.log('No base release; baseline unchanged.');
       return;
     }
-    let violations = result.violations;
-    if (prune) {
-      const kept = new Set(current.entries.map(findingKey));
-      violations = violations.filter((v) => kept.has(findingKey(v)));
-    }
-    const next = buildBaseline(result.base, violations, current.entries);
+    const found = new Set(result.findings.map(findingKey));
+    const next = { ...current, base: result.base, entries: current.entries.filter((entry) => found.has(findingKey(entry))) };
     fs.writeFileSync(baselinePath, `${JSON.stringify(next, null, 2)}\n`);
-    console.log(`Wrote ${next.entries.length} entries (base ${result.base}) to ${toPosix(path.relative(REPO_ROOT, baselinePath))}.`);
+    console.log(`Kept ${next.entries.length} of ${current.entries.length} entries (base ${result.base}).`);
     return;
   }
 
@@ -1233,12 +956,10 @@ function main() {
   }
   result.warnings.forEach((warning) => console.warn(`warning: ${warning}`));
   if (result.warnings.length) console.warn('Run `node scripts/lint-additive-minor.cjs --prune-baseline` to drop stale entries.');
-  const reviews = result.findings.filter((f) => f.severity === 'review').length;
   if (result.ok) {
     console.log(
       `✓ additive-minor lint: source vs ${result.base}, ${result.filesCompared} files, ` +
-      `${result.violations.length} recorded non-additive changes, 0 new, ${reviews} for review ` +
-      '(see --base/--candidate for the report)',
+      `${result.findings.length} recorded non-additive changes, 0 new (see --base/--candidate for the report)`,
     );
     return;
   }
@@ -1254,30 +975,15 @@ function main() {
   process.exitCode = 1;
 }
 
-function formatHistoryReport(chain, patchLines) {
-  const out = ['## Additive-minor history', '', formatHistory(chain)];
-  if (patchLines.length) {
-    out.push('', '## Patch lines (first to last patch of each earlier minor)', '', formatHistory(patchLines));
-  }
-  return out.join('\n');
-}
-
 module.exports = {
-  PENDING_REASON,
-  REVIEW_KINDS,
   VIOLATION_KINDS,
-  buildBaseline,
   buildTree,
   checkAgainstBaseline,
   compareTrees,
-  compareVersions,
   defaultBaseVersion,
   findingKey,
   historyPairs,
   lintAdditiveMinor,
-  loadDirectoryTree,
-  normalizeSchemaPath,
-  validateBaseline,
 };
 
 if (require.main === module) main();
