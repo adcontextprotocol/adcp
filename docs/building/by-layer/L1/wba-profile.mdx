@@ -272,6 +272,22 @@ The vectors live at `static/compliance/source/test-vectors/wba-profile/` and are
 
 The keys in `keys.json` are public test keys with published private seeds. Section 6.8 says test keys "MUST NOT be used in production", and verifiers SHOULD reject them when detected. The README in the vector directory describes the file format and the harness state each vector needs.
 
+## Try it against the training agent
+
+The training agent runs this profile end to end at `https://test-agent.adcontextprotocol.org/sales/identity/mcp`. It verifies Web Bot Auth signatures, binds a signer through open sandbox onboarding (`sync_principal`), and checks [demand-side grants](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental) in the brand's house trust.json before any account or spend. Unsigned callers can only discover it (`get_adcp_capabilities`), and its capabilities advertise `request_signing.profiles: ["web-bot-auth"]` and `account.agent_onboarding.sandbox.mode: "open"`.
+
+Only the route's fictional fixture identities resolve. Their documents are served in-process, and every real domain is refused. Sign as one of these agents with its published key from [`fixture-world.ts`](https://github.com/adcontextprotocol/adcp/blob/main/server/src/training-agent/identity33/fixture-world.ts):
+
+| Agent origin | Who it is | What a `sync_accounts` for brand `nova-motors-7k3q.com` (brand ID `nova_motors`) shows |
+|---|---|---|
+| `https://buyer.pinnacle-agency-7k3q.com` | An agency the house granted media buying for Nova Motors in the US and GB | Accepted through the parent's grant. Nova Motors publishes no trust.json of its own. A market outside the grant is refused. |
+| `https://buyer.nova-brands-7k3q.com` | The house's own buying agent | Accepted with implicit authority when the account operator is `nova-brands-7k3q.com`; no grant needed |
+| `https://buyer.quickmedia-7k3q.com` | An impostor with no grant | `PERMISSION_DENIED`, `grant_absent`, whichever operator it names |
+
+A brand of `offline-brand-7k3q.com` exercises an unavailable trust record: spend fails closed with `SERVICE_UNAVAILABLE`.
+
+The fixture keys are published sandbox keys, like `keys.json`: anyone can sign as these fictional agents, and the training agent trusts them only for these origins and only for sandbox accounts. Never trust them anywhere else. The route is experimental and may change with the profile.
+
 ## References
 
 - [HTTP Message Signatures for automated traffic, draft-ietf-webbotauth-httpsig-protocol-00](https://datatracker.ietf.org/doc/draft-ietf-webbotauth-httpsig-protocol/00/)
