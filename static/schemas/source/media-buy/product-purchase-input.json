@@ -38,11 +38,8 @@
     "optimization_goals": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/optimization_goals" },
     "audience_evidence_requirements": {
       "title": "Product Purchase Audience Evidence Requirements",
-      "allOf": [
-        { "$ref": "/schemas/core/product-audience-evidence-requirements.json" },
-        { "not": { "required": ["target_audiences"] } }
-      ],
-      "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot. Rejects target_audiences in 3.3."
+      "$ref": "/schemas/core/product-audience-evidence-requirements.json",
+      "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot."
     },
     "audience_evidence_pins": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/audience_evidence_pins" },
     "agency_estimate_number": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/agency_estimate_number" },

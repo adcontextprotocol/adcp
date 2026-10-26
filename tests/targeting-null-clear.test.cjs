@@ -201,6 +201,9 @@ describe('request-only targeting null-clear semantics', () => {
     // would need its own acceptance-time reservation contract for a slot sold
     // between discovery and buy, which 3.3 does not define.
     'installments',
+    // Purchase rights (#8090) are seller-authored. A published offer carries no
+    // rights, so a buyer has no typed way to request or counter them in 3.3.
+    'rights',
   ]);
 
   test('codegen-safe product purchase input copies remain in strict-schema parity', () => {

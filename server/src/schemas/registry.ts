@@ -503,6 +503,10 @@ export const AgentCapabilitiesSchema = z
         metrics: z.array(
           z.object({
             metric_id: z.string(),
+            name: z.string().optional().openapi({
+              description:
+                "Vendor-authored display name of the metric. Show it in place of `metric_id` when present; never join, key, or deduplicate on it — `metric_id` is the identifier.",
+            }),
             standard_reference: z.string().optional(),
             accreditations: z
               .array(

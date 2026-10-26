@@ -115,11 +115,8 @@
     },
     "audience_evidence_requirements": {
       "title": "Product Purchase Audience Evidence Requirements",
-      "allOf": [
-        { "$ref": "/schemas/core/product-audience-evidence-requirements.json" },
-        { "not": { "required": ["target_audiences"] } }
-      ],
-      "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot. Rejects target_audiences in 3.3."
+      "$ref": "/schemas/core/product-audience-evidence-requirements.json",
+      "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot."
     },
     "audience_evidence_pins": {
       "type": "array",
@@ -147,6 +144,14 @@
       "items": { "$ref": "/schemas/core/canonical-performance-standard.json" },
       "minItems": 1,
       "description": "Published or negotiated metric thresholds and measurement vendors. Direct buyers may omit this to inherit the product defaults; accepted proposal snapshots preserve every applicable standard."
+    },
+    "rights": {
+      "type": "array",
+      "items": { "$ref": "/schemas/brand/rights-scope.json" },
+      "minItems": 1,
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Experimental (`media_buy.purchase_rights`). Usage and amplification rights granted with this purchase, priced inside it; the media seller grants or warrants them. Bound by terms_digest. Exclusivity is per purchase. Sellers MUST list media_buy.purchase_rights in experimental_features."
     }
   },
   "required": ["product_id", "pricing_option_id"],

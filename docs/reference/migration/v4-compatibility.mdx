@@ -35,6 +35,7 @@ In raw runner output, a check observed by a validation appears as a `validation_
 | [`signed_requests_specialism_deprecated`](#signed_requests_specialism_deprecated) | [#3078](https://github.com/adcontextprotocol/adcp/issues/3078) | All agents | Notice on `signed_requests` |
 | [`request_signing_required_in_4_0`](#request_signing_required_in_4_0) | [#2307](https://github.com/adcontextprotocol/adcp/issues/2307) | Sellers | `media_buy_seller` capability discovery |
 | [`legacy_hmac_fallback_removed_in_4_0`](#legacy_hmac_fallback_removed_in_4_0) | [#4205](https://github.com/adcontextprotocol/adcp/issues/4205) | All agents | `capability_discovery` |
+| [`purchase_target_audiences_required_in_4_0`](#purchase_target_audiences_required_in_4_0) | [#8125](https://github.com/adcontextprotocol/adcp/issues/8125) | Sellers | Not observable in 3.x |
 
 ## Checks
 
@@ -107,6 +108,17 @@ Request signing is optional in 3.x. 4.0 requires it on spend-committing operatio
 4.0 removes the HMAC-SHA256 webhook fallback.
 
 **Fix:** sign webhooks with RFC 9421 only and stop advertising `legacy_hmac_fallback`. See [Webhooks](/docs/building/by-layer/L3/webhooks).
+
+<a id="purchase_target_audiences_required_in_4_0"></a>
+### Purchases carry target audiences
+
+**Check id:** `purchase_target_audiences_required_in_4_0` · **Change:** new requirement
+
+**Detects:** a seller that lists `media_buy.audience_evidence_targets` in `experimental_features` does not accept `target_audiences` on `buy_products` purchases and `list_products` `offer_filters`.
+
+In 3.3 the experimental `target_audiences[]` is a sibling of `audience_evidence_requirements` on `get_products` filters and on `create_media_buy` packages. `buy_products` purchases (`product-purchase-input.json`, `product-purchase.json`) and `list_products` `offer_filters` are closed schemas, and a minor release never changes a closed schema, so they gain the field in 4.0.
+
+**Fix:** accept the sibling on those surfaces and record it in the accepted purchase snapshot. Until 4.0, a buyer that needs an audit record keeps its own copy of the requirements and targets it sent. A 3.x run cannot observe this check, so it reports as not observable.
 
 ## Changes not checked yet
 

@@ -7,7 +7,7 @@
   "properties": {
     "creative_id": {
       "type": "string",
-      "description": "Unique identifier for the creative",
+      "description": "Unique identifier for an existing library creative. pending_review and rejected creatives may be assigned; the seller retains the assignment through review and correction under the same creative_id. Assignment does not authorize delivery before package approval. The package start_requires_all_creatives_approved policy controls whether approved assignments may start independently.",
       "x-entity": "creative"
     },
     "trackers": {

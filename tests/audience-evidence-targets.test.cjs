@@ -60,7 +60,9 @@ function satisfies(target, evidenceItems) {
     && item.value >= target.minimum_value);
 }
 
-// `admissibleItems` is the evidence that already passed every other constraint in the requirements object.
+// `requirements` is the effective policy: the sibling audience_evidence_requirements object
+// with the sibling target_audiences list folded in. `admissibleItems` is the evidence that
+// already passed every other constraint in audience_evidence_requirements.
 function evaluate(requirements, admissibleItems, publishedAny = admissibleItems.length > 0) {
   const targets = requirements.target_audiences || [];
   const satisfied = targets.filter(target => satisfies(target, admissibleItems)).length;
@@ -89,8 +91,8 @@ describe('audience evidence target audiences (#8125)', () => {
   let validateOfferFilters;
   let validateTarget;
   let validatePackageRequest;
-  let validatePurchaseInputRequirements;
-  let validatePurchaseRequirements;
+  let validatePurchaseInput;
+  let validatePurchase;
 
   before(async () => {
     [
@@ -100,8 +102,8 @@ describe('audience evidence target audiences (#8125)', () => {
       validateOfferFilters,
       validateTarget,
       validatePackageRequest,
-      validatePurchaseInputRequirements,
-      validatePurchaseRequirements,
+      validatePurchaseInput,
+      validatePurchase,
     ] = await Promise.all([
       compile('/schemas/core/audience-evidence-requirements.json'),
       compile('/schemas/core/product-audience-evidence-requirements.json'),
@@ -109,23 +111,34 @@ describe('audience evidence target audiences (#8125)', () => {
       compile('/schemas/core/product-offer-filters.json'),
       compile('/schemas/core/audience-evidence-target.json'),
       compile('/schemas/media-buy/package-request.json'),
-      compile({ $ref: '/schemas/media-buy/product-purchase-input.json#/properties/audience_evidence_requirements' }),
-      compile({ $ref: '/schemas/media-buy/product-purchase.json#/properties/audience_evidence_requirements' }),
+      compile('/schemas/media-buy/product-purchase-input.json'),
+      compile('/schemas/media-buy/product-purchase.json'),
     ]);
   });
 
   describe('schema', () => {
-    it('accepts target_audiences on the full and compact requirements and on discovery filters', () => {
-      const requirements = { ...base, target_audiences: [target], accepted_evidence_types: ['measured'], minimum_confidence: 0.8 };
-      assert.equal(validateRequirements(requirements), true, JSON.stringify(validateRequirements.errors));
-      assert.equal(validateCompact(requirements), true, JSON.stringify(validateCompact.errors));
-      assert.equal(validateFilters({ audience_evidence_requirements: requirements }), true, JSON.stringify(validateFilters.errors));
-      assert.equal(validateOfferFilters({ audience_evidence_requirements: requirements }), true, JSON.stringify(validateOfferFilters.errors));
+    it('accepts target_audiences as a sibling of audience_evidence_requirements on discovery filters', () => {
+      const requirements = { ...base, accepted_evidence_types: ['measured'], minimum_confidence: 0.8 };
+      const filters = { audience_evidence_requirements: requirements, target_audiences: [target] };
+      assert.equal(validateFilters(filters), true, JSON.stringify(validateFilters.errors));
     });
 
-    it('keeps target_audiences optional so 3.2 policies are unchanged', () => {
+    it('requires the sibling audience_evidence_requirements', () => {
+      assert.equal(validateFilters({ target_audiences: [target] }), false);
+      const packageRequest = clone(fixture.package_request);
+      delete packageRequest.audience_evidence_requirements;
+      packageRequest.target_audiences = [target];
+      assert.equal(validatePackageRequest(packageRequest), false);
+    });
+
+    it('keeps the closed requirements schemas unchanged: target_audiences is not a member', () => {
       assert.equal(validateRequirements(base), true);
       assert.equal(validateCompact(base), true);
+      assert.equal(validateRequirements({ ...base, target_audiences: [target] }), false);
+      assert.equal(validateCompact({ ...base, target_audiences: [target] }), false);
+      for (const uri of ['/schemas/core/audience-evidence-requirements.json', '/schemas/core/product-audience-evidence-requirements.json']) {
+        assert.equal(readSchema(uri).properties.target_audiences, undefined, uri);
+      }
     });
 
     it('requires audience, relationship, and minimum_value and closes the item', () => {
@@ -149,27 +162,35 @@ describe('audience evidence target audiences (#8125)', () => {
     });
 
     it('bounds the list and reuses the audience characteristic constraints', () => {
-      assert.equal(validateRequirements({ ...base, target_audiences: [] }), false);
-      assert.equal(validateRequirements({ ...base, target_audiences: [target, target] }), false);
-      assert.equal(validateRequirements({ ...base, target_audiences: Array.from({ length: 11 }, (_, index) => ({ ...target, minimum_value: index / 10 })) }), false);
-      assert.equal(validateRequirements({ ...base, target_audiences: Array.from({ length: 10 }, (_, index) => ({ ...target, minimum_value: index / 10 })) }), true);
-      assert.equal(validateRequirements({
-        ...base,
-        target_audiences: [{ ...target, audience: { dimension: 'age', range: { min: -1, max: 54 } } }],
-      }), false);
+      const filtersWith = target_audiences => validateFilters({ audience_evidence_requirements: base, target_audiences });
+      assert.equal(filtersWith([]), false);
+      assert.equal(filtersWith([target, target]), false);
+      assert.equal(filtersWith(Array.from({ length: 11 }, (_, index) => ({ ...target, minimum_value: index / 10 }))), false);
+      assert.equal(filtersWith(Array.from({ length: 10 }, (_, index) => ({ ...target, minimum_value: index / 10 }))), true);
+      assert.equal(filtersWith([{ ...target, audience: { dimension: 'age', range: { min: -1, max: 54 } } }]), false);
     });
 
-    it('rejects target_audiences on create_media_buy packages and buy_products purchases', () => {
-      const withTargets = { ...fixture.package_request.audience_evidence_requirements, target_audiences: [target] };
+    it('accepts target_audiences on create_media_buy packages and leaves the closed purchase path to 4.0', () => {
       assert.equal(validatePackageRequest(fixture.package_request), true, JSON.stringify(validatePackageRequest.errors));
       const packageRequest = clone(fixture.package_request);
-      packageRequest.audience_evidence_requirements = withTargets;
-      assert.equal(validatePackageRequest(packageRequest), false);
+      packageRequest.target_audiences = [target];
+      assert.equal(validatePackageRequest(packageRequest), true, JSON.stringify(validatePackageRequest.errors));
 
-      assert.equal(validatePurchaseInputRequirements(base), true, JSON.stringify(validatePurchaseInputRequirements.errors));
-      assert.equal(validatePurchaseInputRequirements({ ...base, target_audiences: [target] }), false);
-      assert.equal(validatePurchaseRequirements(base), true, JSON.stringify(validatePurchaseRequirements.errors));
-      assert.equal(validatePurchaseRequirements({ ...base, target_audiences: [target] }), false);
+      // Closed purchase schemas do not carry the sibling in 3.3: the field is a 4.0 addition.
+      for (const [validate, schemaUri] of [
+        [validatePurchaseInput, '/schemas/media-buy/product-purchase-input.json'],
+        [validatePurchase, '/schemas/media-buy/product-purchase.json'],
+      ]) {
+        const schema = readSchema(schemaUri);
+        assert.equal(schema.properties.target_audiences, undefined, schemaUri);
+        assert.equal(schema.additionalProperties, false, schemaUri);
+        assert.equal(validate.schema.properties.target_audiences, undefined, schemaUri);
+      }
+    });
+
+    it('lists the 4.0 purchase-path addition in the v4 compatibility registry', () => {
+      const registry = fs.readFileSync(path.join(ROOT, 'static/compliance/source/universal/v4-compatibility.yaml'), 'utf8');
+      assert.match(registry, /id: purchase_target_audiences_required_in_4_0/);
     });
   });
 
@@ -178,7 +199,7 @@ describe('audience evidence target audiences (#8125)', () => {
       const targetSchema = readSchema('/schemas/core/audience-evidence-target.json');
       assert.equal(targetSchema['x-status'], 'experimental');
       assert.equal(targetSchema['x-added-in'], '3.3.0');
-      for (const uri of ['/schemas/core/audience-evidence-requirements.json', '/schemas/core/product-audience-evidence-requirements.json']) {
+      for (const uri of ['/schemas/core/product-filters.json', '/schemas/media-buy/package-request.json']) {
         const property = readSchema(uri).properties.target_audiences;
         assert.equal(property['x-status'], 'experimental', uri);
         assert.equal(property['x-added-in'], '3.3.0', uri);
