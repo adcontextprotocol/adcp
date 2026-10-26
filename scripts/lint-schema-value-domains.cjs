@@ -467,18 +467,19 @@ function findTwins(sites, registry, kernelOwners, inventory, sourceOf) {
   const prints = new Map();
   for (const site of sites) {
     const normalized = normalize(site.node, site.file, registry);
-    if (isAlias(normalized)) continue;
-    prints.set(site, { print: canonicalJson(normalized), bare: isBare(normalized) });
+    // A schema that constrains nothing beyond its type has no twins: every free-form object would match it.
+    if (isAlias(normalized) || isBare(normalized)) continue;
+    prints.set(site, canonicalJson(normalized));
   }
   // Two kernel types may share a structure (declared distinct); a copy is reported against the first.
   const kernelPrints = new Map();
   for (const file of [...kernelOwners.keys()].sort(byString)) {
     const site = sites.find((candidate) => candidate.root && candidate.file === file);
-    const entry = site && prints.get(site);
-    if (entry && !entry.bare && !kernelPrints.has(entry.print)) kernelPrints.set(entry.print, file);
+    const print = site && prints.get(site);
+    if (print && !kernelPrints.has(print)) kernelPrints.set(print, file);
   }
   const namedGroups = new Map();
-  for (const [site, { print }] of prints) {
+  for (const [site, print] of prints) {
     const kernelFile = kernelPrints.get(print);
     const source = sourceOf.get(siteKey(site));
     const isSource = source && source.concept === kernelOwners.get(kernelFile);

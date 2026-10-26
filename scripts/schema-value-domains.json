@@ -1630,13 +1630,6 @@
   "distinct_structures": [
     {
       "types": [
-        "/schemas/core/context.json",
-        "/schemas/core/ext.json"
-      ],
-      "reason": "Each is a free-form object. A receiver echoes context back to the caller unchanged and never interprets it; it reads ext for implementation-specific fields and may ignore them."
-    },
-    {
-      "types": [
         "/schemas/core/collection-list-ref.json",
         "/schemas/core/property-list-ref.json"
       ],

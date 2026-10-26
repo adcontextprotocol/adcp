@@ -141,9 +141,7 @@ function baseFixture() {
         },
       ],
       homonyms: [],
-      distinct_structures: [
-        { types: ['/schemas/core/context.json', '/schemas/core/ext.json'], reason: 'Echoed versus read.' },
-      ],
+      distinct_structures: [],
     },
     ownership: {
       shared: ['core/', 'enums/'],
@@ -197,6 +195,13 @@ test('the repository tree passes against its inventory and baseline', () => {
   assert.equal(result.ok, true, result.errors.join('\n'));
   assert.ok(result.sourceCount > 1000, 'expected the lint to see the real inline sources');
 });
+
+const TWIN_FILES = {
+  'enums/catalog-action.json': { type: 'string', enum: ['created', 'deleted'] },
+  'enums/creative-action.json': { type: 'string', enum: ['created', 'deleted'] },
+};
+
+const TWIN_TYPES = ['/schemas/enums/catalog-action.json', '/schemas/enums/creative-action.json'];
 
 // Known-bad fixtures. Each one introduces exactly one fault, and the lint
 // must report exactly that fault.
@@ -319,9 +324,39 @@ const KNOWN_BAD = [
     error: /new named-twin: enums\/catalog-action\.json = enums\/creative-action\.json/,
   },
   {
+    name: 'a homonym without a reason',
+    change: (f) => {
+      f.files['media-buy/create.json'].properties.creative_id = { type: 'string', 'x-entity': 'media_buy' };
+      concept(f, 'record-id').sources.push('media-buy/create.json#/properties/creative_id');
+      f.inventory.homonyms.push({ name: 'creative_id', reason: ' ' });
+    },
+    error: /homonyms\[0\] \(creative_id\): state the reason/,
+  },
+  {
+    name: 'a distinct declaration without a reason',
+    change: (f) => {
+      Object.assign(f.files, TWIN_FILES);
+      f.inventory.distinct_structures.push({ types: TWIN_TYPES, reason: '' });
+    },
+    error: /distinct_structures\[0\]: state the reason/,
+  },
+  {
     name: 'a distinct declaration whose schemas no longer share a structure',
-    change: (f) => { f.files['core/ext.json'] = { type: 'object', additionalProperties: false }; },
-    error: /stale distinct structure: core\/context\.json, core\/ext\.json no longer share exactly one structure/,
+    change: (f) => {
+      Object.assign(f.files, TWIN_FILES);
+      f.files['enums/creative-action.json'] = { type: 'string', enum: ['created', 'updated'] };
+      f.inventory.distinct_structures.push({ types: TWIN_TYPES, reason: 'Applied to different records.' });
+    },
+    error: /stale distinct structure: enums\/catalog-action\.json, enums\/creative-action\.json no longer share exactly one structure/,
+  },
+  {
+    name: 'a baseline entry listed twice',
+    change: (f) => {
+      Object.assign(f.files, TWIN_FILES);
+      const entry = { check: 'named-twin', types: TWIN_TYPES.map((id) => id.replace('/schemas/', '')), verdict: 'merge', reason: 'One list.' };
+      f.baseline.entries.push(entry, { ...entry });
+    },
+    error: /baseline entries\[1\] duplicates named-twin: enums\/catalog-action\.json = enums\/creative-action\.json/,
   },
   {
     name: 'a baseline entry whose twin no longer occurs',
@@ -345,11 +380,6 @@ for (const { name, change, error } of KNOWN_BAD) {
     assert.match(result.errors[0], error);
   });
 }
-
-const TWIN_FILES = {
-  'enums/catalog-action.json': { type: 'string', enum: ['created', 'deleted'] },
-  'enums/creative-action.json': { type: 'string', enum: ['created', 'deleted'] },
-};
 
 function twinBaselineEntry(overrides = {}) {
   return {
@@ -389,7 +419,7 @@ test('a distinct declaration with a reason suppresses a named twin', () => {
   const result = run(withChange((f) => {
     Object.assign(f.files, TWIN_FILES);
     f.inventory.distinct_structures.push({
-      types: ['/schemas/enums/catalog-action.json', '/schemas/enums/creative-action.json'],
+      types: TWIN_TYPES,
       reason: 'A receiver applies each to a different record.',
     });
   }));
@@ -405,6 +435,16 @@ test('a listed homonym with a reason passes', () => {
   assert.equal(result.ok, true, result.errors.join('\n'));
 });
 
+test('a site whose const differs from the match rule is not the concept', () => {
+  const result = run(withChange((f) => {
+    f.files['creative/creative.json'].properties.task = {
+      type: 'object',
+      properties: { status: { type: 'string', const: 'working' }, task_id: { type: 'string' } },
+    };
+  }));
+  assert.equal(result.ok, true, result.errors.join('\n'));
+});
+
 test('schemas that only reference another schema are aliases, not twins', () => {
   const result = run(withChange((f) => {
     f.files['media-buy/a-submitted.json'] = { allOf: [ref('core/task-submitted.json')] };
@@ -413,9 +453,10 @@ test('schemas that only reference another schema are aliases, not twins', () => 
   assert.equal(result.ok, true, result.errors.join('\n'));
 });
 
-test('a kernel type that constrains only its type has no structural twins', () => {
+test('a schema that constrains only its type has no structural twins', () => {
   const result = run(withChange((f) => {
     f.files['creative/creative.json'].properties.notes = { type: 'object' };
+    f.files['core/free-form.json'] = { type: 'object', additionalProperties: true };
   }));
   assert.equal(result.ok, true, result.errors.join('\n'));
 });
