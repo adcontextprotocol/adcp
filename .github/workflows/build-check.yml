@@ -68,6 +68,9 @@ jobs:
       - name: Routed tenant smoke tests
         run: npm run test:tenant-routing
 
+      - name: Published SDK creative 3.3 buyer journeys and isolation
+        run: npm run test:creative33-sandbox
+
       - name: Schema link plugin tests
         run: npm run test:schema-links
 
