@@ -212,6 +212,8 @@ export function buildSalesTenantConfig(
   options: {
     storyboardCompat?: TrainingContext['storyboardCompat'];
     proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'];
+    /** Set on the experimental 3.3 identity route's registry holder. */
+    identity33?: unknown;
   } = {},
   taskRegistry?: TaskRegistry,
 ): {
@@ -307,22 +309,13 @@ export function buildSalesTenantConfig(
           // absent; advertising it under 3.0-compat makes those steps execute
           // and fail the older response schema. Gate it off 3.0 like the
           // creative tools below. (/signals keeps it across versions.)
-          ...(supportsAccountChangeFeed(options.storyboardCompat?.version ?? '3.2-beta.5') ? {
-            list_account_changes: listAccountChangesTool(options.storyboardCompat),
-            sync_agent_notification_configs: customToolFor(
-              'sync_agent_notification_configs',
-              'Register, replace, pause, or clear caller-scoped agent-level capability-change webhook subscribers.',
-              TOOL_INPUT_SHAPES.sync_agent_notification_configs!,
-              syncAgentNotificationConfigsLegacy,
-              {
-                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
-                enforceIdempotency: true,
-                payloadErrorsAsSuccess: true,
-              },
-            ),
-            // Experimental principal layer, keyed to the authenticated caller.
-            // Request-level failures ride the response's `kind: failed` arm;
-            // only a missing principal surfaces as an AUTH_REQUIRED error.
+          // Experimental principal layer, keyed to the authenticated caller.
+          // Request-level failures ride the response's `kind: failed` arm;
+          // only a missing principal surfaces as an AUTH_REQUIRED error. The
+          // 3.3 identity route always serves it: open onboarding binds a Web
+          // Bot Auth agent through sync_principal, even where production gates
+          // the other experimental tools off.
+          ...((options.identity33 || supportsAccountChangeFeed(options.storyboardCompat?.version ?? '3.2-beta.5')) ? {
             get_principal: customToolFor(
               'get_principal',
               'Read the authenticated caller\'s seller-resolved identity, standing configuration, version, and destination setup states.',
@@ -338,6 +331,20 @@ export function buildSalesTenantConfig(
               {
                 annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
                 enforceIdempotency: true,
+              },
+            ),
+          } : {}),
+          ...(supportsAccountChangeFeed(options.storyboardCompat?.version ?? '3.2-beta.5') ? {
+            list_account_changes: listAccountChangesTool(options.storyboardCompat),
+            sync_agent_notification_configs: customToolFor(
+              'sync_agent_notification_configs',
+              'Register, replace, pause, or clear caller-scoped agent-level capability-change webhook subscribers.',
+              TOOL_INPUT_SHAPES.sync_agent_notification_configs!,
+              syncAgentNotificationConfigsLegacy,
+              {
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+                enforceIdempotency: true,
+                payloadErrorsAsSuccess: true,
               },
             ),
             sync_governance: syncGovernanceTool(options.storyboardCompat),
