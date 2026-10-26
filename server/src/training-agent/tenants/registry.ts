@@ -182,7 +182,7 @@ function pickTaskRegistry(tenantId: string): TaskRegistry {
  *
  * Migration: `server/src/db/migrations/466_adcp_state.sql`.
  */
-function pickStateStore(): AdcpStateStore {
+export function pickStateStore(): AdcpStateStore {
   const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {
     return new InMemoryStateStore();
@@ -196,17 +196,23 @@ function pickStateStore(): AdcpStateStore {
 function buildDefaultServerOptions(
   storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
   taskRegistry: TaskRegistry,
+  identity33?: CreateAdcpServerFromPlatformOptions['identity33'],
 ): CreateAdcpServerFromPlatformOptions {
   const projectionAdapters = creativeProjectionAdapters();
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
-    adcpVersion: storyboardCompat?.version === '3.0'
-      ? '3.0'
-      : TRAINING_AGENT_CANDIDATE_ADCP_VERSION ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
-    ...(TRAINING_AGENT_CANDIDATE_ADCP_VERSION && storyboardCompat?.version !== '3.0' && {
+    // The experimental identity route speaks 3.3: the SDK binds identity33
+    // to the 3.3 schemas, and Web Bot Auth is a 3.3 profile.
+    adcpVersion: identity33
+      ? '3.3'
+      : storyboardCompat?.version === '3.0'
+        ? '3.0'
+        : TRAINING_AGENT_CANDIDATE_ADCP_VERSION ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+    ...(!identity33 && TRAINING_AGENT_CANDIDATE_ADCP_VERSION && storyboardCompat?.version !== '3.0' && {
       defaultAdcpVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION,
     }),
+    ...(identity33 && { identity33 }),
     idempotency: withSellerManagedIdempotencyReplay(getSdkIdempotencyStore(), taskRegistry),
     webhooks: getWebhookSigningMaterial(),
     // Preserve terminal inline callbacks when supported by the SDK; actual
@@ -279,6 +285,10 @@ export interface RegistryHolder {
 export function createRegistryHolder(options: {
   storyboardCompat?: TrainingContext['storyboardCompat'];
   proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'];
+  /** Experimental 3.3 identity authorization; serves AdCP 3.3. */
+  identity33?: CreateAdcpServerFromPlatformOptions['identity33'];
+  /** Register only these tenants. Defaults to every tenant. */
+  tenantIds?: readonly string[];
 } = {}): RegistryHolder {
   let registry: TenantRegistry | null = null;
   let pendingInit: Promise<TenantRegistry> | null = null;
@@ -295,7 +305,7 @@ export function createRegistryHolder(options: {
         const signalsTaskRegistry = pickTaskRegistry('signals');
         const salesTaskRegistry = withSellerManagedTaskReplay(pickTaskRegistry('sales'));
         const reg = createTenantRegistry({
-          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat, salesTaskRegistry),
+          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat, salesTaskRegistry, options.identity33),
           jwksValidator: noopJwksValidator,
           autoValidate: true,
         });
@@ -308,7 +318,7 @@ export function createRegistryHolder(options: {
           { id: 'creative-builder', taskRegistry: pickTaskRegistry('creative-builder'), cfg: buildCreativeBuilderTenantConfig(hostBase, options) },
           { id: 'brand', taskRegistry: pickTaskRegistry('brand'), cfg: buildBrandTenantConfig(hostBase, options) },
           { id: 'si', taskRegistry: pickTaskRegistry('si'), cfg: buildSiTenantConfig(hostBase, options) },
-        ] as const;
+        ].filter(({ id }) => !options.tenantIds || options.tenantIds.includes(id));
         const tConfigs = Date.now();
         // awaitFirstValidation:true blocks until the no-op validator
         // promotes the tenant to 'healthy'. Without it the first request

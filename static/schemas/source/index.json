@@ -65,6 +65,14 @@
           "$ref": "/schemas/core/canonical-placement.json",
           "description": "Compact canonical product placement"
         },
+        "canonical-installment": {
+          "$ref": "/schemas/core/canonical-installment.json",
+          "description": "Compact closed installment on a canonical product, identified by (collection_ref, installment_id)"
+        },
+        "canonical-installment-ref": {
+          "$ref": "/schemas/core/canonical-installment-ref.json",
+          "description": "Closed canonical installment identity for digest-covered terms and request paths"
+        },
         "canonical-product-action": {
           "$ref": "/schemas/core/canonical-product-action.json",
           "description": "Fine-grained action template for compact products"
@@ -361,6 +369,10 @@
         "installment-deadlines": {
           "$ref": "/schemas/core/installment-deadlines.json",
           "description": "Booking, cancellation, and material submission deadlines for an installment"
+        },
+        "installment-change-set": {
+          "$ref": "/schemas/core/installment-change-set.json",
+          "description": "Installment-level include and omit actions for a proposal refinement"
         },
         "material-deadline": {
           "$ref": "/schemas/core/material-deadline.json",
@@ -889,6 +901,10 @@
         "account-change-recorded-webhook": {
           "$ref": "/schemas/core/account-change-recorded-webhook.json",
           "description": "Account-level invalidation indicating that a durable account change is available"
+        },
+        "invoice-line": {
+          "$ref": "/schemas/core/invoice-line.json",
+          "description": "One itemised invoice line tying an invoice amount to the media buy, reporting revisions, and adjustments it bills. Experimental."
         },
         "proposal-created-webhook": {
           "$ref": "/schemas/core/proposal-created-webhook.json",
@@ -1594,6 +1610,10 @@
         "spot-status": {
           "$ref": "/schemas/enums/spot-status.json",
           "description": "Lifecycle status of a by_spot row (scheduled, aired, preempted, makegood). Experimental."
+        },
+        "invoice-kind": {
+          "$ref": "/schemas/enums/invoice-kind.json",
+          "description": "Kind of an invoice record (invoice, credit_note). Experimental."
         },
         "history-entry-type": {
           "$ref": "/schemas/enums/history-entry-type.json",
@@ -2895,6 +2915,10 @@
         "rights-pricing-option": {
           "$ref": "/schemas/brand/rights-pricing-option.json",
           "description": "Pricing option for licensable rights"
+        },
+        "rights-scope": {
+          "$ref": "/schemas/brand/rights-scope.json",
+          "description": "What a rights grant covers — uses, grant window, and exclusivity — shared by rights-terms and media-buy purchases"
         },
         "rights-terms": {
           "$ref": "/schemas/brand/rights-terms.json",

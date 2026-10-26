@@ -12,9 +12,9 @@ import { join } from 'node:path';
 import YAML from 'yaml';
 import {
   listAllComplianceStoryboards,
-  getComplianceStoryboardById,
   getComplianceCacheDir,
 } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from '../compliance/storyboard-cache.js';
 import type { Storyboard } from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
 import { hostedComplianceOptions, hostedComplianceTarget } from './hosted-compliance-version.js';
@@ -146,7 +146,7 @@ export function listStoryboards(category?: string): StoryboardSummary[] {
 }
 
 export function getStoryboard(id: string): Storyboard | undefined {
-  return getComplianceStoryboardById(id, complianceOptions);
+  return getCachedComplianceStoryboardById(id, complianceOptions);
 }
 
 export function getAllStoryboards(): Storyboard[] {
@@ -219,7 +219,7 @@ export function getTestKitForStoryboard(
   storyboardId: string,
   options: StoryboardComplianceOptions = complianceOptions,
 ): TestKit | undefined {
-  const sb = getComplianceStoryboardById(storyboardId, options);
+  const sb = getCachedComplianceStoryboardById(storyboardId, options);
   if (!sb?.prerequisites?.test_kit) return undefined;
 
   // test_kit is like "test-kits/acme-outdoor.yaml" — extract the id

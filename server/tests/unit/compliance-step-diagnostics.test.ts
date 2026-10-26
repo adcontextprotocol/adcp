@@ -4,9 +4,12 @@ vi.mock('@adcp/sdk/testing', () => ({
   setAgentTesterLogger: vi.fn(),
   comply: vi.fn(),
   loadComplianceIndex: vi.fn(() => ({ specialisms: [] })),
-  getComplianceStoryboardById: vi.fn(() => undefined),
   SAMPLE_BRIEFS: [],
   getBriefsByVertical: vi.fn(() => []),
+}));
+
+vi.mock('../../src/compliance/storyboard-cache.js', () => ({
+  getCachedComplianceStoryboardById: vi.fn(() => undefined),
 }));
 
 vi.mock('../../src/services/storyboards.js', () => ({
@@ -23,9 +26,9 @@ import {
   extractFailingStepDiagnostics,
   complianceResultToDbInput,
 } from '../../src/addie/services/compliance-testing.js';
-import { getComplianceStoryboardById } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from '../../src/compliance/storyboard-cache.js';
 
-const mockGetPinnedStoryboard = vi.mocked(getComplianceStoryboardById);
+const mockGetPinnedStoryboard = vi.mocked(getCachedComplianceStoryboardById);
 
 function step(overrides: Record<string, unknown>) {
   return {

@@ -196,7 +196,18 @@ phases:
       being non-empty: the runner skips when the agent does not declare the
       bucket, and FAILs (not SKIPs) when it declares it but doesn't enforce.
       It's the only vector that targets a JSON-RPC protocol method rather
-      than a `tools/call` AdCP envelope. Vectors 021-027 (enumerated in the
+      than a `tools/call` AdCP envelope.
+
+      Vector 027 (deprecated condition (b), adcp#7563) is gated on
+      `webhook_signing.legacy_hmac_fallback: true`: the runner skips it (not a
+      failure) when the flag is `false` or the `webhook_signing` block is absent.
+      Such a seller answers an authenticated registration carrying
+      `authentication` with `webhook_hmac_not_supported` (HTTP 400), not
+      `request_signature_required`. Functional storyboards omit
+      `push_notification_config.authentication` so they do not conflict with
+      this vector.
+
+      Vectors 021-027 (enumerated in the
       negative/ directory but not in the summary above) cover later
       additions to the checklist that share the `tools/call` envelope shape
       with vectors 001-020.
