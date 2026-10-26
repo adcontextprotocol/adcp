@@ -2449,10 +2449,10 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
     manifestMetadata: {
       canonical_wire_manifest: '../../manifest.json',
     },
-    // Compliance schemas carry the full product-graph via task-completion-data.
+    // Compliance and media-buy schemas carry the full product/package graph.
     // Rewrite root-anchored cross-def refs to embedded-resource canonical $id
     // URIs to avoid ~100-byte URL-prefix overhead per cross-def pointer (#8041).
-    schemaRewriteEmbeddedRefs: (_toolName, tool) => tool.protocol === 'compliance',
+    schemaRewriteEmbeddedRefs: (_toolName, tool) => tool.protocol === 'compliance' || tool.protocol === 'media-buy',
   });
   console.log(
     `   ✓ MCP ${MCP_PROTOCOL_VERSION} projection: ${stats.toolCount} tools, ${stats.schemaCount} schemas, `

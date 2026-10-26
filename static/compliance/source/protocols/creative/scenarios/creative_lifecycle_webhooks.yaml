@@ -409,11 +409,13 @@ phases:
       - id: expect_status_changed_webhook
         title: "Assert suspended → rejected webhook payload"
         task: expect_webhook
+        triggered_by: force_creative_rejected
         filter:
           body:
             notification_type: "creative.status_changed"
             creative_id: "acme_lifecycle_banner_001"
             subscriber_id: "buyer-primary"
+            transition.to: "rejected"
         timeout_seconds: 30
         expect_idempotency_key: true
         webhook_payload_schema_ref: "creative/creative-status-changed-webhook.json"

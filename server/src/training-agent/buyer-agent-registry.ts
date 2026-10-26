@@ -18,11 +18,10 @@
  * commercial state consult `ctx.agent.billing_capabilities` directly, no
  * separate lookup needed.
  *
- * **Why bearerOnly.** The training-agent's auth chain is bearer-shaped
- * (`verifyApiKey` static keys + dynamic `demo-*` prefix matcher). No
- * signed-request path. `signingOnly` would refuse all traffic;
- * `bearerOnly` accepts api_key kind and rejects http_sig, matching
- * the deployment posture.
+ * **Why mixed.** The training-agent's auth chain is bearer-shaped
+ * (`verifyApiKey` static keys + dynamic `demo-*` prefix matcher) except
+ * on the experimental sandbox identity route, whose Web Bot Auth agents
+ * arrive as verified `http_sig` credentials and resolve by agent URL.
  *
  * **Why `extra.demo_token`.** `ResolveBuyerAgentByCredential` receives
  * `AdcpCredential` whose `api_key` variant carries `key_id: SHA-256(token)`
@@ -56,6 +55,7 @@ import { createHash } from 'node:crypto';
 import { BuyerAgentRegistry, type BuyerAgent } from '@adcp/sdk/server';
 import { getCommercialRelationship } from './commercial-relationships.js';
 import { governanceAgentCredentialFromExtra, hostedGraderCredentialFromExtra } from './governance-agent-credentials.js';
+import { FIXTURE_AGENTS } from './identity33/fixture-world.js';
 
 const TRAINING_AGENT_BASE_URL = 'https://training-agent.adcontextprotocol.org';
 
@@ -96,7 +96,27 @@ function neutralAuthenticatedAgent(credential: { key_id: string }): BuyerAgent {
 
 const NO_BILLING_CAPABILITIES: ReadonlySet<never> = new Set();
 
-export const trainingBuyerAgentRegistry = BuyerAgentRegistry.bearerOnly({
+/**
+ * Signed traffic reaches the registry only from the sandbox identity route
+ * (`identity33/`), whose Web Bot Auth resolver stamps a verified `http_sig`
+ * credential for an origin bound through open sandbox onboarding. Those
+ * agents are fictional fixture identities, so they are sandbox-only.
+ */
+async function resolveSignedSandboxAgent(agentUrl: string): Promise<BuyerAgent | null> {
+  if (!FIXTURE_AGENT_ORIGINS.has(agentUrl)) return null;
+  return {
+    agent_url: agentUrl,
+    display_name: 'Sandbox Web Bot Auth buyer agent',
+    status: 'active',
+    billing_capabilities: AGENT_BILLABLE_BILLING_CAPABILITIES,
+    sandbox_only: true,
+  };
+}
+
+const FIXTURE_AGENT_ORIGINS = new Set<string>(Object.values(FIXTURE_AGENTS).map(agent => agent.origin));
+
+export const trainingBuyerAgentRegistry = BuyerAgentRegistry.mixed({
+  resolveByAgentUrl: resolveSignedSandboxAgent,
   resolveByCredential: async (credential, extra) => {
     if (credential.kind === 'oauth') {
       // This public identifier is stamped only by verified OAuth middleware,

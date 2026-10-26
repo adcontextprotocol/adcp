@@ -480,9 +480,11 @@ or partial update from that request.
 Request validation is not creative review. After valid creative input has been
 committed, a later content-policy, brand-safety, or accessibility rejection
 updates creative and assignment approval state but does not roll back the
-MediaBuy or a successful update. Before activation, a buy without sufficient
-approved coverage remains `pending_creatives` until the buyer supplies a
-correction or replacement. Rejection affecting an active buy follows the
+MediaBuy or a successful update. Before activation, a blocking rejection that
+requires buyer correction yields `pending_creatives`; waiting only on seller
+review of assigned creatives yields `pending_start`. An eligible approved
+subset may start under the [creative start policy](#starting-with-assigned-creatives-under-review).
+Rejection affecting an active buy follows the
 creative-impairment and serving rules instead of reversing commitment.
 
 The compact lifecycle separates commitment, operational control, and creative
@@ -700,7 +702,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 **Rules:**
 
 - Sales agents MAY return `active`, `paused`, `pending_creatives`, or `pending_start` from `create_media_buy` (seller's choice based on platform setup time and the buyer's create-time `paused` request)
-- Sales agents MUST transition committed media buys (`confirmed_at` non-null) from `pending_start` to `active` when the flight date arrives. A provisional buy (`confirmed_at: null`) never auto-activates; see [Provisional buys](#provisional-buys-seller-review-hold). Sales agents SHOULD notify orchestrators via webhook when this transition occurs.
+- Sales agents MUST transition committed media buys (`confirmed_at` non-null) from `pending_start` to `active` when the flight has begun and creative readiness permits delivery, unless the buyer has paused delivery. A buy waiting only on seller creative review stays `pending_start` even after its flight date arrives; approval automatically releases that blocker, while a blocking rejection requires buyer correction. See [Starting with assigned creatives under review](#starting-with-assigned-creatives-under-review). A provisional buy (`confirmed_at: null`) never auto-activates; see [Provisional buys](#provisional-buys-seller-review-hold). Status changes follow the observation rules below.
 - A successful committed `create_media_buy` response constitutes **order confirmation**. Sales agents MUST include `confirmed_at` in create/get responses; the value is the seller commitment timestamp, or `null` for a provisional buy that exists but is still waiting for seller commitment.
 - Sales agents MUST include `revision` in create, get, and update responses. The revision number MUST advance on every committed change to the state `get_media_buys` reports, whatever the change's origin; see [Revision and confirmation semantics](#revision-and-confirmation-semantics).
 - `active` ↔ `paused` transitions use `update_media_buy` with `paused: true` or `paused: false`
@@ -722,6 +724,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - **Creative review is independent of buy outcome.** Sales agents MUST NOT implicitly reject a creative because its containing buy was rejected; a creative rejection MUST be a deliberate review decision with its own `rejection_reason`. If the buy was rejected because a creative violated content policy, the sales agent MAY reject that creative — but only via the normal review path with its own `rejection_reason`; the buy's `rejected` status is not itself sufficient.
 - **Observability of released assignments.** The media-buy-level `canceled` or `rejected` transition, preserved in `get_media_buys` status and history, IS the audit record for all its released assignments; buyers MUST NOT rely on per-assignment diff observability. A negotiated implementation webhook extension may accelerate discovery but is not required by 3.x. Released assignments no longer appear in `get_media_buys` responses for that buy. Buyers confirming library reusability SHOULD call `list_creatives` to verify the creative is still in the library and observe its current status. Inline-only buyers should retain their submitted creative bodies because `get_media_buys` surfaces package-level approval state, not full creative-body retrieval. Package-scoped deadlines (`creative_deadline`) on the prior package have no bearing on a library creative's eligibility for a new buy.
 - **Retention.** Sales agents with creative libraries SHOULD retain released creatives in the library for at least 90 days after the last assignment is released. A normative retention floor is specified in the creative retention contract tracked under [#2260](https://github.com/adcontextprotocol/adcp/issues/2260); until that contract lands, buyers relying on long-horizon reuse SHOULD verify persistence via `list_creatives` before referencing a released creative on a new buy.
+- **Package retention (AdCP 3.3).** A returned `canceled` or `completed` buy MUST retain all known package records. On adoption, sellers preserve records already held and durably record packages subsequently created or observed. Individual package cancellation also preserves the package in readback. Platform deletion does not justify dropping known packages; persisted records reflect the latest recorded committed configuration regardless of origin. The parent status ends package serving without rewriting previously terminal package outcomes or cancellation metadata, and released creative assignments remain released. Irrecoverable pre-adoption or never-observed external history need not be reconstructed, but sellers MUST explicitly disclose incomplete history alongside all retained records. Responses served as AdCP 3.2 permit empty terminal package lists and offer no retention guarantee. See [terminal package retention](/docs/media-buy/task-reference/get_media_buys#terminal-package-retention) for status, identity, migration, and served-version requirements.
 
 #### Revision and confirmation semantics
 
@@ -770,7 +773,7 @@ it MUST NOT leave a stale accepted-proposal pointer.
 
 A seller that reviews a non-guaranteed buy before committing to it MAY hold the buy by returning synchronous success with a `media_buy_id` and `confirmed_at: null`, as described above. This is the hold path for [`sales-fixed-rate`](/docs/building/verification/compliance-catalog#which-hold-path); guaranteed sellers that need an IO signature use the `submitted` task arm instead. While `confirmed_at` is `null`:
 
-- **Two independent axes.** `status` (`media_buy_status` on `create_media_buy`, `status` on `get_media_buys`) is the buyer-actionable readiness axis. `confirmed_at` is the seller-commitment axis. Commitment is keyed off `confirmed_at`, never off `status`. A provisional buy reports the status it will have on confirmation: `pending_creatives` while creatives are missing or unapproved, `pending_start` once the buy is otherwise ready. Neither value means the seller has accepted the buy, and `active` is not permitted.
+- **Two independent axes.** `status` (`media_buy_status` on `create_media_buy`, `status` on `get_media_buys`) is the buyer-actionable readiness axis. `confirmed_at` is the seller-commitment axis. Commitment is keyed off `confirmed_at`, never off `status`. A provisional buy reports `pending_creatives` when missing coverage or a blocking rejection requires buyer action, and `pending_start` when waiting on seller confirmation, creative review, or the flight date. Neither value means the seller has accepted the buy, and `active` is not permitted.
 - **Confirmation is a state change.** When the seller commits, it sets `confirmed_at` exactly once and, as for every mutating state change, increments `revision`. The `status` after confirmation follows the ordinary lifecycle for the buy's creative readiness and flight.
 - **Idempotency replay.** An exact replay of the original `create_media_buy` returns the original response, including `confirmed_at: null` and the original `revision`, even after the seller has confirmed. Buyers read current state through `get_media_buys`; a replay never shows the confirmed state and never increments `revision`.
 - **Rejection and cancellation.** The seller MAY reject a held buy (`status: rejected`, with `rejection_reason`), and the buyer MAY cancel it with `update_media_buy` (`canceled: true`). In both cases `confirmed_at` stays `null`: a buy that was never committed does not acquire a commitment timestamp by ending.
@@ -787,6 +790,128 @@ Packages follow the same pause/cancel pattern as media buys. Additionally:
 - Package cancellation (`canceled: true` in a package update) is irreversible and independent of the media buy's status — a single package can be canceled while the media buy remains active. Creative assignments on the canceled package are released per the media-buy-level rule above; creatives assigned to other active packages on the same media buy are unaffected.
 - Sales agents MUST retain delivery data for canceled packages. When `include_snapshot` is true, sales agents SHOULD return a final snapshot reflecting delivery state at the time of cancellation.
 - When all packages in a media buy are canceled, the media buy itself remains in its current status (`active` or `paused`). Sellers that support mid-flight package additions advertise `add_packages` in `valid_actions` — the buyer can add new packages via `new_packages` in `update_media_buy`. Otherwise, the buyer SHOULD explicitly cancel the media buy. Sales agents SHOULD notify orchestrators (via `context.notes` in the update response) when the last active package is canceled. Sales agents MAY auto-transition the media buy to `canceled` after a seller-defined grace period if no new activity occurs.
+
+### Starting with assigned creatives under review
+
+In AdCP 3.3, assignment and approval are separate. A buyer MAY assign an
+existing library creative whose status is `pending_review` or `rejected`
+through package `creative_assignments`, `sync_creatives.assignments`, or
+`sync_creatives.assignment_operations`. Sellers MUST accept an otherwise valid
+assignment regardless of that review status and MUST retain it through review,
+rejection, and correction under the same `creative_id`. This does not waive
+reference, format, targeting, destination, tracker, or deadline validation.
+Inline creatives follow the same serving rules after valid ingestion.
+
+By default, the seller books the buy and starts each eligible assignment as it
+is approved, subject to the flight, buyer pause, seller commitment, and required
+format coverage. Sellers MUST NOT wait for every assigned creative to be
+approved. Pending-review and rejected assignments do not serve; they remain
+assigned and become eligible after approval without another assignment request.
+A resubmission under a new `creative_id` needs its own assignment.
+With the default policy, a `partially_approved` assignment may serve only its
+approved scopes; pending or rejected scopes remain ineligible.
+
+The package boolean `start_requires_all_creatives_approved` defaults to `false`.
+Buyers MAY set it to `true` on `create_media_buy.packages[]` or
+`update_media_buy.new_packages[]` when a sequential rotation, A/B split, or
+coordinated launch requires the whole creative set at first release for serving. The seller
+MUST still book the package and retain its existing inventory commitment, but MUST hold
+its initial delivery until **every current assignment** is approved for every
+scope where that assignment may serve. This includes assignments with zero
+weight; an empty assignment set never satisfies the gate. Library `status:
+"approved"` alone is insufficient: use package `creative_approvals[]`, including
+`approval_scopes[]` for a `partially_approved` assignment. Any pending or rejected
+applicable scope keeps this gate closed.
+
+This changes delivery readiness, not commercial guarantees: non-guaranteed
+inventory does not become reserved by setting the flag. For generative or
+conversational creatives, preview completion is not approval; the selected
+execution must pass the ordinary package and scope reviews. The gate guarantees
+initial eligibility only, not equal A/B exposure, uninterrupted sequential
+cycles, simultaneous roadblock impressions, or group atomicity after startup.
+
+The gate is package-scoped: it does not hold another ready package on the buy.
+The first release occurs when the seller first enables this package for serving
+after commitment, flight, pause, and creative-readiness conditions permit it.
+It does not depend on the first impression or the arrival of delivery reports.
+A buyer pause prevents release and does not consume the gate. The seller MUST
+persist this per-package boundary, advance the MediaBuy revision, and, when it
+returns history, record a `package_activated` entry with `package_id` and the
+appropriate `origin`. Aggregate buy status cannot stand in for this boundary
+when another package has already started.
+
+Before release, adding or removing assignments recomputes the gate over the
+resulting set. **The gate cannot anticipate future assignments.** Buyers MUST
+attach the complete intended launch set atomically, or keep delivery paused
+throughout staged assignment. Assigning approved A in one call and pending B in
+a later call without a pause can let A consume the gate before B is assigned.
+
+Buyers MAY change the boolean through `update_media_buy.packages[]` or
+`control_media_buy.packages[]`; omission preserves the policy and `false`
+clears the gate. This is an operational control under the structured
+`update_creative_start_policy` available action, outside accepted commercial
+terms and their digest. A supporting seller MUST expose that package-scoped
+action before release so the buyer can set or clear the policy. A seller MUST
+include `task: "control_media_buy"` and explicit `applicable_package_ids` naming
+exactly the packages where it currently permits startup-policy changes; it
+MUST omit commercial `change_term_id` and `terms_ref` on this action. Buyers
+use this seller-owned scope rather than infer package enablement from the
+aggregate buy status. A seller MUST reject a policy change after this package's first enablement with
+`INVALID_STATE`. Later assignment changes and re-review follow ordinary
+selection and impairment rules and do not re-arm the gate.
+
+Compact buyers check support before booking, commit through `buy_products` or
+`accept_proposal`, set the gate through `control_media_buy` using the returned
+package IDs and latest revision, then assign the complete set through one
+strict `sync_creatives.assignment_operations` batch. No creative assignment
+belongs in the purchase request. For staged supply, keep the buy or package
+paused until the intended set is assigned, then resume when review permits it.
+
+Sellers MUST echo the effective boolean, including a defaulted `false`, on
+created packages, `update_media_buy.affected_packages[]`, and
+`get_media_buys.packages[]`. Buyers MUST negotiate AdCP 3.3 or later and check
+`get_adcp_capabilities.media_buy.features.creative_start_policy: true` before
+opting in, including before committing a compact purchase. False or absent
+means the opt-in is unsupported. An unsupported seller MUST reject `true` with
+`UNSUPPORTED_FEATURE` before mutation; explicit `false` is the ordinary default.
+The new field MUST NOT be sent to older sellers.
+
+Before a buy has started, its status distinguishes the actor that can unblock
+delivery:
+
+| Condition when no package can start | MediaBuy status | Next step |
+|---|---|---|
+| Required creative coverage is missing | `pending_creatives` | Buyer supplies and assigns creatives |
+| Coverage is assigned, but seller review alone blocks delivery | `pending_start` | Seller completes review |
+| A rejection blocks required coverage or the all-creatives gate | `pending_creatives` | Buyer corrects, replaces, or removes the rejected assignment, or clears the optional gate |
+| Creatives permit delivery, but the flight or seller confirmation is pending | `pending_start` | Wait for the flight or seller commitment |
+
+A pending review is not a promise that the buy will start: it can end in
+rejection. Buyers inspect `get_media_buys.packages[].creative_approvals` for the
+decision and rejection reason, and library sellers also expose the creative's
+status through `list_creatives`. In AdCP 3.3, a blocking review rejection before
+activation permits `pending_start` → `pending_creatives`; implementations must
+update transition validation as well as their status descriptions. This does
+not permit `active` or `paused` buys to rewind to a pending status.
+If review blocks a never-enabled package while it is visibly paused, keep the
+pause and expose the blocking approvals. A resume that cannot enable any
+requested package because its initial gate is blocked MUST fail with
+`INVALID_STATE`, preserving the hold; the buyer can clear the optional gate or
+wait for approval. This does not prevent clearing a latent hold while the buy
+already reports a pending status. When all blockers clear, a committed buy
+whose flight has begun starts automatically, or enters `paused` if a buyer hold
+is set. A mixed-package buy can be `active` while another package awaits review.
+After activation, loss of creative eligibility follows the existing impairment
+rules instead of rewinding the buy's lifecycle.
+
+For example, assume one package has five assigned creatives: two approved, one
+rejected, and two in review. Required format coverage and other launch
+conditions are satisfied. With the default `false`, the two approved creatives
+serve and the others stay assigned. With `true`, the package is booked but
+cannot start; the blocking rejection requires `pending_creatives` and buyer
+correction. Once corrected and resubmitted under the same ID, it stays assigned
+and the buy reports `pending_start` while review finishes. Approval of the last
+assignment releases the gate automatically.
 
 ### Creative Approval on Packages
 
@@ -857,6 +982,7 @@ Each `get_products` request with `buying_mode: "refine"` is self-contained — s
 - Sales agents SHOULD fulfill the `ask` on proposal entries with `action: "include"`
 - Sales agents SHOULD include `refinement_applied` in the response, with one entry per change request matched by position
 - Sales agents that return `refinement_applied` MUST echo `scope` on each entry and MUST echo `product_id` / `proposal_id` for product and proposal scopes, so orchestrators can cross-validate alignment
+- In AdCP 3.3, product-scoped `include` entries MAY carry `package` with create-package field types, required `pricing_option_id` and numeric `budget`, and `product_id` supplied by the enclosing entry. Other scopes and actions MUST NOT carry `package`. Sales agents MUST follow the [exact-package forecast contract](/docs/media-buy/product-discovery/refinement#check-an-exact-package-before-booking): resolve the goal, flight, and targeting without guessing; return a complete `refinement_applied` array and either `applied` with an exact availability forecast, `result_product_id` referencing exactly one returned Product with unchanged selected pricing terms, and `resolved_start_time`/`resolved_end_time` to copy to the package at create, or `unable` with non-empty explanatory notes and no substitute forecast; forecast entries independently without subtracting other proposed packages; and perform no booking, hold, reservation, creative upload, or assignment. Insufficient inventory is an `applied` forecast with `availability_status: "unavailable"`. No separate capability flag is defined, and omitted outcomes do not confirm support.
 - Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not include proposal entries
 
 ### Canonical creative-format discovery

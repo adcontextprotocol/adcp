@@ -238,7 +238,7 @@ for (const kind of ['format', 'time']) {
     for (const standalone of [false, true]) {
       const { error, calls, audits, lookups } = await execute(kind, { hostDenied: true, standalone });
       assert.equal(error.name, 'PreparedFixturesDeniedError');
-      assert.equal(lookups.length, 0, 'SDK #3389: no truthful public precontact lookup exists; do not claim hook invocation');
+      assert.equal(lookups.length, 0, 'adcp-client#3435: the adapter preflight precedes any SDK preparation hook; do not claim hook invocation');
       assert.equal(calls.some(call => call.task === 'create_media_buy'), false);
       assert.equal(audits.length, 1);
       assert.deepEqual(audits[0].fixture_resolutions, [], 'no preparation or seller identity exists before contact');
@@ -259,7 +259,7 @@ for (const kind of ['format', 'time']) {
       const { error, calls, audits, lookups, result } = await execute(kind, { hostDenied: true, discoveryFailure: true, standalone });
       assert.equal(result, undefined, 'denial must not return an enriched caller result');
       assert.equal(error.name, 'PreparedFixturesDeniedError');
-      assert.equal(lookups.length, 0, 'SDK #3389: no truthful public precontact lookup exists; do not claim hook invocation');
+      assert.equal(lookups.length, 0, 'adcp-client#3435: the adapter preflight precedes any SDK preparation hook; do not claim hook invocation');
       assert.equal(audits.length, 1);
       assert.deepEqual(audits[0].fixture_resolutions, [], 'precontact refusal cannot invent a failed seller preparation');
       assert.deepEqual(calls, []);

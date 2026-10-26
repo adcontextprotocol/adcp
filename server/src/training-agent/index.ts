@@ -325,9 +325,12 @@ export function createTrainingAgentRouter(options: {
 } = {}): Router {
   const router = Router();
   const buyerOAuth = trainingBuyerOAuthConfig();
-  const requireSalesAuth = buyerOAuth ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault) : requireTokenDefault;
+  const buyerOAuthOptions = { rateLimit: !options.disableRateLimit };
+  const requireSalesAuth = buyerOAuth
+    ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault, undefined, 'sandbox', buyerOAuthOptions)
+    : requireTokenDefault;
   const requireReportingAuth = buyerOAuth
-    ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault, undefined, 'private-reporting')
+    ? createTrainingBuyerOAuthMiddleware(buyerOAuth, requireTokenDefault, undefined, 'private-reporting', buyerOAuthOptions)
     : requireTokenDefault;
   if (buyerOAuth) router.get(TRAINING_BUYER_METADATA_PATH, (_req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');

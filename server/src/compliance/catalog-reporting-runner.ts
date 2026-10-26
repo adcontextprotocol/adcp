@@ -158,7 +158,27 @@ type AgentUrl = Parameters<typeof runSdkStoryboard>[0];
 // StepResult does not currently declare fixture_resolutions.
 type PreparationEvidence = {
   fixture_resolutions?: PreparedStoryboardFixtures["resolutions"];
+  fixture_preparation?: PreparedStoryboardFixtures["phase"];
 };
+
+/** A producer phase for a caller-visible result: protected fixture captures
+ * stay out of step contexts, as in the SDK's own public output. */
+function publicPreparationPhase(
+  phase: PreparedStoryboardFixtures["phase"],
+): PreparedStoryboardFixtures["phase"] {
+  if (!phase) return undefined;
+  return {
+    ...phase,
+    steps: phase.steps.map((step) => ({
+      ...step,
+      context: Object.fromEntries(
+        Object.entries(step.context ?? {}).filter(
+          ([key]) => !isProtectedContextKey(key),
+        ),
+      ),
+    })),
+  };
+}
 
 function catalogScope(storyboard: Storyboard) {
   const collections = COLLECTION_IDS.has(storyboard.id);
@@ -217,10 +237,14 @@ export async function withReportingInvocationGrant<T>(
   }
 }
 
-/** SDK 16.3 cannot authorize fresh preparation through its public API (#3389).
- * Refuse before contact rather than fabricate a binding or call the reuse hook
- * with invented scope. This private record describes only the actual refusal:
- * no preparation, seller exchange or resolved entity exists yet.
+/** Supplied host hooks cannot precede this adapter's seller contact.
+ * SDK 16.5+ consults `prepared_fixtures_preparation_authorizer` before contact
+ * inside prepareStoryboardFixtures (adcp-client#3389), but this adapter must
+ * first discover capabilities itself to apply the storyboard's root gates
+ * before any controller seeding, and the SDK's preparation does not apply them
+ * (adcp-client#3435). Refuse before contact rather than fabricate a binding or
+ * call a hook with invented scope. This private record describes only the
+ * actual refusal: no preparation, seller exchange or resolved entity exists yet.
  */
 async function refuseUncallablePreparationAuthorizer(
   agentUrl: AgentUrl,
@@ -233,7 +257,7 @@ async function refuseUncallablePreparationAuthorizer(
   );
   const authored = phase?.steps.find((s) => s.id === stepId);
   const detail =
-    "Fresh catalog fixture preparation cannot consult the supplied host authorizer before seller contact with SDK 16.3; see SDK #3389";
+    "Fresh catalog fixture preparation cannot consult the supplied host authorizer before this adapter's capability preflight contacts the seller; see adcp-client#3435";
   const step: StoryboardStepResult = {
     storyboard_id: storyboard.id,
     step_id: authored?.id ?? "prepared_fixtures_authorization",
@@ -506,9 +530,11 @@ async function withReportingPreparation<T extends object>(
     !storyboard.required_tools?.some((tool) => tools.has(tool))
   ) {
     if (scope.collections && executeRootGate) {
-      // SDK16.3 standalone execution bypasses root applicability gates. Keep
-      // the observed profile stable and return the actual native full-run
-      // gate. Never rename an authored skip or relax a hosted failure grade.
+      // Return the native full-run gate. SDK 16.5+ standalone execution also
+      // applies root capability gates, but through this adapter the readback
+      // read-history precondition would refuse first. Keep the observed
+      // profile stable. Never rename an authored skip or relax a hosted
+      // failure grade.
       return executeRootGate({
         ...options,
         agentTools: [...tools],
@@ -589,7 +615,7 @@ async function withReportingPreparation<T extends object>(
   }
   // The trusted caller authorized this invocation. The state is never shared
   // or serialized; close its local grant when the invocation ends. Supplied
-  // host hooks were refused before contact above until SDK #3389 is repaired.
+  // host hooks were refused before contact above until adcp-client#3435.
   const auditSink = options.prepared_fixtures_audit_sink;
   return withReportingInvocationGrant(async (authorize) => {
     const result = await execute({
@@ -602,44 +628,36 @@ async function withReportingPreparation<T extends object>(
       // The producer ran before consumer authorization. Link its real records
       // into the caller's PRIVATE audit scope, without changing any grade,
       // phase, count or request/response field emitted by the consumer.
+      // `fixture_preparation` is the SDK's native producer-evidence field
+      // (SDK 16.5+). The SDK stamps it itself only for failed preparations,
+      // so fill it from this invocation's preparation when absent. The
+      // private audit keeps the unredacted phase, as the SDK's own does.
       ...(auditSink && {
         prepared_fixtures_audit_sink: async (record) => {
+          const fixturePreparation = record.fixture_preparation ?? prepared.phase;
           const auditRecord = {
             ...record,
-            fixture_resolutions:
-              ("fixture_resolutions" in record
-                ? record.fixture_resolutions
-                : undefined) ?? prepared.resolutions,
-            fixture_preparation: {
-              disposition: prepared.disposition,
-              phase: prepared.phase,
-            },
+            fixture_resolutions: record.fixture_resolutions ?? prepared.resolutions,
+            ...(fixturePreparation && { fixture_preparation: fixturePreparation }),
           };
           await auditSink(auditRecord);
         },
       }),
     });
     // Only an authorized consumer reaches this point: access denials throw
-    // and remain confined to the private audit sink above. Some native SDK
-    // failure results omit the producer records, so retain the SAME detached
-    // preparation evidence without changing any grade, phase or wire field.
-    // An original producer phase is self-contained; its step ids alone would
-    // dangle because it need not appear among the consumer's phases.
-    if ((result as PreparationEvidence).fixture_resolutions === undefined) {
+    // and remain confined to the private audit sink above. SDK 16.5+ returns
+    // the producer records and phase natively (`fixture_resolutions`,
+    // `fixture_preparation`). Where a native result still omits them, retain
+    // the SAME detached preparation evidence in those native fields, without
+    // changing any grade, phase or wire field. The producer phase is
+    // self-contained: its step ids need not appear among the consumer's.
+    const evidence = result as PreparationEvidence;
+    if (evidence.fixture_resolutions === undefined) {
+      const phase = evidence.fixture_preparation ?? publicPreparationPhase(prepared.phase);
       return {
         ...result,
-        fixture_resolutions: prepared.resolutions.map((record) => ({
-          ...record,
-          ...(record.status === "failed" &&
-            !("failure" in record) && {
-              failure: {
-                ...(prepared.disposition.status !== "resolved" && {
-                  detail: prepared.disposition.detail,
-                }),
-                phase: prepared.phase,
-              },
-            }),
-        })),
+        fixture_resolutions: prepared.resolutions,
+        ...(phase && { fixture_preparation: phase }),
       };
     }
     return result;

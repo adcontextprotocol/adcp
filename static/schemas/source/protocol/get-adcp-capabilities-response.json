@@ -3818,6 +3818,14 @@
                 "$ref": "/schemas/core/vendor-metric-id.json",
                 "description": "Identifier for the metric within the vendor's vocabulary. Combined with the agent's BrandRef, forms the canonical tuple `(vendor.domain, vendor.brand_id, metric_id)`. Each metric_id MUST be unique within a single agent's catalog."
               },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "\\S",
+                "x-added-in": "3.3.0",
+                "description": "Human-readable display name of this metric as the vendor names it (e.g., `Attention Score`, `Invalid Traffic Rate (GIVT)`). For titles, table cells, and labels where `description` is too long. Buyer agents and UIs SHOULD show `name` in place of `metric_id` when present and fall back to `metric_id` when absent. Not an identifier: consumers MUST NOT use `name` to join, key, or deduplicate metrics (text search over it is fine); `metric_id` remains the canonical reference. Must contain a non-whitespace character. SHOULD be unique within a single agent's catalog so labels stay distinguishable. A single unlocalized string."
+              },
               "standard_reference": {
                 "type": "string",
                 "format": "uri",
