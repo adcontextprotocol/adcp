@@ -92,7 +92,7 @@ export function creative33FixtureManifest(capabilityId: string): Record<string, 
     html5_bundle: { asset_type: 'zip', url: creative33FixtureUrl('responsive.zip'), digest: CREATIVE33_ZIP_DIGEST, entry_point: 'index.html', sizes },
   } };
   if (capabilityId === 'beta_display_inline') return { format_kind: 'display_tag', assets: {
-    serving_tag: { asset_type: 'display_tag', delivery_type: 'inline_markup', markup_type: 'iframe_javascript', markup: `<iframe src="${creative33FixtureUrl('responsive.html')}" title="Acme sandbox"></iframe>`, sizes },
+    serving_tag: { asset_type: 'display_tag', delivery_type: 'inline_markup', markup_type: 'iframe_javascript', markup: `<iframe src="${creative33FixtureUrl('responsive.html')}" style="display:block;width:100%;height:100%;border:0" title="Acme sandbox"></iframe>`, sizes },
   } };
   if (capabilityId === 'beta_display_url') return { format_kind: 'display_tag', assets: {
     serving_tag: { asset_type: 'display_tag', delivery_type: 'tag_url', url: creative33FixtureUrl('responsive.html'), sizes },
