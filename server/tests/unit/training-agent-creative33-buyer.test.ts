@@ -46,33 +46,48 @@ describe('published SDK buyer journeys on the frozen creative 3.3 beta', () => {
     await clearIdempotencyCache();
   });
 
-  it.each([
+  // These phases share one real HTTP session and creative. Keeping the
+  // cold discovery/build work separate from upload and both executions gives
+  // each buyer operation the existing test budget without relaxing timeouts.
+  describe.each([
     ['beta_html5_responsive', 'html5_bundle', 'html5'],
     ['beta_display_inline', 'serving_tag', 'display_tag'],
     ['beta_display_url', 'serving_tag', 'display_tag'],
-  ])('%s preserves source, resolves both canvases, and retains simulated revisions', async (capabilityId, slot, kind) => {
-    const discovered = data(await agent.getAdcpCapabilities({}));
-    expect(discovered).toMatchObject({ adcp_version: '3.3-beta.0', adcp: { supported_versions: ['3.3-beta.0'] } });
-    const formats = object(discovered.creative).supported_formats as Json[];
-    expect(formats.find(value => value.capability_id === capabilityId)).toMatchObject({ format: { format_kind: kind }, operations: expect.arrayContaining(['build', 'preview']) });
-    const built = data(await agent.executeTask('build_creative', {
-      account: ACCOUNT, target_capability_id: capabilityId,
-      message: 'Build the deterministic Acme sandbox fixture.', idempotency_key: randomUUID(),
-    }));
-    const manifest = built.creative_manifest as CreativeManifest;
-    expect(manifest).toMatchObject({ format_kind: kind });
-    const sourceAsset = structuredClone(object(object(manifest).assets)[slot]);
-    expect(sourceAsset).toMatchObject({ sizes: [{ width: 300, height: 250 }, { width: 728, height: 90 }] });
+  ])('%s buyer journey', { concurrent: false, shuffle: false }, (capabilityId, slot, kind) => {
     const creativeId = `acme-${randomUUID()}`;
-    const item = { ...manifest, creative_id: creativeId, revision_id: 'source_r1', name: 'Acme responsive fixture' };
-    const accepted = data(await agent.executeTask('sync_creatives', { account: ACCOUNT, creatives: [item], idempotency_key: randomUUID() }));
-    expect(rows(accepted)[0]).toMatchObject({ creative_id: creativeId, revision_id: 'source_r1', action: 'created' });
-    const listed = data(await agent.listCreatives({ account: ACCOUNT, filters: { creative_ids: [creativeId] } }));
-    expect(rows(listed)).toHaveLength(1);
-    expect(object(rows(listed)[0].assets)[slot]).toEqual(sourceAsset);
-    expect(rows(data(await agent.getCreativeDelivery({ account: ACCOUNT, creative_ids: [creativeId] })))[0]).toMatchObject({ variant_count: 0, variants: [], totals: { impressions: 0 } });
+    let manifest: CreativeManifest;
+    let sourceAsset: unknown;
 
-    for (const dimensions of [{ width: 300, height: 250 }, { width: 728, height: 90 }]) {
+    it('discovers the frozen contract', async () => {
+      const discovered = data(await agent.getAdcpCapabilities({}));
+      expect(discovered).toMatchObject({ adcp_version: '3.3-beta.0', adcp: { supported_versions: ['3.3-beta.0'] } });
+      const formats = object(discovered.creative).supported_formats as Json[];
+      expect(formats.find(value => value.capability_id === capabilityId)).toMatchObject({ format: { format_kind: kind }, operations: expect.arrayContaining(['build', 'preview']) });
+    });
+
+    it('builds a complete responsive source', async () => {
+      const built = data(await agent.executeTask('build_creative', {
+        account: ACCOUNT, target_capability_id: capabilityId,
+        message: 'Build the deterministic Acme sandbox fixture.', idempotency_key: randomUUID(),
+      }));
+      manifest = built.creative_manifest as CreativeManifest;
+      expect(manifest).toMatchObject({ format_kind: kind });
+      sourceAsset = structuredClone(object(object(manifest).assets)[slot]);
+      expect(sourceAsset).toMatchObject({ sizes: [{ width: 300, height: 250 }, { width: 728, height: 90 }] });
+    });
+
+    it('uploads a source revision and reads it back before any simulation', async () => {
+      expect(manifest, 'The discovery/build phase must complete first.').toBeDefined();
+      const item = { ...manifest, creative_id: creativeId, revision_id: 'source_r1', name: 'Acme responsive fixture' };
+      const accepted = data(await agent.executeTask('sync_creatives', { account: ACCOUNT, creatives: [item], idempotency_key: randomUUID() }));
+      expect(rows(accepted)[0]).toMatchObject({ creative_id: creativeId, revision_id: 'source_r1', action: 'created' });
+      const listed = data(await agent.listCreatives({ account: ACCOUNT, filters: { creative_ids: [creativeId] } }));
+      expect(rows(listed)).toHaveLength(1);
+      expect(object(rows(listed)[0].assets)[slot]).toEqual(sourceAsset);
+      expect(rows(data(await agent.getCreativeDelivery({ account: ACCOUNT, creative_ids: [creativeId] })))[0]).toMatchObject({ variant_count: 0, variants: [], totals: { impressions: 0 } });
+    });
+
+    it.each([{ width: 300, height: 250 }, { width: 728, height: 90 }])('previews and simulates the $width × $height canvas', async dimensions => {
       const preview = data(await agent.previewCreative({
         request_type: 'single', creative_id: creativeId, quality: 'production', output_format: 'html',
         inputs: [{ name: 'Selected placement', macros: { AD_WIDTH: String(dimensions.width), AD_HEIGHT: String(dimensions.height) } }],
@@ -99,17 +114,18 @@ describe('published SDK buyer journeys on the frozen creative 3.3 beta', () => {
       const output = object(object(variant.manifest).assets)[slot];
       const { sizes: _sizes, ...rest } = object(sourceAsset);
       expect(output).toEqual({ ...rest, ...dimensions });
-    }
-    // Serving a selected size must not rewrite the responsive library input.
-    const after = rows(data(await agent.listCreatives({ account: ACCOUNT, filters: { creative_ids: [creativeId] } })))[0];
-    expect(after.revision_id).toBe('source_r1');
-    expect(object(after.assets)[slot]).toEqual(sourceAsset);
-
-    const unsupported = await agent.previewCreative({
-      request_type: 'single', creative_id: creativeId, output_format: 'html',
-      inputs: [{ name: 'Unsupported placement', macros: { AD_WIDTH: '970', AD_HEIGHT: '250' } }],
     });
-    expect(unsupported.status).toBe('failed');
+
+    it('preserves the responsive source after execution and rejects unsupported canvases', async () => {
+      const after = rows(data(await agent.listCreatives({ account: ACCOUNT, filters: { creative_ids: [creativeId] } })))[0];
+      expect(after.revision_id).toBe('source_r1');
+      expect(object(after.assets)[slot]).toEqual(sourceAsset);
+      const unsupported = await agent.previewCreative({
+        request_type: 'single', creative_id: creativeId, output_format: 'html',
+        inputs: [{ name: 'Unsupported placement', macros: { AD_WIDTH: '970', AD_HEIGHT: '250' } }],
+      });
+      expect(unsupported.status).toBe('failed');
+    });
   });
 
   it('consumes a complete typed brief, emits playable fixture video, and preserves source revisions', async () => {
