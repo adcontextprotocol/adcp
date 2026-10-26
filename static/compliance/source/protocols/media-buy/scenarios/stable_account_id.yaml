@@ -26,12 +26,13 @@ required_tools:
   - sync_accounts
 
 narrative: |
-  A seller that declares account.stable_account_id: true returns account_id on
-  every resolved sync_accounts provisioning result (a pending_approval result
-  may carry an experimental request_id instead). It accepts
-  { "account_id": ... } wherever an AccountRef is accepted, including for
-  buyer-declared accounts, and never changes an account's account_id for the
-  life of the account. The natural key keeps working throughout 3.x.
+  Every seller returns account_id on every resolved sync_accounts provisioning
+  result. A seller never issues an account_id it might later change, so a
+  pending_approval row that may still resolve to a different account carries
+  an experimental request_id instead. The seller accepts { "account_id": ... }
+  wherever an AccountRef is accepted, including for buyer-declared accounts,
+  and never changes an account's account_id for the life of the account. The
+  natural key keeps working throughout 3.x.
 
   The buyer provisions a fresh natural key, qualified by a per-run
   operator_unit so no earlier run or fixture can have created it. It captures
@@ -45,8 +46,9 @@ narrative: |
   account in the seller's account scope. That check is advisory. A retry with
   the same idempotency_key returns the original result.
 
-  The stable_account_id flag is deprecated in 3.3: every seller returns and
-  accepts account_id.
+  The stable_account_id flag is deprecated in 3.3, because the guarantee it
+  declared now holds for every seller. Until it is removed, this scenario runs
+  only for sellers that declare it.
 
 agent:
   interaction_model: media_buy_seller

@@ -48,8 +48,8 @@ Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities
 | `brand` | Unless `account_id` | BrandKey: `domain`, optional `brand_id`, optional `countries[]`. |
 | `operator` | Unless `account_id` | Domain of the entity operating for the brand; the brand's own domain when it buys direct. |
 | `operator_unit` | No | Operator-owned unit or seat. `id` is an account attribute; `name` is display metadata. |
-| `currency` | No | Immutable ISO 4217 currency for a currency-bound advertiser object. An account attribute. |
-| `timezone` | Conditional | Buyer-selected immutable timezone, as in [`sync_accounts`](/docs/accounts/tasks/sync_accounts). An account attribute. |
+| `currency` | No | ISO 4217 currency for a currency-bound advertiser object. An account attribute set when the account opens. |
+| `timezone` | Conditional | Buyer-selected timezone, as in [`sync_accounts`](/docs/accounts/tasks/sync_accounts). An account attribute set when the account opens. |
 | `sandbox` | No | Request a sandbox account. An account attribute. |
 | `billing` | No | Requested invoiced party: `operator`, `agent`, or `advertiser`. Accepted exactly or rejected. |
 | `billing_entity` | No | Requested business entity for the invoiced party. Bank details are write-only. |

@@ -12,7 +12,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 
 | Code | Recovery | Suggested action |
 |------|----------|------------------|
-| `ACCOUNT_AMBIGUOUS` | correctable | pass the account_id of the intended account from error.details.available_accounts or list_accounts |
+| `ACCOUNT_AMBIGUOUS` | correctable | pass the account_id of the intended account from error.details.candidates or list_accounts |
 | `ACCOUNT_IDENTITY_CONFLICT` | correctable | choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged |
 | `ACCOUNT_MOVED` | correctable | replace the stale reference with error.details.current_account, refresh through list_accounts, and retry with a fresh idempotency key |
 | `ACCOUNT_NOT_FOUND` | terminal | for a natural key, provision through sync_accounts or omit account for public discovery; for an account_id, verify via list_accounts or contact seller |
@@ -143,7 +143,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 
 <Accordion title="ACCOUNT_AMBIGUOUS — correctable">
 
-**Suggested action:** pass the account_id of the intended account from error.details.available_accounts or list_accounts
+**Suggested action:** pass the account_id of the intended account from error.details.candidates or list_accounts
 
 A natural-key reference matches more than one of the caller's accounts. error.details MAY list candidates[] (account_id, name), conforming to error-details/account-ambiguous.json, limited to accounts the caller is already granted. Recovery: correctable (pass the intended account_id).
 

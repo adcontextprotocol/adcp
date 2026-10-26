@@ -68,7 +68,7 @@ A buyer-declared natural key finds an advertiser account. It does not create one
 
 **Account errors describe setup, not seller health.** `ACCOUNT_NOT_FOUND`, `ACCOUNT_SETUP_REQUIRED`, and `ACCOUNT_PAYMENT_REQUIRED` describe the relationship between one buyer and one seller. Buyers SHOULD NOT count them toward a seller's availability or health. To recover from `ACCOUNT_NOT_FOUND` on a natural key, provision through `sync_accounts` (or omit `account` for public discovery). For an `account_id`, verify it through `list_accounts`.
 
-**After opening, references use the account ID.** Sellers MUST return `account_id` from `sync_accounts`, accept it on every account-scoped task, and never change it. Buyers store it and send `{ "account_id": "..." }`. The seller keeps accepting a natural-key reference throughout 3.x. See [Account identity](#account-identity).
+**After opening, references use the account ID.** Sellers MUST return `account_id` from `sync_accounts` once the account is resolved, accept it on every account-scoped task, and never change it. Buyers store it and send `{ "account_id": "..." }`. The seller keeps accepting a natural-key reference throughout 3.x. See [Account identity](#account-identity).
 
 ## Account identity
 

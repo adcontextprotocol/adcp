@@ -550,7 +550,7 @@ The agent does not choose the scope — the seller assigns it based on its own a
 
 When multiple natural keys resolve to the same scope, the `account_scope` explains why.
 
-For buyer-declared accounts (`require_operator_auth: false`), use the `account_id` returned by `sync_accounts` on subsequent requests. A seller MUST return that `account_id` and MUST return each account's brand, operator, and attributes from `list_accounts`. It keeps accepting a natural-key `AccountRef` that matches exactly one account throughout 3.x. For account-id namespaces (`require_operator_auth: true`), discover seller/storefront account IDs via `list_accounts` for upstream-managed namespaces, or receive them out-of-band for seller-defined namespaces — including sandbox test accounts.
+For buyer-declared accounts (`require_operator_auth: false`), use the `account_id` returned by `sync_accounts` on subsequent requests. A seller MUST return that `account_id` once the account is resolved, and MUST return each account's brand, operator, and attributes from `list_accounts`. It keeps accepting a natural-key `AccountRef` that matches exactly one account throughout 3.x. For account-id namespaces (`require_operator_auth: true`), discover seller/storefront account IDs via `list_accounts` for upstream-managed namespaces, or receive them out-of-band for seller-defined namespaces — including sandbox test accounts.
 
 ## Seller walkthrough: buyer-declared accounts
 
@@ -632,7 +632,7 @@ Authentication resolves first. Signature failures are transport errors, returned
 | Authenticated agent is suspended or blocked | `AGENT_SUSPENDED` or `AGENT_BLOCKED` |
 | Requested `billing` not available | `BILLING_NOT_SUPPORTED`, or `BILLING_NOT_PERMITTED_FOR_AGENT` for a passthrough-only agent |
 | Natural key doesn't resolve (not yet provisioned, and the seller isn't lazily provisioning it on this task or answering discovery for the account it would create), or resolves to an account outside the agent's authorized set | `ACCOUNT_NOT_FOUND`, including when `account` is optional on the task. The response is the same in both cases, so it doesn't reveal whether the account exists. |
-| Natural key matches more than one account in the agent's authorized set | `ACCOUNT_AMBIGUOUS`, with the candidates in `details.available_accounts` |
+| Natural key matches more than one account in the agent's authorized set | `ACCOUNT_AMBIGUOUS`, with the candidates in `details.candidates` |
 | An account in the authorized set is found, but its state blocks the call | `ACCOUNT_SETUP_REQUIRED`, `ACCOUNT_SUSPENDED`, or `ACCOUNT_PAYMENT_REQUIRED` ([Error codes](#error-codes)) |
 
 Resolve and disambiguate only within the agent's authorized set. To the caller, an account outside that set doesn't exist.
@@ -644,7 +644,7 @@ Resolve and disambiguate only within the agent's authorized set. To the caller, 
 | `ACCOUNT_REQUIRED` | Multiple accounts; seller can't determine which | Pass `account_id` in the account reference |
 | `ACCOUNT_NOT_FOUND` | Account reference doesn't resolve: an `account_id` that doesn't exist, a natural key not yet provisioned, or an account the agent can't access | Natural key: provision through `sync_accounts`, or omit `account` for public discovery. `account_id`: verify through `list_accounts` |
 | `ACCOUNT_SETUP_REQUIRED` | Account reference resolved but account needs setup | Check `details.setup` for URL/message |
-| `ACCOUNT_AMBIGUOUS` | Natural key matches more than one account | Pass an `account_id` from `details.available_accounts` |
+| `ACCOUNT_AMBIGUOUS` | Natural key matches more than one account | Pass an `account_id` from `details.candidates` or `list_accounts` |
 | `ACCOUNT_PAYMENT_REQUIRED` | Credit limit reached or funds depleted | Add funds, route to another account |
 | `ACCOUNT_SUSPENDED` | Account not in good standing | Contact seller |
 | `BRAND_REQUIRED` | Billable operation without brand reference | Include `brand` in request |

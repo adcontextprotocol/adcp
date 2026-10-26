@@ -379,7 +379,7 @@
     },
     "ACCOUNT_AMBIGUOUS": {
       "recovery": "correctable",
-      "suggestion": "pass the account_id of the intended account from error.details.available_accounts or list_accounts"
+      "suggestion": "pass the account_id of the intended account from error.details.candidates or list_accounts"
     },
     "ACCOUNT_PAYMENT_REQUIRED": {
       "recovery": "terminal",

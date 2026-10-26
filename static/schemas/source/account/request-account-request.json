@@ -39,12 +39,12 @@
     "currency": {
       "type": "string",
       "pattern": "^[A-Z]{3}$",
-      "description": "Immutable ISO 4217 currency for a currency-bound advertiser object, as in sync_accounts. An account attribute."
+      "description": "ISO 4217 currency for a currency-bound advertiser object, as in sync_accounts. An account attribute set when the account opens."
     },
     "timezone": {
       "type": "string",
       "minLength": 1,
-      "description": "Buyer-selected immutable timezone when the seller declares account_fixed, buyer_selected timezones, as in sync_accounts. An account attribute."
+      "description": "Buyer-selected timezone when the seller declares account_fixed, buyer_selected timezones, as in sync_accounts. An account attribute set when the account opens."
     },
     "sandbox": {
       "type": "boolean",
