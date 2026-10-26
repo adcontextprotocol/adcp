@@ -97,7 +97,7 @@ test('a buyer-side pending action needs an https URL', () => {
 test('pending-action kinds are extensible', () => {
   const kind = read('enums/pending-action-kind.json');
   assert.equal(kind['x-extensible'], true);
-  for (const value of kind.enum) assert.ok(kind.enumDescriptions[value], `${value} is described`);
+  assert.match(kind.description, /MUST accept unknown values/);
 });
 
 test('request_account response wraps the request and keeps failures separate', () => {

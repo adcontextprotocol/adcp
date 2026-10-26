@@ -139,7 +139,7 @@ A seller that does deduplicate typically answers a repeat as follows:
 | Existing request | Result |
 | --- | --- |
 | `in_review` or `ambiguous` | The same request. Changed terms replace the requested terms; the seller MAY restart review. |
-| `resolved` | The same request and account, with the account's actual terms. Changing terms is a settings update through `sync_accounts`, never a silent re-review. |
+| `resolved` | The same request and account, with the account's actual terms. Changing terms is a settings update through [`sync_accounts`](/docs/accounts/tasks/sync_accounts), never a silent re-review. |
 | `rejected` | A new request. The seller MAY reject it again at once, for example during a cool-down. |
 | `resolved`, account since closed | A new request, which may create a new account. |
 
