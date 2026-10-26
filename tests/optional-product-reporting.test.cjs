@@ -218,23 +218,24 @@ for (const kind of ['format', 'time']) {
           assert.equal(attempt.response.request.buying_mode, 'wholesale');
           assert.deepEqual(attempt.response.request.account, calls.find(call => call.task === 'get_products').request.account);
         }
-        assert.ok(productRecord.failure.detail.includes('fixture discovery'));
-        const producerSteps = productRecord.failure.phase.steps;
+        // SDK 16.5+ native producer evidence: the attempt detail and the
+        // detached fixture_preparation phase.
+        assert.ok(attempt.detail.includes('fixture discovery'));
+        const producerSteps = result.fixture_preparation.steps;
+        assert.ok(producerSteps.every(step => Object.keys(step.context ?? {}).every(key => !key.startsWith('__adcp_fixture_'))));
         assert.ok(producerSteps.some(step => step.error?.includes('fixture discovery')));
         assert.ok(producerSteps.some(step => step.step_id.startsWith('seed_account.') && step.passed));
         assert.deepEqual(calls.map(call => call.task), ['comply_test_controller', 'get_products']);
         // Preserve native generic failure evidence and no-exchange fields;
         // never invent a consumer response to replace missing producer wire.
+        // SDK 16.5+: the full run's synthetic step names the failing producer
+        // task and, like the standalone step, carries the failing
+        // fixture_capture_unbuildable check the runner-output contract requires.
         const consumer = standalone ? result : result.phases[0].steps[0];
-        if (standalone) {
-          assert.equal(consumer.task, 'create_media_buy');
-          assert.equal(consumer.validations.length, 1);
-          assert.equal(consumer.validations[0].check, 'fixture_capture_unbuildable');
-          assert.equal(consumer.validations[0].passed, false);
-        } else {
-          assert.equal(consumer.task, '');
-          assert.deepEqual(consumer.validations, []);
-        }
+        assert.equal(consumer.task, standalone ? 'create_media_buy' : 'get_products');
+        assert.equal(consumer.validations.length, 1);
+        assert.equal(consumer.validations[0].check, 'fixture_capture_unbuildable');
+        assert.equal(consumer.validations[0].passed, false);
         assert.equal(consumer.request, undefined);
         assert.equal(consumer.response, undefined);
         assert.ok(consumer.error.includes('fixture discovery'));

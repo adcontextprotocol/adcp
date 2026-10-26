@@ -45,6 +45,7 @@ Each deployment target uses a `type` field to discriminate between platform-base
 | `platform` | string | Conditional* | Platform identifier (e.g., 'the-trade-desk', 'amazon-dsp'). Required when type="platform" |
 | `agent_url` | string (URI) | Conditional* | URL identifying the sales agent. Required when type="agent" |
 | `account` | string | No | Account identifier on the platform or agent |
+| `delivery_method` | object | No | **Experimental** (`signals.delivery_methods`). Operator pin for the delivery rail on `type="agent"` destinations — `pattern` plus optional `vendor`. See [Delivering membership to agent destinations](#delivering-membership-to-agent-destinations-experimental). |
 
 *`platform` is required when `type="platform"`, `agent_url` is required when `type="agent"`.
 
@@ -54,6 +55,155 @@ Each deployment target uses a `type` field to discriminate between platform-base
 - A sales agent receives keys for deployments matching its `agent_url`
 - A buyer with credentials for multiple DSP platforms receives keys for all those deployments
 - Access is determined by the signal agent's permission system, not by flags in the request
+
+## Delivering membership to agent destinations (experimental)
+
+<Note>
+  Experimental. Signal agents that declare `signals.delivery_methods` MUST list `signals.delivery_methods` in `experimental_features`. See [Experimental status](/docs/reference/experimental-status).
+</Note>
+
+For `type: "platform"` destinations the provider-to-platform rails are pre-integrated and out of view. For `type: "agent"` destinations there is no assumed integration, so how licensed membership reaches the seller would otherwise be bespoke per provider. This section standardizes that leg using the same pattern vocabulary sellers already use to declare how audience data reaches them ([`audience_activation`](/docs/media-buy/product-discovery/media-products#audience-activation)).
+
+This is the provider-initiated leg: the operator directs a signal agent to deliver **provider-licensed** membership. Buyer-owned data the buyer moves itself binds through [`sync_audiences` external sources](/docs/media-buy/task-reference/sync_audiences#external-audience-sources-experimental) instead. Seller-controlled sourcing of a data marketplace's segments into the seller's own taxonomy is out of protocol; it surfaces only as the seller's own signal options.
+
+### Declaring delivery methods
+
+A signal agent lists the rails it can deliver on in [`signals.delivery_methods`](/docs/protocol/get_adcp_capabilities#signals), each entry a [`core/signal-delivery-method.json`](https://adcontextprotocol.org/schemas/latest/core/signal-delivery-method.json):
+
+```json
+{
+  "signals": {
+    "delivery_methods": [
+      { "pattern": "sync_audiences" },
+      { "pattern": "platform_distribution", "vendor": { "domain": "activation-hub.example" } },
+      { "pattern": "dataset_query", "vendor": { "domain": "data-cloud.example" } }
+    ]
+  }
+}
+```
+
+Entries use the send-side reading of the activation-method patterns: `sync_audiences` pushes membership to the destination's `sync_audiences` task; `platform_distribution` initiates distribution on that vendor's rails; `dataset_query` publishes a share on that vendor for the destination to read; `clean_room` lands output in that vendor's room; `file_transfer` writes to the destination's bucket on that vendor's storage. Receiver-specific fields (`destination_ref`, `consumer_identities`, `bind_expiry_days`) are **not** declared by the signal agent. They belong to the destination and are resolved at activation time from the destination's own declaration. `tmp_identity_match` is not a delivery pattern: it resolves identity at request time and no membership file ever moves, so there is nothing to deliver.
+
+The capability is optional. A signal agent that serves only platform destinations omits it.
+
+### Rail selection
+
+For each `type: "agent"` destination the signal agent reads the destination's declared methods from the seller's [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) (`media_buy.audience_targeting.supported_activation_methods`), using the destination's `account` where the seller scopes the declaration to an account. It intersects them with its own `delivery_methods`. A method matches on **pattern and vendor** (`vendor.domain`, lowercase; `brand_id` only when both sides set it). `file_transfer` also requires the same `transport`, and the signal agent takes the sending role: it is compatible with a destination `directions` of `buyer_to_seller` or one that is absent. A `clean_room` match counts only when the destination's output-rail pattern (`dataset_query` or `platform_distribution`) intersects too. Receiver-specific fields the seller has not yet established (`destination_ref`, `consumer_identities`) are resolved from account setup; when they are not yet resolvable the destination fails with [`ACCOUNT_SETUP_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-account-setup-required).
+
+Any rail in the intersection is eligible, and selection is the signal agent's discretion. The operator MAY pin the rail by setting `delivery_method` (`pattern` and optionally `vendor`) on the destination entry; it is the cost-control and reproducibility lever. A pin is a MUST-use: the signal agent uses a matching rail or fails that destination, and never falls back to another rail. Buyers MUST check that the signal agent lists `signals.delivery_methods` before sending a pin, because a legacy agent silently ignores unknown destination fields. An agent that implements this surface but does not list the capability MUST reject the request with an `errors[]` response carrying [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) and `field: "destinations[i].delivery_method"`.
+
+A signal agent that declares `delivery_methods` MUST deliver to agent destinations only over a rail in the intersection. If there is none, including when the destination has declared no methods (an undeclared destination has no address to deliver to; the seller must declare one), that destination fails with `UNSUPPORTED_FEATURE` rather than activating over a bespoke route. A signal agent that does not declare `delivery_methods` keeps its existing agent-destination behavior; the capability is not mandatory for every signal agent.
+
+A failed destination does not fail the others. Report it as a deployment with `delivery_status: "failed"` and a `delivery_error` whose `field` names the destination entry (`destinations[0]`, or `destinations[0].delivery_method` for a pin mismatch). When every requested destination fails this way the signal agent MUST return the `errors[]` arm instead, so a buyer reading `status: "completed"` never mistakes total failure for success. `failed` is terminal for that attempt; retry with a new `idempotency_key`.
+
+Delivery cost is absorbed in the signal's price: provider-initiated delivery uses the existing `pricing_options` and `pricing_option_id`, with no separate rail fee.
+
+### Arrival, addressability, and match outcome
+
+Three questions are reported separately on each agent deployment:
+
+| Question | Field | Values |
+|---|---|---|
+| Has membership arrived? | `delivery_status` | `awaiting_read`, `delivered`, `failed` |
+| Can the signal be targeted? | `is_live` (with `activation_key`) | boolean |
+| How well did it match? | `match_status` (optionally `matched_count`, `effective_match_rate`, `match_rate_basis`, `audience_size`) | the [audience status](https://adcontextprotocol.org/schemas/v3/enums/audience-status.json) values `sync_audiences` reports |
+
+`delivered` is not an addressability claim, and coverage on the seller's inventory is the match rate against the seller's own identity graph. The signal agent populates all of these from what its rail reports back. For pull rails (`dataset_query`, `platform_distribution`, `clean_room`) `delivered` means the destination has read the membership, as attested by the rail or the seller. For push rails (`sync_audiences`, `file_transfer`) it means the destination accepted the write. State moves `awaiting_read` → `delivered` or `failed`. Agents SHOULD set `is_live: true` only once `delivered`, and include `delivery_error` when, and only when, the state is `failed`. When a delivery window is declared on the destination (`bind_expiry_days` for `platform_distribution`), reaching it moves the deployment to `failed`.
+
+`match_status` and the counts are optional; `audience_size` (a range with stated precision, the shape `sync_audiences` adopted for range-only platforms) and `match_rate_basis` let those platforms relay a match outcome without inventing a point count and use the same vocabulary on every rail, so they are not rail-dependent. They appear only when the destination reports them back to the signal agent (for example through the `sync_audiences` response); absence means not reported, never zero. `too_small` implies `is_live: false`.
+
+Distribution can take days, so `awaiting_read` is a normal, long-lived state. The first response returns the current state, and the task is complete at that point, so later state changes do not fire a task webhook. Read them through [`get_signals`](/docs/signals/tasks/get_signals), which returns the same deployment objects. `action: "deactivate"` removes the deployment and carries no delivery state.
+
+Each agent deployment may also carry a `delivery` descriptor shaped like an [external audience source](/docs/media-buy/task-reference/sync_audiences#external-audience-sources-experimental) (`kind: "dataset"` with `vendor` and `locator`, or `kind: "platform_segment"` with `vendor` and `segment_ref`). It identifies what the signal agent shipped and is the join key on the destination side. It explains how membership arrives; `activation_key` remains how to target it. Rails with no vendor-addressable artifact (`sync_audiences`, `file_transfer`) omit it. It is a reference, never a credential; unlike an audience source it does not carry `access_expires_at`.
+
+A segment delivered this way surfaces on the seller as **signal inventory**, targetable through signal targeting and reported through signal deployment status. It is not a buyer audience in `sync_audiences` discovery, including when the rail is the destination's own `sync_audiences` task: the seller MUST keep provider-licensed membership out of buyer-audience discovery.
+
+### Example
+
+```json
+{
+  "tool": "activate_signal",
+  "arguments": {
+    "idempotency_key": "6f1c2b9e-3a47-4d0a-9c55-0b7e1f2a8d11",
+    "signal_agent_segment_id": "luxury_auto_intenders",
+    "pricing_option_id": "po_cpm_usd",
+    "destinations": [{
+      "type": "agent",
+      "agent_url": "https://wonderstruck.salesagents.com",
+      "delivery_method": {
+        "pattern": "platform_distribution",
+        "vendor": { "domain": "activation-hub.example" }
+      }
+    }]
+  }
+}
+```
+
+Initial response, with membership shipped and awaiting the seller's read:
+
+```json
+{
+  "$schema": "/schemas/signals/activate-signal-response.json",
+  "status": "completed",
+  "deployments": [{
+    "type": "agent",
+    "agent_url": "https://wonderstruck.salesagents.com",
+    "is_live": false,
+    "delivery_status": "awaiting_read",
+    "delivery": {
+      "kind": "platform_segment",
+      "vendor": { "domain": "activation-hub.example" },
+      "segment_ref": "seg_88213"
+    },
+    "estimated_activation_duration_minutes": 2880
+  }]
+}
+```
+
+After the seller reads and matches:
+
+```json
+{
+  "$schema": "/schemas/signals/activate-signal-response.json",
+  "status": "completed",
+  "deployments": [{
+    "type": "agent",
+    "agent_url": "https://wonderstruck.salesagents.com",
+    "is_live": true,
+    "delivery_status": "delivered",
+    "delivery": {
+      "kind": "platform_segment",
+      "vendor": { "domain": "activation-hub.example" },
+      "segment_ref": "seg_88213"
+    },
+    "match_status": "ready",
+    "matched_count": 412000,
+    "effective_match_rate": 0.58,
+    "activation_key": { "type": "key_value", "key": "audience_segment", "value": "luxury_auto_intenders_v2" },
+    "deployed_at": "2026-10-07T09:14:00Z"
+  }]
+}
+```
+
+No rail in common with the destination:
+
+```json
+{
+  "$schema": "/schemas/signals/activate-signal-response.json",
+  "status": "completed",
+  "deployments": [{
+    "type": "agent",
+    "agent_url": "https://wonderstruck.salesagents.com",
+    "is_live": false,
+    "delivery_status": "failed",
+    "delivery_error": {
+      "code": "UNSUPPORTED_FEATURE",
+      "message": "Destination declares no delivery rail in common with this signal agent.",
+      "field": "destinations[0]"
+    }
+  }]
+}
+```
 
 ## Response Structure
 
@@ -108,6 +258,7 @@ For asynchronous operations like activation, both protocols support:
   - **activation_key**: The key to use for targeting (see Activation Key below). Only present if the authenticated caller has access to this deployment.
   - **estimated_activation_duration_minutes**: Estimated completion time for async operations
   - **deployed_at**: ISO 8601 timestamp when activation completed
+  - **delivery_status**, **delivery**, **delivery_error**, **match_status**, **matched_count**, **effective_match_rate** (agent deployments, experimental): provider-initiated delivery arrival, descriptor, failure reason, and optional match outcome. See [Delivering membership to agent destinations](#delivering-membership-to-agent-destinations-experimental).
 - **errors**: Optional array of errors and warnings encountered during activation
   - **code**: Standardized error code for programmatic handling
   - **message**: Human-readable error description with context
@@ -495,6 +646,7 @@ Warnings about suboptimal configuration are conveyed in the `message` field. The
 - `ALREADY_ACTIVATED`: Signal already active on the specified platform/account
 - `DEPLOYMENT_UNAUTHORIZED`: Can't deploy to platform/account due to permissions
 - `INVALID_PRICING_MODEL`: Requested pricing model not available for this signal
+- [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature): An agent destination shares no delivery rail with the signal agent, or none matches the `delivery_method` pin (experimental; reported per destination as `delivery_error`)
 
 ### Configuration Warnings
 - `SUBOPTIMAL_CONFIGURATION`: Signal activated but account settings may impact performance

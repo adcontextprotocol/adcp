@@ -41,7 +41,8 @@
         "credentials": {
           "type": "string",
           "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
-          "minLength": 32
+          "minLength": 32,
+          "x-max-length-4.0": 512
         }
       },
       "required": [

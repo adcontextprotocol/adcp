@@ -2243,9 +2243,10 @@ describe('tenant routing smoke', () => {
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
-      expect(mediaBuy?.vendor_metric_optimization?.supported_metrics).toContainEqual(
-        expect.objectContaining({ vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_score' }),
-      );
+      // The supported_metrics rollup is a 3.3 field (#8070), withheld from
+      // this 3.2 response (#8487); training-agent-candidate-version.test.ts
+      // covers it on 3.3.
+      expect(mediaBuy?.vendor_metric_optimization).not.toHaveProperty('supported_metrics');
       expect(mediaBuy?.conversion_tracking?.supported_targets).toEqual(['cost_per']);
       expect(previewCapabilityIds.length).toBeGreaterThan(0);
       expect(previewRouteIds).toEqual(previewCapabilityIds);

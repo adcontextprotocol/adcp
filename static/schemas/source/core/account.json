@@ -114,6 +114,18 @@
           "type": "string",
           "format": "date-time",
           "description": "When this setup link expires."
+        },
+        "waiting_on": {
+          "$ref": "/schemas/enums/pending-action-party.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Whose turn it is."
+        },
+        "kind": {
+          "$ref": "/schemas/enums/pending-action-kind.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "What is needed."
         }
       },
       "required": [

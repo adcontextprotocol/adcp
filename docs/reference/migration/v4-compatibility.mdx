@@ -35,6 +35,7 @@ In raw runner output, a check observed by a validation appears as a `validation_
 | [`signed_requests_specialism_deprecated`](#signed_requests_specialism_deprecated) | [#3078](https://github.com/adcontextprotocol/adcp/issues/3078) | All agents | Notice on `signed_requests` |
 | [`request_signing_required_in_4_0`](#request_signing_required_in_4_0) | [#2307](https://github.com/adcontextprotocol/adcp/issues/2307) | Sellers | `media_buy_seller` capability discovery |
 | [`legacy_hmac_fallback_removed_in_4_0`](#legacy_hmac_fallback_removed_in_4_0) | [#4205](https://github.com/adcontextprotocol/adcp/issues/4205) | All agents | `capability_discovery` |
+| [`capabilities_structural_bounds_required_in_4_0`](#capabilities_structural_bounds_required_in_4_0) | [#8198](https://github.com/adcontextprotocol/adcp/issues/8198) | All agents | Not observable |
 
 ## Checks
 
@@ -107,6 +108,21 @@ Request signing is optional in 3.x. 4.0 requires it on spend-committing operatio
 4.0 removes the HMAC-SHA256 webhook fallback.
 
 **Fix:** sign webhooks with RFC 9421 only and stop advertising `legacy_hmac_fallback`. See [Webhooks](/docs/building/by-layer/L3/webhooks).
+
+<a id="capabilities_structural_bounds_required_in_4_0"></a>
+### Capabilities stay within their structural bounds
+
+**Check id:** `capabilities_structural_bounds_required_in_4_0` · **Change:** new requirement
+
+**Detects:** `get_adcp_capabilities` carries an array, string, or keyed map above the limit that a field annotates with `x-max-items-4.0`, `x-max-length-4.0`, or `x-max-properties-4.0`.
+
+From 3.3 every array, string, and keyed map in the capabilities response has a limit. Fields new in 3.3 and experimental fields enforce it as `maxItems`, `maxLength`, or `maxProperties`. A field that was stable before 3.3 carries the limit as an annotation, because a minor release may not tighten it. 4.0 makes each annotation the keyword, so a document above a limit becomes schema-invalid.
+
+**Fix:** keep each annotated field within its limit now. The limits and their worst case are in [Response Size Bounds](/docs/building/by-layer/L1/security#response-size-bounds). Run `node scripts/capabilities-structural-bounds.cjs` against the schemas to list them.
+
+No storyboard step inspects every annotated field, so the suite reports this check as not observable.
+
+**4.0 follow-up:** 3.3 accepts an 87 MiB structural ceiling for the whole document because `MAX_CAPABILITIES_BYTES` (64 KiB) is the operative cap. The nested object lists that multiply it are worth tightening before the annotations become keywords: the brand reference (`brand_kit_override`, `provenance`), the creative format declaration (`macro_resolution_capabilities`), the attestation issuer entry, the audience activation method, and the geographic place system.
 
 ## Changes not checked yet
 

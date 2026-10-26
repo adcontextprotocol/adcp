@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { sdkCheckpoints } = require("./helpers/sdk-checkpoint.cjs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Ajv = require("ajv");
@@ -13,9 +14,6 @@ function escapeRegExp(value) {
 }
 
 function currentCheckpoint() {
-  const packageJson = JSON.parse(
-    fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")
-  );
   const trainingAgentTypes = fs.readFileSync(
     path.join(__dirname, "..", "server", "src", "training-agent", "types.ts"),
     "utf8"
@@ -24,8 +22,9 @@ function currentCheckpoint() {
     /TRAINING_AGENT_CURRENT_ADCP_VERSION\s*=\s*'([^']+)'/
   );
   assert.ok(wireVersion, "training-agent current AdCP version must be explicit");
+  // Learner instructions name the stable SDK, not a prerelease the repo may run.
   return {
-    sdkVersion: packageJson.dependencies["@adcp/sdk"],
+    sdkVersion: sdkCheckpoints().stable,
     wireVersion: wireVersion[1],
   };
 }

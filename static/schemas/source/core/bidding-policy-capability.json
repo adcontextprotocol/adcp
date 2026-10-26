@@ -76,7 +76,8 @@
               { "$ref": "#/definitions/max_bid_with_roas" }
             ]
           },
-          "minItems": 1
+          "minItems": 1,
+          "x-max-items-4.0": 32
         }
       },
       "anyOf": [

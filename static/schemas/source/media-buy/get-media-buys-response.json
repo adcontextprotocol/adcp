@@ -407,6 +407,26 @@
                   "format": "date-time",
                   "description": "ISO 8601 flight end time for this package"
                 },
+                "start_requires_all_creatives_approved": {
+                  "type": "boolean",
+                  "description": "AdCP 3.3 initial-start policy. False (default) serves eligible approved assignments. True MUST retain booking and inventory commitment but block first enablement for serving until every current assignment is approved in all applicable package scopes; an empty set or library approval alone is insufficient. Retain pending-review/rejected assignments; same-creative_id resubmission needs no reassignment. Flight, pause, format-coverage and commitment constraints still apply. After first enablement, ordinary serving and impairment rules apply. Opt-in requires media_buy.features.creative_start_policy: true; otherwise buyers MUST NOT send true and sellers MUST reject true with UNSUPPORTED_FEATURE before mutation. Stage the full initial set atomically or while paused; the gate cannot anticipate future assignments. Sellers MUST echo the effective value on package readback, including false when defaulted.",
+                  "x-added-in": "3.3.0",
+                  "x-adcp-validation": {
+                    "verifier_constraints": {
+                      "creative_start_policy": {
+                        "default": "serve_approved_subset",
+                        "true_gate": "all_current_assignments_approved_in_all_applicable_scopes",
+                        "empty_assignments": "gate_unsatisfied",
+                        "evaluation_window": "before_first_package_enablement",
+                        "review_rejection": "retain_assignment",
+                        "readback": "echo_effective_policy",
+                        "unsupported_true": "UNSUPPORTED_FEATURE"
+                      }
+                    },
+                    "spec": "docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review"
+                  },
+                  "default": false
+                },
                 "paused": {
                   "type": "boolean",
                   "description": "Whether this package is currently paused by the buyer"
