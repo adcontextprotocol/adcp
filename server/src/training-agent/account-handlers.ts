@@ -1749,24 +1749,39 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
 
   for (const input of req.accounts) {
     if (input.account) {
-      const mixedProvisioningFields = [
-        input.brand !== undefined && 'brand',
-        input.operator !== undefined && 'operator',
-        input.operator_unit !== undefined && 'operator_unit',
-        input.currency !== undefined && 'currency',
-        input.timezone !== undefined && 'timezone',
-        input.billing !== undefined && 'billing',
-        input.sandbox !== undefined && 'sandbox',
-      ].filter(Boolean);
-      if (mixedProvisioningFields.length > 0) {
+      if (input.operator !== undefined) {
         results.push({
           account: input.account,
           action: 'failed',
           status: 'rejected',
           errors: [{
             code: 'INVALID_REQUEST',
-            message: `Settings-update mode must not include provisioning fields: ${mixedProvisioningFields.join(', ')}`,
-            field: String(mixedProvisioningFields[0]),
+            message: 'Settings-update mode must not include operator: a different operator opens its own account',
+            field: 'operator',
+            recovery: 'correctable',
+          }],
+        });
+        continue;
+      }
+      // Account attributes are settable in settings-update mode. This
+      // training agent keys its account store by them, so it declines the
+      // change with UNSUPPORTED_FEATURE and leaves the account unchanged.
+      const attributeChanges = [
+        input.brand !== undefined && 'brand',
+        input.operator_unit !== undefined && 'operator_unit',
+        input.currency !== undefined && 'currency',
+        input.timezone !== undefined && 'timezone',
+        input.billing !== undefined && 'billing',
+        input.sandbox !== undefined && 'sandbox',
+      ].filter(Boolean);
+      if (attributeChanges.length > 0) {
+        results.push({
+          account: input.account,
+          action: 'failed',
+          errors: [{
+            code: 'UNSUPPORTED_FEATURE',
+            message: `This seller does not change account attributes after opening: ${attributeChanges.join(', ')}`,
+            field: String(attributeChanges[0]),
             recovery: 'correctable',
           }],
         });

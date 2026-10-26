@@ -1,9 +1,9 @@
 id: media_buy_seller/stable_account_id
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.3"
 title: "Seller-assigned account_id is a durable AccountRef for a buyer-declared account"
 category: media_buy_seller
-summary: "Provisions a fresh buyer-declared account, then verifies the returned account_id resolves the same account as its natural key, is accepted as an AccountRef on an account-scoped task, and survives a re-sync unchanged."
+summary: "Provisions a fresh buyer-declared account, then verifies the returned account_id resolves the same account as its natural key is accepted as an AccountRef on an account-scoped task, and, as a SHOULD, comes back when the provisioning entry is sent again."
 track: media_buy
 
 # Gate: sellers that declare account.stable_account_id: true for buyer-declared
@@ -35,11 +35,18 @@ narrative: |
 
   The buyer provisions a fresh natural key, qualified by a per-run
   operator_unit so no earlier run or fixture can have created it. It captures
-  the returned account_id and checks that the id and the complete natural key
+  the returned account_id and checks that the id and the natural key
   resolve the same account on list_accounts. An account-scoped task that names
   the account only by account_id must succeed instead of returning
-  ACCOUNT_NOT_FOUND. Re-syncing the same natural key returns the same
-  account_id.
+  ACCOUNT_NOT_FOUND.
+
+  Sending the same provisioning entry again with a new idempotency_key
+  SHOULD return the same account_id, because the entry matches exactly one
+  account in the seller's account scope. That check is advisory. A retry with
+  the same idempotency_key returns the original result.
+
+  The stable_account_id flag is deprecated in 3.3: every seller returns and
+  accepts account_id.
 
 agent:
   interaction_model: media_buy_seller
@@ -90,7 +97,7 @@ phases:
             description: "Seller advertises at least one billing model to provision with"
 
       - id: provision_account
-        title: "Provision the per-run natural key"
+        title: "Open an account for this run"
         task: sync_accounts
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
@@ -116,7 +123,7 @@ phases:
           - check: field_value
             path: "accounts[0].action"
             value: "created"
-            description: "The per-run natural key creates a fresh account"
+            description: "Provisioning opens a fresh account for this run"
           - check: field_present
             path: "accounts[0].account_id"
             description: "A resolved provisioning result carries account_id (a sandbox account is expected to resolve without review)"
@@ -160,7 +167,7 @@ phases:
             description: "The account_id resolves the per-run operator unit"
 
       - id: list_by_natural_key
-        title: "Resolve the account by its complete natural key"
+        title: "Resolve the account by its natural key"
         task: list_accounts
         schema_ref: "account/list-accounts-request.json"
         response_schema_ref: "account/list-accounts-response.json"
@@ -180,7 +187,7 @@ phases:
           - check: array_length
             path: "accounts"
             value: 1
-            description: "The complete natural key returns exactly the provisioned account"
+            description: "The natural key returns exactly the provisioned account"
           - check: field_equals_context
             path: "accounts[0].account_id"
             context_key: "stable_account_id"
@@ -213,16 +220,21 @@ phases:
             description: "The seller answered for the account_id instead of rejecting it"
 
   - id: account_id_survives_resync
-    title: "Re-sync keeps the account_id"
+    title: "Sending the provisioning entry again returns the same account"
     depends_on: [resolve_by_account_id]
     steps:
       - id: resync_natural_key
-        title: "Re-sync the same natural key"
+        title: "Send the same provisioning entry with a new idempotency key"
         task: sync_accounts
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
         doc_ref: "/accounts/tasks/sync_accounts"
         stateful: true
+        expected: |
+          The entry matches exactly one account in the seller's account scope,
+          the one this run opened. The seller SHOULD return its account_id
+          instead of opening another, so a buyer that lost its idempotency
+          state does not open a duplicate.
         sample_request:
           accounts:
             - brand:
@@ -236,8 +248,11 @@ phases:
           idempotency_key: "$generate:uuid_v4#stable_account_id_resync"
         validations:
           - check: response_schema
-            description: "Re-sync response matches the canonical schema"
+            description: "Response matches sync-accounts-response.json schema"
           - check: field_equals_context
             path: "accounts[0].account_id"
             context_key: "stable_account_id"
-            description: "Re-syncing the natural key returns the unchanged account_id"
+            severity: advisory
+            permanent_advisory:
+              reason: "Returning the matched account for a provisioning entry is a normative SHOULD in 3.3."
+            description: "Sending the provisioning entry again returns the existing account_id"
