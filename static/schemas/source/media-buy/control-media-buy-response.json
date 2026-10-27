@@ -62,7 +62,12 @@
       },
       "required": ["status", "errors"],
       "additionalProperties": true,
-      "not": { "required": ["media_buy_id"] }
+      "not": {
+        "anyOf": [
+          { "required": ["media_buy_id"] },
+          { "required": ["warnings"] }
+        ]
+      }
     },
     {
       "title": "Control Submitted",
@@ -78,7 +83,12 @@
       },
       "required": ["status", "task_id"],
       "additionalProperties": true,
-      "not": { "required": ["media_buy_id"] }
+      "not": {
+        "anyOf": [
+          { "required": ["media_buy_id"] },
+          { "required": ["warnings"] }
+        ]
+      }
     }
   ]
 }

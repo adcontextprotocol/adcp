@@ -199,7 +199,29 @@
     }
   ],
   "not": {
-    "required": ["format_ids"]
+    "anyOf": [
+      { "required": ["audience_activation"] },
+      { "required": ["cancellation_policy"] },
+      { "required": ["conversion_tracking"] },
+      { "required": ["creative_policy"] },
+      { "required": ["data_provider_signals"] },
+      { "required": ["delivery_measurement"] },
+      { "required": ["enforced_policies"] },
+      { "required": ["format_ids"] },
+      { "required": ["included_signals"] },
+      { "required": ["installments"] },
+      { "required": ["is_custom"] },
+      { "required": ["material_submission"] },
+      { "required": ["measurement_readiness"] },
+      { "required": ["metric_optimization"] },
+      { "required": ["outcome_measurement"] },
+      { "required": ["product_card"] },
+      { "required": ["product_card_detailed"] },
+      { "required": ["property_targeting_allowed"] },
+      { "required": ["signal_targeting_options"] },
+      { "required": ["trusted_match"] },
+      { "required": ["vendor_metric_optimization"] }
+    ]
   },
   "additionalProperties": true
 }
