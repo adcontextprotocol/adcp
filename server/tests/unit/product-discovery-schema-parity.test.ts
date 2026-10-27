@@ -35,7 +35,7 @@ describe('product discovery MCP schema parity', () => {
       const source = sourceSchema(fileName);
       expect(runtime.required ?? []).toEqual(source.required ?? []);
       expect(runtime.dependencies ?? {}).toEqual(source.dependencies ?? {});
-      expect(runtime.additionalProperties).toBe(false);
+      expect(runtime.additionalProperties).toBe(source.additionalProperties);
       expect(Object.keys(runtime.properties).sort()).toEqual(Object.keys(source.properties).sort());
       if (source.properties.idempotency_key) {
         expect(runtime.properties.idempotency_key).toMatchObject({
@@ -64,7 +64,7 @@ describe('product discovery MCP schema parity', () => {
     expect(runtimeRefinement).toMatchObject({
       type: sourceRefinement.type,
       required: sourceRefinement.required,
-      additionalProperties: false,
+      additionalProperties: sourceRefinement.additionalProperties,
     });
 
     // Repository-local refs must be bundled because MCP consumers do not have
@@ -78,11 +78,12 @@ describe('product discovery MCP schema parity', () => {
       uniqueItems: true,
       items: { enum: expect.arrayContaining(['product_id', 'format_options', 'pricing_options']) },
     });
-    expect(resolveLocalRef(list, list.properties.criteria)).toMatchObject({ additionalProperties: false });
+    expect(resolveLocalRef(list, list.properties.criteria))
+      .toMatchObject({ additionalProperties: sourceSchema('product-discovery-criteria').additionalProperties });
     expect(resolveLocalRef(refineTool, refineTool.properties.refinements.items))
       .toMatchObject({
         required: ['proposal_id'],
-        additionalProperties: false,
+        additionalProperties: sourceRefinement.additionalProperties,
         // Definition annotations are intentionally stripped from tools/list;
         // dispatch still applies the source-schema default semantics.
         properties: { action: { enum: ['revise', 'finalize'] } },

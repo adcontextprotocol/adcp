@@ -324,6 +324,25 @@ Absence of the declaration means use the 3.x compatibility facades. Retry a
 stateful request with the same tool name, idempotency key, and payload; an
 idempotency key does not create replay identity across old and new task names.
 
+**Correction: the proposal-flow schemas are open.** 3.2.7 and earlier published
+these tasks' request and response schemas closed, with
+`additionalProperties: false`. They also closed `canonical-proposal`,
+`canonical-product`, `product-discovery-criteria`, `proposal-refinement`,
+`package-control`, and `opportunity-context`.
+[DR-0019](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0019-closed-row-schemas-deliberate-class.md)
+keeps roots and containers open, so later 3.2 patches reopen them. This is a
+correction recorded in
+[DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)
+([#8501](https://github.com/adcontextprotocol/adcp/issues/8501)). Every payload
+that was valid stays valid. A field that only the legacy Product defines,
+such as `format_ids`, `is_custom`, or `installments`, is still rejected on a
+canonical product. A root `feed_version` or `pricing_version` on a
+`request_proposals` response, and `warnings` on an error or submitted
+`buy_products`, `accept_proposal`, or `control_media_buy` response, are also
+still rejected. `commercial_terms` and the purchases inside it stay closed. A
+validator on 3.2.7 or earlier still rejects unknown fields on these schemas, so
+don't send fields the served release doesn't define.
+
 ### Scope idempotency to mutations
 
 AdCP 3.2 requires durable replay for state-mutating requests, not guaranteed

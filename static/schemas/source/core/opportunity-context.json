@@ -82,5 +82,5 @@
       "then": { "required": ["close_detail"] }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

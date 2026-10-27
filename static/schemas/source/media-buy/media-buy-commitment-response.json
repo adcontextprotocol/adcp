@@ -119,7 +119,7 @@
         }
       },
       "required": ["status", "media_buy_id", "revision", "accepted_proposal", "purchase_bindings", "available_actions"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": { "required": ["errors"] }
     },
     {
@@ -137,8 +137,13 @@
         "replayed": { "type": "boolean", "const": true }
       },
       "required": ["status", "errors"],
-      "additionalProperties": false,
-      "not": { "required": ["media_buy_id"] }
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["media_buy_id"] },
+          { "required": ["warnings"] }
+        ]
+      }
     },
     {
       "title": "Commitment Submitted",
@@ -153,8 +158,13 @@
         "replayed": { "type": "boolean", "const": true }
       },
       "required": ["status", "task_id"],
-      "additionalProperties": false,
-      "not": { "required": ["media_buy_id"] }
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["media_buy_id"] },
+          { "required": ["warnings"] }
+        ]
+      }
     }
   ]
 }
