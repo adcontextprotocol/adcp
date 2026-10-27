@@ -7,6 +7,7 @@ date: 2026-09-04
 decided: ~2026-09 (practice operative since 3.0)
 decided_by: maintainer practice
 refs: ["#7224", "PR #7177", "#7150", "DR-0009"]
+superseded_by: DR-0036  # in part: optional additions to a closed schema are no longer minor; the two classes stand
 dissent: none recorded; #7224 leaves open whether current practice is design or drift (B. Masse, Triton) — options B/C there may supersede this record in 3.3
 ---
 
