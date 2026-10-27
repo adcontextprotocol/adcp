@@ -60,5 +60,5 @@
     }
   },
   "required": ["idempotency_key", "refinements"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

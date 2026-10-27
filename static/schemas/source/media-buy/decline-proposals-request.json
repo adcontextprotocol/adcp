@@ -48,5 +48,5 @@
     }
   },
   "required": ["idempotency_key", "declines"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

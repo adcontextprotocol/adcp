@@ -64,5 +64,5 @@
     "ext": { "$ref": "/schemas/core/ext.json" },
     "replayed": { "type": "boolean", "const": true }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

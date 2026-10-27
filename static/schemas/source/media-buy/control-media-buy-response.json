@@ -47,7 +47,7 @@
         "replayed": { "type": "boolean", "const": true }
       },
       "required": ["status", "media_buy_id", "revision"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": { "required": ["errors"] }
     },
     {
@@ -61,7 +61,7 @@
         "replayed": { "type": "boolean", "const": true }
       },
       "required": ["status", "errors"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": { "required": ["media_buy_id"] }
     },
     {
@@ -77,7 +77,7 @@
         "replayed": { "type": "boolean", "const": true }
       },
       "required": ["status", "task_id"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "not": { "required": ["media_buy_id"] }
     }
   ]

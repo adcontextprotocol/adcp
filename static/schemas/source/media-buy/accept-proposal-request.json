@@ -119,7 +119,7 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["idempotency_key", "account", "proposal_id", "proposal_terms_digest"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "not": {
     "anyOf": [
       { "required": ["packages"] },

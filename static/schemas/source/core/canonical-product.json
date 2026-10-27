@@ -198,5 +198,8 @@
       }
     }
   ],
-  "additionalProperties": false
+  "not": {
+    "required": ["format_ids"]
+  },
+  "additionalProperties": true
 }
