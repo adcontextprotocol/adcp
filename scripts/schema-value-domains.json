@@ -1631,6 +1631,13 @@
         "/schemas/property/list-property-lists-request.json"
       ],
       "reason": "Each is the body of a separate task: one acts on collection lists, the other on property lists. Their list_id names a different entity, and a receiver routes each to its own task."
+    },
+    {
+      "types": [
+        "/schemas/enums/canceled-by.json",
+        "/schemas/enums/pending-action-party.json"
+      ],
+      "reason": "Each names a party with the same two values, but answers a different question: canceled-by records who initiated a media buy cancellation, and pending-action-party names whose turn it is on a pending account request. A receiver reads them on different objects and acts on them differently."
     }
   ]
 }
