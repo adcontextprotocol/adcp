@@ -1,5 +1,7 @@
 'use strict';
 
+require('./helpers/ajv-maglev-guard.cjs');
+
 // Reproducible security qualification for the ACTUAL reporting storyboards.
 // Uses only the SDK's public runner/profile/transport APIs. All MCP I/O is
 // intercepted by trustedFetchFn; no private client seams or network writes.
