@@ -2,8 +2,10 @@
 /**
  * Structural bounds on the `get_adcp_capabilities` response (#8198).
  *
- * The response is bounded by structure only; AdCP sets no byte limit on it.
- * This module checks that bound: it walks the response schema and every
+ * The structural bounds are the protocol's limit on the response.
+ * `MAX_CAPABILITIES_BYTES` (64 KiB) is only a receiver backstop, described as
+ * deployment guidance, and is not a design target. This module checks the
+ * structural bound: it walks the response schema and every
  * schema it reaches through `$ref`, reports the arrays, strings, and maps that
  * carry no bound, and computes the worst-case serialized size of a
  * schema-valid document.
@@ -36,6 +38,8 @@ const path = require('node:path');
 
 const SOURCE = path.join(__dirname, '..', 'static', 'schemas', 'source');
 const ROOT_FILE = 'protocol/get-adcp-capabilities-response.json';
+/** Receiver backstop (deployment guidance), not a design target or a protocol limit. */
+const MAX_CAPABILITIES_BYTES = 65_536;
 
 const ANNOTATION = {
   maxItems: 'x-max-items-4.0',
@@ -429,7 +433,7 @@ function main() {
   }
   console.log(`positions needing a bound: ${rows.length}, unbounded: ${unbounded.length}`);
   for (const r of unbounded) console.log(`  ${r.kind} ${r.key}  (${r.trail})`);
-  console.log(`worst case with 4.0 bounds:       ${kib(wc4.total)} (${wc4.total} bytes)`);
+  console.log(`worst case with 4.0 bounds:       ${kib(wc4.total)} (${wc4.total} bytes), receiver backstop ${MAX_CAPABILITIES_BYTES} bytes (not a design target)`);
   console.log(`worst case with enforced bounds:  ${kib(wc3.total)}`);
   console.log(`open positions (undeclared members not counted): ${wc4.openPositions}`);
   const blocks = Object.entries(wc4.perBlock).sort((a, b) => b[1] - a[1]).slice(0, 12);
@@ -441,6 +445,7 @@ if (require.main === module) main();
 module.exports = {
   ANNOTATION,
   FORMAT_MAX_LENGTH,
+  MAX_CAPABILITIES_BYTES,
   ROOT_FILE,
   coverage,
   exemption,

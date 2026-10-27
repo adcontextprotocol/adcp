@@ -204,9 +204,10 @@ checks:
         brand-ref (brand_kit_override, provenance), creative format
         declaration (macro_resolution_capabilities), attestation issuer,
         audience activation method, and geo place system limits. The
-        structural bounds are the only limit on the capabilities document,
-        and they allow an 87 MiB worst case; 4.0 can lower that ceiling
-        before the annotations become keywords.
+        structural bounds are the protocol's limit on the capabilities
+        document, and they allow an 87 MiB worst case. MAX_CAPABILITIES_BYTES
+        is only a receiver backstop, so 4.0 lowers that ceiling with tighter
+        nested bounds before the annotations become keywords.
     observed_by:
       none:
         reason: >-

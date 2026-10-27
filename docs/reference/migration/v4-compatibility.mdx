@@ -123,7 +123,7 @@ From 3.3 every array, string, and keyed map in the capabilities response has a l
 
 No storyboard step inspects every annotated field, so the suite reports this check as not observable.
 
-**4.0 follow-up:** the structural bounds are the only limit on the capabilities document; AdCP sets no byte limit on it. With them, the largest schema-valid document is 87 MiB. The way to lower that ceiling is to tighten the nested object lists that multiply it before the annotations become keywords: the brand reference (`brand_kit_override`, `provenance`), the creative format declaration (`macro_resolution_capabilities`), the attestation issuer entry, the audience activation method, and the geographic place system.
+**4.0 follow-up:** the structural bounds are the protocol's limit on the capabilities document. `MAX_CAPABILITIES_BYTES` (64 KiB) stays only as a receiver backstop against runaway or hostile documents, and 4.0 does not lean on it. With the current bounds, the largest schema-valid document is 87 MiB. The way to lower that ceiling is to tighten the nested object lists that multiply it before the annotations become keywords: the brand reference (`brand_kit_override`, `provenance`), the creative format declaration (`macro_resolution_capabilities`), the attestation issuer entry, the audience activation method, and the geographic place system.
 
 <a id="purchase_target_audiences_required_in_4_0"></a>
 ### Purchases carry target audiences

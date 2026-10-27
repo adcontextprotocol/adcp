@@ -1388,7 +1388,7 @@ The `identity.brand_json_url` field on `get_adcp_capabilities` (added in 3.x, se
 7. **`identity.key_origins` consistency check (mandatory when signing).** For every surface/purpose declared under `identity.key_origins` on the capabilities response, the host of the resolved `jwks_uri` MUST equal the declared origin for that surface/purpose. Mismatch on any surface/purpose → reject with `request_signature_key_origin_mismatch` carrying `{ purpose, expected_origin, actual_origin }`. A publisher pin does not skip this check, because the JWKS source is always the operator brand.json. If the agent declares signing without a corresponding `identity.key_origins.{purpose}` entry, reject with `request_signature_key_origin_missing` carrying `{ purpose, posture }`.
 8. Fetch JWKS, find the `kid`, verify per the existing RFC 9421 profile (steps 7+ of the [verifier checklist](#verifier-checklist-requests)).
 
-**The capabilities budget binds this path only.** `MAX_CAPABILITIES_BYTES` (64 KiB) is the fetch budget of step 1 of this chain. It belongs to the RFC 9421 profile, which 3.3 deprecates and 4.0 removes. It is not a limit on the `get_adcp_capabilities` response, which is bounded by structure only (see [Response Size Bounds](#response-size-bounds)). The fetch has no narrowing lever: it reads the whole `get_adcp_capabilities` response, and the request carries no way to ask for less. A capabilities document above the budget fails with `request_signature_capabilities_unreachable` and the agent's signing keys stop resolving. The [Web Bot Auth profile](#web-bot-auth-identities) is unaffected. Its verifier fetches the key directory at the signer's origin and makes no `get_adcp_capabilities` call, so the size of the capabilities document does not gate signature verification there. An agent whose capabilities cannot stay under 64 KiB, such as a creative agent with a large `creative.supported_formats` catalog, adopts the Web Bot Auth profile or keeps the document under the budget. 3.x does not add a way around the limit to the RFC 9421 profile, and 4.0 removes the budget together with the profile.
+**The capabilities budget binds this path only.** `MAX_CAPABILITIES_BYTES` (64 KiB) is the fetch budget of step 1 of this chain. It belongs to the RFC 9421 profile, which 3.3 deprecates and 4.0 removes. It is not a protocol limit on the `get_adcp_capabilities` response, which is bounded by structure (see [Response Size Bounds](#response-size-bounds)). Outside this chain, the same figure is only a receiver backstop. The fetch has no narrowing lever: it reads the whole `get_adcp_capabilities` response, and the request carries no way to ask for less. A capabilities document above the budget fails with `request_signature_capabilities_unreachable` and the agent's signing keys stop resolving. The [Web Bot Auth profile](#web-bot-auth-identities) is unaffected. Its verifier fetches the key directory at the signer's origin and makes no `get_adcp_capabilities` call, so the size of the capabilities document does not gate signature verification there. An agent whose capabilities cannot stay under 64 KiB, such as a creative agent with a large `creative.supported_formats` catalog, adopts the Web Bot Auth profile or keeps the document under the budget. 3.x does not add a way around the limit to the RFC 9421 profile, and 4.0 removes this fetch budget together with the profile.
 
 **Key material and key pointers do not belong in capabilities.** The `identity.brand_json_url` pointer exists for this deprecated chain only, and the chain stays as written through 3.x. No new path reads keys, or a pointer to keys, from `get_adcp_capabilities`. A signing path added after 3.3 finds keys through the signer's key directory, as the [Web Bot Auth profile](#web-bot-auth-identities) does, and does not fetch capabilities to do it. A field that carries or points at key material MUST NOT be added to the capabilities response. This keeps the size of the capabilities document from ever gating signature verification on a path that is not already deprecated.
 
@@ -2597,17 +2597,22 @@ nested lists, not a byte cap.
 Tightening those nested limits is registered as a 4.0 follow-up in the
 [4.0 compatibility checks](/docs/reference/migration/v4-compatibility#capabilities-stay-within-their-structural-bounds).
 
-**The structural bounds are the limit.** AdCP sets no byte limit on the
-`get_adcp_capabilities` response. The structural bounds are the protocol's
-limit on it, and the worst-case figure describes the shape they allow. It is
-not a size target. The bounds cover the members the schema declares; members
-a producer adds at the open positions above, such as `ext`, fall outside them.
-A client can still apply its own transport limit to this
-response, as any HTTP client does to any body it reads. That limit is the
-client's choice, not a protocol rule on the response.
-`MAX_CAPABILITIES_BYTES` remains only as the fetch budget of step 1 in the
-deprecated [RFC 9421 discovery chain](#discovering-an-agents-signing-keys-via-brand_json_url),
-and 4.0 removes it with that chain.
+**The structural bounds are the limit.** The structural bounds are the
+protocol's limit on the `get_adcp_capabilities` response. Agents **MUST NOT**
+design to a byte figure. The worst-case figure describes the shape the bounds
+allow; it is not a size target. The bounds cover the members the schema
+declares; members a producer adds at the open positions above, such as `ext`,
+fall outside them.
+
+**The byte figure is a receiver backstop.** Receivers commonly bound response
+size at the HTTP or gateway layer, as they do for any body they read. A limit
+around 64 KiB (`MAX_CAPABILITIES_BYTES`) is a reasonable backstop against
+runaway or hostile documents. It is not a design target. The figure is
+deployment guidance for receivers, not a protocol rule on the response. Its
+only job is to keep such a document from exhausting a verifier. The same
+constant is also the fetch budget of step 1 in the deprecated
+[RFC 9421 discovery chain](#discovering-an-agents-signing-keys-via-brand_json_url).
+That budget is unchanged through 3.x, and 4.0 removes it with the chain.
 
 Nothing large belongs in capabilities. Outside the deprecated chain, keys come
 from the signer's key directory, and no new path reads keys or a key pointer

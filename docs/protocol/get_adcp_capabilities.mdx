@@ -100,7 +100,9 @@ Version Negotiation Flow:
 
 The response is bounded by structure. From 3.3 every array has a maximum item count, every string a maximum length, and every keyed map a maximum member count. A string constrained by `enum`, `const`, `format`, or an anchored `pattern` of bounded length, and a `uniqueItems` array of a closed `enum` or `const`, needs no keyword because the schema already bounds it. A field that is new in 3.3 or experimental enforces its limit with `maxItems`, `maxLength`, or `maxProperties`. A field that was stable before 3.3 carries the limit as `x-max-items-4.0`, `x-max-length-4.0`, or `x-max-properties-4.0`: producers SHOULD stay within it now, and 4.0 enforces it. [Response Size Bounds](/docs/building/by-layer/L1/security#response-size-bounds) lists the limits and the worst-case document they allow.
 
-The structural bounds are the protocol's limit on this response. AdCP sets no byte limit on it. A client can still apply its own transport limit, as any HTTP client does, but that is the client's choice and not a protocol rule.
+The structural bounds are the protocol's limit on this response. Agents MUST NOT design to a byte figure. Nothing large belongs here: keys come from the signer's key directory, and property lists are passed by reference.
+
+Receivers commonly bound response size at the HTTP or gateway layer. A limit around 64 KiB (`MAX_CAPABILITIES_BYTES`) is a reasonable backstop against runaway or hostile documents. It is not a design target. This is deployment guidance for receivers, not a protocol rule on the response.
 
 One deprecated path reads this response under a byte budget. Key discovery in the RFC 9421 profile fetches capabilities under `MAX_CAPABILITIES_BYTES` (64 KiB), so an agent that signs under that profile keeps the document under 64 KiB or its signing keys stop resolving. 3.3 deprecates that profile and 4.0 removes it, budget included. The [Web Bot Auth profile](/docs/building/by-layer/L1/wba-profile) finds keys through the origin's key directory and never fetches capabilities for keys. No signing path added after 3.3 reads keys, or a pointer to keys, from this response.
 
