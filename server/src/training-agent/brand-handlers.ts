@@ -15,6 +15,7 @@ import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { resolveGovernanceAgentsForAccount } from './account-handlers.js';
 import { getCanonicalBase, getTrainingGovernanceIssuer } from './canonical-base.js';
 import { decodeOffsetCursor, encodeOffsetCursor } from './pagination.js';
+import { sourceSchemaDocument } from './source-schema.js';
 
 async function governedCommitmentRejection(
   governanceContext: string,
@@ -568,13 +569,21 @@ const TALENT_MAP = new Map(TALENT.map(t => [t.brand_id, t]));
 /**
  * SDK sandbox brands carry a coarse industry label. search_brands reports
  * industries in the advertiser-industry taxonomy (enums/advertiser-industry.json),
- * so map the labels that taxonomy names differently.
+ * so map the labels that taxonomy names differently, and drop a label it does
+ * not name (a sandbox brand the SDK adds later) rather than report it.
  */
 const SANDBOX_INDUSTRY_TAXONOMY: Readonly<Record<string, string>> = {
   advertising: 'professional_services',
   beauty: 'beauty_cosmetics',
   hospitality: 'travel_hospitality',
 };
+
+function sandboxBrandIndustries(label: string | undefined): string[] {
+  if (!label) return [];
+  const industry = SANDBOX_INDUSTRY_TAXONOMY[label] ?? label;
+  const taxonomy = (sourceSchemaDocument('enums/advertiser-industry.json') as { enum?: unknown }).enum;
+  return Array.isArray(taxonomy) && taxonomy.includes(industry) ? [industry] : [];
+}
 
 function loadAdvertiserBrands(): BrandEntry[] {
   const sandboxBrands = getSandboxBrands();
@@ -592,7 +601,7 @@ function loadAdvertiserBrands(): BrandEntry[] {
       house: { domain: sb.domain, name: sb.brand_name },
       names: (inner.name as LocalizedName[]) || [{ en: sb.brand_name }],
       description: (inner.description as string) || '',
-      industries: sb.industry ? [SANDBOX_INDUSTRY_TAXONOMY[sb.industry] ?? sb.industry] : [],
+      industries: sandboxBrandIndustries(sb.industry),
       keller_type: 'master',
       tagline: '',
       logos: (inner.logos as Logo[]) || [],
