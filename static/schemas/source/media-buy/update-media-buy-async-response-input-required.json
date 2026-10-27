@@ -3,6 +3,9 @@
   "$id": "/schemas/media-buy/update-media-buy-async-response-input-required.json",
   "title": "Update Media Buy - Input Required",
   "description": "Payload when update_media_buy task is paused waiting for user input or approval.",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
   "type": "object",
   "properties": {
     "reason": {

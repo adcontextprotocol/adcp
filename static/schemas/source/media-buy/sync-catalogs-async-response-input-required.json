@@ -3,6 +3,9 @@
   "$id": "/schemas/media-buy/sync-catalogs-async-response-input-required.json",
   "title": "Sync Catalogs - Input Required",
   "description": "Payload when sync_catalogs task is paused waiting for buyer clarification or approval.",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
   "type": "object",
   "properties": {
     "reason": {

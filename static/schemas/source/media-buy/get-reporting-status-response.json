@@ -153,8 +153,8 @@
       "title": "Unavailable lookup",
       "type": "object",
       "properties": {
-        "adcp_version": { "type": "string" },
-        "adcp_major_version": { "type": "integer" },
+        "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
+        "adcp_major_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version" },
         "status": { "type": "string", "const": "failed" },
         "view": { "enum": ["summary", "periods", "revision"] },
         "failure_kind": { "type": "string", "const": "lookup_unavailable" },
@@ -194,8 +194,8 @@
       "title": "Operational failure",
       "type": "object",
       "properties": {
-        "adcp_version": { "type": "string" },
-        "adcp_major_version": { "type": "integer" },
+        "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
+        "adcp_major_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version" },
         "status": { "type": "string", "const": "failed" },
         "view": { "enum": ["summary", "periods", "revision"] },
         "failure_kind": { "type": "string", "const": "operational" },

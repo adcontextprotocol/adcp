@@ -3,6 +3,9 @@
   "$id": "/schemas/creative/sync-creatives-async-response-input-required.json",
   "title": "Sync Creatives - Input Required",
   "description": "Payload when sync_creatives task is paused waiting for buyer clarification or approval.",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
   "type": "object",
   "properties": {
     "reason": {
