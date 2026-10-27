@@ -264,5 +264,5 @@
       { "required": ["wholesale_feed_version"] }
     ]
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

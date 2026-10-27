@@ -231,5 +231,5 @@
       }
     }
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }
