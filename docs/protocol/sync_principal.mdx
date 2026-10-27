@@ -4,10 +4,6 @@ description: "sync_principal synchronizes authenticated caller-scoped webhooks a
 "og:title": "AdCP — sync_principal"
 ---
 
-<Note>
-**Planned rename.** `sync_principal` and [`get_principal`](/docs/protocol/get_principal) become `sync_buyer_agent_config` and `get_buyer_agent_config`, and `principal_kind` is removed, no earlier than the first minor release after December 7, 2026. AdCP 3.3 keeps the current names. See the [breaking-change notice](/docs/reference/migration/principal-to-buyer-agent-config).
-</Note>
-
 A **principal** is the buyer agent as this seller has bound it: the durable record behind an authenticated agent. `sync_principal` replaces the principal's standing configuration with one AdCP seller agent: webhooks, reusable reporting destinations, and its position in capability negotiation. The three tiers of the hierarchy:
 
 | Tier | Entity | Surface |
@@ -36,12 +32,9 @@ For an end-to-end buyer-side example, see [Set up your buyer agent with a seller
 
 ## Identity and authority
 
-The principal is a party, in the same sense the protocol already bills and authorizes parties. It comes in two kinds:
+The principal is a party, in the same sense the protocol already bills and authorizes parties: the buyer agent authenticating as itself — its registered workload, OAuth client-credentials subject, server-side API-key owner, verified signed-request identity, or equivalent machine principal. The operators an agent acts for are agent-scoped labels within its own principal space, asserted the same way `operator_identity` is on accounts; they confer no identity across agents. The client application a person acts through (Claude, ChatGPT, the seller's UI) is the instrument, never the owner, and nothing about it is registered.
 
-- **A buyer agent** authenticating as itself — its registered workload, OAuth client-credentials subject, server-side API-key owner, verified signed-request identity, or equivalent machine principal. The operators an agent acts for are agent-scoped labels within its own principal space, asserted the same way `operator_identity` is on accounts; they confer no identity across agents.
-- **An operator-side identity** — a person at the operator authenticated as themselves. The client application they act through (Claude, ChatGPT, the seller's UI) is the instrument, never the owner. A person using ChatGPT therefore configures under their own login at the seller; nothing about ChatGPT is registered.
-
-Whether "the operator's identity" means individual users or one org-level service identity is the seller's authorization design. Separate credentials become one principal only through explicit administrative linking — never inferred from org membership, matching operator labels, or matching domains, because that inference is a cross-party takeover path. Sellers MUST NOT link, dedupe, or grant authority across principals based on matching operator identifiers.
+Whether a buyer agent's credentials map to one principal or several is the seller's authorization design. Separate credentials become one principal only through explicit administrative linking — never inferred from org membership, matching operator labels, or matching domains, because that inference is a cross-party takeover path. Sellers MUST NOT link, dedupe, or grant authority across principals based on matching operator identifiers.
 
 If an interactive client presents only one shared service credential for all its users, the seller cannot isolate user-owned configuration — one user's sync could read or erase another's — so it MUST refuse to persist configuration under it until the client completes delegated authorization or account linking. Anonymous and shared-credential callers own nothing durable, at this layer or the account layer.
 
@@ -53,7 +46,7 @@ For an RFC 9421 signed caller, the stable Agent subject is the canonical URL of 
 
 For a Web Bot Auth signed caller (experimental), the stable Agent subject is the signer's [canonical origin](/docs/reference/url-canonicalization#canonical-origin), verified as [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) describes. One agent occupies one origin, so key rotation within the origin's directory preserves the principal. Whether a verified origin has a principal, and how it gets one, is [first contact and binding](/docs/building/by-layer/L2/accounts-and-agents#first-contact-and-binding).
 
-Every applied, current, or recognized readback still carries the seller-resolved `principal_kind`, deprecated in 3.3: a bound buyer agent is always `buyer_agent`, so the field carries no information and is removed with the rename. `expected_principal_kind` is deprecated with it. Sellers still honor it as an assertion fence until then, rejecting a mismatch with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) before mutation; the assertion never influences resolution.
+Every applied, current, or recognized readback still carries the seller-resolved `principal_kind`, deprecated in 3.3: a bound buyer agent is always `buyer_agent`, so the field carries no information. `expected_principal_kind` is deprecated with it. Both keep working throughout 3.x, and sellers still honor `expected_principal_kind` as an assertion fence, rejecting a mismatch with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) before mutation; the assertion never influences resolution.
 
 The response's `principal_id` is a seller-issued audit and routing handle for the principal record. It is not a credential and does not authorize any advertiser account.
 
@@ -63,7 +56,7 @@ The principal layer begins **after authentication**. AdCP defines no credential-
 
 1. **Authenticate.** The buyer agent presents its own credential. Binding is described in [first contact and binding](/docs/building/by-layer/L2/accounts-and-agents#first-contact-and-binding).
 2. **Read [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).** Discover `adcp.principal`, its supported sections, event and delivery offerings, and limits.
-3. **Verify the resolved identity.** Call [`get_principal`](/docs/protocol/get_principal). A `recognized` result returns the existing durable `principal_id` and seller-resolved `principal_kind` without standing configuration. `unconfigured` means stable authentication succeeded but no durable record exists. The read creates neither records nor identifiers.
+3. **Verify the resolved identity.** Call [`get_principal`](/docs/protocol/get_principal). A `recognized` result returns the existing durable `principal_id` and the deprecated `principal_kind` without standing configuration. `unconfigured` means stable authentication succeeded but no durable record exists. The read creates neither records nor identifiers.
 4. **Call `sync_principal`.** Declare consumption facts (`declarations`), register webhook subscribers (including `principal.changed` and, with explicit scope, account-anchored events), and register reusable reporting destinations.
 5. **Authorize advertiser accounts separately** through [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and account-level tasks. Nothing in steps 1–4 grants account authority.
 6. **Bind each account's feeds** to the reusable `destination_ref`s.

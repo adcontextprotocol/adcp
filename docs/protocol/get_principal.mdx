@@ -6,10 +6,6 @@ description: "get_principal reads the authenticated caller's seller-resolved ide
 
 `get_principal` returns the authenticated caller's seller-resolved durable identity and current principal configuration with one AdCP agent: the same caller-scoped state that [`sync_principal`](/docs/protocol/sync_principal) replaces, plus retained superseded and revoked destination generations. A recognized durable identity remains readable before the caller has standing configuration.
 
-<Note>
-**Planned rename.** `sync_principal` and `get_principal` become `sync_buyer_agent_config` and `get_buyer_agent_config`, and `principal_kind` is removed, no earlier than the first minor release after December 7, 2026. AdCP 3.3 keeps the current names. See the [breaking-change notice](/docs/reference/migration/principal-to-buyer-agent-config).
-</Note>
-
 The read is side-effect free. It never creates a principal record, issues identifiers, sends endpoint proof challenges, mutates state, or advances `configuration_version`.
 
 For the full lifecycle from credentials through destination proof and readback, see [Set up your buyer agent with a seller](/docs/accounts/principal-registration-walkthrough).
@@ -41,7 +37,7 @@ For RFC 9421 signed callers, that stable identity is the canonical URL of the ex
 
 For Web Bot Auth signed callers (experimental), the stable identity is the signer's [canonical origin](/docs/reference/url-canonicalization#canonical-origin), verified as [Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities) describes. An identity-established caller ([Web Bot Auth identities](/docs/building/by-layer/L1/security#web-bot-auth-identities)) gets `unconfigured`. Key rotation within the origin's directory preserves the identity.
 
-`principal_kind` is resolved from authorization state, but the response exposes it only with a durable principal record: in `current` and `recognized` results. `principal_id` identifies that same record in both arms. A read never creates the record or mints the identifier; stable authentication without a materialized durable record returns `unconfigured`, which carries only `kind` and, when an application is in progress, `relationship`.
+The deprecated `principal_kind` is resolved from authorization state, but the response exposes it only with a durable principal record: in `current` and `recognized` results. `principal_id` identifies that same record in both arms. A read never creates the record or mints the identifier; stable authentication without a materialized durable record returns `unconfigured`, which carries only `kind` and, when an application is in progress, `relationship`.
 
 ## Results
 
