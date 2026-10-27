@@ -182,6 +182,11 @@
       "rule": "shared-to-domain"
     },
     {
+      "from": "error-details/price-adjustments-mismatch.json",
+      "to": "pricing-options/price-breakdown.json",
+      "rule": "shared-to-domain"
+    },
+    {
       "from": "governance/policy-entry.json",
       "to": "media-buy/acceptance-policy-profile.json",
       "rule": "undeclared-domain-dependency"
