@@ -59,6 +59,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 29 | Creative agents that advertise `creative.supports_refinement` | Retain each leaf's compliance inputs for as long as the leaf, apply them to every refinement, and never treat a refined leaf as approved ([details](#refinement-carries-compliance-forward)). |
 | 30 | Sellers that hold buys for review | Keep a provisional buy (`confirmed_at: null`) in `pending_start` at flight start until you confirm or reject it ([details](#flight-start-activates-committed-buys-only)). |
 | 31 | Sellers reporting qualified metrics | Omit a metric's flat carrier from buy and window `totals` when packages report it under more than one qualifier set ([details](#multi-qualifier-metrics-omit-flat-totals)). |
+| 32 | Buyers and in-house clients | Send `adcp_version` on every request, with the deprecated `adcp_major_version` mirror through 3.x. 4.0 removes `adcp_major_version` and `adcp.major_versions` ([details](#deprecations)). |
 
 ## Required to claim 3.3 behavior
 
@@ -599,6 +600,8 @@ Adopters of these patches have already seen these; their changesets reappear in 
 - **The natural key as the account reference after provisioning.** Sending the natural-key `AccountRef` on account-scoped tasks once the account exists is deprecated and planned for removal in AdCP 4.0 ([#7850](https://github.com/adcontextprotocol/adcp/issues/7850)). It keeps working throughout 3.x. The natural key itself stays: buyers use it to open accounts with `sync_accounts` and as a `list_accounts` filter to look up an account's ID. **Sellers** SHOULD return `account_id` from `sync_accounts` and declare `account.stable_account_id: true` during 3.x. **Buyers** store the returned ID and send it to sellers that declare the capability. See [Toward account IDs everywhere](/docs/accounts/overview#toward-account-ids-everywhere).
 
 3.3 also narrows one already-deprecated item: the per-request `authentication` block as a webhook-signing mode trigger, and condition (b) of `request_signature_required` that depends on it, are removed in 4.0 with the block itself. A deprecation window does not reset when a deprecated feature is modified, so the published removal window for `authentication` applies. Other existing 3.2 deprecations keep their published removal windows.
+
+One earlier deprecation is worth restating before 4.0. The integer request field `adcp_major_version` and the `adcp.major_versions` capability field, deprecated in 3.1 in favor of `adcp_version` and `adcp.supported_versions`, keep working through 3.x and are **removed in 4.0** ([DR-0035](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0035-adcp-major-version-removed-in-4-0.md)). Buyers send `adcp_version` on every request and keep the integer mirror until then. Sellers keep emitting `adcp.major_versions` alongside `adcp.supported_versions` through 3.x. In-house clients that send only the integer should move to `adcp_version` now. The [v4 compatibility checks](/docs/reference/migration/v4-compatibility#major_versions_removed_in_4_0) flag sellers that still rely on the integer list.
 
 ## Compliance and grading
 
