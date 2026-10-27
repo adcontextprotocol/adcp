@@ -61,7 +61,7 @@ describe('brand protocol tools (training agent)', () => {
     it('returns public fields without authorization', async () => {
       const result = await call('get_brand_identity', { brand_id: 'daan_janssen' });
       expect(result.description).toBe('Dutch Olympic speed skater, 2x gold medalist');
-      expect(result.industries).toEqual(['sports']);
+      expect(result.industries).toEqual(['sports_fitness']);
       expect(result.tagline).toBe('Speed is a choice');
       expect(result.logos).toBeDefined();
     });

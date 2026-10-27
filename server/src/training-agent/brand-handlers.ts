@@ -6,7 +6,7 @@
  * Responses are deterministic — built from in-memory data, not LLM calls.
  */
 
-import type { TrainingContext, ToolArgs } from './types.js';
+import { servesReleaseBefore, type TrainingContext, type ToolArgs } from './types.js';
 import { createHash } from 'node:crypto';
 import { canonicalize, enforceMapCap } from '@adcp/sdk';
 import { getSandboxBrands } from '@adcp/sdk/testing';
@@ -266,7 +266,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Daan Janssen' }],
     description: 'Dutch Olympic speed skater, 2x gold medalist',
-    industries: ['sports'],
+    industries: ['sports_fitness'],
     keller_type: 'independent',
     tagline: 'Speed is a choice',
     logos: [
@@ -345,7 +345,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Sofia Reyes' }, { es: 'Sofia Reyes' }],
     description: 'Mexican freestyle swimmer, Pan American gold medalist',
-    industries: ['sports'],
+    industries: ['sports_fitness'],
     keller_type: 'independent',
     tagline: 'Every stroke counts',
     logos: [
@@ -408,7 +408,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Pieter van Dijk' }, { nl: 'Pieter van Dijk' }],
     description: 'Dutch professional cyclist and vegan lifestyle advocate',
-    industries: ['sports'],
+    industries: ['sports_fitness'],
     keller_type: 'independent',
     tagline: 'Fueled by plants',
     logos: [
@@ -486,7 +486,7 @@ const TALENT: TalentEntry[] = [
     house: HOUSE,
     names: [{ en: 'Yuki Tanaka' }, { ja: '田中ゆき' }],
     description: 'Japanese figure skater, World Championship silver medalist',
-    industries: ['sports'],
+    industries: ['sports_fitness'],
     keller_type: 'independent',
     tagline: 'Grace under pressure',
     logos: [
@@ -565,6 +565,17 @@ const TALENT_MAP = new Map(TALENT.map(t => [t.brand_id, t]));
 // Loaded via getSandboxBrands() — the same API the AAO registry uses.
 // New sandbox brands added to the SDK appear here automatically.
 
+/**
+ * SDK sandbox brands carry a coarse industry label. search_brands reports
+ * industries in the advertiser-industry taxonomy (enums/advertiser-industry.json),
+ * so map the labels that taxonomy names differently.
+ */
+const SANDBOX_INDUSTRY_TAXONOMY: Readonly<Record<string, string>> = {
+  advertising: 'professional_services',
+  beauty: 'beauty_cosmetics',
+  hospitality: 'travel_hospitality',
+};
+
 function loadAdvertiserBrands(): BrandEntry[] {
   const sandboxBrands = getSandboxBrands();
   const brands: BrandEntry[] = [];
@@ -581,7 +592,7 @@ function loadAdvertiserBrands(): BrandEntry[] {
       house: { domain: sb.domain, name: sb.brand_name },
       names: (inner.name as LocalizedName[]) || [{ en: sb.brand_name }],
       description: (inner.description as string) || '',
-      industries: sb.industry ? [sb.industry] : [],
+      industries: sb.industry ? [SANDBOX_INDUSTRY_TAXONOMY[sb.industry] ?? sb.industry] : [],
       keller_type: 'master',
       tagline: '',
       logos: (inner.logos as Logo[]) || [],
@@ -770,14 +781,33 @@ function getTalentName(talent: TalentEntry): string {
   return talent.names[0]?.[Object.keys(talent.names[0])[0]] || talent.brand_id;
 }
 
-export function handleSearchBrands(args: ToolArgs, _ctx: TrainingContext) {
+export function handleSearchBrands(args: ToolArgs, ctx: TrainingContext) {
   const req = args as {
-    query: string;
+    query?: unknown;
     industries?: string[];
     countries?: string[];
     pagination?: { max_results?: number; cursor?: string };
     context?: Record<string, unknown>;
   };
+  // `query` is required (brand/search-brands-request.json). An empty string is
+  // a valid query that matches the whole roster; an absent one is a request
+  // the buyer must correct.
+  if (typeof req.query !== 'string') {
+    return {
+      status: 'completed',
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'query is required: a natural-language description of the brands to find.',
+        field: 'query',
+        recovery: 'correctable',
+      }],
+      ...(req.context && { context: req.context }),
+    };
+  }
+  const query = req.query;
+  // 3.1 requires `house` on every result; 3.2 makes it conditional on a
+  // recorded house affiliation and adds `relationship_trust`.
+  const houseRequired = servesReleaseBefore(ctx.servedAdcpVersion, 3, 2);
   const offset = decodeOffsetCursor('search_brands', req.pagination?.cursor);
   if (offset === null) {
     return {
@@ -791,7 +821,7 @@ export function handleSearchBrands(args: ToolArgs, _ctx: TrainingContext) {
     };
   }
 
-  const queryTerms = (req.query.toLowerCase().match(/[a-z0-9]+/g) ?? [])
+  const queryTerms = (query.toLowerCase().match(/[a-z0-9]+/g) ?? [])
     .filter(term => term.length > 2 && !['and', 'the', 'with', 'brand', 'brands'].includes(term));
   const requestedIndustries = new Set((req.industries ?? []).map(value => value.toLowerCase()));
 
@@ -827,11 +857,11 @@ export function handleSearchBrands(args: ToolArgs, _ctx: TrainingContext) {
     const managedInline = 'rights' in brand;
     return {
       brand_id: brand.brand_id,
-      ...(managedInline && { house: brand.house }),
+      ...((managedInline || houseRequired) && { house: brand.house }),
       relationship_trust: managedInline ? 'inline' as const : 'standalone' as const,
       names: brand.names,
       description: brand.description,
-      industries: brand.industries,
+      ...(brand.industries.length > 0 && { industries: brand.industries }),
       keller_type: brand.keller_type,
       logos: brand.logos,
       ...('rights' in brand && {
@@ -1136,7 +1166,22 @@ function defaultRightsWindow() {
   };
 }
 
-export async function handleAcquireRights(
+/**
+ * 3.0 reports the grant outcome in `status` (`acquired`, `pending_approval`,
+ * `rejected`); 3.1 moved it to `rights_status` and left `status` to the task
+ * envelope.
+ */
+export async function handleAcquireRights(args: ToolArgs, ctx: TrainingContext) {
+  const result = await acquireRights(args, ctx);
+  const servedVersion = ctx.storyboardCompat?.version === '3.0' ? '3.0' : ctx.servedAdcpVersion;
+  if (!servesReleaseBefore(servedVersion, 3, 1) || typeof (result as { rights_status?: unknown }).rights_status !== 'string') {
+    return result;
+  }
+  const { rights_status: rightsStatus, ...rest } = result as Record<string, unknown>;
+  return { ...rest, status: rightsStatus };
+}
+
+async function acquireRights(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
