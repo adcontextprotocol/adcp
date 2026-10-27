@@ -494,6 +494,35 @@ test('the repository reopened list is valid and names only open schemas', () => 
   assert.deepEqual(result.errors, []);
 });
 
+/**
+ * The locations in a decision record's one-time correction table, as
+ * `<file>#<pointer>`. A pointer cell reads `root` or lists pointers in code.
+ */
+function correctionTableLocations(recordText) {
+  const section = recordText.split(/^### One-time correction/m)[1].split(/^#{2,3} /m)[0];
+  const locations = new Set();
+  for (const line of section.split('\n')) {
+    const cells = line.split('|').map((cell) => cell.trim());
+    const file = /^`([^`]+\.json)`$/.exec(cells[1] || '');
+    if (!file) continue;
+    const pointers = cells[2] === 'root' ? [''] : [...cells[2].matchAll(/`([^`]*)`/g)].map((m) => m[1]);
+    for (const pointer of pointers) locations.add(`${file[1]}#${pointer}`);
+  }
+  return locations;
+}
+
+test('every reopened entry is in the correction table of its decision record', () => {
+  const root = path.join(__dirname, '..');
+  const value = JSON.parse(fs.readFileSync(path.join(root, 'scripts', 'lint-additive-minor-reopened.json'), 'utf8'));
+  const decisions = path.join(root, 'governance', 'decisions');
+  const record = fs.readdirSync(decisions).find((name) => name.startsWith(`${value.decision}-`));
+  assert.ok(record, `no decision record for ${value.decision}`);
+  const table = correctionTableLocations(fs.readFileSync(path.join(decisions, record), 'utf8'));
+  assert.ok(table.size > 0, `${record} has no one-time correction table`);
+  const unlisted = value.schemas.map((e) => `${e.file}#${e.pointer}`).filter((location) => !table.has(location));
+  assert.deepEqual(unlisted, []);
+});
+
 // ---------------------------------------------------------------------------
 // Additive changes pass
 // ---------------------------------------------------------------------------
