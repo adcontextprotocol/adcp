@@ -732,6 +732,7 @@ test('the CI check reads a source directory and fails on a new violation', () =>
       baseTree: tree('fixture', fixture()),
       baseVersion: '3.2.7',
       baselineValue: { base: '3.2.7', entries },
+      reopenedValue: { schemas: [] },
     });
     const failing = run([]);
     assert.equal(failing.ok, false);
