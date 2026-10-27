@@ -394,6 +394,10 @@ A creative is **live** when its `status` is `approved` and it has at least one a
 
 Adding, removing, and changing an asset all count. `name` and `tags` are not a kind: a declaring seller always accepts changes to them on a live creative, without review. `status`, `weight`, and placement fields keep their own rules.
 
+**Edit or swap.** An in-place change keeps one `creative_id`, so delivery, measurement, and frequency keep accumulating under one identity. That fits changes to the same ad: a tracker, a click-through, a corrected asset. A change that makes it a different ad belongs on a new `creative_id` swapped in with an `assignment_operations` `replace`, which separates reporting and frequency and gives the old creative a defined end. The protocol does not draw that line by content. The seller draws it through what it lists in `in_place`: a seller that treats wholesale content replacement as a new ad leaves `asset_content` out, or declares it `paused_for_review`, and refuses or pauses it. Syncing a new `creative_id` stays available to every buyer, declaring seller or not.
+
+**Out of scope in this experiment.** Dynamic creatives, whose content and landing URL vary per impression by design (for example DCO driven by `variables`, catalog items, or macros), have no single "after" for a seller to review, so the change-kind diff does not apply to them. The experiment does not define how a seller reviews or stages a change to one. A declaring seller MAY refuse an in-place change to a dynamic creative with [`CREATIVE_LIVE_UPDATE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-creative-live-update-unsupported), naming `asset_content`, and the buyer syncs a new `creative_id`. Audience is not a creative change: it is targeting on the package. Rotation and weight belong to the assignment and placement. None is a change kind, and nothing in this section changes them.
+
 **Serving modes.** For each kind it applies in place, the seller declares one mode. `in_place` has at most one entry per kind.
 
 | Mode | While the seller decides | Sync result |
