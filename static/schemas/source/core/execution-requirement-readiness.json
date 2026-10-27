@@ -1,0 +1,300 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/execution-requirement-readiness.json",
+  "title": "Execution Requirement Readiness",
+  "description": "Experimental (`media_buy.execution_readiness`). Whether the caller's account can satisfy one entry of a product's `execution_requirements[]`. Account-scoped; appears only in the `get_products` `execution_readiness` map and MUST NOT be disclosed across accounts. Advisory: `create_media_buy` revalidates.",
+  "type": "object",
+  "properties": {
+    "requirement": {
+      "$ref": "/schemas/core/product-execution-requirement.json",
+      "description": "The product's declared requirement, echoed. MUST deep-equal an entry of its current `execution_requirements[]`; no match means the buyer's product feed is stale."
+    },
+    "readiness_status": {
+      "$ref": "/schemas/enums/execution-readiness-status.json",
+      "description": "Readiness of this requirement. For `downstream_connection`, derived from `connection_state.status`: `connected` and `not_required` are `ready`; `missing`, `pending`, `expired`, `revoked` are `setup_required`; `unknown` is `unknown`. `selection_required` and `input_required` apply only to `event_source` and `catalog`."
+    },
+    "binding_field": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Where the buyer binds the resource, in the form of `error.field`. Omitted for `downstream_connection`. For `event_source` and `catalog`, SHOULD be present when `ready` or `selection_required`."
+    },
+    "resolved": {
+      "type": "object",
+      "description": "The resource to use when `readiness_status` is `ready`, for `event_source` and `catalog`; REQUIRED then. The buyer MUST still bind `resource_id`: `ready` does not waive binding (`not_bound` per `error-details/execution-requirement-unmet.json`).",
+      "properties": {
+        "resource_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Directly usable in `binding_field`: the `event_source_id` from `sync_event_sources` (including a seller-managed source) or a `catalog_id`. Never a raw platform ID unless that is what the field accepts."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name of the resource on the seller's platform."
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["resource_id"],
+      "additionalProperties": true
+    },
+    "candidates": {
+      "type": "array",
+      "description": "Resources the account has, when `selection_required`, for `event_source` and `catalog`. Account-scoped, never disclosed across accounts. Lists resources the seller has no evidence would fail the requirement; MAY include one whose event types or catalog type it cannot verify.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "resource_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Directly usable in `binding_field`, as for `resolved.resource_id`."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name of the resource on the seller's platform."
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "required": ["resource_id"],
+        "additionalProperties": true
+      },
+      "minItems": 2,
+      "uniqueItems": true
+    },
+    "connection_state": {
+      "$ref": "/schemas/core/downstream-connection-requirement.json",
+      "description": "For `downstream_connection`, REQUIRED: the account's state for the connection the seller would use (its documented default when several are connected). Reuses `downstream-connection-requirement.json` as a state record; only `status`, `provider`, `connection_type`, `scope`, `authorization_url`, `authorization_instructions`, and `connection_id` are meaningful here. `missing`, `expired`, or `revoked` SHOULD carry `authorization_url` or `authorization_instructions`; `connection_id` only when safe to disclose to this account."
+    },
+    "unknown_reason": {
+      "type": "string",
+      "enum": ["permission_denied", "platform_unavailable", "not_evaluated"],
+      "description": "Why the seller could not check; REQUIRED when `unknown`. `permission_denied`: its credential cannot read this resource kind. `platform_unavailable`: the read failed or timed out. `not_evaluated`: skipped, for example past its evaluation budget."
+    },
+    "issues": {
+      "type": "array",
+      "description": "Actionable detail for a non-`ready` status. SHOULD be limited to the 3-5 most actionable items.",
+      "items": {
+        "$ref": "/schemas/core/diagnostic-issue.json"
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["requirement", "readiness_status"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "readiness_status": {
+            "const": "unknown"
+          }
+        },
+        "required": ["readiness_status"]
+      },
+      "then": {
+        "required": ["unknown_reason"],
+        "not": {
+          "anyOf": [
+            {
+              "required": ["resolved"]
+            },
+            {
+              "required": ["candidates"]
+            }
+          ]
+        }
+      },
+      "else": {
+        "not": {
+          "required": ["unknown_reason"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "readiness_status": {
+            "const": "selection_required"
+          }
+        },
+        "required": ["readiness_status"]
+      },
+      "then": {
+        "required": ["candidates"],
+        "not": {
+          "required": ["resolved"]
+        }
+      },
+      "else": {
+        "not": {
+          "required": ["candidates"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "readiness_status": {
+            "const": "ready"
+          }
+        },
+        "required": ["readiness_status"]
+      },
+      "else": {
+        "not": {
+          "required": ["resolved"]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "requirement": {
+            "properties": {
+              "kind": {
+                "const": "downstream_connection"
+              }
+            },
+            "required": ["kind"]
+          }
+        },
+        "required": ["requirement"]
+      },
+      "then": {
+        "required": ["connection_state"],
+        "properties": {
+          "readiness_status": {
+            "enum": ["ready", "setup_required", "unknown"]
+          },
+          "connection_state": {
+            "required": ["status"]
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": ["resolved"]
+            },
+            {
+              "required": ["candidates"]
+            },
+            {
+              "required": ["binding_field"]
+            }
+          ]
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "connection_state": {
+                  "properties": {
+                    "status": {
+                      "enum": ["connected", "not_required"]
+                    }
+                  },
+                  "required": ["status"]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "readiness_status": {
+                  "const": "ready"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "connection_state": {
+                  "properties": {
+                    "status": {
+                      "enum": ["missing", "pending", "expired", "revoked"]
+                    }
+                  },
+                  "required": ["status"]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "readiness_status": {
+                  "const": "setup_required"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "connection_state": {
+                  "properties": {
+                    "status": {
+                      "const": "unknown"
+                    }
+                  },
+                  "required": ["status"]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "readiness_status": {
+                  "const": "unknown"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "else": {
+        "not": {
+          "required": ["connection_state"]
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "readiness_status": {
+                  "const": "ready"
+                }
+              },
+              "required": ["readiness_status"]
+            },
+            "then": {
+              "required": ["resolved"]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "requirement": {
+        "kind": "event_source",
+        "event_types": ["purchase"]
+      },
+      "readiness_status": "selection_required",
+      "binding_field": "packages[].optimization_goals[].event_sources[].event_source_id",
+      "candidates": [
+        {
+          "resource_id": "es_main_site",
+          "name": "Main site pixel"
+        },
+        {
+          "resource_id": "es_checkout",
+          "name": "Checkout pixel"
+        }
+      ]
+    }
+  ],
+  "x-status": "experimental",
+  "x-added-in": "3.3.0"
+}
