@@ -31,7 +31,8 @@
       "$ref": "/schemas/core/audience-characteristic.json"
     },
     "relationship": {
-      "$ref": "/schemas/enums/audience-evidence-relationship.json",
+      "type": "string",
+      "enum": ["composition", "index", "reach_estimate"],
       "description": "What the estimate says: population share, ratio to a baseline, or estimated reachable count."
     },
     "value": {

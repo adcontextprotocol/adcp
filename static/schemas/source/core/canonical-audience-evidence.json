@@ -10,7 +10,7 @@
     "version": { "type": "string", "minLength": 1 },
     "content_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "audience": { "$ref": "/schemas/core/audience-characteristic.json" },
-    "relationship": { "$ref": "/schemas/enums/audience-evidence-relationship.json" },
+    "relationship": { "type": "string", "enum": ["composition", "index", "reach_estimate"] },
     "value": { "type": "number", "minimum": 0 },
     "unit": { "type": "string", "enum": ["fraction", "ratio", "count"] },
     "baseline": {

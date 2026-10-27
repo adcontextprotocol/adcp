@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/audience-evidence-relationship.json",
   "title": "Audience Evidence Relationship",
-  "description": "What an audience-evidence estimate says. Extracted unchanged from the inline 3.2.0 enum on audience_evidence.relationship (the 3.3.0 tag marks the extraction) so buyer targets and published evidence share one vocabulary.",
+  "description": "What an audience-evidence estimate says. The vocabulary of buyer targets. Same values as the inline enum on audience_evidence.relationship, which stays inline because it is a stable 3.2 field; a test pins the two lists equal.",
   "type": "string",
   "enum": ["composition", "index", "reach_estimate"],
   "enumDescriptions": {
