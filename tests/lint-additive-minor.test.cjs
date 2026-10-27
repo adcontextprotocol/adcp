@@ -27,6 +27,7 @@ const {
   findingKey,
   historyPairs,
   lintAdditiveMinor,
+  recordedCorrections,
 } = require('../scripts/lint-additive-minor.cjs');
 
 /** A small, valid schema tree. Each test clones it and changes one thing. */
@@ -244,7 +245,7 @@ test('treats unevaluatedProperties: false as closed', () => {
  * Compares a candidate with the fixture as base, where one earlier stable
  * release published core/explicit-open.json closed with only `name`.
  */
-function analyzeWithEarlierClosure(change, { reopenedValue, candidateVersion = '3.3.0-beta.0', earlier } = {}) {
+function analyzeWithEarlierClosure(change, { correctionsValue, candidateVersion = '3.3.0-beta.0', earlier } = {}) {
   const older = fixture();
   older['core/explicit-open.json'].additionalProperties = false;
   if (earlier) earlier(older);
@@ -256,7 +257,8 @@ function analyzeWithEarlierClosure(change, { reopenedValue, candidateVersion = '
     candTree: tree('source', candidate),
     candidateVersion,
     earlierTrees: [{ version: '3.0.4', tree: tree('3.0.4', older) }],
-    reopenedValue,
+    correctionsValue,
+    repoRoot: fixtureRoot(),
   });
 }
 
@@ -389,7 +391,7 @@ test('an opened schema in the CI check passes and reports the notice', () => {
       baseVersion: '3.2.7',
       candidateVersion: '3.3.0-beta.0',
       baselineValue: { base: '3.2.7', entries: [] },
-      reopenedValue: { schemas: [] },
+      correctionsValue: { corrections: [] },
     });
     assert.equal(result.ok, true, result.errors.join('\n'));
     assert.deepEqual(result.notices.map((n) => n.detail), ['additionalProperties false → absent']);
@@ -399,13 +401,70 @@ test('an opened schema in the CI check passes and reports the notice', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Reopened schemas
+// Corrections
 // ---------------------------------------------------------------------------
 
-const REOPENED_CLOSED = {
-  decision: 'DR-0036',
-  schemas: [{ file: 'core/closed.json', pointer: '', since: '3.3.0', reason: 'closed against DR-0019' }],
-};
+// A repository root for correction fixtures: one source text and one decision
+// record whose correction tables list the fixture corrections.
+const FIXTURE_DECISION = 'DR-9001';
+const FIXTURE_SOURCE = { path: 'docs/rule.md', quote: 'Roots and containers stay open.' };
+let fixtureRootPath = null;
+
+function fixtureRoot() {
+  if (fixtureRootPath) return fixtureRootPath;
+  fixtureRootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'additive-minor-root-'));
+  fs.mkdirSync(path.join(fixtureRootPath, 'docs'));
+  // The quote wraps across a line break, as prose in the repository does.
+  fs.writeFileSync(path.join(fixtureRootPath, FIXTURE_SOURCE.path), '# Rule\n\nRoots and containers\nstay open.\n');
+  fs.mkdirSync(path.join(fixtureRootPath, 'governance', 'decisions'), { recursive: true });
+  fs.writeFileSync(path.join(fixtureRootPath, 'governance', 'decisions', `${FIXTURE_DECISION}-fixture.md`), [
+    '## Decision',
+    '',
+    '### Corrections',
+    '',
+    '#### (a) Reopen the fixture schemas',
+    '',
+    '| Schema | Pointer | Property | Reason |',
+    '|---|---|---|---|',
+    '| `core/closed.json` | root | `*` | A root. |',
+    '| `core/explicit-open.json` | root | `*` | A root. |',
+    '| `core/union.json` | `/oneOf/0`, `/oneOf/1` | `*` | Response branches. |',
+    '| `core/closed.json` | `/properties/missing` | `*` | A location no schema has. |',
+    '',
+    '#### (b) Declare one property',
+    '',
+    '| Schema | Pointer | Property | Reason |',
+    '|---|---|---|---|',
+    '| `core/closed.json` | root | `extra` | Required by the rule. |',
+    '',
+    '## Rationale',
+    '',
+    '| `core/open.json` | root | `*` | Outside the corrections section. |',
+    '',
+  ].join('\n'));
+  return fixtureRootPath;
+}
+
+test.after(() => {
+  if (fixtureRootPath) fs.rmSync(fixtureRootPath, { recursive: true, force: true });
+});
+
+/** One correction entry, valid in the fixture root. */
+function correction(overrides = {}) {
+  return {
+    file: 'core/closed.json',
+    pointer: '',
+    property: '*',
+    release: '3.3.0',
+    source: { ...FIXTURE_SOURCE },
+    reason: 'Closed against the rule.',
+    ...overrides,
+  };
+}
+
+function corrections(...entries) {
+  return { decision: FIXTURE_DECISION, corrections: entries };
+}
 
 /** Opens core/closed.json and adds a property, the change a reopening allows. */
 function reopenAndAdd(t) {
@@ -413,7 +472,7 @@ function reopenAndAdd(t) {
   t['core/closed.json'].properties.extra = { type: 'string' };
 }
 
-function analyzePair(change, { reopenedValue, candidateVersion = '3.3.0-beta.0' } = {}) {
+function analyzePair(change, { correctionsValue, candidateVersion = '3.3.0-beta.0' } = {}) {
   const candidate = fixture();
   change(candidate);
   return analyze({
@@ -422,65 +481,161 @@ function analyzePair(change, { reopenedValue, candidateVersion = '3.3.0-beta.0' 
     candTree: tree('source', candidate),
     candidateVersion,
     earlierTrees: [],
-    reopenedValue,
+    correctionsValue,
+    repoRoot: fixtureRoot(),
   });
 }
 
-test('allows additions to a listed schema from the listed release on', () => {
-  const result = analyzePair(reopenAndAdd, { reopenedValue: REOPENED_CLOSED });
-  assert.deepEqual(result.findings, []);
-  assert.deepEqual(result.errors, []);
-  assert.deepEqual(result.notices.map((n) => [n.detail, n.reopened]), [['additionalProperties false → true', true]]);
+test('a listed reopening accepts additions from its release on', () => {
+  const result = analyzePair(reopenAndAdd, { correctionsValue: corrections(correction()) });
+  assert.deepEqual([result.findings, result.errors], [[], []]);
+  assert.deepEqual(result.notices.map((n) => [n.detail, n.corrected]), [['additionalProperties false → true', true]]);
 });
 
-test('still flags additions to a listed schema before the listed release', () => {
-  const result = analyzePair(reopenAndAdd, { reopenedValue: REOPENED_CLOSED, candidateVersion: '3.2.8' });
+test('a listed reopening accepts no additions before its release', () => {
+  const result = analyzePair(reopenAndAdd, { correctionsValue: corrections(correction()), candidateVersion: '3.2.8' });
   assert.deepEqual(result.findings.map((f) => [f.kind, f.detail]), [['property-added-to-closed', 'property extra added']]);
 });
 
-test('still flags additions to a schema the list does not name', () => {
+test('a listed property correction accepts that property on a closed schema', () => {
+  const result = analyzePair(
+    (t) => { t['core/closed.json'].properties.extra = { type: 'string' }; },
+    { correctionsValue: corrections(correction({ property: 'extra' })) },
+  );
+  assert.deepEqual([result.findings, result.notices, result.errors], [[], [], []]);
+});
+
+test('an addition next to a listed property correction still fails', () => {
+  const result = analyzePair(
+    (t) => {
+      t['core/closed.json'].properties.extra = { type: 'string' };
+      t['core/closed.json'].properties.other = { type: 'string' };
+    },
+    { correctionsValue: corrections(correction({ property: 'extra' })) },
+  );
+  assert.deepEqual(result.findings.map((f) => [f.file, f.detail]), [['core/closed.json', 'property other added']]);
+  assert.deepEqual(result.errors, []);
+});
+
+test('an addition to a schema no correction names still fails', () => {
   const result = analyzePair(reopenAndAdd, {
-    reopenedValue: { schemas: [{ ...REOPENED_CLOSED.schemas[0], file: 'core/explicit-open.json' }] },
+    correctionsValue: corrections(correction({ file: 'core/explicit-open.json' })),
   });
   assert.deepEqual(result.findings.map((f) => [f.file, f.detail]), [['core/closed.json', 'property extra added']]);
 });
 
-test('allows additions to a listed schema that an earlier release closed', () => {
+test('a listed reopening applies to a schema an earlier release closed', () => {
   const result = analyzeWithEarlierClosure(
     (t) => { t['core/explicit-open.json'].properties.extra = { type: 'string' }; },
-    { reopenedValue: { schemas: [{ ...REOPENED_CLOSED.schemas[0], file: 'core/explicit-open.json' }] } },
+    { correctionsValue: corrections(correction({ file: 'core/explicit-open.json' })) },
   );
   assert.deepEqual([result.findings, result.errors], [[], []]);
 });
 
-test('fails when a listed schema is still closed in the candidate', () => {
-  const result = analyzePair(() => {}, { reopenedValue: REOPENED_CLOSED });
-  assert.deepEqual(result.errors, ['reopened schema core/closed.json# is still closed in source']);
+test('a listed reopening covers each oneOf branch it names', () => {
+  const result = analyzePair(
+    (t) => {
+      for (const branch of t['core/union.json'].oneOf) {
+        branch.additionalProperties = true;
+        branch.properties.extra = { type: 'string' };
+      }
+    },
+    {
+      correctionsValue: corrections(
+        correction({ file: 'core/union.json', pointer: '/oneOf/0' }),
+        correction({ file: 'core/union.json', pointer: '/oneOf/1' }),
+      ),
+    },
+  );
+  assert.deepEqual([result.findings, result.errors], [[], []]);
 });
 
-test('fails when a listed schema does not exist', () => {
+test('fails when a reopened schema is still closed in the candidate', () => {
+  const result = analyzePair(() => {}, { correctionsValue: corrections(correction()) });
+  assert.deepEqual(result.errors, ['correction core/closed.json# reopens a schema that is still closed in source']);
+});
+
+test('fails when a correction names a location that does not exist', () => {
   const result = analyzePair(() => {}, {
-    reopenedValue: { schemas: [{ ...REOPENED_CLOSED.schemas[0], pointer: '/properties/missing' }] },
+    correctionsValue: corrections(correction({ pointer: '/properties/missing' })),
   });
-  assert.deepEqual(result.errors, ['reopened schema core/closed.json#/properties/missing does not exist in source']);
+  assert.deepEqual(result.errors, ['correction core/closed.json#/properties/missing does not exist in source']);
 });
 
-test('every reopened entry needs a stable release in since', () => {
+test('fails when a property correction is not declared in the candidate', () => {
+  const result = analyzePair(() => {}, { correctionsValue: corrections(correction({ property: 'extra' })) });
+  assert.deepEqual(result.errors, ['correction core/closed.json# does not declare extra in source']);
+});
+
+test('every correction needs a stable release', () => {
+  const result = analyzePair(reopenAndAdd, { correctionsValue: corrections(correction({ release: '3.3.0-beta.0' })) });
+  assert.deepEqual(result.errors, ['corrections[0].release must be a stable release']);
+});
+
+test('every correction needs a reason', () => {
+  const result = analyzePair(reopenAndAdd, { correctionsValue: corrections(correction({ reason: '' })) });
+  assert.deepEqual(result.errors, ['corrections[0].reason must not be empty']);
+});
+
+test('every correction names a property', () => {
+  const result = analyzePair(reopenAndAdd, { correctionsValue: corrections(correction({ property: undefined })) });
+  assert.deepEqual(result.errors, ['corrections[0].property must be a string']);
+});
+
+test('every correction needs a source with a path and a quote', () => {
   const result = analyzePair(reopenAndAdd, {
-    reopenedValue: { schemas: [{ ...REOPENED_CLOSED.schemas[0], since: '3.3.0-beta.0' }] },
+    correctionsValue: corrections(correction({ source: { path: FIXTURE_SOURCE.path } })),
   });
-  assert.deepEqual(result.errors, ['reopened schemas[0].since must be a stable release']);
+  assert.deepEqual(result.errors, ['corrections[0].source must name a path and a quote']);
 });
 
-test('every reopened entry needs a reason', () => {
+test('fails when a correction source file does not exist', () => {
   const result = analyzePair(reopenAndAdd, {
-    reopenedValue: { schemas: [{ ...REOPENED_CLOSED.schemas[0], reason: '' }] },
+    correctionsValue: corrections(correction({ source: { ...FIXTURE_SOURCE, path: 'docs/missing.md' } })),
   });
-  assert.deepEqual(result.errors, ['reopened schemas[0].reason must not be empty']);
+  assert.deepEqual(result.errors, ['corrections[0].source.path docs/missing.md does not exist']);
 });
 
-test('the repository reopened list is valid and names only open schemas', () => {
-  const value = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'lint-additive-minor-reopened.json'), 'utf8'));
+test('fails when a correction source path leaves the repository', () => {
+  const result = analyzePair(reopenAndAdd, {
+    correctionsValue: corrections(correction({ source: { ...FIXTURE_SOURCE, path: '../rule.md' } })),
+  });
+  assert.deepEqual(result.errors, ['corrections[0].source.path ../rule.md does not exist']);
+});
+
+test('fails when a correction quote is not in its source file', () => {
+  const result = analyzePair(reopenAndAdd, {
+    correctionsValue: corrections(correction({ source: { ...FIXTURE_SOURCE, quote: 'Roots may close.' } })),
+  });
+  assert.deepEqual(result.errors, [`corrections[0].source.quote is not in ${FIXTURE_SOURCE.path}`]);
+});
+
+test('fails when a correction is missing from its decision record', () => {
+  const result = analyzePair(
+    (t) => { t['core/explicit-open.json'].properties.extra = { type: 'string' }; },
+    { correctionsValue: corrections(correction({ file: 'core/explicit-open.json', property: 'extra' })) },
+  );
+  assert.deepEqual(result.errors, [
+    `correction core/explicit-open.json# extra is not in the correction tables of ${FIXTURE_DECISION}-fixture.md`,
+  ]);
+});
+
+test('a table outside the record\'s Corrections section does not record a correction', () => {
+  const result = analyzePair(() => {}, { correctionsValue: corrections(correction({ file: 'core/open.json' })) });
+  assert.deepEqual(result.errors, [
+    `correction core/open.json# * is not in the correction tables of ${FIXTURE_DECISION}-fixture.md`,
+  ]);
+});
+
+test('fails when the corrections list names no existing decision record', () => {
+  const result = analyzePair(reopenAndAdd, {
+    correctionsValue: { decision: 'DR-9002', corrections: [correction()] },
+  });
+  assert.deepEqual(result.errors, ['no decision record for DR-9002 under governance/decisions']);
+});
+
+test('the repository corrections list is valid', () => {
+  const value = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'lint-additive-minor-corrections.json'), 'utf8'));
   assert.equal(value.decision, 'DR-0036');
   const sourceTree = buildTree('source', new Map(walk(path.join(__dirname, '..', 'static', 'schemas', 'source'))));
   const result = analyze({
@@ -489,38 +644,17 @@ test('the repository reopened list is valid and names only open schemas', () => 
     candTree: sourceTree,
     candidateVersion: '9.9.9',
     earlierTrees: [],
-    reopenedValue: value,
+    correctionsValue: value,
   });
   assert.deepEqual(result.errors, []);
 });
 
-/**
- * The locations in a decision record's one-time correction table, as
- * `<file>#<pointer>`. A pointer cell reads `root` or lists pointers in code.
- */
-function correctionTableLocations(recordText) {
-  const section = recordText.split(/^### One-time correction/m)[1].split(/^#{2,3} /m)[0];
-  const locations = new Set();
-  for (const line of section.split('\n')) {
-    const cells = line.split('|').map((cell) => cell.trim());
-    const file = /^`([^`]+\.json)`$/.exec(cells[1] || '');
-    if (!file) continue;
-    const pointers = cells[2] === 'root' ? [''] : [...cells[2].matchAll(/`([^`]*)`/g)].map((m) => m[1]);
-    for (const pointer of pointers) locations.add(`${file[1]}#${pointer}`);
-  }
-  return locations;
-}
-
-test('every reopened entry is in the correction table of its decision record', () => {
-  const root = path.join(__dirname, '..');
-  const value = JSON.parse(fs.readFileSync(path.join(root, 'scripts', 'lint-additive-minor-reopened.json'), 'utf8'));
-  const decisions = path.join(root, 'governance', 'decisions');
-  const record = fs.readdirSync(decisions).find((name) => name.startsWith(`${value.decision}-`));
-  assert.ok(record, `no decision record for ${value.decision}`);
-  const table = correctionTableLocations(fs.readFileSync(path.join(decisions, record), 'utf8'));
-  assert.ok(table.size > 0, `${record} has no one-time correction table`);
-  const unlisted = value.schemas.map((e) => `${e.file}#${e.pointer}`).filter((location) => !table.has(location));
-  assert.deepEqual(unlisted, []);
+test('DR-0036 has correction tables the check can read', () => {
+  const decisions = path.join(__dirname, '..', 'governance', 'decisions');
+  const record = fs.readdirSync(decisions).find((name) => name.startsWith('DR-0036-'));
+  const recorded = recordedCorrections(fs.readFileSync(path.join(decisions, record), 'utf8'));
+  assert.ok(recorded.size > 0, `${record} has no correction tables`);
+  assert.ok(recorded.has('media-buy/list-products-request.json# *'));
 });
 
 // ---------------------------------------------------------------------------
@@ -761,7 +895,7 @@ test('the CI check reads a source directory and fails on a new violation', () =>
       baseTree: tree('fixture', fixture()),
       baseVersion: '3.2.7',
       baselineValue: { base: '3.2.7', entries },
-      reopenedValue: { schemas: [] },
+      correctionsValue: { corrections: [] },
     });
     const failing = run([]);
     assert.equal(failing.ok, false);

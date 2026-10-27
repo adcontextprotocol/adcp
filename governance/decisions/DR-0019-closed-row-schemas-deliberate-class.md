@@ -49,7 +49,7 @@ Consequences, stated so they can be applied without argument:
 - **Loosening a closed schema to open is Normative**, non-breaking, and must
   name this record and the unknown-key lint that replaces the validation the
   closed schema provided. *Amended by DR-0036: loosening permits no additions
-  within the major.*
+  within the major, unless DR-0036 records it as a correction.*
 - **Tightening an open schema remains Breaking** per DR-0009.
 
 ## Rationale
