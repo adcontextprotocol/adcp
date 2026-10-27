@@ -262,7 +262,8 @@
       { "required": ["pagination"] },
       { "required": ["unchanged"] },
       { "required": ["wholesale_feed_version"] },
-      { "required": ["feed_version"] }
+      { "required": ["feed_version"] },
+      { "required": ["pricing_version"] }
     ]
   },
   "additionalProperties": true
