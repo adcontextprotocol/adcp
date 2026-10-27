@@ -1,0 +1,5 @@
+{
+  "$comment": "Closed schemas that DR-0036 reopens as a one-time correction. Each entry names a schema by document and JSON pointer, the stable release from which additions to it are allowed, and the reason. Every other schema that a stable release of the major published closed stays closed until the next major. Only a governance decision adds an entry.",
+  "decision": "DR-0036",
+  "schemas": []
+}

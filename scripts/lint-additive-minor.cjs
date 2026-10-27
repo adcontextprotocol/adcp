@@ -33,6 +33,27 @@
  *   type-narrowed, enum-value-removed, const-changed, bound-tightened,
  *   additional-properties-closed, file-removed.
  *
+ * Closed schemas (DR-0036)
+ *   A schema that any stable release of the major published closed
+ *   (`additionalProperties: false` or `unevaluatedProperties: false`) stays
+ *   closed until the next major, even after a later release opens it. CI
+ *   compares every earlier stable release of the base's major with the base,
+ *   using the same node and branch matching, and records each node that an
+ *   earlier release closed and the base leaves open. A property that such a
+ *   node lacked in the last release that closed it is reported as
+ *   property-added-to-closed, with that release named in the detail. A
+ *   finding whose property the base already has is marked released: it
+ *   shipped in a stable release and may enter the baseline at any time.
+ *
+ * Notices (never fail)
+ *   additional-properties-opened: a closed schema is opened. Opening breaks no
+ *   validator, but it permits no additions within the major.
+ *
+ * Reopened schemas
+ *   scripts/lint-additive-minor-reopened.json lists the schemas DR-0036
+ *   reopens as a one-time correction, each with the release from which
+ *   additions are allowed. Every other closed schema stays closed.
+ *
  * Modes
  *   (default)                    CI: candidate = source, base = default base;
  *                                fails on any violation not in the baseline.
@@ -40,6 +61,8 @@
  *                                prints a report; exits 0.
  *   --history                    runs the check across consecutive 3.x
  *                                releases and prints tables and findings.
+ *                                Each pair is compared on its own, without
+ *                                the earlier-release closures.
  *   --prune-baseline             removes stale baseline entries only.
  *   --baseline-ref <git-ref>     also fails when the baseline has an entry
  *                                that the baseline at <git-ref> lacks, so the
@@ -63,6 +86,7 @@ const DEFAULT_SOURCE_DIR = path.join(REPO_ROOT, 'static', 'schemas', 'source');
 const DIST_SCHEMAS = 'dist/schemas';
 const DEFAULT_BASELINE_PATH = path.join(REPO_ROOT, 'scripts', 'lint-additive-minor-baseline.json');
 const BASELINE_REPO_PATH = 'scripts/lint-additive-minor-baseline.json';
+const DEFAULT_REOPENED_PATH = path.join(REPO_ROOT, 'scripts', 'lint-additive-minor-reopened.json');
 const BASELINE_REF_ENV = 'ADCP_ADDITIVE_MINOR_BASELINE_REF';
 
 // Derived artifacts in a released tree that have no source counterpart: the
@@ -82,6 +106,7 @@ const VIOLATION_KINDS = [
   'file-removed',
 ];
 const VIOLATIONS = new Set(VIOLATION_KINDS);
+const NOTICE_KINDS = ['additional-properties-opened'];
 
 // Lower bounds tighten upward; upper bounds tighten downward.
 const LOWER_BOUNDS = ['minimum', 'exclusiveMinimum', 'minLength', 'minItems', 'minProperties'];
@@ -222,8 +247,10 @@ function walkJsonFiles(directory, root = directory) {
   const files = [];
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...walkJsonFiles(full, root));
-    else if (entry.isFile() && entry.name.endsWith('.json')) files.push(toPosix(path.relative(root, full)));
+    const relative = toPosix(path.relative(root, full));
+    if (entry.isDirectory()) {
+      if (!isDerived(`${relative}/`)) files.push(...walkJsonFiles(full, root));
+    } else if (entry.isFile() && entry.name.endsWith('.json') && !isDerived(relative)) files.push(relative);
   }
   return files.sort();
 }
@@ -281,6 +308,7 @@ function readGitFiles(repoRoot, ref, prefix) {
 
 const ADCP_HOSTS = new Set(['adcontextprotocol.org', 'www.adcontextprotocol.org']);
 const VERSION_SEGMENT = /^\/schemas\/(?:latest|v?\d+(?:\.\d+)*(?:-[\w.]+)?)\//;
+const RELEASE_SEGMENT = /\/schemas\/(?:latest|v?\d+(?:\.\d+)*(?:-[\w.]+)?)\//g;
 
 /**
  * Maps a `$id` or the file part of a `$ref` to a tree-relative path. Returns
@@ -307,6 +335,11 @@ function normalizeSchemaPath(value, fromKey = null) {
   return path.posix.normalize(path.posix.join(dir, normalized));
 }
 
+// Parsed schemas by their text without release segments. Released trees
+// share most files, and every comparison normalizes release segments, so
+// trees may share one parsed copy. Parsed schemas are never mutated.
+const parsedByText = new Map();
+
 /**
  * Builds a tree from `{ relativePath: text }`. Each document is keyed by its
  * normalized `$id` when it has one inside the AdCP tree, else by its path.
@@ -316,19 +349,48 @@ function buildTree(label, rawFiles) {
   const errors = [];
   for (const [relativePath, text] of rawFiles) {
     if (isDerived(relativePath)) continue;
-    let schema;
-    try {
-      schema = typeof text === 'string' ? JSON.parse(text) : text;
-    } catch (error) {
-      errors.push(`${label}/${relativePath}: ${error.message}`);
-      continue;
+    // The text without release segments, so identical files in two releases compare equal.
+    const unversioned = typeof text === 'string' ? text.replace(RELEASE_SEGMENT, '/schemas/') : null;
+    let schema = unversioned === null ? text : parsedByText.get(unversioned);
+    if (schema === undefined) {
+      try {
+        schema = JSON.parse(text);
+      } catch (error) {
+        errors.push(`${label}/${relativePath}: ${error.message}`);
+        continue;
+      }
+      parsedByText.set(unversioned, schema);
     }
     const idKey = schema && typeof schema.$id === 'string' ? normalizeSchemaPath(schema.$id) : null;
     const key = idKey || relativePath;
     if (documents.has(key)) errors.push(`${label}: ${relativePath} and ${documents.get(key).path} share ${key}`);
-    else documents.set(key, { key, path: relativePath, schema });
+    else documents.set(key, { key, path: relativePath, schema, unversioned });
   }
-  return { label, documents, errors };
+  const locations = new WeakMap();
+  for (const { key, schema } of documents.values()) recordLocations(schema, key, '', locations);
+  return { label, documents, errors, locations };
+}
+
+/**
+ * Records each object node's own location, `<document key>#<pointer>`, so a
+ * node keeps its identity however the comparison reached it.
+ */
+function recordLocations(node, docKey, pointer, locations) {
+  if (node === null || typeof node !== 'object') return;
+  if (!Array.isArray(node)) locations.set(node, `${docKey}#${pointer}`);
+  for (const [key, value] of Object.entries(node)) recordLocations(value, docKey, child(pointer, key), locations);
+}
+
+/** The own location of a node of `tree`, or null. */
+function locate(tree, node) {
+  return tree && tree.locations && isObject(node) ? tree.locations.get(node) || null : null;
+}
+
+/** Gives `copy`, derived from `node`, the location of `node`. */
+function inheritLocation(tree, copy, node) {
+  const location = locate(tree, node);
+  if (location && isObject(copy)) tree.locations.set(copy, location);
+  return copy;
 }
 
 function loadDirectoryTree(directory, label = toPosix(path.relative(REPO_ROOT, directory)) || directory) {
@@ -433,7 +495,7 @@ function resolveNode(node, docKey, tree) {
     const resolved = document ? readPointer(document.schema, fragment) : undefined;
     if (resolved === undefined) return null;
     const { $ref, ...siblings } = current;
-    current = isObject(resolved) ? { ...resolved, ...siblings } : resolved;
+    current = isObject(resolved) ? inheritLocation(tree, { ...resolved, ...siblings }, resolved) : resolved;
     currentDoc = key;
   }
   return { node: current, docKey: currentDoc };
@@ -569,18 +631,33 @@ function describeTypes(set) {
 }
 
 /**
- * Compares two schema trees. Returns findings, each
- * `{ file, pointer, kind, detail }`.
+ * Compares two schema trees. Returns violations as `findings` and
+ * `notices`, each `{ file, pointer, kind, detail }`; a finding on a property
+ * the base already has also carries `released: true`.
+ *
+ * Options:
+ *   closedEarlier  Map from a base node's location to `{ release, names }`:
+ *                  the last earlier stable release that published the node
+ *                  closed, and the properties it had there.
+ *   reopened       Set of base node locations whose additions are allowed.
+ *   onObject       Called as (baseNode, baseLocation, candNode, candLocation)
+ *                  for every pair of matched object schemas.
  */
-function compareTrees(baseTree, candTree) {
+function compareTrees(baseTree, candTree, {
+  closedEarlier = null,
+  reopened = null,
+  onObject = null,
+  skipIdentical = false,
+} = {}) {
   const findings = [];
+  const notices = [];
   const seen = new Set();
 
-  function report(file, pointer, kind, detail) {
+  function report(file, pointer, kind, detail, extra = null) {
     const key = `${file}\u0000${pointer}\u0000${kind}\u0000${detail}`;
     if (seen.has(key)) return;
     seen.add(key);
-    findings.push({ file, pointer, kind, detail });
+    (VIOLATIONS.has(kind) ? findings : notices).push({ file, pointer, kind, detail, ...extra });
   }
 
   const experimentalFile = (docKey) => {
@@ -606,6 +683,8 @@ function compareTrees(baseTree, candTree) {
       if (bRef && cRef && bRef === cRef) {
         const { $ref: _b, ...bRest } = b;
         const { $ref: _c, ...cRest } = c;
+        inheritLocation(baseTree, bRest, b);
+        inheritLocation(candTree, cRest, c);
         compareNode(file, pointer, bRest, bDoc, cRest, cDoc, stack, scope);
         return;
       }
@@ -668,11 +747,17 @@ function compareTrees(baseTree, candTree) {
   }
 
   function compareObject(file, pointer, b, bDoc, c, cDoc, stack, scope) {
+    const bLocation = locate(baseTree, b);
+    if (onObject) onObject(b, bLocation, c, locate(candTree, c));
+    const describe = (value, doc) => (value === undefined ? 'absent' : stableStringify(canonicalSchema(value, doc)));
     for (const keyword of ['additionalProperties', 'unevaluatedProperties']) {
       const ab = b[keyword];
       const ac = c[keyword];
       if (ac === false && ab !== false) {
-        report(file, pointer, 'additional-properties-closed', `${keyword} ${ab === undefined ? 'absent' : stableStringify(canonicalSchema(ab, bDoc))} → false`);
+        report(file, pointer, 'additional-properties-closed', `${keyword} ${describe(ab, bDoc)} → false`);
+      } else if (ab === false && ac !== false) {
+        report(file, pointer, 'additional-properties-opened', `${keyword} false → ${describe(ac, cDoc)}`,
+          reopened && bLocation && reopened.has(bLocation) ? { reopened: true } : null);
       } else if (isObject(ab) && isObject(ac)) {
         compareNode(file, child(pointer, keyword), ab, bDoc, ac, cDoc, stack);
       }
@@ -689,9 +774,20 @@ function compareTrees(baseTree, candTree) {
         report(file, pointer, 'property-removed', `property ${name} removed`);
       }
     }
-    if (isClosed(b)) {
+    // The closed form: the base's, or, for a node the base leaves open, the
+    // last earlier release that published it closed.
+    const earlier = !isClosed(b) && closedEarlier && bLocation ? closedEarlier.get(bLocation) : undefined;
+    const allowed = isClosed(b) ? new Set(Object.keys(pb)) : earlier && earlier.names;
+    if (allowed && !(reopened && bLocation && reopened.has(bLocation))) {
       for (const name of Object.keys(pc)) {
-        if (!Object.prototype.hasOwnProperty.call(pb, name)) report(file, pointer, 'property-added-to-closed', `property ${name} added`);
+        if (allowed.has(name)) continue;
+        if (!earlier) {
+          report(file, pointer, 'property-added-to-closed', `property ${name} added`);
+          continue;
+        }
+        const released = Object.prototype.hasOwnProperty.call(pb, name);
+        report(file, pointer, 'property-added-to-closed', `property ${name} added (closed in ${earlier.release})`,
+          released ? { released: true } : null);
       }
     }
 
@@ -726,14 +822,108 @@ function compareTrees(baseTree, candTree) {
       if (!isExperimental(base.schema)) report(key, '', 'file-removed', `schema ${key} removed`);
       continue;
     }
+    if (skipIdentical && base.unversioned !== null && base.unversioned === candidate.unversioned) continue;
     compareNode(key, '', base.schema, key, candidate.schema, key, new Set());
   }
 
-  findings.sort((x, y) => (x.file < y.file ? -1 : x.file > y.file ? 1 : 0)
+  const order = (x, y) => (x.file < y.file ? -1 : x.file > y.file ? 1 : 0)
     || (x.pointer < y.pointer ? -1 : x.pointer > y.pointer ? 1 : 0)
     || (x.kind < y.kind ? -1 : x.kind > y.kind ? 1 : 0)
-    || (x.detail < y.detail ? -1 : x.detail > y.detail ? 1 : 0));
-  return { findings, filesCompared: files.length };
+    || (x.detail < y.detail ? -1 : x.detail > y.detail ? 1 : 0);
+  findings.sort(order);
+  notices.sort(order);
+  return { findings, notices, filesCompared: files.length };
+}
+
+/**
+ * For each node of `baseTree` that is open, the last of `earlierTrees` that
+ * published it closed, and the properties it had there. `earlierTrees` is
+ * `[{ version, tree }]`, oldest first: the stable releases of the base's
+ * major that precede the base.
+ */
+function closedInEarlierReleases(baseTree, earlierTrees) {
+  const closed = new Map();
+  for (const { version, tree } of earlierTrees) {
+    // A file identical in both releases has the same closures in both; a $ref
+    // that leaves it is followed from the file that differs.
+    compareTrees(tree, baseTree, {
+      skipIdentical: true,
+      onObject: (earlier, _earlierLocation, base, baseLocation) => {
+        if (!baseLocation || !isClosed(earlier) || isClosed(base)) return;
+        closed.set(baseLocation, {
+          release: version,
+          names: new Set(isObject(earlier.properties) ? Object.keys(earlier.properties) : []),
+        });
+      },
+    });
+  }
+  return closed;
+}
+
+/** The stable releases of `base`'s major that precede it, oldest first. */
+function earlierStableVersions(base, releasedVersions) {
+  const parsed = parseVersion(base);
+  return releasedVersions
+    .map(parseVersion)
+    .filter((v) => v && v.major === parsed.major && v.prerelease.length === 0 && compareVersions(v, parsed) < 0)
+    .sort(compareVersions)
+    .map((v) => v.raw);
+}
+
+// ---------------------------------------------------------------------------
+// Reopened schemas
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates the reopened-schemas list and returns the locations whose
+ * additions `candidateVersion` may carry: those listed from a release at or
+ * below it. A prerelease counts as its release (3.3.0-beta.1 as 3.3.0).
+ */
+function readReopened(value, candidateVersion) {
+  const errors = [];
+  const allowed = new Set();
+  if (!isObject(value) || !Array.isArray(value.schemas)) {
+    return { allowed, entries: [], errors: ['reopened list must be an object with a schemas array'] };
+  }
+  const candidate = parseVersion(candidateVersion);
+  const release = candidate && { ...candidate, prerelease: [] };
+  const seen = new Set();
+  value.schemas.forEach((entry, index) => {
+    const label = `reopened schemas[${index}]`;
+    if (!isObject(entry)) {
+      errors.push(`${label} must be an object`);
+      return;
+    }
+    for (const field of ['file', 'pointer', 'since', 'reason']) {
+      if (typeof entry[field] !== 'string') errors.push(`${label}.${field} must be a string`);
+    }
+    if (typeof entry.reason === 'string' && !entry.reason.trim()) errors.push(`${label}.reason must not be empty`);
+    if (typeof entry.pointer === 'string' && entry.pointer !== '' && !entry.pointer.startsWith('/')) {
+      errors.push(`${label}.pointer must be a JSON pointer`);
+    }
+    const since = typeof entry.since === 'string' ? parseVersion(entry.since) : null;
+    if (typeof entry.since === 'string' && (!since || since.prerelease.length)) {
+      errors.push(`${label}.since must be a stable release`);
+    }
+    const location = `${entry.file}#${entry.pointer}`;
+    if (seen.has(location)) errors.push(`${label} duplicates ${location}`);
+    seen.add(location);
+    if (since && release && compareVersions(release, since) >= 0) allowed.add(location);
+  });
+  return { allowed, entries: value.schemas, errors };
+}
+
+/** A schema listed as reopened must be open in the candidate tree. */
+function checkReopenedOpen(allowed, candTree) {
+  const errors = [];
+  for (const location of allowed) {
+    const [key, pointer] = location.split('#');
+    const document = candTree.documents.get(key);
+    const node = document ? readPointer(document.schema, pointer) : undefined;
+    if (!isObject(node)) errors.push(`reopened schema ${location} does not exist in ${candTree.label}`);
+    else if (isClosed(node)) errors.push(`reopened schema ${location} is still closed in ${candTree.label}`);
+  }
+  return errors;
 }
 
 // ---------------------------------------------------------------------------
@@ -802,10 +992,14 @@ function checkAgainstBaseline({ base, findings, baselineValue, previousBaseline 
   }
 
   if (previousBaseline) {
+    // A released finding shipped in a stable release, so no change can undo
+    // it within the major. Recording it hides no unreleased change.
+    const released = new Set(findings.filter((f) => f.released).map(findingKey));
     const previous = new Set(validateBaseline(previousBaseline).entries.map(findingKey));
     for (const entry of baseline.entries) {
-      if (!previous.has(findingKey(entry))) {
-        errors.push(`baseline grew: ${findingKey(entry)} is not in the target branch baseline`);
+      const key = findingKey(entry);
+      if (!previous.has(key) && !released.has(key)) {
+        errors.push(`baseline grew: ${key} is not in the target branch baseline`);
       }
     }
   }
@@ -833,8 +1027,8 @@ function formatHistory(results) {
     '## Additive-minor history',
     '',
     markdownTable(
-      ['Release pair', 'Files compared', 'Non-additive changes', 'Files affected'],
-      results.map((r) => [label(r), r.filesCompared, r.findings.length, new Set(r.findings.map((f) => f.file)).size]),
+      ['Release pair', 'Files compared', 'Non-additive changes', 'Files affected', 'Closed schemas opened'],
+      results.map((r) => [label(r), r.filesCompared, r.findings.length, new Set(r.findings.map((f) => f.file)).size, r.notices.length]),
     ),
     '',
     '### By kind',
@@ -845,7 +1039,9 @@ function formatHistory(results) {
     '### Findings',
   ];
   for (const r of results) {
-    if (r.findings.length) out.push('', `${label(r)}:`, '', '```', ...formatFindings(r.findings), '```');
+    if (r.findings.length || r.notices.length) {
+      out.push('', `${label(r)}:`, '', '```', ...formatFindings(r.findings), ...formatFindings(r.notices), '```');
+    }
   }
   return out.join('\n');
 }
@@ -853,6 +1049,38 @@ function formatHistory(results) {
 // ---------------------------------------------------------------------------
 // Entry points
 // ---------------------------------------------------------------------------
+
+/**
+ * Compares a candidate tree with a base, applying the closures of the earlier
+ * stable releases in the base's major and the reopened-schemas list.
+ * `earlierTrees` defaults to the released trees on disk or in git.
+ */
+function analyze({
+  base,
+  baseTree,
+  candTree,
+  candidateVersion,
+  earlierTrees,
+  reopenedValue,
+  repoRoot = REPO_ROOT,
+}) {
+  const trees = earlierTrees || (base
+    ? earlierStableVersions(base, listReleasedVersions(repoRoot)).map((version) => ({ version, tree: loadReleasedTree(version, repoRoot) }))
+    : []);
+  const reopened = readReopened(reopenedValue === undefined ? { schemas: [] } : reopenedValue, candidateVersion);
+  const errors = [
+    ...trees.flatMap(({ tree }) => tree.errors),
+    ...reopened.errors,
+    ...checkReopenedOpen(reopened.allowed, candTree),
+  ];
+  const closedEarlier = closedInEarlierReleases(baseTree, trees);
+  const result = compareTrees(baseTree, candTree, { closedEarlier, reopened: reopened.allowed });
+  return { ...result, errors };
+}
+
+function readJsonFile(file, fallback) {
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : fallback;
+}
 
 /**
  * CI check: source against the default base, filtered through the baseline.
@@ -863,23 +1091,33 @@ function lintAdditiveMinor({
   sourceDir = DEFAULT_SOURCE_DIR,
   baselinePath = DEFAULT_BASELINE_PATH,
   baselineValue,
+  reopenedPath = DEFAULT_REOPENED_PATH,
+  reopenedValue,
   baseTree,
   baseVersion,
+  candidateVersion,
+  earlierTrees,
   previousBaseline = null,
 } = {}) {
   let base = baseVersion;
+  const version = candidateVersion || readSourceVersion(repoRoot);
   if (!baseTree && !base) {
-    base = defaultBaseVersion(readSourceVersion(repoRoot), listReleasedVersions(repoRoot));
-    if (!base) return { ok: true, skipped: true, base: null, errors: [], warnings: [], findings: [] };
+    base = defaultBaseVersion(version, listReleasedVersions(repoRoot));
+    if (!base) return { ok: true, skipped: true, base: null, errors: [], warnings: [], findings: [], notices: [] };
   }
   const baseSchemas = baseTree || loadReleasedTree(base, repoRoot);
   const candTree = loadDirectoryTree(sourceDir, 'source');
-  const parseErrors = [...baseSchemas.errors, ...candTree.errors];
-  const { findings, filesCompared } = compareTrees(baseSchemas, candTree);
-  let value = baselineValue;
-  if (value === undefined) {
-    value = fs.existsSync(baselinePath) ? JSON.parse(fs.readFileSync(baselinePath, 'utf8')) : { base, entries: [] };
-  }
+  const { findings, notices, filesCompared, errors: analysisErrors } = analyze({
+    base,
+    baseTree: baseSchemas,
+    candTree,
+    candidateVersion: version,
+    earlierTrees: earlierTrees || (baseTree ? [] : undefined),
+    reopenedValue: reopenedValue === undefined ? readJsonFile(reopenedPath, { schemas: [] }) : reopenedValue,
+    repoRoot,
+  });
+  const parseErrors = [...baseSchemas.errors, ...candTree.errors, ...analysisErrors];
+  const value = baselineValue === undefined ? readJsonFile(baselinePath, { base, entries: [] }) : baselineValue;
   const check = checkAgainstBaseline({ base, findings, baselineValue: value, previousBaseline });
   return {
     ...check,
@@ -887,6 +1125,7 @@ function lintAdditiveMinor({
     errors: [...parseErrors, ...check.errors],
     base,
     findings,
+    notices,
     filesCompared,
   };
 }
@@ -900,6 +1139,7 @@ function main() {
   const args = process.argv.slice(2);
   const sourceDir = path.resolve(readArg(args, '--source', DEFAULT_SOURCE_DIR));
   const baselinePath = path.resolve(readArg(args, '--baseline', DEFAULT_BASELINE_PATH));
+  const reopenedPath = path.resolve(readArg(args, '--reopened', DEFAULT_REOPENED_PATH));
   const options = { repoRoot: REPO_ROOT, sourceDir };
 
   if (args.includes('--history')) {
@@ -923,15 +1163,29 @@ function main() {
       console.log(`No stable release precedes ${candidateVersion} in its major line; nothing to compare.`);
       return;
     }
-    const { findings, filesCompared } = compareTrees(loadTreeSpec(base, options), loadTreeSpec(candidate, options));
-    if (args.includes('--json')) console.log(JSON.stringify(findings, null, 2));
-    else console.log([`${base} → ${candidate}: ${filesCompared} files compared, ${findings.length} violations`, ...formatFindings(findings)].join('\n'));
+    const baseIsRelease = Boolean(parseVersion(base));
+    const { findings, notices, filesCompared, errors } = analyze({
+      base: baseIsRelease ? base : null,
+      baseTree: loadTreeSpec(base, options),
+      candTree: loadTreeSpec(candidate, options),
+      candidateVersion,
+      reopenedValue: readJsonFile(reopenedPath, { schemas: [] }),
+    });
+    errors.forEach((error) => console.error(`error: ${error}`));
+    if (args.includes('--json')) console.log(JSON.stringify([...findings, ...notices], null, 2));
+    else {
+      console.log([
+        `${base} → ${candidate}: ${filesCompared} files compared, ${findings.length} violations, ${notices.length} notices`,
+        ...formatFindings(findings),
+        ...formatFindings(notices),
+      ].join('\n'));
+    }
     return;
   }
 
   if (args.includes('--prune-baseline')) {
     const current = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
-    const result = lintAdditiveMinor({ ...options, baselinePath, baselineValue: { base: null, entries: [] } });
+    const result = lintAdditiveMinor({ ...options, baselinePath, reopenedPath, baselineValue: { base: null, entries: [] } });
     if (result.skipped) {
       console.log('No base release; baseline unchanged.');
       return;
@@ -949,10 +1203,15 @@ function main() {
     previousBaseline = readBaselineAtRef(baselineRef, REPO_ROOT);
     if (!previousBaseline) console.log(`No baseline at ${baselineRef}; skipping the shrink-only check.`);
   }
-  const result = lintAdditiveMinor({ ...options, baselinePath, previousBaseline });
+  const result = lintAdditiveMinor({ ...options, baselinePath, reopenedPath, previousBaseline });
   if (result.skipped) {
     console.log('✓ additive-minor lint: the source major line has no stable release yet; nothing to compare.');
     return;
+  }
+  for (const notice of result.notices) {
+    console.log(notice.reopened
+      ? `notice: ${findingKey(notice)}. Reopened under DR-0036 (scripts/lint-additive-minor-reopened.json).`
+      : `notice: ${findingKey(notice)}. Opening breaks no validator, but it permits no additions until the next major (DR-0036).`);
   }
   result.warnings.forEach((warning) => console.warn(`warning: ${warning}`));
   if (result.warnings.length) console.warn('Run `node scripts/lint-additive-minor.cjs --prune-baseline` to drop stale entries.');
@@ -976,7 +1235,9 @@ function main() {
 }
 
 module.exports = {
+  NOTICE_KINDS,
   VIOLATION_KINDS,
+  analyze,
   buildTree,
   checkAgainstBaseline,
   compareTrees,

@@ -17,7 +17,9 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  NOTICE_KINDS,
   VIOLATION_KINDS,
+  analyze,
   buildTree,
   checkAgainstBaseline,
   compareTrees,
@@ -126,6 +128,22 @@ function tree(label, files) {
   return buildTree(label, new Map(Object.entries(files)));
 }
 
+function writeTree(directory, files) {
+  for (const [relativePath, schema] of Object.entries(files)) {
+    fs.mkdirSync(path.join(directory, path.dirname(relativePath)), { recursive: true });
+    fs.writeFileSync(path.join(directory, relativePath), JSON.stringify(schema));
+  }
+}
+
+/** Every JSON file under `directory`, as [relative path, text]. */
+function walk(directory, root = directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) return walk(full, root);
+    return entry.name.endsWith('.json') ? [[path.relative(root, full).split(path.sep).join('/'), fs.readFileSync(full, 'utf8')]] : [];
+  });
+}
+
 /** Applies one change to a copy of the fixture and returns every finding. */
 function findingsAfter(change) {
   const base = fixture();
@@ -216,6 +234,264 @@ test('treats unevaluatedProperties: false as closed', () => {
   candidate['core/explicit-open.json'].properties.extra = { type: 'string' };
   const { findings } = compareTrees(tree('base', base), tree('candidate', candidate));
   assert.deepEqual(findings.map((f) => f.kind), ['property-added-to-closed']);
+});
+
+// ---------------------------------------------------------------------------
+// Closed anywhere in the major (DR-0036)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compares a candidate with the fixture as base, where one earlier stable
+ * release published core/explicit-open.json closed with only `name`.
+ */
+function analyzeWithEarlierClosure(change, { reopenedValue, candidateVersion = '3.3.0-beta.0', earlier } = {}) {
+  const older = fixture();
+  older['core/explicit-open.json'].additionalProperties = false;
+  if (earlier) earlier(older);
+  const candidate = fixture();
+  change(candidate);
+  return analyze({
+    base: '3.2.7',
+    baseTree: tree('3.2.7', fixture()),
+    candTree: tree('source', candidate),
+    candidateVersion,
+    earlierTrees: [{ version: '3.0.4', tree: tree('3.0.4', older) }],
+    reopenedValue,
+  });
+}
+
+test('an unchanged copy produces no findings when an earlier release closed a schema', () => {
+  const result = analyzeWithEarlierClosure(() => {});
+  assert.deepEqual([result.findings, result.notices, result.errors], [[], [], []]);
+});
+
+test('flags a property added to a schema an earlier release closed and the base leaves open', () => {
+  const { findings } = analyzeWithEarlierClosure((t) => { t['core/explicit-open.json'].properties.extra = { type: 'string' }; });
+  assert.deepEqual(findings, [{
+    file: 'core/explicit-open.json',
+    pointer: '',
+    kind: 'property-added-to-closed',
+    detail: 'property extra added (closed in 3.0.4)',
+  }]);
+});
+
+test('marks a property the base already has, added after the earlier closure, as released', () => {
+  const base = fixture();
+  base['core/explicit-open.json'].properties.shipped = { type: 'string' };
+  const older = fixture();
+  older['core/explicit-open.json'].additionalProperties = false;
+  const result = analyze({
+    base: '3.2.7',
+    baseTree: tree('3.2.7', base),
+    candTree: tree('source', base),
+    candidateVersion: '3.3.0-beta.0',
+    earlierTrees: [{ version: '3.0.4', tree: tree('3.0.4', older) }],
+  });
+  assert.deepEqual(result.findings, [{
+    file: 'core/explicit-open.json',
+    pointer: '',
+    kind: 'property-added-to-closed',
+    detail: 'property shipped added (closed in 3.0.4)',
+    released: true,
+  }]);
+});
+
+test('names the last earlier release that published the schema closed', () => {
+  const first = fixture();
+  first['core/explicit-open.json'].additionalProperties = false;
+  const second = fixture();
+  second['core/explicit-open.json'].additionalProperties = false;
+  const candidate = fixture();
+  candidate['core/explicit-open.json'].properties.extra = { type: 'string' };
+  const { findings } = analyze({
+    base: '3.2.7',
+    baseTree: tree('3.2.7', fixture()),
+    candTree: tree('source', candidate),
+    candidateVersion: '3.3.0-beta.0',
+    earlierTrees: [{ version: '3.0.0', tree: tree('3.0.0', first) }, { version: '3.0.4', tree: tree('3.0.4', second) }],
+  });
+  assert.deepEqual(findings.map((f) => f.detail), ['property extra added (closed in 3.0.4)']);
+});
+
+test('keys an earlier closure on the node a $ref now reaches, not on the referring file', () => {
+  // The earlier release closed an inline object; the base replaced it with a
+  // $ref to a shared open schema. The shared schema inherits the closure.
+  const older = fixture();
+  older['core/open.json'].properties.area = {
+    type: 'object',
+    properties: { zip: { type: 'boolean' } },
+    additionalProperties: false,
+  };
+  const base = fixture();
+  base['core/area.json'] = {
+    $id: '/schemas/core/area.json',
+    type: 'object',
+    properties: { zip: { type: 'boolean' } },
+  };
+  base['core/open.json'].properties.area = { $ref: '/schemas/core/area.json' };
+  const candidate = JSON.parse(JSON.stringify(base));
+  candidate['core/area.json'].properties.US = { type: 'array' };
+  const { findings } = analyze({
+    base: '3.2.7',
+    baseTree: tree('3.2.7', base),
+    candTree: tree('source', candidate),
+    candidateVersion: '3.3.0-beta.0',
+    earlierTrees: [{ version: '3.0.28', tree: tree('3.0.28', older) }],
+  });
+  assert.deepEqual(findings, [{
+    file: 'core/area.json',
+    pointer: '',
+    kind: 'property-added-to-closed',
+    detail: 'property US added (closed in 3.0.28)',
+  }]);
+});
+
+test('an earlier release that marked the schema experimental does not close it', () => {
+  const { findings } = analyzeWithEarlierClosure(
+    (t) => { t['core/explicit-open.json'].properties.extra = { type: 'string' }; },
+    { earlier: (t) => { t['core/explicit-open.json']['x-status'] = 'experimental'; } },
+  );
+  assert.deepEqual(findings, []);
+});
+
+// ---------------------------------------------------------------------------
+// Notices
+// ---------------------------------------------------------------------------
+
+test('every notice kind has a case', () => {
+  assert.deepEqual([...NOTICE_KINDS], ['additional-properties-opened']);
+});
+
+test('reports opening a closed schema as a notice, not a violation', () => {
+  const { findings, notices } = compareTrees(tree('base', fixture()), tree('candidate', (() => {
+    const t = fixture();
+    t['core/closed.json'].additionalProperties = true;
+    return t;
+  })()));
+  assert.deepEqual(findings, []);
+  assert.deepEqual(notices, [{
+    file: 'core/closed.json',
+    pointer: '',
+    kind: 'additional-properties-opened',
+    detail: 'additionalProperties false → true',
+  }]);
+});
+
+test('an opened schema in the CI check passes and reports the notice', () => {
+  const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'additive-minor-'));
+  try {
+    const candidate = fixture();
+    delete candidate['core/closed.json'].additionalProperties;
+    writeTree(sourceDir, candidate);
+    const result = lintAdditiveMinor({
+      sourceDir,
+      baseTree: tree('fixture', fixture()),
+      baseVersion: '3.2.7',
+      candidateVersion: '3.3.0-beta.0',
+      baselineValue: { base: '3.2.7', entries: [] },
+      reopenedValue: { schemas: [] },
+    });
+    assert.equal(result.ok, true, result.errors.join('\n'));
+    assert.deepEqual(result.notices.map((n) => n.detail), ['additionalProperties false → absent']);
+  } finally {
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Reopened schemas
+// ---------------------------------------------------------------------------
+
+const REOPENED_CLOSED = {
+  decision: 'DR-0036',
+  schemas: [{ file: 'core/closed.json', pointer: '', since: '3.3.0', reason: 'closed against DR-0019' }],
+};
+
+/** Opens core/closed.json and adds a property, the change a reopening allows. */
+function reopenAndAdd(t) {
+  t['core/closed.json'].additionalProperties = true;
+  t['core/closed.json'].properties.extra = { type: 'string' };
+}
+
+function analyzePair(change, { reopenedValue, candidateVersion = '3.3.0-beta.0' } = {}) {
+  const candidate = fixture();
+  change(candidate);
+  return analyze({
+    base: '3.2.7',
+    baseTree: tree('3.2.7', fixture()),
+    candTree: tree('source', candidate),
+    candidateVersion,
+    earlierTrees: [],
+    reopenedValue,
+  });
+}
+
+test('allows additions to a listed schema from the listed release on', () => {
+  const result = analyzePair(reopenAndAdd, { reopenedValue: REOPENED_CLOSED });
+  assert.deepEqual(result.findings, []);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.notices.map((n) => [n.detail, n.reopened]), [['additionalProperties false → true', true]]);
+});
+
+test('still flags additions to a listed schema before the listed release', () => {
+  const result = analyzePair(reopenAndAdd, { reopenedValue: REOPENED_CLOSED, candidateVersion: '3.2.8' });
+  assert.deepEqual(result.findings.map((f) => [f.kind, f.detail]), [['property-added-to-closed', 'property extra added']]);
+});
+
+test('still flags additions to a schema the list does not name', () => {
+  const result = analyzePair(reopenAndAdd, {
+    reopenedValue: { schemas: [{ ...REOPENED_CLOSED.schemas[0], file: 'core/explicit-open.json' }] },
+  });
+  assert.deepEqual(result.findings.map((f) => [f.file, f.detail]), [['core/closed.json', 'property extra added']]);
+});
+
+test('allows additions to a listed schema that an earlier release closed', () => {
+  const result = analyzeWithEarlierClosure(
+    (t) => { t['core/explicit-open.json'].properties.extra = { type: 'string' }; },
+    { reopenedValue: { schemas: [{ ...REOPENED_CLOSED.schemas[0], file: 'core/explicit-open.json' }] } },
+  );
+  assert.deepEqual([result.findings, result.errors], [[], []]);
+});
+
+test('fails when a listed schema is still closed in the candidate', () => {
+  const result = analyzePair(() => {}, { reopenedValue: REOPENED_CLOSED });
+  assert.deepEqual(result.errors, ['reopened schema core/closed.json# is still closed in source']);
+});
+
+test('fails when a listed schema does not exist', () => {
+  const result = analyzePair(() => {}, {
+    reopenedValue: { schemas: [{ ...REOPENED_CLOSED.schemas[0], pointer: '/properties/missing' }] },
+  });
+  assert.deepEqual(result.errors, ['reopened schema core/closed.json#/properties/missing does not exist in source']);
+});
+
+test('every reopened entry needs a stable release in since', () => {
+  const result = analyzePair(reopenAndAdd, {
+    reopenedValue: { schemas: [{ ...REOPENED_CLOSED.schemas[0], since: '3.3.0-beta.0' }] },
+  });
+  assert.deepEqual(result.errors, ['reopened schemas[0].since must be a stable release']);
+});
+
+test('every reopened entry needs a reason', () => {
+  const result = analyzePair(reopenAndAdd, {
+    reopenedValue: { schemas: [{ ...REOPENED_CLOSED.schemas[0], reason: '' }] },
+  });
+  assert.deepEqual(result.errors, ['reopened schemas[0].reason must not be empty']);
+});
+
+test('the repository reopened list is valid and names only open schemas', () => {
+  const value = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'lint-additive-minor-reopened.json'), 'utf8'));
+  assert.equal(value.decision, 'DR-0036');
+  const sourceTree = buildTree('source', new Map(walk(path.join(__dirname, '..', 'static', 'schemas', 'source'))));
+  const result = analyze({
+    base: null,
+    baseTree: sourceTree,
+    candTree: sourceTree,
+    candidateVersion: '9.9.9',
+    earlierTrees: [],
+    reopenedValue: value,
+  });
+  assert.deepEqual(result.errors, []);
 });
 
 // ---------------------------------------------------------------------------
@@ -400,6 +676,27 @@ test('the baseline only shrinks against the target branch', () => {
   });
   assert.equal(grown.ok, false);
   assert.deepEqual(grown.errors, [`baseline grew: ${findingKey({ ...VIOLATION_B, detail: 'property z newly required' })} is not in the target branch baseline`]);
+});
+
+test('a released finding may enter the baseline; an unreleased one may not', () => {
+  const released = { ...VIOLATION_A, detail: 'property x added (closed in 3.0.4)', released: true };
+  const previousBaseline = { base: '3.2.7', entries: [] };
+  const allowed = checkAgainstBaseline({
+    base: '3.2.7',
+    findings: [released],
+    baselineValue: { base: '3.2.7', entries: [entry(released, 'shipped in 3.1.0')] },
+    previousBaseline,
+  });
+  assert.equal(allowed.ok, true, allowed.errors.join('\n'));
+
+  const unreleased = { ...released, released: undefined };
+  const rejected = checkAgainstBaseline({
+    base: '3.2.7',
+    findings: [unreleased],
+    baselineValue: { base: '3.2.7', entries: [entry(unreleased, 'shipped in 3.1.0')] },
+    previousBaseline,
+  });
+  assert.deepEqual(rejected.errors, [`baseline grew: ${findingKey(unreleased)} is not in the target branch baseline`]);
 });
 
 test('every baseline entry needs a reason', () => {
