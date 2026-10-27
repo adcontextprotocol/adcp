@@ -200,7 +200,7 @@
         <div class="tj-control-grid">
           <div><h3>Add an agency</h3><p>Add one entry. Limit it to a single brand, a few markets or a fixed end date.</p></div>
           <div><h3>Pull access</h3><p>Delete a partner’s entry, or retire one of your own agents. Sellers that check pick up the change on their next refresh. No calls, no letters.</p></div>
-          <div><h3>Lock it down</h3><p>Make your list exclusive, and an agency that isn’t on it gets turned away for that activity, whatever it claims.</p></div>
+          <div><h3>Lock it down</h3><p>Make your list exclusive, and an agency that isn’t on it gets turned away, whatever it claims.</p></div>
           <div><h3>Hand off the hosting</h3><p>Your agency or platform can host the file. Your domain still points to it, so the authority stays yours.</p></div>
         </div>
       </div>
@@ -302,7 +302,7 @@
           </li>
           <li>
             <h3>Choose exclusivity, then test with each seller</h3>
-            <p>With <code>exclusive_grants: true</code>, grants are exhaustive for the scopes they name: an enforcing seller rejects an uncovered third-party claim in those scopes. Other activities aren’t made exclusive, and your own agents keep their first-party authority.</p>
+            <p>With <code>exclusive_grants: true</code>, your grants are the complete list: an enforcing seller rejects any uncovered third-party claim, whatever the activity. Your own agents keep their first-party authority.</p>
             <p>Without exclusivity, a seller may still authorize an uncovered claim from its own verified onboarding records. Once your trust record is published, legacy <code>brand.json</code> operator grants stop being a fallback, so move the complete list before you publish.</p>
             <p>Ask each seller to demonstrate an authorized request and a rejected one, checking agent, brand, account operator, scope, country and expiry. Account approval, billing and credit checks still apply.</p>
           </li>
@@ -311,7 +311,7 @@
 
       <section id="portfolio-setup" aria-labelledby="portfolio-setup-heading">
         <h2 id="portfolio-setup-heading">Parent and child brands</h2>
-        <p>Nova Motors names Nova Brands as its parent, and Nova Brands lists Nova Motors in its portfolio. The seller verifies both, then evaluates grants in Nova Brands’ trust record. With a verified parent, that record is the only source of grants; a child’s own trust record does not override it.</p>
+        <p>Nova Motors names Nova Brands as its parent, and Nova Brands lists Nova Motors in its portfolio. The seller verifies both, then evaluates grants in Nova Brands’ trust record. With a verified parent, that record is the only record that starts a delegation chain; a child’s own trust record cannot override it.</p>
         <details class="trust-details">
           <summary>The two brand.json records that establish the relationship</summary>
           <figure class="trust-example">
@@ -342,10 +342,10 @@
         <ol class="trust-flow" aria-label="The seller’s verification chain">
           <li><span class="trust-step-number" aria-hidden="true">1</span><h3>Authenticate the agent</h3><p>Verify its signature or an established credential mapping. A name or URL in the request is a claim, not proof.</p></li>
           <li><span class="trust-step-number" aria-hidden="true">2</span><h3>Resolve the brand</h3><p>Read its domain-controlled brand.json. Verify a claimed parent against the parent’s portfolio entry.</p></li>
-          <li><span class="trust-step-number" aria-hidden="true">3</span><h3>Check the authority</h3><p>Read the parent’s or standalone brand’s trust.json. Follow grants through the account operator to the agent’s operator.</p></li>
+          <li><span class="trust-step-number" aria-hidden="true">3</span><h3>Check the authority</h3><p>Read the parent’s or standalone brand’s trust.json. Follow at most two grants to the agent’s operator.</p></li>
           <li><span class="trust-step-number" aria-hidden="true">4</span><h3>Apply the limits</h3><p>Check activity, brand, countries, dates and any agent restriction before provisioning or spend.</p></li>
         </ol>
-        <p>If an agency uses a hosted platform, a chain can run brand → agency → platform; every link must cover the request. Your own agents can act without a third-party grant when both the agent’s operator and the account operator match the brand or its verified parent. The seller still verifies the agent and its operator listing. <a href="https://docs.adcontextprotocol.org/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental">Read the grant evaluation rules →</a></p>
+        <p>If an agency uses a hosted platform, a chain can run brand → agency → platform. Every grant must cover the request, and the account operator must be the brand, its parent, or the agency. Your own agents can act without a third-party grant when both the agent’s operator and the account operator match the brand or its verified parent. The seller still verifies the agent and its operator listing. <a href="https://docs.adcontextprotocol.org/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental">Read the grant evaluation rules →</a></p>
       </section>
 
       <section id="missing-records" aria-labelledby="missing-heading">
@@ -357,7 +357,7 @@
             <tbody>
               <tr><th scope="row">The authority has never published a record</th><td>In AdCP 3.x, a first 404 permits the legacy brand.json path, and verified seller onboarding can also establish authority. Absence never authorizes a caller on its own.</td></tr>
               <tr><th scope="row">A valid record with a matching, active grant</th><td>The grant covers the claim, subject to the agent’s authenticated identity, every grant limit, and the seller’s commercial checks.</td></tr>
-              <tr><th scope="row">No matching grant in an exclusive scope</th><td>Reject a third-party request that needs a grant. Naming an approved operator in the request isn’t enough.</td></tr>
+              <tr><th scope="row">No matching grant in an exclusive record</th><td>Reject a third-party request that needs a grant. Naming an approved operator in the request isn’t enough.</td></tr>
               <tr><th scope="row">An uncovered claim, no exclusivity</th><td>The seller may rely on its own verified onboarding records, but not on that authority’s legacy brand.json grants.</td></tr>
               <tr><th scope="row">Timeout, server error or malformed record</th><td>Authorization is unavailable. Spend fails closed with a retryable error. An outage doesn’t make the brand unprotected.</td></tr>
               <tr><th scope="row">A record that was read before and is now gone</th><td>No downgrade to legacy authorization. Deleting the file doesn’t undo adoption, so keep it published and complete. Sellers keep authority history across restarts.</td></tr>
@@ -374,7 +374,7 @@
           <li><strong>Agents:</strong> each origin listed by the operator that actually runs it, with the right role.</li>
           <li><strong>Grants:</strong> every organization you’ve authorized, and any restriction to named agents.</li>
           <li><strong>Coverage:</strong> brands, countries, activities, start dates and expiries for each grant.</li>
-          <li><strong>Enforcement:</strong> which scopes are exclusive, and which sellers have shown you a rejected request.</li>
+          <li><strong>Enforcement:</strong> whether your list is exclusive, and which sellers have shown you a rejected request.</li>
         </ul>
         <div class="std-cards trust-tool-cards">
           <div class="std-card">
