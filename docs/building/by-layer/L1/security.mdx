@@ -2600,7 +2600,9 @@ Tightening those nested limits is registered as a 4.0 follow-up in the
 **The structural bounds are the limit.** AdCP sets no byte limit on the
 `get_adcp_capabilities` response. The structural bounds are the protocol's
 limit on it, and the worst-case figure describes the shape they allow. It is
-not a size target. A client can still apply its own transport limit to this
+not a size target. The bounds cover the members the schema declares; members
+a producer adds at the open positions above, such as `ext`, fall outside them.
+A client can still apply its own transport limit to this
 response, as any HTTP client does to any body it reads. That limit is the
 client's choice, not a protocol rule on the response.
 `MAX_CAPABILITIES_BYTES` remains only as the fetch budget of step 1 in the

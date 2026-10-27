@@ -3,9 +3,10 @@
  * Structural bounds on the `get_adcp_capabilities` response (#8198).
  *
  * The response is bounded by structure only; AdCP sets no byte limit on it.
- * This module checks that bound: it walks the response schema and every schema it reaches through `$ref`, reports the
- * arrays, strings, and maps that carry no bound, and computes the worst-case
- * serialized size of a schema-valid document.
+ * This module checks that bound: it walks the response schema and every
+ * schema it reaches through `$ref`, reports the arrays, strings, and maps that
+ * carry no bound, and computes the worst-case serialized size of a
+ * schema-valid document.
  *
  * A bound is one of:
  *   - an enforced keyword (`maxItems`, `maxLength`, `maxProperties`), which
@@ -263,8 +264,8 @@ function describe(node, keyword, exempt) {
  * Every declared member is assumed present, every array and map full, and
  * every string at its maximum length. A union takes its widest branch. Members
  * the schema does not declare are not counted: an open object admits any
- * extra member, so the byte budget, not structure, bounds those. The count of
- * open positions is reported with the result.
+ * extra member, and no structural bound reaches those. The count of open
+ * positions is reported with the result.
  */
 function worstCase(mode, rootFile = ROOT_FILE) {
   const open = new Set();
