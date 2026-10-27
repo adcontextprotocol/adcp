@@ -43,7 +43,7 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 13 | Sellers that advertise `measurement_terms` | Advertise only values you accept when replayed unchanged. |
 | 14 | Buyers that receive delivery webhooks | Ignore `aggregated_totals`; do not reject the payload for it. |
 | 15 | Sellers adopting 3.3 fields | Gate the [3.3-only emissions](#send-only-to-3-3-peers) on the negotiated version. |
-| 16 | Sellers that return proposals | Pin every covered third-party definition for callers negotiating 3.3. |
+| 16 | Sellers that implemented definition pins from `3.3.0-beta.0` | Stop emitting `definition_pins[]`, the `definition_changed` reason, and `REFERENCE_DEFINITION_CHANGED` to peers on beta.1 or later. Pins are [withdrawn from 3.3](#withdrawn-from-3-3-planned-for-4-0) and planned for 4.0. |
 | 17 | Reliable Reporting buyers | Stop relying on exact reads of older superseded snapshots; persist any snapshot rows you need ([notice](#superseded-reporting-snapshots-may-be-compacted)). |
 | 18 | Buyers that read delivery rows | Treat a missing `impressions` as not measured, never zero (#8108). |
 | 19 | SDK and codegen maintainers | Make `impressions` optional on delivery row types (#8108). |
@@ -60,6 +60,33 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 30 | Sellers that hold buys for review | Keep a provisional buy (`confirmed_at: null`) in `pending_start` at flight start until you confirm or reject it ([details](#flight-start-activates-committed-buys-only)). |
 | 31 | Sellers reporting qualified metrics | Omit a metric's flat carrier from buy and window `totals` when packages report it under more than one qualifier set ([details](#multi-qualifier-metrics-omit-flat-totals)). |
 | 32 | Buyers and in-house clients | Send `adcp_version` on every request, with the deprecated `adcp_major_version` mirror through 3.x. 4.0 removes `adcp_major_version` and `adcp.major_versions` ([details](#deprecations)). |
+
+## Withdrawn from 3.3, planned for 4.0
+
+Three features are not part of 3.3. All three add terms to `commercial_terms`, and `commercial-terms` stays closed within 3.x. A buyer must not be bound by terms it cannot read, and `terms_digest` signs exactly those terms. If the object were open, a 3.2 buyer could accept a 3.3 term it silently ignored, and a minor release never changes a closed schema ([DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md)). 4.0 gives `commercial_terms` a declared extension point with must-understand, and the three features come back through it. The decision is in [adcp#8501](https://github.com/adcontextprotocol/adcp/issues/8501).
+
+### Definition pins (published in beta.0, removed in beta.1)
+
+`3.3.0-beta.0` published seller-authored `commercial_terms.definition_pins[]` ([#7960](https://github.com/adcontextprotocol/adcp/pull/7960)) and required it from sellers serving callers that negotiated 3.3. `3.3.0-beta.1` removes it. Because beta.0 is immutable, a seller or SDK built from the beta.0 bundle has these surfaces to remove:
+
+- `commercial_terms.definition_pins[]`, with `core/definition-pin.json` and `enums/definition-pin-ref-kind.json`.
+- The `definition_changed` value of `proposal-refinement-reason` and the `drifted_pins[]` field on `refine_proposals` result rows.
+- The `REFERENCE_DEFINITION_CHANGED` error code and `error-details/reference-definition-changed.json`.
+- The `definition_pin_probe` scenario of `comply_test_controller`, the `definition_pin_drift` storyboard, and the `definition-pins` test vectors.
+
+A seller no longer pins definitions, re-verifies pins at finalize, or fails `accept_proposal` on drift, so the beta.0 MUST is gone. A beta.1 buyer never sees these fields. A buyer that depends on a third-party definition not changing after commitment has no 3.3 guarantee and re-reads the publisher's `adagents.json` before accepting. A beta.0 seller that emits pins to a beta.1 peer sends a field a closed `commercial_terms` rejects.
+
+### Purchase rights (merged after beta.0, removed before beta.1)
+
+[#8101](https://github.com/adcontextprotocol/adcp/pull/8101) merged on 2026-10-24 and added experimental `media_buy.purchase_rights`: `purchases[].rights[]`, the `brand/rights-scope.json` hoist, and the `paid_amplification` and `content_reuse` values of `right-use`. It never shipped in a beta and is removed before beta.1. `brand/rights-terms.json` returns to its 3.2 form. Until 4.0, rights travel through the brand protocol, where `acquire_rights` returns `rights-terms`.
+
+### Installment selection (merged after beta.0, removed before beta.1)
+
+[#8246](https://github.com/adcontextprotocol/adcp/pull/8246) merged on 2026-10-24 and added experimental `media_buy.installment_selection`: `purchases[].installments[]`, and `installment_changes` with `unsatisfied_installment_changes` on `refine_proposals`. It never shipped in a beta and is removed before beta.1. Installments on the canonical product and `holds[]` stay in 3.3. A purchase buys the product as offered, which is its complete installment set when it declares one.
+
+### Where the designs are kept
+
+The designs are preserved for 4.0 in [Planned for 4.0](/docs/reference/migration/v4-compatibility#planned-for-4-0-withdrawn-from-3-3) and in the merge commits of #7960, #8101, and #8246.
 
 ## Required to claim 3.3 behavior
 
@@ -116,10 +143,6 @@ On a `"3.2"` pin the fail-closed rule remains opt-in [interim guidance](/docs/bu
 **Buyers.** Omit the block only on a request served at 3.3 or later. A buyer pinned to 3.2 keeps sending it, even to a 3.3 seller.
 
 **Sellers.** Accept a 3.3-served request without the block and sign its deliveries as for `push_notification_config`. On a request served at 3.3 or later, the downgrade and injection rules in [Webhook callbacks](/docs/building/by-layer/L1/security#webhook-callbacks) now cover both registrations. A request served below 3.3 still requires the block. Sending it remains valid everywhere in 3.x, and the block is removed in 4.0 ([#4288](https://github.com/adcontextprotocol/adcp/issues/4288)).
-
-### Proposals pin third-party definitions
-
-For callers negotiating 3.3, a seller MUST emit one `commercial_terms.definition_pins[]` entry for every covered third-party definition its `purchases[]` reference (publisher-catalog format options and placements, `adagents.json` collections, data-provider signals) on every `new_media_buy` and `media_buy_update` proposal, and MUST NOT emit such terms without the pins. It re-verifies the pins at finalize, reporting drift as `unable` with `definition_changed` and `drifted_pins[]`, and before `accept_proposal` mutates, returning `REFERENCE_DEFINITION_CHANGED`. Only sellers author pins; requests that carry them are rejected. Pins and `definition_changed` are never sent to callers pinned below 3.3. See [Definition pins](/docs/media-buy/specification#definition-pins).
 
 ### Advertise only the measurement terms you accept
 
@@ -360,7 +383,6 @@ Many 3.3 additions sit inside objects that 3.2 closes, so a strict 3.2 validator
 | Buyer, seller | `daypart_targets[]` entries with `start_time` / `end_time`, including proposal `allocations[].daypart_targets` | 3.2 requires `start_hour` / `end_hour` and closes the entry. |
 | Buyer, seller | `time_granularity` in `required_overlay_support.daypart_targets` and `overlay_support.daypart_targets` | 3.2 closes the structured daypart object. |
 | Buyer | `budget.periods[]` on `sync_plans` | 3.2 closes the plan `budget`. |
-| Seller | `commercial_terms.definition_pins[]` and the `definition_changed` refinement reason | 3.2 `commercial_terms` is closed. |
 | Seller | `expected_confirmation_at` on `accept_proposal`, `buy_products`, and `refine_proposals` submitted responses | 3.2 closes the commitment `submitted` arm and the `refine_proposals` response. It is safe on `create_media_buy`. |
 | Seller | Delivery rows without `impressions` | 3.2 requires `impressions` on every row. |
 | Seller | `by_spot[]` rows with `spot_status: "scheduled"` or `"preempted"`, and `available_statuses` / `supports_break_position` on `supports_spot_breakdown` | 3.2 requires `aired_at` on every row and closes the spot capability. |
@@ -368,7 +390,7 @@ Many 3.3 additions sit inside objects that 3.2 closes, so a strict 3.2 validator
 | Seller | `dooh_inventory_summary` on canonical products (`list_products`, `request_proposals`, `refine_proposals`) | 3.2 `canonical-product.json` is closed. |
 | Buyer | `pixel_tracker` `event` values `start`, `first_quartile`, `midpoint`, `third_quartile`, `complete` | 3.2 closes the `event` enum; send them as `event: custom` until the seller negotiates 3.3 ([below](#hosted-video-and-audio-playback-trackers)). |
 
-New enum values (`nmo`, `videoamp`, `mxf`, `mpeg2`, `avc_intra`, `xavc`, `print_metrics` in `available-metric`, `definition_changed`, `operator_fee` in `adjustment-kind`) and error codes (`REFERENCE_DEFINITION_CHANGED`) fall under the 3.x rule that clients tolerate unknown values, but a strict 3.2 validator still rejects them; send them only to 3.3 peers too.
+New enum values (`nmo`, `videoamp`, `mxf`, `mpeg2`, `avc_intra`, `xavc`, `print_metrics` in `available-metric`, `operator_fee` in `adjustment-kind`) fall under the 3.x rule that clients tolerate unknown values, but a strict 3.2 validator still rejects them; send them only to 3.3 peers too.
 
 `get_adcp_capabilities` runs before negotiation, so a seller cannot gate its capability document. A 3.3 seller's `media_buy.features.catalog_ingestion` object fails a 3.2 schema that admits only booleans there. Buyers parse capabilities tolerantly, as [Versioning](/docs/reference/versioning) recommends.
 
@@ -397,7 +419,7 @@ These change generated types or bundle shape without changing what a conformant 
 - **Delivery rows (#8108).** `impressions` is optional on `daily_breakdown` and dimensional breakdown rows; `aggregated_totals` still requires it.
 - **Reporting issue codes (#8099, 3.2.4).** The closed reporting status issue-code enum gains `REVISION_UNREADABLE`, with a `reporting_revision_id` field. Strict readers must accept it.
 - **Spot rows (#8017).** `by_spot[].aired_at` is required only on `aired` and `makegood` rows and on rows without `spot_status`.
-- **New shared schemas.** `core/definition-pin.json`, `core/audience-size.json`, and the enums `definition-pin-ref-kind`, `spot-status`, `daypart-time-granularity`, `audience-size-precision`, and `audience-match-rate-basis`.
+- **New shared schemas.** `core/audience-size.json`, and the enums `spot-status`, `daypart-time-granularity`, `audience-size-precision`, and `audience-match-rate-basis`.
 - **Conformance vector re-code (#8066, 3.2.4).** Request-signing `negative/026-non-ascii-host` now expects `request_target_uri_malformed` at step 10, not `request_signature_header_malformed`. Verifiers that matched the old code must update.
 
 ## Adopt by capability
@@ -432,7 +454,7 @@ Optional, two pieces with different stability.
 
 A migration note: a legacy installment that carries only the deprecated `collection_id` cannot be represented on the canonical surface. Add `collection_ref` before declaring 3.3 — a seller that drops such installments from its canonical projection is asserting run-of-collection for a product that actually sells named slots.
 
-**Experimental** (`media_buy.installment_selection`). A proposal purchase can name the exact installments it buys in `commercial_terms.purchases[].installments`, and `refine_proposals` gains `installment_changes` to drop or swap one. Note the two `installments` fields have deliberately different shapes: the Product's carries full `canonical-installment.json` objects, the purchase's carries bare `(collection_ref, installment_id)` references into them. Because the array sits inside `commercial_terms`, it is covered by `terms_digest`, so `accept_proposal`'s `proposal_terms_digest` check binds the exact slot identifiers — not what the seller later publishes under them, which is [a recorded bound](/docs/reference/known-limitations#compact-product-lifecycle). Sellers declare the feature id and list `installment_changes` in `media_buy.proposal_refinement.supported_dimensions`; buyers MUST NOT send the field otherwise. Sellers MUST NOT emit either field to callers negotiating below 3.3, and a buyer that has not implemented the feature MUST reject a proposal whose purchases carry `installments` rather than ignore the field — presence and absence mean opposite things, so ignoring it reads a two-slot buy as the product's whole slate. See [Installments in the compact lifecycle](/docs/media-buy/product-discovery/collections-and-installments#installments-in-the-compact-lifecycle).
+**Not in 3.3.** Naming the exact installments a purchase buys, and dropping or swapping one through `refine_proposals`, was merged for 3.3 and is [withdrawn to 4.0](#installment-selection-merged-after-beta-0-removed-before-beta-1). A purchase buys the product as offered.
 
 ### Creative `seller_revision`
 
@@ -441,7 +463,6 @@ Optional. `list_creatives` may return `seller_revision` on each creative: a sell
 ### Scheduled and human-gated buying
 
 - **`expected_confirmation_at`.** Set it on a `submitted` response from `create_media_buy`, `buy_products`, or `accept_proposal` when confirmation waits on a scheduled event; on `buy_products` and `accept_proposal`, only for callers negotiating 3.3. `refine_proposals` can also carry it on a `submitted` response to a finalize-only request whose hold waits on a person's agreement, such as a creator or host (#8104); never on a `completed` response, and only for callers negotiating 3.3. It is an estimate; buyers check status at that time instead of polling tightly. See [Expected confirmation time](/docs/media-buy/task-reference/create_media_buy#expected-confirmation-time).
-- **Definition pins.** Required for callers negotiating 3.3; see [above](#proposals-pin-third-party-definitions). The `definition_pin_drift` storyboard is gated on the `definition_pin_probe` controller scenario.
 - **Vendor-metric outcome goals.** Plan only `(vendor, metric_id)` pairs a product lists in both `vendor_metric_optimization.supported_metrics[]` and `reporting_capabilities.vendor_metrics`, answer in `vendor_metric_values[]`, and reject anything else with `INVALID_REQUEST`. No new capability flag. See [Vendor-metric goals](/docs/media-buy/task-reference/request_proposals#vendor-metric-goals).
 - **Governance budget periods (experimental).** Governance agents that accept `budget.periods[]` on `sync_plans` declare `governance.supports_budget_periods` and enforce periods in `check_governance`. Plans without periods behave as before. See [Budget periods](/docs/governance/campaign/tasks/sync_plans#budget-periods).
 - **Hold policy and hold extension (experimental, `media_buy.hold_policy`, `media_buy.hold_extension`).** Products and draft canonical proposals can carry `hold_policy` (`available`, `min_duration`, `max_duration`, `extendable`, `max_total_duration`); it binds on the draft proposal and carries forward to the committed successor. `refine_proposals` `action: "extend_hold"` lengthens a committed hold by returning a new committed successor with the same terms and a later `expires_at`; `expected_confirmation_at` may also accompany a `submitted` extension (#8203). Both are omitted for callers below 3.3. See [Hold policy](/docs/media-buy/task-reference/refine_proposals#hold-policy-experimental) and [Extend a hold](/docs/media-buy/task-reference/refine_proposals#extend-a-hold-experimental).
@@ -610,7 +631,7 @@ One earlier deprecation is worth restating before 4.0. The integer request field
 - `sales-fixed-rate` is a new specialism for non-guaranteed, fixed-price sellers in any medium (#7963). Its `sales_fixed_rate` storyboard grades capability discovery, fixed-price product discovery, and a bid-less `create_media_buy`; optional hold phases run only when the seller advertises the `force_media_buy_confirmation` controller scenario. See [Choosing a sales specialism](/docs/building/verification/compliance-catalog#choosing-a-sales-specialism).
 - `media_buy_seller/unprovisioned_account_reference` is new and advisory until runner capability `14.1.0`.
 - `media_buy_seller/stable_account_id` is new and runs only for buyer-declared sellers that declare `account.stable_account_id: true`. It addresses the account by `account_id` on `get_media_buys` and requires `@adcp/sdk` 15.8.0 or later, whose storyboard runner sends an authored `account_id` as written.
-- New capability-gated scenarios: `media_buy_seller/definition_pin_drift`, `governance/budget_periods`, `media_buy_seller/property_delivery_reporting`, `media_buy_seller/installment_property_delivery_reporting`, `media_buy_seller/outcome_target_vendor_metric`, and `media_buy_seller/outcome_target_event_cost`. Sellers that do not declare the capability skip them.
+- New capability-gated scenarios: `governance/budget_periods`, `media_buy_seller/property_delivery_reporting`, `media_buy_seller/installment_property_delivery_reporting`, `media_buy_seller/outcome_target_vendor_metric`, and `media_buy_seller/outcome_target_event_cost`. Sellers that do not declare the capability skip them.
 - Hosted service: grading of governance-aware sellers is covered in [AAO Verified](/docs/building/verification/aao-verified).
 
 These change grading results, not the wire.

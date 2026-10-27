@@ -359,32 +359,6 @@
         "properties": {
           "media_buy": {
             "properties": {
-              "proposal_refinement": {
-                "properties": {
-                  "supported_dimensions": { "contains": { "const": "installment_changes" } }
-                },
-                "required": ["supported_dimensions"]
-              }
-            },
-            "required": ["proposal_refinement"]
-          }
-        },
-        "required": ["media_buy"]
-      },
-      "then": {
-        "properties": {
-          "experimental_features": {
-            "contains": { "const": "media_buy.installment_selection" }
-          }
-        },
-        "required": ["experimental_features"]
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "media_buy": {
-            "properties": {
               "audience_targeting": {
                 "required": ["supported_activation_methods"]
               }
@@ -1730,10 +1704,10 @@
           "properties": {
             "supported_dimensions": {
               "type": "array",
-              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; installment_changes (experimental, media_buy.installment_selection) covers installment_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
+              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
               "items": {
                 "type": "string",
-                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "installment_changes", "alternatives", "criteria"]
+                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "alternatives", "criteria"]
               },
               "uniqueItems": true
             },

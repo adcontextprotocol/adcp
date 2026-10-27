@@ -332,13 +332,6 @@
       "reason": "pending WG decision"
     },
     {
-      "file": "media-buy/commercial-terms.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property definition_pins added",
-      "reason": "pending WG decision"
-    },
-    {
       "file": "media-buy/get-products-request.json",
       "pointer": "/properties/refine/items/oneOf/1",
       "kind": "property-added-to-closed",
@@ -409,27 +402,6 @@
       "reason": "pending WG decision"
     },
     {
-      "file": "media-buy/product-purchase.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property installments added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "media-buy/product-purchase.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property rights added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "media-buy/proposal-refinement.json",
-      "pointer": "",
-      "kind": "property-added-to-closed",
-      "detail": "property installment_changes added",
-      "reason": "pending WG decision"
-    },
-    {
       "file": "media-buy/refine-proposals-request.json",
       "pointer": "",
       "kind": "property-added-to-closed",
@@ -448,20 +420,6 @@
       "pointer": "",
       "kind": "property-added-to-closed",
       "detail": "property expected_confirmation_at added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "media-buy/refine-proposals-response.json",
-      "pointer": "/properties/results/items",
-      "kind": "property-added-to-closed",
-      "detail": "property drifted_pins added",
-      "reason": "pending WG decision"
-    },
-    {
-      "file": "media-buy/refine-proposals-response.json",
-      "pointer": "/properties/results/items",
-      "kind": "property-added-to-closed",
-      "detail": "property unsatisfied_installment_changes added",
       "reason": "pending WG decision"
     },
     {

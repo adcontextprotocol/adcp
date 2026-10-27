@@ -147,12 +147,7 @@ describe('product discovery MCP schema parity', () => {
     // Core gender adds its shared predicate and overlay support; merged
     // discovery measures 165,140 bytes / 161.27 KiB, bounded at the next KiB
     // without relaxing standalone-schema parity.
-    // Experimental installment selection (#8230) adds refine_proposals'
-    // installment_changes list with its closed CanonicalInstallmentRef item
-    // and one revise-field-forbidding arm per no-terms-change action
-    // (+1,128 bytes measured against main: 165,140 -> 166,268 bytes /
-    // 162.37 KiB), bounded at 163 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(163 * 1024);
+    expect(totalBytes).toBeLessThanOrEqual(162 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);
