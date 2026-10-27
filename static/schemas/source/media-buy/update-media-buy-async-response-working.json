@@ -3,6 +3,9 @@
   "$id": "/schemas/media-buy/update-media-buy-async-response-working.json",
   "title": "Update Media Buy - Working",
   "description": "Progress payload for active update_media_buy task.",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
   "type": "object",
   "properties": {
     "percentage": {

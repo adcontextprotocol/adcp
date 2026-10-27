@@ -77,7 +77,6 @@ const PROPERTIES_3_3 = [
   ['core/reporting-status-issue.json', ['properties', 'reporting_revision_id']],
   ['governance/check-governance-request.json', ['properties', 'budget_period_id']],
   ['governance/check-governance-response.json', ['properties', 'budget_period_id']],
-  ['media-buy/list-products-response.json', ['properties', 'adcp_version']],
   ['media-buy/refine-proposals-response.json', ['properties', 'results', 'items', 'properties', 'drifted_pins']],
   ['media-buy/sync-audiences-response.json', ['oneOf', 0, 'properties', 'audiences', 'items', 'properties', 'platform_id']],
   ['media-buy/sync-event-sources-response.json', ['oneOf', 0, 'properties', 'event_sources', 'items', 'properties', 'platform_id']],
@@ -160,4 +159,6 @@ test('surfaces shipped in 3.2 are not marked 3.3', () => {
   // placement-evidence and ooh_metrics are in the 3.2 release artifacts.
   assert.equal(load('core/placement-evidence.json')['x-added-in'], '3.2.0');
   assert.equal(load('core/delivery-metrics.json').properties.ooh_metrics['x-added-in'], undefined);
+  // The list_products adcp_version echo is backported to 3.2.x (#8518).
+  assert.equal(load('media-buy/list-products-response.json').properties.adcp_version['x-added-in'], undefined);
 });

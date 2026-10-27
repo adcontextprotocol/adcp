@@ -3,6 +3,9 @@
   "$id": "/schemas/creative/sync-creatives-async-response-working.json",
   "title": "Sync Creatives - Working",
   "description": "Progress payload for active sync_creatives task.",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
   "type": "object",
   "properties": {
     "percentage": {

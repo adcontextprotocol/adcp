@@ -9,6 +9,7 @@
     "propertyName": "outcome"
   },
   "properties": {
+    "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
     "outcome": {
       "type": "string",
       "enum": ["listed", "unchanged"],

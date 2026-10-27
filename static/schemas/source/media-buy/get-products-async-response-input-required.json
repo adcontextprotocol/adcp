@@ -3,6 +3,9 @@
   "$id": "/schemas/media-buy/get-products-async-response-input-required.json",
   "title": "Get Products - Input Required",
   "description": "Payload when search is paused waiting for user clarification.",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
   "type": "object",
   "properties": {
     "reason": {

@@ -3,6 +3,9 @@
   "$id": "/schemas/media-buy/create-media-buy-async-response-working.json",
   "title": "Create Media Buy - Working",
   "description": "Progress payload for active create_media_buy task.",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
   "type": "object",
   "properties": {
     "percentage": {

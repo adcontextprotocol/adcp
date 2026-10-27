@@ -3,6 +3,9 @@
   "$id": "/schemas/core/compact-task-working.json",
   "title": "Compact Task Working",
   "description": "Bounded progress payload shared by the compact lifecycle tools.",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
   "type": "object",
   "properties": {
     "percentage": { "type": "number", "minimum": 0, "maximum": 100 },
