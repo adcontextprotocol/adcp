@@ -54,7 +54,7 @@ import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { isSellerOptimizedProposalId, sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags, sellerOptimizedOversubscriptionError, sellerOptimizedProposalForBrief, sellerOptimizedStateError, sellerOptimizedUnsupportedError, type SellerOptimizedState } from './seller-optimized-budget.js';
-import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, supportsAccountChangeFeed, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
+import { supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, supportsAccountChangeFeed, atLeastAdcpVersion, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, type PackageFrequencyCapEligibility } from './types.js';
 import { classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
   AccountRefValidationError,
@@ -18661,8 +18661,12 @@ const EMPTY_FORMAT_IDENTITY = { formatId: undefined, formatKind: undefined, form
  * where the account change feed is advertised (tenants/router.ts), and
  * live_updates requires the library, so the two share one gate. */
 function liveCreativeUpdatesEnabled(ctx: TrainingContext): boolean {
+  const served = ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION;
+  // The capability is a 3.3 field, withheld below 3.3, so the behavior it
+  // declares is served only at 3.3.
   return !isThreeZeroStoryboardCompat(ctx)
-    && supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION);
+    && supportsAccountChangeFeed(served)
+    && atLeastAdcpVersion(served, '3.3-beta');
 }
 
 /** Only sellers with media buys can have live creatives to declare for. */
@@ -18953,9 +18957,6 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
         base.snapshot_unavailable_reason = 'SNAPSHOT_UNSUPPORTED';
       }
       if (declaresLiveCreativeUpdates(ctx)) {
-        if ((!selectedFields || selectedFields.has('live_updates')) && c.status === 'approved' && livePackageIds(session, c.creativeId).length > 0) {
-          base.live_updates = { in_place: liveUpdatesCapability().in_place };
-        }
         if (c.stagedUpdate && (!selectedFields || selectedFields.has('staged_update'))) {
           base.staged_update = stagedUpdateWire(c.stagedUpdate);
         }

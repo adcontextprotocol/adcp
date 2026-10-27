@@ -51,7 +51,7 @@
               },
               "staged_update": {
                 "$ref": "/schemas/core/creative-staged-update.json",
-                "description": "Present when this item changed a live creative and the seller accepted the change in staged mode. action is updated, and status describes the version that keeps serving (normally approved), not the staged content. Track the staged update on list_creatives or creative.status_changed. Omitted on failed and deleted items, and when no staged update is pending after this sync.",
+                "description": "Present when this item changed a live creative and the seller accepted the change in staged mode. action is updated, and status describes the version that keeps serving (normally approved), not the staged content. Track the staged update on list_creatives or by subscribing to creative.staged_update_changed. Omitted on failed and deleted items, and when no staged update is pending after this sync.",
                 "x-status": "experimental",
                 "x-added-in": "3.3.0"
               },

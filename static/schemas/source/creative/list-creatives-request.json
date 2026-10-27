@@ -126,7 +126,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific fields to include in response (omit for all fields). The 'concept' value returns both concept_id and concept_name. `format_id` is a deprecated 3.x compatibility projection; new integrations request `format_kind` and `format_option_ref`. Selecting localization automatically includes creative_id, status, assets, the selected format identity, and localization_unavailable when applicable. Selecting rights_attestation_evaluations automatically includes rights so each seller-produced result can be reconciled with the exact retained constraint and reference. live_updates and staged_update are experimental (creative.live_updates); selecting staged_update automatically includes status so the serving state and the staged update are read together.",
+      "description": "Specific fields to include in response (omit for all fields). The 'concept' value returns both concept_id and concept_name. `format_id` is a deprecated 3.x compatibility projection; new integrations request `format_kind` and `format_option_ref`. Selecting localization automatically includes creative_id, status, assets, the selected format identity, and localization_unavailable when applicable. Selecting rights_attestation_evaluations automatically includes rights so each seller-produced result can be reconciled with the exact retained constraint and reference. staged_update is experimental (creative.live_updates); selecting it automatically includes status so the serving state and the staged update are read together.",
       "minItems": 1,
       "items": {
         "type": "string",
@@ -152,7 +152,6 @@
           "variables",
           "concept",
           "pricing_options",
-          "live_updates",
           "staged_update"
         ]
       }

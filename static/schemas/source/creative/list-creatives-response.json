@@ -88,12 +88,6 @@
               "spec": "docs/creative/task-reference/list_creatives.mdx#per-creative-fields"
             }
           },
-          "live_updates": {
-            "$ref": "/schemas/core/live-update-policy.json",
-            "description": "Exact live-update policy for this creative: which kinds of change the seller applies in place under this creative_id given the products and ad servers its current assignments run on, and how the creative serves while each is decided. Sellers that declare creative.live_updates MUST include it on every live creative (an approved creative with at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state, paused or not) and MUST omit it on creatives that are not live, which take any change as an ordinary upsert. It MUST be at least as permissive as the capability declaration, and a sync of a change it lists MUST NOT be refused with CREATIVE_LIVE_UPDATE_UNSUPPORTED.",
-            "x-status": "experimental",
-            "x-added-in": "3.3.0"
-          },
           "staged_update": {
             "$ref": "/schemas/core/creative-staged-update.json",
             "description": "A change accepted in staged mode and not yet promoted. While present, assets, revision_id, and status describe the version that serves; the staged content is the buyer's last synced content. Removed on promotion (the staged content and revision become current) and on withdrawal. Stays with status rejected under on_rejection keeps_prior until the buyer supersedes or withdraws it.",
@@ -581,7 +575,7 @@
           },
           "webhook_activity": {
             "type": "array",
-            "description": "Recent webhook fires scoped to this creative — creative.status_changed, creative.purged, creative.assignment_changed, and assignment-level indicators.changed deliveries. Present only when include_webhook_activity is true. Account-anchored records include subscriber_id; the parent creative_id disambiguates the record. Retention: 30 days from completed_at. See snapshot-and-log.mdx § Webhook activity log pattern.",
+            "description": "Recent webhook fires scoped to this creative — creative.status_changed, creative.staged_update_changed, creative.purged, creative.assignment_changed, and assignment-level indicators.changed deliveries. Present only when include_webhook_activity is true. Account-anchored records include subscriber_id; the parent creative_id disambiguates the record. Retention: 30 days from completed_at. See snapshot-and-log.mdx § Webhook activity log pattern.",
             "items": {
               "$ref": "/schemas/core/webhook-activity-record.json"
             },

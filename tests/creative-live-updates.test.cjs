@@ -93,12 +93,15 @@ test('sync response and list_creatives carry staged_update beside the serving st
   const listResponse = await compile('creative/list-creatives-response.json');
   const list = schema('creative/list-creatives-response.json');
   const row = list.properties.creatives.items.properties;
-  assert.equal(row.live_updates.$ref, '/schemas/core/live-update-policy.json');
+  assert.equal(row.live_updates, undefined, 'the per-creative live_updates readback is dropped; dry_run answers for one change');
+  const fields = schema('creative/list-creatives-request.json').properties.fields.items.enum;
+  assert.ok(fields.includes('staged_update'));
+  assert.ok(!fields.includes('live_updates'));
   assert.equal(row.staged_update.$ref, '/schemas/core/creative-staged-update.json');
   assert.equal(typeof listResponse, 'function');
 });
 
-test('status webhook allows approved to approved only for staged outcomes', async () => {
+test('status webhook keeps its closed contract: no approved → approved, no staged_update', async () => {
   const validate = await compile('creative/creative-status-changed-webhook.json');
   const base = {
     idempotency_key: 'whk_01HW9D2T3VXQ5M7K9N1P3R5S7U',
@@ -108,41 +111,56 @@ test('status webhook allows approved to approved only for staged outcomes', asyn
     subscriber_id: 'buyer-primary',
     account_id: 'acc_acme',
     creative_id: 'acme_hero',
-    revision_id: 'rev_2026_11_02',
-    transition: { from: 'approved', to: 'approved', observed_at: '2026-11-02T15:59:00Z' },
-    reason_code: 'review_passed',
+    transition: { from: 'approved', to: 'rejected', observed_at: '2026-11-02T15:59:00Z' },
+    reason_code: 'policy_revocation',
     initiator: 'seller'
   };
-  assert.equal(validate(base), false, 'approved → approved without staged_update is not a transition');
-  assert.equal(validate({ ...base, staged_update: { outcome: 'promoted' } }), true, JSON.stringify(validate.errors));
+  assert.equal(validate(base), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...base, transition: { ...base.transition, to: 'approved' } }), false, 'approved → approved is not a status transition');
+  assert.equal(validate({ ...base, staged_update: { outcome: 'promoted' } }), false, 'staged outcomes do not ride on status_changed');
+  const status = schema('creative/creative-status-changed-webhook.json');
+  assert.equal(status.properties.staged_update, undefined);
+});
+
+test('creative.staged_update_changed is a separate experimental event that subscribers opt into', async () => {
+  const validate = await compile('creative/creative-staged-update-changed-webhook.json');
+  const base = {
+    idempotency_key: 'whk_01JC4N2T3VXQ5M7K9N1P3R5S7U',
+    notification_id: 'su_acme_hero_1',
+    notification_type: 'creative.staged_update_changed',
+    fired_at: '2026-11-03T09:05:00Z',
+    subscriber_id: 'buyer-primary',
+    account_id: 'acc_acme',
+    creative_id: 'acme_hero',
+    revision_id: 'rev_2026_11_02',
+    outcome: 'promoted',
+    creative_status: 'approved',
+    observed_at: '2026-11-03T09:04:00Z',
+    initiator: 'seller'
+  };
+  assert.equal(schema('creative/creative-staged-update-changed-webhook.json')['x-status'], 'experimental');
+  assert.equal(validate(base), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...base, rejection_reason: 'No' }), false, 'a promotion carries no rejection_reason');
+  assert.equal(validate({ ...base, creative_status: 'rejected' }), false, 'a promotion leaves the creative approved');
   assert.equal(
-    validate({
-      ...base,
-      reason_code: 'review_failure',
-      staged_update: { outcome: 'rejected', rejection_reason: 'Unsubstantiated claim' }
-    }),
+    validate({ ...base, outcome: 'rejected', rejection_reason: 'Unsubstantiated claim' }),
     true,
-    JSON.stringify(validate.errors)
+    'keeps_prior rejection leaves the creative approved'
   );
   assert.equal(
-    validate({
-      ...base,
-      transition: { from: 'approved', to: 'rejected', observed_at: '2026-11-02T15:59:00Z' },
-      reason_code: 'review_failure',
-      staged_update: { outcome: 'rejected', rejection_reason: 'Unsubstantiated claim' }
-    }),
+    validate({ ...base, outcome: 'rejected', rejection_reason: 'Unsubstantiated claim', creative_status: 'rejected' }),
     true,
-    'on_rejection stops reports approved → rejected'
+    'stops rejection moves the creative to rejected'
   );
-  assert.equal(
-    validate({
-      ...base,
-      transition: { from: 'pending_review', to: 'approved', observed_at: '2026-11-02T15:59:00Z' },
-      staged_update: { outcome: 'promoted' }
-    }),
-    false,
-    'staged outcomes start from approved'
-  );
+  assert.equal(validate({ ...base, notification_type: 'creative.status_changed' }), false);
+
+  for (const file of ['core/notification-config.json', 'core/agent-notification-config.json']) {
+    assert.ok(
+      JSON.stringify(schema(file)).includes('creative.staged_update_changed'),
+      `${file} accepts the new event type on a subscription`
+    );
+  }
+  assert.ok(schema('enums/notification-type.json').enum.includes('creative.staged_update_changed'));
 });
 
 test('refusal code and details are registered', async () => {

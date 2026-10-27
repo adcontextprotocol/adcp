@@ -828,7 +828,6 @@ async function emitCreativeStatusChanged(
   prev: string,
   status: string,
   reasonDetail?: string,
-  stagedOutcome?: 'promoted' | 'rejected',
 ): Promise<void> {
   if (!['processing', 'pending_review', 'approved'].includes(prev)) return;
   const subscribers = getAccountNotificationSubscribers(sessionKey, 'creative.status_changed', principal, creative.accountId, creative.accountRef);
@@ -850,16 +849,8 @@ async function emitCreativeStatusChanged(
         to: status,
         observed_at: firedAt,
       },
-      reason_code: stagedOutcome
-        ? (stagedOutcome === 'promoted' ? 'review_passed' : 'review_failure')
-        : lifecycleReasonCode(prev, status),
+      reason_code: lifecycleReasonCode(prev, status),
       ...(reasonDetail && { reason_detail: reasonDetail }),
-      ...(stagedOutcome && {
-        staged_update: {
-          outcome: stagedOutcome,
-          ...(stagedOutcome === 'rejected' && reasonDetail && { rejection_reason: reasonDetail }),
-        },
-      }),
       initiator: 'seller',
     };
     const activityBase = {
@@ -875,6 +866,62 @@ async function emitCreativeStatusChanged(
         payload,
         operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${notificationId}:${idempotencyKey}`,
         notificationType: 'creative.status_changed',
+        authentication: webhookAuthenticationFromConfig(subscriber.authentication),
+      });
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, result, undefined);
+    } catch (err) {
+      recordWebhookActivityResult(creative, activityBase, subscriber.url, undefined, err);
+    }
+  }
+}
+
+/**
+ * Experimental (creative.live_updates): report the review outcome of a staged
+ * update to subscribers that registered `creative.staged_update_changed`. The
+ * creative's status does not transition on a staged outcome, so this never
+ * rides on `creative.status_changed`.
+ */
+async function emitCreativeStagedUpdateChanged(
+  sessionKey: string,
+  principal: string | undefined,
+  creative: CreativeState,
+  outcome: 'promoted' | 'rejected',
+  creativeStatus: string,
+  rejectionReason?: string,
+): Promise<void> {
+  const subscribers = getAccountNotificationSubscribers(sessionKey, 'creative.staged_update_changed', principal, creative.accountId, creative.accountRef);
+  if (subscribers.length === 0) return;
+  const firedAt = new Date().toISOString();
+  const notificationId = `su_${creative.creativeId}_${randomUUID()}`;
+  for (const subscriber of subscribers) {
+    const idempotencyKey = randomUUID();
+    const payload: Record<string, unknown> = {
+      idempotency_key: idempotencyKey,
+      notification_id: notificationId,
+      notification_type: 'creative.staged_update_changed',
+      fired_at: firedAt,
+      subscriber_id: subscriber.subscriberId,
+      account_id: subscriber.accountId,
+      creative_id: creative.creativeId,
+      outcome,
+      ...(outcome === 'rejected' && rejectionReason && { rejection_reason: rejectionReason }),
+      creative_status: creativeStatus,
+      observed_at: firedAt,
+      initiator: 'seller',
+    };
+    const activityBase = {
+      idempotency_key: idempotencyKey,
+      subscriber_id: subscriber.subscriberId,
+      fired_at: firedAt,
+      notification_type: 'creative.staged_update_changed',
+      payload_size_bytes: Buffer.byteLength(JSON.stringify(payload), 'utf8'),
+    } as const;
+    try {
+      const result = await emitAccountNotificationWebhook({
+        url: subscriber.url,
+        payload,
+        operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${notificationId}:${idempotencyKey}`,
+        notificationType: 'creative.staged_update_changed',
         authentication: webhookAuthenticationFromConfig(subscriber.authentication),
       });
       recordWebhookActivityResult(creative, activityBase, subscriber.url, result, undefined);
@@ -1005,7 +1052,7 @@ function createStore(
             });
             await emitAccountChangeRecordedWebhook(principal, change);
           }
-          await emitCreativeStatusChanged(sessionKey, principal, creative, 'approved', 'approved', rejectionReason, outcome);
+          await emitCreativeStagedUpdateChanged(sessionKey, principal, creative, outcome, 'approved', rejectionReason);
           return {
             success: true,
             previous_state: prev,
@@ -1056,7 +1103,13 @@ function createStore(
         });
         await emitAccountChangeRecordedWebhook(principal, change);
       }
-      await emitCreativeStatusChanged(sessionKey, principal, creative, prev, status, rejectionReason, stagedRejectionStops ? 'rejected' : undefined);
+      await emitCreativeStatusChanged(sessionKey, principal, creative, prev, status, rejectionReason);
+      // Under on_rejection stops the creative also leaves approved, which is
+      // an ordinary status transition fired above; the staged outcome is
+      // reported separately to subscribers that asked for it.
+      if (stagedRejectionStops) {
+        await emitCreativeStagedUpdateChanged(sessionKey, principal, creative, 'rejected', status, rejectionReason);
+      }
       return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} transitioned from ${prev} to ${status}` };
     },
 

@@ -3,7 +3,7 @@ version: "1.0.0"
 introduced_in: "3.3"
 title: "Seller applies declared changes to a live creative under the same creative_id"
 category: media_buy_seller
-summary: "Verifies that a seller declaring creative.live_updates returns per-creative live_updates readback, always accepts name changes, applies uninterrupted changes immediately, and keeps the approved prior version serving while a staged update is reviewed, promoting it on approval and keeping the prior version on rejection."
+summary: "Verifies that a seller declaring creative.live_updates always accepts name changes, applies uninterrupted changes immediately, and keeps the approved prior version serving while a staged update is reviewed, promoting it on approval and keeping the prior version on rejection."
 track: creative
 requires:
   - controller
@@ -31,7 +31,6 @@ narrative: |
   different creative, so a phase the seller's declaration skips does not
   disturb the others:
 
-  - every live creative carries per-creative live_updates readback;
   - a name change is always accepted (name is not a change kind);
   - when trackers are declared uninterrupted, a tracker change serves at once;
   - when asset_content is declared staged with on_rejection keeps_prior, an
@@ -266,36 +265,6 @@ phases:
             allowed_values: [true]
             description: "The controller approves the creative (or it already is)"
 
-  - id: live_readback
-    title: "Read the exact policy for a live creative"
-    steps:
-      - id: list_live_creative
-        title: "list_creatives returns live_updates on a live creative"
-        task: list_creatives
-        schema_ref: "creative/list-creatives-request.json"
-        response_schema_ref: "creative/list-creatives-response.json"
-        doc_ref: "/creative/task-reference/list_creatives#live-update-readback"
-        comply_scenario: creative_library
-        stateful: true
-        sample_request:
-          account: *live_account
-          filters:
-            creative_ids: ["live_meta_banner"]
-          context:
-            correlation_id: "creative_live_updates--readback"
-        expected: |
-          Return the live, approved creative with live_updates.in_place.
-        validations:
-          - check: response_schema
-            description: "Response matches list-creatives-response.json"
-          - check: field_value
-            path: "creatives[0].status"
-            value: "approved"
-            description: "The creative is approved before it is changed"
-          - check: field_present
-            path: "creatives[0].live_updates.in_place"
-            description: "A declaring seller MUST return live_updates on every live creative"
-
   - id: name_change
     title: "A name change is always accepted"
     steps:
@@ -477,7 +446,7 @@ phases:
         task: list_creatives
         schema_ref: "creative/list-creatives-request.json"
         response_schema_ref: "creative/list-creatives-response.json"
-        doc_ref: "/creative/task-reference/list_creatives#live-update-readback"
+        doc_ref: "/creative/task-reference/list_creatives#staged-update-readback"
         comply_scenario: creative_library
         stateful: true
         sample_request:
@@ -523,7 +492,7 @@ phases:
         task: list_creatives
         schema_ref: "creative/list-creatives-request.json"
         response_schema_ref: "creative/list-creatives-response.json"
-        doc_ref: "/creative/task-reference/list_creatives#live-update-readback"
+        doc_ref: "/creative/task-reference/list_creatives#staged-update-readback"
         comply_scenario: creative_library
         stateful: true
         sample_request:
@@ -606,7 +575,7 @@ phases:
         task: list_creatives
         schema_ref: "creative/list-creatives-request.json"
         response_schema_ref: "creative/list-creatives-response.json"
-        doc_ref: "/creative/task-reference/list_creatives#live-update-readback"
+        doc_ref: "/creative/task-reference/list_creatives#staged-update-readback"
         comply_scenario: creative_library
         stateful: true
         sample_request:

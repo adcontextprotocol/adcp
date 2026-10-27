@@ -1127,7 +1127,7 @@ export interface CreativeWebhookActivityRecord {
   subscriber_id: string;
   fired_at: string;
   completed_at: string;
-  notification_type: 'creative.status_changed' | 'creative.purged';
+  notification_type: 'creative.status_changed' | 'creative.purged' | 'creative.staged_update_changed';
   attempt: number;
   status: 'success' | 'failed';
   url: string;

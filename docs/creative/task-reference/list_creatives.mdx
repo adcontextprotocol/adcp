@@ -60,7 +60,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 | `include_webhook_activity` | boolean | No | Include recent webhook fires per creative (default: false). See [Webhook activity](#webhook-activity). |
 | `webhook_activity_limit` | integer | No | Maximum `webhook_activity[]` records per creative when `include_webhook_activity: true` (default: 50, range 1–200). |
 | `account` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
-| `fields` | array | No | Specific optional fields to return (omit for all fields). Every row still includes the released base envelope: `creative_id`, `name`, `status`, `created_date`, `updated_date`, and exactly one of `format_id` or `format_kind`. Optional selections include `"assignments"`, `"assets"`, `"pricing_options"`, and `"rights"` / `"rights_attestation_evaluations"`; selecting rights evaluations automatically includes `rights`. |
+| `fields` | array | No | Specific optional fields to return (omit for all fields). Every row still includes the released base envelope: `creative_id`, `name`, `status`, `created_date`, `updated_date`, and exactly one of `format_id` or `format_kind`. Optional selections include `"assignments"`, `"assets"`, `"pricing_options"`, the experimental `"staged_update"` (which also returns `status`), and `"rights"` / `"rights_attestation_evaluations"`; selecting rights evaluations automatically includes `rights`. |
 
 ## Filtering options
 
@@ -263,8 +263,7 @@ not maintain it omits it and the buyer falls back to rereading.
 | `format_option_ref` | object | Optional exact publisher/product option reference |
 | `format_id` | object | Deprecated 3.x named-format compatibility field |
 | `status` | string | Approval status |
-| `live_updates` | object | Experimental. Present on every live creative when the seller declares `creative.live_updates`: the exact kinds of change it applies in place to this creative and the serving mode for each. See [Live update readback](#live-update-readback). |
-| `staged_update` | object | Experimental. A change accepted in `staged` mode and not yet promoted. While present, `assets`, `revision_id`, and `status` describe the version that serves. See [Live update readback](#live-update-readback). |
+| `staged_update` | object | Experimental. A change accepted in `staged` mode and not yet promoted. While present, `assets`, `revision_id`, and `status` describe the version that serves. See [Staged update readback](#staged-update-readback). |
 | `status_as_of` | string | When the seller last refreshed `status` from its source of truth. Optional; omission makes no freshness assertion. A value earlier than your last accepted write for this creative means the seller has not yet confirmed that write. See [creative state freshness](/docs/media-buy/specification#creative-state-freshness). |
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
@@ -284,11 +283,11 @@ not maintain it omits it and the buyer falls back to rereading.
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
 | `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as [`get_signals`](/docs/signals/tasks/get_signals) and [`list_content_standards`](/docs/governance/content-standards/tasks/list_content_standards). |
 
-### Live update readback
+### Staged update readback
 
 <Note>Experimental in 3.3, with [`creative.live_updates`](/docs/protocol/get_adcp_capabilities#creative).</Note>
 
-A seller that declares `creative.live_updates` returns `live_updates` on every live creative: an approved creative with at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state, paused or not. It omits the field on creatives that are not live, which take any change as an ordinary upsert. `live_updates.in_place` lists the kinds of change the seller applies in place to this creative and the serving mode for each, given the products and ad servers its assignments actually use. It is at least as permissive as the capability declaration, and a change it lists MUST NOT be refused with [`CREATIVE_LIVE_UPDATE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-creative-live-update-unsupported). A buyer reads it before changing a live creative and chooses between syncing in place and syncing a new `creative_id`; see [Live creative updates](/docs/creative/task-reference/sync_creatives#live-creative-updates).
+This row tracks a staged update. To learn what a seller does with a change, read the `creative.live_updates` capability, which is the general floor, or send the change with [`dry_run: true`](/docs/creative/task-reference/sync_creatives#live-creative-updates) for the exact answer to one change. To be told when review decides a staged update instead of polling, register `creative.staged_update_changed` on a `notification_configs[]` entry.
 
 `staged_update` is present while a change accepted in `staged` mode awaits promotion. The rest of the row describes the version that serves: `assets`, `revision_id`, and `status` stay those of the prior approved version until the seller promotes the update. On promotion the row's content and `revision_id` become the staged ones and `staged_update` is removed. Under `on_rejection: "keeps_prior"`, a rejected update stays as `staged_update.status: "rejected"` with its `rejection_reason` until the buyer supersedes or withdraws it.
 
@@ -301,13 +300,6 @@ A seller that declares `creative.live_updates` returns `live_updates` on every l
   "status": "approved",
   "created_date": "2026-10-01T12:00:00Z",
   "updated_date": "2026-11-02T15:04:00Z",
-  "live_updates": {
-    "in_place": [
-      { "change": "trackers", "serving": "uninterrupted" },
-      { "change": "click_through", "serving": "uninterrupted" },
-      { "change": "asset_content", "serving": "staged", "on_rejection": "keeps_prior" }
-    ]
-  },
   "staged_update": {
     "status": "pending_review",
     "revision_id": "rev_2026_11_02",
@@ -470,7 +462,7 @@ Hard-purged creatives (`purge_kind: hard`, used for legal erasure under GDPR Art
 
 ### Webhook activity
 
-When `include_webhook_activity: true`, each returned creative carries a `webhook_activity[]` array of the most recent fires scoped to that creative — `creative.status_changed`, `creative.purged`, `creative.assignment_changed`, and assignment-level `indicators.changed` deliveries. This is the buyer's debug surface for "did the publisher fire? did my endpoint receive it? was the retry trail clean?" — the same shape and contract as `webhook_activity[]` on [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) for the full normative contract (retention, three-state presence, request-field conventions).
+When `include_webhook_activity: true`, each returned creative carries a `webhook_activity[]` array of the most recent fires scoped to that creative — `creative.status_changed`, `creative.staged_update_changed`, `creative.purged`, `creative.assignment_changed`, and assignment-level `indicators.changed` deliveries. This is the buyer's debug surface for "did the publisher fire? did my endpoint receive it? was the retry trail clean?" — the same shape and contract as `webhook_activity[]` on [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) for the full normative contract (retention, three-state presence, request-field conventions).
 
 **To subscribe** when the seller declares `media_buy.relationship_notifications`, register a [`notification_configs[]`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions) entry on the account via [`sync_accounts`](/docs/accounts/tasks/sync_accounts). The seller fires per-subscriber against each entry whose `event_types[]` includes the type. Indicator support itself may be poll-only; push-capable sellers may advertise `indicators.changed` and independently advertise `creative.assignment_changed`. Subscriptions are prospective, so establish a complete all-status or known-ID baseline through `get_media_buys` after activation. Dedupe later invalidations and reread `get_media_buys` rather than applying payload state; `webhook_activity[]` on this read is a bounded reverse projection and debug log, not proof of complete repair.
 

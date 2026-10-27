@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/live-update-policy.json",
   "title": "Live Update Policy",
-  "description": "Which kinds of change a seller applies in place to a live creative, and how the creative serves while each is decided. A creative is live when its status is approved and it has at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state; a paused package still counts. A kind that is not listed is refused on a live creative with CREATIVE_LIVE_UPDATE_UNSUPPORTED, except under the capability declaration, which is a floor (see get_adcp_capabilities creative.live_updates).",
+  "description": "Which kinds of change a seller applies in place to a live creative, and how the creative serves while each is decided. A creative is live when its status is approved and it has at least one assignment on a package that is not canceled, whose flight has not ended, and whose media buy is not in a terminal state; a paused package still counts. The declaration is a floor (see get_adcp_capabilities creative.live_updates): a kind that is not listed may still be accepted for some creatives, and a sync_creatives dry_run returns the exact outcome of one change.",
   "type": "object",
   "properties": {
     "in_place": {

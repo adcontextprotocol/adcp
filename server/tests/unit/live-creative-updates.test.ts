@@ -1,5 +1,25 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// A 3.3 experimental surface is served only through the candidate wire contract.
+vi.hoisted(() => {
+  process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
+  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.0';
+});
+
 import crypto from 'node:crypto';
+const emitted = vi.hoisted(() => [] as Array<{ url: string; payload: Record<string, any> }>);
+vi.mock('../../src/training-agent/webhooks.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../src/training-agent/webhooks.js')>()),
+  emitAccountNotificationWebhook: async (opts: { url: string; payload: Record<string, any> }) => {
+    emitted.push({ url: opts.url, payload: opts.payload });
+    return { delivered: true, final_status: 200, errors: [] };
+  },
+}));
+vi.mock('../../src/training-agent/webhook-challenge.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../src/training-agent/webhook-challenge.js')>()),
+  proveAccountWebhookControl: async (config: { url: string }) => ({ ok: true, normalizedUrl: config.url }),
+}));
+
 import {
   createTrainingAgentServer,
   invalidateCache,
@@ -20,8 +40,8 @@ type Server = ReturnType<typeof createTrainingAgentServer>;
 
 async function call(server: Server, toolName: string, args: Record<string, unknown>): Promise<Record<string, any>> {
   const handler = ((server as any)._requestHandlers as Map<string, Function>).get('tools/call')!;
-  // Live creative updates ship on the 3.2+ wire; pin the served release.
-  const versioned = { adcp_version: '3.2', ...args };
+  // Live creative updates are a 3.3 experimental surface; pin the served release.
+  const versioned = { adcp_version: '3.3-beta.0', ...args };
   const withKey = MUTATING_TOOLS.has(toolName) && versioned.idempotency_key === undefined
     ? { ...versioned, idempotency_key: `test-${crypto.randomUUID()}` }
     : versioned;
@@ -99,8 +119,7 @@ describe('live creative updates', () => {
   it('applies tracker changes to a live creative immediately', async () => {
     const server = createTrainingAgentServer(CTX);
     await liveCreative(server);
-    const before = await listOne(server);
-    expect(before.live_updates.in_place.map((e: any) => e.change)).toContain('trackers');
+    expect((await listOne(server)).live_updates).toBeUndefined();
 
     const result = await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative({ tracker: 'https://measure.live-updates.example/i2' })] });
     expect(result.creatives[0]).toMatchObject({ action: 'updated', status: 'approved' });
@@ -194,7 +213,6 @@ describe('live creative updates', () => {
     expect(result.creatives[0]).toMatchObject({ action: 'updated', status: 'rejected' });
     expect(result.creatives[0].staged_update).toBeUndefined();
     const after = await listOne(server);
-    expect(after.live_updates).toBeUndefined();
     expect(after.assets.image.url).toBe('https://cdn.live-updates.example/fixed.png');
   });
 
@@ -235,7 +253,71 @@ describe('live creative updates', () => {
     const result = await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative({ format: 'display_728x90' })] });
     expect(result.creatives[0].action).toBe('updated');
     const after = await listOne(server);
-    expect(after.live_updates).toBeUndefined();
     expect(after.format_id.id).toBe('display_728x90');
+  });
+
+  describe('staged outcome notifications', () => {
+    const STATUS_URL = 'https://buyer.example.com/hooks/status';
+    const STAGED_URL = 'https://buyer.example.com/hooks/staged';
+
+    async function subscribe(server: Server): Promise<void> {
+      const result = await call(server, 'sync_accounts', {
+        accounts: [{
+          ...ACCOUNT,
+          billing: 'operator',
+          notification_configs: [
+            { subscriber_id: 'status-only', url: STATUS_URL, event_types: ['creative.status_changed'], active: true },
+            { subscriber_id: 'staged-opt-in', url: STAGED_URL, event_types: ['creative.staged_update_changed'], active: true },
+          ],
+        }],
+      });
+      expect(result.accounts?.[0]?.errors, JSON.stringify(result)).toBeUndefined();
+    }
+
+    it('reports a promotion only to subscribers that registered creative.staged_update_changed', async () => {
+      const server = createTrainingAgentServer(CTX);
+      await subscribe(server);
+      await liveCreative(server);
+      await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative({ image: 'https://cdn.live-updates.example/hero-v2.png' })] });
+      emitted.length = 0;
+
+      await call(server, 'comply_test_controller', {
+        account: ACCOUNT,
+        scenario: 'force_creative_status',
+        params: { creative_id: 'live_hero', status: 'approved' },
+      });
+
+      expect(emitted.map(e => e.url)).toEqual([STAGED_URL]);
+      expect(emitted[0].payload).toMatchObject({
+        notification_type: 'creative.staged_update_changed',
+        subscriber_id: 'staged-opt-in',
+        creative_id: 'live_hero',
+        outcome: 'promoted',
+        creative_status: 'approved',
+      });
+      expect(emitted.some(e => e.payload.notification_type === 'creative.status_changed')).toBe(false);
+    });
+
+    it('reports a keeps_prior rejection without any status_changed fire', async () => {
+      const server = createTrainingAgentServer(CTX);
+      await subscribe(server);
+      await liveCreative(server);
+      await call(server, 'sync_creatives', { account: ACCOUNT, creatives: [creative({ image: 'https://cdn.live-updates.example/hero-v2.png' })] });
+      emitted.length = 0;
+
+      await call(server, 'comply_test_controller', {
+        account: ACCOUNT,
+        scenario: 'force_creative_status',
+        params: { creative_id: 'live_hero', status: 'rejected', rejection_reason: 'Prohibited claim in new artwork' },
+      });
+
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0].payload).toMatchObject({
+        notification_type: 'creative.staged_update_changed',
+        outcome: 'rejected',
+        rejection_reason: 'Prohibited claim in new artwork',
+        creative_status: 'approved',
+      });
+    });
   });
 });

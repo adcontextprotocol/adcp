@@ -444,7 +444,7 @@
     },
     "CREATIVE_LIVE_UPDATE_UNSUPPORTED": {
       "recovery": "correctable",
-      "suggestion": "sync the change as a new creative_id and swap it in on each live package with an assignment_operations replace; read list_creatives live_updates to see which changes this creative accepts in place"
+      "suggestion": "sync the change as a new creative_id and swap it in on each live package with an assignment_operations replace; send the change with dry_run to see the exact outcome without applying it"
     },
     "CREATIVE_MERGE_REJECTED": {
       "recovery": "correctable",
