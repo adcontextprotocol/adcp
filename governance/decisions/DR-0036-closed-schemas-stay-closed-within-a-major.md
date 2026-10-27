@@ -26,8 +26,11 @@ of the release that closed it still reject a new property.
 
 **No exceptions.** A field sent only to peers that negotiated the newer minor is
 still an addition to the closed schema. So is an experimental field on a stable
-closed schema. The rule doesn't cover a schema that was itself experimental in
-the release that closed it, because that schema carries no stability promise.
+closed schema.
+
+**Scope.** The rule covers stable schemas. A schema that was experimental in the
+release that closed it carries no stability promise, as the versioning page
+states for experimental surfaces, so the rule doesn't freeze it.
 
 **DR-0019's two classes stay the only reasons to close a schema.** A schema may
 be closed only when it is a class A join-key object or a class B row envelope
@@ -63,11 +66,11 @@ allowed from 3.3.0.
 | `media-buy/list-products-response.json` | root | response root | DR-0019 keeps response roots open. It also rejects the `adcp_version` echo (#8518). |
 | `media-buy/request-proposals-response.json` | root | response root | DR-0019 keeps response roots open. |
 | `media-buy/refine-proposals-response.json` | root | response root | DR-0019 keeps response roots open. |
-| `media-buy/refine-proposals-response.json` | `/properties/results/items` | result row | One outcome per source proposal. It is neither a join key nor an envelope with `ext`. |
+| `media-buy/refine-proposals-response.json` | `/properties/results/items` | result row | One outcome per source proposal, carrying the returned proposals. It is neither a join key nor an envelope with `ext`. |
 | `media-buy/decline-proposals-response.json` | root | response root | DR-0019 keeps response roots open. It also rejects the `adcp_version` echo (#8518). |
 | `media-buy/media-buy-commitment-response.json` | `/oneOf/0`, `/oneOf/1`, `/oneOf/2` | response root branches | The `buy_products` and `accept_proposal` responses. `status` tells the branches apart, so closure does no work. `create_media_buy` keeps its branches open. |
 | `media-buy/control-media-buy-response.json` | `/oneOf/0`, `/oneOf/1`, `/oneOf/2` | response root branches | Same as above. It also rejects the `adcp_version` echo (#8518). |
-| `core/canonical-proposal.json` | root | container | Holds the terms, allocations, and narrative of a proposal. It has no `ext`. |
+| `core/canonical-proposal.json` | root | container | Holds a proposal's commercial terms, hold state, and narrative. It has no `ext`. |
 | `core/canonical-product.json` | root | container | The product resource. The `product` schema it parallels is open. |
 | `media-buy/product-discovery-criteria.json` | root | container | Groups the discovery filters of three requests. |
 | `media-buy/proposal-refinement.json` | root | request row | One refinement instruction. It has no `ext`. |
@@ -84,7 +87,7 @@ allowed from 3.3.0.
   shares the field shapes of `product-purchase`, and no 3.3 field needs it.
 - `core/canonical-media-buy-action-fields.json`. Its description declares a
   closed field set for task-discriminated actions, which is DR-0019 class A.
-- Schemas whose 3.3 additions moved to open homes under the #8501 triage:
+- Schemas whose 3.3 additions move to open homes under the #8501 triage:
   `core/targeting-overlay-requirements.json`, `core/daypart-target.json`,
   `core/sla-window.json`, and `core/spot-reporting-capability.json`.
 - Closed value objects and keyed rows inside the reopened schemas, such as
@@ -123,14 +126,17 @@ correction was agreed on #8501 after that session.
   closed when any stable release of the major published it closed. It reports
   opening a closed schema as a notice. It reads the reopened schemas from
   `scripts/lint-additive-minor-reopened.json`, which holds exactly the table
-  above. Only a decision record adds to that file.
+  above. The list is fixed: a new entry needs a record that supersedes this
+  one.
 - **Two earlier cases are recorded, not fixed.** 3.1.0 added `brand_json_url` to
   the capabilities `identity` block, closed in 3.0.0 to 3.0.4. It also replaced
   the closed 3.0 `geo_postal_areas` object with `core/postal-area-support.json`,
   which adds country keys. Both shipped, so they stay until 4.0.
 - **3.3 additions to schemas that stay closed** move to open homes or wait for
   4.0, as the #8501 triage lists. Definition pins, purchase rights, and
-  installment selection inside `purchases[]` wait for 4.0.
+  installment selection inside `purchases[]` wait for 4.0. The pins include
+  `drifted_pins` on the `refine_proposals` result row. That row is reopened,
+  so the check no longer flags the field, and the removal must name it.
 - **Not settled here:** whether a 3.2.x patch also reopens these schemas, and
   how `commercial-terms` grows in 4.0. A declared extension point with
   must-understand semantics is the expected direction.
