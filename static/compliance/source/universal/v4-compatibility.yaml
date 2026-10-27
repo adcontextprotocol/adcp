@@ -203,10 +203,10 @@ checks:
         Tighten the nested object lists that multiply the worst case: the
         brand-ref (brand_kit_override, provenance), creative format
         declaration (macro_resolution_capabilities), attestation issuer,
-        audience activation method, and geo place system limits. 3.3
-        accepts an 87 MiB structural ceiling because MAX_CAPABILITIES_BYTES
-        is the operative cap; 4.0 can lower the ceiling before the
-        annotations become keywords.
+        audience activation method, and geo place system limits. The
+        structural bounds are the only limit on the capabilities document,
+        and they allow an 87 MiB worst case; 4.0 can lower that ceiling
+        before the annotations become keywords.
     observed_by:
       none:
         reason: >-

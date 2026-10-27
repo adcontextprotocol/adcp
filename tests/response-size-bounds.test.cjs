@@ -323,9 +323,11 @@ describe('pagination guidance (managing-response-size.mdx)', () => {
     // with agents the spec calls conformant.
     assert.match(body, /No normative cap exists/);
     assert.match(body, /MUST NOT reject an agent card at 64 KiB/);
-    // The capabilities figure binds signers, not everyone.
-    assert.match(body, /Binding on any agent that signs/);
-    assert.match(body, /purely non-signing agent is bounded only by the client default/i);
+    // The capabilities figure binds RFC 9421 signers only; the response itself
+    // is bounded by structure, not by bytes (#8198).
+    assert.match(body, /The response itself has no byte limit; its structural bounds are the limit/);
+    assert.match(body, /Binding only on an agent that signs under that profile/);
+    assert.match(body, /does not sign, is bounded only by the structural limits and by whatever transport limit its client applies/i);
   });
 });
 

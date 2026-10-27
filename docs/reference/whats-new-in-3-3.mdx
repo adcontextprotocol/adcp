@@ -120,7 +120,7 @@ A seller agent that answers a discovery call with tens of megabytes is an availa
 
 This is a recommendation, not a conformance requirement, but the interop effect is real in both directions. A buyer adopting the default rejects a response it would previously have buffered, and the rejection arrives as a mid-body connection abort rather than an `adcp_error`. A buyer still on the older 1 MiB figure rejects a response a 3.3 buyer accepts.
 
-The seller-side counterpart matters more than the number: keep discovery responses small. `tools/list`, `get_adcp_capabilities`, and the A2A agent card are the first bytes a counterparty reads, and an oversized one makes an agent unreachable rather than slow. `get_adcp_capabilities` is the sharpest case — above `MAX_CAPABILITIES_BYTES` your signing keys stop resolving too. See [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
+The seller-side counterpart matters more than the number: keep discovery responses small. `tools/list`, `get_adcp_capabilities`, and the A2A agent card are the first bytes a counterparty reads, and an oversized one makes an agent unreachable rather than slow. `get_adcp_capabilities` is the sharpest case for an agent that signs under the deprecated RFC 9421 profile: above `MAX_CAPABILITIES_BYTES` (64 KiB), that profile's key discovery fails and your signing keys stop resolving too. The capabilities response itself is bounded by structure, not by bytes. See [Discovery responses stay small](/docs/building/concepts/managing-response-size#discovery-responses-stay-small).
 
 ### Bounded inbound push and webhook bodies
 
@@ -133,13 +133,13 @@ Two capability fields enumerate relationships a *counterparty* asserts:
 populated from those counterparties' `/.well-known/adagents.json`, which any domain
 owner publishes unilaterally and without the named agent's consent. An agent that
 mirrored every publisher claiming it had handed an unauthenticated stranger a write
-primitive into its own discovery document — and since the signing-key path fetches
-that document unnarrowed under `MAX_CAPABILITIES_BYTES`, pushing it past 64 KiB cost
-the victim *signature verification*, arriving a cache cycle later with no visible
-connection to its cause.
+primitive into its own discovery document — and since the RFC 9421 signing-key path
+fetches that document unnarrowed under `MAX_CAPABILITIES_BYTES`, pushing it past
+64 KiB cost a victim that signed under that profile *signature verification*,
+arriving a cache cycle later with no visible connection to its cause.
 
-3.3 adds a normative byte budget — one eighth of the capabilities budget for any
-single counterparty-asserted field, one quarter for both together — and declares
+3.3 adds a normative byte budget — 8,192 bytes for any single
+counterparty-asserted field, 16,384 bytes for both together — and declares
 structural bounds (100 unique entries, 253 characters each) that the conformance
 storyboard grades in 3.x and the schema enforces in 4.0. No previously-valid
 document becomes schema-invalid; what changes is what counts as conformant. Because a bounded

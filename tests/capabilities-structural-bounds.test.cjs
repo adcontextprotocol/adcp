@@ -1,6 +1,6 @@
 /**
- * #8198: `MAX_CAPABILITIES_BYTES` is a fetch budget, so the capabilities
- * response is also bounded by structure. Every array has a maximum item count,
+ * #8198: the capabilities response is bounded by structure only, with no
+ * byte limit of its own. Every array has a maximum item count,
  * every string a maximum length (unless an enum, const, or format constrains
  * it), and every keyed map a maximum member count, across the response schema
  * and every schema it references.
@@ -180,13 +180,49 @@ describe('worst-case document', () => {
     assert.ok(!Number.isFinite(bounds.worstCase('enforced').total));
   });
 
-  it('exceeds the byte budget, which is why the budget stays', () => {
-    assert.ok(withAnnotations.total > bounds.MAX_CAPABILITIES_BYTES);
+  it('is above the 4 MiB client default, so the 4.0 follow-ups tighten structure rather than add a byte cap', () => {
     assert.ok(withAnnotations.total > 4 * 1024 * 1024, 'the structural ceiling is above the 4 MiB client default');
-    assert.match(security, /`MAX_CAPABILITIES_BYTES` \(64 KiB\) remains the safety net/);
-    assert.match(security, /far above both the 4 MiB client default and `MAX_CAPABILITIES_BYTES`/);
-    assert.equal(bounds.MAX_CAPABILITIES_BYTES, 65_536);
-    assert.match(security, /const MAX_CAPABILITIES_BYTES = 65_536;/);
+    assert.match(security, /The way to lower that ceiling is a tighter structural bound on those\s+nested lists, not a byte cap/);
+  });
+});
+
+describe('the structural bounds are the only protocol limit on the response', () => {
+  const capabilitiesDoc = read('docs/protocol/get_adcp_capabilities.mdx');
+  const v4Doc = read('docs/reference/migration/v4-compatibility.mdx');
+  const registry = read('static/compliance/source/universal/v4-compatibility.yaml');
+
+  it('states that AdCP sets no byte limit on the response', () => {
+    assert.match(security, /\*\*The structural bounds are the limit\.\*\* AdCP sets no byte limit on the\s+`get_adcp_capabilities` response/);
+    assert.match(capabilitiesDoc, /The structural bounds are the protocol's limit on this response\. AdCP sets no byte limit on it\./);
+    assert.match(v4Doc, /the structural bounds are the only limit on the capabilities document; AdCP sets no byte limit on it/);
+  });
+
+  it('treats a client transport limit as the client\'s choice, not a protocol rule', () => {
+    assert.match(security, /A client can still apply its own transport limit to this\s+response, as any HTTP client does[^]*not a protocol rule on the response/);
+    assert.match(capabilitiesDoc, /A client can still apply its own transport limit, as any HTTP client does, but that is the client's choice and not a protocol rule/);
+  });
+
+  it('does not keep the byte budget as an operative cap or a safety net', () => {
+    const sources = {
+      'security.mdx': security,
+      'get_adcp_capabilities.mdx': capabilitiesDoc,
+      'v4-compatibility.mdx': v4Doc,
+      'v4-compatibility.yaml': registry,
+      'managing-response-size.mdx': read('docs/building/concepts/managing-response-size.mdx'),
+      '3-2-to-3-3.mdx': read('docs/reference/migration/3-2-to-3-3.mdx'),
+      'whats-new-in-3-3.mdx': read('docs/reference/whats-new-in-3-3.mdx'),
+    };
+    for (const [name, text] of Object.entries(sources)) {
+      assert.doesNotMatch(text, /operative cap/i, `${name} still calls a byte limit the operative cap`);
+      for (const paragraph of text.split(/\n\s*\n/)) {
+        if (!/MAX_CAPABILITIES_BYTES|64 KiB/.test(paragraph)) continue;
+        assert.doesNotMatch(paragraph, /safety net/i, `${name} still calls the capabilities byte budget a safety net`);
+      }
+    }
+  });
+
+  it('drops the byte budget from the structural-bounds calculation', () => {
+    assert.equal(bounds.MAX_CAPABILITIES_BYTES, undefined);
   });
 });
 
@@ -207,6 +243,10 @@ describe('what the decision changes in the docs', () => {
 
   it('keeps the deprecated RFC 9421 chain on the 64 KiB budget and points large catalogs at Web Bot Auth', () => {
     assert.match(security, /\*\*The capabilities budget binds this path only\.\*\*/);
+    assert.match(security, /const MAX_CAPABILITIES_BYTES = 65_536; +\/\/ deprecated RFC 9421 chain only/);
+    assert.match(security, /body: MAX_CAPABILITIES_BYTES, maxRedirects: 0/);
+    assert.match(security, /It is not a limit on the `get_adcp_capabilities` response, which is bounded by structure only/);
+    assert.match(security, /`MAX_CAPABILITIES_BYTES` \(64 KiB, on the capabilities\s+fetch of the deprecated RFC 9421 key-discovery chain only\)/);
     assert.match(security, /adopts the Web Bot Auth profile or keeps the document under the budget/);
     assert.match(security, /3\.x does not add a way around the limit to the RFC 9421 profile/);
   });
