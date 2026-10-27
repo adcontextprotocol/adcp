@@ -990,6 +990,18 @@ function collapseWhitespace(text) {
 }
 
 /**
+ * Reads a source file in one step, so nothing can change it between a check
+ * and the read. Returns null when the path is missing or is not a file.
+ */
+function readSourceText(full) {
+  try {
+    return collapseWhitespace(fs.readFileSync(full, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Each correction names the spec text that required it: a file under `root`
  * that must exist and contain the quote.
  */
@@ -1004,10 +1016,7 @@ function checkCorrectionSources(entries, root) {
     const label = `corrections[${index}].source`;
     if (!texts.has(file)) {
       const full = path.resolve(base, file);
-      const inside = full.startsWith(`${base}${path.sep}`);
-      texts.set(file, inside && fs.existsSync(full) && fs.statSync(full).isFile()
-        ? collapseWhitespace(fs.readFileSync(full, 'utf8'))
-        : null);
+      texts.set(file, full.startsWith(`${base}${path.sep}`) ? readSourceText(full) : null);
     }
     const text = texts.get(file);
     if (text === null) errors.push(`${label}.path ${file} does not exist`);

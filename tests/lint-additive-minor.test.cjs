@@ -596,6 +596,13 @@ test('fails when a correction source file does not exist', () => {
   assert.deepEqual(result.errors, ['corrections[0].source.path docs/missing.md does not exist']);
 });
 
+test('fails when a correction source path names a directory', () => {
+  const result = analyzePair(reopenAndAdd, {
+    correctionsValue: corrections(correction({ source: { ...FIXTURE_SOURCE, path: 'docs' } })),
+  });
+  assert.deepEqual(result.errors, ['corrections[0].source.path docs does not exist']);
+});
+
 test('fails when a correction source path leaves the repository', () => {
   const result = analyzePair(reopenAndAdd, {
     correctionsValue: corrections(correction({ source: { ...FIXTURE_SOURCE, path: '../rule.md' } })),
