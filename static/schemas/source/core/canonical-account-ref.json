@@ -22,8 +22,7 @@
           "$ref": "/schemas/core/brand-key.json"
         },
         "operator": {
-          "type": "string",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "$ref": "/schemas/core/domain-name.json",
           "x-entity": "operator"
         },
         "operator_unit": {
@@ -31,8 +30,7 @@
           "description": "Optional operator-owned business unit, agency seat, or platform account. Only id participates in identity; name is mutable display metadata."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "Immutable ISO 4217 transaction currency when the advertiser object is currency-bound. When present, this is part of the natural key and all media buys on the account use it. Omit for per-media-buy currency selection."
         },
         "timezone": {

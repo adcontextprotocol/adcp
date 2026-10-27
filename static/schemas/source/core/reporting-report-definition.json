@@ -23,7 +23,7 @@
     "source": {
       "type": "object",
       "properties": {
-        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+        "provider": { "type": "object", "properties": { "domain": {"$ref": "/schemas/core/domain-name.json"} }, "required": ["domain"], "additionalProperties": false },
         "system": { "type": "string", "minLength": 1, "maxLength": 128 },
         "api_version": { "type": "string", "minLength": 1, "maxLength": 128 },
         "query_semantics": { "type": "object", "description": "Canonical JSON object containing every source option that can change the numbers, including attribution settings, action-report-time, filters, and mapping version." },

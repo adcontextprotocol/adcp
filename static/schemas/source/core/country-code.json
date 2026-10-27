@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/country-code.json",
+  "title": "Country Code",
+  "description": "ISO 3166-1 alpha-2 country code. Extracted unchanged from the 72 sites that stated it inline; see adcontextprotocol/adcp#8525.",
+  "type": "string",
+  "pattern": "^[A-Z]{2}$"
+}

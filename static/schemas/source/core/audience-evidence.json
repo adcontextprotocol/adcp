@@ -49,7 +49,7 @@
       "type": "object",
       "description": "Reference population against which the estimate was calculated.",
       "properties": {
-        "system": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "system": {"$ref": "/schemas/core/https-url.json"},
         "population_id": { "type": "string", "minLength": 1 },
         "version": { "type": "string", "minLength": 1 },
         "description": { "type": "string" }
@@ -96,9 +96,7 @@
       "description": "When the provider last produced or refreshed this immutable snapshot."
     },
     "methodology_url": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "Documentation for interpreting the methodology. It is disclosure, not executable routing."
     },
     "attestation_refs": {

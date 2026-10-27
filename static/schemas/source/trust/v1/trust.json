@@ -12,9 +12,7 @@
       "description": "A lowercase DNS host name (internationalized names in punycode)."
     },
     "https_url": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "An HTTPS URL. Every such URL in this document is untrusted input and, when fetched, a fetch target: the pattern is not an SSRF check. Verifiers MUST apply their own SSRF validation (no userinfo, no private or link-local addresses, no redirects) and enforce body-size and item-count limits."
     },
     "namespaced_token": {
@@ -160,8 +158,7 @@
           "type": "array",
           "description": "ISO 3166-1 alpha-2 country codes where this agent operates. Omit for global.",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         },
         "profiles": {
@@ -253,8 +250,7 @@
           "type": "array",
           "description": "ISO 3166-1 alpha-2 country codes where the grant applies. Omit for global.",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         },
         "valid_from": {

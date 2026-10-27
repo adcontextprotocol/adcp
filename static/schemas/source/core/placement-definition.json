@@ -25,7 +25,7 @@
         "city": { "type": "string", "description": "City name." },
         "region": { "type": "string", "description": "State, province, or region. ISO 3166-2 subdivision code preferred (e.g., 'US-NY')." },
         "postal_code": { "type": "string", "description": "Postal or ZIP code." },
-        "country": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2 country code." }
+        "country": {"$ref": "/schemas/core/country-code.json", "description": "ISO 3166-1 alpha-2 country code."}
       },
       "additionalProperties": false
     },

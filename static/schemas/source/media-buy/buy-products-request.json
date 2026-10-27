@@ -18,10 +18,7 @@
       "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version"
     },
     "idempotency_key": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json"
     },
     "name": {
       "type": "string",
@@ -61,7 +58,7 @@
       "type": "object",
       "properties": {
         "amount": { "type": "number", "minimum": 0 },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+        "currency": {"$ref": "/schemas/core/currency-code.json"}
       },
       "required": ["amount", "currency"],
       "additionalProperties": false

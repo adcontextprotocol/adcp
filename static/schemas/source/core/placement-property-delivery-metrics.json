@@ -28,8 +28,7 @@
           "description": "Current convenience name for the placement."
         },
         "publisher_domain": {
-          "type": "string",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "$ref": "/schemas/core/domain-name.json",
           "description": "Publisher or platform authority that namespaces the property identifier. This may differ from a publisher-catalog placement's publisher_domain."
         },
         "identifier": {

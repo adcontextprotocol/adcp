@@ -104,9 +104,8 @@
       "description": "Coarse geographic location of the viewer. Publisher controls granularity — country is sufficient for regulatory compliance and volume filtering, region or metro helps with campaign targeting and valuation. Coarsened to prevent user identification: no postcode, no coordinates. All fields optional.",
       "properties": {
         "country": {
-          "type": "string",
-          "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'GB', 'DE').",
-          "pattern": "^[A-Z]{2}$"
+          "$ref": "/schemas/core/country-code.json",
+          "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'GB', 'DE')."
         },
         "region": {
           "type": "string",

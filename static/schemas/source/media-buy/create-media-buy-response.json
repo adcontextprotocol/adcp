@@ -64,9 +64,8 @@
           "minimum": 1
         },
         "currency": {
-          "type": "string",
-          "description": "Single ISO 4217 currency code for total_budget, package budget constraints, and canonical BiddingPolicy monetary fields. Every selected pricing option MUST declare this currency; packages needing another currency belong in another media buy. In proposal mode the seller derives it from total_budget.currency; in explicit-package mode the seller derives or validates one common pricing-option currency. Matches subsequent get_media_buys responses.",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "Single ISO 4217 currency code for total_budget, package budget constraints, and canonical BiddingPolicy monetary fields. Every selected pricing option MUST declare this currency; packages needing another currency belong in another media buy. In proposal mode the seller derives it from total_budget.currency; in explicit-package mode the seller derives or validates one common pricing-option currency. Matches subsequent get_media_buys responses."
         },
         "total_budget": {
           "type": "number",

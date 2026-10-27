@@ -262,7 +262,7 @@
       "description": "Hard per-call spend ceiling. The agent produces leaves until the NEXT leaf would push the run's aggregate vendor_cost over `amount`, then STOPS and returns the partial BuildCreativeVariantSuccess produced so far with `budget_status: \"capped\"` (every returned leaf is real, trafficable, and billed — nothing produced is discarded; the leaf shortfall is `leaves_returned` < `leaves_total`). If even the first leaf would exceed the cap, the call fails with BUDGET_CAP_REACHED. `currency` MUST match the rate card's currency (the agent does not FX-convert) or the request is rejected with INVALID_REQUEST (error.field `max_spend.currency`). Requires `creative.supports_spend_controls`. Caps a SINGLE call — to bound a refinement loop, track aggregate vendor_cost across calls and stop issuing them (buyer responsibility in this revision). max_spend bounds only build-time vendor_cost: CPM-priced builds (estimate basis `cpm_deferred`) have build-time vendor_cost 0 and accrue at serve time, so max_spend never engages for them — bound a CPM fan-out with max_creatives instead.",
       "properties": {
         "amount": { "type": "number", "minimum": 0, "description": "Maximum aggregate vendor_cost to incur on this call, in `currency`." },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency; MUST match the rate card." }
+        "currency": {"$ref": "/schemas/core/currency-code.json", "description": "ISO 4217 currency; MUST match the rate card."}
       },
       "required": ["amount", "currency"],
       "additionalProperties": true
@@ -409,11 +409,8 @@
       }
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for this request. Prevents duplicate creative generation on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for this request. Prevents duplicate creative generation on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request."
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",

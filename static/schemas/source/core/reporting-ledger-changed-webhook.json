@@ -6,7 +6,7 @@
   "description": "Optional account-anchored invalidation fired for every newly committed reporting revision or post-official adjustment, whether or not health changes. Valid in every reporting tier. Receivers repair from their own durable changes_after checkpoint through get_reporting_status; this event is never the source of truth.",
   "type": "object",
   "properties": {
-    "idempotency_key": { "type": "string", "minLength": 16, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{16,255}$", "description": "Random per distinct fire and stable across transport retries, scoped to the authenticated sender." },
+    "idempotency_key": {"$ref": "/schemas/core/idempotency-key.json", "description": "Random per distinct fire and stable across transport retries, scoped to the authenticated sender."},
     "notification_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "description": "Stable per committed ledger record; re-emissions reuse it." },
     "notification_type": { "type": "string", "const": "reporting.ledger_changed" },
     "fired_at": { "type": "string", "format": "date-time" },

@@ -394,11 +394,8 @@
       }
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated idempotency key for safe retries. If a sync fails without a response, resending with the same idempotency_key guarantees at-most-once execution. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated idempotency key for safe retries. If a sync fails without a response, resending with the same idempotency_key guarantees at-most-once execution. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request."
     },
     "delete_missing": {
       "type": "boolean",

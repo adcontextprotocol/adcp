@@ -32,8 +32,7 @@
       "type": "array",
       "description": "Countries where rights are needed (ISO 3166-1 alpha-2). Filters to rights available in these markets.",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       }
     },
     "brand_id": {

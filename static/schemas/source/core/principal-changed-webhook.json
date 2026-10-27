@@ -7,11 +7,8 @@
   "type": "object",
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity."
     },
     "notification_id": {
       "type": "string",

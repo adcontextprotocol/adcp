@@ -11,7 +11,7 @@
     "name": { "type": "string" },
     "brand": { "$ref": "/schemas/core/brand-key.json" },
     "operator": { "type": "string" },
-    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+    "currency": {"$ref": "/schemas/core/currency-code.json"}
   },
   "required": ["account_id", "name"],
   "additionalProperties": true

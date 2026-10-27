@@ -123,11 +123,10 @@
     "reporting_rows": { "type": "array", "items": { "type": "object" }, "description": "One page of authoritative logical rows for an exact reporting_revision_id read. Validate every row against the revision's digest-pinned schema; concatenate pages in cursor order before verifying the binding digest." },
     "pagination": { "$ref": "/schemas/core/pagination-response.json", "description": "Exact revision pages are frozen for the cursor walk. total_count is mandatory for reporting_revision_id and equals reporting_revision.row_count and reporting_revision_binding.row_count; it counts the complete ordered row sequence, not this page." },
     "currency": {
-      "type": "string",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Optional legacy response-wide ISO 4217 currency code. It may be used only when every monetary value in the response has that denomination. A delivery response can contain media buys with different currencies, so buyers MUST NOT interpret this field as an aggregation currency or evidence of currency conversion. Prefer media_buy_deliveries[].currency when present and package-level currency otherwise.",
       "deprecated": true,
-      "x-removed-in": "4.0.0",
-      "pattern": "^[A-Z]{3}$"
+      "x-removed-in": "4.0.0"
     },
     "attribution_window": {
       "$ref": "/schemas/core/attribution-window.json",
@@ -314,9 +313,8 @@
             "x-entity": "media_buy"
           },
           "currency": {
-            "type": "string",
-            "description": "ISO 4217 denomination for monetary values in this media-buy delivery row, including totals, package spend, and currency-denominated package rates. Sellers SHOULD populate this field whenever all monetary values in the row share one currency. For AdCP-authored buys it MUST equal the media-buy currency, and every by_package[].currency MUST equal it. For a legacy or externally created mixed-currency buy, omit this field, daily_breakdown, and all monetary or money-derived values from row and window totals; report those values only at package grain with each package's own currency. AdCP does not perform currency conversion.",
-            "pattern": "^[A-Z]{3}$"
+            "$ref": "/schemas/core/currency-code.json",
+            "description": "ISO 4217 denomination for monetary values in this media-buy delivery row, including totals, package spend, and currency-denominated package rates. Sellers SHOULD populate this field whenever all monetary values in the row share one currency. For AdCP-authored buys it MUST equal the media-buy currency, and every by_package[].currency MUST equal it. For a legacy or externally created mixed-currency buy, omit this field, daily_breakdown, and all monetary or money-derived values from row and window totals; report those values only at package grain with each package's own currency. AdCP does not perform currency conversion."
           },
           "status": {
             "type": "string",
@@ -417,9 +415,8 @@
                       "minimum": 0
                     },
                     "currency": {
-                      "type": "string",
-                      "description": "ISO 4217 currency code for this package's spend and currency-denominated pricing rate. The rate for revenue_share is a dimensionless commission fraction, but attributed monetary values still use this currency. When the enclosing media_buy_deliveries[].currency is present, this value MUST equal it. For AdCP-authored buys both values MUST equal the media-buy currency. A different package currency is permitted only for a legacy or externally created mixed-currency buy whose row currency, daily_breakdown, and row/window monetary totals are omitted. AdCP does not perform currency conversion.",
-                      "pattern": "^[A-Z]{3}$"
+                      "$ref": "/schemas/core/currency-code.json",
+                      "description": "ISO 4217 currency code for this package's spend and currency-denominated pricing rate. The rate for revenue_share is a dimensionless commission fraction, but attributed monetary values still use this currency. When the enclosing media_buy_deliveries[].currency is present, this value MUST equal it. For AdCP-authored buys both values MUST equal the media-buy currency. A different package currency is permitted only for a legacy or externally created mixed-currency buy whose row currency, daily_breakdown, and row/window monetary totals are omitted. AdCP does not perform currency conversion."
                     },
                     "delivery_status": {
                       "$ref": "/schemas/enums/delivery-status.json",
@@ -1187,9 +1184,8 @@
                             "x-entity": "package"
                           },
                           "currency": {
-                            "type": "string",
-                            "description": "ISO 4217 denomination for this package window's monetary values. Required by the runtime currency-coherence rule when neither the parent media-buy row nor deprecated response-wide field supplies a currency and this package window contains monetary values; otherwise it MUST match the row or response currency when present.",
-                            "pattern": "^[A-Z]{3}$"
+                            "$ref": "/schemas/core/currency-code.json",
+                            "description": "ISO 4217 denomination for this package window's monetary values. Required by the runtime currency-coherence rule when neither the parent media-buy row nor deprecated response-wide field supplies a currency and this package window contains monetary values; otherwise it MUST match the row or response currency when present."
                           }
                         },
                         "required": [

@@ -23,9 +23,8 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -55,9 +54,8 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code for the resulting charge",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code for the resulting charge"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -86,9 +84,8 @@
           "description": "Billing period for the flat fee."
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -116,9 +113,8 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -155,9 +151,8 @@
           }
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code. Present when the pricing resolves to a monetary charge in a specific currency.",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code. Present when the pricing resolves to a monetary charge in a specific currency."
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"

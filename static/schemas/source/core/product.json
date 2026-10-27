@@ -617,8 +617,7 @@
                 "type": "array",
                 "description": "ISO 3166-1 alpha-2 country codes this provider serves for identity match. The router uses this to select the correct regional provider based on the request's country field. Required when identity_match is true.",
                 "items": {
-                  "type": "string",
-                  "pattern": "^[A-Z]{2}$"
+                  "$ref": "/schemas/core/country-code.json"
                 },
                 "minItems": 1
               },
@@ -677,9 +676,7 @@
       "description": "Instructions for submitting physical creative materials (print, static OOH, cinema). Present only for products requiring physical delivery outside the digital creative assignment flow. Buyer agents MUST validate url and email domains against the seller's known domains (from adagents.json) before submitting materials. Never auto-submit without human confirmation.",
       "properties": {
         "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS URL for uploading or submitting physical creative materials"
         },
         "email": {

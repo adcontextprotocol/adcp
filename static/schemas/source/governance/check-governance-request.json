@@ -262,7 +262,7 @@
       "description": "Task-neutral monetary amount the intent would authorize. For update_media_buy and control_media_buy this is the buyer-computed positive incremental commitment, not the post-update total. For accept_proposal it is derived from the supplied proposal commercial_terms; for buy_products it is derived from the purchase payload. Amount 0 explicitly represents a verified no-cost action. The governance agent persists this value as authoritative check state.",
       "properties": {
         "amount": { "type": "number", "minimum": 0 },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+        "currency": {"$ref": "/schemas/core/currency-code.json"}
       },
       "required": ["amount", "currency"],
       "additionalProperties": false
@@ -272,7 +272,7 @@
       "description": "Seller-computed positive incremental commitment for a MediaBuy execution check. The seller MUST derive this atomically from its authoritative proposal or current revision and the requested operation, and the governance agent MUST reject it when it exceeds the prior intent ceiling or uses another currency.",
       "properties": {
         "amount": { "type": "number", "minimum": 0 },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+        "currency": {"$ref": "/schemas/core/currency-code.json"}
       },
       "required": ["amount", "currency"],
       "additionalProperties": false
@@ -370,8 +370,7 @@
           "description": "Total spend since the governed action started."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "Currency of spend fields; must match the plan and planned delivery."
         },
         "impressions": {

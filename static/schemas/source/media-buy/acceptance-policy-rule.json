@@ -28,7 +28,7 @@
     },
     "jurisdictions": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+      "items": {"$ref": "/schemas/core/country-code.json"},
       "minItems": 1,
       "uniqueItems": true,
       "description": "Delivery jurisdictions where this rule applies. Omission means every jurisdiction served by the seller."

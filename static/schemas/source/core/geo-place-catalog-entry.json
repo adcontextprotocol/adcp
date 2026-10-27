@@ -11,8 +11,7 @@
       "description": "Stable identifier in the response system and system_version."
     },
     "country": {
-      "type": "string",
-      "pattern": "^[A-Z]{2}$"
+      "$ref": "/schemas/core/country-code.json"
     },
     "subdivision": {
       "type": "string",

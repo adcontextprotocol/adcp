@@ -58,11 +58,8 @@
       "description": "Webhook for async update notifications if the update requires approval"
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated idempotency key for safe retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated idempotency key for safe retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

@@ -6,9 +6,8 @@
   "type": "object",
   "properties": {
     "operator": {
-      "type": "string",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
       "x-entity": "operator"
     },
     "operator_unit": {

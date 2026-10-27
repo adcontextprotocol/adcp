@@ -218,8 +218,7 @@
               "description": "Optional classification system for metro or postal_area levels. Metro uses metro-system values (e.g., 'nielsen_dma'); native postal_area uses country-local postal-system values with country (e.g., country 'US', system 'zip'); deprecated legacy postal_area requests may use legacy-postal-system values such as 'us_zip'. Omit to request the level without selecting a specific system."
             },
             "country": {
-              "type": "string",
-              "pattern": "^[A-Z]{2}$",
+              "$ref": "/schemas/core/country-code.json",
               "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area requests; omitted for legacy postal_area and non-postal geo requests."
             },
             "limit": {

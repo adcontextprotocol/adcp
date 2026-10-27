@@ -7,7 +7,7 @@
   "properties": {
     "min": { "type": "number", "minimum": 0 },
     "max": { "type": "number", "minimum": 0 },
-    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+    "currency": {"$ref": "/schemas/core/currency-code.json"}
   },
   "required": ["currency"],
   "anyOf": [{ "required": ["min"] }, { "required": ["max"] }],

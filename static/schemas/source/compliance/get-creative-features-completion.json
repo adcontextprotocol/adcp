@@ -29,8 +29,7 @@
       "minimum": 0
     },
     "currency": {
-      "type": "string",
-      "pattern": "^[A-Z]{3}$"
+      "$ref": "/schemas/core/currency-code.json"
     },
     "consumption": {
       "$ref": "/schemas/core/creative-consumption.json"

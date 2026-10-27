@@ -13,9 +13,8 @@
       "description": "Select all signals from the data provider",
       "properties": {
         "data_provider_domain": {
-          "type": "string",
-          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')"
         },
         "selection_type": {
           "type": "string",
@@ -34,9 +33,8 @@
       "description": "Select specific signals by ID",
       "properties": {
         "data_provider_domain": {
-          "type": "string",
-          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')"
         },
         "selection_type": {
           "type": "string",
@@ -65,9 +63,8 @@
       "description": "Select signals by tag membership",
       "properties": {
         "data_provider_domain": {
-          "type": "string",
-          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')"
         },
         "selection_type": {
           "type": "string",

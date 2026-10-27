@@ -259,7 +259,7 @@
           "additionalProperties": false
         },
         "cumulative_spend": { "type": "number", "minimum": 0 },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "currency": {"$ref": "/schemas/core/currency-code.json"},
         "canonical_payload": {
           "type": "object",
           "description": "Exact retained digest-bearing payload. To verify statement_digest, apply RFC 8785 JCS after removing delivery_metrics.statement_digest.",

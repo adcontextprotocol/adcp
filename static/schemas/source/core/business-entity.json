@@ -48,9 +48,8 @@
           "maxLength": 100
         },
         "country": {
-          "type": "string",
-          "description": "ISO 3166-1 alpha-2 country code",
-          "pattern": "^[A-Z]{2}$"
+          "$ref": "/schemas/core/country-code.json",
+          "description": "ISO 3166-1 alpha-2 country code"
         }
       },
       "required": ["street", "city", "postal_code", "country"],

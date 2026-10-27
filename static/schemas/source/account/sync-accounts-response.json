@@ -77,8 +77,7 @@
                 "description": "Dry-run-only preview of whether the requested identity would apply, require approval, or be blocked, plus evaluated resource impacts. This value is not persisted; canonical fields and revision remain current."
               },
               "currency": {
-                "type": "string",
-                "pattern": "^[A-Z]{3}$",
+                "$ref": "/schemas/core/currency-code.json",
                 "description": "Immutable account currency, echoed when the advertiser object is currency-bound."
               },
               "timezone": {
@@ -179,8 +178,7 @@
                     "minimum": 0
                   },
                   "currency": {
-                    "type": "string",
-                    "pattern": "^[A-Z]{3}$"
+                    "$ref": "/schemas/core/currency-code.json"
                   }
                 },
                 "required": [

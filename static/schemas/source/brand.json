@@ -5,9 +5,8 @@
   "description": "Brand identity and discovery file. Hosted at /.well-known/brand.json on house domains. Contains the full brand portfolio with identity, creative assets, and digital properties. Brands are identified by house + brand_id (like properties are identified by publisher + property_id). Supports variants: house portfolio (full brand data), brand agent (agent provides brand info via MCP), house redirect (pointer to house domain), or authoritative location redirect.",
   "definitions": {
     "domain": {
-      "type": "string",
-      "description": "A valid domain name",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "$ref": "/schemas/core/domain-name.json",
+      "description": "A valid domain name"
     },
     "brand_id": {
       "type": "string",
@@ -278,7 +277,7 @@
       "type": "object",
       "description": "A font file with weight, style, and variable font metadata",
       "properties": {
-        "url": { "type": "string", "format": "uri", "pattern": "^https://", "description": "HTTPS URL to the font file (WOFF2, TTF, or OTF)" },
+        "url": {"$ref": "/schemas/core/https-url.json", "description": "HTTPS URL to the font file (WOFF2, TTF, or OTF)"},
         "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight for static fonts (100-900)" },
         "weight_range": {
           "type": "array",
@@ -461,9 +460,7 @@
       "description": "Contact point where a data subject can request human intervention, express their view, or contest an automated decision — satisfying GDPR Article 22(3) and EU AI Act Article 26(11) transparency obligations. This is a contact reference (URL, email, or both), not a machine-callable API. AdCP surfaces the pointer; the deployer runs the contestation workflow.",
       "properties": {
         "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS URL to a human-accessible contestation form or information page."
         },
         "email": {
@@ -677,8 +674,7 @@
             "type": "object",
             "properties": {
               "publisher_domain": {
-                "type": "string",
-                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+                "$ref": "/schemas/core/domain-name.json",
                 "description": "Experimental (brand.collection_links). Publisher namespace that declares the collection in its adagents.json. collection_id is unique only within this namespace, so together they form the {publisher_domain, collection_ids} selector that products use.",
                 "x-status": "experimental",
                 "x-added-in": "3.3.0"
@@ -758,9 +754,7 @@
       "description": "Reference to a brand agent that provides brand data via MCP",
       "properties": {
         "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "Brand agent MCP endpoint URL. Callers comparing this URL against another value (e.g., resolving 'is this the brand's declared agent?' against a discovery cache) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
         },
         "id": {
@@ -777,9 +771,7 @@
       "description": "Rights licensing agent for this brand. Provides discovery, pricing, and acquisition of licensable rights via MCP. Use get_rights and acquire_rights tasks to interact.",
       "properties": {
         "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "Rights agent MCP endpoint URL. Callers comparing this URL against another value (e.g., matching against a brand's declared rights endpoint) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
         },
         "id": {
@@ -803,8 +795,7 @@
           "type": "array",
           "description": "Countries where rights are available (ISO 3166-1 alpha-2)",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         }
       },
@@ -820,9 +811,7 @@
           "description": "Functional role of this agent"
         },
         "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "Agent endpoint URL (MCP or A2A). Callers comparing a brand's declared agent URL against another value (e.g., resolving 'is this the agent that signed this artifact?' or matching against a discovery cache) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. After the publication chain and an authorized request-signing key verify, this exact entry's canonical URL is the stable Agent identity input for principal mapping; the domain, JWKS URI, kid, and key material are credential or trust facts beneath it, not the Agent identity. See docs/reference/url-canonicalization."
         },
         "id": {
@@ -837,9 +826,7 @@
           "maxLength": 500
         },
         "jwks_uri": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS URL of the agent's JWKS (RFC 7517) containing public keys used to verify artifacts this agent signs or requests it sends. Verified artifacts include signed governance_context tokens (for governance agents) and RFC 9421 HTTP Signatures on outgoing requests (for any agent). When absent, verifiers MUST default to /.well-known/jwks.json on the origin of `url`. Keys are identified by `kid` in the JWS header or RFC 9421 `keyid` parameter; JWKS MAY contain multiple keys to support rotation and per-purpose separation via `key_ops` and `use`."
         },
         "available_uses": {
@@ -858,8 +845,7 @@
           "type": "array",
           "description": "ISO 3166-1 alpha-2 country codes where this agent operates. Omit for global scope.",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         }
       },
@@ -892,8 +878,7 @@
           "type": "array",
           "description": "ISO 3166-1 alpha-2 country codes where this authorization applies. Omit for global authorization.",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         },
         "scopes": {
@@ -1729,9 +1714,7 @@
       "properties": {
         "$schema": { "type": "string" },
         "authoritative_location": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS URL of the authoritative brand.json file"
         },
         "redirect_reason": {
@@ -1764,8 +1747,7 @@
           "description": "House domain to fetch brand portfolio from"
         },
         "region": {
-          "type": "string",
-          "pattern": "^[A-Z]{2}$",
+          "$ref": "/schemas/core/country-code.json",
           "description": "ISO 3166-1 alpha-2 country code if this is a regional domain"
         },
         "redirect_reason": {

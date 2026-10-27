@@ -40,11 +40,8 @@
   "x-mutates-state": true,
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated key for at-most-once execution, at least 16 characters; a fresh UUID v4 per logical operation is recommended. Retries MUST reuse the same key with the same body.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated key for at-most-once execution, at least 16 characters; a fresh UUID v4 per logical operation is recommended. Retries MUST reuse the same key with the same body."
     },
     "expected_configuration_version": {
       "type": "string",

@@ -6,9 +6,8 @@
   "type": "object",
   "properties": {
     "domain": {
-      "type": "string",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
       "x-max-length-4.0": 253
     },
     "brand_id": {
@@ -18,8 +17,7 @@
     "countries": {
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "minItems": 1,
       "uniqueItems": true,
@@ -36,7 +34,7 @@
       "type": "object",
       "description": "Inline override for the brand's contestation contact point. Useful when the operator does not control brand.json but needs to discharge Art 22(3) for this plan. brand.json is canonical; when omitted, governance agents resolve brand → house → missing.",
       "properties": {
-        "url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "url": {"$ref": "/schemas/core/https-url.json"},
         "email": { "type": "string", "format": "email" },
         "languages": { "type": "array", "items": { "type": "string", "x-max-length-4.0": 128 }, "x-max-items-4.0": 32 }
       },

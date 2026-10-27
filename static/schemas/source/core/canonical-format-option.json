@@ -6,7 +6,7 @@
   "type": "object",
   "properties": {
     "format_option_id": { "type": "string", "minLength": 1 },
-    "publisher_domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" },
+    "publisher_domain": {"$ref": "/schemas/core/domain-name.json"},
     "tracker_execution_contract": {
       "$ref": "/schemas/core/tracker-execution-contract.json",
       "description": "Seller- or publisher-authored production commitment for first-class manifest tracker execution. Presence requires a stable format_option_id. Creative-agent projections MUST strip this authority-bearing field."
@@ -27,7 +27,7 @@
       "description": "When true, every technical creative-acceptance constraint for this declaration layer is expressed and omitted technical fields mean no constraint. When false or absent, omitted technical fields are undeclared and MUST NOT be inferred. The effective contract is complete only when every applicable declaration layer asserts true."
     },
     "display_name": { "type": "string", "minLength": 1 },
-    "sample_render_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "sample_render_url": {"$ref": "/schemas/core/https-url.json"},
     "applies_to_channels": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/channels.json" },

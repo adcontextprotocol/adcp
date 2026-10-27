@@ -12,11 +12,8 @@
     "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
     "adcp_major_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version" },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated key that makes retries of this call safe, with the standard replay semantics. A replayed key returns the original request; a new key is a new request. Use a fresh UUID v4 for each logical call.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated key that makes retries of this call safe, with the standard replay semantics. A replayed key returns the original request; a new key is a new request. Use a fresh UUID v4 for each logical call."
     },
     "account_id": {
       "type": "string",
@@ -28,8 +25,7 @@
       "description": "Advertiser identity. Required unless account_id is sent. Sellers matching on brand use domain and brand_id; countries is an attribute."
     },
     "operator": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, the brand's domain. The seller verifies it against the brand's authorized_operators and, where grants are supported, the operator's grant to the calling agent. Required unless account_id is sent."
     },
     "operator_unit": {
@@ -37,8 +33,7 @@
       "description": "Optional operator-owned business unit or seat. An account attribute; name is display metadata."
     },
     "currency": {
-      "type": "string",
-      "pattern": "^[A-Z]{3}$",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "Immutable ISO 4217 currency for a currency-bound advertiser object, as in sync_accounts. An account attribute."
     },
     "timezone": {

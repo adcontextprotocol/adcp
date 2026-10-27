@@ -29,8 +29,7 @@
       "type": "array",
       "description": "Optional market filter. Returns brands with rights availability in at least one of the specified countries (ISO 3166-1 alpha-2).",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "minItems": 1
     },

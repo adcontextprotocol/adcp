@@ -12,16 +12,14 @@
       "description": "Select all properties from one publisher domain, or from each publisher domain when `publisher_domains` is used. Consumers MAY satisfy the selector from the parent file's top-level `properties[]` when those properties carry a `publisher_domain` matching one of the listed domains (see Resolution paths in the spec).",
       "properties": {
         "publisher_domain": {
-          "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation.",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation."
         },
         "publisher_domains": {
           "type": "array",
           "description": "Compact form for fanning the same selector across many publishers (e.g., a managed network listing every publisher it represents). Each entry is the domain where that publisher's adagents.json is hosted. Each listed domain MUST be canonicalized to lowercase (the `pattern` already rejects uppercase). Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            "$ref": "/schemas/core/domain-name.json"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -49,9 +47,8 @@
       "description": "Select specific properties by ID. Single-publisher only — property IDs are publisher-scoped, so the compact `publisher_domains[]` form is intentionally NOT available for this selector. Use multiple `publisher_properties[]` entries (one per publisher) when each publisher's ID set differs.",
       "properties": {
         "publisher_domain": {
-          "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com').",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')."
         },
         "selection_type": {
           "type": "string",
@@ -79,16 +76,14 @@
       "description": "Select properties by tag membership. With `publisher_domains`, the same `property_tags` predicate is resolved against each listed publisher's adagents.json — the common managed-network case where every represented site tags inventory with a shared label. Consumers MAY also satisfy the predicate from the parent file's top-level `properties[]` when those properties carry a `publisher_domain` matching one of the selector's `publisher_domains[]` (see Resolution paths in the spec).",
       "properties": {
         "publisher_domain": {
-          "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation.",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation."
         },
         "publisher_domains": {
           "type": "array",
           "description": "Compact form for fanning the same tag predicate across many publishers (canonical managed-network shape). Each entry is the domain where that publisher's adagents.json is hosted. Each listed domain MUST be canonicalized to lowercase (the `pattern` already rejects uppercase). Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            "$ref": "/schemas/core/domain-name.json"
           },
           "minItems": 1,
           "uniqueItems": true

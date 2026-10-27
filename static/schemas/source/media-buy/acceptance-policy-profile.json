@@ -54,7 +54,7 @@
         },
         "jurisdictions": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+          "items": {"$ref": "/schemas/core/country-code.json"},
           "minItems": 1,
           "uniqueItems": true
         },
@@ -85,7 +85,7 @@
       "propertyNames": { "pattern": "^[A-Z][A-Z0-9_-]*$" },
       "additionalProperties": {
         "type": "array",
-        "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "items": {"$ref": "/schemas/core/country-code.json"},
         "minItems": 1,
         "uniqueItems": true
       }

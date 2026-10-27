@@ -23,9 +23,8 @@
           "description": "Brand reference identifying the advertiser"
         },
         "operator": {
-          "type": "string",
+          "$ref": "/schemas/core/domain-name.json",
           "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
           "x-entity": "operator"
         },
         "operator_unit": {
@@ -33,8 +32,7 @@
           "description": "Optional operator-owned business unit, agency seat, or platform account. Only id participates in the natural account key; name is mutable display metadata."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "Immutable ISO 4217 transaction currency when the seller's advertiser object is currency-bound. When present, this is part of the natural account key and media buys on the account MUST use it. Omit when currency is selected independently per media buy."
         },
         "timezone": {

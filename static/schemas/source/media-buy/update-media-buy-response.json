@@ -40,9 +40,8 @@
           "minimum": 1
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code for monetary values at this media buy level. Echoed when the update affects budget or currency. Matches the currency field in subsequent get_media_buys responses.",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code for monetary values at this media buy level. Echoed when the update affects budget or currency. Matches the currency field in subsequent get_media_buys responses."
         },
         "total_budget": {
           "type": "number",

@@ -6,11 +6,8 @@
   "type": "object",
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Sender-generated key stable across retries of the same fire.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Sender-generated key stable across retries of the same fire."
     },
     "notification_id": {
       "type": "string",

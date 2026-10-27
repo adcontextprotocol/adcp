@@ -12,8 +12,7 @@
       "description": "Stable identifier for this declaration within its namespace. REQUIRED when a product contains multiple declarations with the same format_kind and SHOULD be set on every entry. Publisher-backed options pair it with publisher_domain; product-local options omit publisher_domain. When a single declaration has a unique format_kind and no ID, buyers author canonically with format_kind plus params; they MUST NOT fall back to deprecated format_ids merely because this optional ID is absent. Examples: 'display_image_300x250', 'responsive_search', 'daily_pulse_homepage_image'."
     },
     "publisher_domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "Namespace for `format_option_id` when this declaration references or narrows a publisher-declared format option from that publisher's adagents.json top-level `formats[]`. Product-local options omit this field and are selected by `format_option_id` within the target product."
     },
     "tracker_execution_contract": {
@@ -40,9 +39,7 @@
       "description": "Optional seller-controlled human-readable label for this format declaration. Used by buyer dashboards, catalog UIs, and reporting surfaces to show a seller's own naming ('Homepage Takeover', 'Branded Canvas', 'Reels Premium Video') rather than the raw `format_kind` or `format_option_id`. Has no machine semantics — buyer agents route on `format_kind` and `format_option_id`; `display_name` is purely for human presentation. Freeform; no enumeration. Sellers SHOULD keep it stable once published to avoid dashboard churn."
     },
     "sample_render_url": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "Optional public HTTPS page where a human can inspect a sample render of this declaration using assets chosen by the party publishing the enclosing declaration. Consumers MUST identify that source correctly: publisher or community mirror for `adagents.json` `formats[]`, seller for product or inline-placement declarations, and creative agent for `creative.supported_formats`. Informational only: this is not a renderer endpoint, buyer-asset preview, validation result, creative approval, proof of publisher acceptance, or guarantee of live delivery. Declaring parties SHOULD keep the URL stable while the declaration is active."
     },
     "applies_to_channels": {

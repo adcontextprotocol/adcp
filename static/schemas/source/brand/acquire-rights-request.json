@@ -58,8 +58,7 @@
           "type": "array",
           "description": "Countries where the campaign will run (ISO 3166-1 alpha-2)",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         },
         "format_ids": {
@@ -116,11 +115,8 @@
       "description": "Webhook for async status updates if the acquisition requires approval. The rights agent sends a webhook notification when the status transitions to acquired or rejected."
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated key for safe retries. Resubmitting with the same key returns the original response rather than creating a duplicate acquisition. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated key for safe retries. Resubmitting with the same key returns the original response rather than creating a duplicate acquisition. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request."
     },
     "context": {
       "$ref": "/schemas/core/context.json"
