@@ -7,6 +7,7 @@
   "properties": {
     "in_place": {
       "type": "array",
+      "maxItems": 4,
       "description": "Change kinds applied in place, each with its serving mode. At most one entry per change kind (sellers MUST NOT list a kind twice). An empty array means live creatives are immutable apart from name and tags.",
       "items": {
         "type": "object",

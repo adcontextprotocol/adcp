@@ -2572,7 +2572,7 @@ schema-valid. The annotations are registered as a 4.0 tightening in the
 [4.0 compatibility checks](/docs/reference/migration/v4-compatibility#capabilities-stay-within-their-structural-bounds).
 
 **Worst case.** With the 4.0 bounds applied, the largest schema-valid
-capabilities document is 91,262,197 bytes (about 87 MiB), counting only the
+capabilities document is 91,262,625 bytes (about 87 MiB), counting only the
 members the schema declares. `scripts/capabilities-structural-bounds.cjs` computes it
 and `tests/capabilities-structural-bounds.test.cjs` pins it, so the figure moves
 only when a limit moves. The calculation assumes every declared member is
@@ -2582,7 +2582,7 @@ patterned or formatted strings one. The largest blocks are `creative` (27 MiB),
 `media_buy` (27 MiB), `adcp` (12 MiB), `governance` (6 MiB), `account` (5 MiB),
 and `measurement` (4 MiB). Objects that admit undeclared members, such as `ext`
 and context, are open: the schema cannot bound what a producer adds there, and
-105 positions in the response are open in this sense.
+107 positions in the response are open in this sense.
 
 The multipliers behind that figure are nested object lists inside shared
 schemas: a brand reference (`brand-ref`, up to 111 KiB each, most of it
