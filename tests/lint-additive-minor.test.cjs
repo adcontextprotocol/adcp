@@ -695,6 +695,24 @@ test('passes a name the base already required through an allOf entry', () => {
   assert.deepEqual(findingsAfter((t) => { t['core/composed.json'].required = ['key']; }), []);
 });
 
+test('passes a property an open schema moved into a nested allOf entry', () => {
+  // core/protocol-envelope.json declares adcp_version through its allOf of
+  // core/version-envelope.json, so a response that composes the envelope
+  // still declares it.
+  assert.deepEqual(findingsAfter((t) => {
+    const { note } = t['core/open.json'].properties;
+    delete t['core/open.json'].properties.note;
+    t['core/open.json'].allOf = [{ $ref: '/schemas/core/outer.json' }];
+    t['core/outer.json'] = {
+      $id: '/schemas/core/outer.json',
+      type: 'object',
+      allOf: [{ $ref: '/schemas/core/inner.json' }],
+      properties: { trace: { type: 'string' } },
+    };
+    t['core/inner.json'] = { $id: '/schemas/core/inner.json', type: 'object', properties: { note } };
+  }), []);
+});
+
 test('passes a branch requiring a name its enclosing schema already required', () => {
   assert.deepEqual(findingsAfter((t) => { t['core/branched.json'].oneOf[0].required = ['mode']; }), []);
 });

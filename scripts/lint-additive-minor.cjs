@@ -557,8 +557,12 @@ function compositionDeclares(node, docKey, tree, name) {
   for (const keyword of ['allOf', 'oneOf', 'anyOf']) {
     for (const branch of Array.isArray(node[keyword]) ? node[keyword] : []) {
       const resolved = resolveNode(branch, docKey, tree);
-      if (resolved && isObject(resolved.node) && isObject(resolved.node.properties)
-        && Object.prototype.hasOwnProperty.call(resolved.node.properties, name)) return true;
+      if (!resolved || !isObject(resolved.node)) continue;
+      // An allOf entry's own allOf entries hold too (see declaredNames).
+      const names = keyword === 'allOf'
+        ? declaredNames(resolved.node, resolved.docKey, tree, 'properties')
+        : new Set(namesIn(resolved.node, 'properties'));
+      if (names.has(name)) return true;
     }
   }
   return false;
