@@ -1,0 +1,31 @@
+{
+  "adcp_version": "3.2",
+  "adcp_major_version": 3,
+  "account": { "account_id": "account-1" },
+  "idempotency_key": "reporting-fixture-accepted-0001",
+  "receipts": [
+    {
+      "reporting_receipt_id": "receipt-fixture-accepted-0001",
+      "reporting_obligation_id": "obligation-billing",
+      "reporting_revision_id": "revision-august-official",
+      "reporting_materialization_id": "materialization-billing",
+      "status": "accepted",
+      "verification_profile": "canonical_digest",
+      "observed_row_count": 2,
+      "observed_control_totals": [
+        { "name": "impressions", "value": "5", "value_type": "integer", "unit": "impressions" },
+        { "name": "spend", "value": "8.00", "value_type": "decimal", "unit": "USD" }
+      ],
+      "observed_canonical_content_digest": {
+        "algorithm": "sha256",
+        "value": "bcd079902f3c8edb4315dbbdaf9b4e37f6fd5af33c80d1fe6ac8c655581342d4",
+        "canonicalization_id": "billing-rows-v1",
+        "canonicalization_uri": "https://schemas.fixture.example.net/canonicalization.json",
+        "canonicalization_sha256": "f98d55f8b7ad49c058b17f04630576c6b27b3564090b838e49834dd7714cdefa"
+      },
+      "observed_manifest_sha256": "46d127b2026c48d2e5ced78237c9c1efe63dccbd5099ba4a561073a3f5ef75e6",
+      "consumer_commit_ref": "fixture-ledger:20260826:1",
+      "observed_at": "2026-08-27T04:01:00Z"
+    }
+  ]
+}
