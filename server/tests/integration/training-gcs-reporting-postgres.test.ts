@@ -87,6 +87,7 @@ describe.skipIf(!testUrl)('training GCS reporting against disposable PostgreSQL'
       for (const migration of ['620_training_gcs_reporting.sql', '621_training_gcs_reporting_obligation_tombstones.sql', '624_training_gcs_reporting_destination_contract.sql', '630_training_gcs_reporting_history_start.sql']) {
         await client.query(await readFile(new URL(`../../src/db/migrations/${migration}`, import.meta.url), 'utf8'));
       }
+      // Replay the upgrade to verify it is safe when history_start already exists.
       await client.query(await readFile(new URL('../../src/db/migrations/630_training_gcs_reporting_history_start.sql', import.meta.url), 'utf8'));
       const legacy = await readFile(new URL('../../src/db/migrations/575_reporting_reliability_curriculum.sql', import.meta.url), 'utf8');
       await client.query('SET LOCAL search_path=public,pg_catalog');
