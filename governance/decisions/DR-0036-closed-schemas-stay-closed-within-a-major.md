@@ -77,13 +77,14 @@ location it changes. The additive-minor check reads the same locations from
 additions, and it fails on an entry that this section doesn't list. So a new
 correction needs a change to this record.
 
-Three corrections are recorded:
+Four corrections are recorded:
 
 | Correction | Source text | Ships in | Check entries |
 |---|---|---|---|
 | (a) Reopen the 3.2 proposal flow | DR-0019 | 3.3.0, and a 3.2.x patch | The table under (a) |
 | (b) Compose the protocol envelope on every task response | `core/protocol-envelope.json`, `docs/reference/versioning.mdx` | 3.3.0 (#8547), and a 3.2.x patch | The table under (b): `status` newly required |
 | (c) `task_id` identifies a task | `core/protocol-envelope.json`, `core/tasks-get-request.json`, 3.2.7 `core/compact-task-submitted.json` | 3.3.0 (#8547), and a 3.2.x patch | The table under (c) |
+| (d) `message` is bounded | 3.2.7 `core/compact-task-submitted.json`, `core/compact-task-input-required.json` and the compact and submitted responses; `core/protocol-envelope.json` | 3.3.0 (#8547), and a 3.2.x patch | The table under (d) |
 
 #### (a) Reopen the 3.2 proposal flow
 
@@ -271,6 +272,40 @@ The check accepts `minLength: 1` at these locations:
 `compliance/comply-test-controller-response.json` refer to the same definition
 and keep their own `maxLength: 128`. The other declarations carry the 4.0
 bound only as `x-max-length-4.0: 128`.
+
+#### (d) `message` is bounded
+
+A task's `message` is seller text that a receiver displays or passes to an
+agent. 3.2.7 published it with `maxLength: 2000` on
+`core/compact-task-submitted.json` and `core/compact-task-input-required.json`
+(`"message": { "type": "string", "maxLength": 2000 }`), on the compact
+proposal-flow responses, and on the submitted payloads of the async tasks.
+3.2.7's envelope, MCP webhook payload and response wrapper declared no bound,
+so the bound a receiver could rely on depended on the task and on the
+delivery path. The envelope also tells receivers to treat `message` as
+untrusted input.
+
+This correction gives `message` one definition, `core/task-message.json`
+(`type: string`, `maxLength: 2000`, `x-max-length-4.0: 1024`), that every
+task-level `message` refers to: the envelope, the MCP webhook payload and the
+response wrapper. No task schema restates the bound. A seller whose text is
+longer MUST truncate it rather than fail the task. AdCP 4.0 tightens the bound
+to 1,024 characters.
+
+Unlike (c), this is not a value the published text already excluded on every
+path: the envelope, webhook and wrapper accepted a longer `message`. It
+tightens those three to the bound 3.2.7 already published elsewhere, at the
+same 2,000, so every delivery path gives one guarantee. `core/error.json`,
+`core/warning.json` and messages inside task bodies keep their own bounds.
+3.3.0 ships it (#8547), and a 3.2.x patch ships it too.
+
+The check accepts `maxLength: 2000` at these locations:
+
+| Schema | Pointer | Bound | Reason |
+|---|---|---|---|
+| `core/protocol-envelope.json` | `/properties/message` | `maxLength: 2000` | The envelope's `message`, on every task response. |
+| `core/mcp-webhook-payload.json` | `/properties/message` | `maxLength: 2000` | The `message` of a webhook notification. |
+| `core/response.json` | `/properties/message` | `maxLength: 2000` | The response wrapper's `message`. |
 
 ## Rationale
 

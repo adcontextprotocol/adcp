@@ -23,7 +23,7 @@
  *   4. acceptance vectors: per node, a control instance passes the node
  *      conjoined with the envelope, and so does the control plus each
  *      envelope field, including the edge values `replayed: false` and a
- *      2,500-character `message`. The node's body-field declarations are
+ *      2,000-character `message`. The node's body-field declarations are
  *      reduced to `{}` unless they pin a discriminator, so the vectors grade
  *      how the node treats envelope fields, not body-field contents.
  *   5. `task_id` has one definition, core/task-id.json, which is never empty:
@@ -36,6 +36,11 @@
  *      core/task-input-required.json. No schema keys task_id on status
  *      through `if`/`then`. Without `task_id` a submitted response fails on
  *      core/task-submitted.json's `required` alone.
+ *   7. A task-level `message` has one definition, core/task-message.json
+ *      (`maxLength: 2000`), which the envelope, the MCP webhook payload and
+ *      the response wrapper refer to: a 2,001-character `message` adds
+ *      exactly its maxLength error on every response node and on both other
+ *      carriers, so the bound does not depend on the delivery path.
  *
  * Requires the built tree (the npm script builds it) and Node 24, as
  * package.json does.
@@ -100,12 +105,14 @@ const ENVELOPE_VALUES = {
 // Values at the edge of an envelope declaration that a response node must
 // not narrow away. The envelope's `replayed` is a boolean that defaults to
 // false, so a seller that always sends `replayed: false` conforms. The
-// envelope's `message` has no bound in 3.x (`x-max-length-4.0` is 1024 from
-// 4.0), so a 2,500-character message conforms; response nodes used to cap
-// it at 2,000.
+// envelope's `message` is core/task-message.json, at most 2,000 characters
+// in 3.x (`x-max-length-4.0` is 1024 from 4.0), so a 2,000-character message
+// conforms on every response node.
+const MESSAGE_MAX_LENGTH = 2000;
+const TASK_MESSAGE_REF = '/schemas/core/task-message.json';
 const BOUNDARY_VALUES = {
   replayed: false,
-  message: 'm'.repeat(2500),
+  message: 'm'.repeat(MESSAGE_MAX_LENGTH),
 };
 const COMPACT_TASK_DOCUMENTS = fs.readdirSync(path.join(SOURCE_DIR, 'core'))
   .filter((file) => /^compact-task-.*\.json$/.test(file))
@@ -417,7 +424,7 @@ test('response nodes declare only body fields and narrowing constraints', () => 
 });
 
 test('no response node narrows message length or pins replayed', () => {
-  // The envelope defines message once, with no bound in 3.x, and replayed as
+  // The envelope defines message once, through core/task-message.json, and replayed as
   // a boolean that reports how the response was produced. A response node
   // may pin message to fixed text with const (the unavailable reporting
   // lookup does), but no bound or replayed value of its own.
@@ -492,6 +499,62 @@ test('an empty task_id is rejected on every response node, single fault', async 
     ran += 1;
   }
   assert.ok(ran > 100, `expected the rule to run on every response node, ran ${ran}`);
+});
+
+test('every task-level message refers to core/task-message.json', () => {
+  const carriers = ['core/protocol-envelope.json', 'core/mcp-webhook-payload.json', 'core/response.json'];
+  const own = carriers.filter((rel) => readSource(rel).properties?.message?.$ref !== TASK_MESSAGE_REF);
+  assert.deepEqual(own, [], 'a task-level message refers to the one definition, so its bound does not depend on the delivery path');
+  const definition = readSource('core/task-message.json');
+  assert.equal(definition.maxLength, MESSAGE_MAX_LENGTH);
+  assert.equal(definition['x-max-length-4.0'], 1024);
+});
+
+const OVERLONG_MESSAGE = 'm'.repeat(MESSAGE_MAX_LENGTH + 1);
+const MESSAGE_FAULT = [{ instancePath: '/message', keyword: 'maxLength', params: { limit: MESSAGE_MAX_LENGTH } }];
+
+test('a 2,001-character message is rejected on every response node, single fault', async () => {
+  let ran = 0;
+  let pinned = 0;
+  for (const { rel, pointer, node } of RESPONSE_NODES) {
+    if (has(node.properties?.message, 'const')) {
+      // The fixed text of an unavailable reporting lookup: its const rejects
+      // any other message on its own.
+      pinned += 1;
+      continue;
+    }
+    const validate = await nodeWithEnvelopeValidator(rel, pointer);
+    const control = { ...nodeControl(node, validate), message: BOUNDARY_VALUES.message };
+    assert.equal(validate(control), true, `control does not pass ${rel}#${pointer}: ${JSON.stringify(validate.errors)}`);
+    assert.deepEqual(addedErrors(validate, control, { ...control, message: OVERLONG_MESSAGE }), MESSAGE_FAULT,
+      `${rel}#${pointer}: a 2,001-character message must fail only on core/task-message.json's maxLength`);
+    ran += 1;
+  }
+  assert.ok(ran > 100, `expected the rule to run on every response node, ran ${ran}`);
+  assert.equal(ran + pinned, RESPONSE_NODES.length, 'not every response node ran');
+});
+
+// Controls for the other task-level message carriers.
+const MESSAGE_CARRIER_CONTROLS = {
+  'core/mcp-webhook-payload.json': {
+    idempotency_key: 'whk_envelope_000000000001',
+    operation_id: 'op_envelope_0001',
+    task_id: ENVELOPE_VALUES.task_id,
+    task_type: 'get_products',
+    status: 'working',
+    timestamp: ENVELOPE_VALUES.timestamp,
+  },
+  'core/response.json': {},
+};
+
+test('the webhook payload and response wrapper bound message the same way, single fault', async () => {
+  for (const [rel, seed] of Object.entries(MESSAGE_CARRIER_CONTROLS)) {
+    const validate = await validatorFor(`${BUILT_ORIGIN}${rel}`);
+    const control = { ...seed, message: BOUNDARY_VALUES.message };
+    assert.equal(validate(control), true, `control does not pass ${rel}: ${JSON.stringify(validate.errors)}`);
+    assert.deepEqual(addedErrors(validate, control, { ...control, message: OVERLONG_MESSAGE }), MESSAGE_FAULT,
+      `${rel}: a 2,001-character message must fail only on core/task-message.json's maxLength`);
+  }
 });
 
 const TASK_SUBMITTED_REF = '/schemas/core/task-submitted.json';

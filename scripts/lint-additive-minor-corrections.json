@@ -758,6 +758,42 @@
         "quote": "The `status` field is REQUIRED on every task response envelope"
       },
       "reason": "Correction (b) of DR-0036: the response composes the protocol envelope, which already required status on every task response envelope in 3.2.7."
+    },
+    {
+      "file": "core/protocol-envelope.json",
+      "pointer": "/properties/message",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
+        "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
+      },
+      "reason": "Correction (d) of DR-0036: the envelope's message, on every task response, refers to core/task-message.json, so it carries the 2,000-character bound that 3.2.7 published on the compact responses and the submitted payloads. One bound for every delivery path, at the same 2,000."
+    },
+    {
+      "file": "core/mcp-webhook-payload.json",
+      "pointer": "/properties/message",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
+        "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
+      },
+      "reason": "Correction (d) of DR-0036: a webhook notification's message refers to core/task-message.json, so the bound does not depend on whether the task state arrives in a response or a webhook. The same 2,000 that 3.2.7 published on the compact responses."
+    },
+    {
+      "file": "core/response.json",
+      "pointer": "/properties/message",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.7/core/compact-task-submitted.json",
+        "quote": "\"message\": { \"type\": \"string\", \"maxLength\": 2000 }"
+      },
+      "reason": "Correction (d) of DR-0036: the response wrapper's message refers to core/task-message.json, so the wrapper carries the same 2,000-character bound as the envelope."
     }
   ]
 }

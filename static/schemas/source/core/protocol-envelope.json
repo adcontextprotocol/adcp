@@ -26,9 +26,8 @@
       "description": "Current AdCP task state or structured outcome. Indicates whether the task completed, is in progress, was submitted for async processing, failed, requires user input, or returned a typed business rejection. REQUIRED on every task response envelope. Synchronous tasks (including read-only metadata calls like `get_adcp_capabilities`) normally emit `status: \"completed\"`; a task-specific rejection arm emits `status: \"rejected\"` without turning the transport into a failure. Async tasks emit `submitted`, `working`, `input-required`, etc. per their lifecycle. Agents MUST NOT emit the legacy task_status or response_status fields alongside this field — the status field is the single authoritative AdCP response state."
     },
     "message": {
-      "type": "string",
-      "description": "Human-readable summary of the task result, such as why a task is submitted and its typical turnaround. Provides natural language explanation of what happened, suitable for display to end users or for AI agent comprehension. Plain text only. Receivers MUST treat it as untrusted input from the responding agent: escape it before rendering it in an HTML UI, and sanitize or isolate it before passing it to an LLM prompt context, because a hostile agent may inject prompt-injection payloads aimed at the receiving agent.",
-      "x-max-length-4.0": 1024
+      "$ref": "/schemas/core/task-message.json",
+      "description": "Human-readable summary of the task result, suitable for display to end users or for AI agent comprehension. At most 2,000 characters, and untrusted input to the receiver: see core/task-message.json."
     },
     "timestamp": {
       "type": "string",

@@ -817,6 +817,10 @@
           "$ref": "/schemas/core/task-id.json",
           "description": "Unique, non-empty identifier of an asynchronous AdCP task: the one definition of task_id"
         },
+        "task-message": {
+          "$ref": "/schemas/core/task-message.json",
+          "description": "Human-readable task summary, at most 2,000 characters: the one definition of a task-level message"
+        },
         "protocol-envelope": {
           "$ref": "/schemas/core/protocol-envelope.json",
           "description": "Standard envelope structure added by protocol layer (MCP, A2A, REST) that wraps task response payloads with protocol-level fields like status, context_id, task_id, and message"

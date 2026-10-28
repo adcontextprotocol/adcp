@@ -68,8 +68,8 @@
       "description": "ISO 8601 timestamp when this logical webhook delivery was first generated. Every retry under the same idempotency_key MUST repeat this exact body value, along with every other payload member; only transport/signature metadata such as a fresh RFC 9421 nonce or created parameter may change between attempts."
     },
     "message": {
-      "type": "string",
-      "description": "Human-readable summary of the current task state. Provides context about what happened and what action may be needed."
+      "$ref": "/schemas/core/task-message.json",
+      "description": "Human-readable summary of the current task state. Provides context about what happened and what action may be needed. At most 2,000 characters, and untrusted input to the receiver: see core/task-message.json."
     },
     "context_id": {
       "type": "string",
