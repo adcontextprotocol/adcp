@@ -1372,7 +1372,7 @@ test('measurement acceptance is split from the universal rejection scenario', as
   assert.deepEqual(submittedTerms, expectedTerms);
 });
 
-test('measurement terms gate skips when the declaration is absent, including on the live capability fetch', async () => {
+test('measurement terms gate skips when the declaration is absent or arrives via a fetched capabilities response', async () => {
   const accepted = loadMediaBuyStoryboard('measurement_terms_accepted');
   const tools = ['get_adcp_capabilities', ...accepted.required_tools, 'comply_test_controller'];
 
@@ -1391,11 +1391,16 @@ test('measurement terms gate skips when the declaration is absent, including on 
   assert.equal(absentKey.phases[0].phase_id, 'capability_unsupported');
   assert.equal(absentKey.phases[0].steps[0].skip_reason, 'capability_unsupported');
 
-  // Live fetch path: the production runner resolves capabilities by calling
-  // the agent's own get_adcp_capabilities and gating on that response, not
-  // on a hand-written profile. Fetch through a mock _client whose response
-  // omits measurement_terms_acceptance, gate on the fetched data, and assert
-  // no storyboard task is dispatched (#7344).
+  // Fetched-response shape: the production runner resolves the profile it
+  // gates on from the agent's own get_adcp_capabilities response. Feed the
+  // gate a real response payload (mock _client, wire shape with context
+  // echo) instead of a hand-written literal: the response omits
+  // measurement_terms_acceptance, so the gate must skip the scenario and no
+  // storyboard task may be dispatched (#7344). Note the pinned SDK's
+  // runStoryboard gates on the resolved profile only — it does not call
+  // _client.getAdcpCapabilities for storyboard-level gates, and omitting
+  // the profile leaves the gate unevaluated — so the fetch itself remains
+  // the hosted runner / adcp-client half of #7344.
   const dispatchedTasks = [];
   const client = {
     resetContext() {},
