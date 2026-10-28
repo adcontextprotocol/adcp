@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.30
+
+### Patch Changes
+
+- e283ddd: Allow auction-only sellers to run shared media-buy lifecycle and measurement-term rejection checks without fixed-price inventory. Discover selectable pricing options without a fixed-price filter, and opt the semantic rejection probe into request enrichment so it sends valid auction pricing. Run the healthy stale-response probe before forcing an outage, keep the same sandbox account for cache warming and outage forcing, and gate the forced-cache checks on the declared controller scenario.
+- c801a1f: Erratum: the AAO reference catalog now projects the HTML-markup legacy formats (`display_html` and `display_WxH_html`) to `display_tag` with an `html_creative` (`html`) slot instead of `html5`. The old annotation contradicted rule 5 of `canonical-projection-ref.json`: these formats require HTML markup, while the `html5` canonical's slot is a zip bundle. The catalog also publishes `display_320x50_html` and `display_300x50_html` with the same mapping. No schema changes. 3.1 SDKs that read the corrected catalog project these formats to `display_tag` instead of `html5`.
+- a7331e7: Make the `provenance_truth_of_claim` and `provenance_audit_observation` storyboards passable by a seller that runs independent AI detection. The seeded `accepted_verifiers` entry now names a real public conformance verifier, `https://test-agent.adcontextprotocol.org/governance/creative-features/mcp`, which serves only `get_creative_features` with no bearer and returns deterministic fixture-keyed results. The fixture images now exist at the served path `https://adcontextprotocol.org/test-assets/acme-outdoor/ai-generated-true.jpg` and `ai-generated-false.jpg`, replacing the unresolvable `test-assets.adcontextprotocol.org` host. The "sentinel" wording is removed, and the prerequisite now states that sellers allowlist this verifier once in sandbox configuration and MUST NOT call a verifier URL that is not on their own allowlist. `accept_consistent_claim` now declares `depends_on: [discover_verifier]`, so a failed contradicted step no longer skips the consistent-claim step. Closes #8199.
+
 ## 3.1.29
 
 ### Patch Changes
