@@ -437,6 +437,12 @@ function fixtureRoot() {
     '|---|---|---|---|',
     '| `core/closed.json` | root | `extra` | Required by the rule. |',
     '',
+    '#### (c) Tighten one bound',
+    '',
+    '| Schema | Pointer | Bound | Reason |',
+    '|---|---|---|---|',
+    '| `core/closed.json` | `/properties/id` | `minLength: 1` | The rule names an identifier. |',
+    '',
     '## Rationale',
     '',
     '| `core/open.json` | root | `*` | Outside the corrections section. |',
@@ -515,6 +521,55 @@ test('an addition next to a listed property correction still fails', () => {
   );
   assert.deepEqual(result.findings.map((f) => [f.file, f.detail]), [['core/closed.json', 'property other added']]);
   assert.deepEqual(result.errors, []);
+});
+
+/** A bound correction entry: core/closed.json's id gains minLength 1. */
+function boundCorrection(overrides = {}) {
+  const { property: _property, ...entry } = correction({ pointer: '/properties/id', bound: 'minLength', value: 1 });
+  return { ...entry, ...overrides };
+}
+
+test('a listed bound correction accepts exactly that tightening', () => {
+  const result = analyzePair(
+    (t) => { t['core/closed.json'].properties.id.minLength = 1; },
+    { correctionsValue: corrections(boundCorrection()) },
+  );
+  assert.deepEqual([result.findings, result.notices, result.errors], [[], [], []]);
+});
+
+test('an unrecorded tightening still fails', () => {
+  const result = analyzePair((t) => { t['core/closed.json'].properties.id.minLength = 1; });
+  assert.deepEqual(result.findings.map((f) => [f.file, f.pointer, f.kind, f.detail]),
+    [['core/closed.json', '/properties/id', 'bound-tightened', 'minLength 1 added']]);
+});
+
+test('a bound correction admits no other value or bound', () => {
+  const tighter = analyzePair(
+    (t) => { t['core/closed.json'].properties.id.minLength = 2; },
+    { correctionsValue: corrections(boundCorrection()) },
+  );
+  assert.deepEqual(tighter.findings.map((f) => f.detail), ['minLength 2 added']);
+  const other = analyzePair(
+    (t) => {
+      t['core/closed.json'].properties.id.minLength = 1;
+      t['core/closed.json'].properties.count.maximum = 5;
+    },
+    { correctionsValue: corrections(boundCorrection()) },
+  );
+  assert.deepEqual(other.findings.map((f) => [f.pointer, f.detail]), [['/properties/count', 'maximum 10 → 5']]);
+});
+
+test('fails when a bound correction is not applied in the candidate', () => {
+  const result = analyzePair(() => {}, { correctionsValue: corrections(boundCorrection()) });
+  assert.deepEqual(result.errors, ['correction core/closed.json#/properties/id does not carry minLength: 1 in source']);
+});
+
+test('fails when a bound correction is missing from its decision record', () => {
+  const result = analyzePair(
+    (t) => { t['core/closed.json'].properties.id.maxLength = 64; },
+    { correctionsValue: corrections(boundCorrection({ bound: 'maxLength', value: 64 })) },
+  );
+  assert.deepEqual(result.errors, [`correction core/closed.json#/properties/id maxLength: 64 is not in the correction tables of ${FIXTURE_DECISION}-fixture.md`]);
 });
 
 test('an addition to a schema no correction names still fails', () => {
