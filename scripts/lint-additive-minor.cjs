@@ -88,6 +88,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { readComposedSourceSchema } = require('./compose-response-envelope.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const DEFAULT_SOURCE_DIR = path.join(REPO_ROOT, 'static', 'schemas', 'source');
@@ -407,6 +408,29 @@ function loadDirectoryTree(directory, label = toPosix(path.relative(REPO_ROOT, d
   return buildTree(label, raw);
 }
 
+/**
+ * Loads the source tree as the schema build publishes it: the build declares
+ * the protocol envelope's fields on the closed roots and branches of every
+ * response schema that composes core/protocol-envelope.json
+ * (scripts/compose-response-envelope.cjs). Released trees already carry that
+ * composition, so the candidate must too, or a field the build adds would read
+ * as removed in the next minor.
+ */
+function loadSourceTree(sourceDir) {
+  const raw = new Map();
+  for (const file of walkJsonFiles(sourceDir)) {
+    const full = path.join(sourceDir, file);
+    let text = fs.readFileSync(full, 'utf8');
+    try {
+      text = JSON.stringify(readComposedSourceSchema(full, sourceDir));
+    } catch {
+      // buildTree reports unparseable files.
+    }
+    raw.set(file, text);
+  }
+  return buildTree('source', raw);
+}
+
 /** Loads dist/schemas/<version> from disk, or from git HEAD when not checked out. */
 function loadReleasedTree(version, repoRoot = REPO_ROOT) {
   const prefix = `${DIST_SCHEMAS}/${version}`;
@@ -422,7 +446,7 @@ function readSourceVersion(repoRoot = REPO_ROOT) {
 }
 
 function loadTreeSpec(spec, { repoRoot = REPO_ROOT, sourceDir = DEFAULT_SOURCE_DIR } = {}) {
-  if (spec === 'source') return loadDirectoryTree(sourceDir, 'source');
+  if (spec === 'source') return loadSourceTree(sourceDir);
   if (parseVersion(spec)) return loadReleasedTree(spec, repoRoot);
   if (fs.existsSync(spec) && fs.statSync(spec).isDirectory()) return loadDirectoryTree(path.resolve(spec));
   throw new Error(`unknown tree: ${spec} (expected a released version, "source", or a directory)`);
@@ -546,14 +570,19 @@ function namesIn(node, keyword) {
 }
 
 /**
- * Property names that a node and its `allOf` entries, one level deep, list
- * under `keyword` (`properties` or `required`).
+ * Property names that a node and its `allOf` entries list under `keyword`
+ * (`properties` or `required`). `allOf` is a conjunction, so an entry's own
+ * `allOf` entries count too: core/protocol-envelope.json declares
+ * `adcp_version` through its `allOf` of core/version-envelope.json.
  */
-function declaredNames(node, docKey, tree, keyword) {
+function declaredNames(node, docKey, tree, keyword, seen = new Set()) {
   const names = new Set(namesIn(node, keyword));
   for (const entry of Array.isArray(node.allOf) ? node.allOf : []) {
     const resolved = resolveNode(entry, docKey, tree);
-    if (resolved && isObject(resolved.node)) namesIn(resolved.node, keyword).forEach((name) => names.add(name));
+    const identity = resolved && isObject(resolved.node) ? locate(tree, resolved.node) || resolved.node : null;
+    if (!identity || seen.has(identity)) continue;
+    seen.add(identity);
+    declaredNames(resolved.node, resolved.docKey, tree, keyword, seen).forEach((name) => names.add(name));
   }
   return names;
 }
@@ -1255,7 +1284,7 @@ function lintAdditiveMinor({
     if (!base) return { ok: true, skipped: true, base: null, errors: [], warnings: [], findings: [], notices: [] };
   }
   const baseSchemas = baseTree || loadReleasedTree(base, repoRoot);
-  const candTree = loadDirectoryTree(sourceDir, 'source');
+  const candTree = loadSourceTree(sourceDir);
   const { findings, notices, filesCompared, errors: analysisErrors } = analyze({
     base,
     baseTree: baseSchemas,

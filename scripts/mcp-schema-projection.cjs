@@ -4,6 +4,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { readComposedSourceSchema } = require('./compose-response-envelope.cjs');
 
 const MCP_PROTOCOL_VERSION = '2026-07-28';
 const JSON_SCHEMA_DRAFT_07 = 'http://json-schema.org/draft-07/schema#';
@@ -424,7 +425,7 @@ function compactDraft07Schema(rootSchema, rootFile, sourceDir, { rootId } = {}) 
     if (!bundledFiles.has(resolved)) {
       bundledFiles.set(resolved, key);
       externalDefinitions[key] = true;
-      const referenced = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+      const referenced = readComposedSourceSchema(resolved, sourceDir);
       assertDraft07SourceSchema(referenced, resolved);
       if (!rootId) delete referenced.$id;
       delete referenced.$schema;
@@ -1295,7 +1296,9 @@ function generateMcpSchemaProjection({
       return;
     }
 
-    const sourceSchema = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
+    // Compose the protocol envelope into closed response schemas, as the
+    // canonical flat and bundled trees do (scripts/compose-response-envelope.cjs).
+    const sourceSchema = readComposedSourceSchema(sourcePath, sourceDir);
     let projectedSchema;
     try {
       projectedSchema = projectSourceSchema(

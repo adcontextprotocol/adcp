@@ -37,6 +37,7 @@ const {
   MCP_PROTOCOL_VERSION,
   generateMcpSchemaProjection,
 } = require('./mcp-schema-projection.cjs');
+const { readComposedSourceSchema } = require('./compose-response-envelope.cjs');
 
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
@@ -177,7 +178,10 @@ function canonicalizePublishedSchemaUris(node, version) {
 }
 
 function transformPublishedSchemaText(content, version) {
-  const schema = JSON.parse(content);
+  return transformPublishedSchema(JSON.parse(content), version);
+}
+
+function transformPublishedSchema(schema, version) {
   canonicalizePublishedSchemaUris(schema, version);
   return `${JSON.stringify(schema, null, 2)}\n`;
 }
@@ -1482,7 +1486,7 @@ function writeManifest(sourceDir, targetDir, urlVersion, semverVersion, repoRoot
   return stats;
 }
 
-function copyAndTransformSchemas(sourceDir, targetDir, version) {
+function copyAndTransformSchemas(sourceDir, targetDir, version, sourceRoot = sourceDir) {
   const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -1495,10 +1499,12 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
         continue;
       }
       ensureDir(targetPath);
-      copyAndTransformSchemas(sourcePath, targetPath, version);
+      copyAndTransformSchemas(sourcePath, targetPath, version, sourceRoot);
     } else if (entry.name.endsWith('.json')) {
-      let content = transformPublishedSchemaText(
-        fs.readFileSync(sourcePath, 'utf8'),
+      // Compose the protocol envelope into closed response schemas
+      // (scripts/compose-response-envelope.cjs), then publish exact-version URIs.
+      let content = transformPublishedSchema(
+        readComposedSourceSchema(sourcePath, sourceRoot),
         version,
       );
 
@@ -1665,7 +1671,7 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
       }
 
       try {
-        let refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
+        let refContent = readComposedSourceSchema(refPath, sourceDir);
         if (fragment) {
           if (!fragment.startsWith('/')) throw new Error(`Unsupported schema fragment: ${value}`);
           refContent = fragment
@@ -1741,7 +1747,7 @@ function hoistBySourceIdentity(schema, sourceDir, refPaths, ancestorRefs = new S
     // (synthetic fixtures); a real dangling ref is handled by `resolveRefs`.
     const sourceFile = path.join(sourceDir, refPath.replace('/schemas/', ''));
     if (!fs.existsSync(sourceFile)) continue;
-    const source = JSON.parse(fs.readFileSync(sourceFile, 'utf8'));
+    const source = readComposedSourceSchema(sourceFile, sourceDir);
     const defName = typeof source.title === 'string' ? source.title.replace(/[^A-Za-z0-9_]/g, '') : '';
     if (!defName || ['__proto__', 'constructor', 'prototype'].includes(defName)) {
       throw new Error(`hoistBySourceIdentity: ${refPath} needs a usable \`title\` to name its $defs entry.`);
@@ -2365,8 +2371,9 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
     if (!shouldBundle) continue;
 
     try {
-      // Read the schema
-      const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+      // Read the schema, composing the protocol envelope into closed
+      // response schemas as the flat tree does.
+      const schema = readComposedSourceSchema(schemaPath, sourceDir);
 
       // Resolve all $refs. Schemas listed in IDENTITY_HOISTED_REFS are
       // written once to root $defs instead of being inlined at every
