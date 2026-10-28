@@ -55,7 +55,7 @@
         "backfill_on_regrant": {
           "type": "boolean",
           "default": false,
-          "description": "Whether periods during a loss of authorization are delivered after re-grant. When false they appear as gaps with reason unauthorized."
+          "description": "Whether periods missed during a loss of authorization are delivered after re-grant. When true, coverage keeps its original covered_from with no covered_until for the revoked interval, so every period in it stays owed, due at the re-grant time plus the offering's delivery_sla. When false, coverage resumes with a new covered_from at re-grant and the interval appears in gaps with reason unauthorized."
         },
         "dimensions": {
           "type": "array",

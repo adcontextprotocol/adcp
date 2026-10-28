@@ -351,13 +351,14 @@ it. A seller that lists `sync_principal` in `configuration_tasks` and advertises
    changes: obligations, revisions, health, and consumer status work as for an
    account-level configuration.
 3. `get_reporting_status` returns `subscription_coverage[]` per account: which
-   buys are covered from when, which are excluded and why, and whether the
-   principal lost authority. See
+   buys are covered from when and which are excluded and why. As for an
+   account-level configuration, a covered buy is owed every complete period
+   starting at or after its `covered_from`, never a clipped one. Accounts whose
+   authority the principal lost are listed in `get_principal` instead. See
    [subscription coverage](/docs/media-buy/task-reference/get_reporting_status#subscription-coverage).
 
 An account-level `reporting_delivery_configs` entry still works during 3.x and
-takes precedence over an all-accounts subscription for that account and
-`feed_purpose`.
+takes precedence over every subscription for that account and `feed_purpose`.
 
 ## The ladder above Core
 

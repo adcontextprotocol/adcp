@@ -99,6 +99,11 @@ test('selector requires stable attributes and closes match and dimensions', () =
     v({ ...allAccounts, scope: { account_ids: ['acc_1'] }, selector: { ...allAccounts.selector, period_timezone: 'America/New_York' } }),
     JSON.stringify(v.errors)
   );
+  assert.equal(
+    v({ ...allAccounts, scope: { account_ids: ['acc_1', 'acc_2'] }, destination: { destination_id: 'x', path_template: '{account_id}' }, selector: { ...allAccounts.selector, period_timezone: 'America/New_York' } }),
+    false,
+    'period_timezone needs exactly one account'
+  );
   const dims = read('enums/reporting-dimension.json');
   assert.deepEqual(dims.enum, ['package', 'creative', 'country', 'region', 'metro']);
   assert.equal(dims['x-extensible'], true);
@@ -134,6 +139,34 @@ test('sync_principal accepts the section and get_principal reads it back', () =>
   assert.ok(enumValues.includes('reporting_subscriptions'));
 });
 
+test('lost authority is reported in the caller\'s own subscription state', () => {
+  const state = validate('/schemas/core/reporting-subscription-state.json');
+  const current = { subscription_id: 'analytics-daily', subscription_version: 1, state: 'active', accepted_at: '2026-11-01T00:00:00Z', configuration: allAccounts };
+  const revoked = { account_id: 'acc_7', unauthorized_at: '2026-11-20T09:00:00Z', last_covered_until: '2026-11-20T05:00:00Z', withheld_period_count: 1, withheld_reporting_obligation_ids: ['obl_1'] };
+  assert.ok(state({ ...current, accounts_unauthorized: [revoked] }), JSON.stringify(state.errors));
+  const { withheld_period_count: _w, ...noCount } = revoked;
+  assert.equal(state({ ...current, accounts_unauthorized: [noCount] }), false, 'withheld_period_count required');
+  assert.equal(state({ ...current, accounts_unauthorized: [{ ...revoked, covered: [] }] }), false, 'no current account data');
+  const caps = read('core/reporting-delivery-capabilities.json').properties.subscriptions.properties.backfill_on_regrant.description;
+  assert.match(caps, /original covered_from/);
+});
+
+test('receipts and statuses stay acceptable after revocation for revisions already read', () => {
+  for (const file of ['media-buy/sync-reporting-receipts-request.json', 'media-buy/sync-reporting-status-request.json']) {
+    const rule = read(file)['x-adcp-validation'].after_revocation;
+    assert.match(rule, /read before unauthorized_at/, file);
+    assert.match(rule, /status_retention_days/, file);
+    assert.match(rule, /unknown identifier/, file);
+  }
+});
+
+test('sync_accounts delivery configs win over subscriptions and share the id namespace', () => {
+  const description = read('account/sync-accounts-request.json').properties.accounts.items.properties.reporting_delivery_configs.description;
+  assert.match(description, /subscription_id values MUST be rejected/);
+  assert.match(description, /precedence over every reporting subscription/);
+  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].precedence, /replaces every subscription, all-accounts or account_ids/);
+});
+
 const coverageBase = { subscription_id: 'analytics-daily', subscription_version: 1, covered: [], excluded: [] };
 
 test('coverage status carries exactly its own fields', () => {
@@ -143,15 +176,14 @@ test('coverage status carries exactly its own fields', () => {
     { ...coverageBase, status: 'active' },
     { ...coverageBase, status: 'excluded', excluded: [{ reason: 'capacity' }] },
     { ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden', overridden_by: { delivery_config_id: 'acct-analytics' } }] },
-    { ...coverageBase, status: 'unauthorized', unauthorized_at: '2026-11-20T09:00:00Z' },
     { ...coverageBase, status: 'action_required', pending_action: review },
   ];
   for (const doc of ok) assert.ok(v(doc), `${doc.status}: ${JSON.stringify(v.errors)}`);
 
   const bad = [
-    ['unauthorized without unauthorized_at', { ...coverageBase, status: 'unauthorized' }],
-    ['unauthorized_at on an active account', { ...coverageBase, status: 'active', unauthorized_at: '2026-11-20T09:00:00Z' }],
-    ['withheld periods on an active account', { ...coverageBase, status: 'active', withheld_unauthorized: [] }],
+    ['unauthorized is not an account status here', { ...coverageBase, status: 'unauthorized' }],
+    ['no unauthorized_at in coverage', { ...coverageBase, status: 'active', unauthorized_at: '2026-11-20T09:00:00Z' }],
+    ['no withheld periods in coverage', { ...coverageBase, status: 'active', withheld_unauthorized: [] }],
     ['action_required without pending_action', { ...coverageBase, status: 'action_required' }],
     ['pending_action on an active account', { ...coverageBase, status: 'active', pending_action: review }],
     ['excluded without an account-level entry', { ...coverageBase, status: 'excluded', excluded: [{ media_buy_id: 'mb_1', reason: 'capacity' }] }],
@@ -212,13 +244,15 @@ test('get_reporting_status carries subscription_coverage in summary but not revi
     data_through: null,
     obligation_counts: { total: 0, waiting: 0, healthy: 0, delayed: 0, action_required: 0, complete: 0 },
     issues: [],
-    subscription_coverage: [{ ...coverageBase, status: 'unauthorized', unauthorized_at: '2026-11-20T09:00:00Z' }],
+    subscription_coverage: [{ ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden', overridden_by: { delivery_config_id: 'acct-analytics' } }] }],
   };
   assert.ok(v(summary), JSON.stringify(v.errors));
   const schema = read('media-buy/get-reporting-status-response.json');
   const revisionView = schema.oneOf[0].oneOf.find(s => s.title === 'Revision view');
   assert.ok(JSON.stringify(revisionView.not).includes('subscription_coverage'), 'revision view excludes subscription_coverage');
-  assert.match(schema['x-adcp-validation'].revoked_account_reads, /lookup_unavailable/);
+  assert.equal(schema['x-adcp-validation'].revoked_account_reads, undefined, 'no read carve-out for former principals');
+  assert.match(schema['x-adcp-validation'].caller_isolation, /identical lookup_unavailable shape/);
+  assert.match(schema['x-adcp-validation'].subscription_coverage, /start(ing)? at or after covered_from/);
 });
 
 function capabilities({ subscriptions = true, section = true, feature = true, tasks = ['sync_principal', 'sync_accounts'] } = {}) {

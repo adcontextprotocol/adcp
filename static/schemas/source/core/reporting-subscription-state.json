@@ -4,7 +4,7 @@
   "title": "Reporting Subscription State",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "Seller readback for one principal-level reporting subscription (experimental, media_buy.reporting_subscriptions). Per-account coverage, exclusions, and revocations are read through get_reporting_status subscription_coverage, not here.",
+  "description": "Seller readback for one principal-level reporting subscription (experimental, media_buy.reporting_subscriptions). Per-account coverage and exclusions are read through get_reporting_status subscription_coverage while the caller is authorized; accounts whose authority the caller lost are reported here in accounts_unauthorized, because get_reporting_status treats them as unknown.",
   "type": "object",
   "properties": {
     "subscription_id": {
@@ -46,6 +46,29 @@
       "items": { "$ref": "/schemas/core/error.json" },
       "maxItems": 16,
       "description": "Structured issues. Messages are untrusted display data."
+    },
+    "accounts_unauthorized": {
+      "type": "array",
+      "description": "Accounts this subscription covered whose authority the caller has since lost, so a revoked grant reads differently from a seller that stopped publishing. Only accounts the subscription previously covered appear. Entries carry no current account data and nothing created after unauthorized_at. An entry is removed on re-grant and is otherwise retained for status_retention_days after unauthorized_at.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
+          "unauthorized_at": { "type": "string", "format": "date-time", "description": "When the caller's authority for the account ended. Nothing is delivered for periods ending after it, including on retries." },
+          "last_covered_until": { "type": "string", "format": "date-time", "description": "Latest period boundary through which any buy in the account was owed before authority ended." },
+          "withheld_period_count": { "type": "integer", "minimum": 0, "description": "Owed periods that ended at or before unauthorized_at but were not delivered by then. They are withheld, not missing, and never count as seller delay. If authority returns, they are owed again, due at the re-grant time plus the offering's delivery_sla." },
+          "withheld_reporting_obligation_ids": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_obligation" },
+            "maxItems": 1000,
+            "uniqueItems": true,
+            "description": "Obligations of the withheld periods, when the seller lists them."
+          }
+        },
+        "required": ["account_id", "unauthorized_at", "withheld_period_count"],
+        "additionalProperties": false
+      },
+      "maxItems": 1000
     }
   },
   "required": ["subscription_id", "subscription_version", "state", "accepted_at", "configuration"],

@@ -4,7 +4,7 @@
   "title": "Reporting Subscription Coverage",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "How one principal-level reporting subscription applies to one account (experimental, media_buy.reporting_subscriptions), returned in get_reporting_status. covered lists each buy's immutable covered_from so a buyer can derive the periods it is owed and tell a missing report (covered, period owed, nothing delivered) from a buy that was never covered. An account never silently drops out: loss of authority shows as unauthorized, and every uncovered account or buy appears in excluded with a reason.",
+  "description": "How one principal-level reporting subscription applies to one account (experimental, media_buy.reporting_subscriptions), returned in get_reporting_status. covered lists each buy's immutable covered_from so a buyer can derive the periods it is owed and tell a missing report (covered, period owed, nothing delivered) from a buy that was never covered. Every uncovered account or buy appears in excluded with a reason. Like every get_reporting_status field it is readable only while the caller is authorized for the account; loss of authority is reported in the caller's own get_principal subscription state.",
   "type": "object",
   "definitions": {
     "ReportingSubscriptionExclusionReason": {
@@ -12,7 +12,7 @@
       "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["offering_unsupported", "unauthorized", "overridden", "capacity", "excluded_by_buyer"],
-      "description": "offering_unsupported: no offering matches the selector for this account or buy. unauthorized: the principal is not authorized for the account. overridden: a more specific subscription or sync_accounts delivery config replaces this one for the account and feed_purpose. capacity: beyond the seller's max_accounts or an account it will not serve. excluded_by_buyer: listed in exclude_account_ids."
+      "description": "offering_unsupported: no offering matches the selector for this account or buy. unauthorized: the principal is not authorized for this buy. overridden: a sync_accounts delivery config, or an account_ids subscription replacing an all-accounts one, takes this account and feed_purpose. capacity: beyond the seller's max_accounts or an account it will not serve. excluded_by_buyer: listed in exclude_account_ids."
     },
     "ReportingPeriodInterval": {
       "title": "Reporting Period Interval",
@@ -37,13 +37,8 @@
     "subscription_version": { "type": "integer", "minimum": 1 },
     "status": {
       "type": "string",
-      "enum": ["active", "excluded", "unauthorized", "action_required"],
-      "description": "Account-level status. active: the subscription serves this account; individual buys may still be excluded. excluded: the whole account is excluded, with an excluded entry that has no media_buy_id. unauthorized: the principal lost authority at unauthorized_at. action_required: the seller will serve the account only after pending_action completes."
-    },
-    "unauthorized_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "When the principal's authority for this account ended. No data is delivered for periods ending after it."
+      "enum": ["active", "excluded", "action_required"],
+      "description": "Account-level status. active: the subscription serves this account; individual buys may still be excluded. excluded: the whole account is excluded, with an excluded entry that has no media_buy_id. action_required: the seller will serve the account only after pending_action completes."
     },
     "pending_action": {
       "$ref": "/schemas/core/pending-action.json",
@@ -51,13 +46,13 @@
     },
     "covered": {
       "type": "array",
-      "description": "Coverage intervals, one per (media_buy_id, offering_id, covered_from). A buy covered again after a re-grant gets a new entry with a new covered_from.",
+      "description": "Coverage intervals, one per (media_buy_id, offering_id, covered_from). The offering is pinned per entry: a change in resolution ends the entry at a period boundary and starts a new one. A buy covered again after a re-grant without backfill gets a new entry with a new covered_from; with backfill_on_regrant the original entry continues.",
       "items": {
         "type": "object",
         "properties": {
           "media_buy_id": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId" },
-          "covered_from": { "type": "string", "format": "date-time", "description": "Immutable. Every period ending after this instant is owed." },
-          "covered_until": { "type": "string", "format": "date-time", "description": "End of coverage, when known: the buy's final period end, the end of the period in progress at deactivation, or unauthorized_at. Periods ending after it are not owed." },
+          "covered_from": { "type": "string", "format": "date-time", "description": "Immutable. Every complete period whose start is at or after this instant is owed; a mid-period value starts coverage at the next boundary, and periods are never clipped." },
+          "covered_until": { "type": "string", "format": "date-time", "description": "Period boundary ending coverage, when known: the buy's final period end, the first boundary at or after deactivation, the last boundary at or before a loss of authority not backfilled on re-grant, or the boundary where a new offering resolution starts. Periods ending after it are not owed." },
           "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering" },
           "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition" }
         },
@@ -92,24 +87,9 @@
         "additionalProperties": false
       }
     },
-    "withheld_unauthorized": {
-      "type": "array",
-      "description": "Periods that ended before unauthorized_at but were not delivered by then. They are withheld, not missing, and never count as seller delay.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "media_buy_id": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId" },
-          "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering" },
-          "reporting_obligation_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_obligation" },
-          "period": { "$ref": "#/definitions/ReportingPeriodInterval" }
-        },
-        "required": ["media_buy_id", "offering_id", "period"],
-        "additionalProperties": false
-      }
-    },
     "gaps": {
       "type": "array",
-      "description": "Intervals between loss of authority and re-grant that the seller did not backfill. Periods ending inside a gap are not owed.",
+      "description": "Intervals between loss of authority and re-grant that the seller did not backfill (backfill_on_regrant false or absent). Periods overlapping a gap are not owed. A backfilled interval is not a gap.",
       "items": {
         "type": "object",
         "properties": {
@@ -123,11 +103,6 @@
   },
   "required": ["subscription_id", "subscription_version", "status", "covered", "excluded"],
   "allOf": [
-    {
-      "if": { "properties": { "status": { "const": "unauthorized" } }, "required": ["status"] },
-      "then": { "required": ["unauthorized_at"] },
-      "else": { "not": { "anyOf": [{ "required": ["unauthorized_at"] }, { "required": ["withheld_unauthorized"] }] } }
-    },
     {
       "if": { "properties": { "status": { "const": "action_required" } }, "required": ["status"] },
       "then": { "required": ["pending_action"] },
@@ -156,32 +131,6 @@
         ],
         "excluded": [
           { "media_buy_id": "mb_dooh_test", "reason": "offering_unsupported" }
-        ]
-      }
-    },
-    {
-      "description": "Authority revoked: one owed period withheld, nothing new delivered",
-      "data": {
-        "subscription_id": "analytics-daily",
-        "subscription_version": 1,
-        "status": "unauthorized",
-        "unauthorized_at": "2026-11-20T09:00:00Z",
-        "covered": [
-          {
-            "media_buy_id": "mb_spring_ctv",
-            "covered_from": "2026-11-02T14:20:00Z",
-            "covered_until": "2026-11-20T09:00:00Z",
-            "offering_id": "daily_official_s3",
-            "report_definition_id": "delivery_by_package_creative_v2"
-          }
-        ],
-        "excluded": [],
-        "withheld_unauthorized": [
-          {
-            "media_buy_id": "mb_spring_ctv",
-            "offering_id": "daily_official_s3",
-            "period": { "start": "2026-11-19T05:00:00Z", "end": "2026-11-20T05:00:00Z" }
-          }
         ]
       }
     }
