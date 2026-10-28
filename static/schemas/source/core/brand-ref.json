@@ -8,7 +8,8 @@
     "domain": {
       "type": "string",
       "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "x-max-length-4.0": 253
     },
     "brand_id": {
       "$ref": "/schemas/core/brand-id.json",
@@ -22,12 +23,14 @@
       },
       "minItems": 1,
       "uniqueItems": true,
-      "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit for a global/default identity. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account identity and is not delivery targeting."
+      "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit for a global/default identity. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account identity and is not delivery targeting.",
+      "x-max-items-4.0": 256
     },
     "industries": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json."
+      "items": { "type": "string", "x-max-length-4.0": 128 },
+      "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json.",
+      "x-max-items-4.0": 32
     },
     "data_subject_contestation": {
       "type": "object",
@@ -35,7 +38,7 @@
       "properties": {
         "url": { "type": "string", "format": "uri", "pattern": "^https://" },
         "email": { "type": "string", "format": "email" },
-        "languages": { "type": "array", "items": { "type": "string" } }
+        "languages": { "type": "array", "items": { "type": "string", "x-max-length-4.0": 128 }, "x-max-items-4.0": 32 }
       },
       "anyOf": [
         { "required": ["url"] },
@@ -63,11 +66,13 @@
         },
         "voice": {
           "type": "string",
-          "description": "Override brand-voice description for surface-composed text/audio output."
+          "description": "Override brand-voice description for surface-composed text/audio output.",
+          "x-max-length-4.0": 512
         },
         "tagline": {
           "type": "string",
-          "description": "Override tagline."
+          "description": "Override tagline.",
+          "x-max-length-4.0": 256
         }
       },
       "additionalProperties": true

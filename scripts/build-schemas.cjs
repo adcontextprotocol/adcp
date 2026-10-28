@@ -122,7 +122,7 @@ const MCP_ROLE_PROFILE_TOOLS = {
 // version bump never needs a hand edit to the base lists above.
 const MCP_ROLE_PROFILE_LINE_TOOLS = {
   'media-buy': {
-    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue'],
+    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue', 'request_account', 'get_account_requests'],
   },
   creative: {},
 };
@@ -2449,10 +2449,10 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
     manifestMetadata: {
       canonical_wire_manifest: '../../manifest.json',
     },
-    // Compliance schemas carry the full product-graph via task-completion-data.
+    // Compliance and media-buy schemas carry the full product/package graph.
     // Rewrite root-anchored cross-def refs to embedded-resource canonical $id
     // URIs to avoid ~100-byte URL-prefix overhead per cross-def pointer (#8041).
-    schemaRewriteEmbeddedRefs: (_toolName, tool) => tool.protocol === 'compliance',
+    schemaRewriteEmbeddedRefs: (_toolName, tool) => tool.protocol === 'compliance' || tool.protocol === 'media-buy',
   });
   console.log(
     `   ✓ MCP ${MCP_PROTOCOL_VERSION} projection: ${stats.toolCount} tools, ${stats.schemaCount} schemas, `
@@ -2895,6 +2895,7 @@ module.exports = {
   copyAsyncResponseRefsToCore,
   getReleaseMetadata,
   buildRootSchemaDiscovery,
+  writeRootSchemaDiscovery,
   isSelectableRelease,
   RELEASE_STATUS_OVERRIDES,
   supersedingStableVersion,

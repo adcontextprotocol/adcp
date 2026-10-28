@@ -140,9 +140,10 @@ export function supportsSellerGovernanceDiscovery(servedVersion: string | undefi
  *
  * This gate now covers only the `force_media_buy_confirmation` hold scenario,
  * which stays exercisable on the 3.2 wire. The `sales-fixed-rate` specialism
- * id itself is a 3.3 enum value and is gated separately by
- * `advertisesSalesFixedRateSpecialism` (3.3.0-beta.0 release verification
- * validates 3.2 responses against the published 3.2 schema).
+ * id itself is a 3.3 enum value; the tenant capability projection lists only
+ * the ids the served release's `enums/specialism.json` allows (3.3.0-beta.0
+ * release verification validates 3.2 responses against the published 3.2
+ * schema).
  */
 export const SALES_FIXED_RATE_ADCP_LINE = '3.2' as const;
 
@@ -153,28 +154,6 @@ export const SALES_FIXED_RATE_ADCP_LINE = '3.2' as const;
 export function supportsSalesFixedRate(servedVersion: string | undefined): boolean {
   const match = (servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION).match(/^(\d+)\.(\d+)/);
   const gate = SALES_FIXED_RATE_ADCP_LINE.match(/^(\d+)\.(\d+)/)!;
-  if (!match) return false;
-  const major = Number.parseInt(match[1], 10);
-  const minor = Number.parseInt(match[2], 10);
-  const gateMajor = Number.parseInt(gate[1], 10);
-  const gateMinor = Number.parseInt(gate[2], 10);
-  return major > gateMajor || (major === gateMajor && minor >= gateMinor);
-}
-
-/**
- * First wire line whose `specialisms` enum carries `sales-fixed-rate`. The id
- * is a 3.3 enum value (#7963), so a response served at 3.2 or below must not
- * list it (DR-0024). The hold controller scenario stays on the
- * `supportsSalesFixedRate` gate: `compliance_testing.scenarios` is not a
- * closed enum, and the scenario remains exercisable on the 3.2 wire.
- */
-export const SALES_FIXED_RATE_SPECIALISM_ADCP_LINE = '3.3' as const;
-
-/** Whether a capability response served at this wire version may list the
- * `sales-fixed-rate` specialism id. */
-export function advertisesSalesFixedRateSpecialism(servedVersion: string | undefined): boolean {
-  const match = (servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION).match(/^(\d+)\.(\d+)/);
-  const gate = SALES_FIXED_RATE_SPECIALISM_ADCP_LINE.match(/^(\d+)\.(\d+)/)!;
   if (!match) return false;
   const major = Number.parseInt(match[1], 10);
   const minor = Number.parseInt(match[2], 10);

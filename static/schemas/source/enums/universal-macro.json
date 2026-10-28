@@ -167,5 +167,6 @@
     "ITEM_TAGLINE": "Short promotional tagline of the catalog item being rendered (catalog_field: tagline). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules.",
     "ITEM_PRICE": "Price amount of the catalog item being rendered (catalog_field: price.amount). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules.",
     "ITEM_PRICE_CURRENCY": "ISO 4217 currency code of the catalog item being rendered (catalog_field: price.currency). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules."
-  }
+  },
+  "x-max-length-4.0": 128
 }

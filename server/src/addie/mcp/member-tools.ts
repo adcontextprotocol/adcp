@@ -56,7 +56,7 @@ import {
   SAMPLE_BRIEFS,
   classifyCapabilityResolutionError,
   classifyCapabilityResolutionErrorWithDeclaredProtocols,
-  complianceDirToleratingUnknownSpecialism,
+  resolveHostedStoryboardsForCapabilities,
   presentCapabilityResolutionError,
   complianceResultToDbInput,
   loadComplianceIndex,
@@ -74,8 +74,6 @@ import {
 } from '../services/compliance-testing.js';
 import {
   listAllComplianceStoryboards,
-  getComplianceStoryboardById,
-  resolveStoryboardsForCapabilities,
   createTestClient,
   testCapabilityDiscovery,
   type AgentProfile,
@@ -83,6 +81,7 @@ import {
   type StoryboardContext,
   type StoryboardStepResult,
 } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from '../../compliance/storyboard-cache.js';
 import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { getTestKitForStoryboard } from '../../services/storyboards.js';
@@ -5380,7 +5379,6 @@ export function createMemberToolHandlers(
   handlers.set('recommend_storyboards', async (input) => {
     const agentUrl = input.agent_url as string;
     let runTarget = targetFromInput(input);
-    let runOptions = hostedComplianceOptions(runTarget);
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -5405,7 +5403,6 @@ export function createMemberToolHandlers(
       discoveryProbeError = capabilityDiscoveryProbeError(caps);
       if (!hasExplicitComplianceTarget(input)) {
         runTarget = selectCanonicalHostedComplianceTargetForProfile(profile, complianceTarget);
-        runOptions = hostedComplianceOptions(runTarget);
       }
 
       // testCapabilityDiscovery catches its own throws and surfaces them as
@@ -5535,7 +5532,7 @@ export function createMemberToolHandlers(
       return output;
     }
 
-    // Resolve capabilities → bundles. `resolveStoryboardsForCapabilities` fails
+    // Resolve capabilities → bundles. Hosted resolution fails
     // closed for agent-config or target-selection problems: missing parent
     // protocol, unknown specialism, or unsupported compliance cache version.
     // Classify and coach accordingly.
@@ -5547,20 +5544,7 @@ export function createMemberToolHandlers(
         major_versions: profile?.adcp_major_versions,
         supported_versions: profile?.adcp_supported_versions,
       };
-      try {
-        resolvedBundles = resolveStoryboardsForCapabilities(caps, runOptions).bundles;
-      } catch (initialError) {
-        // A specialism AdCP introduced after this target's release has no
-        // bundle to recommend, but it must not block the whole
-        // recommendation (#8269). Re-resolve against the overlay that treats
-        // it as not applicable; every other fault keeps the coaching below.
-        const overlayDir = await complianceDirToleratingUnknownSpecialism(initialError, runTarget);
-        if (!overlayDir) throw initialError;
-        resolvedBundles = resolveStoryboardsForCapabilities(
-          caps,
-          { ...runOptions, complianceDir: overlayDir },
-        ).bundles;
-      }
+      resolvedBundles = (await resolveHostedStoryboardsForCapabilities(caps, runTarget)).bundles;
     } catch (error) {
       const capsError = classifyCapabilityResolutionError(error, supportedProtocols);
       // specialism ids came from the untrusted agent — fence them so a hostile
@@ -5701,7 +5685,7 @@ export function createMemberToolHandlers(
     const runTarget = targetFromInput(input);
     const runOptions = hostedComplianceOptions(runTarget);
 
-    const sb = getComplianceStoryboardById(storyboardId, runOptions);
+    const sb = getCachedComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) {
       const all = listAllComplianceStoryboards(runOptions);
       const ids = all.map(s => `\`${s.id}\``).join(', ');
@@ -5781,7 +5765,7 @@ export function createMemberToolHandlers(
     }
 
     const runOptions = hostedComplianceOptions(runTarget);
-    const sb = getComplianceStoryboardById(storyboardId, runOptions);
+    const sb = getCachedComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found. Use \`recommend_storyboards\` to see applicable storyboards.`;
 
     try {
@@ -6067,7 +6051,7 @@ export function createMemberToolHandlers(
     }
 
     const runOptions = hostedComplianceOptions(runTarget);
-    const sb = getComplianceStoryboardById(storyboardId, runOptions);
+    const sb = getCachedComplianceStoryboardById(storyboardId, runOptions);
     if (!sb) return `Storyboard "${storyboardId}" not found.`;
 
     // Resolve stepId: if caller passed a phase ID, remap to first step of that phase.

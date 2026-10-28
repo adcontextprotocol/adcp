@@ -142,6 +142,7 @@ const { clearSeededCreativeFormats, clearForcedTaskCompletions } = await import(
 const { clearCatalogEventStores } = await import('../../src/training-agent/catalog-event-handlers.js');
 const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
 const { getCanonicalBase } = await import('../../src/training-agent/canonical-base.js');
+const { TRAINING_AGENT_URL: TRAINING_AGENT_PUBLIC_URL } = await import('../../src/training-agent/config.js');
 // Released compliance artifacts carry a patch version, while the frozen 3.0
 // wire contract negotiates the stable `3.0` selector. Keep the exact artifact
 // version for schema selection and override only the request envelope. Source
@@ -321,6 +322,10 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
   [
     'governance_delivery_monitor/check_governance_drift',
     'The runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
+  ],
+  [
+    'media_buy_seller/canonical_formats/create_media_buy_with_equivalent_direct_legacy_emission',
+    'Since @adcp/sdk 17.0.0-beta.2 (adcp-client#3454) the runner grades the direct route of this dual-emission request on its own and calls its omitted max_file_size_kb under-specified, before the seller answers. The spec requires a selector to declare only fixed size and duration. Remove when adcontextprotocol/adcp-client#3470 is resolved.',
   ],
   [
     'media_buy_seller/canonical_formats/reject_conflicting_dual_emission',
@@ -1008,6 +1013,16 @@ async function main() {
     if (swapsCanonicalBase) {
       process.env.TRAINING_AGENT_URL = localAgentBaseUrl;
     }
+    // Multi-agent runs never fetch brand.json, but the http loopback would
+    // make the advertised identity.brand_json_url schema-invalid (3.2+ needs
+    // https), and SDK 16.5+ fails discovery for capability-gated storyboards on
+    // invalid capabilities. Advertise the public https identity, as runs
+    // without the swap already do. webhook_emission keeps the loopback identity
+    // because it resolves the agent's webhook keys through it.
+    const previousIdentityUrl = process.env.TRAINING_AGENT_IDENTITY_URL;
+    if (routesMultiAgent) {
+      process.env.TRAINING_AGENT_IDENTITY_URL = TRAINING_AGENT_PUBLIC_URL;
+    }
 
     if (storyboard.id === 'signed_requests') {
       // Run the signed_requests storyboard once per strict route variant.
@@ -1188,6 +1203,13 @@ async function main() {
         delete process.env.TRAINING_AGENT_URL;
       } else {
         process.env.TRAINING_AGENT_URL = previousTrainingAgentUrl;
+      }
+    }
+    if (routesMultiAgent) {
+      if (previousIdentityUrl === undefined) {
+        delete process.env.TRAINING_AGENT_IDENTITY_URL;
+      } else {
+        process.env.TRAINING_AGENT_IDENTITY_URL = previousIdentityUrl;
       }
     }
   }

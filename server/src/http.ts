@@ -57,6 +57,7 @@ import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, b
 import { BrandDatabase, HostedBrandConflictError, canSurfaceBrandForMember, resolveBrandFromJson, sanitizeBrandSnapshot } from "./db/brand-db.js";
 import { isDomainControlVerified, publicBrandJsonManifest } from "./services/brand-trust-fields.js";
 import { getStandaloneSite, resolveStandaloneRequest, type StandaloneSite } from "./standalone-sites.js";
+import { createTrustLookupRouter } from './routes/trust-lookup.js';
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -184,6 +185,7 @@ import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { initializeTrainingGcsReporting, getTrainingGcsReporting, drainTrainingGcsReporting, stopTrainingGcsReporting } from './training-agent/gcs-reporting.js';
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
+import { isCreative33McpPath } from "./training-agent/lab-route-paths.js";
 import { createHostedGraderHostRouter, HOSTED_GRADER_HOSTNAME } from "./training-agent/hosted-grader.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice, emailDb } from "./notifications/email.js";
@@ -1395,6 +1397,9 @@ export class HTTPServer {
           limit: jsonBodyLimitForPath(req.path),
           verify: (req, _res, buf) => {
             (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
+            if (isCreative33McpPath(req.url)) {
+              (req as unknown as { creative33RawBody: Buffer }).creative33RawBody = buf;
+            }
           },
         })(req, res, next);
       }
@@ -1932,6 +1937,7 @@ export class HTTPServer {
     });
     this.complianceRefreshQueue = complianceRefreshQueue;
     this.app.use('/api', registryApiRouter);
+    this.app.use('/api/trust', createTrustLookupRouter({ brandManager: this.brandManager }));
     // adcp#4924: spec defines the AAO directory inverse-lookup path as
     // /v1/agents/{url}/publishers (docs/aao/directory-api.mdx). Mount the
     // v1AgentsRouter at /v1 so spec-conformant clients work without the /api

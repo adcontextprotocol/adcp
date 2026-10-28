@@ -1,5 +1,9 @@
 "use strict";
 
+// Every optional-product-collection-* file loads this module first, so the
+// guard covers them all.
+require("./helpers/ajv-maglev-guard.cjs");
+
 // Executes the actual authored storyboards through the production caller and
 // public SDK MCP transport. All seller data/credentials are controlled fixtures.
 const test = require("node:test");

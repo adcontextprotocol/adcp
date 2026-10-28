@@ -23,19 +23,36 @@ For the layered model behind this — what each layer contains and what an SDK a
 
 What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide).
 
-*Last updated: 2026-10-22.*
+*Last updated: 2026-10-25.*
 
 | SDK | Current package | 3.2 support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TypeScript) | `16.3.0` | Full 3.2 support | ✅ | ✅ | ✅ | ✅ |
+| **`@adcp/sdk`** (TypeScript) | `16.5.0` | Full 3.2 support | ✅ | ✅ | ✅ | ✅ |
 | **`adcp`** (Python) | `8.0.0` | Exact `3.2.1` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **`adcp/v3`** (Go) | `v3.2.1` | Embeds `3.2.0-rc.1` generated schemas and types and defaults to the `"3.1"` wire pin; final 3.2 support is planned as a follow-up | ✅ | ⚠️ | ⚠️ | ⚠️ |
 
 Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. The L0–L3 columns describe the current package, not a 3.2 support claim.
 
-`@adcp/sdk@16.3.0` is on the npm `latest` dist-tag and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`) and the buyer-side consumer module (`@adcp/sdk/reporting/consumer`). Reliable Reporting storage ships separately as `@adcp/reporting-storage` (pre-1.0, experimental): the PostgreSQL ledger store, the production composer (`@adcp/reporting-storage/service`), and the GCS, S3, Azure, and BigQuery adapters. Storage requires application-specific provisioning and rollout validation. Python `adcp==8.0.0` embeds the final 3.2 schemas. Final 3.2 support for Go is planned as a follow-up release; check the [adcp-go releases](https://github.com/adcontextprotocol/adcp-go/releases).
+`@adcp/sdk@16.5.0` is on the npm `latest` dist-tag and includes the seller-side reporting modules (`@adcp/sdk/reporting/source` and `@adcp/sdk/reporting/ledger`) and the buyer-side consumer module (`@adcp/sdk/reporting/consumer`). Reliable Reporting storage ships separately as `@adcp/reporting-storage` (pre-1.0, experimental): the PostgreSQL ledger store, the production composer (`@adcp/reporting-storage/service`), and the GCS, S3, Azure, and BigQuery adapters. Install the storage release whose `@adcp/sdk` peer range matches your SDK: `0.2.0` for SDK 16.5. Storage requires application-specific provisioning and rollout validation. Python `adcp==8.0.0` embeds the final 3.2 schemas. Final 3.2 support for Go is planned as a follow-up release; check the [adcp-go releases](https://github.com/adcontextprotocol/adcp-go/releases).
 
 SDK 16 removes AdCP 2 support and moves Reliable Reporting storage out of `@adcp/sdk` into `@adcp/reporting-storage`; follow the [reporting storage package migration](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-reporting-storage-package.md) if you import storage from `@adcp/sdk/reporting/*`. SDK 15 tightens OAuth issuer binding and provider/storage defaults. Before upgrading an existing integration, follow the [SDK 15 OAuth migration and owner recovery guide](https://github.com/adcontextprotocol/adcp-client/blob/68614aa0ce84046c78d76dda9721ffbf9328639a/docs/migration-oauth-issuer-bindings.md).
+
+### AdCP 3.3 beta support
+
+Production stays on the 3.2 line and the packages above. For development and staging against the [3.3 beta](/docs/reference/3-3-beta):
+
+| SDK | Package | AdCP bundle | Roles and transports | Known limits |
+|---|---|---|---|---|
+| **`@adcp/sdk`** (TypeScript) | `17.0.0-beta.2` (npm `beta` dist-tag) | Signed `3.3.0-beta.0`; also bundles stable 3.2.7, 3.1.29 and 3.0.25 | Buyer client and seller server, MCP and A2A | Identity and Web Bot Auth (`@adcp/sdk/identity-3.3`) remain experimental opt-ins. The standalone commercial-terms verifier fails closed on 3.3 definition pins; keep snapshot verification on the stable 3.2.7 contract. Reliable Reporting storage needs `@adcp/reporting-storage@0.3.0-beta.1`. |
+
+No Python or Go package is listed for beta.0 yet. Until a row here names one, treat that SDK's 3.3 types and validators as unavailable.
+
+```bash
+npm install @adcp/sdk@17.0.0-beta.2
+node -p "require('@adcp/sdk').ADCP_VERSION"   # 3.3.0-beta.0
+```
+
+SDK 17 is a major release. Before upgrading from 16, read the [16 to 17 migration guide](https://github.com/adcontextprotocol/adcp-client/blob/main/docs/migration-16-to-17.md). It changes the HTML-markup legacy formats (`display_html`, `display_WxH_html`) from `html5` to `display_tag` with inline-markup delivery ([#8339](https://github.com/adcontextprotocol/adcp/issues/8339)). It also fails closed on unresolved account references on 3.3 routes. A 3.3 seller must advertise `3.3-beta.0` in `supported_versions` before an SDK 17 buyer sends that pin.
 
 Integrations that stay on 3.1 keep using the 3.1 lines: `@adcp/sdk` 13.x (npm `adcp-3.1` dist-tag) and `adcp` 7.x. The [SDK version map](/docs/reference/migration/3-1-to-3-2#sdk-versions-for-3-2) lists the 3.1 and 3.2 line for each language and each SDK's upgrade guide.
 
@@ -98,7 +115,7 @@ documents coordinator options, continuation storage, and supported projections.
 [![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/sdk@16.3.0
+npm install @adcp/sdk@16.5.0
 ```
 
 ```javascript
@@ -210,11 +227,11 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ### JavaScript CLI
 
 ```bash
-npx @adcp/sdk@16.3.0 --help
-npx @adcp/sdk@16.3.0 --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@16.3.0 my-agent list_products '{"adcp_version":"3.2","account":{"account_id":"account_123"}}'
+npx @adcp/sdk@16.5.0 --help
+npx @adcp/sdk@16.5.0 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@16.5.0 my-agent list_products '{"adcp_version":"3.2","account":{"account_id":"account_123"}}'
 # or against the built-in public test agent:
-npx @adcp/sdk@16.3.0 test-mcp list_products '{"adcp_version":"3.2"}'
+npx @adcp/sdk@16.5.0 test-mcp list_products '{"adcp_version":"3.2"}'
 ```
 
 The `adcp_version` in the payload is a wire pin the CLI passes through, so it

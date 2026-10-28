@@ -143,6 +143,26 @@
       "format": "date-time",
       "description": "Flight end date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's end_time. Must fall within the media buy's date range."
     },
+    "start_requires_all_creatives_approved": {
+      "type": "boolean",
+      "description": "AdCP 3.3 initial-start policy. False (default) serves eligible approved assignments. True MUST retain booking and inventory commitment but block first enablement for serving until every current assignment is approved in all applicable package scopes; an empty set or library approval alone is insufficient. Retain pending-review/rejected assignments; same-creative_id resubmission needs no reassignment. Flight, pause, format-coverage and commitment constraints still apply. After first enablement, ordinary serving and impairment rules apply. Opt-in requires media_buy.features.creative_start_policy: true; otherwise buyers MUST NOT send true and sellers MUST reject true with UNSUPPORTED_FEATURE before mutation. Stage the full initial set atomically or while paused; the gate cannot anticipate future assignments. This includes packages added through update_media_buy.new_packages.",
+      "x-added-in": "3.3.0",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "creative_start_policy": {
+            "default": "serve_approved_subset",
+            "true_gate": "all_current_assignments_approved_in_all_applicable_scopes",
+            "empty_assignments": "gate_unsatisfied",
+            "evaluation_window": "before_first_package_enablement",
+            "review_rejection": "retain_assignment",
+            "readback": "echo_effective_policy",
+            "unsupported_true": "UNSUPPORTED_FEATURE"
+          }
+        },
+        "spec": "docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review"
+      },
+      "default": false
+    },
     "paused": {
       "type": "boolean",
       "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
@@ -170,6 +190,16 @@
     "audience_evidence_requirements": {
       "$ref": "/schemas/core/audience-evidence-requirements.json",
       "description": "Buyer policy that the selected product and constructed package MUST satisfy using product audience evidence. This remains planning and suitability evidence, not a targeting instruction. Sellers MUST reject an unsatisfied required policy rather than silently drop it, and a confirmed package MUST include every evidence snapshot used to satisfy this policy in audience_evidence_selections with decision_use package_construction."
+    },
+    "target_audiences": {
+      "type": "array",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "items": { "$ref": "/schemas/core/audience-evidence-target.json" },
+      "minItems": 1,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "description": "Experimental (media_buy.audience_evidence_targets). Package-level restatement of the audiences the buyer wants evidence for, with the same semantics as target_audiences on get_products filters, evaluated against the sibling audience_evidence_requirements, which MUST be present with it. Sellers reject an unsatisfied required policy rather than dropping it. Not a targeting predicate. The same field on buy_products purchases arrives in 4.0."
     },
     "audience_evidence_pins": {
       "type": "array",
@@ -286,7 +316,7 @@
     },
     "creative_assignments": {
       "type": "array",
-      "description": "Assign existing library creatives to this package with optional rotation, grouping, weights, and placement targeting. rotation_mode is package-scoped: omission resolves to weighted, and every assignment MUST resolve to the same effective mode. In sequential mode, sequence_position MUST be unique within each package-local group. Sellers reject conflicts with VALIDATION_ERROR before creating the package.",
+      "description": "Assign existing library creatives to this package with optional rotation, grouping, weights, and placement targeting. rotation_mode is package-scoped: omission resolves to weighted, and every assignment MUST resolve to the same effective mode. In sequential mode, sequence_position MUST be unique within each package-local group. Sellers reject conflicts with VALIDATION_ERROR before creating the package. A pending_review or rejected library creative MAY be assigned if the reference and other assignment constraints are valid; sellers MUST NOT reject or remove an assignment solely for its review status. Only package-approved eligible creatives may serve. See the package start_requires_all_creatives_approved policy and docs/media-buy/specification.mdx#starting-with-assigned-creatives-under-review.",
       "x-adcp-validation": {
         "verifier_constraints": {
           "package_rotation_policy": {
@@ -335,6 +365,7 @@
     "pricing_option_id"
   ],
   "dependencies": {
+    "target_audiences": ["audience_evidence_requirements"],
     "params": ["format_kind"]
   },
   "additionalProperties": true

@@ -15,7 +15,7 @@
   "properties": {
     "accounts": {
       "type": "array",
-      "description": "Array of accounts accessible to the authenticated agent. Each entry is the full Account object plus optional authorization. Buyer-declared entries include brand, operator, and any operator_unit, fixed currency, buyer-selected account timezone, and sandbox qualifiers so the natural AccountRef round-trips after a cold start.",
+      "description": "Array of accounts accessible to the authenticated agent. Each entry is the full Account object plus optional authorization. Buyer-declared entries include brand, operator, and any operator_unit, fixed currency, buyer-selected account timezone, and sandbox qualifiers so the natural AccountRef round-trips after a cold start. Sellers SHOULD return account_scope on every entry, with brand and/or operator wherever the scope names them, so a caller can map its buyers onto listed accounts. There is no preference order between scopes: the choice decides who is invoiced, so a person makes it.",
       "items": {
         "$ref": "/schemas/core/account-with-authorization.json"
       }

@@ -25,7 +25,7 @@ A verifier resolves a signer's keys in one step:
 Signature-Agent member  ->  origin  ->  https://<origin>/.well-known/http-message-signatures-directory
 ```
 
-The verifier reads the `Signature-Agent` member keyed to the signature label and takes the origin it names. The member value is exactly the ASCII serialization of an `https` origin (RFC 6454 section 6.2), such as `https://buyer-7k3q.com`: a lowercase host, no default port, no trailing `/`, and no path, query, fragment, or userinfo (sections 5.2.1 and 5.5). A signer sends that canonical origin. A verifier compares the value with it as a string, without normalizing, and refuses any other value, including an `http` origin, with `403`. It fetches the HTTP Message Signatures Directory at that origin's well-known path (section 5.5). One fetch returns one file, and the verifier reads no other document to find keys. The directory is the only key location the profile recognizes. The verifier ignores a `Signature-Agent` member with a `type` parameter other than `directory`, as section 5.2.1 permits for a type the verifier does not support. Section 5.2.1 defines `type` as a Token, and a verifier accepts `type=directory` as a Token or as a String, as the reference library does.
+The verifier reads the `Signature-Agent` member keyed to the signature label and takes the origin it names. The member value is exactly the ASCII serialization of an `https` origin (RFC 6454 section 6.2), such as `https://buyer-7k3q.com`: a lowercase host, no default port, no trailing `/`, and no path, query, fragment, or userinfo (sections 5.2.1 and 5.5). A signer sends that canonical origin. A verifier compares the value with it as a string, without normalizing, and refuses any other value, including an `http` origin, with `403`. It fetches the HTTP Message Signatures Directory at that origin's well-known path (section 5.5). One fetch returns one file, and the verifier reads no other document to find keys. In particular it never fetches `get_adcp_capabilities` for keys, so the size of an agent's capabilities document cannot make its signing keys unresolvable. The directory is the only key location the profile recognizes. The verifier ignores a `Signature-Agent` member with a `type` parameter other than `directory`, as section 5.2.1 permits for a type the verifier does not support. Section 5.2.1 defines `type` as a Token, and a verifier accepts `type=directory` as a Token or as a String, as the reference library does.
 
 Section 5.5 explains why the well-known path matters: "TLS authenticates the host but not the path", and "The well-known URI is reserved, so directory additionally names a domain".
 
@@ -271,6 +271,22 @@ The vectors live at `static/compliance/source/test-vectors/wba-profile/` and are
 `scenarios.json` holds failure scenarios as data: a base request, the covered components, parameter overrides, a change after signing, and the expected status. A harness signs each scenario at run time, so no committed signature expires. Each scenario names a tier: `wba` when a WBA library with no AdCP rules already gives the expected outcome, and `adcp` when only the profile's rules do.
 
 The keys in `keys.json` are public test keys with published private seeds. Section 6.8 says test keys "MUST NOT be used in production", and verifiers SHOULD reject them when detected. The README in the vector directory describes the file format and the harness state each vector needs.
+
+## Try it against the training agent
+
+The training agent runs this profile end to end at `https://test-agent.adcontextprotocol.org/sales/identity/mcp`. It verifies Web Bot Auth signatures, binds a signer through open sandbox onboarding (`sync_principal`), and checks [demand-side grants](/docs/building/by-layer/L2/accounts-and-agents#grants-in-trust-records-experimental) in the brand's house trust.json before any account or spend. Unsigned callers can only discover it (`get_adcp_capabilities`), and its capabilities advertise `request_signing.profiles: ["web-bot-auth"]` and `account.agent_onboarding.sandbox.mode: "open"`.
+
+Only the route's fictional fixture identities resolve. Their documents are served in-process, and every real domain is refused. Sign as one of these agents with its published key from [`fixture-world.ts`](https://github.com/adcontextprotocol/adcp/blob/main/server/src/training-agent/identity33/fixture-world.ts):
+
+| Agent origin | Who it is | What a `sync_accounts` for brand `nova-motors-7k3q.com` (brand ID `nova_motors`) shows |
+|---|---|---|
+| `https://buyer.pinnacle-agency-7k3q.com` | An agency the house granted media buying for Nova Motors in the US and GB | Accepted through the parent's grant. Nova Motors publishes no trust.json of its own. A market outside the grant is refused. |
+| `https://buyer.nova-brands-7k3q.com` | The house's own buying agent | Accepted with implicit authority when the account operator is `nova-brands-7k3q.com`; no grant needed |
+| `https://buyer.quickmedia-7k3q.com` | An impostor with no grant | `PERMISSION_DENIED`, `grant_absent`, whichever operator it names |
+
+A brand of `offline-brand-7k3q.com` exercises an unavailable trust record: spend fails closed with `SERVICE_UNAVAILABLE`.
+
+The fixture keys are published sandbox keys, like `keys.json`: anyone can sign as these fictional agents, and the training agent trusts them only for these origins and only for sandbox accounts. Never trust them anywhere else. The route is experimental and may change with the profile.
 
 ## References
 

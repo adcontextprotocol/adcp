@@ -5,6 +5,12 @@
   "description": "Optional media-buy protocol features. Used in capability declarations (seller declares support) and product filters (buyer requires support). If a seller declares a feature as true, they MUST honor requests using that feature.",
   "type": "object",
   "properties": {
+    "creative_start_policy": {
+      "type": "boolean",
+      "default": false,
+      "x-added-in": "3.3.0",
+      "description": "Supports the package start_requires_all_creatives_approved initial-serving gate through control_media_buy package controls and any advertised create_media_buy/update_media_buy compatibility facades. When true, the seller MUST honor and echo the policy, retain pending-review and rejected assignments, and expose the package-scoped update_creative_start_policy action before first enablement so the buyer can set or clear it outside commercial proposal negotiation. Buyers MUST NOT send true without this capability. Sellers that do not declare true MUST reject an opted-in request atomically with UNSUPPORTED_FEATURE; explicit false is the ordinary default. This capability can be checked before booking; it does not alter inventory guarantees or create a reservation on non-guaranteed inventory."
+    },
     "inline_creative_management": {
       "type": "boolean",
       "deprecated": true,
@@ -69,5 +75,6 @@
   },
   "additionalProperties": {
     "type": "boolean"
-  }
+  },
+  "x-max-properties-4.0": 256
 }

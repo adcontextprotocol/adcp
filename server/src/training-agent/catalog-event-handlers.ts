@@ -6,7 +6,8 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import type { TrainingContext, ToolArgs, AccountRef } from './types.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext, type ToolArgs, type AccountRef } from './types.js';
+import { omitFieldsAddedAfterRelease } from './served-release-fields.js';
 import { getSession, sessionKeyFromArgs, findMediaBuyAcrossSessions } from './state.js';
 
 // ── Types ────────────────────────────────────────────────────────
@@ -735,7 +736,18 @@ export async function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
   };
 }
 
+/** sync_event_sources shaped to the served release: the 3.3 `platform_id`
+ * (and any other field added after it) stays off a response served below
+ * 3.3. */
 export async function handleSyncEventSources(args: ToolArgs, ctx: TrainingContext) {
+  return omitFieldsAddedAfterRelease(
+    await syncEventSources(args, ctx),
+    'media-buy/sync-event-sources-response.json',
+    ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  );
+}
+
+async function syncEventSources(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncEventSourcesInput;
 
   if (!req.account) {

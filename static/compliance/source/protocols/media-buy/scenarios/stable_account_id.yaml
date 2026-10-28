@@ -27,7 +27,8 @@ required_tools:
 
 narrative: |
   A seller that declares account.stable_account_id: true returns account_id on
-  every non-failed sync_accounts provisioning result. It accepts
+  every resolved sync_accounts provisioning result (a pending_approval result
+  may carry an experimental request_id instead). It accepts
   { "account_id": ... } wherever an AccountRef is accepted, including for
   buyer-declared accounts, and never changes an account's account_id for the
   life of the account. The natural key keeps working throughout 3.x.
@@ -118,7 +119,7 @@ phases:
             description: "The per-run natural key creates a fresh account"
           - check: field_present
             path: "accounts[0].account_id"
-            description: "A non-failed provisioning result carries account_id"
+            description: "A resolved provisioning result carries account_id (a sandbox account is expected to resolve without review)"
 
   - id: resolve_by_account_id
     title: "The account_id and the natural key name the same account"

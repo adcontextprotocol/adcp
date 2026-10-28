@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/get-account-requests-response.json",
+  "title": "Get Account Requests Response",
+  "x-added-in": "3.3.0",
+  "x-status": "experimental",
+  "description": "The authenticated caller's account requests (experimental, account.requests), newest updated_at first.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
+  "properties": {
+    "requests": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/account-request-record.json" },
+      "maxItems": 100
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-response.json"
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/error.json" }
+    },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["requests"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "One request waiting on a buyer-side signup",
+      "data": {
+        "status": "completed",
+        "requests": [
+          {
+            "request_id": "areq_01K4F8M2Q7",
+            "state": "in_review",
+            "requested": {
+              "brand": { "domain": "renault.fr", "countries": ["FR"] },
+              "operator": "wppmedia.fr",
+              "currency": "EUR",
+              "billing": "operator"
+            },
+            "pending_action": {
+              "waiting_on": "buyer",
+              "kind": "sign_up",
+              "url": "https://advertisers.streamhaus.example/register?ref=areq_01K4F8M2Q7",
+              "message": "No existing relationship found. Register WPP Media France as an advertiser.",
+              "expires_at": "2026-11-15T00:00:00Z"
+            },
+            "created_at": "2026-10-18T09:00:00Z",
+            "updated_at": "2026-10-19T10:12:00Z"
+          }
+        ]
+      }
+    }
+  ]
+}

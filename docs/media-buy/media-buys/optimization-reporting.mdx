@@ -100,6 +100,23 @@ Four rules connect the layers and prevent orphaned goals:
 
 4. **Priority is ordinal, lowest-value-first.** When `optimization_goals[]` carry explicit `priority` values, the seller treats the goal with the **lowest** priority value as primary — even when no goal is `priority: 1` (priorities of `2` and `3` mean `2` is primary). When all priorities are omitted, the first array entry is primary. Duplicate priority values are undefined.
 
+### Telling a seller what success looks like
+
+A seller wants to know whether it is making the buyer happy, and that means knowing which goals are real, what the seller is liable for, and whose count decides. AdCP has no separate "commitment wanted" field. Each part of that statement already has a home, so state each one where it lives:
+
+| The buyer wants | Say it with |
+|---|---|
+| The seller to own the cost per result | A fixed price on an outcome pricing model: [CPC](/docs/media-buy/advanced-topics/pricing-models#cpc-cost-per-click), [CPCV](/docs/media-buy/advanced-topics/pricing-models#cpcv-cost-per-completed-view), or [CPA](/docs/media-buy/advanced-topics/pricing-models#cpa-cost-per-acquisition), where a CPA option's event definition sets what counts as a result. The buyer pays only for results, at that price. This covers cost alone, not volume or quality. |
+| The seller to own the volume | Buy a product with `delivery_type: "guaranteed"` (find them with `offer_filters.delivery_type`) and set the package's `impressions` goal. |
+| The seller to own the quality | `performance_standards[]`: a viewability, IVT, completion, brand-safety, or attention threshold the seller owes, measured by the named vendor. Remedies on breach come from `measurement_terms.makegood_policy`. |
+| The seller to optimize toward it | `optimization_goals[]` with a `target`; `priority` says which goal is primary. `bidding.cost_per` (`strength` `cap` or `target`) or `bidding.roas` (`strength` `floor` or `target`) says how tightly to hold cost or return. Neither is a guarantee. |
+| The metric reported, not optimized | `committed_metrics[]` with no matching optimization goal. |
+| A specific count to decide | Billing: `measurement_terms.billing_measurement` names the vendor whose count is invoiced, with a `max_variance_percent` tolerance. Quality: each standard's `vendor`. Optimization: a `vendor_metric` goal, an `event` goal fed by the buyer's own event sources, or `vendor` on a viewability goal. |
+| To plan an outcome before buying | `criteria.outcome_target` on [`request_proposals`](/docs/media-buy/task-reference/request_proposals), for sellers that declare `media_buy.outcome_target`. Proposals answer with pricing and a forecast, plus `commercial_terms.bidding.cost_per` when the request sets `outcome_target.cost_per`. To see both guaranteed and optimized offers, leave `criteria.offer_filters.delivery_type` and `pricing_structures` unset and compare pricing models across proposals. |
+| To tell the seller how it is doing by the buyer's own measure | [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback): a `performance_index` against a named `baseline` for one metric. Use it when the buyer's view differs from the seller's count, for example when the buyer's measurement discounts invalid clicks. It steers optimization only; billing still follows `measurement_terms`. |
+
+Avoid stating goals the buyer will not judge on. Every extra goal competes with the primary one for the seller's attention; a metric the buyer only wants to see belongs in `committed_metrics[]`.
+
 ### Worked example: Adelaide attention end-to-end
 
 A buyer wants to optimize against Adelaide's `attention_score` with a threshold of 70. Here's how the four surfaces line up:
@@ -150,7 +167,7 @@ A buyer wants to optimize against Adelaide's `attention_score` with a threshold 
 }
 ```
 
-A `performance_standard` MAY be layered on top if the buyer wants a contractual floor — e.g., `{ "metric": "attention_score", "vendor": { "domain": "adelaidemetrics.com" }, "threshold": 65 }` — but it's independent of the goal.
+A `performance_standard` MAY be layered on top if the buyer wants a contractual floor, independent of the goal. Its `metric_id` names the vendor metric it is judged against, and its `threshold` is a 0–1 rate judged against the reported value without conversion. A floor therefore fits only a vendor metric reported as a 0–1 rate. For example, a different vendor that reports one: `{ "metric": "attention_score", "vendor": { "domain": "attentionvendor.example" }, "metric_id": "attentive_rate", "threshold": 0.65 }`. This example's 0–100 `attention_score` is not a rate, so it cannot carry a performance standard; the `threshold_rate` goal is the buyer's lever.
 
 **3. Delivery** (`by_package` excerpt from a `get_media_buy_delivery` response):
 

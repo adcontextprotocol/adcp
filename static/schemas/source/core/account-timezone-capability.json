@@ -13,7 +13,8 @@
     "fixed_timezone": {
       "type": "string",
       "minLength": 1,
-      "description": "Seller-wide timezone used by every account. Required only for seller_fixed. Use UTC or an IANA timezone identifier."
+      "description": "Seller-wide timezone used by every account. Required only for seller_fixed. Use UTC or an IANA timezone identifier.",
+      "x-max-length-4.0": 64
     },
     "account_selection": {
       "type": "string",
@@ -25,10 +26,12 @@
       "description": "Exact timezone values accepted during buyer-selected account provisioning. Required when account_selection is buyer_selected so buyers can validate the choice before sync_accounts.",
       "items": {
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "x-max-length-4.0": 64
       },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "x-max-items-4.0": 1024
     }
   },
   "required": ["mode"],

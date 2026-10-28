@@ -2243,9 +2243,10 @@ describe('tenant routing smoke', () => {
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
-      expect(mediaBuy?.vendor_metric_optimization?.supported_metrics).toContainEqual(
-        expect.objectContaining({ vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_score' }),
-      );
+      // The supported_metrics rollup is a 3.3 field (#8070), withheld from
+      // this 3.2 response (#8487); training-agent-candidate-version.test.ts
+      // covers it on 3.3.
+      expect(mediaBuy?.vendor_metric_optimization).not.toHaveProperty('supported_metrics');
       expect(mediaBuy?.conversion_tracking?.supported_targets).toEqual(['cost_per']);
       expect(previewCapabilityIds.length).toBeGreaterThan(0);
       expect(previewRouteIds).toEqual(previewCapabilityIds);
@@ -3561,10 +3562,14 @@ describe('tenant routing smoke', () => {
         canceled: true,
         cancellation_reason: 'Legacy reporting capture regression',
       }) as {
-        result?: { structuredContent?: { media_buy_status?: string; adcp_error?: unknown } };
+        result?: { structuredContent?: { status?: string; media_buy_status?: string; adcp_error?: unknown } };
       };
       expect(canceled.result?.structuredContent?.adcp_error, JSON.stringify(canceled)).toBeUndefined();
-      expect(canceled.result?.structuredContent?.media_buy_status).toBe('canceled');
+      // Pinned to 3.0, whose update_media_buy response carries the media buy
+      // status as `status`; `media_buy_status` arrived in 3.1. @adcp/sdk
+      // 17.0.0-beta.2 translates to the pinned release.
+      expect(canceled.result?.structuredContent?.status).toBe('canceled');
+      expect(canceled.result?.structuredContent).not.toHaveProperty('media_buy_status');
       await expect(resolveReportingAccountDurably('static:public', account)).resolves.toMatchObject({
         accountId: createdBinding!.accountId,
         account,
