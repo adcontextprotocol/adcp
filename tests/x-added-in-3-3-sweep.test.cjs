@@ -131,6 +131,7 @@ const PROPERTIES_3_3 = [
   ['core/reporting-delivery-capabilities.json', ['properties', 'subscriptions']],
   ['core/reporting-obligation.json', ['properties', 'offering_id']],
   ['core/media-buy.json', ['properties', 'completed_at']],
+  ['core/account-authorization.json', ['properties', 'authorized_at']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']],
 ];
 

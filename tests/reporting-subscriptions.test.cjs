@@ -164,8 +164,10 @@ test('receipts and statuses stay acceptable after revocation for revisions alrea
 test('sync_accounts delivery configs win over subscriptions and share the id namespace', () => {
   const description = read('account/sync-accounts-request.json').properties.accounts.items.properties.reporting_delivery_configs.description;
   assert.match(description, /subscription_id values MUST be rejected/);
-  assert.match(description, /precedence over every reporting subscription/);
-  assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].precedence, /replaces every subscription, all-accounts or account_ids/);
+  assert.match(description, /precedence over every reporting subscription of the same caller/);
+  const precedence = read('core/reporting-subscription.json')['x-adcp-validation'].precedence;
+  assert.match(precedence, /the caller's own active sync_accounts reporting_delivery_configs entry/);
+  assert.match(precedence, /Another principal's configurations and subscriptions never affect this one, and overridden_by never names them/);
 });
 
 const coverageBase = { subscription_id: 'analytics-daily', subscription_version: 1, excluded: [] };
@@ -176,7 +178,7 @@ test('coverage readback lists exceptions only, each with its interval', () => {
   for (const gone of ['covered', 'covered_from', 'covered_until', 'unauthorized_at', 'withheld_unauthorized']) {
     assert.equal(schema.properties[gone], undefined, `no positive ${gone} listing`);
   }
-  assert.match(schema.description, /only removes periods/);
+  assert.match(schema.description, /The seller reports only exceptions/);
   const v = validate('/schemas/core/reporting-subscription-coverage.json');
   const review = { waiting_on: 'seller', kind: 'review', message: 'Capacity review.' };
   const ok = [
@@ -208,47 +210,70 @@ test('coverage readback lists exceptions only, each with its interval', () => {
   for (const [name, doc] of bad) assert.equal(v(doc), false, `${name} is rejected`);
 });
 
-// Reference computation of the documented rule for a fixed-offset daily schedule.
+// Reference computation of the documented rule for a daily schedule at a fixed offset.
+// Owed periods start on or after the first boundary at or after
+// max(accepted_at, confirmed_at, authorized_at) and overlap the flight [start_time, stop),
+// stop = min(end_time, canceled_at, completed_at). Flight values are those in force at each
+// period's scope_resolved_at (here: period end), given as a history of { asOf, ...flight }.
+// Exceptions remove periods whose start is in [from, until). Never clipped.
 const DAY = 86_400_000;
-// Owed periods start on or after the first boundary at or after max(accepted_at, confirmed_at)
-// and start before the stop time: min(end_time, canceled_at, completed_at). Never clipped.
-function expectedPeriods({ acceptedAt, confirmedAt, endTime, canceledAt, completedAt, offsetHours, exceptions = [] }) {
+function expectedPeriods({ acceptedAt, confirmedAt, authorizedAt, startTime, endTime, canceledAt, completedAt, history, offsetHours, exceptions = [] }) {
   const origin = -offsetHours * 3_600_000; // local midnight expressed in UTC ms
-  const later = Math.max(Date.parse(acceptedAt), Date.parse(confirmedAt));
-  let start = origin + Math.ceil((later - origin) / DAY) * DAY; // first boundary on or after
-  const stop = Math.min(...[endTime, canceledAt, completedAt].filter(Boolean).map(Date.parse));
+  const t = v => (v ? Date.parse(v) : -Infinity);
+  const later = Math.max(t(acceptedAt), t(confirmedAt), t(authorizedAt));
+  const flightAt = when => {
+    const base = { startTime, endTime, canceledAt, completedAt };
+    for (const h of history || []) if (Date.parse(h.asOf) <= when) Object.assign(base, h);
+    return base;
+  };
   const out = [];
-  for (; start < stop; start += DAY) out.push(start);
+  const horizon = Date.parse('2027-01-01T00:00:00Z');
+  for (let start = origin + Math.ceil((later - origin) / DAY) * DAY; start < horizon; start += DAY) {
+    const f = flightAt(start + DAY); // scope_resolved_at at period end
+    const stop = Math.min(...[f.endTime, f.canceledAt, f.completedAt].filter(Boolean).map(Date.parse));
+    if (start < stop && start + DAY > Date.parse(f.startTime)) out.push(start);
+  }
   return out
-    .filter(p => !exceptions.some(e => p >= Date.parse(e.from) && (!e.until || p + DAY <= Date.parse(e.until))))
+    .filter(p => !exceptions.some(e => p >= Date.parse(e.from) && (!e.until || p < Date.parse(e.until))))
     .map(p => new Date(p).toISOString());
 }
 
-test('the buyer computes the first owed period from accepted_at, confirmed_at, and the schedule', () => {
+test('the buyer computes the first owed period from accepted_at, confirmed_at, authorized_at, and the flight', () => {
   const rule = read('core/reporting-subscription.json')['x-adcp-validation'].coverage;
-  assert.match(rule, /starts on or after the later of this subscription_version's accepted_at/);
-  assert.match(rule, /confirmed_at/);
-  assert.match(rule, /exceptions only remove periods, never add them/);
-  assert.match(read('core/reporting-subscription-state.json').properties.accepted_at.description, /later of this instant and the buy's confirmed_at/);
-  assert.match(read('core/media-buy.json').properties.confirmed_at.description, /remains stable/);
+  assert.match(rule, /latest of this version's accepted_at, the buy's confirmed_at, and the account's authorization\.authorized_at/);
+  assert.match(rule, /overlap the buy's flight from start_time/);
+  assert.match(rule, /each removing periods; none adds one/);
+  assert.match(rule, /lists get_reporting_status in allowed_tasks/);
+  assert.match(rule, /the caller can see through get_media_buys/);
+  assert.match(read('core/reporting-subscription-state.json').properties.accepted_at.description, /account's authorized_at/);
+  const authorizedAt = read('core/account-authorization.json').properties.authorized_at;
+  assert.equal(authorizedAt['x-added-in'], '3.3.0');
+  assert.match(authorizedAt.description, /MUST populate it/);
 
   // Account in UTC-5: local midnight is 05:00Z. Buy confirmed mid-day after the subscription was accepted.
-  const base = { acceptedAt: '2026-11-01T12:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', endTime: '2026-11-06T05:00:00Z', offsetHours: -5 };
+  const base = { acceptedAt: '2026-11-01T12:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', startTime: '2026-11-02T14:20:00Z', endTime: '2026-11-06T05:00:00Z', offsetHours: -5 };
   const owed = expectedPeriods(base);
   assert.deepEqual(owed, ['2026-11-03T05:00:00.000Z', '2026-11-04T05:00:00.000Z', '2026-11-05T05:00:00.000Z'], 'mid-period confirmation starts at the next boundary');
   assert.equal(expectedPeriods({ ...base, acceptedAt: '2026-11-04T01:00:00Z' })[0], '2026-11-04T05:00:00.000Z', 'a later acceptance moves the start');
+  assert.equal(expectedPeriods({ ...base, authorizedAt: '2026-11-04T07:00:00Z' })[0], '2026-11-05T05:00:00.000Z', 'a later grant moves the start');
   assert.equal(expectedPeriods({ ...base, confirmedAt: '2026-11-03T05:00:00Z' })[0], '2026-11-03T05:00:00.000Z', 'a start on a boundary is owed');
 
-  // Exceptions only subtract.
+  // Flight: confirmed Nov 1, starts Dec 1: nothing before Dec 1.
+  const future = expectedPeriods({ acceptedAt: '2026-10-01T00:00:00Z', confirmedAt: '2026-11-01T10:00:00Z', startTime: '2026-12-01T05:00:00Z', endTime: '2026-12-03T05:00:00Z', offsetHours: -5 });
+  assert.deepEqual(future, ['2026-12-01T05:00:00.000Z', '2026-12-02T05:00:00.000Z'], 'periods must overlap the flight');
+
+  // Exceptions only subtract, by period start in [from, until).
   const minus = expectedPeriods({ ...base, exceptions: [{ from: '2026-11-04T05:00:00Z', until: '2026-11-05T05:00:00Z' }] });
   assert.deepEqual(minus, ['2026-11-03T05:00:00.000Z', '2026-11-05T05:00:00.000Z']);
   assert.ok(minus.every(p => owed.includes(p)), 'no exception adds a period');
+  assert.match(read('core/reporting-subscription-coverage.json').description, /removes the periods whose start falls in the half-open interval \[from, until\)/);
 });
 
-test('a buy stops being owed at the earliest of end_time, canceled_at, and completed_at', () => {
+test('a buy stops being owed at the earliest of end_time, canceled_at, and completed_at, as resolved per period', () => {
   const rule = read('core/reporting-subscription.json')['x-adcp-validation'].coverage;
-  assert.match(rule, /start before its stop time: the earliest of its current end_time/);
-  assert.match(rule, /cancellation\.canceled_at, and completed_at/);
+  assert.match(rule, /the earliest of end_time, cancellation\.canceled_at, and completed_at/);
+  assert.match(rule, /evaluated at each period's scope_resolved_at/);
+  assert.match(rule, /an elapsed period never becomes owed retroactively/);
   assert.match(rule, /The period containing the stop time is owed in full/);
   for (const [file, keys] of [['core/media-buy.json', ['properties', 'completed_at']], ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']]]) {
     const field = keys.reduce((o, k) => o[k], read(file));
@@ -257,13 +282,23 @@ test('a buy stops being owed at the earliest of end_time, canceled_at, and compl
   }
   assert.ok(!read('core/media-buy.json').required.includes('completed_at'), 'completed_at stays optional');
 
-  const base = { acceptedAt: '2026-11-01T00:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', endTime: '2026-11-06T05:00:00Z', offsetHours: -5 };
+  const base = { acceptedAt: '2026-11-01T00:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', startTime: '2026-11-02T14:20:00Z', endTime: '2026-11-06T05:00:00Z', offsetHours: -5 };
   const days = n => Array.from({ length: n }, (_, i) => new Date(Date.parse('2026-11-03T05:00:00Z') + i * DAY).toISOString());
   assert.deepEqual(expectedPeriods(base), days(3));
   assert.deepEqual(expectedPeriods({ ...base, canceledAt: '2026-11-04T18:00:00Z' }), days(2), 'canceled mid-period: that period owed in full, the next not');
   assert.deepEqual(expectedPeriods({ ...base, endTime: '2026-11-09T05:00:00Z' }), days(6), 'an end_time extension adds periods');
   assert.deepEqual(expectedPeriods({ ...base, completedAt: '2026-11-04T05:00:00Z' }), days(1), 'completion before end_time stops at completed_at');
   assert.deepEqual(expectedPeriods({ ...base, endTime: '2026-11-04T09:00:00Z' }), days(2), 'a mid-period end_time owes the period containing it');
+
+  // Canceled Nov 4 18:00, then reinstated and extended on Nov 8: Nov 5-7 elapsed and stay unowed.
+  const reinstated = expectedPeriods({
+    ...base,
+    history: [
+      { asOf: '2026-11-04T18:00:00Z', canceledAt: '2026-11-04T18:00:00Z' },
+      { asOf: '2026-11-08T12:00:00Z', canceledAt: undefined, endTime: '2026-11-10T05:00:00Z' },
+    ],
+  });
+  assert.deepEqual(reinstated, ['2026-11-03T05:00:00.000Z', '2026-11-04T05:00:00.000Z', '2026-11-08T05:00:00.000Z', '2026-11-09T05:00:00.000Z'], 'reinstating never makes elapsed periods owed');
 });
 
 // Reference resolver for the documented match modes.
@@ -271,7 +306,7 @@ function resolve(offerings, { dimensions, match }) {
   const mode = match || (dimensions ? 'exact' : 'finest');
   const want = dimensions || [];
   const superset = offerings.filter(o => want.every(d => o.dimensions.includes(d)));
-  if (mode === 'exact') return superset.filter(o => o.dimensions.length === want.length).map(o => o.offering_id);
+  if (mode === 'exact') return superset.filter(o => o.dimensions.length + (o.unmapped || 0) === want.length).map(o => o.offering_id).sort().slice(0, 1);
   if (mode === 'all') return superset.map(o => o.offering_id);
   const max = Math.max(...superset.map(o => o.dimensions.length));
   return superset.filter(o => o.dimensions.length === max).map(o => o.offering_id).sort().slice(0, 1);
@@ -294,20 +329,65 @@ test('match exact is the default with dimensions and resolves only an equal brea
   assert.deepEqual(resolve(offerings, { dimensions: ['package'], match: 'all' }), ['pkg', 'pkg_creative', 'pkg_country']);
   assert.deepEqual(resolve(offerings, { dimensions: ['creative'] }), [], 'exact with no equal offering resolves nothing: offering_unsupported');
   assert.deepEqual(resolve(offerings, {}), ['pkg_country'], 'no dimensions defaults to finest');
+  assert.deepEqual(resolve([{ offering_id: 'pkg_device', dimensions: ['package'], unmapped: 1 }], { dimensions: ['package'] }), [], 'package by device does not equal package under exact');
+  assert.deepEqual(resolve([{ offering_id: 'b', dimensions: ['package'] }, { offering_id: 'a', dimensions: ['package'] }], { dimensions: ['package'] }), ['a'], 'exact ties go to the lowest offering_id');
+  assert.match(match.description, /native dimensions that do not map to the vocabulary count as distinct/);
 
   const v = validate('/schemas/core/reporting-subscription.json');
   assert.ok(v({ ...allAccounts, selector: { ...allAccounts.selector, match: 'exact' } }), JSON.stringify(v.errors));
 });
 
-test('replace_account_configs lets a sync_principal-only client end its own account-level override', () => {
+test('replace_account_configs ends only the caller\'s own configs, where the subscription resolves, once per version', () => {
   const schema = read('core/reporting-subscription.json');
-  assert.equal(schema.properties.replace_account_configs.type, 'boolean');
-  assert.match(schema.properties.replace_account_configs.description, /caller's own active sync_accounts reporting_delivery_configs/);
-  assert.match(schema.properties.replace_account_configs.description, /Never affects another principal's configurations/);
-  assert.match(schema['x-adcp-validation'].replace_account_configs, /next period boundary/);
+  const field = schema.properties.replace_account_configs;
+  assert.equal(field.type, 'boolean');
+  assert.match(field.description, /caller's own active sync_accounts reporting_delivery_configs/);
+  assert.match(field.description, /where this subscription resolves an offering/);
+  assert.match(field.description, /Applied once per subscription_version, or when the flag changes to true/);
+  assert.match(field.description, /Never affects another principal's configurations or accounts this subscription excludes/);
+  assert.match(schema['x-adcp-validation'].replace_account_configs, /cutover boundary/);
+  assert.match(schema['x-adcp-validation'].cutover, /first instant at or after T that is a period boundary of every schedule involved/);
   const v = validate('/schemas/core/reporting-subscription.json');
   assert.ok(v({ ...allAccounts, replace_account_configs: true }), JSON.stringify(v.errors));
   assert.match(read('core/reporting-delivery-capabilities.json').properties.configuration_task.description, /pinned below 3\.3/);
+});
+
+test('scope versions, operator filter, alignment, and path safety', () => {
+  const schema = read('core/reporting-subscription.json');
+  assert.match(schema.properties.subscription_version.description, /scope, exclude_account_ids, or operator_domains change/);
+  const v = validate('/schemas/core/reporting-subscription.json');
+  assert.ok(v({ ...allAccounts, operator_domains: ['pinnacle-media.example'] }), JSON.stringify(v.errors));
+  assert.equal(v({ ...allAccounts, operator_domains: ['Not A Domain'] }), false, 'operator domains are lowercase domains');
+  assert.ok(v({ ...allAccounts, selector: { ...allAccounts.selector, alignment: 'account_timezone' } }), JSON.stringify(v.errors));
+  assert.equal(v({ ...allAccounts, selector: { ...allAccounts.selector, alignment: 'local' } }), false, 'closed alignment values');
+  for (const id of ['.', '..']) assert.equal(v({ ...allAccounts, subscription_id: id }), false, `subscription_id ${id}`);
+  assert.ok(v({ ...allAccounts, subscription_id: 'a.b' }), 'dots inside an id are fine');
+  for (const path of ['{account_id}/./x', '{account_id}/../x', './{account_id}', '{account_id}/.', '{account_id}/..']) {
+    assert.equal(v({ ...allAccounts, destination: { destination_id: 'x', path_template: path } }), false, path);
+  }
+  assert.ok(v({ ...allAccounts, destination: { destination_id: 'x', path_template: 'a.b/{account_id}/v1.2' } }), 'dots inside segments are fine');
+  assert.match(schema['x-adcp-validation'].destination, /more than one active subscription of the caller shares a destination/);
+  assert.doesNotMatch(schema.properties.selector.properties.period_timezone.description, /account's timezone/);
+});
+
+test('coverage readback: per-package exceptions, timezone cutovers, discoverable exceptions', () => {
+  const v = validate('/schemas/core/reporting-subscription-coverage.json');
+  const base = { subscription_id: 's', subscription_version: 1, status: 'active' };
+  assert.ok(v({ ...base, excluded: [{ media_buy_id: 'mb_1', reason: 'offering_unsupported', from: '2026-11-03T05:00:00Z', package_ids: ['pkg_dooh'] }] }), JSON.stringify(v.errors));
+  assert.equal(v({ ...base, excluded: [{ media_buy_id: 'mb_1', reason: 'capacity', from: '2026-11-03T05:00:00Z', package_ids: ['pkg_dooh'] }] }), false, 'package_ids only with offering_unsupported');
+  assert.equal(v({ ...base, status: 'excluded', excluded: [{ reason: 'offering_unsupported', from: '2026-11-03T05:00:00Z', package_ids: ['pkg_dooh'] }] }), false, 'package_ids need a media_buy_id');
+  assert.ok(v({ ...base, excluded: [], timezone_cutovers: [{ effective_at: '2026-11-10T05:00:00Z', timezone: 'America/Los_Angeles' }] }), JSON.stringify(v.errors));
+  const review = { waiting_on: 'seller', kind: 'review', message: 'x' };
+  assert.equal(v({ ...base, status: 'excluded', excluded: [{ reason: 'capacity', from: '2026-11-03T05:00:00Z' }, { reason: 'action_required', from: '2026-11-03T05:00:00Z' }] }), false, 'excluded with an open action_required entry');
+  assert.ok(v({ ...base, status: 'action_required', pending_action: review, excluded: [{ reason: 'capacity', from: '2026-11-03T05:00:00Z' }, { reason: 'action_required', from: '2026-11-03T05:00:00Z' }] }), JSON.stringify(v.errors));
+
+  const state = validate('/schemas/core/reporting-subscription-state.json');
+  const current = { subscription_id: 'analytics-daily', subscription_version: 2, state: 'active', accepted_at: '2026-11-01T00:00:00Z', configuration: allAccounts };
+  assert.ok(state({ ...current, accounts_with_exceptions: [{ account_id: 'acc_1', reasons: ['capacity', 'offering_unsupported'] }] }), JSON.stringify(state.errors));
+  assert.equal(state({ ...current, accounts_with_exceptions: [{ account_id: 'acc_1', reasons: [] }] }), false, 'reasons required');
+  const prior = Array.from({ length: 40 }, (_, i) => ({ subscription_version: i + 1, accepted_at: '2026-10-01T00:00:00Z', superseded_at: '2026-10-02T00:00:00Z' }));
+  assert.ok(state({ ...current, prior_versions: prior }), 'prior_versions is not capped at 16');
+  assert.match(read('core/reporting-subscription-state.json').properties.accounts_unauthorized.description, /fresh coverage start from authorized_at with no gap claimed/);
 });
 
 test('obligation offering_id is authoritative for timing', () => {
@@ -436,7 +516,7 @@ test('advertising subscriptions requires the feature id, the section, and sync_p
   assert.equal(v(capabilities({ tasks: null })), false, 'subscriptions without configuration_tasks');
   assert.equal(v(capabilities({ tasks: ['sync_accounts'] })), false, 'subscriptions without sync_principal listed');
   assert.equal(v(capabilities({ subscriptions: false, section: false, tasks: ['sync_principal', 'sync_accounts'] })), false, 'sync_principal listed without subscriptions');
-  assert.equal(v(capabilities({ tasks: ['sync_principal'] })), false, 'sync_accounts stays listed during 3.x');
+  assert.ok(v(capabilities({ tasks: ['sync_principal'] })), `a seller may list sync_principal alone: ${JSON.stringify(v.errors)}`);
 });
 
 test('configuration_task stays the unchanged sync_accounts constant', () => {
@@ -460,4 +540,10 @@ test('new schemas are registered in the index and the entity registry', () => {
     assert.equal(read(id.replace('/schemas/', ''))['x-status'], 'experimental', id);
   }
   assert.ok(read('core/x-entity-types.json').enum.includes('reporting_subscription'));
+});
+
+test('readback exception reasons stay in sync with the coverage enum', () => {
+  const state = read('core/reporting-subscription-state.json').properties.accounts_with_exceptions.items.properties.reasons.items.enum;
+  const coverage = read('core/reporting-subscription-coverage.json').definitions.ReportingSubscriptionExclusionReason.enum;
+  assert.deepEqual(state, coverage);
 });

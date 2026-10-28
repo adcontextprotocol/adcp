@@ -4,7 +4,7 @@
   "title": "Reporting Subscription Coverage",
   "x-status": "experimental",
   "x-added-in": "3.3.0",
-  "description": "Exceptions to one principal-level reporting subscription's coverage of one account (experimental, media_buy.reporting_subscriptions), returned in get_reporting_status. Coverage itself is computable by the buyer without asking: a confirmed buy's first owed period is the first complete period of the resolved offering's schedule, in the account's timezone, that starts on or after the later of the subscription version's accepted_at and the buy's confirmed_at, and it is owed every complete period starting before its stop time (the earliest of end_time, canceled_at, and an early completed_at). The seller reports only exceptions, and each exception only removes periods from that expectation over the half-open boundary interval [from, until); none adds one. Readable only while the caller is authorized for the account; loss of authority is reported in the caller's own get_principal subscription state.",
+  "description": "Exceptions to one principal-level reporting subscription's coverage of one account (experimental, media_buy.reporting_subscriptions), returned in get_reporting_status. Coverage itself is computable by the buyer without asking, by the rule in reporting-subscription.json: each visible confirmed buy and resolved offering is owed the complete periods of that offering's published schedule that start on or after the first boundary at or after the latest of the version's accepted_at, the buy's confirmed_at, and the account's authorized_at, and that overlap the buy's flight. The seller reports only exceptions. Each removes the periods whose start falls in the half-open interval [from, until) of cutover boundaries; none adds one. Readable only while the caller is authorized for the account; loss of authority is reported in the caller's own get_principal subscription state.",
   "type": "object",
   "definitions": {
     "ReportingSubscriptionExclusionReason": {
@@ -12,7 +12,7 @@
       "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["offering_unsupported", "capacity", "overridden", "excluded_by_buyer", "action_required"],
-      "description": "offering_unsupported: no offering matching the selector is available on this account's or buy's products. capacity: refused for a seller limit such as max_accounts. overridden: a sync_accounts delivery config, or an account_ids subscription replacing an all-accounts one, takes this account and feed_purpose. excluded_by_buyer: listed in exclude_account_ids. action_required: not served until pending_action completes."
+      "description": "offering_unsupported: no offering matching the selector is available on this account's or buy's products. capacity: refused for a seller limit such as max_accounts. overridden: the caller's own sync_accounts delivery config, or its own account_ids subscription replacing an all-accounts one, takes this account and feed_purpose. excluded_by_buyer: listed in exclude_account_ids. action_required: not served until pending_action completes."
     }
   },
   "properties": {
@@ -27,7 +27,7 @@
     "status": {
       "type": "string",
       "enum": ["active", "excluded", "action_required"],
-      "description": "Current account-level state. active: no account-level exclusion is in effect; individual buys may still be excluded. excluded: an open account-level excluded entry is in effect. action_required: an open account-level entry with reason action_required is in effect and pending_action says what must happen."
+      "description": "Current account-level state. active: no account-level exclusion is in effect; individual buys may still be excluded. excluded: an open account-level entry is in effect and none has reason action_required. action_required: an open account-level entry with reason action_required is in effect and pending_action says what must happen."
     },
     "pending_action": {
       "$ref": "/schemas/core/pending-action.json",
@@ -35,17 +35,24 @@
     },
     "excluded": {
       "type": "array",
-      "description": "Exceptions that remove periods. An entry without media_buy_id applies to the whole account. Retained for status_retention_days after until.",
+      "description": "Exceptions that remove periods. An entry without media_buy_id applies to the whole account. Opening or closing one fires principal.changed with reason reporting_subscription_changed. Retained for status_retention_days after until.",
       "items": {
         "type": "object",
         "properties": {
           "media_buy_id": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId" },
           "reason": { "$ref": "#/definitions/ReportingSubscriptionExclusionReason" },
-          "from": { "type": "string", "format": "date-time", "description": "Period boundary from which periods are removed." },
-          "until": { "type": "string", "format": "date-time", "description": "Period boundary at which the exception ended. Absent while still in effect." },
+          "from": { "type": "string", "format": "date-time", "description": "Cutover boundary: periods starting at or after it are removed." },
+          "until": { "type": "string", "format": "date-time", "description": "Cutover boundary at which the exception ended; periods starting at or after it are owed again. Absent while still in effect." },
+          "package_ids": {
+            "type": "array",
+            "items": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingPackageId" },
+            "minItems": 1,
+            "uniqueItems": true,
+            "description": "With media_buy_id and reason offering_unsupported: only these packages lack a matching offering. The buy stays covered for its other packages; these are removed from its coverage rather than its periods."
+          },
           "overridden_by": {
             "type": "object",
-            "description": "The sync_accounts delivery config or subscription that takes this account. Present when and only when reason is overridden.",
+            "description": "The caller's own sync_accounts delivery config or subscription that takes this account; never another principal's. Present when and only when reason is overridden.",
             "properties": {
               "subscription_id": { "type": "string", "minLength": 1, "maxLength": 64, "x-entity": "reporting_subscription" },
               "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "x-entity": "reporting_delivery_config" }
@@ -56,15 +63,36 @@
           }
         },
         "required": ["reason", "from"],
-        "if": { "properties": { "reason": { "const": "overridden" } }, "required": ["reason"] },
-        "then": { "required": ["overridden_by"] },
-        "else": { "not": { "required": ["overridden_by"] } },
+        "allOf": [
+          {
+            "if": { "properties": { "reason": { "const": "overridden" } }, "required": ["reason"] },
+            "then": { "required": ["overridden_by"] },
+            "else": { "not": { "required": ["overridden_by"] } }
+          },
+          {
+            "if": { "required": ["package_ids"] },
+            "then": { "required": ["media_buy_id"], "properties": { "reason": { "const": "offering_unsupported" } } }
+          }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "timezone_cutovers": {
+      "type": "array",
+      "description": "Account timezone changes affecting account_timezone-aligned periods, retained for status_retention_days. Periods under the old timezone are owed while they start before effective_at; periods under the new timezone are owed from its first boundary at or after effective_at.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "effective_at": { "type": "string", "format": "date-time", "description": "First period boundary under the old timezone at or after the change." },
+          "timezone": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The account's new IANA timezone, as list_accounts shows it." }
+        },
+        "required": ["effective_at", "timezone"],
         "additionalProperties": false
       }
     },
     "gaps": {
       "type": "array",
-      "description": "Intervals between a loss of authority and re-grant that the seller did not backfill (backfill_on_regrant false or absent). Periods in [from, until) are not owed. With backfill_on_regrant true no gap is recorded. Retained for status_retention_days after until.",
+      "description": "Intervals between a loss of authority and re-grant that the seller did not backfill (backfill_on_regrant false or absent). Periods starting in [from, until) are not owed. With backfill_on_regrant true no gap is recorded. A re-grant after the accounts_unauthorized entry expired is a fresh coverage start from authorized_at, with no gap. Retained for status_retention_days after until.",
       "items": {
         "type": "object",
         "properties": {
@@ -89,7 +117,14 @@
     },
     {
       "if": { "properties": { "status": { "const": "excluded" } }, "required": ["status"] },
-      "then": { "properties": { "excluded": { "contains": { "not": { "anyOf": [{ "required": ["media_buy_id"] }, { "required": ["until"] }] } } } } }
+      "then": {
+        "properties": {
+          "excluded": {
+            "contains": { "not": { "anyOf": [{ "required": ["media_buy_id"] }, { "required": ["until"] }] } },
+            "not": { "contains": { "properties": { "reason": { "const": "action_required" } }, "not": { "anyOf": [{ "required": ["media_buy_id"] }, { "required": ["until"] }] } } }
+          }
+        }
+      }
     },
     {
       "if": { "properties": { "status": { "const": "active" } }, "required": ["status"] },

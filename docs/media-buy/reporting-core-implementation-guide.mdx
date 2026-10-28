@@ -263,12 +263,14 @@ digest is intentionally retained).
    definition, coverage requirement, and required finality. Do not reconstruct
    historical expectations from a seller's current configuration.
 2. **Derive expected periods.** Calculate the same half-open intervals and
-   `expected_at` timestamps. For a reporting subscription, a buy is owed the
-   complete periods starting on or after the first one that starts on or after the
-   later of the subscription version's `accepted_at` and the buy's `confirmed_at`,
-   and starting before its stop time (the earliest of its current `end_time`,
-   `cancellation.canceled_at`, and an early `completed_at`); subtract the exceptions
-   in `subscription_coverage`, and read `expected_at` timing from each obligation's
+   `expected_at` timestamps. For a reporting subscription, each visible buy and
+   resolved offering is owed the complete periods of the offering's schedule that
+   start on or after the first boundary at or after the latest of the subscription
+   version's `accepted_at`, the buy's `confirmed_at`, and the account's
+   `authorized_at`, and that overlap the buy's flight up to its stop time (the
+   earliest of `end_time`, `cancellation.canceled_at`, and `completed_at`, as of
+   each period's `scope_resolved_at`). Subtract the exceptions in
+   `subscription_coverage`, and read `expected_at` timing from each obligation's
    `offering_id`. A mid-period configuration activation begins at
    the next full boundary; deactivation still owes a period that already
    started.
@@ -355,18 +357,22 @@ it. A seller that lists `sync_principal` in `configuration_tasks` and advertises
    `delivery_config_id` equal to the `subscription_id`. Nothing else in Core
    changes: obligations, revisions, health, and consumer status work as for an
    account-level configuration.
-3. The buyer computes coverage without asking: each confirmed buy is owed the
-   complete periods, in the account's timezone, that start on or after the first
-   one starting on or after the later of the subscription version's `accepted_at`
-   and the buy's `confirmed_at`, and that start before its stop time (the earliest
-   of `end_time`, `canceled_at`, and an early `completed_at`), never a clipped one. `get_reporting_status` returns only the
-   exceptions in `subscription_coverage[]`, each removing periods over a boundary
-   interval. Accounts whose authority the principal lost are listed in
+3. The buyer computes coverage without asking. Each confirmed buy it can see
+   through `get_media_buys`, for each resolved offering, is owed the complete
+   periods of the offering's published schedule that start on or after the first
+   boundary at or after the latest of the subscription version's `accepted_at`, the
+   buy's `confirmed_at`, and the account's `authorized_at`. The periods must also
+   overlap the buy's flight up to its stop time (the earliest of `end_time`,
+   `canceled_at`, and `completed_at`), and are never clipped.
+   `get_reporting_status` returns only the exceptions in `subscription_coverage[]`,
+   each removing the periods whose start falls in its `[from, until)` interval. Accounts whose authority the principal lost are listed in
    `get_principal` instead. See
    [subscription coverage](/docs/media-buy/task-reference/get_reporting_status#subscription-coverage).
 
-An account-level `reporting_delivery_configs` entry still works during 3.x and
-takes precedence over every subscription for that account and `feed_purpose`.
+An account-level `reporting_delivery_configs` entry still works during 3.x. The
+caller's own entry takes precedence over the caller's subscriptions for that account
+and `feed_purpose`; another principal's entries never affect them. A subscription with
+`replace_account_configs: true` ends the caller's own entries at a cutover boundary.
 
 ## The ladder above Core
 

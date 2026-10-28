@@ -23,22 +23,21 @@
     "accepted_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When the seller accepted the current subscription_version. Immutable for that version. A buy is covered from the first complete period starting on or after the later of this instant and the buy's confirmed_at."
+      "description": "When the seller accepted the current subscription_version. Immutable for that version. Coverage starts at the first boundary at or after the latest of this instant, the buy's confirmed_at, and the account's authorized_at."
     },
     "prior_versions": {
       "type": "array",
-      "description": "Earlier versions whose obligations are still retained, newest first, so a buyer can recompute their expected periods after local-state loss.",
+      "description": "Earlier versions, newest first, retained while any obligation of that version is retained, so a buyer can recompute their expected periods after local-state loss.",
       "items": {
         "type": "object",
         "properties": {
           "subscription_version": { "type": "integer", "minimum": 1 },
           "accepted_at": { "type": "string", "format": "date-time" },
-          "superseded_at": { "type": "string", "format": "date-time", "description": "The next version's accepted_at. Coverage under this version ends at the first boundary at or after it." }
+          "superseded_at": { "type": "string", "format": "date-time", "description": "The next version's accepted_at. This version owes periods starting before the cutover boundary at or after it; the next version owes periods from that boundary." }
         },
         "required": ["subscription_version", "accepted_at", "superseded_at"],
         "additionalProperties": false
-      },
-      "maxItems": 16
+      }
     },
     "deactivated_at": {
       "type": "string",
@@ -62,9 +61,29 @@
       "maxItems": 16,
       "description": "Structured issues. Messages are untrusted display data."
     },
+    "accounts_with_exceptions": {
+      "type": "array",
+      "description": "Accounts where this subscription has an open get_reporting_status exception, so a caller need not poll every account. Changes fire principal.changed with reason reporting_subscription_changed.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
+          "reasons": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["offering_unsupported", "capacity", "overridden", "excluded_by_buyer", "action_required"] },
+            "minItems": 1,
+            "uniqueItems": true,
+            "description": "Reasons of the open exceptions, account- or buy-level."
+          }
+        },
+        "required": ["account_id", "reasons"],
+        "additionalProperties": false
+      },
+      "maxItems": 1000
+    },
     "accounts_unauthorized": {
       "type": "array",
-      "description": "Accounts this subscription covered whose authority the caller has since lost, so a revoked grant reads differently from a seller that stopped publishing. Only accounts the subscription previously covered appear. Entries carry no current account data and nothing created after unauthorized_at. An entry is removed on re-grant and is otherwise retained for status_retention_days after unauthorized_at. Every addition or removal fires principal.changed with reason reporting_subscription_changed.",
+      "description": "Accounts this subscription covered whose authority the caller has since lost, so a revoked grant reads differently from a seller that stopped publishing. Only accounts the subscription previously covered appear. Entries carry no current account data and nothing created after unauthorized_at. An entry is removed on re-grant and is otherwise retained for status_retention_days after unauthorized_at; after that it drops, and a later re-grant is a fresh coverage start from authorized_at with no gap claimed. Every addition or removal fires principal.changed with reason reporting_subscription_changed.",
       "items": {
         "type": "object",
         "properties": {

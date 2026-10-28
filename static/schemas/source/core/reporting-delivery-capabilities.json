@@ -29,7 +29,7 @@
       "type": "string",
       "const": "sync_accounts",
       "deprecated": true,
-      "description": "Deprecated in 3.3: 3.3 clients use configuration_tasks. Kept unchanged only for clients pinned below 3.3, which compare it to sync_accounts, while sync_accounts remains an accepted registration task during 3.x."
+      "description": "Deprecated in 3.3: 3.3 clients use configuration_tasks. Kept unchanged for clients pinned below 3.3, which compare it to sync_accounts."
     },
     "configuration_tasks": {
       "type": "array",
@@ -37,8 +37,7 @@
       "items": { "type": "string", "enum": ["sync_principal", "sync_accounts"] },
       "minItems": 1,
       "uniqueItems": true,
-      "contains": { "const": "sync_accounts" },
-      "description": "Every task this seller accepts reporting registrations through. sync_principal means principal-level reporting_subscriptions; sync_accounts means account-level reporting_delivery_configs and stays listed through 3.x. Buyers choose from the list."
+      "description": "Every task this seller accepts reporting registrations through. sync_principal means principal-level reporting_subscriptions; sync_accounts means account-level reporting_delivery_configs, listed by sellers that also serve that registration. A seller may list sync_principal alone. Buyers choose from the list."
     },
     "subscriptions": {
       "type": "object",

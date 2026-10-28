@@ -496,8 +496,9 @@ official coverage for every required component.
 covers every authorized account. `configuration_task` stays `"sync_accounts"` for
 compatibility.
 
-Account durable-delivery desired state is configured through
-`sync_accounts.accounts[].reporting_delivery_configs[]`. Replacement is scoped to the
+Account durable-delivery desired state is configured through a principal-level
+reporting subscription or through
+`sync_accounts.accounts[].reporting_delivery_configs[]`. For the latter, replacement is scoped to the
 authenticated caller and account; one caller cannot remove another caller's entries.
 Each entry is an immutable `(delivery_config_id, delivery_config_version)` generation;
 changing scope, schedule, profile, method, or destination requires a higher version.
@@ -658,49 +659,69 @@ exceptions, and every exception removes expected periods; none adds one.
 
 ### Which periods are owed
 
-A confirmed buy in an account the principal is authorized for is owed complete periods
-of the resolved offering's published schedule, in the account's timezone. Its first
-owed period is the first that starts on or after the later of:
+An account is covered while the subscription's scope selects it and the principal is
+authorized for it, meaning its `authorization` object on
+[`list_accounts`](/docs/accounts/tasks/list_accounts), when the seller advertises one,
+lists `get_reporting_status` in `allowed_tasks`. The covered buys are the confirmed
+media buys in that account the principal can see through
+[`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). Buys created in the
+seller's UI or by other agents that the principal can't see are not covered.
 
-- the subscription version's `accepted_at`, in the
-  [`get_principal`](/docs/protocol/get_principal) readback; and
-- the buy's `confirmed_at`, when the seller committed to the media buy.
+Each (buy, resolved offering) pair is owed its own periods. Period boundaries come from
+the resolved offering's published schedule: its alignment (account timezone, UTC,
+source timezone, or billing cycle), anchor, and timezone. A single-account subscription
+can override the timezone with `period_timezone`. The owed periods are the complete
+periods that:
 
-The buy stops being owed at its **stop time**, the earliest of:
+1. start on or after the first boundary at or after the latest of:
+   - the subscription version's `accepted_at`, in the
+     [`get_principal`](/docs/protocol/get_principal) readback;
+   - the buy's `confirmed_at`, when the seller committed to it; and
+   - the account's `authorization.authorized_at`, when the current grant began; and
+2. overlap the buy's flight, from its `start_time` to its **stop time**. The stop time
+   is the earliest of `end_time`, `cancellation.canceled_at`, and `completed_at`,
+   which sellers advertising `media_buy.reporting_subscriptions` populate for every
+   completed buy.
 
-- its current `end_time`, as read through
-  [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). An extension
-  through [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) moves
-  it later and coverage extends; a shortening moves it earlier;
-- `cancellation.canceled_at`; and
-- `completed_at`, when the buy completes before `end_time`. Sellers advertising
-  `media_buy.reporting_subscriptions` populate it for every completed buy.
+Periods are never clipped. A mid-period start begins at the next boundary, as for an
+account-level configuration, and the period containing the stop time is owed in full.
+A buy canceled mid-period owes that period and none after it. A buy confirmed on
+November 1 with a December 1 start owes nothing before December 1. Every buy has an
+`end_time`, so there is no open-ended case.
 
-Owed periods are the complete periods that start on or after the first owed period
-and start before the stop time. Periods are never clipped: a mid-period start begins at
-the next boundary, as for an account-level configuration, and the period containing the
-stop time is owed in full. A buy canceled mid-period owes that period and none after
-it. Every buy has an `end_time`, so there is no open-ended case; ASAP flights affect
-only the start.
-Deactivating the subscription ends coverage at the first boundary at or after
-`deactivated_at`. A new `subscription_version` gets its own `accepted_at`: the old
-version owes periods that start before the first boundary at or after it, and the rule
-reapplies to the new version from there. Earlier versions' `accepted_at` values stay in
-the readback as `prior_versions` while their obligations are retained.
+Flight values are taken as of each period's `scope_resolved_at`, matching how each
+obligation freezes its `media_buy_ids`. An
+[`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) extension adds
+only periods not yet resolved. Reinstating or extending a buy after a period has
+elapsed never makes that period owed retroactively.
 
-So a buyer derives every expected period from its own buys (`confirmed_at`,
-`end_time`, `canceled_at`, `completed_at`), the subscription's `accepted_at`, and the
-offering's published schedule, then subtracts the exceptions below. A period that remains is owed: a missing report there
-is the seller's to explain. Each period's obligation still freezes its
-`media_buy_ids` at its own `scope_resolved_at`.
+So a buyer derives every expected period from its own visible buys (`confirmed_at`,
+`start_time`, `end_time`, `canceled_at`, `completed_at`), the subscription's
+`accepted_at`, the account's `authorized_at`, and the offering's published schedule.
+It then subtracts the exceptions below. A period that remains is owed: a missing
+report there is the seller's to explain.
 
-The resolved offering is pinned per period. If resolution changes, for example because
-the seller adds a finer offering under `match: finest`, the new offering applies from
-the next period boundary and never to a period already started. Each obligation names
-the `offering_id` and `report_definition_id` it used, and that offering is
-authoritative for the obligation's timing: its alignment, anchor, and `delivery_sla`,
-and so `expected_at`. The buyer computes *which* periods are owed itself and reads
-*when* each is due from the obligation.
+**Cutovers.** Changes take effect at a cutover boundary: the first instant at or after
+the change that is a period boundary of every schedule involved. Periods starting
+before it belong to the old state and periods starting at or after it to the new, so
+nothing is skipped or owed twice, even across schedules of different lengths.
+- **New version.** A new `subscription_version` gets its own `accepted_at`. Scope
+  changes count, so adding an account starts a new version. For an account in both
+  versions the cutover is seamless: the old version owes periods before the boundary
+  and the new version owes periods from it. Earlier versions' `accepted_at` values stay
+  in the readback as `prior_versions` while their obligations are retained.
+- **Deactivation** ends coverage at the cutover boundary at or after `deactivated_at`.
+- **Resolution change.** If the seller adds an offering that changes the resolution,
+  the new offering applies from a cutover boundary and never to a period already
+  started.
+- **Account timezone change.** For account-timezone periods, a timezone change takes
+  effect at the first old-timezone boundary at or after the change. It is listed in
+  `timezone_cutovers[]`; `list_accounts` shows the new `timezone` and `revision`.
+
+Each obligation names the `offering_id` and `report_definition_id` it used, and that
+offering is authoritative for the obligation's timing: its alignment, anchor, and
+`delivery_sla`, and so `expected_at`. The buyer computes *which* periods are owed and
+reads *when* each is due from the obligation.
 
 ### Exceptions
 
@@ -732,28 +753,37 @@ obligations are still retained. The revision view never carries it.
 }
 ```
 
-Each `excluded[]` entry removes the periods in `[from, until)`, both period boundaries;
-an entry without `until` is still in effect. An entry without `media_buy_id` applies to
-the whole account.
+Each `excluded[]` entry removes the periods whose start falls in `[from, until)`.
+Both values are cutover boundaries on the subscription's schedule, and an entry without
+`until` is still in effect. An entry without `media_buy_id` applies to the whole account.
+An `offering_unsupported` entry with `package_ids` means only those packages of the buy
+lack a matching offering: the buy stays covered for its other packages.
 
 | `reason` | Removes periods because |
 |---|---|
 | `offering_unsupported` | No offering matching the selector is available on this account's products, or this buy's. |
 | `capacity` | The seller refused for a limit such as `subscriptions.max_accounts`. |
-| `overridden` | A more specific scope takes this account and feed purpose; `overridden_by` names the `delivery_config_id` or `subscription_id`. |
+| `overridden` | The principal's own more specific registration takes this account and feed purpose; `overridden_by` names that `delivery_config_id` or `subscription_id`, never another principal's. |
 | `excluded_by_buyer` | The account is in the subscription's `exclude_account_ids`. |
 | `action_required` | The seller serves the account only after `pending_action` completes. |
 
-`status` summarizes what is in effect now: `excluded` or `action_required` when an
-open account-level entry exists (with `pending_action` for the latter), otherwise
-`active`. Entries are retained for `status_retention_days` after `until`.
+`status` summarizes what is in effect now. It is `action_required` (with
+`pending_action`) when an open account-level `action_required` entry exists, `excluded`
+when another open account-level entry exists, and otherwise `active`. Entries are
+retained for `status_retention_days` after `until`. Opening or closing an exception
+fires `principal.changed` with reason `reporting_subscription_changed`.
+[`get_principal`](/docs/protocol/get_principal) lists the accounts with open exceptions
+per subscription in `accounts_with_exceptions[]`, so a caller doesn't have to poll each
+account.
 
-**Precedence.** Per account and `feed_purpose`, the more specific scope wins. During
-3.x an account-level [`sync_accounts`](/docs/accounts/tasks/sync_accounts)
-`reporting_delivery_configs` entry replaces every subscription, whether all-accounts
-or `account_ids`. Otherwise an `account_ids` subscription replaces an all-accounts
-one. Only the winner creates obligations for that account and purpose; a replaced
-subscription records an `overridden` exception.
+**Precedence.** Precedence is per account and `feed_purpose`, and only among the
+principal's own registrations. During 3.x the principal's own active
+[`sync_accounts`](/docs/accounts/tasks/sync_accounts) `reporting_delivery_configs`
+entry replaces every one of its subscriptions for that account and purpose, whether
+all-accounts or `account_ids`. Otherwise its `account_ids` subscription replaces its
+all-accounts one. Another principal's registrations never affect it. Only the winner
+creates obligations for that account and purpose; a replaced subscription records an
+`overridden` exception from the cutover boundary.
 
 ### When authorization ends
 
@@ -785,6 +815,9 @@ data.
   is recorded in `gaps[]` with reason `unauthorized`, `from` the last boundary at or
   before `unauthorized_at` `until` the first boundary at or after the re-grant, and its
   periods are not owed.
+- **Expired entry.** After `status_retention_days` the `accounts_unauthorized[]` entry
+  drops. A later re-grant is then a fresh coverage start from the new `authorized_at`,
+  with no gap claimed.
 
 ## Complete reconciliation
 

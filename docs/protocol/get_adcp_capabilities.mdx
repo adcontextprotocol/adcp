@@ -243,6 +243,7 @@ Declares support for authenticated caller-scoped connection configuration. This 
 | `max_reporting_destinations` | integer | Required when reporting destinations are supported. Portable schema maximum is 64; a seller may advertise a lower limit. |
 | `reporting_destination_offerings` | object[] | Required when reporting destinations are supported. Objective per-pattern offering — transports, file formats, dataset-share access modes, and verification profiles — so buyers select compatible destinations without submit-and-reject probing. |
 | `suspension_interval_seconds` | integer | Required when reporting destinations are supported. Upper bound between a committed destination suspension or revocation and the halt of new deliveries to every generation of that destination. |
+| `caller_event_types` | string[] | Event types a caller-level subscriber may list. Include `account.status_changed` when supported: a subscriber with `all_authorized_accounts: true` then receives suspension, `payment_required`, and other status transitions for every authorized account from one registration. |
 | `optimistic_concurrency` | boolean | Whether the seller enforces `expected_configuration_version`. When `false`, a request carrying the fence is rejected rather than silently ignored. |
 
 Agents exposing this block MUST list `protocol.principal` in `experimental_features` and expose both declared tasks. Account authorization remains separate; a ready reusable destination does not grant access to any advertiser account.
@@ -927,12 +928,13 @@ on-time counts, publication latency, and post-official adjustment frequency,
 latency, and magnitude for exact offering IDs.
 
 **Where feeds are registered.** 3.3 clients use `configuration_tasks[]`, which
-lists every accepted registration task — for example
-`["sync_principal", "sync_accounts"]` — and choose from it. `configuration_task` is
-always `"sync_accounts"` and is deprecated in 3.3; it stays unchanged only for
-clients pinned below 3.3. `sync_accounts` stays in the list through 3.x. A 3.3
-client that registers feeds only through `sync_principal` can end an old
-account-level configuration with a subscription's `replace_account_configs`.
+lists every accepted registration task — `["sync_principal"]`, `["sync_accounts"]`,
+or both — and choose from it. Sellers that also serve `sync_accounts`
+registration list it; a seller may list `sync_principal` alone.
+`configuration_task` is always `"sync_accounts"` and is deprecated in 3.3; it stays
+unchanged for clients pinned below 3.3. A client that registers feeds through
+`sync_principal` can end its own old account-level configurations with a
+subscription's `replace_account_configs`.
 
 **Reporting subscriptions (experimental, 3.3).** `subscriptions` advertises
 principal-level [reporting subscriptions](/docs/protocol/sync_principal#reporting-subscriptions):
