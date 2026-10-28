@@ -23,11 +23,13 @@
               "properties": {
                 "provider": {
                   "type": "string",
-                  "description": "TTS provider (elevenlabs, openai, etc.)"
+                  "description": "TTS provider (elevenlabs, openai, etc.)",
+                  "maxLength": 128
                 },
                 "voice_id": {
                   "type": "string",
-                  "description": "Brand voice identifier"
+                  "description": "Brand voice identifier",
+                  "maxLength": 128
                 }
               },
               "additionalProperties": true
@@ -43,8 +45,9 @@
               "properties": {
                 "formats": {
                   "type": "array",
-                  "items": { "type": "string" },
-                  "description": "Supported video formats (mp4, webm, etc.)"
+                  "items": { "type": "string", "maxLength": 128 },
+                  "description": "Supported video formats (mp4, webm, etc.)",
+                  "maxItems": 32
                 },
                 "max_duration_seconds": {
                   "type": "integer",
@@ -64,11 +67,13 @@
               "properties": {
                 "provider": {
                   "type": "string",
-                  "description": "Avatar provider (d-id, heygen, synthesia, etc.)"
+                  "description": "Avatar provider (d-id, heygen, synthesia, etc.)",
+                  "maxLength": 128
                 },
                 "avatar_id": {
                   "type": "string",
-                  "description": "Brand avatar identifier"
+                  "description": "Brand avatar identifier",
+                  "maxLength": 128
                 }
               },
               "additionalProperties": true
@@ -89,7 +94,8 @@
             "type": "string",
             "enum": ["text", "link", "image", "product_card", "carousel", "action_button"]
           },
-          "description": "Standard components that all SI hosts must render"
+          "description": "Standard components that all SI hosts must render",
+          "maxItems": 16
         },
         "extensions": {
           "type": "object",
@@ -121,8 +127,9 @@
         },
         "catalogs": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Supported A2UI component catalogs (e.g., 'si-standard', 'standard')"
+          "items": { "type": "string", "maxLength": 128 },
+          "description": "Supported A2UI component catalogs (e.g., 'si-standard', 'standard')",
+          "maxItems": 32
         }
       },
       "additionalProperties": true

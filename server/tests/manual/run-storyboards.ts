@@ -324,6 +324,10 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
     'The runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
   ],
   [
+    'media_buy_seller/canonical_formats/create_media_buy_with_equivalent_direct_legacy_emission',
+    'Since @adcp/sdk 17.0.0-beta.2 (adcp-client#3454) the runner grades the direct route of this dual-emission request on its own and calls its omitted max_file_size_kb under-specified, before the seller answers. The spec requires a selector to declare only fixed size and duration. Remove when adcontextprotocol/adcp-client#3470 is resolved.',
+  ],
+  [
     'media_buy_seller/canonical_formats/reject_conflicting_dual_emission',
     'The SDK canonicalizes away a co-present deprecated format_ids route before both platform execution and canonical_format_satisfaction grading. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK preserves and equivalence-checks every selector route.',
   ],

@@ -61,7 +61,6 @@ export interface TrustLookupResult {
   relationship_verified_at: string | null;
   message: string;
   exclusive_grants: boolean;
-  exclusive_scopes: string[];
   agents: Array<{ origin: string; roles: string[]; countries: string[] | null }>;
   grants: PublishedGrant[];
   total_agents: number;
@@ -112,7 +111,7 @@ export class TrustLookupService {
       claim_url: `https://agenticadvertising.org/brand/builder?domain=${encodeURIComponent(domain)}`,
       brand_name: null, brand_id: null, parent_domain: null, relationship_verified_at: null,
       message: 'We couldn’t read or validate this domain’s record right now. That doesn’t mean it’s unprotected. Try again later.',
-      exclusive_grants: false, exclusive_scopes: [], agents: [], grants: [],
+      exclusive_grants: false, agents: [], grants: [],
       total_agents: 0, total_grants: 0, matching_grants: 0,
     };
 
@@ -178,7 +177,6 @@ export class TrustLookupService {
         return !result.brand_id || !brands || brands.includes('*') || brands.includes(result.brand_id);
       });
       result.exclusive_grants = record.record.exclusive_grants === true;
-      result.exclusive_scopes = result.exclusive_grants ? [...new Set(grants.flatMap(grant => grant.scopes))] : [];
       result.total_agents = agents.length;
       result.total_grants = grants.length;
       result.matching_grants = matching.length;
@@ -193,7 +191,6 @@ export class TrustLookupService {
         result.message = 'A trust record was found, but its declarations exceed this lookup’s display limit. Read the source record for the complete publication.';
         result.agents = [];
         result.grants = [];
-        result.exclusive_scopes = [];
       }
       return result;
     } catch {

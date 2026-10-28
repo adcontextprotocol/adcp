@@ -69,7 +69,8 @@
         "$ref": "/schemas/core/reporting-delivery-offering.json"
       },
       "minItems": 1,
-      "description": "Atomic supported feed/profile/schedule/finality/method combinations. offering_id values MUST be unique."
+      "description": "Atomic supported feed/profile/schedule/finality/method combinations. offering_id values MUST be unique.",
+      "maxItems": 64
     },
     "automated_recovery_window_seconds": {
       "type": "integer",
@@ -100,7 +101,8 @@
       "type": "array",
       "items": { "$ref": "/schemas/core/reporting-reliability-statistics.json" },
       "description": "Optional evidence-scoped observed performance for advertised offerings. offering_id values MUST be unique and name offerings in this capability block.",
-      "uniqueItems": true
+      "uniqueItems": true,
+      "maxItems": 64
     },
     "resource_retention_days": {
       "type": "integer",

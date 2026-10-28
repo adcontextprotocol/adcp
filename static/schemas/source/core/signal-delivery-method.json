@@ -1,0 +1,141 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-delivery-method.json",
+  "title": "Signal Delivery Method",
+  "x-status": "experimental",
+  "description": "One rail a signal agent can use to deliver licensed segment membership to an agent destination: the send-side reading of core/audience-activation-method.json, same pattern vocabulary, receiver-neutral fields only. Compatibility is pattern+vendor intersection with the destination's audience_activation.methods; receiver fields (destination_ref, consumer_identities, bind_expiry_days) are resolved from the destination at activation time. tmp_identity_match is excluded because no membership file moves. Experimental (signals.delivery_methods); see docs/reference/experimental-status.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "AdCP audience sync",
+      "description": "Push membership to the destination's sync_audiences task.",
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "const": "sync_audiences"
+        }
+      },
+      "required": [
+        "pattern"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "File transfer",
+      "description": "Write a membership file to a destination bucket over the storage protocol.",
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "const": "file_transfer"
+        },
+        "transport": {
+          "$ref": "/schemas/enums/cloud-storage-protocol.json",
+          "description": "Storage protocol."
+        },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Vendor whose rails are used."
+        }
+      },
+      "required": [
+        "pattern",
+        "transport",
+        "vendor"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Dataset query",
+      "description": "Publish a grantee-identified share on the vendor for the destination to read.",
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "const": "dataset_query"
+        },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Vendor whose rails are used."
+        }
+      },
+      "required": [
+        "pattern",
+        "vendor"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Clean room",
+      "description": "Land output in the vendor's clean room.",
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "const": "clean_room"
+        },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Vendor whose rails are used."
+        }
+      },
+      "required": [
+        "pattern",
+        "vendor"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Platform distribution",
+      "description": "Initiate distribution on the vendor's rails to the destination.",
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "const": "platform_distribution"
+        },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Vendor whose rails are used."
+        }
+      },
+      "required": [
+        "pattern",
+        "vendor"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    {
+      "pattern": "sync_audiences"
+    },
+    {
+      "pattern": "file_transfer",
+      "transport": "s3",
+      "vendor": {
+        "domain": "object-store.example"
+      }
+    },
+    {
+      "pattern": "dataset_query",
+      "vendor": {
+        "domain": "data-cloud.example"
+      }
+    },
+    {
+      "pattern": "clean_room",
+      "vendor": {
+        "domain": "collaboration-room.example"
+      }
+    },
+    {
+      "pattern": "platform_distribution",
+      "vendor": {
+        "domain": "activation-hub.example"
+      }
+    }
+  ],
+  "x-added-in": "3.3.0"
+}
