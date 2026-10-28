@@ -51,6 +51,10 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
+// The canonical Product's `not`, as the projection serializes it.
+const CANONICAL_PRODUCT_PROHIBITION = JSON.stringify({
+  not: JSON.parse(fs.readFileSync(path.join(SOURCE_DIR, 'core', 'canonical-product.json'), 'utf8')).not,
+}).slice(1, -1);
 // The generated profiles describe the active surface of the package's release
 // line. Before the line's GA (x.y.0-rc.N) that is the x.y.0 surface the tool
 // manifest declares via added_in; once the line has a stable release it is the
@@ -124,8 +128,12 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // Experimental purchase rights add rights-scope and two right-use values to the
 // purchase graph reached through buy_products (+941 bytes measured, 473,582 ->
 // 474,523 bytes / 463.4 KiB), bounded at 464 KiB.
+// 3.3.0-beta.1 window: the queued account, pricing, seller-terms and creative
+// PRs each add a few hundred bytes to a few KiB (measured 465-467 KiB each on
+// top of main). Bound at 476 KiB once for the window; resume per-PR bounding
+// after the beta.1 cut.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 464,
+  'media-buy': 476,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -183,7 +191,14 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // and scoped control action to the controller closure. After condensing shared
 // field prose, it measures 1_318_217 bytes; bound it at 1_320_000. The 4 MiB
 // schema and 22 MiB projection caps and all fixture parity checks remain.
-const PARITY_COMPILE_LIMIT = 1_320_000;
+// 3.3.0-beta.1 window: set the bound once for the decided beta.1 queue
+// instead of per PR. Queued work measured on top of 1_318_217: price
+// adjustments (#7955) 1_326_489, provider-initiated signals (#8044) 1_324_027,
+// signal pricing groups (#8058) 1_321_133, capabilities bounds (#8505) about
+// +2.2 KB, plus the account and creative PRs. Bound at 1_375_000 for the
+// window; resume per-PR bounding after the beta.1 cut, and track shrinking
+// the controller closure separately.
+const PARITY_COMPILE_LIMIT = 1_375_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1099,7 +1114,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     if (['list_products', 'request_proposals', 'refine_proposals'].includes(toolName)) {
       assert.match(output, /Canonical Product/,
         `${toolName} output must use the canonical-only Product view`);
-      assert.doesNotMatch(output, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
+      // The canonical Product forbids the legacy Product's keys by name;
+      // forbidding them does not expose them.
+      const exposed = output.replaceAll(CANONICAL_PRODUCT_PROHIBITION, '');
+      assert.doesNotMatch(exposed, /format_ids|format-id\.json|v1_format_ref|update_packages|"update_media_buy"/,
         `${toolName} output must not expose the legacy Product graph`);
     }
   }
@@ -1241,7 +1259,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // to 21_021_886 bytes, so the cap moves to 22 MiB. Experimental
   // list_collections and the collection card webhooks (#8183) take it from
   // 21_151_775 to 21_294_989 bytes, still under the cap.
-  assert.ok(totalBytes < 22 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // request_account change mode (#8543) puts the Account snapshot on resolved
+  // requests, reached from request_account and list_accounts (23,090,968 bytes
+  // measured), so the cap moves to 23 MiB.
+  assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);

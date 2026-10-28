@@ -122,6 +122,47 @@ describe('reference formats', () => {
     }
   });
 
+  it('projects HTML-markup legacy formats to display_tag with the html_creative slot', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const htmlFormats = formats.filter(f => /^display_(?:\d+x\d+_)?html$/.test((f.format_id as { id: string }).id));
+    expect(htmlFormats.map(f => (f.format_id as { id: string }).id).sort()).toEqual([
+      'display_160x600_html',
+      'display_300x250_html',
+      'display_300x50_html',
+      'display_300x600_html',
+      'display_320x50_html',
+      'display_336x280_html',
+      'display_728x90_html',
+      'display_970x250_html',
+      'display_html',
+    ]);
+
+    for (const format of htmlFormats) {
+      const id = (format.format_id as { id: string }).id;
+      // Erratum: canonical-projection-ref rule 5 requires the projected slots to match
+      // the v1 assets. The only required v1 asset is html markup, not an html5 zip bundle.
+      expect(format.canonical, id).toEqual({
+        kind: 'display_tag',
+        asset_source: 'buyer_uploaded',
+        slots_override: [{ asset_group_id: 'html_creative', asset_type: 'display_tag', required: true }],
+        supported_delivery_types: ['inline_markup'],
+      });
+      const required = (format.assets as Array<Record<string, unknown>>).filter(asset => asset.required);
+      expect(required.map(asset => [asset.asset_id, asset.asset_type]), id).toEqual([['html_creative', 'html']]);
+
+      const sized = id.match(/^display_(\d+)x(\d+)_html$/);
+      if (sized) {
+        expect((format.renders as any[])[0].dimensions, id).toMatchObject({
+          width: Number(sized[1]),
+          height: Number(sized[2]),
+        });
+      }
+    }
+
+    const js = formats.find(f => (f.format_id as { id: string }).id === 'display_js')!;
+    expect(js.canonical).toEqual({ kind: 'display_tag' });
+  });
+
   it('includes all expected format categories', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
     const ids = formats.map(f => (f.format_id as { id: string }).id);

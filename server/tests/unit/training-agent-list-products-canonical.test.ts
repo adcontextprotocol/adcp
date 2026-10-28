@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// Installments are a 3.3 canonical-product field, so the canonical shape this
+// suite grades is served to a 3.3 caller. The trusted local candidate wire
+// contract is the only way the training agent serves 3.3.
+vi.hoisted(() => {
+  process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE = '1';
+  process.env.ADCP_TRAINING_CANDIDATE_VERSION = '3.3-beta.0';
+});
+
 import {
   createTrainingAgentServer,
   invalidateCache,
@@ -8,6 +17,7 @@ import {
 import { clearSessions } from '../../src/training-agent/state.js';
 import { clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
+import { getCanonicalToolValidator } from '@adcp/sdk/schemas';
 import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../../src/training-agent/types.js';
 
 // list_products returns the closed core/canonical-product.json shape. The
@@ -19,6 +29,7 @@ import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../..
 // project onto core/canonical-installment.json, which drops the legacy
 // deprecated collection_id shorthand and requires collection_ref.
 
+const THREE_THREE_VERSION = '3.3-beta.0';
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.example', sandbox: true };
 
@@ -28,13 +39,14 @@ async function callTool(
   server: ReturnType<typeof createTrainingAgentServer>,
   toolName: string,
   args: Record<string, unknown>,
+  adcpVersion: string = THREE_THREE_VERSION,
 ): Promise<Record<string, unknown>> {
   const requestHandlers = (server as unknown as { _requestHandlers: Map<string, Function> })._requestHandlers;
   const handler = requestHandlers.get('tools/call')!;
   const response = await handler(
     {
       method: 'tools/call',
-      params: { name: toolName, arguments: { adcp_version: TRAINING_AGENT_CURRENT_ADCP_VERSION, ...args } },
+      params: { name: toolName, arguments: { adcp_version: adcpVersion, ...args } },
     },
     {},
   );
@@ -47,6 +59,7 @@ async function callTool(
 async function listAllProducts(
   server: ReturnType<typeof createTrainingAgentServer>,
   args: Record<string, unknown> = {},
+  adcpVersion: string = THREE_THREE_VERSION,
 ): Promise<Product[]> {
   const products: Product[] = [];
   let cursor: string | undefined;
@@ -56,7 +69,7 @@ async function listAllProducts(
       max_results: 10,
       ...args,
       ...(cursor && { cursor }),
-    });
+    }, adcpVersion);
     expect(result.outcome, JSON.stringify(result).slice(0, 500)).toBe('listed');
     products.push(...(result.products as Product[]));
     cursor = typeof result.next_cursor === 'string' ? result.next_cursor : undefined;
@@ -224,6 +237,46 @@ describe('list_products canonical product projection', () => {
       const ref = entry.collection_ref as { publisher_domain: string; collection_id: string };
       expect(scoped.has(ref.collection_id), JSON.stringify(ref)).toBe(true);
     }
+  });
+
+  // #8487: the closed 3.2 core/canonical-product.json has no installments, so
+  // a 3.2 caller gets the products without them, and a narrow projection that
+  // asks for them gets neither installments nor the collections they pull in.
+  it('withholds the 3.3 installments from a 3.2 caller', async () => {
+    const validateThreeTwo = getCanonicalToolValidator('list_products', 'sync', { adcpVersion: '3.2' });
+    expect(validateThreeTwo).toBeDefined();
+    const threeTwo: Product[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await callTool(server, 'list_products', {
+        account: ACCOUNT, max_results: 10, ...(cursor && { cursor }),
+      }, TRAINING_AGENT_CURRENT_ADCP_VERSION);
+      // Root envelope keys are out of scope here: the adcp_version echo is
+      // required on every response (versioning.mdx) although the closed 3.2
+      // list_products root omits it (3.3 adds it), and this in-process
+      // dispatcher stamps envelope status. SDK clients relax the response
+      // root for both.
+      const { adcp_version: echoed, status: _status, ...body } = page;
+      expect(echoed).toBe(TRAINING_AGENT_CURRENT_ADCP_VERSION);
+      expect(validateThreeTwo!(body), JSON.stringify(validateThreeTwo!.errors)).toBe(true);
+      threeTwo.push(...(page.products as Product[]));
+      cursor = typeof page.next_cursor === 'string' ? page.next_cursor : undefined;
+    } while (cursor);
+    const threeThree = byId(await listAllProducts(server));
+    expect(threeTwo.length).toBe(threeThree.size);
+    expect(threeTwo.filter(product => product.installments !== undefined)).toEqual([]);
+    expect([...threeThree.values()].some(product => Array.isArray(product.installments))).toBe(true);
+    for (const product of threeTwo) {
+      const { installments: _installments, ...rest } = threeThree.get(product.product_id)!;
+      expect(product).toEqual(rest);
+    }
+
+    const slotProduct = [...threeThree.values()].find(product => Array.isArray(product.installments));
+    const [narrow] = await listAllProducts(server, {
+      criteria: { product_ids: [slotProduct!.product_id] },
+      fields: ['installments'],
+    }, TRAINING_AGENT_CURRENT_ADCP_VERSION);
+    expect(narrow).toEqual({ product_id: slotProduct!.product_id, name: slotProduct!.name });
   });
 
   it('keeps collection_targeting_allowed and offering ids under a fields projection that needs them', async () => {

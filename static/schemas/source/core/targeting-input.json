@@ -134,7 +134,7 @@
         {
           "title": "Targeting Property List",
           "$ref": "/schemas/core/property-list-ref.json",
-          "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false."
+          "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false. On an undisclosed roster (empty publisher_properties) a seller MAY accept it and runs only on the properties it matches."
         },
         { "type": "null" }
       ]
@@ -150,7 +150,7 @@
         {
           "title": "Targeting Collection List",
           "$ref": "/schemas/core/collection-list-ref.json",
-          "description": "Reference to a collection list for including specific collections (programs, publications, channels) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities."
+          "description": "Reference to a collection list for including specific collections (programs, publications, channels) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities. On an undisclosed roster (empty collections) a seller MAY accept it and runs only on the collections it matches."
         },
         { "type": "null" }
       ]

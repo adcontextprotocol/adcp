@@ -7,6 +7,7 @@
   "x-adcp-validation": {
     "verifier_constraints": {
       "accepted_snapshot_terms": "Inside canonical-proposal.commercial_terms, each purchase MUST carry resolved start_time and end_time and MUST preserve every applicable measurement term and performance standard. Omission of measurement_terms or performance_standards means the accepted offer declared none.",
+      "price_adjustments_resolution": "When the option identified by pricing_option_id declares price_adjustments, pricing.fixed_price MUST equal the resolution of that option's table over this purchase's format_option_refs, placement selection and flight, and pricing.price_breakdown MUST record the declared adjustments followed by each fired row in declared order (a rate row as its rate when below 1, otherwise and for an amount row as its currency amount). The table itself is not embedded in the snapshot: pricing_option_id, covered by terms_digest, identifies exactly one immutable table.",
       "pricing_identity": {
         "pricing_option_id": "equals_pricing.pricing_option_id_when_pricing_present",
         "on_violation": "reject_before_commitment"

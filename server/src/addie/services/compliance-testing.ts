@@ -13,7 +13,6 @@ import {
   setAgentTesterLogger,
   comply as sdkComply,
   loadComplianceIndex as sdkLoadComplianceIndex,
-  getComplianceStoryboardById,
   resolveStoryboardsForCapabilities,
   testCapabilityDiscovery,
   CapabilityResolutionError,
@@ -26,6 +25,7 @@ import {
   type TestOptions,
   type AgentCapabilities,
 } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from '../../compliance/storyboard-cache.js';
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
@@ -970,7 +970,7 @@ function mapOverallStatus(status: string): OverallRunStatus {
   }
 }
 
-const pinnedStoryboardContexts = new WeakMap<ComplianceResult, Map<string, ReturnType<typeof getComplianceStoryboardById>>>();
+const pinnedStoryboardContexts = new WeakMap<ComplianceResult, Map<string, ReturnType<typeof getCachedComplianceStoryboardById>>>();
 
 function pinnedStoryboard(result: ComplianceResult, storyboardId: string) {
   if (!result.adcp_version) return undefined;
@@ -982,7 +982,7 @@ function pinnedStoryboard(result: ComplianceResult, storyboardId: string) {
   const key = `${result.adcp_version}:${storyboardId}`;
   if (!context.has(key)) {
     try {
-      context.set(key, getComplianceStoryboardById(storyboardId,
+      context.set(key, getCachedComplianceStoryboardById(storyboardId,
         hostedComplianceOptions(hostedComplianceTarget(result.adcp_version))));
     } catch {
       context.set(key, undefined);

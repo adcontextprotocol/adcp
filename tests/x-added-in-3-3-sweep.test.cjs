@@ -13,6 +13,17 @@ const load = (f) => JSON.parse(fs.readFileSync(path.join(SRC, f), 'utf8'));
 const at = (obj, keys) => keys.reduce((o, k) => o[k], obj);
 
 const WHOLE_FILE_3_3 = [
+  // Account requests (account.requests, #8280).
+  'core/pending-action.json',
+  'core/account-request-record.json',
+  'core/account-candidate.json',
+  'core/account-request-changed-webhook.json',
+  'enums/account-request-state.json',
+  'enums/account-request-resolution.json',
+  'enums/pending-action-kind.json',
+  'enums/pending-action-party.json',
+  'error-details/account-ambiguous.json',
+  'account/request-account-response.json',
   'core/audience-size.json',
   'enums/audience-size-precision.json',
   'enums/audience-match-rate-basis.json',
@@ -29,9 +40,28 @@ const WHOLE_FILE_3_3 = [
   'core/identity-relying-party.json',
   'enums/webhook-signing-profile.json',
   'extensions/adcp.json',
+  // Reporting subscriptions (media_buy.reporting_subscriptions, RFC #8543 Part B).
+  'core/reporting-subscription.json',
+  'core/reporting-subscription-state.json',
+  'core/reporting-subscription-coverage.json',
+  'enums/reporting-dimension.json',
 ];
 
 const PROPERTIES_3_3 = [
+  ['account/list-accounts-request.json', ['properties', 'include_requests']],
+  ['account/list-accounts-request.json', ['properties', 'request_ids']],
+  ['account/list-accounts-response.json', ['properties', 'account_requests']],
+  ['account/list-accounts-response.json', ['properties', 'account_requests_pagination']],
+  ['account/list-accounts-request.json', ['properties', 'requests_pagination']],
+  ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'request_id']],
+  ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'resolution']],
+  ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'setup', 'properties', 'waiting_on']],
+  ['account/sync-accounts-response.json', ['oneOf', 0, 'properties', 'accounts', 'items', 'properties', 'setup', 'properties', 'kind']],
+  ['core/account.json', ['properties', 'setup', 'properties', 'waiting_on']],
+  ['core/account.json', ['properties', 'setup', 'properties', 'kind']],
+  ['core/principal-relationship.json', ['properties', 'setup', 'properties', 'waiting_on']],
+  ['core/principal-relationship.json', ['properties', 'setup', 'properties', 'kind']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'account', 'properties', 'requests']],
   ['media-buy/sync-audiences-response.json', ['oneOf', 0, 'properties', 'audiences', 'items', 'properties', 'audience_size']],
   ['media-buy/sync-audiences-response.json', ['oneOf', 0, 'properties', 'audiences', 'items', 'properties', 'targetable_size']],
   ['media-buy/sync-audiences-response.json', ['oneOf', 0, 'properties', 'audiences', 'items', 'properties', 'match_rate_basis']],
@@ -94,6 +124,15 @@ const PROPERTIES_3_3 = [
   ['core/performance-standard.json', ['properties', 'metric_id']],
   ['core/canonical-performance-standard.json', ['properties', 'metric_id']],
   ['core/product-offer-filters.json', ['properties', 'required_performance_standards', 'items', 'properties', 'metric_id']],
+  ['protocol/sync-principal-request.json', ['properties', 'configuration', 'properties', 'reporting_subscriptions']],
+  ['core/principal-state.json', ['properties', 'reporting_subscriptions']],
+  ['media-buy/get-reporting-status-response.json', ['properties', 'subscription_coverage']],
+  ['core/reporting-delivery-capabilities.json', ['properties', 'configuration_tasks']],
+  ['core/reporting-delivery-capabilities.json', ['properties', 'subscriptions']],
+  ['core/reporting-obligation.json', ['properties', 'offering_id']],
+  ['core/media-buy.json', ['properties', 'completed_at']],
+  ['core/account-authorization.json', ['properties', 'authorized_at']],
+  ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the

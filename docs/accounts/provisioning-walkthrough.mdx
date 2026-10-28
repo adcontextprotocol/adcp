@@ -6,6 +6,10 @@ description: "Follow an AdCP buyer-declared account from capability discovery th
 testable: true
 ---
 
+<Note>
+This walkthrough uses [`sync_accounts`](/docs/accounts/tasks/sync_accounts), which stays stable and available in 3.3. With a seller that advertises `account.requests`, the same flow uses [`request_account`](/docs/accounts/tasks/request_account) to open the account and [`list_accounts`](/docs/accounts/tasks/list_accounts) to read it and its request back.
+</Note>
+
 This walkthrough follows one buyer-declared account from discovery to its first media buy. It focuses on the case where a seller provisions the relationship but a human must finish credit or legal setup before the account becomes active.
 
 ## Scenario
@@ -58,7 +62,7 @@ sequenceDiagram
         Buyer->>Governance: check_governance intent<br/>including optional invoice_recipient
         Governance-->>Buyer: approved + governance_context
     end
-    Buyer->>Seller: create_media_buy<br/>natural-key AccountRef + optional invoice_recipient<br/>+ governance_context when required
+    Buyer->>Seller: create_media_buy<br/>account_id AccountRef + optional invoice_recipient<br/>+ governance_context when required
     opt Online execution check applies
         Seller->>Governance: check_governance<br/>governance_context + planned_delivery<br/>+ invoice_recipient when present
         Governance-->>Seller: Decision
@@ -103,7 +107,7 @@ Sam calls `get_adcp_capabilities` before choosing an account workflow. The relev
 }
 ```
 
-`require_operator_auth: false` selects buyer-declared provisioning. `supported_billing` tells Sam which invoiced parties the seller accepts at the capability level; it does not guarantee that every authenticated buyer agent is commercially authorized for every advertised value. `supported_account_currency_modes` tells Sam whether to include one immutable account `currency`, omit it for per-media-buy selection, or choose either model. The timezone capability requires Sam to choose one advertised immutable account timezone and include it in the natural key.
+`require_operator_auth: false` selects buyer-declared provisioning. `supported_billing` tells Sam which invoiced parties the seller accepts at the capability level; it does not guarantee that every authenticated buyer agent is commercially authorized for every advertised value. `supported_account_currency_modes` tells Sam whether to include one account `currency`, omit it for per-media-buy selection, or choose either model. The timezone capability requires Sam to choose one advertised account timezone when the account opens.
 
 The `notifications` block selects the preferred observation strategy: register a durable subscriber during provisioning, treat each webhook as an invalidation signal, and repair from `list_accounts`. If the block is absent or `supported` is `false`, poll instead.
 
@@ -164,7 +168,7 @@ Sam sends a fresh `idempotency_key`, the Nova Motors brand, Pinnacle Agency as o
 
 Priya's seller validates the authenticated agent identity and its authority to represent the operator and brand. It either accepts the billing model and payment terms exactly as requested or rejects the account entry; it must not silently substitute a different payer or terms.
 
-The seller also validates the durable endpoint and completes its proof-of-control challenge before marking the subscriber active. It assigns an `account_id` before activation so later account lifecycle events can always identify an authoritative repair target, even while approval remains pending.
+The seller also validates the durable endpoint and completes its proof-of-control challenge before marking the subscriber active. It assigns an `account_id` before activation so later account lifecycle events can always identify an authoritative repair target, even while approval remains pending. StreamHaus creates every account it approves, so the placeholder's `account_id` is the one the account keeps, and issuing it early is safe. A seller that might instead link the request to an existing account never issues an `account_id` it might later change; it keeps the request as an [account request](/docs/accounts/tasks/request_account) with no `account_id` until it resolves (experimental in 3.3).
 
 The account needs a human credit and legal review, so StreamHaus returns `pending_approval`:
 
@@ -223,7 +227,7 @@ The account needs a human credit and legal review, so StreamHaus returns `pendin
 }
 ```
 
-The response may echo the seller's `account_id`. In this workflow, Sam stores it for webhook correlation and `list_accounts` repair. It does not replace the natural key: later buyer-declared operations continue to use Nova Motors' `brand` plus Pinnacle Agency's `operator` in `AccountRef`.
+The response carries the seller's `account_id`, which identifies the account from now on. Sam stores it and uses it for webhook correlation, `list_accounts` repair, and every later account-scoped call.
 
 If the request included bank details, the response must not echo `billing_entity.bank`; bank fields are write-only.
 
@@ -322,7 +326,7 @@ If durable notifications are unavailable, Sam polls `list_accounts` by the known
 
 ## Use the active account
 
-Once the authoritative snapshot is `active`, Sam can call [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). Because this is a buyer-declared account, the request uses the durable natural-key reference:
+Once the authoritative snapshot is `active`, Sam can call [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). The request references the account by its `account_id`:
 
 The example below assumes no governance plan is configured. When governance applies, Sam first sends the full intended payload, including any `invoice_recipient`, to `check_governance`. Only an `approved` decision yields the `governance_context` that Sam attaches to `create_media_buy`; `conditions` requires an adjusted intent re-check, and `denied` stops the buy. A seller that declares online execution checks then validates its `planned_delivery` with the same context before committing, forwarding `invoice_recipient` as the execution check's separate top-level field when the buy supplied one.
 
@@ -331,10 +335,7 @@ The example below assumes no governance plan is configured. When governance appl
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json",
   "idempotency_key": "a9f52ca1-346b-40f3-8bad-0b96381470bc",
   "account": {
-    "brand": {
-      "domain": "novamotors.example"
-    },
-    "operator": "pinnacle-agency.example"
+    "account_id": "acct_streamhaus_nova_pinnacle"
   },
   "brand": {
     "domain": "novamotors.example"
@@ -365,7 +366,7 @@ An optional `invoice_recipient` can override the account's default billing entit
 | Provisioning | Send a fresh `idempotency_key`, brand, operator, billing choice, and any requested terms. Do not send the settings-update `account` field in the same entry. | Authenticate the agent; validate brand/operator authority, billing permission, terms, and webhook control. Accept exact billing and terms or reject them without remapping. | — |
 | Pending setup | Surface `setup.message` and any current URL and expiry. Do not spend yet. | Return `setup.message` for required action and, when available, a URL and expiry. Never expose write-only bank data. | Complete the seller's credit, legal, or payment steps. |
 | Resolution | Deduplicate the fire, treat it as advisory, and repair through `list_accounts`. Poll when durable notifications are unavailable. | Fire `account.status_changed` to active subscribers and make the authoritative state available through `list_accounts`. | Respond to renewed setup instructions if the account is not active. |
-| Media buy | Use the natural-key `AccountRef`; send an override only when authorized. | Permit new spend only for an active account. Validate `invoice_recipient` and pass it to governance when configured. | Approve any campaign-specific billing override required by local policy. |
+| Media buy | Reference the account by `account_id`; send an override only when authorized. | Permit new spend only for an active account. Validate `invoice_recipient` and pass it to governance when configured. | Approve any campaign-specific billing override required by local policy. |
 
 ## Failure branches
 
@@ -379,7 +380,7 @@ An optional `invoice_recipient` can override the account's default billing entit
 - **The setup link is absent or expired.** Fetch the current account through authenticated `list_accounts`. The lifecycle webhook never carries `setup.url`.
 - **No durable notification arrives.** Poll `list_accounts`. The one-shot task callback covers only the original provisioning result and is not a lifecycle subscription.
 - **The repair read is not active.** Honor the returned state. `pending_approval`, `payment_required`, `suspended`, `rejected`, and `closed` do not permit a new media buy.
-- **Billing must change after provisioning.** Do not send `billing` in settings-update mode; billing is fixed at provisioning. Follow the seller's commercial process or establish the appropriate new account relationship.
+- **Billing must change after provisioning.** Send `billing` in a settings-update entry that names the account by `account_id`. A seller that cannot change the invoiced party returns `UNSUPPORTED_FEATURE`; then follow the seller's commercial process.
 - **A per-buy invoice override is rejected.** If the seller does not authorize `invoice_recipient`, or governance denies the override, the seller rejects the media buy. The buyer may use the already-authorized account default after obtaining any required fresh governance approval, or escalate to a human; it must not silently reroute the invoice.
 
 ## Related reference

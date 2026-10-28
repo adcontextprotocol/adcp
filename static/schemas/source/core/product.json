@@ -20,14 +20,13 @@
     },
     "publisher_properties": {
       "type": "array",
-      "description": "SDK implementers MUST enforce singular-only at runtime: each entry uses the singular `publisher_domain` form; the compact `publisher_domains[]` form is rejected on products. Codegen toolchains (json-schema-to-typescript, quicktype, datamodel-code-generator, openapi-typescript-codegen) often flatten the `allOf + $ref + not.required` restriction below poorly and may drop the rejection constraint silently, emitting an unrestricted type — runtime enforcement is the safety net. Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency. The compact `publisher_domains[]` form is reserved for adagents.json `authorized_agents[].publisher_properties[]` so that buy-side traffic-and-pricing flatteners can always treat each entry as exactly one publisher.",
+      "description": "SDK implementers MUST enforce singular-only at runtime: each entry uses the singular `publisher_domain` form; the compact `publisher_domains[]` form is rejected on products. Codegen toolchains (json-schema-to-typescript, quicktype, datamodel-code-generator, openapi-typescript-codegen) often flatten the `allOf + $ref + not.required` restriction below poorly and may drop the rejection constraint silently, emitting an unrestricted type — runtime enforcement is the safety net. Publisher properties covered by this product. A non-empty array is the complete roster. `[]` means the seller does not disclose it (undisclosed), not that the product has no properties; it bounds nothing. MUST NOT be `[]` on a response served below 3.3. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency. The compact `publisher_domains[]` form is reserved for adagents.json `authorized_agents[].publisher_properties[]` so that buy-side traffic-and-pricing flatteners can always treat each entry as exactly one publisher.",
       "items": {
         "allOf": [
           { "$ref": "/schemas/core/publisher-property-selector.json" },
           { "not": { "required": ["publisher_domains"] } }
         ]
-      },
-      "minItems": 1
+      }
     },
     "channels": {
       "type": "array",
@@ -117,7 +116,7 @@
     },
     "pricing_options": {
       "type": "array",
-      "description": "Available pricing models for this product. Fixed prices and auction floors are binding for every later targeting selection permitted by this product's overlay_support; price_guidance remains non-binding. Declaring broad overlay support alongside a binding option is therefore a uniform-price promise, not permission to calculate a different price at create time. A seller with value-dependent rates MUST return a request-specific configured product after rediscovery with concrete targeting, split the inventory into separately priced products, or expose only non-binding guidance until it can issue a binding option. The seller MUST mint a new pricing_option_id whenever a binding price, floor, currency, model, or priced applicability changes. It MUST NOT silently reprice a create request or reuse the selected option ID with different terms.",
+      "description": "Available pricing models for this product. Fixed prices and auction floors are binding for every later targeting selection permitted by this product's overlay_support; price_guidance remains non-binding. Declaring broad overlay support alongside a binding option is therefore a uniform-price promise, not permission to calculate a different price at create time, except for adjustments the selected fixed-price option itself declares in price_adjustments: those rows are part of the option's binding terms, and the resolved rate follows from the buyer's selections by the deterministic rules in price-adjustments.json. A price_adjustments table is optional and has equal standing with a fully priced offer: a seller that does not publish one (for example a yield-managed seller) returns priced options, whose price applies only to what was quoted, and is not expected to publish its method. A seller with other value-dependent rates MUST return a request-specific configured product after rediscovery with concrete targeting, split the inventory into separately priced products, or expose only non-binding guidance until it can issue a binding option. The seller MUST mint a new pricing_option_id whenever a binding price, floor, currency, model, or priced applicability changes. It MUST NOT silently reprice a create request or reuse the selected option ID with different terms.",
       "items": {
         "$ref": "/schemas/core/pricing-option.json"
       },
@@ -245,7 +244,7 @@
     },
     "overlay_support": {
       "$ref": "/schemas/core/targeting-overlay-support.json",
-      "description": "Binding product-scoped targeting dimensions the buyer may set independently on packages after discovery. Presence guarantees selectable capability subject to disclosed limits, not inventory or a forecast for every possible value. Targeting satisfied only through inherent product scope does not appear here. Returned products MUST cover every field requested through get_products.required_overlay_support. A later supported selection with no available inventory returns PRODUCT_UNAVAILABLE on create; an update outside the original priced envelope may return REQUOTE_REQUIRED."
+      "description": "Binding product-scoped targeting dimensions the buyer may set independently on packages after discovery. Presence guarantees selectable capability subject to disclosed limits, not inventory or a forecast for every possible value. Targeting satisfied only through inherent product scope does not appear here. Returned products MUST cover every field requested through get_products.required_overlay_support. Selecting a value priced by the chosen option's price_adjustments (currently placement_selection and format option selection) changes the resolved rate only as that table declares. A later supported selection with no available inventory returns PRODUCT_UNAVAILABLE on create; an update outside the original priced envelope may return REQUOTE_REQUIRED."
     },
     "media_buy_support": {
       "$ref": "/schemas/core/media-buy-support.json",
@@ -525,14 +524,13 @@
     },
     "collections": {
       "type": "array",
-      "description": "Collections available in this product. Each entry references collections declared in an adagents.json by domain and collection ID. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. Product selectors must name explicit collection_ids — the domain-only bulk-grant selector form is for authorization scoping, not product composition.",
+      "description": "Collections available in this product. A non-empty array is the complete roster. `[]` means the seller does not disclose it (undisclosed); absent makes no collection declaration. It bounds nothing. MUST NOT be `[]` on a response served below 3.3. Each entry references collections declared in an adagents.json by domain and collection ID. Full collection objects arrive in the response's top-level collections array when the request sets include_collections and the seller supports it (experimental, media_buy.collection_cards); otherwise buyers resolve them from the referenced adagents.json, which remains the authorization source either way. Product selectors must name explicit collection_ids — the domain-only bulk-grant selector form is for authorization scoping, not product composition.",
       "items": {
         "allOf": [
           { "$ref": "/schemas/core/collection-selector.json" },
           { "required": ["collection_ids"] }
         ]
-      },
-      "minItems": 1
+      }
     },
     "collection_targeting_allowed": {
       "type": "boolean",
@@ -834,6 +832,32 @@
           "property_targeting_allowed": { "const": true }
         },
         "required": ["property_targeting_allowed"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "pricing_options": {
+            "contains": {
+              "properties": {
+                "price_adjustments": {
+                  "contains": {
+                    "properties": { "dimension": { "const": "placement_selection" } },
+                    "required": ["dimension"]
+                  }
+                }
+              },
+              "required": ["price_adjustments"]
+            }
+          }
+        },
+        "required": ["pricing_options"]
+      },
+      "then": {
+        "properties": {
+          "overlay_support": { "required": ["placement_selection"] }
+        },
+        "required": ["overlay_support"]
       }
     },
     {

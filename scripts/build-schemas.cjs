@@ -122,9 +122,11 @@ const MCP_ROLE_PROFILE_TOOLS = {
 // version bump never needs a hand edit to the base lists above.
 const MCP_ROLE_PROFILE_LINE_TOOLS = {
   'media-buy': {
-    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue'],
+    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue', 'request_account'],
   },
-  creative: {},
+  creative: {
+    '3.3.0': ['request_account'],
+  },
 };
 
 /** The role profile's tools for an active surface version, in catalog order. */

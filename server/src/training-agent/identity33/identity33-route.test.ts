@@ -124,11 +124,9 @@ describe('sandbox identity route: Web Bot Auth and demand-side grants', () => {
   });
 
   // Spec: implicit authority extends to the brand's house (L2, Grants in
-  // trust records). @adcp/sdk 16.3.0 checks implicit authority against the
-  // brand's domain only and returns grant_absent; fixed in
-  // adcontextprotocol/adcp-client#3388, unreleased at the time of writing.
-  // `it.fails` turns red once the SDK bump fixes it: switch it to `it` then.
-  it.fails("lets the house's own agent act for its child brand without a grant", async () => {
+  // trust records). Fixed in adcontextprotocol/adcp-client#3388 (SDK 16.5);
+  // @adcp/sdk 16.3.0 checked the brand's domain only and returned grant_absent.
+  it("lets the house's own agent act for its child brand without a grant", async () => {
     expect((await onboard('house')).body.result?.isError).not.toBe(true);
     const result = await syncAccount('house', { brand: novaMotors, operator: FIXTURE_DOMAINS.house });
     const accounts = result.body.result?.structuredContent?.accounts as Array<{ status?: string }> | undefined;
@@ -152,6 +150,21 @@ describe('sandbox identity route: Web Bot Auth and demand-side grants', () => {
       operator: FIXTURE_DOMAINS.agency,
     });
     expect(errorCode(result), JSON.stringify(result.body)).toBe('SERVICE_UNAVAILABLE');
+  });
+
+  it('refuses a replayed signed request', async () => {
+    const host = `127.0.0.1:${server.port}`;
+    const body = JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method: 'tools/call', params: { name: 'get_adcp_capabilities', arguments: {} } });
+    const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json', host, 'x-forwarded-proto': 'https' };
+    Object.assign(headers, await signWebBotAuth(
+      { method: 'POST', url: `https://${host}${ROUTE}`, headers: { ...headers }, body },
+      fixtureSigningKey('agency'),
+      { origin: FIXTURE_AGENTS.agency.origin },
+    ));
+    const first = await fetch(`http://${host}${ROUTE}`, { method: 'POST', headers, body });
+    expect(first.status).toBe(200);
+    const replay = await fetch(`http://${host}${ROUTE}`, { method: 'POST', headers, body });
+    expect(replay.status).toBe(429);
   });
 
   it('rejects a request whose signature does not match its body', async () => {

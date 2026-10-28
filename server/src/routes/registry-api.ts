@@ -1,4 +1,5 @@
 import { PreparedFixturesDeniedError } from '@adcp/sdk/testing';
+import { getCachedComplianceStoryboardById } from "../compliance/storyboard-cache.js";
 import { withHostedReportingBudget, runCatalogReportingStoryboardStep as runStoryboardStep } from '../compliance/catalog-reporting-runner.js';
 import { supplyPathSnapshotEvidence } from '../services/supply-path-snapshot.js';
 import { AgentService } from "../agent-service.js";
@@ -40,7 +41,7 @@ import {
   UnsupportedBuyingModeError,
   AccountRequiredError,
 } from "@adcp/sdk";
-import { getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
+import { getFirstStepPreview, testCapabilityDiscovery, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
@@ -9937,7 +9938,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         : hostedComplianceOptions(runTarget);
       const storyboard = runTarget === complianceTarget
         ? getStoryboard(req.params.id)
-        : getComplianceStoryboardById(req.params.id, storyboardOptions);
+        : getCachedComplianceStoryboardById(req.params.id, storyboardOptions);
       if (!storyboard) {
         return res.status(404).json({ error: "Storyboard not found" });
       }
@@ -10175,7 +10176,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           'canonical',
         );
         const runOptions = hostedComplianceOptions(runTarget);
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, runOptions);
+        const storyboard = getCachedComplianceStoryboardById(req.params.storyboardId, runOptions);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -10251,7 +10252,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
     async (req, res) => {
       try {
         const runTarget = targetFromRequestValue(req.query.compliance_target);
-        const storyboard = getComplianceStoryboardById(
+        const storyboard = getCachedComplianceStoryboardById(
           req.params.storyboardId,
           runTarget === complianceTarget ? complianceOptions : hostedComplianceOptions(runTarget),
         );
@@ -10335,7 +10336,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         }
         const runTarget = runTargetSelection.target;
         const storyboardOptions = hostedComplianceOptions(runTarget);
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, storyboardOptions);
+        const storyboard = getCachedComplianceStoryboardById(req.params.storyboardId, storyboardOptions);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -10500,7 +10501,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           ...(sdkAuth && { auth: sdkAuth }),
         };
         const runTarget = await selectComplianceTargetForAgent(agentUrl, userComplyOptions, complianceTarget, 'canonical');
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
+        const storyboard = getCachedComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }

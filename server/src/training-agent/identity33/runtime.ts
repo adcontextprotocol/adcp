@@ -19,7 +19,7 @@ import {
 } from '@adcp/sdk/identity-3.3';
 import { verifySignatureAsAuthenticator, type Authenticator } from '@adcp/sdk/server';
 import type { AdcpStateStore } from '@adcp/sdk/server';
-import { StaticJwksResolver } from '@adcp/sdk/signing';
+import { StaticJwksResolver, type ReplayStore } from '@adcp/sdk/signing';
 import type { IncomingMessage } from 'node:http';
 import { accountRefForId } from '../account-handlers.js';
 import { mcpOperationResolver } from '../request-signing.js';
@@ -97,6 +97,8 @@ export interface Identity33Runtime {
 
 export function createIdentity33Runtime(options: {
   stateStore: AdcpStateStore;
+  /** Shared across replicas so a nonce accepted on one machine is refused on the others. */
+  replayStore?: ReplayStore;
   getUrl: (req: IncomingMessage & { rawBody?: string }) => string;
 }): Identity33Runtime {
   const fetchOptions = { trustedFetchFn: fixtureFetch };
@@ -123,6 +125,7 @@ export function createIdentity33Runtime(options: {
     // RFC 9421 keys are not accepted here; only Web Bot Auth identities.
     jwks: new StaticJwksResolver([]),
     webBotAuth: { directory, resolvePrincipal },
+    ...(options.replayStore && { replayStore: options.replayStore }),
     getUrl: options.getUrl,
     resolveOperation: mcpOperationResolver,
   });
