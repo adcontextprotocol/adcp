@@ -1373,7 +1373,7 @@
           "type": "object",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Whether the seller supports account requests: request_account to open an account (the seller finds or creates it) or change one by account_id, possibly after human review on either side; list_accounts with include_requests to read requests back; and the caller-anchored account_request.changed webhook. Experimental in 3.3 (#8280, #8543): sellers advertising supported: true MUST list account.requests in experimental_features. Buyers SHOULD use request_account in place of the deprecated sync_accounts.",
+          "description": "Whether the seller supports account requests: request_account to open an account (the seller finds or creates it) or change one by account_id, possibly after human review on either side; list_accounts with include_requests to read requests back; and the caller-anchored account_request.changed webhook. Experimental in 3.3 (#8280, #8543): sellers advertising supported: true MUST list account.requests in experimental_features. Buyers SHOULD use request_account with this seller; sync_accounts stays stable and available.",
           "oneOf": [
             {
               "title": "AccountRequestsSupported",
