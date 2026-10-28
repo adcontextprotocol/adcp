@@ -214,6 +214,7 @@ test('list_accounts guidance keeps the account_scope SHOULD and no preference or
 test('request_account changes an account by account_id and resolves as updated', () => {
   const req = read('account/request-account-request.json');
   assert.ok(req.properties.revision, 'revision guards a change');
+  assert.match(req.properties.revision.description, /Required when the change touches billing, billing_entity, or payment_terms/);
   assert.match(req.properties.account_id.description, /changes those attributes/);
   assert.ok(read('enums/account-request-resolution.json').enum.includes('updated'));
   const v = validate('/schemas/core/account-request-record.json');

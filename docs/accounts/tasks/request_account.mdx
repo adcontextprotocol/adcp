@@ -55,7 +55,7 @@ Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities
 | `billing_entity` | No | Requested business entity for the invoiced party. Bank details are write-only. |
 | `payment_terms` | No | Requested terms. Accepted or rejected, never silently remapped. |
 | `account_id` | To change or select | Change this account: every other field present is a requested change. With no other fields, select it: a candidate from an `ambiguous` result, or an account the credential doesn't reach yet. |
-| `revision` | No | With `account_id`: the account revision a change is based on. A stale revision fails with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) and changes nothing. |
+| `revision` | For money changes | With `account_id`: the account revision a change is based on. **Required** when the change touches `billing`, `billing_entity`, or `payment_terms`, since a lost update there costs money; optional otherwise. A stale revision fails with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) and changes nothing. |
 
 Send either `account_id` (to change or select), or `brand` and `operator` (to open). A request with `account_id` and `operator`, or with neither, fails with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request).
 
@@ -208,6 +208,7 @@ A seller that does deduplicate typically answers a repeat as follows:
 | --- | --- |
 | [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | `account_id` with `operator`, or neither `account_id` nor `brand` + `operator`; a change that names a different brand `domain` or `brand_id`. |
 | [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | A change's `revision` is stale. |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) (money change) | A change to `billing`, `billing_entity`, or `payment_terms` without `revision`. |
 | [`BILLING_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-billing-not-supported) | The requested `billing` isn't in the seller's `supported_billing`. Sellers MAY instead record the request and reject it. |
 | [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict) | The `idempotency_key` was replayed with a different body. |
 | [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | The seller doesn't support account requests, or refuses to change `currency`, `timezone`, or `sandbox` on an existing account. |

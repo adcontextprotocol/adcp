@@ -26,7 +26,7 @@
     "revision": {
       "type": "integer",
       "minimum": 1,
-      "description": "Optional guard when changing an account (with account_id): the account revision the change is based on. A stale revision fails the call with CONFLICT and changes nothing. Read it from list_accounts."
+      "description": "Guard when changing an account (with account_id): the account revision the change is based on. Required when the change touches billing, billing_entity, or payment_terms, because a lost update there costs money; optional for other changes. Sellers enforce this at runtime and reject a money change without revision with INVALID_REQUEST. A stale revision fails the call with CONFLICT and changes nothing. Read it from list_accounts."
     },
     "brand": {
       "$ref": "/schemas/core/brand-key.json",
