@@ -1252,7 +1252,10 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // to 21_021_886 bytes, so the cap moves to 22 MiB. Experimental
   // list_collections and the collection card webhooks (#8183) take it from
   // 21_151_775 to 21_294_989 bytes, still under the cap.
-  assert.ok(totalBytes < 22 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // request_account change mode (#8543) puts the Account snapshot on resolved
+  // requests, reached from request_account and list_accounts (23,090,968 bytes
+  // measured), so the cap moves to 23 MiB.
+  assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);

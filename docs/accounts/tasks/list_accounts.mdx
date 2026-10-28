@@ -15,8 +15,8 @@ limited to relationships first provisioned through [`sync_accounts`](/docs/accou
 `list_accounts` returns accounts, and every account has an `account_id`. A
 seller that keeps pending provisioning as [account requests](/docs/accounts/tasks/request_account)
 (experimental in 3.3) lists the account only once its request resolves; until
-then, read the request through [`get_account_requests`](/docs/accounts/tasks/get_account_requests),
-or replay `sync_accounts` with the same natural key.
+then, read the request in `account_requests[]` by setting `include_requests: true`
+(or `request_ids`).
 
 For upstream-managed account namespaces, `list_accounts` is not optional discovery polish; it is the namespace discovery contract. The upstream platform owns the accessible account set, so buyers MUST resolve an explicit `account_id` before the first account-scoped request. If the authenticated credential can access more than one account, the seller MUST expose `list_accounts`; if it can access exactly one account, the seller SHOULD expose `list_accounts` returning that singleton so SDKs can auto-select it and still send `{ "account_id": "..." }` on required-account calls. [`sync_accounts`](/docs/accounts/tasks/sync_accounts) provisioning does not create account-id accounts in 3.0.x unless a future explicit capability declares that mode; if `sync_accounts` is exposed on these sellers today, use it only for settings updates against an account already identified by `account_id`.
 

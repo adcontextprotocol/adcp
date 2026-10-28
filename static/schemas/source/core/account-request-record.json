@@ -4,7 +4,7 @@
   "title": "Account Request",
   "x-added-in": "3.3.0",
   "x-status": "experimental",
-  "description": "A buyer agent's request for an advertiser account, and its lifecycle (experimental, account.requests). The request is its own object: no account exists until the request resolves, so a seller can match the request to an existing account without changing an account_id. Requests are scoped to the authenticated caller that made them and are never visible to another caller.",
+  "description": "A buyer agent's request to open or change an advertiser account, and its lifecycle (experimental, account.requests). The request is its own object: no account exists until the request resolves, so a seller can match the request to an existing account without changing an account_id. Requests are scoped to the authenticated caller that made them and are never visible to another caller.",
   "type": "object",
   "properties": {
     "request_id": {
@@ -20,9 +20,10 @@
     "requested": {
       "title": "Requested Account",
       "type": "object",
-      "description": "Echo of what was requested: the account's natural-key fields (or account_id) and the requested terms currently on file. When a repeat request for an open key changed the terms, this shows the replacement terms.",
+      "description": "Echo of what was requested: for an open, the brand, operator, and attributes; for a change, the account_id and the requested changes. When a repeat request replaced an open request's terms or changes, this shows the replacement.",
       "properties": {
         "account_id": { "type": "string", "description": "Present when the request named an existing account." },
+        "revision": { "type": "integer", "minimum": 1, "description": "The revision a change request was based on, when sent." },
         "brand": { "$ref": "/schemas/core/brand-key.json" },
         "operator": { "type": "string" },
         "operator_unit": { "$ref": "/schemas/core/operator-unit.json" },
@@ -42,6 +43,10 @@
       "type": "string",
       "description": "Present when state is resolved. The account to use on every account-scoped task. Never changes for the life of the account.",
       "x-entity": "account"
+    },
+    "account": {
+      "$ref": "/schemas/core/account.json",
+      "description": "Present when state is resolved: the account after the request, including any changed attributes and its revision. Sellers SHOULD include it when resolution is updated, and MAY omit it otherwise."
     },
     "resolution": {
       "$ref": "/schemas/enums/account-request-resolution.json",
@@ -76,7 +81,7 @@
   "allOf": [
     {
       "if": { "properties": { "state": { "const": "in_review" } }, "required": ["state"] },
-      "then": { "required": ["pending_action"], "not": { "anyOf": [{ "required": ["account_id"] }, { "required": ["candidates"] }] } }
+      "then": { "required": ["pending_action"], "not": { "anyOf": [{ "required": ["account_id"] }, { "required": ["account"] }, { "required": ["candidates"] }] } }
     },
     {
       "if": { "properties": { "state": { "const": "resolved" } }, "required": ["state"] },
@@ -84,11 +89,11 @@
     },
     {
       "if": { "properties": { "state": { "const": "ambiguous" } }, "required": ["state"] },
-      "then": { "required": ["candidates"], "not": { "anyOf": [{ "required": ["account_id"] }, { "required": ["pending_action"] }] } }
+      "then": { "required": ["candidates"], "not": { "anyOf": [{ "required": ["account_id"] }, { "required": ["account"] }, { "required": ["pending_action"] }] } }
     },
     {
       "if": { "properties": { "state": { "const": "rejected" } }, "required": ["state"] },
-      "then": { "required": ["errors"], "not": { "anyOf": [{ "required": ["account_id"] }, { "required": ["pending_action"] }, { "required": ["candidates"] }] } }
+      "then": { "required": ["errors"], "not": { "anyOf": [{ "required": ["account_id"] }, { "required": ["account"] }, { "required": ["pending_action"] }, { "required": ["candidates"] }] } }
     }
   ],
   "additionalProperties": true,

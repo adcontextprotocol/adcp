@@ -1373,18 +1373,18 @@
           "type": "object",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Whether the seller supports account requests: request_account to find or create an advertiser account, possibly after human review on either side, get_account_requests to read requests back, and the caller-anchored account_request.changed webhook. Experimental in 3.3 (#8280): sellers advertising supported: true MUST list account.requests in experimental_features. Buyers SHOULD prefer request_account over sync_accounts provisioning when it is supported.",
+          "description": "Whether the seller supports account requests: request_account to open an account (the seller finds or creates it) or change one by account_id, possibly after human review on either side; list_accounts with include_requests to read requests back; and the caller-anchored account_request.changed webhook. Experimental in 3.3 (#8280, #8543): sellers advertising supported: true MUST list account.requests in experimental_features. Buyers SHOULD use request_account in place of the deprecated sync_accounts.",
           "oneOf": [
             {
               "title": "AccountRequestsSupported",
               "properties": {
                 "supported": { "type": "boolean", "const": true },
                 "request_task": { "type": "string", "const": "request_account" },
-                "read_task": { "type": "string", "const": "get_account_requests" },
+                "read_task": { "type": "string", "const": "list_accounts" },
                 "event_type": {
                   "type": "string",
                   "const": "account_request.changed",
-                  "description": "Present when the seller fires account_request.changed. Buyers subscribe through the caller-scoped notification_configs, so a seller declaring it also declares adcp.capability_changes.notifications.supported: true. When absent, buyers poll get_account_requests."
+                  "description": "Present when the seller fires account_request.changed. Buyers subscribe through the caller-scoped notification_configs, so a seller declaring it also declares adcp.capability_changes.notifications.supported: true. When absent, buyers poll list_accounts (include_requests)."
                 },
                 "pending_action_kinds": {
                   "type": "array",

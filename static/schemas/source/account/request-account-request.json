@@ -4,7 +4,7 @@
   "title": "Request Account Request",
   "x-added-in": "3.3.0",
   "x-status": "experimental",
-  "description": "Ask the seller for an advertiser account: find an existing one or create one, possibly after human review on either side. Experimental in 3.3 (#8280): sellers implementing this task MUST list account.requests in experimental_features. Retries are safe through idempotency_key; deduplicating separate requests for the same advertiser is seller discretion, with non-normative guidance in the task docs. Send either account_id, or brand and operator; sellers enforce this at runtime so the MCP input schema stays a plain root object, and reject a request carrying both, or neither, with INVALID_REQUEST.",
+  "description": "The single account write (experimental, account.requests). Open an account (brand and operator: the seller finds an existing one or creates one) or change one (account_id plus the attributes to change), possibly after human review on either side. Every write is a request with the same lifecycle. Experimental in 3.3 (#8280): sellers implementing this task MUST list account.requests in experimental_features. Retries are safe through idempotency_key; deduplicating separate requests for the same advertiser is seller discretion, with non-normative guidance in the task docs. Send either account_id, or brand and operator; sellers enforce this at runtime so the MCP input schema stays a plain root object, and reject a request carrying both, or neither, with INVALID_REQUEST. With account_id, every other field present is a requested change, validated as when the account opens: brand.domain and brand.brand_id must equal the account's (a different brand is a different account, INVALID_REQUEST), currency and timezone changes MAY be refused with UNSUPPORTED_FEATURE, and sandbox never changes.",
   "x-tool-summary": "Request an advertiser account: the seller matches an existing account or creates one, possibly after human review.",
   "type": "object",
   "allOf": [{ "$ref": "/schemas/core/version-envelope.json" }],
@@ -20,12 +20,17 @@
     },
     "account_id": {
       "type": "string",
-      "description": "Request an account the seller already identified: one of the candidates from an ambiguous request, or, on a platform that owns its account namespace, an account the caller's credential does not reach yet. For an account_id the caller cannot reach, the seller MUST answer the same way whether or not the account exists: either always rejected with ACCOUNT_NOT_FOUND, or, for sellers that support access requests, always in_review with waiting_on: buyer and kind: grant. Mutually exclusive with brand and operator.",
+      "description": "Change, or select, an existing account. With other fields present, the request changes those attributes on this account; the account keeps its account_id, media buys, and history. With no other fields, it selects the account: a candidate from an ambiguous request, or, on a platform that owns its account namespace, an account the caller's credential does not reach yet. For an account_id the caller cannot reach, the seller MUST answer the same way whether or not the account exists: either always rejected with ACCOUNT_NOT_FOUND, or, for sellers that support access requests, always in_review with waiting_on: buyer and kind: grant. Mutually exclusive with operator; brand is allowed only to change countries.",
       "x-entity": "account"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Optional guard when changing an account (with account_id): the account revision the change is based on. A stale revision fails the call with CONFLICT and changes nothing. Read it from list_accounts."
     },
     "brand": {
       "$ref": "/schemas/core/brand-key.json",
-      "description": "Advertiser identity. Required unless account_id is sent. Sellers matching on brand use domain and brand_id; countries is an attribute."
+      "description": "Advertiser identity. Required to open an account. Sellers matching on brand use domain and brand_id; countries is an attribute. With account_id, send brand only to change countries; domain and brand_id must equal the account's."
     },
     "operator": {
       "type": "string",

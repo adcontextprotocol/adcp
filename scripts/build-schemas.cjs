@@ -122,9 +122,19 @@ const MCP_ROLE_PROFILE_TOOLS = {
 // version bump never needs a hand edit to the base lists above.
 const MCP_ROLE_PROFILE_LINE_TOOLS = {
   'media-buy': {
-    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue', 'request_account', 'get_account_requests'],
+    '3.3.0': ['list_proposals', 'report_media_buy_issue', 'get_media_buy_issue', 'request_account'],
   },
-  creative: {},
+  creative: {
+    '3.3.0': ['request_account'],
+  },
+};
+// Role-profile tools deprecated in a later minor. A deprecated tool is inactive
+// in that line's production profile, so it leaves the role catalog when the
+// package enters the line while earlier lines keep it. sync_accounts is
+// superseded by request_account, list_accounts, and sync_principal (#8543).
+const MCP_ROLE_PROFILE_RETIRED_TOOLS = {
+  'media-buy': { '3.3.0': ['sync_accounts'] },
+  creative: { '3.3.0': ['sync_accounts'] },
 };
 
 /** The role profile's tools for an active surface version, in catalog order. */
@@ -132,7 +142,10 @@ function mcpRoleProfileTools(profileName, surfaceVersion) {
   const lineTools = Object.entries(MCP_ROLE_PROFILE_LINE_TOOLS[profileName] || {})
     .filter(([addedIn]) => semver.lte(addedIn, surfaceVersion))
     .flatMap(([, toolNames]) => toolNames);
-  return [...MCP_ROLE_PROFILE_TOOLS[profileName], ...lineTools];
+  const retired = new Set(Object.entries(MCP_ROLE_PROFILE_RETIRED_TOOLS[profileName] || {})
+    .filter(([deprecatedIn]) => semver.lte(deprecatedIn, surfaceVersion))
+    .flatMap(([, toolNames]) => toolNames));
+  return [...MCP_ROLE_PROFILE_TOOLS[profileName], ...lineTools].filter(toolName => !retired.has(toolName));
 }
 
 /** Compatibility scope label for a role profile, e.g. `active-3.3-only`. */
