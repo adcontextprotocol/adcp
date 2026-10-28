@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import { wrapEnvelope } from '@adcp/sdk/server';
+import { TOOL_REQUEST_SCHEMAS } from '@adcp/sdk/schemas';
 import type { LegacyAdcpCustomToolConfig as AdcpCustomToolConfig } from '@adcp/sdk/server';
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../../logger.js';
@@ -18,6 +19,8 @@ import type { ToolArgs, TrainingContext } from '../types.js';
 import { projectTaskOutcomeForRelease } from '../served-outcome-status.js';
 import { governanceAgentCredentialFromExtra, hostedGraderCredentialFromExtra } from '../governance-agent-credentials.js';
 import { AccountRefValidationError, accountScopeFromRef } from '../account-scope.js';
+import { resolveServedAdcpVersionForTool } from '../task-handlers.js';
+import { toolAddedAfterRelease } from '../served-release-fields.js';
 import {
   getIdempotencyStore,
   scopedPrincipal,
@@ -43,6 +46,9 @@ interface InlineError {
 
 interface CustomToolOptions {
   annotations?: ToolAnnotations;
+  /** The handler answers a caller whose release predates the tool with its
+   * own error, so the generic release gate below stands aside. */
+  gatesOwnRelease?: boolean;
   enforceIdempotency?: boolean;
   payloadErrorsAsSuccess?: boolean;
   responseSummary?: (result: Record<string, unknown>) => string | undefined;
@@ -59,6 +65,14 @@ interface IdempotencyClaim {
   payloadHash: string;
   claimToken: string;
 }
+
+/** Response roots that carry no envelope `status` (the SDK's own list). */
+const STATUS_FREE_RESPONSE_TOOLS: ReadonlySet<string> = new Set([
+  'list_products',
+  'decline_proposals',
+  'list_collections',
+  'list_proposals',
+]);
 
 function toAdaptedResponse(
   toolName: string,
@@ -88,7 +102,14 @@ function toAdaptedResponse(
     };
   }
   const inner = (result ?? {}) as Record<string, unknown>;
-  const withEnvelope = wrapEnvelope(inner, {
+  // Custom tools bypass the SDK response pipeline that stamps the envelope
+  // `status` on framework tools. Every task response envelope requires it
+  // (core/protocol-envelope.json); a synchronous success is `completed`, and a
+  // handler that reports another task status (an async `submitted`) keeps it.
+  const withStatus = STATUS_FREE_RESPONSE_TOOLS.has(toolName) || inner.status !== undefined
+    ? inner
+    : { ...inner, status: 'completed' };
+  const withEnvelope = wrapEnvelope(withStatus, {
     ...(callerContext !== undefined && typeof callerContext === 'object' && callerContext !== null
       ? { context: callerContext }
       : {}),
@@ -164,27 +185,32 @@ async function releaseClaim(claim: IdempotencyClaim | null): Promise<void> {
 }
 
 /**
- * Declares the version envelope on a custom tool's input shape. The MCP layer
- * drops undeclared arguments before the SDK selects the served release, so
- * without these a caller's `adcp_version` pin never reaches release selection.
- */
-function withVersionEnvelope(
-  inputSchema: Record<string, z.ZodTypeAny> | z.ZodTypeAny,
-): Record<string, z.ZodTypeAny> | z.ZodTypeAny {
-  if (inputSchema instanceof z.ZodType) return inputSchema;
-  return {
-    adcp_version: z.string().optional(),
-    adcp_major_version: z.number().int().optional(),
-    ...inputSchema,
-  };
-}
-
-/**
  * Wrap a v5-style handler into an `AdcpCustomToolConfig` for
  * `opts.customTools` registration. Handles the `(args, ctx)` →
  * `(args, extra)` adaptation, session-context wrapping, and envelope
  * shaping.
  */
+/**
+ * The version envelope every AdCP request may carry. The SDK selects the
+ * served release from the parsed tool arguments, and MCP input parsing drops
+ * keys a tool's schema does not declare, so a custom tool that omits these
+ * would always be served (and shaped) at the default release.
+ */
+const VERSION_ENVELOPE_SHAPE = {
+  adcp_version: TOOL_REQUEST_SCHEMAS.list_accounts.shape.adcp_version,
+  adcp_major_version: TOOL_REQUEST_SCHEMAS.list_accounts.shape.adcp_major_version,
+} as const;
+
+function withVersionEnvelope(
+  inputSchema: Record<string, z.ZodTypeAny> | z.ZodTypeAny,
+): Record<string, z.ZodTypeAny> | z.ZodTypeAny {
+  if (inputSchema instanceof z.ZodObject) {
+    return 'adcp_version' in inputSchema.shape ? inputSchema : inputSchema.extend(VERSION_ENVELOPE_SHAPE);
+  }
+  if (inputSchema instanceof z.ZodType) return inputSchema;
+  return 'adcp_version' in inputSchema ? inputSchema : { ...VERSION_ENVELOPE_SHAPE, ...inputSchema };
+}
+
 export function customToolFor(
   name: string,
   description: string,
@@ -206,7 +232,8 @@ export function customToolFor(
         : undefined;
       const governanceAgentCredential = governanceAgentCredentialFromExtra(authInfo?.extra);
       const hostedGraderCredential = hostedGraderCredentialFromExtra(authInfo?.extra);
-      // The release the SDK negotiated for this request.
+      // The SDK selects the served release before it calls a custom tool and
+      // passes it on `extra`, as it does on the framework tools' context.
       const servedAdcpVersion = (extra as { servedAdcpVersion?: unknown } | undefined)?.servedAdcpVersion;
       const trainingCtx: TrainingContext = {
         mode: 'open',
@@ -218,6 +245,26 @@ export function customToolFor(
         ...options.trainingContext,
       };
       const { context: callerContext, ...handlerArgs } = params;
+      // The SDK serves a custom tool at any release. A caller that pins a
+      // release older than the tool's first defining line (search_brands and
+      // list_transformers arrive in 3.1) is refused, as the SDK refuses a
+      // framework tool its release does not define. The pin is resolved the
+      // way the training agent resolves it, so a supported prerelease pin
+      // such as 3.1-beta.5 stays on its own line.
+      if (
+        !options.gatesOwnRelease
+        && (handlerArgs.adcp_version !== undefined || handlerArgs.adcp_major_version !== undefined)
+      ) {
+        const resolution = resolveServedAdcpVersionForTool(name, handlerArgs);
+        if (resolution.ok && toolAddedAfterRelease(name, resolution.servedVersion)) {
+          return idempotencyError(
+            'VERSION_UNSUPPORTED',
+            `${name} is not defined in the selected AdCP release ${resolution.servedVersion}.`,
+            callerContext,
+            { field: 'adcp_version', recovery: 'correctable' },
+          );
+        }
+      }
       return runWithSessionContext(async () => {
         let claim: IdempotencyClaim | null = null;
         if (options.enforceIdempotency) {

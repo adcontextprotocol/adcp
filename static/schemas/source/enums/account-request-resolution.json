@@ -6,9 +6,10 @@
   "x-status": "experimental",
   "description": "How a resolved account request produced its account (experimental, account.requests).",
   "type": "string",
-  "enum": ["matched", "created"],
+  "enum": ["matched", "created", "updated"],
   "enumDescriptions": {
     "matched": "The seller linked the request to an account that already existed, such as an existing direct relationship with the advertiser, and granted the caller access to it. No seller account object was created.",
-    "created": "The seller created a new account for the request."
+    "created": "The seller created a new account for the request.",
+    "updated": "The request changed attributes on an existing account (it named account_id). The account keeps its account_id."
   }
 }

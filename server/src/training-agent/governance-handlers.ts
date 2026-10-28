@@ -22,6 +22,7 @@ import type {
   GovernanceActionFlight,
   SessionState,
 } from './types.js';
+import { servesReleaseBefore } from './types.js';
 import { canonicalize, type BrandReference } from '@adcp/sdk';
 import {
   getSession,
@@ -1821,7 +1822,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       ) {
         return { errors: [{ code: 'CONFLICT', message: 'The seller reused statement_id for a different governed action or delivery statement.' }] };
       }
-      return buildCheckResponse(priorStatement);
+      return buildCheckResponse(priorStatement, governanceServedVersion(ctx));
     }
     const periodAlreadyClosed = [...session.governanceOutcomes.values()].some(outcome => {
       const outcomePeriod = (outcome.delivery as {
@@ -1888,7 +1889,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       timestamp: new Date().toISOString(),
     };
     session.governanceChecks.set(checkId, check);
-    return buildCheckResponse(check);
+    return buildCheckResponse(check, governanceServedVersion(ctx));
   }
 
   const ownerOrDelegated = authenticatedCaller === plan.ownerAgentUrl
@@ -2727,7 +2728,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   };
 
   session.governanceChecks.set(checkId, check);
-  return buildCheckResponse(check);
+  return buildCheckResponse(check, governanceServedVersion(ctx));
 }
 
 export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingContext) {
@@ -4308,7 +4309,27 @@ function buildExplanation(
   return `Governance check completed with status: ${status}.`;
 }
 
-function buildCheckResponse(check: GovernanceCheckState) {
+/**
+ * 3.0 and 3.1 require `expires_at` on a `conditions` verdict as well as an
+ * approval; 3.2 dropped it for conditions. The window is the one the
+ * approval would carry. Only the response carries it: a conditions verdict
+ * never authorizes execution.
+ */
+/** The release a check_governance response is shaped to. */
+function governanceServedVersion(ctx: TrainingContext): string | undefined {
+  return ctx.storyboardCompat?.version === '3.0' ? '3.0' : ctx.servedAdcpVersion;
+}
+
+function legacyConditionsExpiry(check: GovernanceCheckState, servedAdcpVersion: string | undefined): string | undefined {
+  if (check.status !== 'conditions' || check.expiresAt || !servesReleaseBefore(servedAdcpVersion, 3, 2)) return undefined;
+  const issuedAt = Date.parse(check.timestamp);
+  if (!Number.isFinite(issuedAt)) return undefined;
+  const window = check.binding === 'proposed' ? 15 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+  return new Date(issuedAt + window).toISOString();
+}
+
+function buildCheckResponse(check: GovernanceCheckState, servedAdcpVersion?: string) {
+  const conditionsExpiry = legacyConditionsExpiry(check, servedAdcpVersion);
   return {
     check_id: check.checkId,
     check_type: check.binding === 'proposed' ? 'intent' : 'execution',
@@ -4341,6 +4362,7 @@ function buildCheckResponse(check: GovernanceCheckState) {
     }),
     ...(check.consultationContext && { consultation_context: check.consultationContext }),
     ...(check.expiresAt && { expires_at: check.expiresAt }),
+    ...(conditionsExpiry && { expires_at: conditionsExpiry }),
     ...(check.phase === 'delivery' && check.status === 'approved' && {
       next_check: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     }),

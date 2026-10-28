@@ -239,10 +239,11 @@ Declares support for authenticated caller-scoped connection configuration. This 
 | `supported` | boolean | Always `true` when the block is present. |
 | `sync_task` | string | Always `sync_principal`. |
 | `read_task` | string | Always `get_principal`. Side-effect-free read of caller-scoped state and version. |
-| `supported_sections` | string[] | Any of `notification_configs` and `reporting_destinations`. |
+| `supported_sections` | string[] | Any of `notification_configs`, `reporting_destinations`, `declarations`, and `reporting_subscriptions`. `reporting_subscriptions` (experimental, 3.3) requires `media_buy.reporting_delivery.subscriptions` and `media_buy.reporting_subscriptions` in `experimental_features`. |
 | `max_reporting_destinations` | integer | Required when reporting destinations are supported. Portable schema maximum is 64; a seller may advertise a lower limit. |
 | `reporting_destination_offerings` | object[] | Required when reporting destinations are supported. Objective per-pattern offering — transports, file formats, dataset-share access modes, and verification profiles — so buyers select compatible destinations without submit-and-reject probing. |
 | `suspension_interval_seconds` | integer | Required when reporting destinations are supported. Upper bound between a committed destination suspension or revocation and the halt of new deliveries to every generation of that destination. |
+| `caller_event_types` | string[] | Event types a caller-level subscriber may list. Include `account.status_changed` when supported: a subscriber with `all_authorized_accounts: true` then receives suspension, `payment_required`, and other status transitions for every authorized account from one registration. |
 | `optimistic_concurrency` | boolean | Whether the seller enforces `expected_configuration_version`. When `false`, a request carrying the fence is rejected rather than silently ignored. |
 
 Agents exposing this block MUST list `protocol.principal` in `experimental_features` and expose both declared tasks. Account authorization remains separate; a ready reusable destination does not grant access to any advertiser account.
@@ -479,7 +480,7 @@ Account and authentication capabilities. All sellers should declare this section
 | `identity_updates` | object | **Deprecated in 3.3**, planned for removal in 4.0. Optional capability gate for the deprecated `operator_identity` reconciliation through `sync_accounts` settings-update mode. Account attributes, `operator_unit` included, change through settings-update mode without a gate. |
 | `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
 | `change_feed` | object | Optional, experimental (`account.change_feed`). Declares the durable [`list_account_changes`](/docs/accounts/tasks/list_account_changes) feed and `account.change_recorded` wake-up. When supported, includes a retention floor of at least 90 days and the resource types covered. |
-| `requests` | object | Optional, experimental (`account.requests`). Declares [`request_account`](/docs/accounts/tasks/request_account), [`get_account_requests`](/docs/accounts/tasks/get_account_requests), and the caller-anchored `account_request.changed` webhook. See [account.requests](#account-requests). |
+| `requests` | object | Optional, experimental (`account.requests`). Declares [`request_account`](/docs/accounts/tasks/request_account), `list_accounts` request reads, and the caller-anchored `account_request.changed` webhook. See [account.requests](#account-requests). |
 | `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. Account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup. Buyer-declared accounts use `sandbox: true` in `sync_accounts`, or in the natural-key account reference when the seller uses unambiguous lazy provisioning — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
 | `agent_onboarding` | object | Optional, experimental (`account.agent_onboarding`). How the seller onboards buyer agents: a mode per billing party and for sandbox, requirements, and where a human starts. Seller-wide and identical for every caller. See [account.agent_onboarding](#accountagent_onboarding). |
 
@@ -627,16 +628,16 @@ A kind used in the wrong direction is ignored. An unknown kind falls back to `me
 
 #### account.requests
 
-Declares whether the seller supports account requests: a buyer asks for an
-account with [`request_account`](/docs/accounts/tasks/request_account), and the
-seller matches an existing account or creates one, possibly after human review
-on either side. Requests are read back with
-[`get_account_requests`](/docs/accounts/tasks/get_account_requests) and
+Declares whether the seller supports account requests: a buyer opens an
+account with [`request_account`](/docs/accounts/tasks/request_account) (the
+seller matches an existing account or creates one) or changes one by
+`account_id`, possibly after human review on either side. Requests are read back
+with [`list_accounts`](/docs/accounts/tasks/list_accounts) (`include_requests`) and
 announced with the caller-anchored `account_request.changed` webhook, which
 buyers register through the caller-scoped `notification_configs`.
 
 Account requests are [experimental](/docs/reference/experimental-status) in
-3.3 ([#8280](https://github.com/adcontextprotocol/adcp/issues/8280)). Sellers
+3.3 ([#8280](https://github.com/adcontextprotocol/adcp/issues/8280), [#8543](https://github.com/adcontextprotocol/adcp/issues/8543)). Sellers
 advertising `supported: true` MUST also list `account.requests` in
 `experimental_features`. Buyers SHOULD prefer `request_account` over
 `sync_accounts` provisioning when it is supported.
@@ -648,7 +649,8 @@ advertising `supported: true` MUST also list `account.requests` in
     "requests": {
       "supported": true,
       "request_task": "request_account",
-      "read_task": "get_account_requests",
+      "read_task": "list_accounts",
+      "changeable_attributes": ["countries", "billing_entity", "payment_terms"],
       "event_type": "account_request.changed",
       "pending_action_kinds": ["review", "sign_up", "credit_application"]
     }
@@ -656,7 +658,9 @@ advertising `supported: true` MUST also list `account.requests` in
 }
 ```
 
-`event_type` is present only when the seller fires `account_request.changed`; a seller that declares it also declares `adcp.capability_changes.notifications.supported: true`, because buyers subscribe through the caller-scoped `notification_configs`. Without it, buyers poll `get_account_requests`.
+`event_type` is present only when the seller fires `account_request.changed`; a seller that declares it also declares `adcp.capability_changes.notifications.supported: true`, because buyers subscribe through the caller-scoped `notification_configs`. Without it, buyers poll `list_accounts` with `request_ids`.
+
+`changeable_attributes` lists the attributes the seller accepts in `request_account` change requests (`account_id` plus fields); absent or empty means the seller supports opening accounts only.
 
 `pending_action_kinds` is advisory: it lets buyers prepare the people who will
 act. Sellers may issue other kinds, and buyers handle unknown kinds through the
@@ -922,6 +926,33 @@ produce those exact periods natively or through lossless finer-grained
 re-bucketing. Optional `reliability_statistics[]` publish evidence-scoped
 on-time counts, publication latency, and post-official adjustment frequency,
 latency, and magnitude for exact offering IDs.
+
+**Where feeds are registered.** 3.3 clients use `configuration_tasks[]`, which
+lists every accepted registration task — `["sync_principal"]`, `["sync_accounts"]`,
+or both — and choose from it. Sellers that also serve `sync_accounts`
+registration list it; a seller may list `sync_principal` alone.
+`configuration_task` is always `"sync_accounts"` and is deprecated in 3.3. It is
+present when and only when `configuration_tasks` lists `sync_accounts` or is absent.
+Callers pinned below 3.3 know only `configuration_task`, so a seller MUST serve
+`sync_accounts` registration to them; a seller listing only `sync_principal` serves
+reporting registration to 3.3 callers only. A client that registers feeds through
+`sync_principal` can end its own old account-level configurations with a
+subscription's `replace_account_configs`.
+
+**Reporting subscriptions (experimental, 3.3).** `subscriptions` advertises
+principal-level [reporting subscriptions](/docs/protocol/sync_principal#reporting-subscriptions):
+one registration through `sync_principal` that covers every authorized account.
+A seller declaring it lists `media_buy.reporting_subscriptions` in
+`experimental_features`, `reporting_subscriptions` in
+`adcp.principal.supported_sections`, and `sync_principal` in
+`configuration_tasks`.
+
+| Field | Type | Description |
+|---|---|---|
+| `supported` | boolean | Always `true` when the block is present. |
+| `max_accounts` | integer | Optional. Most accounts one subscription serves. Accounts beyond it are excluded with reason `capacity`, deterministically, and reported. |
+| `backfill_on_regrant` | boolean | Whether periods missed while authority was revoked are delivered after re-grant. When `false` (the default) they appear as `gaps`. |
+| `dimensions` | string[] | Standard dimensions (`package`, `creative`, `country`, `region`, `metro`) the seller maps its report definitions onto for selector matching. |
 
 #### vendor_metric_optimization
 

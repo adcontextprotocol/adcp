@@ -91,6 +91,9 @@ function buildGovernanceTrainingCtx(ctx: {
     ...(governanceAgentCredential && { governanceAgentCredential }),
     // Hosted-grader buyer credential; same always-carried rule.
     ...(hostedGraderCredential && { hostedGraderCredential }),
+    // The release the SDK serves this request at, for release-shaped fields
+    // (a 3.0 or 3.1 conditions verdict carries expires_at).
+    ...(ctx?.servedAdcpVersion && { servedAdcpVersion: ctx.servedAdcpVersion }),
   };
 }
 

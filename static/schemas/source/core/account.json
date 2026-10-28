@@ -43,7 +43,7 @@
     "revision": {
       "type": "integer",
       "minimum": 1,
-      "description": "Monotonically increasing optimistic-concurrency token for this account. Incremented on every persisted settings change, identity-change request, and identity-change disposition; reads, dry runs, validation failures, and exact idempotency replays do not increment it. Pass the latest observed value in a sync_accounts settings-update entry to prevent lost updates."
+      "description": "Monotonically increasing optimistic-concurrency token for this account. Incremented on every persisted settings change, identity-change request, and identity-change disposition; reads, dry runs, validation failures, and exact idempotency replays do not increment it. Pass the latest observed value in a sync_accounts settings-update entry, or a request_account change, to prevent lost updates. A timezone change shows here as a new revision with the new timezone. Reporting subscription writes through sync_principal, including replace_account_configs deactivations, are caller configuration and do not increment it."
     },
     "identity_change": {
       "$ref": "/schemas/core/account-identity-change.json",

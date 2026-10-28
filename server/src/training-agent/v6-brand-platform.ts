@@ -41,6 +41,7 @@ function buildTrainingCtx(
     account?: { authInfo?: { principal?: string } };
     authInfo?: { clientId?: string };
     agent?: { agent_url: string };
+    servedAdcpVersion?: string;
   } | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): TrainingContext {
@@ -50,6 +51,8 @@ function buildTrainingCtx(
     principal: ctx?.authInfo?.clientId ?? ctx?.account?.authInfo?.principal ?? 'anonymous',
     ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
     ...(storyboardCompat && { storyboardCompat }),
+    // The release the SDK serves this request at, for release-shaped fields.
+    ...(ctx?.servedAdcpVersion && { servedAdcpVersion: ctx.servedAdcpVersion }),
   };
 }
 

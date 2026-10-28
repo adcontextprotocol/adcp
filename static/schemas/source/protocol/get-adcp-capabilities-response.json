@@ -226,6 +226,73 @@
       }
     },
     {
+      "description": "Advertising reporting subscriptions (media_buy.reporting_delivery.subscriptions) requires the media_buy.reporting_subscriptions feature id and the sync_principal reporting_subscriptions section.",
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "reporting_delivery": { "required": ["subscriptions"] }
+            },
+            "required": ["reporting_delivery"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.reporting_subscriptions" }
+          },
+          "adcp": {
+            "properties": {
+              "principal": {
+                "properties": {
+                  "supported_sections": {
+                    "contains": { "const": "reporting_subscriptions" }
+                  }
+                },
+                "required": ["supported_sections"]
+              }
+            },
+            "required": ["principal"]
+          }
+        },
+        "required": ["experimental_features", "adcp"]
+      }
+    },
+    {
+      "description": "The sync_principal reporting_subscriptions section requires media_buy.reporting_delivery.subscriptions.",
+      "if": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "principal": {
+                "properties": {
+                  "supported_sections": {
+                    "contains": { "const": "reporting_subscriptions" }
+                  }
+                },
+                "required": ["supported_sections"]
+              }
+            },
+            "required": ["principal"]
+          }
+        },
+        "required": ["adcp"]
+      },
+      "then": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "reporting_delivery": { "required": ["subscriptions"] }
+            },
+            "required": ["reporting_delivery"]
+          }
+        },
+        "required": ["media_buy"]
+      }
+    },
+    {
       "if": {
         "properties": {
           "media_buy": {
@@ -933,11 +1000,11 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "enum": ["notification_configs", "reporting_destinations", "declarations"]
+                "enum": ["notification_configs", "reporting_destinations", "declarations", "reporting_subscriptions"]
               },
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Connection configuration sections this seller accepts. Unsupported sections are rejected rather than silently ignored."
+              "description": "Connection configuration sections this seller accepts. Unsupported sections are rejected rather than silently ignored. reporting_subscriptions (3.3, experimental) requires media_buy.reporting_delivery.subscriptions and the media_buy.reporting_subscriptions feature id."
             },
             "max_reporting_destinations": {
               "type": "integer",
@@ -1370,18 +1437,24 @@
           "type": "object",
           "x-status": "experimental",
           "x-added-in": "3.3.0",
-          "description": "Whether the seller supports account requests: request_account to find or create an advertiser account, possibly after human review on either side, get_account_requests to read requests back, and the caller-anchored account_request.changed webhook. Experimental in 3.3 (#8280): sellers advertising supported: true MUST list account.requests in experimental_features. Buyers SHOULD prefer request_account over sync_accounts provisioning when it is supported.",
+          "description": "Whether the seller supports account requests: request_account to open an account (the seller finds or creates it) or change one by account_id, possibly after human review on either side; list_accounts with include_requests to read requests back; and the caller-anchored account_request.changed webhook. Experimental in 3.3 (#8280, #8543): sellers advertising supported: true MUST list account.requests in experimental_features. Buyers SHOULD use request_account with this seller; sync_accounts stays stable and available.",
           "oneOf": [
             {
               "title": "AccountRequestsSupported",
               "properties": {
                 "supported": { "type": "boolean", "const": true },
                 "request_task": { "type": "string", "const": "request_account" },
-                "read_task": { "type": "string", "const": "get_account_requests" },
+                "read_task": { "type": "string", "const": "list_accounts" },
+                "changeable_attributes": {
+                  "type": "array",
+                  "description": "Account attributes this seller accepts in request_account change requests (account_id plus fields). Absent or empty means the seller supports opening accounts only. Advisory: sellers still validate each change.",
+                  "items": { "type": "string", "enum": ["countries", "operator_unit", "billing", "billing_entity", "payment_terms", "currency", "timezone"] },
+                  "uniqueItems": true
+                },
                 "event_type": {
                   "type": "string",
                   "const": "account_request.changed",
-                  "description": "Present when the seller fires account_request.changed. Buyers subscribe through the caller-scoped notification_configs, so a seller declaring it also declares adcp.capability_changes.notifications.supported: true. When absent, buyers poll get_account_requests."
+                  "description": "Present when the seller fires account_request.changed. Buyers subscribe through the caller-scoped notification_configs, so a seller declaring it also declares adcp.capability_changes.notifications.supported: true. When absent, buyers poll list_accounts (include_requests)."
                 },
                 "pending_action_kinds": {
                   "type": "array",
@@ -1405,7 +1478,8 @@
                   { "required": ["request_task"] },
                   { "required": ["read_task"] },
                   { "required": ["event_type"] },
-                  { "required": ["pending_action_kinds"] }
+                  { "required": ["pending_action_kinds"] },
+                  { "required": ["changeable_attributes"] }
                 ]
               },
               "additionalProperties": true

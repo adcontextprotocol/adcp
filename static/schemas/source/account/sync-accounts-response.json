@@ -36,7 +36,7 @@
                 "x-added-in": "3.3.0",
                 "minLength": 1,
                 "maxLength": 128,
-                "description": "Experimental (account.requests). Identifier of the seller's account request behind this row, present while the row is pending_approval and the seller has not issued an account_id. Read it with get_account_requests or wait for account_request.changed. It is not an account_id and is never accepted as an AccountRef."
+                "description": "Experimental (account.requests). Identifier of the seller's account request behind this row, present while the row is pending_approval and the seller has not issued an account_id. Read it with list_accounts (include_requests) or wait for account_request.changed. It is not an account_id and is never accepted as an AccountRef."
               },
               "resolution": {
                 "$ref": "/schemas/enums/account-request-resolution.json",
