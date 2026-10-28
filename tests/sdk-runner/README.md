@@ -14,9 +14,9 @@ only matches `test_kit.*`; any other expression is ignored and the phase runs
 anyway. That runner therefore cannot execute this storyboard at all, so the
 regression tests cannot be written against it.
 
-This package pins a published `@adcp/sdk` **15.9.2** purely so
-`tests/cli-scenario-fixtures.test.cjs` can drive a runner that evaluates those
-guards. Its conflicting peers (`@a2a-js/sdk` 1.x vs the root's 0.3.x) nest under
+This package pins a published `@adcp/sdk` **17.0.0-beta.3** so
+`tests/cli-scenario-fixtures.test.cjs` can evaluate those guards and the auction-only
+seller regressions can enrich valid semantic rejection probes. Its conflicting peers (`@a2a-js/sdk` 1.x vs the root's 0.3.x) nest under
 `tests/sdk-runner/node_modules`, so **root production resolution is unchanged**:
 `@adcp/sdk` 9.6.2 with `@a2a-js/sdk` 0.3.x.
 

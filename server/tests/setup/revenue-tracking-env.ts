@@ -4,6 +4,9 @@
 process.env.REVENUE_TRACKING_DISABLED = 'true';
 process.env.NODE_ENV = 'test';
 
+// Unit tests must not fetch or reset repository caches in developer checkouts.
+process.env.SKIP_REPO_INDEX = 'true';
+
 // WorkOS credentials (mock values for testing). Including WORKOS_COOKIE_PASSWORD
 // at >=32 chars so AUTH_ENABLED resolves true and the WorkOS client gets
 // constructed — routes that reach for `workos!.userManagement` etc. would
