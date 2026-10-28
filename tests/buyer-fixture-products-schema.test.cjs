@@ -111,11 +111,8 @@ test('a product valid under only one shape is rejected', () => {
     },
   };
   assert.deepEqual(productErrors(ajv, dualShape), []);
-  // installments exists only on the legacy Product, so the canonical Product
-  // rejects it by name.
   const errors = productErrors(ajv, { ...dualShape, installments: [] });
-  assert.ok(errors.some((e) => e.startsWith('/schemas/core/canonical-product.json')), errors.join('\n'));
-  assert.ok(!errors.some((e) => e.startsWith('/schemas/core/product.json')), errors.join('\n'));
+  assert.ok(errors.some((e) => e.startsWith('/schemas/core/canonical-product.json') && e.includes('installments')), errors.join('\n'));
   const missing = productErrors(ajv, { product_id: 'p', name: 'P' });
   assert.ok(missing.some((e) => e.startsWith('/schemas/core/product.json')), missing.join('\n'));
 });
