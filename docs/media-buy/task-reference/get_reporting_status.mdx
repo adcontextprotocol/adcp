@@ -648,13 +648,48 @@ Experimental in 3.3 under `media_buy.reporting_subscriptions` ([RFC #8543](https
 </Note>
 
 A [reporting subscription](/docs/protocol/sync_principal#reporting-subscriptions)
-registered through [`sync_principal`](/docs/protocol/sync_principal) turns into ordinary per-account obligations. They
-carry `delivery_config_id` equal to the `subscription_id` and appear in
+registered through [`sync_principal`](/docs/protocol/sync_principal) turns into ordinary
+per-account obligations. They carry `delivery_config_id` equal to the
+`subscription_id`, the resolved `offering_id` and `report_definition_id`, and appear in
 `scope.delivery_config_generations` like any other configuration generation.
+
+Coverage is computable by the buyer without asking. The seller reports only the
+exceptions, and every exception removes expected periods; none adds one.
+
+### Which periods are owed
+
+A confirmed buy in an account the principal is authorized for is owed every complete
+period of the resolved offering's published schedule, in the account's timezone, that
+starts on or after the later of:
+
+- the subscription version's `accepted_at`, in the
+  [`get_principal`](/docs/protocol/get_principal) readback; and
+- the buy's `confirmed_at`, when the seller committed to the media buy.
+
+Coverage of the buy runs through its final period. Periods are never clipped: a
+mid-period start begins at the next boundary, as for an account-level configuration.
+Deactivating the subscription ends coverage at the first boundary at or after
+`deactivated_at`. A new `subscription_version` gets its own `accepted_at`: the old
+version owes periods that start before the first boundary at or after it, and the rule
+reapplies to the new version from there. Earlier versions' `accepted_at` values stay in
+the readback as `prior_versions` while their obligations are retained.
+
+So a buyer derives every expected period from its own buys (`confirmed_at` and
+flight), the subscription's `accepted_at`, and the offering's published schedule, then
+subtracts the exceptions below. A period that remains is owed: a missing report there
+is the seller's to explain. Each period's obligation still freezes its
+`media_buy_ids` at its own `scope_resolved_at`.
+
+The resolved offering is pinned per period. If resolution changes, for example because
+a finer offering appears under `match: finest`, the new offering applies from the next
+period boundary and never to a period already started; each obligation names the
+offering it used.
+
+### Exceptions
+
 Summary and periods responses add `subscription_coverage[]`: one entry per caller
-subscription whose scope includes the account, including accounts it excludes and
-inactive subscriptions whose obligations are still retained. The revision view never
-carries it.
+subscription whose scope includes the account, including inactive subscriptions whose
+obligations are still retained. The revision view never carries it.
 
 ```json
 {
@@ -663,92 +698,54 @@ carries it.
       "subscription_id": "analytics-daily",
       "subscription_version": 1,
       "status": "active",
-      "covered": [
-        {
-          "media_buy_id": "mb_spring_ctv",
-          "covered_from": "2026-11-02T14:20:00Z",
-          "offering_id": "daily_official_s3",
-          "report_definition_id": "delivery_by_package_creative_v2"
-        }
-      ],
       "excluded": [
-        { "media_buy_id": "mb_dooh_test", "reason": "offering_unsupported" }
+        { "media_buy_id": "mb_dooh_test", "reason": "offering_unsupported", "from": "2026-11-03T05:00:00Z" },
+        { "reason": "capacity", "from": "2026-11-03T05:00:00Z", "until": "2026-11-10T05:00:00Z" }
       ]
     },
     {
       "subscription_id": "pacing-hourly",
       "subscription_version": 2,
       "status": "excluded",
-      "covered": [],
       "excluded": [
-        { "reason": "overridden", "overridden_by": { "delivery_config_id": "acme-pacing" } }
+        { "reason": "overridden", "from": "2026-11-05T00:00:00Z", "overridden_by": { "delivery_config_id": "acme-pacing" } }
       ]
     }
   ]
 }
 ```
 
-### When coverage starts and ends
+Each `excluded[]` entry removes the periods in `[from, until)`, both period boundaries;
+an entry without `until` is still in effect. An entry without `media_buy_id` applies to
+the whole account.
 
-Each covered buy gets an immutable `covered_from`, the latest of:
-
-- when the seller accepted the subscription version that resolved this offering
-  (`accepted_at` in [`get_principal`](/docs/protocol/get_principal));
-- when the principal became authorized for the account; and
-- when the media buy was created.
-
-Period eligibility is the same as for an account-level configuration: periods are
-never clipped. A buy is owed every complete period whose start is at or after
-`covered_from`, so a mid-period `covered_from` starts coverage at the next boundary in
-the account's period timezone. Coverage ends at `covered_until`, a period boundary:
-the buy's final period end, the first boundary at or after the subscription is
-deactivated, or the last boundary at or before a loss of authority that is not
-backfilled. Periods ending after `covered_until` are not owed.
-
-The resolved offering is pinned per `covered` entry, and a buy with several resolved
-offerings (`match: all`) has one entry per offering. If a new offering would change
-the resolution, for example under `match: finest`, the seller ends the old entry with
-`covered_until` at a boundary and starts a new entry whose `covered_from` is that
-boundary. It never swaps the offering inside an entry.
-
-A buyer derives its expected periods from `covered_from` and `covered_until` and holds
-the seller to them exactly as for an account-level configuration. That tells a
-missing report (covered, period owed, nothing delivered) apart from a buy that was
-never covered. Each period's obligation still freezes its `media_buy_ids` at its own
-`scope_resolved_at`; a buy owed that period and known by then is in them.
-
-### Exclusions
-
-Accounts or buys a subscription does not serve appear in `excluded[]` with a `reason`.
-An entry without `media_buy_id` excludes the whole account and sets `status:
-"excluded"`.
-
-| `reason` | Meaning |
+| `reason` | Removes periods because |
 |---|---|
-| `offering_unsupported` | No offering matches the selector for this account or buy. |
-| `unauthorized` | The principal is not authorized for this buy. |
+| `offering_unsupported` | No offering matching the selector is available on this account's products, or this buy's. |
+| `capacity` | The seller refused for a limit such as `subscriptions.max_accounts`. |
 | `overridden` | A more specific scope takes this account and feed purpose; `overridden_by` names the `delivery_config_id` or `subscription_id`. |
-| `capacity` | Beyond the seller's `subscriptions.max_accounts`, or an account the seller won't serve. |
-| `excluded_by_buyer` | Listed in the subscription's `exclude_account_ids`. |
+| `excluded_by_buyer` | The account is in the subscription's `exclude_account_ids`. |
+| `action_required` | The seller serves the account only after `pending_action` completes. |
 
-An account the seller will serve only after someone acts has `status:
-"action_required"` with a `pending_action`.
+`status` summarizes what is in effect now: `excluded` or `action_required` when an
+open account-level entry exists (with `pending_action` for the latter), otherwise
+`active`. Entries are retained for `status_retention_days` after `until`.
 
 **Precedence.** Per account and `feed_purpose`, the more specific scope wins. During
 3.x an account-level [`sync_accounts`](/docs/accounts/tasks/sync_accounts)
 `reporting_delivery_configs` entry replaces every subscription, whether all-accounts
 or `account_ids`. Otherwise an `account_ids` subscription replaces an all-accounts
 one. Only the winner creates obligations for that account and purpose; a replaced
-subscription reports `overridden`.
+subscription records an `overridden` exception.
 
 ### When authorization ends
 
-Caller isolation does not change: once the principal loses authority for an account,
-this task treats the account as unknown, like any unauthorized identifier. The
-revocation is instead reported in the caller's own subscription state:
-[`get_principal`](/docs/protocol/get_principal) lists the account under the
-subscription's `accounts_unauthorized[]` with `unauthorized_at`,
-`last_covered_until`, and the withheld periods. A revoked grant therefore reads
+An account is covered only while the principal is authorized for it. Caller isolation
+does not change: once the principal loses authority, this task treats the account as
+unknown, like any unauthorized identifier. The revocation is reported in the caller's
+own subscription state instead: [`get_principal`](/docs/protocol/get_principal) lists
+the account under the subscription's `accounts_unauthorized[]` with `unauthorized_at`,
+`last_owed_period_end`, and the withheld periods. A revoked grant therefore reads
 differently from a seller that stopped publishing, without disclosing current account
 data.
 
@@ -766,12 +763,11 @@ data.
 - **Re-grant.** The account leaves `accounts_unauthorized[]` and is readable here
   again. Withheld periods are owed again, due at the re-grant time plus the offering's
   `delivery_sla` rather than their original `expected_at`. With
-  `subscriptions.backfill_on_regrant: true`, coverage keeps its original
-  `covered_from` and gets no `covered_until` for the revoked interval, so every period
-  in it is owed, on the same re-grant deadline. Otherwise the old entry ends at the
-  last boundary at or before `unauthorized_at`, coverage resumes with a new
-  `covered_from` at the re-grant, and the interval appears in `gaps[]` with reason
-  `unauthorized`; periods overlapping it are not owed.
+  `subscriptions.backfill_on_regrant: true`, no gap is recorded and every period in
+  the revoked interval is owed, on the same re-grant deadline. Otherwise the interval
+  is recorded in `gaps[]` with reason `unauthorized`, `from` the last boundary at or
+  before `unauthorized_at` `until` the first boundary at or after the re-grant, and its
+  periods are not owed.
 
 ## Complete reconciliation
 

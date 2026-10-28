@@ -23,7 +23,22 @@
     "accepted_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When the seller accepted the current subscription_version. It is the earliest possible covered_from for coverage that version starts."
+      "description": "When the seller accepted the current subscription_version. Immutable for that version. A buy is covered from the first complete period starting on or after the later of this instant and the buy's confirmed_at."
+    },
+    "prior_versions": {
+      "type": "array",
+      "description": "Earlier versions whose obligations are still retained, newest first, so a buyer can recompute their expected periods after local-state loss.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "subscription_version": { "type": "integer", "minimum": 1 },
+          "accepted_at": { "type": "string", "format": "date-time" },
+          "superseded_at": { "type": "string", "format": "date-time", "description": "The next version's accepted_at. Coverage under this version ends at the first boundary at or after it." }
+        },
+        "required": ["subscription_version", "accepted_at", "superseded_at"],
+        "additionalProperties": false
+      },
+      "maxItems": 16
     },
     "deactivated_at": {
       "type": "string",
@@ -55,7 +70,7 @@
         "properties": {
           "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
           "unauthorized_at": { "type": "string", "format": "date-time", "description": "When the caller's authority for the account ended. Nothing is delivered for periods ending after it, including on retries." },
-          "last_covered_until": { "type": "string", "format": "date-time", "description": "Latest period boundary through which any buy in the account was owed before authority ended." },
+          "last_owed_period_end": { "type": "string", "format": "date-time", "description": "Last period boundary at or before unauthorized_at: the end of the last period owed before authority ended." },
           "withheld_period_count": { "type": "integer", "minimum": 0, "description": "Owed periods that ended at or before unauthorized_at but were not delivered by then. They are withheld, not missing, and never count as seller delay. If authority returns, they are owed again, due at the re-grant time plus the offering's delivery_sla." },
           "withheld_reporting_obligation_ids": {
             "type": "array",

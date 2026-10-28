@@ -129,6 +129,7 @@ const PROPERTIES_3_3 = [
   ['media-buy/get-reporting-status-response.json', ['properties', 'subscription_coverage']],
   ['core/reporting-delivery-capabilities.json', ['properties', 'configuration_tasks']],
   ['core/reporting-delivery-capabilities.json', ['properties', 'subscriptions']],
+  ['core/reporting-obligation.json', ['properties', 'offering_id']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the

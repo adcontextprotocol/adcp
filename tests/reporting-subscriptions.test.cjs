@@ -142,13 +142,14 @@ test('sync_principal accepts the section and get_principal reads it back', () =>
 test('lost authority is reported in the caller\'s own subscription state', () => {
   const state = validate('/schemas/core/reporting-subscription-state.json');
   const current = { subscription_id: 'analytics-daily', subscription_version: 1, state: 'active', accepted_at: '2026-11-01T00:00:00Z', configuration: allAccounts };
-  const revoked = { account_id: 'acc_7', unauthorized_at: '2026-11-20T09:00:00Z', last_covered_until: '2026-11-20T05:00:00Z', withheld_period_count: 1, withheld_reporting_obligation_ids: ['obl_1'] };
+  const revoked = { account_id: 'acc_7', unauthorized_at: '2026-11-20T09:00:00Z', last_owed_period_end: '2026-11-20T05:00:00Z', withheld_period_count: 1, withheld_reporting_obligation_ids: ['obl_1'] };
   assert.ok(state({ ...current, accounts_unauthorized: [revoked] }), JSON.stringify(state.errors));
   const { withheld_period_count: _w, ...noCount } = revoked;
   assert.equal(state({ ...current, accounts_unauthorized: [noCount] }), false, 'withheld_period_count required');
   assert.equal(state({ ...current, accounts_unauthorized: [{ ...revoked, covered: [] }] }), false, 'no current account data');
   const caps = read('core/reporting-delivery-capabilities.json').properties.subscriptions.properties.backfill_on_regrant.description;
-  assert.match(caps, /original covered_from/);
+  assert.match(caps, /no gap is recorded/);
+  assert.ok(state({ ...current, prior_versions: [{ subscription_version: 1, accepted_at: '2026-10-01T00:00:00Z', superseded_at: '2026-11-01T00:00:00Z' }] }), JSON.stringify(state.errors));
 });
 
 test('receipts and statuses stay acceptable after revocation for revisions already read', () => {
@@ -167,44 +168,78 @@ test('sync_accounts delivery configs win over subscriptions and share the id nam
   assert.match(read('core/reporting-subscription.json')['x-adcp-validation'].precedence, /replaces every subscription, all-accounts or account_ids/);
 });
 
-const coverageBase = { subscription_id: 'analytics-daily', subscription_version: 1, covered: [], excluded: [] };
+const coverageBase = { subscription_id: 'analytics-daily', subscription_version: 1, excluded: [] };
+const from = '2026-11-03T05:00:00Z';
 
-test('coverage status carries exactly its own fields', () => {
+test('coverage readback lists exceptions only, each with its interval', () => {
+  const schema = read('core/reporting-subscription-coverage.json');
+  for (const gone of ['covered', 'covered_from', 'covered_until', 'unauthorized_at', 'withheld_unauthorized']) {
+    assert.equal(schema.properties[gone], undefined, `no positive ${gone} listing`);
+  }
+  assert.match(schema.description, /only removes periods/);
   const v = validate('/schemas/core/reporting-subscription-coverage.json');
   const review = { waiting_on: 'seller', kind: 'review', message: 'Capacity review.' };
   const ok = [
     { ...coverageBase, status: 'active' },
-    { ...coverageBase, status: 'excluded', excluded: [{ reason: 'capacity' }] },
-    { ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden', overridden_by: { delivery_config_id: 'acct-analytics' } }] },
-    { ...coverageBase, status: 'action_required', pending_action: review },
+    { ...coverageBase, status: 'active', excluded: [{ media_buy_id: 'mb_1', reason: 'offering_unsupported', from }, { reason: 'capacity', from, until: '2026-11-10T05:00:00Z' }] },
+    { ...coverageBase, status: 'excluded', excluded: [{ reason: 'capacity', from }] },
+    { ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden', from, overridden_by: { delivery_config_id: 'acct-analytics' } }] },
+    { ...coverageBase, status: 'action_required', pending_action: review, excluded: [{ reason: 'action_required', from }] },
+    { ...coverageBase, status: 'active', gaps: [{ from: '2026-11-20T05:00:00Z', until: '2026-11-25T05:00:00Z', reason: 'unauthorized' }] },
   ];
   for (const doc of ok) assert.ok(v(doc), `${doc.status}: ${JSON.stringify(v.errors)}`);
 
   const bad = [
+    ['a positive covered listing', { ...coverageBase, status: 'active', covered: [] }],
     ['unauthorized is not an account status here', { ...coverageBase, status: 'unauthorized' }],
-    ['no unauthorized_at in coverage', { ...coverageBase, status: 'active', unauthorized_at: '2026-11-20T09:00:00Z' }],
-    ['no withheld periods in coverage', { ...coverageBase, status: 'active', withheld_unauthorized: [] }],
-    ['action_required without pending_action', { ...coverageBase, status: 'action_required' }],
+    ['an exception without from', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'capacity' }] }],
+    ['a gap without until', { ...coverageBase, status: 'active', gaps: [{ from, reason: 'unauthorized' }] }],
+    ['action_required without pending_action', { ...coverageBase, status: 'action_required', excluded: [{ reason: 'action_required', from }] }],
+    ['action_required without an open account-level entry', { ...coverageBase, status: 'action_required', pending_action: review }],
     ['pending_action on an active account', { ...coverageBase, status: 'active', pending_action: review }],
-    ['excluded without an account-level entry', { ...coverageBase, status: 'excluded', excluded: [{ media_buy_id: 'mb_1', reason: 'capacity' }] }],
-    ['overridden without the overriding id', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden' }] }],
-    ['overridden_by on another reason', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'capacity', overridden_by: { subscription_id: 's' } }] }],
-    ['overridden by two things', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden', overridden_by: { subscription_id: 's', delivery_config_id: 'd' } }] }],
-    ['unknown exclusion reason', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'too_big' }] }],
+    ['active with an open account-level exclusion', { ...coverageBase, status: 'active', excluded: [{ reason: 'capacity', from }] }],
+    ['excluded with only an ended account-level entry', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'capacity', from, until: '2026-11-10T05:00:00Z' }] }],
+    ['excluded with only a buy-level entry', { ...coverageBase, status: 'excluded', excluded: [{ media_buy_id: 'mb_1', reason: 'capacity', from }] }],
+    ['overridden without the overriding id', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden', from }] }],
+    ['overridden_by on another reason', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'capacity', from, overridden_by: { subscription_id: 's' } }] }],
+    ['overridden by two things', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden', from, overridden_by: { subscription_id: 's', delivery_config_id: 'd' } }] }],
+    ['unauthorized is not an exclusion reason', { ...coverageBase, status: 'excluded', excluded: [{ reason: 'unauthorized', from }] }],
   ];
   for (const [name, doc] of bad) assert.equal(v(doc), false, `${name} is rejected`);
 });
 
-test('covered entries carry covered_from and the resolved offering', () => {
-  const v = validate('/schemas/core/reporting-subscription-coverage.json');
-  const covered = { media_buy_id: 'mb_1', covered_from: '2026-11-02T14:20:00Z', offering_id: 'daily', report_definition_id: 'def_v1' };
-  assert.ok(v({ ...coverageBase, status: 'active', covered: [covered] }), JSON.stringify(v.errors));
-  for (const key of ['covered_from', 'offering_id', 'report_definition_id', 'media_buy_id']) {
-    const { [key]: _omit, ...missing } = covered;
-    assert.equal(v({ ...coverageBase, status: 'active', covered: [missing] }), false, `${key} required`);
-  }
-  const regrant = { ...coverageBase, status: 'active', covered: [{ ...covered, covered_until: '2026-11-20T09:00:00Z' }, { ...covered, covered_from: '2026-11-25T00:00:00Z' }], gaps: [{ period: { start: '2026-11-20T09:00:00Z', end: '2026-11-25T00:00:00Z' }, reason: 'unauthorized' }] };
-  assert.ok(v(regrant), JSON.stringify(v.errors));
+// Reference computation of the documented rule for a fixed-offset daily schedule.
+const DAY = 86_400_000;
+function expectedPeriods({ acceptedAt, confirmedAt, flightEnd, offsetHours, exceptions = [] }) {
+  const origin = -offsetHours * 3_600_000; // local midnight expressed in UTC ms
+  const later = Math.max(Date.parse(acceptedAt), Date.parse(confirmedAt));
+  let start = origin + Math.ceil((later - origin) / DAY) * DAY; // first boundary on or after
+  const out = [];
+  for (; start + DAY <= Date.parse(flightEnd); start += DAY) out.push(start);
+  return out
+    .filter(p => !exceptions.some(e => p >= Date.parse(e.from) && (!e.until || p + DAY <= Date.parse(e.until))))
+    .map(p => new Date(p).toISOString());
+}
+
+test('the buyer computes the first owed period from accepted_at, confirmed_at, and the schedule', () => {
+  const rule = read('core/reporting-subscription.json')['x-adcp-validation'].coverage;
+  assert.match(rule, /starts on or after the later of this subscription_version's accepted_at/);
+  assert.match(rule, /confirmed_at/);
+  assert.match(rule, /exceptions only remove periods, never add them/);
+  assert.match(read('core/reporting-subscription-state.json').properties.accepted_at.description, /later of this instant and the buy's confirmed_at/);
+  assert.match(read('core/media-buy.json').properties.confirmed_at.description, /remains stable/);
+
+  // Account in UTC-5: local midnight is 05:00Z. Buy confirmed mid-day after the subscription was accepted.
+  const base = { acceptedAt: '2026-11-01T12:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', flightEnd: '2026-11-06T05:00:00Z', offsetHours: -5 };
+  const owed = expectedPeriods(base);
+  assert.deepEqual(owed, ['2026-11-03T05:00:00.000Z', '2026-11-04T05:00:00.000Z', '2026-11-05T05:00:00.000Z'], 'mid-period confirmation starts at the next boundary');
+  assert.equal(expectedPeriods({ ...base, acceptedAt: '2026-11-04T01:00:00Z' })[0], '2026-11-04T05:00:00.000Z', 'a later acceptance moves the start');
+  assert.equal(expectedPeriods({ ...base, confirmedAt: '2026-11-03T05:00:00Z' })[0], '2026-11-03T05:00:00.000Z', 'a start on a boundary is owed');
+
+  // Exceptions only subtract.
+  const minus = expectedPeriods({ ...base, exceptions: [{ from: '2026-11-04T05:00:00Z', until: '2026-11-05T05:00:00Z' }] });
+  assert.deepEqual(minus, ['2026-11-03T05:00:00.000Z', '2026-11-05T05:00:00.000Z']);
+  assert.ok(minus.every(p => owed.includes(p)), 'no exception adds a period');
 });
 
 test('get_reporting_status carries subscription_coverage in summary but not revision view', () => {
@@ -244,7 +279,7 @@ test('get_reporting_status carries subscription_coverage in summary but not revi
     data_through: null,
     obligation_counts: { total: 0, waiting: 0, healthy: 0, delayed: 0, action_required: 0, complete: 0 },
     issues: [],
-    subscription_coverage: [{ ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden', overridden_by: { delivery_config_id: 'acct-analytics' } }] }],
+    subscription_coverage: [{ ...coverageBase, status: 'excluded', excluded: [{ reason: 'overridden', from, overridden_by: { delivery_config_id: 'acct-analytics' } }] }],
   };
   assert.ok(v(summary), JSON.stringify(v.errors));
   const schema = read('media-buy/get-reporting-status-response.json');
@@ -252,7 +287,8 @@ test('get_reporting_status carries subscription_coverage in summary but not revi
   assert.ok(JSON.stringify(revisionView.not).includes('subscription_coverage'), 'revision view excludes subscription_coverage');
   assert.equal(schema['x-adcp-validation'].revoked_account_reads, undefined, 'no read carve-out for former principals');
   assert.match(schema['x-adcp-validation'].caller_isolation, /identical lookup_unavailable shape/);
-  assert.match(schema['x-adcp-validation'].subscription_coverage, /start(ing)? at or after covered_from/);
+  assert.match(schema['x-adcp-validation'].subscription_coverage, /exceptions never add periods/);
+  assert.equal(read('core/reporting-obligation.json').properties.offering_id['x-added-in'], '3.3.0');
 });
 
 function capabilities({ subscriptions = true, section = true, feature = true, tasks = ['sync_principal', 'sync_accounts'] } = {}) {
