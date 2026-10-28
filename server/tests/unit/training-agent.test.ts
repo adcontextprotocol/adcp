@@ -2631,11 +2631,24 @@ describe('deprecated list_creative_formats compatibility handler', () => {
   it('omits post-3.0 format parameters from 3.0 compatibility responses', async () => {
     const currentServer = createTrainingAgentServer(DEFAULT_CTX);
     const { result: current } = await simulateCallTool(currentServer, 'list_creative_formats', {
+      adcp_version: CURRENT_ADCP_VERSION,
       format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_image' }],
     });
     const currentFormat = (current.formats as Array<Record<string, unknown>>)[0];
     expect(currentFormat.accepts_parameters).toEqual(['dimensions', 'pixel_ratio']);
     expect(currentFormat.description).toContain('pixel_ratio');
+
+    // FormatIDParameter is closed, and 3.0 and 3.1 predate `pixel_ratio`.
+    // An unpinned call is served (and echoed) at 3.0.
+    for (const version of ['3.1', '3.0', undefined]) {
+      const { result: older } = await simulateCallTool(currentServer, 'list_creative_formats', {
+        ...(version && { adcp_version: version }),
+        format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_image' }],
+      });
+      const olderFormat = (older.formats as Array<Record<string, unknown>>)[0];
+      expect(olderFormat.accepts_parameters, String(version)).toEqual(['dimensions']);
+      expect(olderFormat.description, String(version)).not.toContain('pixel_ratio');
+    }
 
     const compatServer = createTrainingAgentServer({
       ...DEFAULT_CTX,
@@ -10969,7 +10982,7 @@ describe('list_creatives handler', () => {
   it('falls back to compliance fixtures when nothing is synced', async () => {
     const account = { brand: { domain: 'emptycreatives.example' }, operator: 'emptycreatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result } = await simulateCallTool(server, 'list_creatives', { account });
+    const { result } = await simulateCallTool(server, 'list_creatives', { account, adcp_version: CURRENT_ADCP_VERSION });
 
     // Empty sessions fall back to compliance creative fixtures (e.g.
     // campaign_hero_video) so conformance storyboards can resolve stable IDs
@@ -10996,6 +11009,23 @@ describe('list_creatives handler', () => {
       }),
     ]);
     expect(legacyCreatives[0]?.format_kind).toBeUndefined();
+
+    // 3.0 requires format_id on every listed creative, so /mcp lists the
+    // canonical fixture by its legacy format for a 3.0 caller, and for an
+    // unpinned call, which is served (and echoed) at 3.0.
+    for (const version of ['3.0', undefined]) {
+      const { result: threeZero } = await simulateCallTool(server, 'list_creatives', {
+        account,
+        ...(version && { adcp_version: version }),
+      });
+      expect(threeZero.adcp_version).toBe('3.0');
+      const [fixture] = threeZero.creatives as Array<Record<string, unknown>>;
+      expect(fixture, String(version)).toMatchObject({
+        creative_id: 'campaign_hero_video',
+        format_id: expect.objectContaining({ id: 'video_preroll' }),
+      });
+      expect(fixture.format_kind, String(version)).toBeUndefined();
+    }
   });
 
   it('skips the compliance fallback when creative_ids filter is explicit', async () => {
@@ -13341,6 +13371,7 @@ describe('update_media_buy handler', () => {
 
     const { result: listedResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'list_creatives', {
       account,
+      adcp_version: CURRENT_ADCP_VERSION,
       creative_ids: ['inline_cr_v2'],
     });
     const listedCreative = (listedResult.creatives as Array<Record<string, unknown>>)[0];
@@ -13595,6 +13626,7 @@ describe('update_media_buy handler', () => {
 
     const { result: listedResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'list_creatives', {
       account,
+      adcp_version: CURRENT_ADCP_VERSION,
       creative_ids: ['inline_identity_transition'],
     });
     const listedCreative = (listedResult.creatives as Array<Record<string, unknown>>)[0];
@@ -17099,6 +17131,7 @@ describe('activate_signal handler', () => {
   it('requires governance for rights services from account registration without a local plan', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const initialGrant = await simulateCallTool(server, 'acquire_rights', {
+      adcp_version: CURRENT_ADCP_VERSION,
       account,
       rights_id: 'janssen_likeness_voice',
       pricing_option_id: 'monthly_exclusive',
@@ -17110,6 +17143,7 @@ describe('activate_signal handler', () => {
     await syncGovernedAccount(server);
 
     const acquired = await simulateCallTool(server, 'acquire_rights', {
+      adcp_version: CURRENT_ADCP_VERSION,
       account,
       rights_id: 'janssen_likeness_voice',
       pricing_option_id: 'monthly_exclusive',
