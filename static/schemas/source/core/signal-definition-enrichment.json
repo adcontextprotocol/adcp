@@ -190,8 +190,7 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       }
     },
     "consent_basis": {
@@ -233,8 +232,7 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         },
         "ai_act_risk_class": {
@@ -285,9 +283,7 @@
                 "uniqueItems": true
               },
               "url": {
-                "type": "string",
-                "format": "uri",
-                "pattern": "^https://"
+                "$ref": "/schemas/core/https-url.json"
               },
               "email": {
                 "type": "string",
@@ -302,8 +298,7 @@
               "countries": {
                 "type": "array",
                 "items": {
-                  "type": "string",
-                  "pattern": "^[A-Z]{2}$"
+                  "$ref": "/schemas/core/country-code.json"
                 }
               }
             },
@@ -321,9 +316,7 @@
           "maximum": 90
         },
         "ccpa_opt_out_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://"
+          "$ref": "/schemas/core/https-url.json"
         }
       },
       "required": ["channels"],

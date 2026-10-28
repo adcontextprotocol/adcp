@@ -26,7 +26,7 @@
         "brand": { "$ref": "/schemas/core/brand-key.json" },
         "operator": { "type": "string" },
         "operator_unit": { "$ref": "/schemas/core/operator-unit.json" },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "currency": {"$ref": "/schemas/core/currency-code.json"},
         "timezone": { "type": "string", "minLength": 1 },
         "sandbox": { "type": "boolean" },
         "billing": { "$ref": "/schemas/enums/billing-party.json" },

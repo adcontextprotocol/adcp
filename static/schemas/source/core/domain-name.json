@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/domain-name.json",
+  "title": "Domain Name",
+  "description": "A lowercase DNS domain name, dot-separated LDH labels. Extracted unchanged from the 57 sites that stated it inline; see adcontextprotocol/adcp#8525.",
+  "type": "string",
+  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+}

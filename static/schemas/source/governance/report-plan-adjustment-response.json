@@ -25,7 +25,7 @@
       "type": "object",
       "properties": {
         "amount": { "type": "number", "exclusiveMinimum": 0 },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+        "currency": {"$ref": "/schemas/core/currency-code.json"}
       },
       "required": ["amount", "currency"],
       "additionalProperties": false

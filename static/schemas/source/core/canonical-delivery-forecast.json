@@ -12,7 +12,7 @@
     },
     "forecast_range_unit": { "$ref": "/schemas/enums/forecast-range-unit.json" },
     "method": { "$ref": "/schemas/enums/forecast-method.json" },
-    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "currency": {"$ref": "/schemas/core/currency-code.json"},
     "demographic_system": { "$ref": "/schemas/enums/demographic-system.json" },
     "demographic": { "type": "string" },
     "measurement_source": { "type": "string", "maxLength": 64, "pattern": "^[a-z0-9_]+$" },

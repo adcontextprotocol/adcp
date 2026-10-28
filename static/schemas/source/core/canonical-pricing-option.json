@@ -10,7 +10,7 @@
       "type": "string",
       "enum": ["cpm", "vcpm", "cpc", "cpcv", "cpv", "cpp", "cpa", "revenue_share", "flat_rate", "time"]
     },
-    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "currency": {"$ref": "/schemas/core/currency-code.json"},
     "fixed_price": { "type": "number", "minimum": 0 },
     "floor_price": { "type": "number", "minimum": 0 },
     "price_guidance": { "$ref": "/schemas/pricing-options/price-guidance.json" },

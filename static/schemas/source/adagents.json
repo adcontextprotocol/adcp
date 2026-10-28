@@ -13,9 +13,7 @@
           "description": "JSON Schema identifier for this adagents.json file"
         },
         "authoritative_location": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS URL of the authoritative adagents.json file. When present, this file is a reference and the authoritative location contains the actual agent authorization data. Because one deploy can change authorization across every publisher in the network, validators MUST cap response size, refuse redirects on the fetch, enforce short timeouts, and serve the previously cached file on transient 5xx. Two-tier size cap: pointer files served at `/.well-known/adagents.json` use the general 5 MB SSRF cap; dereferenced authoritative files (this URL's response, after the indirection) use a recommended 20 MB cap because the origin has explicitly opted in to fanning out across a publisher network. See docs/governance/property/managed-networks#security-considerations."
         },
         "last_updated": {
@@ -55,9 +53,8 @@
               "maxLength": 255
             },
             "domain": {
-              "type": "string",
-              "description": "Primary domain of the entity managing this file",
-              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              "$ref": "/schemas/core/domain-name.json",
+              "description": "Primary domain of the entity managing this file"
             },
             "seller_id": {
               "type": "string",
@@ -108,9 +105,8 @@
             "type": "object",
             "properties": {
               "publisher_domain": {
-                "type": "string",
-                "description": "Publisher domain being revoked. Matches against the same canonicalized form used in `publisher_properties[].publisher_domain`.",
-                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                "$ref": "/schemas/core/domain-name.json",
+                "description": "Publisher domain being revoked. Matches against the same canonicalized form used in `publisher_properties[].publisher_domain`."
               },
               "revoked_at": {
                 "type": "string",
@@ -191,9 +187,7 @@
           "minItems": 1
         },
         "superseded_by": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "Optional pointer indicating this adagents.json file has been superseded by another adagents.json at a different URL. Used by the AAO community-mirror lifecycle: when a platform (e.g., Meta) adopts AdCP and publishes its own adagents.json at `<platform-domain>/.well-known/adagents.json`, the AAO mirror file at `creative.adcontextprotocol.org/translated/<platform>/adagents.json` sets `superseded_by` to the platform-hosted URL. Buyer SDKs encountering a file with `superseded_by` SHOULD short-circuit and re-fetch from the named URL rather than serving stale content from the mirror. The mirror SHOULD continue serving with `superseded_by` set for ≥1 minor release after platform adoption so buyer caches keyed on the mirror URL get an explicit migration signal rather than a silent break."
         },
         "tags": {
@@ -306,8 +300,7 @@
                     "type": "array",
                     "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{2}$"
+                      "$ref": "/schemas/core/country-code.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true
@@ -392,8 +385,7 @@
                     "type": "array",
                     "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{2}$"
+                      "$ref": "/schemas/core/country-code.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true
@@ -478,8 +470,7 @@
                     "type": "array",
                     "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{2}$"
+                      "$ref": "/schemas/core/country-code.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true
@@ -564,8 +555,7 @@
                     "type": "array",
                     "description": "Optional ISO 3166-1 alpha-2 country codes limiting where this authorization applies. Omit for worldwide authorization.",
                     "items": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{2}$"
+                      "$ref": "/schemas/core/country-code.json"
                     },
                     "minItems": 1,
                     "uniqueItems": true

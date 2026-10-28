@@ -32,14 +32,14 @@
     "advertiser_industry": { "$ref": "/schemas/enums/advertiser-industry.json" },
     "advertiser_jurisdictions": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+      "items": {"$ref": "/schemas/core/country-code.json"},
       "minItems": 1,
       "uniqueItems": true,
       "description": "Jurisdictions in which the advertiser is established or legally organized. This is distinct from where an ad will be delivered."
     },
     "delivery_jurisdictions": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+      "items": {"$ref": "/schemas/core/country-code.json"},
       "minItems": 1,
       "uniqueItems": true,
       "description": "Jurisdictions in which the proposed advertising will be delivered. Seller acceptance rules' jurisdictions and jurisdiction_groups match this field."

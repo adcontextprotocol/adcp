@@ -79,9 +79,7 @@
           "description": "Untrusted display text only. SDKs and agents dispatch only on the closed action value and never execute embedded links or instructions."
         },
         "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://"
+          "$ref": "/schemas/core/https-url.json"
         },
         "expires_at": {
           "type": "string",

@@ -25,7 +25,7 @@
         "city": { "type": "string", "description": "City name." },
         "region": { "type": "string", "description": "State, province, or region. ISO 3166-2 subdivision code preferred (e.g., 'US-NY')." },
         "postal_code": { "type": "string", "description": "Postal or ZIP code." },
-        "country": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2 country code." }
+        "country": {"$ref": "/schemas/core/country-code.json", "description": "ISO 3166-1 alpha-2 country code."}
       },
       "additionalProperties": false
     },
@@ -104,8 +104,7 @@
       "x-entity": "placement"
     },
     "publisher_domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "For publisher_ref, the domain whose adagents.json declares the placement and part of canonical identity. For seller_inline, optional inventory-publisher attribution only; it does not grant the seller authority to mint IDs in that publisher's catalog namespace."
     },
     "seller_agent": {

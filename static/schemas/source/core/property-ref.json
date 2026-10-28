@@ -6,9 +6,8 @@
   "type": "object",
   "properties": {
     "publisher_domain": {
-      "type": "string",
-      "description": "Domain where the adagents.json declaring this property is hosted.",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "$ref": "/schemas/core/domain-name.json",
+      "description": "Domain where the adagents.json declaring this property is hosted."
     },
     "property_id": {
       "$ref": "/schemas/core/property-id.json",

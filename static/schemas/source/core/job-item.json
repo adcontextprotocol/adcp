@@ -50,8 +50,7 @@
           "description": "Maximum salary."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "ISO 4217 currency code."
         },
         "period": {

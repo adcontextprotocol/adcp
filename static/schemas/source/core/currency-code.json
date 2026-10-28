@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/currency-code.json",
+  "title": "Currency Code",
+  "description": "ISO 4217 alphabetic currency code. Extracted unchanged from the 86 sites that stated it inline; see adcontextprotocol/adcp#8525.",
+  "type": "string",
+  "pattern": "^[A-Z]{3}$"
+}

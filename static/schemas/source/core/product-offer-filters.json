@@ -20,7 +20,7 @@
     },
     "pricing_currencies": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[A-Z]{3}$" },
+      "items": {"$ref": "/schemas/core/currency-code.json"},
       "minItems": 1,
       "uniqueItems": true,
       "x-canonicalization": "set"
@@ -76,8 +76,7 @@
       "type": "array",
       "description": "Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA', 'GB']). Returns products whose geographic coverage includes at least one of the specified countries. This is a product attribute filter, not a delivery-targeting instruction.",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "minItems": 1
     },

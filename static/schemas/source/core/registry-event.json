@@ -449,8 +449,7 @@
   ],
   "$defs": {
     "domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "$ref": "/schemas/core/domain-name.json"
     },
     "publisherAdagentsPayload": {
           "type": "object",
@@ -602,8 +601,7 @@
         "markets": {
           "type": "array",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           },
           "uniqueItems": true
         },
@@ -633,8 +631,7 @@
     "countries": {
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "minItems": 1,
       "uniqueItems": true

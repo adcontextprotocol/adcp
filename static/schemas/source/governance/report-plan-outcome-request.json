@@ -46,11 +46,8 @@
       "x-entity": "governance_check"
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Buyer-generated unique key for this outcome report. An identical retry returns the cached response without another settlement; reuse with a different canonical payload returns IDEMPOTENCY_CONFLICT. Use a fresh UUID v4 for each distinct report.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Buyer-generated unique key for this outcome report. An identical retry returns the cached response without another settlement; reuse with a different canonical payload returns IDEMPOTENCY_CONFLICT. Use a fresh UUID v4 for each distinct report."
     },
     "purchase_type": {
       "$ref": "/schemas/enums/purchase-type.json",
@@ -159,8 +156,7 @@
           "description": "Buyer-attributed cumulative spend for the governed action."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json"
         },
         "period_closed": {
           "type": "boolean",

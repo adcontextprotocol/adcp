@@ -57,9 +57,7 @@
         "type": "object",
         "properties": {
           "agent_url": {
-            "type": "string",
-            "format": "uri",
-            "pattern": "^https://",
+            "$ref": "/schemas/core/https-url.json",
             "description": "URL of the governance agent. MUST use the `https://` scheme. The seller calls this URL via `get_creative_features` to verify a buyer's claim; the seller has already vetted the endpoint and accepts responsibility for outbound calls to it."
           },
           "feature_id": {

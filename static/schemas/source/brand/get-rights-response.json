@@ -68,16 +68,14 @@
                 "type": "array",
                 "description": "Countries where rights are available (ISO 3166-1 alpha-2). When both countries and excluded_countries are present, the effective set is countries minus excluded_countries. If neither is present, all countries are available.",
                 "items": {
-                  "type": "string",
-                  "pattern": "^[A-Z]{2}$"
+                  "$ref": "/schemas/core/country-code.json"
                 }
               },
               "excluded_countries": {
                 "type": "array",
                 "description": "Countries excluded from availability",
                 "items": {
-                  "type": "string",
-                  "pattern": "^[A-Z]{2}$"
+                  "$ref": "/schemas/core/country-code.json"
                 }
               },
               "exclusivity_status": {

@@ -6,9 +6,8 @@
   "type": "object",
   "properties": {
     "domain": {
-      "type": "string",
-      "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "$ref": "/schemas/core/domain-name.json",
+      "description": "Domain that hosts /.well-known/brand.json or is registered for the brand."
     },
     "brand_id": {
       "$ref": "/schemas/core/brand-id.json",
@@ -17,8 +16,7 @@
     "countries": {
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "minItems": 1,
       "uniqueItems": true,

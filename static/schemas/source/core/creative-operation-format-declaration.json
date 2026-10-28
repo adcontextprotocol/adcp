@@ -12,8 +12,7 @@
       "x-max-length-4.0": 128
     },
     "publisher_domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "Publisher namespace for format_option_id when this operation claims compatibility with a publisher declaration.",
       "x-max-length-4.0": 253
     },
@@ -31,7 +30,7 @@
     },
     "technical_requirements_complete": { "type": "boolean" },
     "display_name": { "type": "string", "x-max-length-4.0": 128 },
-    "sample_render_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "sample_render_url": {"$ref": "/schemas/core/https-url.json"},
     "applies_to_channels": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/channels.json" },

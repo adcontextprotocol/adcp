@@ -13,11 +13,8 @@
   "x-mutates-state": true,
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for at-most-once execution. Natural per-account upsert keys handle resource-level dedup, but the envelope triggers onboarding webhooks, billing setup, and audit events — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for at-most-once execution. Natural per-account upsert keys handle resource-level dedup, but the envelope triggers onboarding webhooks, billing setup, and audit events — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request."
     },
     "accounts": {
       "type": "array",
@@ -48,17 +45,15 @@
             "description": "Brand reference identifying the advertiser. Required for **provisioning mode**; MUST be absent in settings-update mode. Only the BrandKey projection — `domain`, `brand_id`, and the canonicalized `countries[]` set — participates in account identity. Mutable or per-call BrandRef fields such as `industries`, `data_subject_contestation`, and `brand_kit_override` MUST NOT affect lookup, idempotency, or account creation. New 3.2 producers SHOULD send only the BrandKey fields; the broader BrandRef remains accepted on this existing 3.x task for compatibility."
           },
           "operator": {
-            "type": "string",
-            "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json. Required for **provisioning mode**; MUST be absent in settings-update mode.",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            "$ref": "/schemas/core/domain-name.json",
+            "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json. Required for **provisioning mode**; MUST be absent in settings-update mode."
           },
           "operator_unit": {
             "$ref": "/schemas/core/operator-unit.json",
             "description": "Optional operator-owned business unit, agency seat, or platform account for provisioning mode. operator_unit.id participates in the natural key; name is mapping/display metadata. MUST be absent in settings-update mode."
           },
           "currency": {
-            "type": "string",
-            "pattern": "^[A-Z]{3}$",
+            "$ref": "/schemas/core/currency-code.json",
             "description": "Optional immutable ISO 4217 transaction currency for a currency-bound advertiser object. Consult `account.supported_account_currency_modes` before provisioning. When supplied, it participates in the natural key and all media buys on the account use it. Omit for per-media-buy currency selection. MUST be absent in settings-update mode."
           },
           "timezone": {

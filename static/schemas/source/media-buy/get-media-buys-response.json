@@ -106,9 +106,8 @@
             "description": "Reason provided by the seller when status is 'rejected'. Present only when status is 'rejected'."
           },
           "currency": {
-            "type": "string",
-            "description": "Single ISO 4217 denomination for total_budget, package budget constraints, and canonical BiddingPolicy monetary fields. Every selected pricing option on an AdCP-authored media buy MUST declare this currency. Legacy or externally-created mixed-currency buys must not expose canonical bidding until normalized or split.",
-            "pattern": "^[A-Z]{3}$"
+            "$ref": "/schemas/core/currency-code.json",
+            "description": "Single ISO 4217 denomination for total_budget, package budget constraints, and canonical BiddingPolicy monetary fields. Every selected pricing option on an AdCP-authored media buy MUST declare this currency. Legacy or externally-created mixed-currency buys must not expose canonical bidding until normalized or split."
           },
           "total_budget": {
             "type": "number",
@@ -329,9 +328,8 @@
                   "description": "Current hard package spend ceiling per shared media-buy cap day, denominated in media_buy.currency. It is a subordinate ceiling, not a reserved allocation; media_buy.budget_cap_timezone defines the day boundary."
                 },
                 "currency": {
-                  "type": "string",
-                  "description": "Legacy/readback package denomination for buys created outside the canonical 3.2 path. For AdCP-authored media buys this MUST equal media_buy.currency; canonical package budget and BiddingPolicy values always use media_buy.currency. Snapshot currency may still identify externally reported spend denomination.",
-                  "pattern": "^[A-Z]{3}$"
+                  "$ref": "/schemas/core/currency-code.json",
+                  "description": "Legacy/readback package denomination for buys created outside the canonical 3.2 path. For AdCP-authored media buys this MUST equal media_buy.currency; canonical package budget and BiddingPolicy values always use media_buy.currency. Snapshot currency may still identify externally reported spend denomination."
                 },
                 "bid_price": {
                   "type": "number",
@@ -724,9 +722,8 @@
                       "minimum": 0
                     },
                     "currency": {
-                      "type": "string",
-                      "description": "ISO 4217 currency code for spend in this snapshot. Optional when unchanged from package.currency or media_buy.currency.",
-                      "pattern": "^[A-Z]{3}$"
+                      "$ref": "/schemas/core/currency-code.json",
+                      "description": "ISO 4217 currency code for spend in this snapshot. Optional when unchanged from package.currency or media_buy.currency."
                     },
                     "clicks": {
                       "type": "number",

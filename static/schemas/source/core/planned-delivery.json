@@ -86,9 +86,8 @@
       "description": "IANA timezone defining the calendar-day boundary for every daily cap on the planned media buy."
     },
     "currency": {
-      "type": "string",
-      "description": "ISO 4217 currency code for the budget. Governance execution checks require it whenever total_budget is present and require it to match the intent-authorized currency.",
-      "pattern": "^[A-Z]{3}$"
+      "$ref": "/schemas/core/currency-code.json",
+      "description": "ISO 4217 currency code for the budget. Governance execution checks require it whenever total_budget is present and require it to match the intent-authorized currency."
     },
     "budget_allocation": {
       "allOf": [

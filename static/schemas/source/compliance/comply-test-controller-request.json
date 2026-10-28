@@ -1305,8 +1305,7 @@
               "minimum": 0
             },
             "currency": {
-              "type": "string",
-              "pattern": "^[A-Z]{3}$"
+              "$ref": "/schemas/core/currency-code.json"
             }
           },
           "required": [

@@ -28,11 +28,8 @@
       "x-adcp-schema-uri": "/schemas/core/push-notification-config.json"
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated key required for retry-safe proposal decline.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated key required for retry-safe proposal decline."
     },
     "declines": {
       "type": "array",

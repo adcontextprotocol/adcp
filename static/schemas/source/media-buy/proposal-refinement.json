@@ -34,7 +34,7 @@
           "description": "Hard ceiling on fixed CPM rates. Satisfied only when every entry of commercial_terms.purchases carries pricing with pricing_model cpm or vcpm, a matching currency, and a fixed_price no greater than max. Auction-priced, missing, or non-CPM pricing on any purchase leaves the constraint unsatisfied.",
           "properties": {
             "max": { "type": "number", "exclusiveMinimum": 0 },
-            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+            "currency": {"$ref": "/schemas/core/currency-code.json"}
           },
           "required": ["max", "currency"],
           "additionalProperties": false

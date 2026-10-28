@@ -395,7 +395,7 @@
                     "issued_at": { "type": "string", "format": "date-time" },
                     "seller_reference": { "type": "string" },
                     "cumulative_spend": { "type": "number", "minimum": 0 },
-                    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+                    "currency": {"$ref": "/schemas/core/currency-code.json"},
                     "reporting_period": {
                       "type": "object",
                       "properties": {
@@ -456,8 +456,7 @@
                       "exclusiveMinimum": 0
                     },
                     "currency": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{3}$"
+                      "$ref": "/schemas/core/currency-code.json"
                     }
                   },
                   "required": [
@@ -551,8 +550,7 @@
                       "description": "Buyer-attributed cumulative spend for the governed action."
                     },
                     "currency": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{3}$"
+                      "$ref": "/schemas/core/currency-code.json"
                     },
                     "period_closed": {
                       "type": "boolean",

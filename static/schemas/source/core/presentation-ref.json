@@ -7,9 +7,7 @@
   "required": ["uri", "digest", "media_type", "schema_version"],
   "properties": {
     "uri": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "Publisher-controlled HTTPS URL for the presentation metadata. Consumers MUST apply the same SSRF, redirect, response-size, timeout, and DNS-rebinding protections used for format_schema fetches."
     },
     "digest": {
