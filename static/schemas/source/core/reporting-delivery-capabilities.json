@@ -29,7 +29,7 @@
       "type": "string",
       "const": "sync_accounts",
       "deprecated": true,
-      "description": "Deprecated in 3.3 in favor of configuration_tasks; kept unchanged while sync_accounts remains an accepted registration task during 3.x. Clients comparing it to sync_accounts keep working."
+      "description": "Deprecated in 3.3: 3.3 clients use configuration_tasks. Kept unchanged only for clients pinned below 3.3, which compare it to sync_accounts, while sync_accounts remains an accepted registration task during 3.x."
     },
     "configuration_tasks": {
       "type": "array",

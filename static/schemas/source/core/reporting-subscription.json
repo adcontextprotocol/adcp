@@ -68,13 +68,12 @@
           "minItems": 1,
           "maxItems": 16,
           "uniqueItems": true,
-          "description": "Breakdown the offering's report definition MUST include, in the standard vocabulary. Omit to match any breakdown."
+          "description": "Breakdown in the standard vocabulary. With match exact (the default when present) the offering's mapped dimensions must equal this set; with finest or all they must include it. Omit to match any breakdown."
         },
         "match": {
           "type": "string",
-          "enum": ["finest", "all"],
-          "default": "finest",
-          "description": "finest selects the single matching offering with the most mapped dimensions, ties broken by the lowest offering_id in byte order. all selects every matching offering."
+          "enum": ["exact", "finest", "all"],
+          "description": "exact selects the offering whose mapped dimension set equals dimensions. finest selects the single matching offering with the most mapped dimensions that include every selector dimension, ties broken by the lowest offering_id in byte order. all selects every offering whose mapped dimensions include every selector dimension, with one obligation set per resolved offering. Defaults to exact when dimensions is present and finest when it is absent. Billing subscriptions SHOULD use exact."
         },
         "period_timezone": {
           "type": "string",
@@ -89,6 +88,11 @@
     "reconciliation_mode": {
       "$ref": "/schemas/core/reporting-reconciliation-mode.json",
       "description": "Matched against the offering. A billing subscription uses consumer_receipt."
+    },
+    "replace_account_configs": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, applying this subscription deactivates the caller's own active sync_accounts reporting_delivery_configs for accounts in its scope with the same feed_purpose, effective at the next period boundary, and the subscription takes over from that boundary. Never affects another principal's configurations. Lets a client that does not use sync_accounts end an old account-level override. Changes in place without a new subscription_version."
     },
     "destination": {
       "type": "object",
@@ -152,9 +156,10 @@
     }
   ],
   "x-adcp-validation": {
-    "coverage": "Coverage is computable by the buyer without asking. A confirmed buy in an account the principal is authorized for is owed every complete period of the resolved offering's published schedule, in the account's timezone, that starts on or after the later of this subscription_version's accepted_at (get_principal readback) and the buy's confirmed_at, through the buy's final period. Periods are never clipped. Deactivation or a new subscription_version ends the old version's coverage at the first boundary at or after deactivated_at or the new version's accepted_at, and the rule reapplies to the new version. The seller reports only exceptions in get_reporting_status subscription_coverage (exclusions, action_required, unbackfilled gaps), and get_principal accounts_unauthorized for lost authority; exceptions only remove periods, never add them. Each obligation freezes media_buy_ids at its own scope_resolved_at.",
+    "replace_account_configs": "Evaluated each time a sync_principal request carrying this subscription with replace_account_configs true is applied. For each in-scope account, every active reporting_delivery_configs entry owned by the same authenticated caller with the same feed_purpose becomes active false with revocation_effective_at at the next period boundary of that configuration's schedule, and sync_accounts and list_accounts readback show the deactivation. From that boundary the subscription is no longer overridden for the account, so get_reporting_status ends the overridden exception there. A later sync_accounts entry again takes precedence until another such request is applied. Not applied on dry_run.",
+    "coverage": "Coverage is computable by the buyer without asking. A confirmed buy in an account the principal is authorized for is owed complete periods of the resolved offering's published schedule, in the account's timezone. Its first owed period is the first that starts on or after the later of this subscription_version's accepted_at (get_principal readback) and the buy's confirmed_at. A buy's owed periods are the complete periods that start on or after its first owed period start and start before its stop time: the earliest of its current end_time (an extension moves it later, a shortening earlier), cancellation.canceled_at, and completed_at when it completes before end_time. The period containing the stop time is owed in full; periods are never clipped. Deactivation or a new subscription_version ends the old version's coverage at the first boundary at or after deactivated_at or the new version's accepted_at, and the rule reapplies to the new version. The seller reports only exceptions in get_reporting_status subscription_coverage (exclusions, action_required, unbackfilled gaps), and get_principal accounts_unauthorized for lost authority; exceptions only remove periods, never add them. Each obligation freezes media_buy_ids at its own scope_resolved_at.",
     "precedence": "Per account and feed_purpose, the more specific scope wins. During 3.x an active sync_accounts reporting_delivery_configs entry for the account replaces every subscription, all-accounts or account_ids; otherwise an active account_ids subscription naming the account replaces an all_authorized_accounts subscription. A replaced subscription reports the account excluded with reason overridden and the overriding delivery_config_id or subscription_id. A caller never receives two feeds for the same account and feed_purpose.",
-    "selection": "The seller maps each offering's report definition dimensions onto the standard vocabulary. An offering matches when feed_purpose, period_duration, reconciliation_mode, and required_finality (in supported_finality) match, its mapped dimensions include every selector dimension, a present destination matches its method, and every product in the buy lists it in reporting_delivery_offering_ids. The resolved offering_id and report_definition_id appear on each obligation. A change in resolution, for example a new finer offering under match finest, applies from the next period boundary, never to a period already started.",
+    "selection": "The seller maps each offering's report definition dimensions onto the standard vocabulary. An offering matches when feed_purpose, period_duration, reconciliation_mode, and required_finality (in supported_finality) match, its mapped dimensions include every selector dimension, a present destination matches its method, and every product in the buy lists it in reporting_delivery_offering_ids. Under exact the mapped dimension set must equal the selector's; under finest and all it must include it. When no offering matches for an account or buy, it is excluded with offering_unsupported. The resolved offering_id and report_definition_id appear on each obligation. A change in resolution, for example a new finer offering under match finest, applies from the next period boundary, never to a period already started.",
     "timezone": "Without period_timezone, each account's periods use account_timezone alignment in that account's declared timezone. With period_timezone, which requires account_ids naming exactly one account, only offerings that can produce periods in that zone match.",
     "destination": "destination_id MUST name a destination present in the caller's reporting_destinations after the same request applies; otherwise the whole request fails. Destination proof establishes where data may go, never which account data the caller may receive: every delivery re-checks account authority. Every delivered row carries account_id."
   },
@@ -172,7 +177,7 @@
           "period_duration": "P1D",
           "required_finality": "official",
           "dimensions": ["package", "creative"],
-          "match": "finest"
+          "match": "exact"
         },
         "reconciliation_mode": "delivery_only",
         "destination": {

@@ -210,12 +210,15 @@ test('coverage readback lists exceptions only, each with its interval', () => {
 
 // Reference computation of the documented rule for a fixed-offset daily schedule.
 const DAY = 86_400_000;
-function expectedPeriods({ acceptedAt, confirmedAt, flightEnd, offsetHours, exceptions = [] }) {
+// Owed periods start on or after the first boundary at or after max(accepted_at, confirmed_at)
+// and start before the stop time: min(end_time, canceled_at, completed_at). Never clipped.
+function expectedPeriods({ acceptedAt, confirmedAt, endTime, canceledAt, completedAt, offsetHours, exceptions = [] }) {
   const origin = -offsetHours * 3_600_000; // local midnight expressed in UTC ms
   const later = Math.max(Date.parse(acceptedAt), Date.parse(confirmedAt));
   let start = origin + Math.ceil((later - origin) / DAY) * DAY; // first boundary on or after
+  const stop = Math.min(...[endTime, canceledAt, completedAt].filter(Boolean).map(Date.parse));
   const out = [];
-  for (; start + DAY <= Date.parse(flightEnd); start += DAY) out.push(start);
+  for (; start < stop; start += DAY) out.push(start);
   return out
     .filter(p => !exceptions.some(e => p >= Date.parse(e.from) && (!e.until || p + DAY <= Date.parse(e.until))))
     .map(p => new Date(p).toISOString());
@@ -230,7 +233,7 @@ test('the buyer computes the first owed period from accepted_at, confirmed_at, a
   assert.match(read('core/media-buy.json').properties.confirmed_at.description, /remains stable/);
 
   // Account in UTC-5: local midnight is 05:00Z. Buy confirmed mid-day after the subscription was accepted.
-  const base = { acceptedAt: '2026-11-01T12:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', flightEnd: '2026-11-06T05:00:00Z', offsetHours: -5 };
+  const base = { acceptedAt: '2026-11-01T12:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', endTime: '2026-11-06T05:00:00Z', offsetHours: -5 };
   const owed = expectedPeriods(base);
   assert.deepEqual(owed, ['2026-11-03T05:00:00.000Z', '2026-11-04T05:00:00.000Z', '2026-11-05T05:00:00.000Z'], 'mid-period confirmation starts at the next boundary');
   assert.equal(expectedPeriods({ ...base, acceptedAt: '2026-11-04T01:00:00Z' })[0], '2026-11-04T05:00:00.000Z', 'a later acceptance moves the start');
@@ -240,6 +243,85 @@ test('the buyer computes the first owed period from accepted_at, confirmed_at, a
   const minus = expectedPeriods({ ...base, exceptions: [{ from: '2026-11-04T05:00:00Z', until: '2026-11-05T05:00:00Z' }] });
   assert.deepEqual(minus, ['2026-11-03T05:00:00.000Z', '2026-11-05T05:00:00.000Z']);
   assert.ok(minus.every(p => owed.includes(p)), 'no exception adds a period');
+});
+
+test('a buy stops being owed at the earliest of end_time, canceled_at, and completed_at', () => {
+  const rule = read('core/reporting-subscription.json')['x-adcp-validation'].coverage;
+  assert.match(rule, /start before its stop time: the earliest of its current end_time/);
+  assert.match(rule, /cancellation\.canceled_at, and completed_at/);
+  assert.match(rule, /The period containing the stop time is owed in full/);
+  for (const [file, keys] of [['core/media-buy.json', ['properties', 'completed_at']], ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'completed_at']]]) {
+    const field = keys.reduce((o, k) => o[k], read(file));
+    assert.equal(field['x-added-in'], '3.3.0', file);
+    assert.match(field.description, /MUST populate it for completed buys/, file);
+  }
+  assert.ok(!read('core/media-buy.json').required.includes('completed_at'), 'completed_at stays optional');
+
+  const base = { acceptedAt: '2026-11-01T00:00:00Z', confirmedAt: '2026-11-02T14:20:00Z', endTime: '2026-11-06T05:00:00Z', offsetHours: -5 };
+  const days = n => Array.from({ length: n }, (_, i) => new Date(Date.parse('2026-11-03T05:00:00Z') + i * DAY).toISOString());
+  assert.deepEqual(expectedPeriods(base), days(3));
+  assert.deepEqual(expectedPeriods({ ...base, canceledAt: '2026-11-04T18:00:00Z' }), days(2), 'canceled mid-period: that period owed in full, the next not');
+  assert.deepEqual(expectedPeriods({ ...base, endTime: '2026-11-09T05:00:00Z' }), days(6), 'an end_time extension adds periods');
+  assert.deepEqual(expectedPeriods({ ...base, completedAt: '2026-11-04T05:00:00Z' }), days(1), 'completion before end_time stops at completed_at');
+  assert.deepEqual(expectedPeriods({ ...base, endTime: '2026-11-04T09:00:00Z' }), days(2), 'a mid-period end_time owes the period containing it');
+});
+
+// Reference resolver for the documented match modes.
+function resolve(offerings, { dimensions, match }) {
+  const mode = match || (dimensions ? 'exact' : 'finest');
+  const want = dimensions || [];
+  const superset = offerings.filter(o => want.every(d => o.dimensions.includes(d)));
+  if (mode === 'exact') return superset.filter(o => o.dimensions.length === want.length).map(o => o.offering_id);
+  if (mode === 'all') return superset.map(o => o.offering_id);
+  const max = Math.max(...superset.map(o => o.dimensions.length));
+  return superset.filter(o => o.dimensions.length === max).map(o => o.offering_id).sort().slice(0, 1);
+}
+
+test('match exact is the default with dimensions and resolves only an equal breakdown', () => {
+  const match = read('core/reporting-subscription.json').properties.selector.properties.match;
+  assert.deepEqual(match.enum, ['exact', 'finest', 'all']);
+  assert.equal(match.default, undefined, 'the default depends on dimensions, so it is described, not declared');
+  assert.match(match.description, /Defaults to exact when dimensions is present and finest when it is absent/);
+  assert.match(match.description, /Billing subscriptions SHOULD use exact/);
+
+  const offerings = [
+    { offering_id: 'pkg', dimensions: ['package'] },
+    { offering_id: 'pkg_creative', dimensions: ['package', 'creative'] },
+    { offering_id: 'pkg_country', dimensions: ['package', 'country'] },
+  ];
+  assert.deepEqual(resolve(offerings, { dimensions: ['package'] }), ['pkg'], 'default exact picks package only');
+  assert.deepEqual(resolve(offerings, { dimensions: ['package'], match: 'finest' }), ['pkg_country'], 'finest: most dimensions, lowest offering_id');
+  assert.deepEqual(resolve(offerings, { dimensions: ['package'], match: 'all' }), ['pkg', 'pkg_creative', 'pkg_country']);
+  assert.deepEqual(resolve(offerings, { dimensions: ['creative'] }), [], 'exact with no equal offering resolves nothing: offering_unsupported');
+  assert.deepEqual(resolve(offerings, {}), ['pkg_country'], 'no dimensions defaults to finest');
+
+  const v = validate('/schemas/core/reporting-subscription.json');
+  assert.ok(v({ ...allAccounts, selector: { ...allAccounts.selector, match: 'exact' } }), JSON.stringify(v.errors));
+});
+
+test('replace_account_configs lets a sync_principal-only client end its own account-level override', () => {
+  const schema = read('core/reporting-subscription.json');
+  assert.equal(schema.properties.replace_account_configs.type, 'boolean');
+  assert.match(schema.properties.replace_account_configs.description, /caller's own active sync_accounts reporting_delivery_configs/);
+  assert.match(schema.properties.replace_account_configs.description, /Never affects another principal's configurations/);
+  assert.match(schema['x-adcp-validation'].replace_account_configs, /next period boundary/);
+  const v = validate('/schemas/core/reporting-subscription.json');
+  assert.ok(v({ ...allAccounts, replace_account_configs: true }), JSON.stringify(v.errors));
+  assert.match(read('core/reporting-delivery-capabilities.json').properties.configuration_task.description, /pinned below 3\.3/);
+});
+
+test('obligation offering_id is authoritative for timing', () => {
+  assert.match(read('core/reporting-obligation.json').properties.offering_id.description, /Authoritative for this obligation's timing/);
+});
+
+test('principal.changed announces reporting subscription changes', () => {
+  const webhook = read('core/principal-changed-webhook.json');
+  assert.ok(webhook.properties.reason.enum.includes('reporting_subscription_changed'));
+  assert.match(read('core/reporting-subscription-state.json').properties.accounts_unauthorized.description, /reporting_subscription_changed/);
+  const hook = validate('/schemas/core/principal-changed-webhook.json');
+  const doc = { ...webhook.examples[0].data, reason: 'reporting_subscription_changed' };
+  delete doc.destination_id;
+  assert.ok(hook(doc), JSON.stringify(hook.errors));
 });
 
 test('get_reporting_status carries subscription_coverage in summary but not revision view', () => {

@@ -18,7 +18,7 @@
     "state": {
       "type": "string",
       "enum": ["active", "inactive", "action_required"],
-      "description": "active: accepted and resolving per account. inactive: the caller set active false. action_required: the subscription cannot deliver anywhere until the caller acts, for example because its destination is suspended or not ready; issues names the cause."
+      "description": "active: accepted and resolving per account. inactive: the caller set active false. action_required: the subscription cannot deliver anywhere until the caller acts, for example because its destination is suspended or not ready; issues names the cause. Moving to action_required fires principal.changed with reason reporting_subscription_changed."
     },
     "accepted_at": {
       "type": "string",
@@ -64,7 +64,7 @@
     },
     "accounts_unauthorized": {
       "type": "array",
-      "description": "Accounts this subscription covered whose authority the caller has since lost, so a revoked grant reads differently from a seller that stopped publishing. Only accounts the subscription previously covered appear. Entries carry no current account data and nothing created after unauthorized_at. An entry is removed on re-grant and is otherwise retained for status_retention_days after unauthorized_at.",
+      "description": "Accounts this subscription covered whose authority the caller has since lost, so a revoked grant reads differently from a seller that stopped publishing. Only accounts the subscription previously covered appear. Entries carry no current account data and nothing created after unauthorized_at. An entry is removed on re-grant and is otherwise retained for status_retention_days after unauthorized_at. Every addition or removal fires principal.changed with reason reporting_subscription_changed.",
       "items": {
         "type": "object",
         "properties": {

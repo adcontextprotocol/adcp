@@ -57,9 +57,10 @@
         "declarations_intersection_changed",
         "relationship_changed",
         "relationship_expiring",
+        "reporting_subscription_changed",
         "other"
       ],
-      "description": "Coarse reason for the invalidation. Advisory routing/debug metadata; receivers MUST re-read get_principal rather than inferring the new state from the reason. relationship_changed and relationship_expiring were added in 3.3 (experimental, with get_principal relationship)."
+      "description": "Coarse reason for the invalidation. Advisory routing/debug metadata; receivers MUST re-read get_principal rather than inferring the new state from the reason. relationship_changed and relationship_expiring were added in 3.3 (experimental, with get_principal relationship). reporting_subscription_changed was added in 3.3 (experimental, media_buy.reporting_subscriptions): a subscription's accounts_unauthorized changed (an account added on revocation, removed on re-grant or retention expiry) or the subscription moved to action_required."
     },
     "destination_id": {
       "type": "string",

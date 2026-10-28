@@ -658,32 +658,49 @@ exceptions, and every exception removes expected periods; none adds one.
 
 ### Which periods are owed
 
-A confirmed buy in an account the principal is authorized for is owed every complete
-period of the resolved offering's published schedule, in the account's timezone, that
-starts on or after the later of:
+A confirmed buy in an account the principal is authorized for is owed complete periods
+of the resolved offering's published schedule, in the account's timezone. Its first
+owed period is the first that starts on or after the later of:
 
 - the subscription version's `accepted_at`, in the
   [`get_principal`](/docs/protocol/get_principal) readback; and
 - the buy's `confirmed_at`, when the seller committed to the media buy.
 
-Coverage of the buy runs through its final period. Periods are never clipped: a
-mid-period start begins at the next boundary, as for an account-level configuration.
+The buy stops being owed at its **stop time**, the earliest of:
+
+- its current `end_time`, as read through
+  [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). An extension
+  through [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) moves
+  it later and coverage extends; a shortening moves it earlier;
+- `cancellation.canceled_at`; and
+- `completed_at`, when the buy completes before `end_time`. Sellers advertising
+  `media_buy.reporting_subscriptions` populate it for every completed buy.
+
+Owed periods are the complete periods that start on or after the first owed period
+and start before the stop time. Periods are never clipped: a mid-period start begins at
+the next boundary, as for an account-level configuration, and the period containing the
+stop time is owed in full. A buy canceled mid-period owes that period and none after
+it. Every buy has an `end_time`, so there is no open-ended case; ASAP flights affect
+only the start.
 Deactivating the subscription ends coverage at the first boundary at or after
 `deactivated_at`. A new `subscription_version` gets its own `accepted_at`: the old
 version owes periods that start before the first boundary at or after it, and the rule
 reapplies to the new version from there. Earlier versions' `accepted_at` values stay in
 the readback as `prior_versions` while their obligations are retained.
 
-So a buyer derives every expected period from its own buys (`confirmed_at` and
-flight), the subscription's `accepted_at`, and the offering's published schedule, then
-subtracts the exceptions below. A period that remains is owed: a missing report there
+So a buyer derives every expected period from its own buys (`confirmed_at`,
+`end_time`, `canceled_at`, `completed_at`), the subscription's `accepted_at`, and the
+offering's published schedule, then subtracts the exceptions below. A period that remains is owed: a missing report there
 is the seller's to explain. Each period's obligation still freezes its
 `media_buy_ids` at its own `scope_resolved_at`.
 
 The resolved offering is pinned per period. If resolution changes, for example because
-a finer offering appears under `match: finest`, the new offering applies from the next
-period boundary and never to a period already started; each obligation names the
-offering it used.
+the seller adds a finer offering under `match: finest`, the new offering applies from
+the next period boundary and never to a period already started. Each obligation names
+the `offering_id` and `report_definition_id` it used, and that offering is
+authoritative for the obligation's timing: its alignment, anchor, and `delivery_sla`,
+and so `expected_at`. The buyer computes *which* periods are owed itself and reads
+*when* each is due from the obligation.
 
 ### Exceptions
 

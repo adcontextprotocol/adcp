@@ -926,11 +926,13 @@ re-bucketing. Optional `reliability_statistics[]` publish evidence-scoped
 on-time counts, publication latency, and post-official adjustment frequency,
 latency, and magnitude for exact offering IDs.
 
-**Where feeds are registered.** `configuration_task` is always `"sync_accounts"`
-and is deprecated in 3.3; it stays unchanged so clients that compare it keep
-working. `configuration_tasks[]` (3.3) lists every accepted registration task —
-for example `["sync_principal", "sync_accounts"]` — and buyers choose from it.
-`sync_accounts` stays in the list through 3.x.
+**Where feeds are registered.** 3.3 clients use `configuration_tasks[]`, which
+lists every accepted registration task — for example
+`["sync_principal", "sync_accounts"]` — and choose from it. `configuration_task` is
+always `"sync_accounts"` and is deprecated in 3.3; it stays unchanged only for
+clients pinned below 3.3. `sync_accounts` stays in the list through 3.x. A 3.3
+client that registers feeds only through `sync_principal` can end an old
+account-level configuration with a subscription's `replace_account_configs`.
 
 **Reporting subscriptions (experimental, 3.3).** `subscriptions` advertises
 principal-level [reporting subscriptions](/docs/protocol/sync_principal#reporting-subscriptions):
