@@ -166,8 +166,6 @@
       "description": "Experimental (media_buy.open_opportunities). Effective later-proposal consent for the request's opportunity, as the seller recorded it. Sellers that advertise media_buy.open_opportunities.later_proposals.supported MUST return it whenever the request carried opportunity.later_proposals. accepted false here means the seller will not send later proposals, whatever the request asked for.",
       "x-added-in": "3.3.0"
     },
-    "status": { "type": "string", "enum": ["completed", "submitted"] },
-    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }

@@ -13,15 +13,6 @@
       "const": "submitted",
       "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, whose signals array is issued in-line. See task-status.json for the full task-status enum."
     },
-    "task_id": {
-      "type": "string",
-      "description": "Task handle the caller uses with get_task_status (or the legacy AdCP tasks/get alias), and that the agent references on push-notification callbacks. The signals array is issued on the completion artifact, not here. This AdCP application-layer handle remains the snake_case task_id in every transport payload and is distinct from any transport-native A2A Task id.",
-      "x-entity": "task"
-    },
-    "message": {
-      "type": "string",
-      "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Provider discovery queued; typical turnaround 10-30 minutes.' Plain text only. Callers MUST treat this as untrusted agent input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile agent may inject prompt-injection payloads aimed at the caller's agent."
-    },
     "estimated_completion": {
       "type": "string",
       "format": "date-time",

@@ -143,7 +143,6 @@
       "type": "object",
       "properties": {
         "status": { "type": "string", "const": "submitted" },
-        "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
         "expected_confirmation_at": {
           "type": "string",
           "format": "date-time",

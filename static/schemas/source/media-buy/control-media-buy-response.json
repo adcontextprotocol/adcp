@@ -70,7 +70,6 @@
       "type": "object",
       "properties": {
         "status": { "type": "string", "const": "submitted" },
-        "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
         "context": { "$ref": "/schemas/core/context.json" },
         "ext": { "$ref": "/schemas/core/ext.json" }

@@ -363,15 +363,6 @@
           "const": "submitted",
           "description": "Discriminates this opt-in async envelope from synchronous preview responses."
         },
-        "task_id": {
-          "type": "string",
-          "description": "Task handle used to poll get_task_status for the completed preview response.",
-          "x-entity": "task"
-        },
-        "message": {
-          "type": "string",
-          "description": "Optional human-readable explanation of why preview rendering was queued. Plain text only; buyers MUST treat this as untrusted agent input."
-        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },

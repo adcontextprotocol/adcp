@@ -90,10 +90,6 @@
           "type": "string",
           "description": "State after this transition"
         },
-        "message": {
-          "type": "string",
-          "description": "Human-readable description of the transition"
-        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -160,9 +156,6 @@
           "type": "object",
           "description": "Running totals across all simulation calls (simulate_delivery only)",
           "additionalProperties": true
-        },
-        "message": {
-          "type": "string"
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -370,10 +363,6 @@
             }
           ]
         },
-        "message": {
-          "type": "string",
-          "description": "Human-readable acknowledgement."
-        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -429,10 +418,6 @@
         "success": {
           "type": "boolean",
           "const": true
-        },
-        "message": {
-          "type": "string",
-          "description": "Human-readable acknowledgement."
         },
         "context": {
           "$ref": "/schemas/core/context.json"

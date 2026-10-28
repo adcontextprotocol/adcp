@@ -235,8 +235,6 @@
       "x-status": "experimental",
       "x-added-in": "3.3.0"
     },
-    "status": { "type": "string", "enum": ["completed", "submitted"] },
-    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
     "expected_confirmation_at": {
       "type": "string",
       "format": "date-time",

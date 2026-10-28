@@ -13,21 +13,11 @@
       "const": "submitted",
       "description": "Task-level status literal that discriminates this acknowledgement from terminal success and error responses."
     },
-    "task_id": {
-      "type": "string",
-      "minLength": 1,
-      "description": "AdCP task handle used to poll get_task_status or correlate terminal webhook delivery. Distinct from evaluation_id.",
-      "x-entity": "task"
-    },
     "evaluation_id": {
       "type": "string",
       "minLength": 1,
       "description": "Provider-generated identity allocated when the evaluation is accepted. Optional in AdCP 3.x and required in AdCP 4.0. Providers SHOULD emit it in 3.x; when present, exact replays and the terminal result MUST carry this same value. Distinct from task_id and idempotency_key.",
       "x-entity": "creative_evaluation"
-    },
-    "message": {
-      "type": "string",
-      "description": "Optional human-readable explanation of why the evaluation is submitted. Plain text only; callers treat it as untrusted provider input."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

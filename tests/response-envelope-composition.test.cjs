@@ -12,24 +12,36 @@
  * property on every closed root and closed `oneOf`/`anyOf` branch, because a
  * draft-07 `additionalProperties: false` does not see `allOf`.
  *
- * Single-fault vectors. For each closed node and envelope property, the
- * control instance omits the property and the vector adds it with a value
- * that is valid against the envelope declaration (and against any local
- * narrowing declaration). The test compares the two error sets, so a vector
- * can only fail on the one property it adds:
- *   - built schema: the vector adds no error to the control;
- *   - source schema: the vector adds exactly one error, the closed node's
- *     `additionalProperties` rejecting that property, unless the source
- *     node declares the property itself, in which case it adds none.
- * Every closed node is compiled on its own by JSON Pointer, so every
- * `oneOf`/`anyOf` branch is evaluated, not only the one a discriminator
- * selects.
+ * Single-fault vectors. Each closed node is compiled on its own by JSON
+ * Pointer, so every `oneOf`/`anyOf` branch is evaluated, with its body-field
+ * declarations reduced to `{}`: the vectors grade how the node treats
+ * envelope fields, not body-field contents. The control carries the node's
+ * required fields and passes the built node. Each vector differs from it by
+ * one envelope field:
+ *   - an addition vector (a field the control lacks): the built node accepts
+ *     it, and the source node adds exactly one error, `additionalProperties`
+ *     on that field, unless the source declares the field itself;
+ *   - a removal vector (a required field, such as a branch's `status` or
+ *     `task_id`): the built node adds exactly one error, `required` on that
+ *     field, and the source node loses exactly the `additionalProperties`
+ *     error the field raised there, unless the source declares it.
+ * Edge values (`replayed: false`, a 2,500-character `message`) run as
+ * further addition vectors on every closed node, and on every response node
+ * against the built schema.
  *
  * Requires the built tree: run `npm run build:schemas` first (the npm script
- * does).
+ * does). Requires Node 24, as package.json does.
  */
 
 'use strict';
+
+// package.json requires Node 24. Node 22's runner stops scheduling the
+// subtests below after the first few and still reports a pass, so refuse to
+// run there rather than pass on a partial run.
+const NODE_MAJOR = Number(process.versions.node.split('.')[0]);
+if (NODE_MAJOR < 24) {
+  throw new Error(`tests/response-envelope-composition.test.cjs needs Node 24 or later (package.json engines); this is ${process.version}`);
+}
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -202,6 +214,26 @@ function ownSchema(document, pointer, documentId) {
   return own;
 }
 
+/**
+ * The closed node's own keywords with every body-field declaration replaced
+ * by `{}`. The vectors grade how the node treats envelope fields: its
+ * closedness, its required list and its envelope-field declarations. Body
+ * fields keep their names, so `additionalProperties` still sees them, but not
+ * their nested constraints, which are not under test here.
+ */
+async function envelopeValidatorFor(ajv, document, pointer, documentId) {
+  const key = `${ajv === builtAjv ? 'built' : 'source'} envelope ${documentId}#${pointer}`;
+  if (!validators.has(key)) {
+    const own = ownSchema(document, pointer, documentId);
+    const envelopeNames = new Set(ENVELOPE_PROPERTIES.map(({ name }) => name));
+    for (const name of Object.keys(own.properties || {})) {
+      if (!envelopeNames.has(name)) own.properties[name] = {};
+    }
+    validators.set(key, await ajv.compileAsync(own));
+  }
+  return validators.get(key);
+}
+
 async function ownValidatorFor(ajv, document, pointer, documentId) {
   const key = `${ajv === builtAjv ? 'built' : 'source'} own ${documentId}#${pointer}`;
   if (!validators.has(key)) validators.set(key, await ajv.compileAsync(ownSchema(document, pointer, documentId)));
@@ -303,16 +335,34 @@ test('every envelope wire property has a value that its envelope declaration acc
   }
 });
 
-test('source closed schemas declare only body fields and narrowing constraints', () => {
+/**
+ * A local declaration of an envelope field that a response node may keep:
+ * - a `status` const or enum, the discriminator of a branch;
+ * - `context` as a `$ref` to core/context.json, which mirrors the envelope;
+ * - a value pin: a `const`, or an object whose properties pin values with
+ *   `const` (the fixed message and error of an unavailable reporting lookup).
+ * Anything else restates the envelope, so the envelope's declaration governs.
+ */
+function permittedLocalDeclaration(name, declaration) {
+  if (!declaration || typeof declaration !== 'object') return false;
+  const has = (node, key) => Object.prototype.hasOwnProperty.call(node, key);
+  if (name === 'status') return has(declaration, 'const') || Array.isArray(declaration.enum);
+  if (name === 'context') return declaration.$ref === '/schemas/core/context.json';
+  if (has(declaration, 'const')) return true;
+  return Object.values(declaration.properties || {}).some((member) => member && has(member, 'const'));
+}
+
+test('response nodes declare only body fields and narrowing constraints', () => {
   const copied = [];
-  for (const { rel, pointer } of CLOSED_NODES) {
-    const properties = pointerGet(readSource(rel), pointer)?.properties || {};
-    for (const { name, ref } of ENVELOPE_PROPERTIES) {
-      const declaration = properties[name];
-      if (declaration && declaration.$ref === ref) copied.push(`${rel}#${pointer}/properties/${name}`);
+  for (const { rel, pointer, node } of RESPONSE_NODES) {
+    for (const { name } of ENVELOPE_PROPERTIES) {
+      const declaration = node.properties[name];
+      if (declaration && !permittedLocalDeclaration(name, declaration)) {
+        copied.push(`${rel}#${pointer}/properties/${name}`);
+      }
     }
   }
-  assert.deepEqual(copied, [], 'the schema build adds envelope $refs; remove the hand-copied declarations');
+  assert.deepEqual(copied, [], 'the envelope declares these fields; remove the local redeclarations');
 });
 
 test('no response node narrows message length or pins replayed', () => {
@@ -348,14 +398,31 @@ test('the build keeps every local declaration that narrows an envelope field', (
   }
 });
 
+function errorShape({ instancePath, keyword, params }) {
+  return { instancePath, keyword, params };
+}
+
 test('built closed roots and branches accept every envelope property, single-fault vectors', async (t) => {
+  let vectorCount = 0;
   for (const { rel, pointer } of CLOSED_NODES) {
     await t.test(`${rel}#${pointer}`, async () => {
       const sourceDocument = readSource(rel);
       const sourceNode = pointerGet(sourceDocument, pointer);
-      const builtValidate = await ownValidatorFor(builtAjv, readBuilt(rel), pointer, `${BUILT_ORIGIN}${rel}`);
-      const sourceValidate = await ownValidatorFor(sourceAjv, sourceDocument, pointer, `/schemas/${rel}`);
+      const builtDocument = readBuilt(rel);
+      const builtValidate = await envelopeValidatorFor(builtAjv, builtDocument, pointer, `${BUILT_ORIGIN}${rel}`);
+      const sourceValidate = await envelopeValidatorFor(sourceAjv, sourceDocument, pointer, `/schemas/${rel}`);
+
+      // The control: the node's required fields, envelope fields with values
+      // their declarations accept, so it passes the built node and each
+      // vector differs from it by one field.
+      const builtNode = pointerGet(builtDocument, pointer);
       const control = {};
+      for (const name of builtNode.required || []) {
+        control[name] = name in ENVELOPE_VALUES ? fitValue(ENVELOPE_VALUES[name], sourceNode.properties?.[name]) : 'x';
+      }
+      assert.equal(builtValidate(control), true,
+        `control does not pass built ${rel}#${pointer}: ${JSON.stringify(builtValidate.errors)} ${JSON.stringify(control)}`);
+
       const cases = [
         ...ENVELOPE_PROPERTIES.map(({ name, ref }) => ({ name, ref, value: ENVELOPE_VALUES[name], fit: true })),
         // Edge values honour only a local const, the deliberate pin of a
@@ -367,28 +434,41 @@ test('built closed roots and branches accept every envelope property, single-fau
       ];
       for (const { name, ref, value: envelopeValue, fit } of cases) {
         const localDeclaration = sourceNode.properties?.[name];
+        const additional = [{ instancePath: '', keyword: 'additionalProperties', params: { additionalProperty: name } }];
+
+        if (Object.prototype.hasOwnProperty.call(control, name)) {
+          // A required envelope field: the removal vector drops it. Built,
+          // it adds exactly the missing-required error. Source, it removes
+          // the closed node's additionalProperties error for that field
+          // unless the node declares the field itself.
+          const { [name]: _removed, ...vector } = control;
+          assert.deepEqual(addedErrors(builtValidate, control, vector).map(errorShape),
+            [{ instancePath: '', keyword: 'required', params: { missingProperty: name } }],
+            `built ${rel}#${pointer}: removing ${name} must fail only on required`);
+          assert.deepEqual(addedErrors(sourceValidate, vector, control).map(errorShape),
+            localDeclaration ? [] : additional,
+            `source ${rel}#${pointer}: removing ${name} must remove exactly its additionalProperties error`);
+          vectorCount += 1;
+          continue;
+        }
+
         const pinned = localDeclaration && Object.prototype.hasOwnProperty.call(localDeclaration, 'const');
         const value = fit || pinned ? fitValue(envelopeValue, localDeclaration) : envelopeValue;
         const envelopeValidate = await validatorFor(sourceAjv, ref);
         assert.equal(envelopeValidate(value), true, `${name}: vector value is not valid against ${ref}`);
         const vector = { ...control, [name]: value };
-
-        assert.deepEqual(addedErrors(builtValidate, control, vector), [],
-          `built ${rel}#${pointer} rejects envelope property ${name}`);
-
-        const sourceAdded = addedErrors(sourceValidate, control, vector);
-        if (localDeclaration) {
-          assert.deepEqual(sourceAdded, [], `${name}: the source declares it, so the vector must add no error`);
-        } else {
-          assert.deepEqual(
-            sourceAdded.map(({ instancePath, keyword, params }) => ({ instancePath, keyword, params })),
-            [{ instancePath: '', keyword: 'additionalProperties', params: { additionalProperty: name } }],
-            `${name}: the source vector must fail only on the closed node's additionalProperties`,
-          );
-        }
+        assert.equal(builtValidate(vector), true,
+          `built ${rel}#${pointer} rejects envelope property ${name}: ${JSON.stringify(builtValidate.errors)}`);
+        assert.deepEqual(addedErrors(sourceValidate, control, vector).map(errorShape),
+          localDeclaration ? [] : additional,
+          `${name}: the source vector must fail only on the closed node's additionalProperties`);
+        vectorCount += 1;
       }
     });
   }
+  // A run that skips subtests (as Node 22's runner does here) must not pass.
+  assert.equal(vectorCount, CLOSED_NODES.length * (ENVELOPE_PROPERTIES.length + Object.keys(BOUNDARY_VALUES).length),
+    'not every single-fault vector ran');
 });
 
 test('every response node accepts the envelope edge values, single-fault vectors', async () => {

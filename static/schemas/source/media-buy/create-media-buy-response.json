@@ -263,15 +263,6 @@
           "const": "submitted",
           "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, which uses `media_buy_status` for lifecycle state. See task-status.json for the full task-status enum."
         },
-        "task_id": {
-          "type": "string",
-          "description": "Task handle the buyer uses with get_task_status (or the legacy AdCP tasks/get alias), and that the seller references on push-notification callbacks. The media_buy_id is issued on the completion artifact, not here. This AdCP application-layer handle remains the snake_case task_id in every transport payload and is distinct from any transport-native A2A Task id.",
-          "x-entity": "task"
-        },
-        "message": {
-          "type": "string",
-          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Awaiting IO signature from sales team; typical turnaround 2–4 hours.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
-        },
         "expected_confirmation_at": {
           "type": "string",
           "format": "date-time",

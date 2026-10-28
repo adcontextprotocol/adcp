@@ -19,10 +19,13 @@
  * `core/version-envelope.json`).
  *
  * Only missing keys are added. A local declaration of an envelope field is
- * kept, because it narrows the envelope field: a compact branch's
- * `status: {const: "completed"}` discriminator, a constrained `task_id` or
- * `message`, or `replayed: {const: true}`. The composed envelope still
- * validates the value through `allOf`.
+ * kept, because the only ones a response may carry narrow the envelope
+ * field: a branch's `status` const or enum discriminator, a `const` pin such
+ * as the fixed `message` and `adcp_error` of an unavailable reporting lookup,
+ * and `context` as a `$ref` to core/context.json.
+ * tests/response-envelope-composition.test.cjs rejects any other local
+ * declaration. The composed envelope still validates the value through
+ * `allOf`.
  *
  * The property list comes from the envelope itself, so a field added to the
  * envelope reaches every closed response on the next build. The envelope's
@@ -32,7 +35,9 @@
  *
  * Source schemas stay unchanged. `scripts/build-schemas.cjs` applies this
  * transform to every source document it reads, for the flat tree, the
- * bundled tree and the MCP projection alike.
+ * bundled tree and the MCP projection alike. Validators of responses read
+ * that output, dist/schemas/latest (scripts/built-schemas.cjs), never raw
+ * source plus this transform.
  */
 
 const fs = require('node:fs');
